@@ -3,26 +3,47 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 55;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		965FEAE79C4978DC87D1FBB2 /* Pods_shafinMultitool.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */; };
+		CF10E5ED29F8211600D3E39A /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */; };
+		CF10E5F029F8236100D3E39A /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5EF29F8236100D3E39A /* ARKit.framework */; };
+		CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5F129F8238100D3E39A /* RealityKit.framework */; };
+		CF506F802A010F29005E959C /* Circle.rcproject in Sources */ = {isa = PBXBuildFile; fileRef = CF506F7F2A010F29005E959C /* Circle.rcproject */; };
+		CF506F822A011445005E959C /* FinalBaseMesh.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF506F812A011445005E959C /* FinalBaseMesh.usdz */; };
+		CF506F852A012540005E959C /* Actor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF506F842A012540005E959C /* Actor.swift */; };
+		CF506F882A03F8B3005E959C /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF506F872A03F8B3005E959C /* CameraService.swift */; };
 		CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20729CC876400C3B73E /* AppDelegate.swift */; };
-		CFF7B20A29CC876400C3B73E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20929CC876400C3B73E /* ViewController.swift */; };
-		CFF7B20C29CC876400C3B73E /* Experience.rcproject in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20B29CC876400C3B73E /* Experience.rcproject */; };
-		CFF7B20F29CC876400C3B73E /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CFF7B20D29CC876400C3B73E /* Main.storyboard */; };
 		CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CFF7B21029CC876500C3B73E /* Assets.xcassets */; };
-		CFF7B21429CC876500C3B73E /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CFF7B21229CC876500C3B73E /* LaunchScreen.storyboard */; };
+		CFF7B22129CC87C200C3B73E /* CameraScreenViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22029CC87C200C3B73E /* CameraScreenViewController.swift */; };
+		CFF7B22329CC8C6000C3B73E /* CameraScreenPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22229CC8C6000C3B73E /* CameraScreenPresenter.swift */; };
+		CFF7B22529CC8C7200C3B73E /* CameraScreenInteractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22429CC8C7200C3B73E /* CameraScreenInteractor.swift */; };
+		CFF7B22729CC8C7B00C3B73E /* CameraScreenRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22629CC8C7B00C3B73E /* CameraScreenRouter.swift */; };
+		CFF7B22929CC8CA400C3B73E /* CameraScreenBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		08C5AE5ADFDF9B02E49CF3EE /* Pods-shafinMultitool.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.release.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.release.xcconfig"; sourceTree = "<group>"; };
+		7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_shafinMultitool.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		CF10E5EF29F8236100D3E39A /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
+		CF10E5F129F8238100D3E39A /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
+		CF10E5F329F8266600D3E39A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CF506F7F2A010F29005E959C /* Circle.rcproject */ = {isa = PBXFileReference; lastKnownFileType = file.rcproject; path = Circle.rcproject; sourceTree = "<group>"; };
+		CF506F812A011445005E959C /* FinalBaseMesh.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = FinalBaseMesh.usdz; sourceTree = "<group>"; };
+		CF506F842A012540005E959C /* Actor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Actor.swift; sourceTree = "<group>"; };
+		CF506F872A03F8B3005E959C /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CameraService.swift; path = /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/CameraScreenModule/CameraService.swift; sourceTree = "<absolute>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFF7B20729CC876400C3B73E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		CFF7B20929CC876400C3B73E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
-		CFF7B20B29CC876400C3B73E /* Experience.rcproject */ = {isa = PBXFileReference; lastKnownFileType = file.rcproject; path = Experience.rcproject; sourceTree = "<group>"; };
-		CFF7B20E29CC876400C3B73E /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		CFF7B21029CC876500C3B73E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		CFF7B21329CC876500C3B73E /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		CFF7B22029CC87C200C3B73E /* CameraScreenViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenViewController.swift; sourceTree = "<group>"; };
+		CFF7B22229CC8C6000C3B73E /* CameraScreenPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenPresenter.swift; sourceTree = "<group>"; };
+		CFF7B22429CC8C7200C3B73E /* CameraScreenInteractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenInteractor.swift; sourceTree = "<group>"; };
+		CFF7B22629CC8C7B00C3B73E /* CameraScreenRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenRouter.swift; sourceTree = "<group>"; };
+		CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenBuilder.swift; sourceTree = "<group>"; };
+		DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.debug.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -30,17 +51,56 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */,
+				CF10E5F029F8236100D3E39A /* ARKit.framework in Frameworks */,
+				965FEAE79C4978DC87D1FBB2 /* Pods_shafinMultitool.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		457F7D83A82BD1A3BB0F89BB /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */,
+				08C5AE5ADFDF9B02E49CF3EE /* Pods-shafinMultitool.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		CF10E5D529F412C900D3E39A /* SettingsModule */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = SettingsModule;
+			sourceTree = "<group>";
+		};
+		CF10E5EE29F8236100D3E39A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				CF10E5F129F8238100D3E39A /* RealityKit.framework */,
+				CF10E5EF29F8236100D3E39A /* ARKit.framework */,
+				7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		CF506F832A01252F005E959C /* Entity */ = {
+			isa = PBXGroup;
+			children = (
+				CF506F842A012540005E959C /* Actor.swift */,
+			);
+			path = Entity;
+			sourceTree = "<group>";
+		};
 		CFF7B1FB29CC876400C3B73E = {
 			isa = PBXGroup;
 			children = (
 				CFF7B20629CC876400C3B73E /* shafinMultitool */,
 				CFF7B20529CC876400C3B73E /* Products */,
+				CF10E5EE29F8236100D3E39A /* Frameworks */,
+				457F7D83A82BD1A3BB0F89BB /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -55,14 +115,62 @@
 		CFF7B20629CC876400C3B73E /* shafinMultitool */ = {
 			isa = PBXGroup;
 			children = (
+				CF506F832A01252F005E959C /* Entity */,
+				CF506F812A011445005E959C /* FinalBaseMesh.usdz */,
+				CF506F7F2A010F29005E959C /* Circle.rcproject */,
+				CF10E5F329F8266600D3E39A /* Info.plist */,
+				CF10E5D529F412C900D3E39A /* SettingsModule */,
+				CFF7B21A29CC878000C3B73E /* CameraScreenModule */,
 				CFF7B20729CC876400C3B73E /* AppDelegate.swift */,
-				CFF7B20929CC876400C3B73E /* ViewController.swift */,
-				CFF7B20B29CC876400C3B73E /* Experience.rcproject */,
-				CFF7B20D29CC876400C3B73E /* Main.storyboard */,
+				CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */,
 				CFF7B21029CC876500C3B73E /* Assets.xcassets */,
-				CFF7B21229CC876500C3B73E /* LaunchScreen.storyboard */,
 			);
 			path = shafinMultitool;
+			sourceTree = "<group>";
+		};
+		CFF7B21A29CC878000C3B73E /* CameraScreenModule */ = {
+			isa = PBXGroup;
+			children = (
+				CF506F872A03F8B3005E959C /* CameraService.swift */,
+				CFF7B21F29CC87AE00C3B73E /* Router */,
+				CFF7B21D29CC879E00C3B73E /* Presenter */,
+				CFF7B21C29CC879400C3B73E /* View */,
+				CFF7B21B29CC878F00C3B73E /* Interactor */,
+				CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */,
+			);
+			path = CameraScreenModule;
+			sourceTree = "<group>";
+		};
+		CFF7B21B29CC878F00C3B73E /* Interactor */ = {
+			isa = PBXGroup;
+			children = (
+				CFF7B22429CC8C7200C3B73E /* CameraScreenInteractor.swift */,
+			);
+			path = Interactor;
+			sourceTree = "<group>";
+		};
+		CFF7B21C29CC879400C3B73E /* View */ = {
+			isa = PBXGroup;
+			children = (
+				CFF7B22029CC87C200C3B73E /* CameraScreenViewController.swift */,
+			);
+			path = View;
+			sourceTree = "<group>";
+		};
+		CFF7B21D29CC879E00C3B73E /* Presenter */ = {
+			isa = PBXGroup;
+			children = (
+				CFF7B22229CC8C6000C3B73E /* CameraScreenPresenter.swift */,
+			);
+			path = Presenter;
+			sourceTree = "<group>";
+		};
+		CFF7B21F29CC87AE00C3B73E /* Router */ = {
+			isa = PBXGroup;
+			children = (
+				CFF7B22629CC8C7B00C3B73E /* CameraScreenRouter.swift */,
+			);
+			path = Router;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -72,9 +180,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CFF7B21729CC876500C3B73E /* Build configuration list for PBXNativeTarget "shafinMultitool" */;
 			buildPhases = (
+				5458564239F347497FD524BF /* [CP] Check Pods Manifest.lock */,
 				CFF7B20029CC876400C3B73E /* Sources */,
 				CFF7B20129CC876400C3B73E /* Frameworks */,
 				CFF7B20229CC876400C3B73E /* Resources */,
+				430CDBAEF84F01F44B60348F /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -101,7 +211,7 @@
 				};
 			};
 			buildConfigurationList = CFF7B1FF29CC876400C3B73E /* Build configuration list for PBXProject "shafinMultitool" */;
-			compatibilityVersion = "Xcode 14.0";
+			compatibilityVersion = "Xcode 13.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -123,45 +233,74 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CFF7B21429CC876500C3B73E /* LaunchScreen.storyboard in Resources */,
+				CF506F822A011445005E959C /* FinalBaseMesh.usdz in Resources */,
 				CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */,
-				CFF7B20F29CC876400C3B73E /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		430CDBAEF84F01F44B60348F /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		5458564239F347497FD524BF /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-shafinMultitool-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		CFF7B20029CC876400C3B73E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CFF7B20A29CC876400C3B73E /* ViewController.swift in Sources */,
+				CF506F882A03F8B3005E959C /* CameraService.swift in Sources */,
+				CFF7B22929CC8CA400C3B73E /* CameraScreenBuilder.swift in Sources */,
+				CFF7B22729CC8C7B00C3B73E /* CameraScreenRouter.swift in Sources */,
+				CF10E5ED29F8211600D3E39A /* SceneDelegate.swift in Sources */,
+				CF506F802A010F29005E959C /* Circle.rcproject in Sources */,
 				CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */,
-				CFF7B20C29CC876400C3B73E /* Experience.rcproject in Sources */,
+				CFF7B22129CC87C200C3B73E /* CameraScreenViewController.swift in Sources */,
+				CFF7B22329CC8C6000C3B73E /* CameraScreenPresenter.swift in Sources */,
+				CFF7B22529CC8C7200C3B73E /* CameraScreenInteractor.swift in Sources */,
+				CF506F852A012540005E959C /* Actor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXVariantGroup section */
-		CFF7B20D29CC876400C3B73E /* Main.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				CFF7B20E29CC876400C3B73E /* Base */,
-			);
-			name = Main.storyboard;
-			sourceTree = "<group>";
-		};
-		CFF7B21229CC876500C3B73E /* LaunchScreen.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				CFF7B21329CC876500C3B73E /* Base */,
-			);
-			name = LaunchScreen.storyboard;
-			sourceTree = "<group>";
-		};
-/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		CFF7B21529CC876500C3B73E /* Debug */ = {
@@ -280,6 +419,7 @@
 		};
 		CFF7B21829CC876500C3B73E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -287,14 +427,15 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 5NAKQ28539;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "";
+				INFOPLIST_FILE = shafinMultitool/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -310,6 +451,7 @@
 		};
 		CFF7B21929CC876500C3B73E /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 08C5AE5ADFDF9B02E49CF3EE /* Pods-shafinMultitool.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -317,14 +459,15 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 5NAKQ28539;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "";
+				INFOPLIST_FILE = shafinMultitool/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
-				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
