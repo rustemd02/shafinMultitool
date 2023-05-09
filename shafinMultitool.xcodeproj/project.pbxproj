@@ -430,6 +430,7 @@
 				INFOPLIST_FILE = shafinMultitool/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на сохранение файлов в галерею";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
@@ -462,6 +463,7 @@
 				INFOPLIST_FILE = shafinMultitool/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на сохранение файлов в галерею";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;

@@ -39,7 +39,7 @@ class CameraScreenViewController: UIViewController {
         tapGesture.delegate = self
         setupARView(arView: arView)
         setupUI()
-        presenter?.prepareRecorder(arView: arView)
+        presenter?.prepareRecorder()
         
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
@@ -138,12 +138,12 @@ class CameraScreenViewController: UIViewController {
     
     @objc
     private func addActor() {
-        presenter?.addActor(arView: self.arView)
+        presenter?.addActor(arView: arView)
     }
     
     @objc
     private func changeName() {
-        presenter?.changeName(arView: self.arView)
+        presenter?.changeName(arView: arView)
     }
     
     @objc
@@ -232,6 +232,7 @@ extension CameraScreenViewController: ARSessionDelegate {
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         
     }
+    
 
 }
 

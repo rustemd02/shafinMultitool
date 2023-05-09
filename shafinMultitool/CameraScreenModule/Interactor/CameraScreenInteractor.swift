@@ -15,7 +15,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func startRecording()
     func stopRecording()
     func prepareARView(arView: ARView)
-    func prepareRecorder(arView: ARView)
+    func prepareRecorder()
     func addActor(arView: ARView)
     func changeName(arView: ARView)
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView
@@ -31,13 +31,6 @@ class CameraScreenInteractor {
     var selectedEntity: Entity?
     var cameraService = CameraService()
     
-    private var captureSession: AVCaptureSession?
-    private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
-    private var whiteBackgroundLayer: CALayer?
-    private var outputURL: URL?
-
-    
-    
     
     func placeObject(named entityName: String, for anchor: ARAnchor, arView: ARView) {
         let modelEntity = try? ModelEntity.loadModel(named: entityName)
@@ -49,7 +42,6 @@ class CameraScreenInteractor {
             
             arView.installGestures([.translation, .rotation], for: modelEntity)
             arView.scene.addAnchor(anchorEntity)
-            
             if actors.count == 0 {
                 presenter?.changeNameButtonVisibility()
             }
@@ -115,6 +107,16 @@ class CameraScreenInteractor {
 
 extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
+    func startRecording() {
+        cameraService.startRecording()
+
+    }
+    
+    func stopRecording() {
+        cameraService.stopRecording()
+    }
+    
+    
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView) {
         if gesture.state == .began {
             let location = gesture.location(in: arView)
@@ -144,94 +146,10 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     
-    func prepareRecorder(arView: ARView) {
-        let captureSession = AVCaptureSession()
-        captureSession.beginConfiguration()
-        
-        // Настройка входного устройства для захвата видео
-        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            return
-        }
-        guard let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice),
-              captureSession.canAddInput(videoDeviceInput) else {
-            return
-        }
-        captureSession.addInput(videoDeviceInput)
-        
-        // Настройка вывода превью видео
-        let videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-        videoPreviewLayer.videoGravity = .resizeAspectFill
-        videoPreviewLayer.connection?.videoOrientation = .portrait
-        
-        arView.layer.addSublayer(videoPreviewLayer)
-        videoPreviewLayer.frame = arView.bounds
-        
-        self.videoPreviewLayer = videoPreviewLayer
-        
-        // Настройка вывода для записи видео
-        let whiteBackgroundLayer = CALayer()
-        whiteBackgroundLayer.frame = arView.bounds
-        whiteBackgroundLayer.backgroundColor = UIColor.white.cgColor
-        
-        arView.layer.addSublayer(whiteBackgroundLayer)
-        
-        self.whiteBackgroundLayer = whiteBackgroundLayer
-        
-        captureSession.commitConfiguration()
-        self.captureSession = captureSession
+    func prepareRecorder() {
+        cameraService.prepareRecorder()
     }
     
-    func startRecording() {
-        guard let captureSession = captureSession, let outputURL = getVideoFileURL() else {
-            return
-        }
-        
-        self.outputURL = outputURL
-        
-        let movieFileOutput = AVCaptureMovieFileOutput()
-
-        captureSession.beginConfiguration()
-        
-        if captureSession.canAddOutput(movieFileOutput) {
-            captureSession.addOutput(movieFileOutput)
-        }
-        
-        if let connection = movieFileOutput.connection(with: .video) {
-            connection.videoOrientation = .portrait
-        }
-        
-        captureSession.commitConfiguration()
-        
-        cameraService.outputURL = outputURL
-        movieFileOutput.startRecording(to: outputURL, recordingDelegate: cameraService)
-    }
-    
-    func stopRecording() {
-        guard let captureSession = captureSession else {
-            return
-        }
-    
-        captureSession.stopRunning()
-        
-        if let whiteBackgroundLayer = whiteBackgroundLayer {
-            whiteBackgroundLayer.removeFromSuperlayer()
-        }
-        
-        if let videoPreviewLayer = videoPreviewLayer {
-            videoPreviewLayer.removeFromSuperlayer()
-        }
-    }
-    
-    private func getVideoFileURL() -> URL? {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let date = dateFormatter.string(from: Date())
-        let fileName = "video_\(date).mov"
-        let fileURL = documentsDirectory.appendingPathComponent(fileName)
-        return fileURL
-    }
-
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {
         for anchor in anchors {

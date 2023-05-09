@@ -21,7 +21,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func changeName(arView: ARView)
     func startRecording()
     func stopRecording()
-    func prepareRecorder(arView: ARView)
+    func prepareRecorder()
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
 
@@ -63,8 +63,8 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
         interactor.stopRecording()
     }
     
-    func prepareRecorder(arView: ARView) {
-        interactor.prepareRecorder(arView: arView)
+    func prepareRecorder() {
+        interactor.prepareRecorder()
     }
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {
