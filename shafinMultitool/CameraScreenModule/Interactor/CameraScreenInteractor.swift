@@ -27,7 +27,6 @@ protocol CameraScreenInteractorProtocol: AnyObject {
 
 class CameraScreenInteractor {
     weak var presenter: CameraScreenPresenterProtocol?
-    var firstStep = true
     var actorEntities: [ModelEntity] = []
     var pathEntities: [ModelEntity] = []
     var selectedEntity: ModelEntity?
@@ -74,7 +73,7 @@ class CameraScreenInteractor {
                 presenter?.changeNameButtonVisibility()
             }
             
-            if firstStep {
+            if selectedEntity == nil {
                 selectedEntity = modelEntity
             }
             
@@ -158,12 +157,19 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func handleTap(_ gesture: UITapGestureRecognizer, _ arView: ARView) {
         let location = gesture.location(in: arView)
         if let tappedEntity = arView.entity(at: location) {
-            if selectedEntity == nil {
+            if tappedEntity == selectedEntity {
                 presenter?.changeNameButtonVisibility()
+                selectedEntity = nil
+                checkOnSelected()
+            } else {
+                if selectedEntity == nil {
+                    presenter?.changeNameButtonVisibility()
+                }
+                guard let tappedEntity = tappedEntity as? ModelEntity else { return }
+                selectedEntity = tappedEntity
             }
-            guard let tappedEntity = tappedEntity as? ModelEntity else { return }
-            selectedEntity = tappedEntity
             checkOnSelected()
+
         }
         
     }
@@ -177,9 +183,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {
         for anchor in anchors {
             guard let anchorName = anchor.name, anchorName == "FinalBaseMesh" else { return arView }
-            if firstStep {
+            if selectedEntity == nil {
                 placeActor(named: anchorName, for: anchor, arView: arView)
-                firstStep = false
             } else {
                 addPoints(named: anchorName, for: anchor, arView: arView)
             }
@@ -206,23 +211,29 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func finishEditing() {
-        firstStep = true
         for pathEntity in pathEntities {
             pathEntity.isEnabled = false
         }
         
-        let actor = actors.first { actor in
-            actor.id == selectedEntity?.id
-        }
-        guard let coordinates = actor?.coordinates else { return }
         let queue = DispatchQueue(label: "moveQueue")
         var index = 0
-        for coordinate in coordinates {
-            queue.asyncAfter(deadline: .now() + Double(index) * 2.0) {
-                self.selectedEntity?.move(to: coordinate, relativeTo: nil, duration: 2)
+        let group = DispatchGroup()
+        for actorEntity in actorEntities {
+            let actor = actors.first { actor in
+                actor.id == actorEntity.id
             }
-            index += 1
+            guard let coordinates = actor?.coordinates else { continue }
+            for coordinate in coordinates {
+                group.enter()
+                actorEntity.move(to: coordinate, relativeTo: nil, duration: 2)
+                index += 1
+                group.leave()
+                
+            }
+            
         }
+        group.wait()
+
     }
     
     func changeName(arView: ARView) {
