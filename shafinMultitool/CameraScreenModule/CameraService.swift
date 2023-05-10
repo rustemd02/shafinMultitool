@@ -19,7 +19,7 @@ class CameraService: NSObject, AVCaptureFileOutputRecordingDelegate {
     private var outputURL: URL?
     
     
-    func prepareRecorder() {
+    func prepareRecorder(arView: ARView) {
         let captureSession = AVCaptureSession()
         captureSession.beginConfiguration()
         
@@ -35,24 +35,14 @@ class CameraService: NSObject, AVCaptureFileOutputRecordingDelegate {
         captureSession.addInput(videoDeviceInput)
         
         
-        //       //  Настройка вывода превью видео
-        //        let videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-        //        videoPreviewLayer.videoGravity = .resizeAspectFill
-        //        videoPreviewLayer.connection?.videoOrientation = .portrait
-        //
-        //        arView.layer.addSublayer(videoPreviewLayer)
-        //        videoPreviewLayer.frame = arView.bounds
-        //
-        //        self.videoPreviewLayer = videoPreviewLayer
-        ////
-        //        // Настройка вывода для записи видео
-        //        let whiteBackgroundLayer = CALayer()
-        //        whiteBackgroundLayer.frame = arView.bounds
-        //        whiteBackgroundLayer.backgroundColor = UIColor.white.cgColor
-        //
-        //        arView.layer.addSublayer(whiteBackgroundLayer)
-        //
-        //        self.whiteBackgroundLayer = whiteBackgroundLayer
+        //  Настройка вывода превью видео
+        let videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+        videoPreviewLayer.videoGravity = .resizeAspectFill
+        videoPreviewLayer.connection?.videoOrientation = .portrait
+        arView.layer.addSublayer(videoPreviewLayer)
+        videoPreviewLayer.frame = arView.bounds
+        
+        self.videoPreviewLayer = videoPreviewLayer
         
         captureSession.commitConfiguration()
         self.captureSession = captureSession

@@ -26,6 +26,7 @@ class CameraScreenViewController: UIViewController {
     private let tapGesture = UITapGestureRecognizer()
     private let longGesture = UILongPressGestureRecognizer()
     private let addActorButton = UIButton(type: .custom)
+    private let finishEditingButton = UIButton(type: .custom)
     private let changeNameButton = UIButton(type: .custom)
     private let recordButton = UIButton(type: .custom)
     private let stopButton = UIButton(type: .custom)
@@ -39,12 +40,13 @@ class CameraScreenViewController: UIViewController {
         tapGesture.delegate = self
         setupARView(arView: arView)
         setupUI()
-        presenter?.prepareRecorder()
+        presenter?.prepareRecorder(arView: arView)
         
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
         longGesture.minimumPressDuration = 1.7
         addActorButton.addTarget(self, action: #selector(addActor), for: .touchUpInside)
+        finishEditingButton.addTarget(self, action: #selector(finishEditing), for: .touchUpInside)
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
         recordButton.addTarget(self, action: #selector(recordButtonPressed), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopButtonPressed), for: .touchUpInside)
@@ -71,6 +73,20 @@ class CameraScreenViewController: UIViewController {
             make.centerX.equalToSuperview()
             make.bottom.equalToSuperview().inset(50)
         }
+        
+        arView.addSubview(finishEditingButton)
+        finishEditingButton.isHidden = true
+        finishEditingButton.backgroundColor = .white.withAlphaComponent(0.5)
+        finishEditingButton.layer.cornerRadius = 22.5
+        finishEditingButton.layer.masksToBounds = true
+        finishEditingButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
+        finishEditingButton.tintColor = UIColor.black
+        finishEditingButton.snp.makeConstraints { make in
+            make.width.height.equalTo(45)
+            make.left.equalTo(addActorButton.snp_rightMargin).offset(20)
+            make.bottom.equalToSuperview().inset(50)
+        }
+        
         
         arView.addSubview(changeNameButton)
         changeNameButton.backgroundColor = .white.withAlphaComponent(0.5)
@@ -138,7 +154,14 @@ class CameraScreenViewController: UIViewController {
     
     @objc
     private func addActor() {
+        finishEditingButton.isHidden = false
         presenter?.addActor(arView: arView)
+    }
+    
+    @objc
+    private func finishEditing() {
+        finishEditingButton.isHidden = true
+        presenter?.finishEditing()
     }
     
     @objc
