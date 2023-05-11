@@ -11,7 +11,7 @@ import ARKit
 import RealityKit
 import Photos
 
-class CameraService: NSObject {
+class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var captureSession: AVCaptureSession?
     private var movieFileOutput: AVCaptureMovieFileOutput?
     private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
@@ -19,7 +19,13 @@ class CameraService: NSObject {
     private var outputURL: URL?
     
     var assetWriter: AVAssetWriter!
-    var assetWriterInput: AVAssetWriterInput!
+    var assetWriterVideoInput: AVAssetWriterInput!
+    var audioSession: AVAudioSession!
+    var audioCaptureSession: AVCaptureSession!
+    var audioCaptureDevice: AVCaptureDevice!
+    var audioCaptureDeviceInput: AVCaptureDeviceInput!
+    var audioCaptureOutput: AVCaptureAudioDataOutput!
+    var audioAssetWriterInput: AVAssetWriterInput!
     var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor!
     private var startTime: CMTime?
     var isRecording = false
@@ -38,19 +44,51 @@ class CameraService: NSObject {
             AVVideoWidthKey: 1920,
             AVVideoHeightKey: 1080
         ]
-        assetWriterInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-        assetWriterInput.expectsMediaDataInRealTime = true
+        assetWriterVideoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        assetWriterVideoInput.expectsMediaDataInRealTime = true
         
         // Создаем объект AVAssetWriterInputPixelBufferAdaptor
         let pixelBufferAttributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
             kCVPixelBufferWidthKey as String: 1920,
-            kCVPixelBufferHeightKey as String: 1080
+            kCVPixelBufferHeightKey as String: 1080,
         ]
-        pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: assetWriterInput, sourcePixelBufferAttributes: pixelBufferAttributes)
+        pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: assetWriterVideoInput, sourcePixelBufferAttributes: pixelBufferAttributes)
+        
+        assetWriter.add(assetWriterVideoInput)
+        
+        let audioSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: 48000
+        ]
+        audioAssetWriterInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+        audioAssetWriterInput.expectsMediaDataInRealTime = true
+        
         
         // Добавляем AVAssetWriterInput в AVAssetWriter
-        assetWriter.add(assetWriterInput)
+        assetWriter.add(audioAssetWriterInput)
+        
+        
+        // Настраиваем объект AVCaptureSession для записи аудио
+        audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setCategory(.playAndRecord, mode: .default, options: [])
+        try? audioSession.setActive(true, options: [])
+        
+        audioCaptureSession = AVCaptureSession()
+        audioCaptureSession.beginConfiguration()
+        
+        audioCaptureDevice = AVCaptureDevice.default(for: .audio)!
+        audioCaptureDeviceInput = try! AVCaptureDeviceInput(device: audioCaptureDevice)
+        audioCaptureSession.addInput(audioCaptureDeviceInput)
+        
+        audioCaptureOutput = AVCaptureAudioDataOutput()
+        audioCaptureOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "audioCaptureQueue"))
+        audioCaptureSession.addOutput(audioCaptureOutput)
+        
+        audioCaptureSession.commitConfiguration()
+        audioCaptureSession.startRunning()
+        
         assetWriter.startWriting()
         assetWriter.startSession(atSourceTime: CMTime.zero)
     }
@@ -61,7 +99,7 @@ class CameraService: NSObject {
     
     func stopRecording() {
         isRecording = false
-        assetWriterInput.markAsFinished()
+        assetWriterVideoInput.markAsFinished()
         assetWriter.finishWriting {
             DispatchQueue.main.async {
                 self.saveVideoToLibrary(videoURL: self.outputURL!)
@@ -85,23 +123,59 @@ class CameraService: NSObject {
         guard isRecording else {
             return
         }
-
+        
         let pixelBuffer = frame.capturedImage
         let cmTime = CMTimeMakeWithSeconds(frame.timestamp, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         if startTime == nil {
-            // Сохраняем начальное время записи для вычисления правильного значения времени презентации каждого кадра
             startTime = cmTime
             assetWriter.startSession(atSourceTime: CMTime.zero)
         }
         
         let presentationTime = CMTimeSubtract(cmTime, startTime!)
-        if !assetWriterInput.isReadyForMoreMediaData {
+        if !assetWriterVideoInput.isReadyForMoreMediaData {
             print("Pixel buffer adaptor is not ready for more media data")
             return
         }
-        pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime)
+        //pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime)
+        
+        if audioAssetWriterInput.isReadyForMoreMediaData {
+            if pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime) {
+                print("Pixel buffer appended at time \(cmTime)")
+            } else {
+                print("Failed to append pixel buffer at time \(cmTime)")
+            }
+        }
     }
-
+    
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard isRecording else { return }
+        
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        
+        if !audioAssetWriterInput.isReadyForMoreMediaData {
+            print("Audio asset writer input is not ready for more media data, dropping frame")
+            return
+        }
+        
+        // Синхронизируем время презентации каждого звукового образца с временем начала записи
+        var presentationTime = CMTimeSubtract(timestamp, startTime!)
+        var timingInfo = CMSampleTimingInfo(duration: CMTime.invalid, presentationTimeStamp: presentationTime, decodeTimeStamp: CMTime.invalid)
+        var copiedSampleBuffer: CMSampleBuffer?
+        var status = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timingInfo, sampleBufferOut: &copiedSampleBuffer)
+        
+        guard let syncedBuffer = copiedSampleBuffer else {
+            // handle error case here
+            return
+        }
+        
+        if audioAssetWriterInput.append(syncedBuffer) {
+            print("Audio sample buffer appended at time \(presentationTime)")
+        } else {
+            print("Failed to append audio sample buffer at time \(presentationTime)")
+        }
+    }
+    
+    
     func saveVideoToLibrary(videoURL: URL) {
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
