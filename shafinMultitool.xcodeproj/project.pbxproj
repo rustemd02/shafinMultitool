@@ -12,7 +12,7 @@
 		CF10E5F029F8236100D3E39A /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5EF29F8236100D3E39A /* ARKit.framework */; };
 		CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5F129F8238100D3E39A /* RealityKit.framework */; };
 		CF506F802A010F29005E959C /* Circle.rcproject in Sources */ = {isa = PBXBuildFile; fileRef = CF506F7F2A010F29005E959C /* Circle.rcproject */; };
-		CF506F822A011445005E959C /* FinalBaseMesh.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF506F812A011445005E959C /* FinalBaseMesh.usdz */; };
+		CF506F822A011445005E959C /* Person.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF506F812A011445005E959C /* Person.usdz */; };
 		CF506F882A03F8B3005E959C /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF506F872A03F8B3005E959C /* CameraService.swift */; };
 		CFF027952A0AA6710042951B /* ActorEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorEntity.swift */; };
 		CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20729CC876400C3B73E /* AppDelegate.swift */; };
@@ -32,7 +32,7 @@
 		CF10E5F129F8238100D3E39A /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
 		CF10E5F329F8266600D3E39A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CF506F7F2A010F29005E959C /* Circle.rcproject */ = {isa = PBXFileReference; lastKnownFileType = file.rcproject; path = Circle.rcproject; sourceTree = "<group>"; };
-		CF506F812A011445005E959C /* FinalBaseMesh.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = FinalBaseMesh.usdz; sourceTree = "<group>"; };
+		CF506F812A011445005E959C /* Person.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Person.usdz; sourceTree = "<group>"; };
 		CF506F872A03F8B3005E959C /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CameraService.swift; path = /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/CameraScreenModule/CameraService.swift; sourceTree = "<absolute>"; };
 		CFF027942A0AA6710042951B /* ActorEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorEntity.swift; sourceTree = "<group>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -116,7 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				CF506F832A01252F005E959C /* Entity */,
-				CF506F812A011445005E959C /* FinalBaseMesh.usdz */,
+				CF506F812A011445005E959C /* Person.usdz */,
 				CF506F7F2A010F29005E959C /* Circle.rcproject */,
 				CF10E5F329F8266600D3E39A /* Info.plist */,
 				CF10E5D529F412C900D3E39A /* SettingsModule */,
@@ -219,6 +219,8 @@
 				Base,
 			);
 			mainGroup = CFF7B1FB29CC876400C3B73E;
+			packageReferences = (
+			);
 			productRefGroup = CFF7B20529CC876400C3B73E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -233,7 +235,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CF506F822A011445005E959C /* FinalBaseMesh.usdz in Resources */,
+				CF506F822A011445005E959C /* Person.usdz in Resources */,
 				CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

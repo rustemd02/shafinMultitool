@@ -18,32 +18,31 @@ class CameraService: NSObject, AVCaptureFileOutputRecordingDelegate {
     private var whiteBackgroundLayer: CALayer?
     private var outputURL: URL?
     
-    
     func prepareRecorder(arView: ARView) {
         let captureSession = AVCaptureSession()
         captureSession.beginConfiguration()
-        
+
         // Настройка входного устройства для захвата видео
         guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             return
         }
-        
+
         guard let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice),
               captureSession.canAddInput(videoDeviceInput) else {
             return
         }
         captureSession.addInput(videoDeviceInput)
-        
-        
+
+
         //  Настройка вывода превью видео
         let videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
         videoPreviewLayer.videoGravity = .resizeAspectFill
         videoPreviewLayer.connection?.videoOrientation = .portrait
         arView.layer.addSublayer(videoPreviewLayer)
         videoPreviewLayer.frame = arView.bounds
-        
+
         self.videoPreviewLayer = videoPreviewLayer
-        
+
         captureSession.commitConfiguration()
         self.captureSession = captureSession
     }
@@ -52,23 +51,23 @@ class CameraService: NSObject, AVCaptureFileOutputRecordingDelegate {
         guard let captureSession = captureSession, let outputURL = getVideoFileURL() else {
             return
         }
-        
+
         self.outputURL = outputURL
-        
+
         movieFileOutput = AVCaptureMovieFileOutput()
         guard let movieFileOutput = movieFileOutput else { return }
         captureSession.beginConfiguration()
-        
+
         if captureSession.canAddOutput(movieFileOutput) {
             captureSession.addOutput(movieFileOutput)
         }
-        
+
         if let connection = movieFileOutput.connection(with: .video) {
             connection.videoOrientation = .portrait
         }
-        
+
         captureSession.commitConfiguration()
-        
+
         DispatchQueue.global(qos: .background).async {
             self.captureSession?.startRunning()
             movieFileOutput.startRecording(to: outputURL, recordingDelegate: self)
@@ -79,7 +78,7 @@ class CameraService: NSObject, AVCaptureFileOutputRecordingDelegate {
         guard let captureSession = captureSession, let movieFileOutput = movieFileOutput else {
             return
         }
-        
+
         captureSession.stopRunning()
         movieFileOutput.stopRecording()
         

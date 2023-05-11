@@ -43,16 +43,13 @@ class CameraScreenInteractor {
         actor.coordinates.append(raycastCoordinates)
         actors.append(actor)
         actorEntities.append(modelEntity)
-        
         checkOnSelected()
-        
-        
     }
     
-    func addPoints(named entityName: String, for anchor: ARAnchor, arView: ARView) {
+    func addPoint(named entityName: String, for anchor: ARAnchor, arView: ARView) {
         let model = createModel(named: entityName, for: anchor, arView: arView)
         pathEntities.append(model)
-        model.scale = model.scale - 0.5
+        model.scale = model.scale - 0.4
         guard let raycastCoordinates = raycastCoordinates else { return }
         
         if let index = actors.firstIndex(where: { $0.id == selectedEntity?.id }) {
@@ -84,8 +81,13 @@ class CameraScreenInteractor {
             textEntity.position.x -= 0.2
             
             modelEntity.addChild(textEntity)
-            
+        
             return modelEntity
+        } else {
+            let circle = try? Circle.loadScene()
+            if let circle = circle {
+                arView.scene.addAnchor(circle)
+            }
         }
         return ModelEntity()
     }
@@ -161,7 +163,9 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
                 presenter?.changeNameButtonVisibility()
                 selectedEntity = nil
                 checkOnSelected()
-            } else {
+            } else if actorEntities.contains(where: { entity in
+                tappedEntity == entity
+            }) {
                 if selectedEntity == nil {
                     presenter?.changeNameButtonVisibility()
                 }
@@ -169,7 +173,6 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
                 selectedEntity = tappedEntity
             }
             checkOnSelected()
-
         }
         
     }
@@ -182,11 +185,11 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {
         for anchor in anchors {
-            guard let anchorName = anchor.name, anchorName == "FinalBaseMesh" else { return arView }
+            guard let anchorName = anchor.name, anchorName == "Person" else { return arView }
             if selectedEntity == nil {
                 placeActor(named: anchorName, for: anchor, arView: arView)
             } else {
-                addPoints(named: anchorName, for: anchor, arView: arView)
+                addPoint(named: "Circle", for: anchor, arView: arView)
             }
             
         }
@@ -206,7 +209,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let results = arView.raycast(from: arView.center, allowing: .estimatedPlane, alignment: .horizontal)
         guard let result = results.first else { return }
         self.raycastCoordinates = result.worldTransform
-        let anchor = ARAnchor(name: "FinalBaseMesh", transform: result.worldTransform)
+        let anchor = ARAnchor(name: "Person", transform: result.worldTransform)
         arView.session.add(anchor: anchor)
     }
     
@@ -217,23 +220,35 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         
         let queue = DispatchQueue(label: "moveQueue")
         var index = 0
-        let group = DispatchGroup()
-        for actorEntity in actorEntities {
+        for actorEntity in self.actorEntities {
             let actor = actors.first { actor in
                 actor.id == actorEntity.id
             }
             guard let coordinates = actor?.coordinates else { continue }
-            for coordinate in coordinates {
-                group.enter()
-                actorEntity.move(to: coordinate, relativeTo: nil, duration: 2)
-                index += 1
-                group.leave()
-                
-            }
             
+            for i in 0..<coordinates.count - 1 {
+                let currentPosition = coordinates[i]
+                let destination = coordinates[i+1]
+                
+                let x1: Float = currentPosition.columns.0.x
+                let y1: Float = currentPosition.columns.0.z
+                let x2: Float = destination.columns.0.x
+                let y2: Float = destination.columns.0.z
+                let distance = sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2))
+                
+                let speed: Float = 0.07
+                let duration = distance / speed
+                
+                queue.asyncAfter(deadline: .now() + Double(index) * 1) {
+                    actorEntity.move(to: coordinates[i+1], relativeTo: nil, duration: TimeInterval(duration))
+                }
+                index += 1
+            }
+            for pathEntity in pathEntities {
+                pathEntity.isEnabled = true
+            }
         }
-        group.wait()
-
+        
     }
     
     func changeName(arView: ARView) {

@@ -103,6 +103,7 @@ class CameraScreenViewController: UIViewController {
         
         arView.addSubview(recordButton)
         recordButton.backgroundColor = .red.withAlphaComponent(0.5)
+        //recordButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
         recordButton.layer.cornerRadius = 30
         recordButton.layer.masksToBounds = true
         recordButton.tintColor = UIColor.black
@@ -115,6 +116,7 @@ class CameraScreenViewController: UIViewController {
         arView.addSubview(stopButton)
         stopButton.isHidden = true
         stopButton.backgroundColor = .green.withAlphaComponent(0.5)
+        //stopButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
         stopButton.layer.cornerRadius = 30
         stopButton.layer.masksToBounds = true
         stopButton.tintColor = UIColor.black
@@ -247,13 +249,13 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
 }
 
 extension CameraScreenViewController: ARSessionDelegate {
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        frame.capturedImage
+    }
+    
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
         guard let arView = presenter?.session(session, didAdd: anchors, arView: arView) else { return }
         self.arView = arView
-    }
-    
-    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
-        
     }
     
 
