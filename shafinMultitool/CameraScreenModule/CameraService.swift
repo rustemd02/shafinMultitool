@@ -39,11 +39,14 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         assetWriter.movieFragmentInterval = CMTime.invalid
         
         // Настраиваем объект AVAssetWriterInput
+        
         let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoCodecKey: AVVideoCodecType.hevc,
             AVVideoWidthKey: 1920,
-            AVVideoHeightKey: 1080
+            AVVideoHeightKey: 1080,
+            AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill
         ]
+
         assetWriterVideoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         assetWriterVideoInput.expectsMediaDataInRealTime = true
         
@@ -148,7 +151,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
     
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard isRecording else { return }
+        guard isRecording, let startTime = startTime else { return }
         
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         
@@ -158,7 +161,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
         
         // Синхронизируем время презентации каждого звукового образца с временем начала записи
-        var presentationTime = CMTimeSubtract(timestamp, startTime!)
+        var presentationTime = CMTimeSubtract(timestamp, startTime)
         var timingInfo = CMSampleTimingInfo(duration: CMTime.invalid, presentationTimeStamp: presentationTime, decodeTimeStamp: CMTime.invalid)
         var copiedSampleBuffer: CMSampleBuffer?
         var status = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timingInfo, sampleBufferOut: &copiedSampleBuffer)
