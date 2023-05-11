@@ -11,76 +11,63 @@ import ARKit
 import RealityKit
 import Photos
 
-class CameraService: NSObject, AVCaptureFileOutputRecordingDelegate {
+class CameraService: NSObject {
     private var captureSession: AVCaptureSession?
     private var movieFileOutput: AVCaptureMovieFileOutput?
     private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
     private var whiteBackgroundLayer: CALayer?
     private var outputURL: URL?
     
-    func prepareRecorder(arView: ARView) {
-        let captureSession = AVCaptureSession()
-        captureSession.beginConfiguration()
-
-        // Настройка входного устройства для захвата видео
-        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            return
-        }
-
-        guard let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice),
-              captureSession.canAddInput(videoDeviceInput) else {
-            return
-        }
-        captureSession.addInput(videoDeviceInput)
-
-
-        //  Настройка вывода превью видео
-        let videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-        videoPreviewLayer.videoGravity = .resizeAspectFill
-        videoPreviewLayer.connection?.videoOrientation = .portrait
-        arView.layer.addSublayer(videoPreviewLayer)
-        videoPreviewLayer.frame = arView.bounds
-
-        self.videoPreviewLayer = videoPreviewLayer
-
-        captureSession.commitConfiguration()
-        self.captureSession = captureSession
+    var assetWriter: AVAssetWriter!
+    var assetWriterInput: AVAssetWriterInput!
+    var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor!
+    private var startTime: CMTime?
+    var isRecording = false
+    
+    
+    func prepareRecorder() {
+        guard let outputURL = getVideoFileURL() else { return }
+        self.outputURL = outputURL
+        
+        assetWriter = try! AVAssetWriter(outputURL: outputURL, fileType: .mov)
+        assetWriter.movieFragmentInterval = CMTime.invalid
+        
+        // Настраиваем объект AVAssetWriterInput
+        let videoSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 1920,
+            AVVideoHeightKey: 1080
+        ]
+        assetWriterInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        assetWriterInput.expectsMediaDataInRealTime = true
+        
+        // Создаем объект AVAssetWriterInputPixelBufferAdaptor
+        let pixelBufferAttributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+            kCVPixelBufferWidthKey as String: 1920,
+            kCVPixelBufferHeightKey as String: 1080
+        ]
+        pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: assetWriterInput, sourcePixelBufferAttributes: pixelBufferAttributes)
+        
+        // Добавляем AVAssetWriterInput в AVAssetWriter
+        assetWriter.add(assetWriterInput)
+        assetWriter.startWriting()
+        assetWriter.startSession(atSourceTime: CMTime.zero)
     }
     
     func startRecording() {
-        guard let captureSession = captureSession, let outputURL = getVideoFileURL() else {
-            return
-        }
-
-        self.outputURL = outputURL
-
-        movieFileOutput = AVCaptureMovieFileOutput()
-        guard let movieFileOutput = movieFileOutput else { return }
-        captureSession.beginConfiguration()
-
-        if captureSession.canAddOutput(movieFileOutput) {
-            captureSession.addOutput(movieFileOutput)
-        }
-
-        if let connection = movieFileOutput.connection(with: .video) {
-            connection.videoOrientation = .portrait
-        }
-
-        captureSession.commitConfiguration()
-
-        DispatchQueue.global(qos: .background).async {
-            self.captureSession?.startRunning()
-            movieFileOutput.startRecording(to: outputURL, recordingDelegate: self)
-        }
+        isRecording = true
     }
     
     func stopRecording() {
-        guard let captureSession = captureSession, let movieFileOutput = movieFileOutput else {
-            return
+        isRecording = false
+        assetWriterInput.markAsFinished()
+        assetWriter.finishWriting {
+            DispatchQueue.main.async {
+                self.saveVideoToLibrary(videoURL: self.outputURL!)
+                print("Video saved to \(self.assetWriter.outputURL)")
+            }
         }
-
-        captureSession.stopRunning()
-        movieFileOutput.stopRecording()
         
     }
     
@@ -94,46 +81,27 @@ class CameraService: NSObject, AVCaptureFileOutputRecordingDelegate {
         return fileURL
     }
     
-    
-    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-        guard let outputURL = self.outputURL else {
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        guard isRecording else {
             return
         }
-        
-        // Создаем asset и экспортируем видео без моделей ARKit
-        let asset = AVURLAsset(url: outputFileURL)
-        let composition = AVMutableComposition()
-        let videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-        let sourceVideoTrack = asset.tracks(withMediaType: .video).first!
-        
-        do {
-            try videoTrack?.insertTimeRange(CMTimeRangeMake(start: .zero, duration: asset.duration), of: sourceVideoTrack, at: .zero)
-        } catch {
-            print(error.localizedDescription)
-            return
+
+        let pixelBuffer = frame.capturedImage
+        let cmTime = CMTimeMakeWithSeconds(frame.timestamp, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        if startTime == nil {
+            // Сохраняем начальное время записи для вычисления правильного значения времени презентации каждого кадра
+            startTime = cmTime
+            assetWriter.startSession(atSourceTime: CMTime.zero)
         }
         
-        guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
+        let presentationTime = CMTimeSubtract(cmTime, startTime!)
+        if !assetWriterInput.isReadyForMoreMediaData {
+            print("Pixel buffer adaptor is not ready for more media data")
             return
         }
-        
-        let newFileName = "exported_\(outputURL.lastPathComponent)"
-        let newFileURL = outputURL.deletingLastPathComponent().appendingPathComponent(newFileName)
-        
-        exportSession.outputURL = newFileURL
-        exportSession.outputFileType = .mov
-        exportSession.exportAsynchronously(completionHandler: {
-            switch exportSession.status {
-            case .completed:
-                self.saveVideoToLibrary(videoURL: newFileURL)
-            case .failed, .cancelled:
-                print("Export failed: \(exportSession.error?.localizedDescription ?? "unknown error")")
-            default:
-                break
-            }
-        })
+        pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime)
     }
-    
+
     func saveVideoToLibrary(videoURL: URL) {
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)

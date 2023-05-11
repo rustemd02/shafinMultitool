@@ -36,11 +36,11 @@ class CameraScreenViewController: UIViewController {
         super.viewDidLoad()
         
         presenter?.viewDidLoad()
+        presenter?.prepareRecorder()
         arView.session.delegate = self
         tapGesture.delegate = self
         setupARView(arView: arView)
         setupUI()
-        presenter?.prepareRecorder(arView: arView)
         
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
@@ -250,7 +250,7 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
 
 extension CameraScreenViewController: ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        frame.capturedImage
+        presenter?.session(session, didUpdate: frame)
     }
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {

@@ -17,12 +17,13 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func addActor(arView: ARView)
     func finishEditing()
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView
+    func session(_ session: ARSession, didUpdate frame: ARFrame)
     func handleTap(_ gesture: UITapGestureRecognizer, _ arView: ARView)
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView)
     func changeName(arView: ARView)
     func startRecording()
     func stopRecording()
-    func prepareRecorder(arView: ARView)
+    func prepareRecorder()
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
 
@@ -43,6 +44,10 @@ class CameraScreenPresenter {
 
 
 extension CameraScreenPresenter: CameraScreenPresenterProtocol {
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        interactor.session(session, didUpdate: frame)
+    }
+    
     
     func changeNameButtonVisibility() {
         view?.changeNameButtonVisibility()
@@ -64,8 +69,8 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
         interactor.stopRecording()
     }
     
-    func prepareRecorder(arView: ARView) {
-        interactor.prepareRecorder(arView: arView)
+    func prepareRecorder() {
+        interactor.prepareRecorder()
     }
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {

@@ -15,11 +15,12 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func startRecording()
     func stopRecording()
     func prepareARView(arView: ARView)
-    func prepareRecorder(arView: ARView)
+    func prepareRecorder()
     func addActor(arView: ARView)
     func finishEditing()
     func changeName(arView: ARView)
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView
+    func session(_ session: ARSession, didUpdate frame: ARFrame)
     func handleTap(_ gesture: UITapGestureRecognizer, _ arView: ARView)
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView)
 }
@@ -129,6 +130,10 @@ class CameraScreenInteractor {
 }
 
 extension CameraScreenInteractor: CameraScreenInteractorProtocol {
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        cameraService.session(session, didUpdate: frame)
+    }
+    
     
     func startRecording() {
         cameraService.startRecording()
@@ -178,8 +183,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     
-    func prepareRecorder(arView: ARView) {
-        cameraService.prepareRecorder(arView: arView)
+    func prepareRecorder() {
+        cameraService.prepareRecorder()
     }
     
     
