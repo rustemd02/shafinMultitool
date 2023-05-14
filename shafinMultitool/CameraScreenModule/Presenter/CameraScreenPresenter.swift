@@ -24,8 +24,10 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func startRecording()
     func stopRecording()
     func prepareRecorder()
+    
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
+    func updateStopwatchLabel(formattedTime: String)
 
 }
 
@@ -55,6 +57,10 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     
     func changeNameAlert(completion: @escaping (String) -> ()) {
         view?.changeNameAlert(completion: completion)
+    }
+    
+    func updateStopwatchLabel(formattedTime: String) {
+        view?.updateStopwatchLabel(formattedTime: formattedTime)
     }
     
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView) {

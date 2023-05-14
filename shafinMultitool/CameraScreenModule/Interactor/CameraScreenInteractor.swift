@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import AVKit
+//import AVKit
 import ARKit
 import RealityKit
 
@@ -33,7 +33,8 @@ class CameraScreenInteractor {
     var selectedEntity: ModelEntity?
     var cameraService = CameraService()
     var raycastCoordinates: simd_float4x4?
-    
+    private var timer = Timer()
+    private var elapsedTime = 1
     
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) {
         //let color = giveRandomColorToModel(entity: modelEntity)
@@ -82,7 +83,7 @@ class CameraScreenInteractor {
             textEntity.position.x -= 0.2
             
             modelEntity.addChild(textEntity)
-        
+            
             return modelEntity
         } else {
             let circle = try? Circle.loadScene()
@@ -136,12 +137,26 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     
     func startRecording() {
+        timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
+        RunLoop.current.add(timer, forMode: .default)
         cameraService.startRecording()
-        
+
+    }
+    
+    @objc func startCounting() {
+        let seconds = elapsedTime % 60
+        let minutes = (elapsedTime / 60) % 60
+        presenter?.updateStopwatchLabel(formattedTime: String(format: "%02d:%02d", minutes, seconds))
+        elapsedTime+=1
     }
     
     func stopRecording() {
         cameraService.stopRecording()
+        timer.invalidate()
+        RunLoop.main.perform {
+            CFRunLoopStop(CFRunLoopGetCurrent())
+        }
+        elapsedTime = 1
     }
     
     

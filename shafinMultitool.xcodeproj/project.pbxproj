@@ -94,6 +94,26 @@
 			path = Entity;
 			sourceTree = "<group>";
 		};
+		CF8AD36E2A0D63180004B378 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				CF506F872A03F8B3005E959C /* CameraService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		CF8AD36F2A0D63230004B378 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				CFF7B21029CC876500C3B73E /* Assets.xcassets */,
+				CFF7B20729CC876400C3B73E /* AppDelegate.swift */,
+				CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */,
+				CF506F812A011445005E959C /* Person.usdz */,
+				CF506F7F2A010F29005E959C /* Circle.rcproject */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		CFF7B1FB29CC876400C3B73E = {
 			isa = PBXGroup;
 			children = (
@@ -115,15 +135,12 @@
 		CFF7B20629CC876400C3B73E /* shafinMultitool */ = {
 			isa = PBXGroup;
 			children = (
+				CF8AD36F2A0D63230004B378 /* Resources */,
+				CF8AD36E2A0D63180004B378 /* Services */,
 				CF506F832A01252F005E959C /* Entity */,
-				CF506F812A011445005E959C /* Person.usdz */,
-				CF506F7F2A010F29005E959C /* Circle.rcproject */,
 				CF10E5F329F8266600D3E39A /* Info.plist */,
 				CF10E5D529F412C900D3E39A /* SettingsModule */,
 				CFF7B21A29CC878000C3B73E /* CameraScreenModule */,
-				CFF7B20729CC876400C3B73E /* AppDelegate.swift */,
-				CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */,
-				CFF7B21029CC876500C3B73E /* Assets.xcassets */,
 			);
 			path = shafinMultitool;
 			sourceTree = "<group>";
@@ -131,7 +148,6 @@
 		CFF7B21A29CC878000C3B73E /* CameraScreenModule */ = {
 			isa = PBXGroup;
 			children = (
-				CF506F872A03F8B3005E959C /* CameraService.swift */,
 				CFF7B21F29CC87AE00C3B73E /* Router */,
 				CFF7B21D29CC879E00C3B73E /* Presenter */,
 				CFF7B21C29CC879400C3B73E /* View */,

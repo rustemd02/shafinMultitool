@@ -13,23 +13,30 @@ import SnapKit
 protocol CameraScreenViewProtocol: AnyObject {
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
+    func updateStopwatchLabel(formattedTime: String)
 }
 
 class CameraScreenViewController: UIViewController {
     
     // MARK: - Properties
     var presenter: CameraScreenPresenterProtocol?
+    private var ifFinishEditingButtonHidden = true
+    
     private var arView = ARView()
     private var loadingView = UIView()
     private var loadingLabel = UILabel()
     
     private let tapGesture = UITapGestureRecognizer()
     private let longGesture = UILongPressGestureRecognizer()
+    
     private let addActorButton = UIButton(type: .custom)
     private let finishEditingButton = UIButton(type: .custom)
     private let changeNameButton = UIButton(type: .custom)
     private let recordButton = UIButton(type: .custom)
     private let stopButton = UIButton(type: .custom)
+    
+    private let stopwatchBackgroundView = UIView()
+    private let stopwatchLabel = UILabel()
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -62,6 +69,20 @@ class CameraScreenViewController: UIViewController {
         arView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
+        
+        arView.addSubview(loadingView)
+        loadingView.backgroundColor = .black.withAlphaComponent(0.7)
+        loadingView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+        }
+        
+        arView.addSubview(loadingLabel)
+        loadingLabel.textColor = .white
+        loadingLabel.text = "Перемещайте устройство, чтобы начать"
+        loadingLabel.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+        }
+        
         arView.addSubview(addActorButton)
         addActorButton.backgroundColor = .white.withAlphaComponent(0.5)
         addActorButton.layer.cornerRadius = 37.5
@@ -126,18 +147,27 @@ class CameraScreenViewController: UIViewController {
             make.centerY.equalTo(addActorButton.snp_centerYWithinMargins)
         }
         
-        arView.addSubview(loadingView)
-        loadingView.backgroundColor = .black.withAlphaComponent(0.7)
-        loadingView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
+        arView.addSubview(stopwatchBackgroundView)
+        stopwatchBackgroundView.isHidden = true
+        stopwatchBackgroundView.backgroundColor = .black.withAlphaComponent(0.5)
+        stopwatchBackgroundView.layer.cornerRadius = 10
+        stopwatchBackgroundView.layer.masksToBounds = true
+        stopwatchBackgroundView.snp.makeConstraints { make in
+            make.width.equalTo(120)
+            make.height.equalTo(30)
+            make.centerX.equalToSuperview()
+            make.bottom.equalToSuperview().inset(50)
         }
         
-        arView.addSubview(loadingLabel)
-        loadingLabel.textColor = .white
-        loadingLabel.text = "Перемещайте устройство, чтобы начать"
-        loadingLabel.snp.makeConstraints { make in
-            make.center.equalToSuperview()
+        stopwatchBackgroundView.addSubview(stopwatchLabel)
+        stopwatchLabel.isHidden = true
+        stopwatchLabel.textColor = .white
+        stopwatchLabel.text = "00:00"
+        stopwatchLabel.snp.makeConstraints { make in
+            make.center.equalTo(stopwatchBackgroundView)
         }
+        
+        
         loadingAnimation()
         
         
@@ -157,12 +187,14 @@ class CameraScreenViewController: UIViewController {
     @objc
     private func addActor() {
         finishEditingButton.isHidden = false
+        ifFinishEditingButtonHidden = false
         presenter?.addActor(arView: arView)
     }
     
     @objc
     private func finishEditing() {
         finishEditingButton.isHidden = true
+        ifFinishEditingButtonHidden = true
         presenter?.finishEditing()
     }
     
@@ -173,15 +205,26 @@ class CameraScreenViewController: UIViewController {
     
     @objc
     private func recordButtonPressed() {
-        recordButton.isHidden = !recordButton.isHidden
-        stopButton.isHidden = !stopButton.isHidden
+        recordButton.isHidden = true
+        addActorButton.isHidden = true
+        finishEditingButton.isHidden = true
+        stopwatchBackgroundView.isHidden = false
+        stopwatchLabel.isHidden = false
+        stopButton.isHidden = false
+        
         presenter?.startRecording()
     }
     
     @objc
     private func stopButtonPressed() {
-        stopButton.isHidden = !stopButton.isHidden
-        recordButton.isHidden = !recordButton.isHidden
+        stopButton.isHidden = true
+        addActorButton.isHidden = false
+        if !ifFinishEditingButtonHidden {
+            finishEditingButton.isHidden = false
+        }
+        stopwatchBackgroundView.isHidden = true
+        stopwatchLabel.isHidden = true
+        recordButton.isHidden = false
         presenter?.stopRecording()
     }
  
@@ -199,6 +242,10 @@ class CameraScreenViewController: UIViewController {
 }
 
 extension CameraScreenViewController: CameraScreenViewProtocol {
+    func updateStopwatchLabel(formattedTime: String) {
+        stopwatchLabel.text = formattedTime
+    }
+    
     
     func changeNameAlert(completion: @escaping (String) -> ()) {
         let alertController = UIAlertController(title: "Введите имя актёра", message: nil, preferredStyle: .alert)
@@ -233,7 +280,6 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
             UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut, animations: {
                 self.changeNameButton.alpha = 1
                 self.changeNameButton.transform = .identity
-            }, completion: { _ in
             })
         } else {
             UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut, animations: {

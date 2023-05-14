@@ -12,23 +12,19 @@ import RealityKit
 import Photos
 
 class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
-    private var captureSession: AVCaptureSession?
-    private var movieFileOutput: AVCaptureMovieFileOutput?
-    private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
-    private var whiteBackgroundLayer: CALayer?
-    private var outputURL: URL?
+    private var assetWriter: AVAssetWriter!
+    private var assetWriterVideoInput: AVAssetWriterInput!
     
-    var assetWriter: AVAssetWriter!
-    var assetWriterVideoInput: AVAssetWriterInput!
-    var audioSession: AVAudioSession!
-    var audioCaptureSession: AVCaptureSession!
-    var audioCaptureDevice: AVCaptureDevice!
-    var audioCaptureDeviceInput: AVCaptureDeviceInput!
-    var audioCaptureOutput: AVCaptureAudioDataOutput!
-    var audioAssetWriterInput: AVAssetWriterInput!
-    var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor!
+    private var audioSession: AVAudioSession!
+    private var audioCaptureSession: AVCaptureSession!
+    private var audioCaptureDevice: AVCaptureDevice!
+    private var audioCaptureDeviceInput: AVCaptureDeviceInput!
+    private var audioCaptureOutput: AVCaptureAudioDataOutput!
+    private var audioAssetWriterInput: AVAssetWriterInput!
+    private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor!
     private var startTime: CMTime?
-    var isRecording = false
+    private var isRecording = false
+    private var outputURL: URL?
     
     
     func prepareRecorder() {
@@ -89,8 +85,10 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         audioCaptureOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "audioCaptureQueue"))
         audioCaptureSession.addOutput(audioCaptureOutput)
         
-        audioCaptureSession.commitConfiguration()
-        audioCaptureSession.startRunning()
+        DispatchQueue.global(qos: .background).async {
+            self.audioCaptureSession.commitConfiguration()
+            self.audioCaptureSession.startRunning()
+        }
         
         assetWriter.startWriting()
         assetWriter.startSession(atSourceTime: CMTime.zero)
