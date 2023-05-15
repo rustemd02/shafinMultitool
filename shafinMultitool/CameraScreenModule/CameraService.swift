@@ -12,6 +12,7 @@ import RealityKit
 import Photos
 
 class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
+    //MARK: - Properties
     private var assetWriter: AVAssetWriter!
     private var assetWriterVideoInput: AVAssetWriterInput!
     
@@ -109,17 +110,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
         
     }
-    
-    private func getVideoFileURL() -> URL? {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let date = dateFormatter.string(from: Date())
-        let fileName = "video_\(date).mov"
-        let fileURL = documentsDirectory.appendingPathComponent(fileName)
-        return fileURL
-    }
-    
+
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard isRecording else {
             return
@@ -159,10 +150,10 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
         
         // Синхронизируем время презентации каждого звукового образца с временем начала записи
-        var presentationTime = CMTimeSubtract(timestamp, startTime)
+        let presentationTime = CMTimeSubtract(timestamp, startTime)
         var timingInfo = CMSampleTimingInfo(duration: CMTime.invalid, presentationTimeStamp: presentationTime, decodeTimeStamp: CMTime.invalid)
         var copiedSampleBuffer: CMSampleBuffer?
-        var status = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timingInfo, sampleBufferOut: &copiedSampleBuffer)
+        var _ = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timingInfo, sampleBufferOut: &copiedSampleBuffer)
         
         guard let syncedBuffer = copiedSampleBuffer else {
             // handle error case here
@@ -189,4 +180,14 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
     }
     
+    
+    private func getVideoFileURL() -> URL? {
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let date = dateFormatter.string(from: Date())
+        let fileName = "video_\(date).mov"
+        let fileURL = documentsDirectory.appendingPathComponent(fileName)
+        return fileURL
+    }
 }

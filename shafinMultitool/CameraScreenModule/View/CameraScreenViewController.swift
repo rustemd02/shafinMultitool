@@ -21,6 +21,7 @@ class CameraScreenViewController: UIViewController {
     // MARK: - Properties
     var presenter: CameraScreenPresenterProtocol?
     private var ifFinishEditingButtonHidden = true
+    //private var ifChangeNameButtonHidden = true
     
     private var arView = ARView()
     private var loadingView = UIView()
@@ -167,10 +168,7 @@ class CameraScreenViewController: UIViewController {
             make.center.equalTo(stopwatchBackgroundView)
         }
         
-        
         loadingAnimation()
-        
-        
     }
     
     private func setupARView(arView: ARView) {
@@ -208,6 +206,7 @@ class CameraScreenViewController: UIViewController {
         recordButton.isHidden = true
         addActorButton.isHidden = true
         finishEditingButton.isHidden = true
+        changeNameButton.isHidden = true
         stopwatchBackgroundView.isHidden = false
         stopwatchLabel.isHidden = false
         stopButton.isHidden = false

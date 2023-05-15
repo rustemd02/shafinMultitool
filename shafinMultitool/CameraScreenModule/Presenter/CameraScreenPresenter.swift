@@ -32,6 +32,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
 }
 
 class CameraScreenPresenter {
+    // MARK: - Properties
     weak var view: CameraScreenViewProtocol?
     let router: CameraScreenRouterProtocol
     let interactor: CameraScreenInteractorProtocol

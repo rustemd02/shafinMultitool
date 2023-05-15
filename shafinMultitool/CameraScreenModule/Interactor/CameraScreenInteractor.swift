@@ -8,6 +8,7 @@
 import Foundation
 //import AVKit
 import ARKit
+import SpriteKit
 import RealityKit
 
 
@@ -27,16 +28,34 @@ protocol CameraScreenInteractorProtocol: AnyObject {
 
 
 class CameraScreenInteractor {
+    // MARK: - Properties
     weak var presenter: CameraScreenPresenterProtocol?
-    var actorEntities: [ModelEntity] = []
-    var pathEntities: [ModelEntity] = []
-    var selectedEntity: ModelEntity?
-    var cameraService = CameraService()
-    var raycastCoordinates: simd_float4x4?
+    private var actorEntities: [ModelEntity] = []
+    private var pathEntities: [ModelEntity] = []
+    private var selectedEntity: ModelEntity?
+    private var cameraService = CameraService()
+    private var raycastCoordinates: simd_float4x4?
     private var timer = Timer()
     private var elapsedTime = 1
     
+    //private var skScene: SKScene!
+
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) {
+//        self.skScene = SKScene(size: arView.bounds.size)
+//        self.skScene.backgroundColor = .clear // устанавливаем прозрачный фон
+//
+//        let spriteNode = SKSpriteNode(color: .red, size: CGSize(width: 100, height: 100))
+//        spriteNode.position = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+//
+//        self.skScene.addChild(spriteNode)
+//
+//        // Добавляем SKView поверх ARView
+//        let skView = SKView(frame: arView.bounds)
+//        skView.presentScene(self.skScene)
+//        skView.allowsTransparency = true // разрешаем прозрачность
+//        arView.addSubview(skView)
+
+        
         //let color = giveRandomColorToModel(entity: modelEntity)
         let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
         let textEntity = modelEntity.children.first
@@ -65,7 +84,6 @@ class CameraScreenInteractor {
             modelEntity.generateCollisionShapes(recursive: true)
             let anchorEntity = AnchorEntity(anchor: anchor)
             anchorEntity.addChild(modelEntity)
-            
             arView.installGestures([.translation, .rotation], for: modelEntity)
             arView.scene.addAnchor(anchorEntity)
             if actors.count == 0 {
@@ -131,6 +149,13 @@ class CameraScreenInteractor {
 }
 
 extension CameraScreenInteractor: CameraScreenInteractorProtocol {
+    // MARK: - Videorecording
+    func prepareRecorder() {
+        cameraService.prepareRecorder()
+    }
+    
+    
+    
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         cameraService.session(session, didUpdate: frame)
     }
@@ -159,7 +184,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         elapsedTime = 1
     }
     
-    
+    // MARK: - AR handling functions
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView) {
         if gesture.state == .began {
             let location = gesture.location(in: arView)
@@ -196,13 +221,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         }
         
     }
-    
-    
-    func prepareRecorder() {
-        cameraService.prepareRecorder()
-    }
-    
-    
+
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {
         for anchor in anchors {
             guard let anchorName = anchor.name, anchorName == "Person" else { return arView }
