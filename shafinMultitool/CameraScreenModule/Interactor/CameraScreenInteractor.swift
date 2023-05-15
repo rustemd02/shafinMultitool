@@ -20,7 +20,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func addActor(arView: ARView)
     func finishEditing()
     func changeName(arView: ARView)
-    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
     func session(_ session: ARSession, didUpdate frame: ARFrame)
     func handleTap(_ gesture: UITapGestureRecognizer, _ arView: ARView)
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView)
@@ -39,27 +39,27 @@ class CameraScreenInteractor {
     private var elapsedTime = 1
     
     //private var skScene: SKScene!
-
+    
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) {
-//        self.skScene = SKScene(size: arView.bounds.size)
-//        self.skScene.backgroundColor = .clear // устанавливаем прозрачный фон
-//
-//        let spriteNode = SKSpriteNode(color: .red, size: CGSize(width: 100, height: 100))
-//        spriteNode.position = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
-//
-//        self.skScene.addChild(spriteNode)
-//
-//        // Добавляем SKView поверх ARView
-//        let skView = SKView(frame: arView.bounds)
-//        skView.presentScene(self.skScene)
-//        skView.allowsTransparency = true // разрешаем прозрачность
-//        arView.addSubview(skView)
-
+        //        self.skScene = SKScene(size: arView.bounds.size)
+        //        self.skScene.backgroundColor = .clear // устанавливаем прозрачный фон
+        //
+        //        let spriteNode = SKSpriteNode(color: .red, size: CGSize(width: 100, height: 100))
+        //        spriteNode.position = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+        //
+        //        self.skScene.addChild(spriteNode)
+        //
+        //        // Добавляем SKView поверх ARView
+        //        let skView = SKView(frame: arView.bounds)
+        //        skView.presentScene(self.skScene)
+        //        skView.allowsTransparency = true // разрешаем прозрачность
+        //        arView.addSubview(skView)
         
-        //let color = giveRandomColorToModel(entity: modelEntity)
+        
         let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
+        let color = giveRandomColorToModel(entity: modelEntity)
         let textEntity = modelEntity.children.first
-        var actor = ActorEntity(id: modelEntity.id, nameEntity: textEntity as! ModelEntity)
+        var actor = ActorEntity(id: modelEntity.id, nameEntity: textEntity as! ModelEntity, color: color)
         guard let raycastCoordinates = raycastCoordinates else { return }
         actor.coordinates.append(raycastCoordinates)
         actors.append(actor)
@@ -68,14 +68,16 @@ class CameraScreenInteractor {
     }
     
     func addPoint(named entityName: String, for anchor: ARAnchor, arView: ARView) {
-        let model = createModel(named: entityName, for: anchor, arView: arView)
-        pathEntities.append(model)
-        model.scale = model.scale - 0.4
+        let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
+        modelEntity.scale = modelEntity.scale - 0.4
         guard let raycastCoordinates = raycastCoordinates else { return }
         
         if let index = actors.firstIndex(where: { $0.id == selectedEntity?.id }) {
+            let color = actors[index].color
+            modelEntity.model?.materials = [SimpleMaterial(color: color ?? .white, roughness: 4, isMetallic: true)]
             actors[index].coordinates.append(raycastCoordinates)
         }
+        pathEntities.append(modelEntity)
     }
     
     func createModel(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity {
@@ -86,6 +88,11 @@ class CameraScreenInteractor {
             anchorEntity.addChild(modelEntity)
             arView.installGestures([.translation, .rotation], for: modelEntity)
             arView.scene.addAnchor(anchorEntity)
+            
+            if entityName == "Circle" {
+                return modelEntity
+            }
+            
             if actors.count == 0 {
                 presenter?.changeNameButtonVisibility()
             }
@@ -103,31 +110,27 @@ class CameraScreenInteractor {
             modelEntity.addChild(textEntity)
             
             return modelEntity
-        } else {
-            let circle = try? Circle.loadScene()
-            if let circle = circle {
-                arView.scene.addAnchor(circle)
-            }
         }
+
         return ModelEntity()
     }
     
-    //    func giveRandomColorToModel(entity: ModelEntity) -> UIColor {
-    //        var newMaterial = SimpleMaterial()
-    //        let red = CGFloat.random(in: 0.1...0.9)
-    //        let green = CGFloat.random(in: 0.1...0.9)
-    //        let blue = CGFloat.random(in: 0.1...0.9)
-    //        newMaterial.color.tint = UIColor(red: red, green: green, blue: blue, alpha: 1.0)
-    //        entity.model?.materials = [newMaterial]
-    //        return UIColor(red: red, green: green, blue: blue, alpha: 1.0)
-    //    }
+    func giveRandomColorToModel(entity: ModelEntity) -> UIColor {
+        var newMaterial = SimpleMaterial()
+        let red = CGFloat.random(in: 0.1...0.9)
+        let green = CGFloat.random(in: 0.1...0.9)
+        let blue = CGFloat.random(in: 0.1...0.9)
+        newMaterial.color.tint = UIColor(red: red, green: green, blue: blue, alpha: 1.0)
+        entity.model?.materials = [newMaterial]
+        return UIColor(red: red, green: green, blue: blue, alpha: 1.0)
+    }
     
     func setTextEntity(parentEntity: ModelEntity, name: String) -> ModelEntity {
         let actor = actors.first { actor in
             actor.id == parentEntity.id
         }
         let text = MeshResource.generateText(name, extrusionDepth: 0.02, font: .boldSystemFont(ofSize: 0.1))
-        let shader = SimpleMaterial(color: .white, roughness: 10, isMetallic: false)
+        let shader = SimpleMaterial(color: .green, roughness: 10, isMetallic: false)
         actor?.nameEntity.model?.mesh = text
         actor?.nameEntity.name = name
         return ModelEntity(mesh: text, materials: [shader])
@@ -135,10 +138,12 @@ class CameraScreenInteractor {
     
     func checkOnSelected() {
         for entity in actorEntities {
+            let textEntity = entity.children.first as? ModelEntity
+            
             if entity == selectedEntity {
-                entity.model?.materials = [SimpleMaterial(color: .green, roughness: 4, isMetallic: true)]
+                textEntity?.model?.materials = [SimpleMaterial(color: .green, roughness: 4, isMetallic: true)]
             } else {
-                entity.model?.materials = [SimpleMaterial(color: .white, roughness: 4, isMetallic: true)]
+                textEntity?.model?.materials = [SimpleMaterial(color: .white, roughness: 4, isMetallic: true)]
             }
         }
     }
@@ -165,7 +170,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: .default)
         cameraService.startRecording()
-
+        
     }
     
     @objc func startCounting() {
@@ -221,10 +226,10 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         }
         
     }
-
-    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {
+    
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) {
         for anchor in anchors {
-            guard let anchorName = anchor.name, anchorName == "Person" else { return arView }
+            guard let anchorName = anchor.name, anchorName == "Person" else { return }
             if selectedEntity == nil {
                 placeActor(named: anchorName, for: anchor, arView: arView)
             } else {
@@ -232,7 +237,6 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             }
             
         }
-        return arView
     }
     
     

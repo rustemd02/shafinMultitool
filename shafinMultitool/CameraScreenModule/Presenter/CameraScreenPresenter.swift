@@ -16,7 +16,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func prepareARView(arView: ARView)
     func addActor(arView: ARView)
     func finishEditing()
-    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
     func session(_ session: ARSession, didUpdate frame: ARFrame)
     func handleTap(_ gesture: UITapGestureRecognizer, _ arView: ARView)
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView)
@@ -41,7 +41,6 @@ class CameraScreenPresenter {
         self.router = router
         self.interactor = interactor
     }
-    
     
 }
 
@@ -80,8 +79,8 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
         interactor.prepareRecorder()
     }
     
-    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) -> ARView {
-        return interactor.session(session, didAdd: anchors, arView: arView)
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) {
+        interactor.session(session, didAdd: anchors, arView: arView)
     }
     
     func startRecording() {

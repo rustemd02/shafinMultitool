@@ -14,6 +14,7 @@
 		CF506F802A010F29005E959C /* Circle.rcproject in Sources */ = {isa = PBXBuildFile; fileRef = CF506F7F2A010F29005E959C /* Circle.rcproject */; };
 		CF506F822A011445005E959C /* Person.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF506F812A011445005E959C /* Person.usdz */; };
 		CF506F882A03F8B3005E959C /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF506F872A03F8B3005E959C /* CameraService.swift */; };
+		CF8AD3752A12A9B20004B378 /* Circle.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF8AD3742A12A9B20004B378 /* Circle.usdz */; };
 		CFF027952A0AA6710042951B /* ActorEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorEntity.swift */; };
 		CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20729CC876400C3B73E /* AppDelegate.swift */; };
 		CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CFF7B21029CC876500C3B73E /* Assets.xcassets */; };
@@ -34,6 +35,7 @@
 		CF506F7F2A010F29005E959C /* Circle.rcproject */ = {isa = PBXFileReference; lastKnownFileType = file.rcproject; path = Circle.rcproject; sourceTree = "<group>"; };
 		CF506F812A011445005E959C /* Person.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Person.usdz; sourceTree = "<group>"; };
 		CF506F872A03F8B3005E959C /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CameraService.swift; path = /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/CameraScreenModule/CameraService.swift; sourceTree = "<absolute>"; };
+		CF8AD3742A12A9B20004B378 /* Circle.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Circle.usdz; sourceTree = "<group>"; };
 		CFF027942A0AA6710042951B /* ActorEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorEntity.swift; sourceTree = "<group>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFF7B20729CC876400C3B73E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -109,6 +111,7 @@
 				CFF7B20729CC876400C3B73E /* AppDelegate.swift */,
 				CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */,
 				CF506F812A011445005E959C /* Person.usdz */,
+				CF8AD3742A12A9B20004B378 /* Circle.usdz */,
 				CF506F7F2A010F29005E959C /* Circle.rcproject */,
 			);
 			path = Resources;
@@ -253,6 +256,7 @@
 			files = (
 				CF506F822A011445005E959C /* Person.usdz in Resources */,
 				CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */,
+				CF8AD3752A12A9B20004B378 /* Circle.usdz in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

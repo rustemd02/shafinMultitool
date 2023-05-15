@@ -58,7 +58,7 @@ class CameraScreenViewController: UIViewController {
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
         recordButton.addTarget(self, action: #selector(recordButtonPressed), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopButtonPressed), for: .touchUpInside)
-
+        
     }
     
     // MARK: - Private functions
@@ -226,7 +226,7 @@ class CameraScreenViewController: UIViewController {
         recordButton.isHidden = false
         presenter?.stopRecording()
     }
- 
+    
     @objc
     private func handleTap(_ gesture: UITapGestureRecognizer) {
         presenter?.handleTap(gesture, arView)
@@ -248,20 +248,20 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
     
     func changeNameAlert(completion: @escaping (String) -> ()) {
         let alertController = UIAlertController(title: "Введите имя актёра", message: nil, preferredStyle: .alert)
-
+        
         alertController.addTextField { textField in
             textField.placeholder = "Имя"
         }
-
+        
         let cancelAction = UIAlertAction(title: "Отмена", style: .cancel, handler: nil)
         let saveAction = UIAlertAction(title: "Сохранить", style: .default) { _ in
             guard let nameTextField = alertController.textFields?.first, let name = nameTextField.text else { return }
             completion(name)
         }
-
+        
         alertController.addAction(cancelAction)
         alertController.addAction(saveAction)
-
+        
         present(alertController, animated: true, completion: nil)
     }
     
@@ -299,11 +299,10 @@ extension CameraScreenViewController: ARSessionDelegate {
     }
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
-        guard let arView = presenter?.session(session, didAdd: anchors, arView: arView) else { return }
-        self.arView = arView
+        presenter?.session(session, didAdd: anchors, arView: arView)
     }
     
-
+    
 }
 
 extension CameraScreenViewController: UIGestureRecognizerDelegate {
