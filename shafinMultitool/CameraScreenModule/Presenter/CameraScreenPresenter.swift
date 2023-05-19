@@ -24,6 +24,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func startRecording()
     func stopRecording()
     func prepareRecorder()
+    func openSettings()
     
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
@@ -46,6 +47,10 @@ class CameraScreenPresenter {
 
 
 extension CameraScreenPresenter: CameraScreenPresenterProtocol {
+    func openSettings() {
+        router.openSettings()
+    }
+    
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         interactor.session(session, didUpdate: frame)
     }

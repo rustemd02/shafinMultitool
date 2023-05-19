@@ -16,7 +16,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.windowScene = windowScene
         window?.backgroundColor = .white
         let vc = CameraScreenBuilder.build()
-        
         window?.rootViewController = vc
         window?.makeKeyAndVisible()
     }

@@ -15,6 +15,11 @@
 		CF506F822A011445005E959C /* Person.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF506F812A011445005E959C /* Person.usdz */; };
 		CF506F882A03F8B3005E959C /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF506F872A03F8B3005E959C /* CameraService.swift */; };
 		CF8AD3752A12A9B20004B378 /* Circle.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF8AD3742A12A9B20004B378 /* Circle.usdz */; };
+		CF8AD3772A12BA5B0004B378 /* SettingsBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3762A12BA5B0004B378 /* SettingsBuilder.swift */; };
+		CF8AD37D2A12BA9B0004B378 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37C2A12BA9B0004B378 /* SettingsViewController.swift */; };
+		CF8AD37F2A12BAA80004B378 /* SettingsInteractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37E2A12BAA80004B378 /* SettingsInteractor.swift */; };
+		CF8AD3812A12BAB10004B378 /* SettingsPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3802A12BAB10004B378 /* SettingsPresenter.swift */; };
+		CF8AD3832A12BABB0004B378 /* SettingsRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */; };
 		CFF027952A0AA6710042951B /* ActorEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorEntity.swift */; };
 		CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20729CC876400C3B73E /* AppDelegate.swift */; };
 		CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CFF7B21029CC876500C3B73E /* Assets.xcassets */; };
@@ -36,6 +41,11 @@
 		CF506F812A011445005E959C /* Person.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Person.usdz; sourceTree = "<group>"; };
 		CF506F872A03F8B3005E959C /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CameraService.swift; path = /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/CameraScreenModule/CameraService.swift; sourceTree = "<absolute>"; };
 		CF8AD3742A12A9B20004B378 /* Circle.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Circle.usdz; sourceTree = "<group>"; };
+		CF8AD3762A12BA5B0004B378 /* SettingsBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsBuilder.swift; sourceTree = "<group>"; };
+		CF8AD37C2A12BA9B0004B378 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
+		CF8AD37E2A12BAA80004B378 /* SettingsInteractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsInteractor.swift; sourceTree = "<group>"; };
+		CF8AD3802A12BAB10004B378 /* SettingsPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPresenter.swift; sourceTree = "<group>"; };
+		CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRouter.swift; sourceTree = "<group>"; };
 		CFF027942A0AA6710042951B /* ActorEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorEntity.swift; sourceTree = "<group>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFF7B20729CC876400C3B73E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -74,6 +84,11 @@
 		CF10E5D529F412C900D3E39A /* SettingsModule */ = {
 			isa = PBXGroup;
 			children = (
+				CF8AD37B2A12BA8D0004B378 /* View */,
+				CF8AD37A2A12BA7C0004B378 /* Interactor */,
+				CF8AD3792A12BA6F0004B378 /* Presenter */,
+				CF8AD3782A12BA650004B378 /* Router */,
+				CF8AD3762A12BA5B0004B378 /* SettingsBuilder.swift */,
 			);
 			path = SettingsModule;
 			sourceTree = "<group>";
@@ -115,6 +130,38 @@
 				CF506F7F2A010F29005E959C /* Circle.rcproject */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		CF8AD3782A12BA650004B378 /* Router */ = {
+			isa = PBXGroup;
+			children = (
+				CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */,
+			);
+			path = Router;
+			sourceTree = "<group>";
+		};
+		CF8AD3792A12BA6F0004B378 /* Presenter */ = {
+			isa = PBXGroup;
+			children = (
+				CF8AD3802A12BAB10004B378 /* SettingsPresenter.swift */,
+			);
+			path = Presenter;
+			sourceTree = "<group>";
+		};
+		CF8AD37A2A12BA7C0004B378 /* Interactor */ = {
+			isa = PBXGroup;
+			children = (
+				CF8AD37E2A12BAA80004B378 /* SettingsInteractor.swift */,
+			);
+			path = Interactor;
+			sourceTree = "<group>";
+		};
+		CF8AD37B2A12BA8D0004B378 /* View */ = {
+			isa = PBXGroup;
+			children = (
+				CF8AD37C2A12BA9B0004B378 /* SettingsViewController.swift */,
+			);
+			path = View;
 			sourceTree = "<group>";
 		};
 		CFF7B1FB29CC876400C3B73E = {
@@ -309,16 +356,21 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CF8AD37F2A12BAA80004B378 /* SettingsInteractor.swift in Sources */,
 				CF506F882A03F8B3005E959C /* CameraService.swift in Sources */,
 				CFF7B22929CC8CA400C3B73E /* CameraScreenBuilder.swift in Sources */,
 				CFF7B22729CC8C7B00C3B73E /* CameraScreenRouter.swift in Sources */,
+				CF8AD3772A12BA5B0004B378 /* SettingsBuilder.swift in Sources */,
 				CF10E5ED29F8211600D3E39A /* SceneDelegate.swift in Sources */,
 				CFF027952A0AA6710042951B /* ActorEntity.swift in Sources */,
 				CF506F802A010F29005E959C /* Circle.rcproject in Sources */,
 				CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */,
+				CF8AD3832A12BABB0004B378 /* SettingsRouter.swift in Sources */,
 				CFF7B22129CC87C200C3B73E /* CameraScreenViewController.swift in Sources */,
 				CFF7B22329CC8C6000C3B73E /* CameraScreenPresenter.swift in Sources */,
 				CFF7B22529CC8C7200C3B73E /* CameraScreenInteractor.swift in Sources */,
+				CF8AD37D2A12BA9B0004B378 /* SettingsViewController.swift in Sources */,
+				CF8AD3812A12BAB10004B378 /* SettingsPresenter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

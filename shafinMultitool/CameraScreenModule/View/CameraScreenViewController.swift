@@ -30,6 +30,7 @@ class CameraScreenViewController: UIViewController {
     private let tapGesture = UITapGestureRecognizer()
     private let longGesture = UILongPressGestureRecognizer()
     
+    private let settingsButton = UIButton(type: .custom)
     private let addActorButton = UIButton(type: .custom)
     private let finishEditingButton = UIButton(type: .custom)
     private let changeNameButton = UIButton(type: .custom)
@@ -42,7 +43,6 @@ class CameraScreenViewController: UIViewController {
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        
         presenter?.viewDidLoad()
         presenter?.prepareRecorder()
         arView.session.delegate = self
@@ -53,6 +53,7 @@ class CameraScreenViewController: UIViewController {
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
         longGesture.minimumPressDuration = 1.7
+        settingsButton.addTarget(self, action: #selector(settingsButtonPressed), for: .touchUpInside)
         addActorButton.addTarget(self, action: #selector(addActor), for: .touchUpInside)
         finishEditingButton.addTarget(self, action: #selector(finishEditing), for: .touchUpInside)
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
@@ -89,7 +90,7 @@ class CameraScreenViewController: UIViewController {
         addActorButton.layer.cornerRadius = 37.5
         addActorButton.layer.masksToBounds = true
         addActorButton.setImage(UIImage(systemName: "plus"), for: .normal)
-        addActorButton.tintColor = UIColor.black
+        addActorButton.tintColor = .black
         addActorButton.snp.makeConstraints { make in
             make.width.height.equalTo(75)
             make.centerX.equalToSuperview()
@@ -102,7 +103,7 @@ class CameraScreenViewController: UIViewController {
         finishEditingButton.layer.cornerRadius = 22.5
         finishEditingButton.layer.masksToBounds = true
         finishEditingButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
-        finishEditingButton.tintColor = UIColor.black
+        finishEditingButton.tintColor = .black
         finishEditingButton.snp.makeConstraints { make in
             make.width.height.equalTo(45)
             make.left.equalTo(addActorButton.snp_rightMargin).offset(20)
@@ -115,7 +116,7 @@ class CameraScreenViewController: UIViewController {
         changeNameButton.layer.cornerRadius = 30
         changeNameButton.layer.masksToBounds = true
         changeNameButton.setImage(UIImage(systemName: "ellipsis.rectangle"), for: .normal)
-        changeNameButton.tintColor = UIColor.black
+        changeNameButton.tintColor = .black
         changeNameButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
             make.leftMargin.equalToSuperview().offset(40)
@@ -168,6 +169,19 @@ class CameraScreenViewController: UIViewController {
             make.center.equalTo(stopwatchBackgroundView)
         }
         
+        arView.addSubview(settingsButton)
+        settingsButton.backgroundColor = .white.withAlphaComponent(0.5)
+        settingsButton.layer.cornerRadius = 16
+        settingsButton.layer.masksToBounds = true
+        settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
+        settingsButton.tintColor = .black
+        settingsButton.snp.makeConstraints { make in
+            make.width.equalTo(55)
+            make.height.equalTo(30)
+            make.top.equalTo(arView.snp_topMargin).offset(20)
+            make.centerX.equalTo(recordButton.snp_centerXWithinMargins)
+        }
+        
         loadingAnimation()
     }
     
@@ -202,11 +216,17 @@ class CameraScreenViewController: UIViewController {
     }
     
     @objc
+    private func settingsButtonPressed() {
+        presenter?.openSettings()
+    }
+    
+    @objc
     private func recordButtonPressed() {
         recordButton.isHidden = true
         addActorButton.isHidden = true
         finishEditingButton.isHidden = true
         changeNameButton.isHidden = true
+        settingsButton.isHidden = true
         stopwatchBackgroundView.isHidden = false
         stopwatchLabel.isHidden = false
         stopButton.isHidden = false
@@ -223,7 +243,9 @@ class CameraScreenViewController: UIViewController {
         }
         stopwatchBackgroundView.isHidden = true
         stopwatchLabel.isHidden = true
+        settingsButton.isHidden = false
         recordButton.isHidden = false
+        
         presenter?.stopRecording()
     }
     
