@@ -28,6 +28,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
+    func ifChangeNameButtonVisible() -> Bool
     func updateStopwatchLabel(formattedTime: String)
 
 }
@@ -47,6 +48,10 @@ class CameraScreenPresenter {
 
 
 extension CameraScreenPresenter: CameraScreenPresenterProtocol {
+    func ifChangeNameButtonVisible() -> Bool {
+        return ((view?.ifChangeNameButtonVisible()) != nil)
+    }
+    
     func openSettings() {
         router.openSettings()
     }

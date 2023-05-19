@@ -13,6 +13,7 @@ import SnapKit
 protocol CameraScreenViewProtocol: AnyObject {
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
+    func ifChangeNameButtonVisible() -> Bool
     func updateStopwatchLabel(formattedTime: String)
 }
 
@@ -21,7 +22,6 @@ class CameraScreenViewController: UIViewController {
     // MARK: - Properties
     var presenter: CameraScreenPresenterProtocol?
     private var ifFinishEditingButtonHidden = true
-    //private var ifChangeNameButtonHidden = true
     
     private var arView = ARView()
     private var loadingView = UIView()
@@ -263,6 +263,10 @@ class CameraScreenViewController: UIViewController {
 }
 
 extension CameraScreenViewController: CameraScreenViewProtocol {
+    func ifChangeNameButtonVisible() -> Bool {
+        return changeNameButton.isHidden ? true : false
+    }
+    
     func updateStopwatchLabel(formattedTime: String) {
         stopwatchLabel.text = formattedTime
     }

@@ -59,6 +59,10 @@ class CameraScreenInteractor {
             let color = actors[index].color
             modelEntity.model?.materials = [SimpleMaterial(color: color ?? .white, roughness: 4, isMetallic: true)]
             actors[index].coordinates.append(raycastCoordinates)
+            
+            let pathNumberEntity = setTextEntity(parentEntity: modelEntity, name: (actors[index].coordinates.count - 1).description, size: 0.1, color: .white)
+            pathNumberEntity.position.y += 0.3
+            modelEntity.addChild(pathNumberEntity)
         }
         pathEntities.append(modelEntity)
     }
@@ -76,15 +80,7 @@ class CameraScreenInteractor {
                 return modelEntity
             }
             
-            if actors.count == 0 {
-                presenter?.changeNameButtonVisibility()
-            }
-            
-            if selectedEntity == nil {
-                selectedEntity = modelEntity
-            }
-            
-            let textEntity = setTextEntity(parentEntity: modelEntity, name: "Актёр " + (actors.count + 1).description)
+            let textEntity = setTextEntity(parentEntity: modelEntity, name: "Актёр " + (actors.count + 1).description, size: 0.1, color: .green)
             textEntity.name = "Актёр " + (actors.count + 1).description
             
             textEntity.position.y += 1.05
@@ -108,12 +104,12 @@ class CameraScreenInteractor {
         return UIColor(red: red, green: green, blue: blue, alpha: 1.0)
     }
     
-    func setTextEntity(parentEntity: ModelEntity, name: String) -> ModelEntity {
+    func setTextEntity(parentEntity: ModelEntity, name: String, size: CGFloat, color: UIColor) -> ModelEntity {
         let actor = actors.first { actor in
             actor.id == parentEntity.id
         }
-        let text = MeshResource.generateText(name, extrusionDepth: 0.02, font: .boldSystemFont(ofSize: 0.1))
-        let shader = SimpleMaterial(color: .green, roughness: 10, isMetallic: false)
+        let text = MeshResource.generateText(name, extrusionDepth: 0.02, font: .boldSystemFont(ofSize: size))
+        let shader = SimpleMaterial(color: color, roughness: 10, isMetallic: false)
         actor?.nameEntity.model?.mesh = text
         actor?.nameEntity.name = name
         return ModelEntity(mesh: text, materials: [shader])
@@ -148,6 +144,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func startRecording() {
         timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: .default)
+        finishEditing()
         cameraService.startRecording()
         
     }
@@ -276,7 +273,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func changeName(arView: ARView) {
         guard let selectedEntity = selectedEntity else { return }
         presenter?.changeNameAlert(completion: { result in
-            _ = self.setTextEntity(parentEntity: selectedEntity, name: result)
+            _ = self.setTextEntity(parentEntity: selectedEntity, name: result, size: 0.1, color: .green)
         })
         
     }
