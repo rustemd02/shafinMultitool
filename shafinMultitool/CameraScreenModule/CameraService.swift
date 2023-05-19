@@ -43,12 +43,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         assetWriter = try? AVAssetWriter(outputURL: outputURL, fileType: .mov)
         assetWriter.movieFragmentInterval = CMTime.invalid
         
-        
-        // Настраиваем объект AVAssetWriterInput
-        
         videoSettingsUpdate()
         
-        // Настраиваем объект AVCaptureSession для записи аудио
         audioSession = AVAudioSession.sharedInstance()
         try? audioSession.setCategory(.playAndRecord, mode: .default, options: [])
         try? audioSession.setActive(true, options: [])
@@ -135,7 +131,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         assetWriter.finishWriting {
             DispatchQueue.main.async {
                 self.saveVideoToLibrary(videoURL: self.outputURL!)
-                print("Video saved to \(self.assetWriter.outputURL)")
             }
         }
         
@@ -155,10 +150,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         
         let presentationTime = CMTimeSubtract(cmTime, startTime!)
         if !assetWriterVideoInput.isReadyForMoreMediaData {
-            print("Pixel buffer adaptor is not ready for more media data")
             return
         }
-        //pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime)
         
         if assetWriterAudioInput.isReadyForMoreMediaData {
             if pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime) {
@@ -175,18 +168,15 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         
         if !assetWriterAudioInput.isReadyForMoreMediaData {
-            print("Audio asset writer input is not ready for more media data, dropping frame")
             return
         }
         
-        // Синхронизируем время презентации каждого звукового образца с временем начала записи
         let presentationTime = CMTimeSubtract(timestamp, startTime)
         var timingInfo = CMSampleTimingInfo(duration: CMTime.invalid, presentationTimeStamp: presentationTime, decodeTimeStamp: CMTime.invalid)
         var copiedSampleBuffer: CMSampleBuffer?
         var _ = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timingInfo, sampleBufferOut: &copiedSampleBuffer)
         
         guard let syncedBuffer = copiedSampleBuffer else {
-            // handle error case here
             return
         }
         
