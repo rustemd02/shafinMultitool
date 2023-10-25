@@ -134,9 +134,10 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         cameraService.prepareRecorder()
     }
     
-    
-    
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+//        session.getCurrentWorldMap { <#ARWorldMap?#>, <#Error?#> in
+//            <#code#>
+//        }
         cameraService.session(session, didUpdate: frame)
     }
     
@@ -240,7 +241,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let queue = DispatchQueue(label: "moveQueue")
         var index = 0
         for actorEntity in self.actorEntities {
-            let actor = actors .first { actor in
+            let actor = actors.first { actor in
                 actor.id == actorEntity.id
             }
             guard let coordinates = actor?.coordinates else { continue }

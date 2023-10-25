@@ -1,0 +1,20 @@
+PODS:
+  - ARVideoKit (1.5.51)
+  - SnapKit (5.6.0)
+
+DEPENDENCIES:
+  - ARVideoKit (~> 1.5.51)
+  - SnapKit (~> 5.6.0)
+
+SPEC REPOS:
+  https://github.com/CocoaPods/Specs.git:
+    - ARVideoKit
+    - SnapKit
+
+SPEC CHECKSUMS:
+  ARVideoKit: cd70e1e49e042ed4a88fb59964c17520e34f7f5b
+  SnapKit: e01d52ebb8ddbc333eefe2132acf85c8227d9c25
+
+PODFILE CHECKSUM: c2c9f976d15e4ab17ee3011b7f28c770317ef1ed
+
+COCOAPODS: 1.12.1

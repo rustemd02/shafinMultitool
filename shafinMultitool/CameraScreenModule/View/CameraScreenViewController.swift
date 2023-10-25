@@ -23,6 +23,8 @@ class CameraScreenViewController: UIViewController {
     var presenter: CameraScreenPresenterProtocol?
     private var ifFinishEditingButtonHidden = true
     
+    private var backgroundView = UIView()
+    
     private var arView = ARView()
     private var loadingView = UIView()
     private var loadingLabel = UILabel()
@@ -30,7 +32,14 @@ class CameraScreenViewController: UIViewController {
     private let tapGesture = UITapGestureRecognizer()
     private let longGesture = UILongPressGestureRecognizer()
     
-    private let settingsButton = UIButton(type: .custom)
+    private let settingsBarBackgroundView = UIView()
+    private let changeResolutionButton = UIButton(type: .custom)
+    private let divider = UILabel()
+    private let changeFPSButton = UIButton(type: .custom)
+    private let changeWBButton = UIButton(type: .custom)
+    private let changeISOButton = UIButton(type: .custom)
+    
+    //private let settingsButton = UIButton(type: .custom)
     private let addActorButton = UIButton(type: .custom)
     private let finishEditingButton = UIButton(type: .custom)
     private let changeNameButton = UIButton(type: .custom)
@@ -53,7 +62,7 @@ class CameraScreenViewController: UIViewController {
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
         longGesture.minimumPressDuration = 1.7
-        settingsButton.addTarget(self, action: #selector(settingsButtonPressed), for: .touchUpInside)
+        //settingsButton.addTarget(self, action: #selector(settingsButtonPressed), for: .touchUpInside)
         addActorButton.addTarget(self, action: #selector(addActor), for: .touchUpInside)
         finishEditingButton.addTarget(self, action: #selector(finishEditing), for: .touchUpInside)
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
@@ -64,28 +73,38 @@ class CameraScreenViewController: UIViewController {
     
     // MARK: - Private functions
     private func setupUI() {
-        view.addSubview(arView)
+        view.addSubview(backgroundView)
+        backgroundView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+        }
+        
+        backgroundView.addSubview(arView)
         arView.addGestureRecognizer(tapGesture)
         arView.addGestureRecognizer(longGesture)
         
         arView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
+            make.centerY.equalToSuperview()
+            make.leadingMargin.equalToSuperview()
+            make.width.equalTo(arView.snp.height).multipliedBy(16.0/9.0)
+            make.height.equalToSuperview()
         }
         
-        arView.addSubview(loadingView)
+        setupSettingsBar()
+        
+        backgroundView.addSubview(loadingView)
         loadingView.backgroundColor = .black.withAlphaComponent(0.7)
         loadingView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
         
-        arView.addSubview(loadingLabel)
+        backgroundView.addSubview(loadingLabel)
         loadingLabel.textColor = .white
         loadingLabel.text = "Перемещайте устройство, чтобы начать"
         loadingLabel.snp.makeConstraints { make in
             make.center.equalToSuperview()
         }
         
-        arView.addSubview(addActorButton)
+        backgroundView.addSubview(addActorButton)
         addActorButton.backgroundColor = .white.withAlphaComponent(0.5)
         addActorButton.layer.cornerRadius = 37.5
         addActorButton.layer.masksToBounds = true
@@ -93,11 +112,11 @@ class CameraScreenViewController: UIViewController {
         addActorButton.tintColor = .black
         addActorButton.snp.makeConstraints { make in
             make.width.height.equalTo(75)
-            make.centerX.equalToSuperview()
-            make.bottom.equalToSuperview().inset(50)
+            make.centerY.equalToSuperview()
+            make.trailing.equalToSuperview().inset(10)
         }
         
-        arView.addSubview(finishEditingButton)
+        backgroundView.addSubview(finishEditingButton)
         finishEditingButton.isHidden = true
         finishEditingButton.backgroundColor = .white.withAlphaComponent(0.5)
         finishEditingButton.layer.cornerRadius = 22.5
@@ -111,7 +130,7 @@ class CameraScreenViewController: UIViewController {
         }
         
         
-        arView.addSubview(changeNameButton)
+        backgroundView.addSubview(changeNameButton)
         changeNameButton.backgroundColor = .white.withAlphaComponent(0.5)
         changeNameButton.layer.cornerRadius = 30
         changeNameButton.layer.masksToBounds = true
@@ -124,7 +143,7 @@ class CameraScreenViewController: UIViewController {
         }
         changeNameButton.isHidden = true
         
-        arView.addSubview(recordButton)
+        backgroundView.addSubview(recordButton)
         recordButton.backgroundColor = .red.withAlphaComponent(0.5)
         //recordButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
         recordButton.layer.cornerRadius = 30
@@ -132,11 +151,11 @@ class CameraScreenViewController: UIViewController {
         recordButton.tintColor = UIColor.black
         recordButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.rightMargin.equalToSuperview().inset(40)
-            make.centerY.equalTo(addActorButton.snp_centerYWithinMargins)
+            make.bottomMargin.equalToSuperview()
+            make.centerX.equalTo(addActorButton.snp.centerX)
         }
         
-        arView.addSubview(stopButton)
+        backgroundView.addSubview(stopButton)
         stopButton.isHidden = true
         stopButton.backgroundColor = .green.withAlphaComponent(0.5)
         //stopButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
@@ -149,7 +168,7 @@ class CameraScreenViewController: UIViewController {
             make.centerY.equalTo(addActorButton.snp_centerYWithinMargins)
         }
         
-        arView.addSubview(stopwatchBackgroundView)
+        backgroundView.addSubview(stopwatchBackgroundView)
         stopwatchBackgroundView.isHidden = true
         stopwatchBackgroundView.backgroundColor = .black.withAlphaComponent(0.5)
         stopwatchBackgroundView.layer.cornerRadius = 10
@@ -169,20 +188,96 @@ class CameraScreenViewController: UIViewController {
             make.center.equalTo(stopwatchBackgroundView)
         }
         
-        arView.addSubview(settingsButton)
-        settingsButton.backgroundColor = .white.withAlphaComponent(0.5)
-        settingsButton.layer.cornerRadius = 16
-        settingsButton.layer.masksToBounds = true
-        settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
-        settingsButton.tintColor = .black
-        settingsButton.snp.makeConstraints { make in
-            make.width.equalTo(55)
-            make.height.equalTo(30)
-            make.top.equalTo(arView.snp_topMargin).offset(20)
-            make.centerX.equalTo(recordButton.snp_centerXWithinMargins)
-        }
+//        backgroundView.addSubview(settingsButton)
+//        settingsButton.backgroundColor = .white.withAlphaComponent(0.5)
+//        settingsButton.layer.cornerRadius = 16
+//        settingsButton.layer.masksToBounds = true
+//        settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
+//        settingsButton.tintColor = .black
+//        settingsButton.snp.makeConstraints { make in
+//            make.width.equalTo(55)
+//            make.height.equalTo(30)
+//            make.top.equalTo(arView.snp_topMargin).offset(20)
+//            make.centerX.equalTo(recordButton.snp_centerXWithinMargins)
+//        }
         
         loadingAnimation()
+    }
+    
+    private func setupSettingsBar() {
+        arView.addSubview(settingsBarBackgroundView)
+        settingsBarBackgroundView.backgroundColor = .black.withAlphaComponent(0.4)
+        settingsBarBackgroundView.snp.makeConstraints { make in
+            make.leading.top.trailing.equalTo(arView)
+            make.height.equalTo(35)
+        }
+        
+        settingsBarBackgroundView.addSubview(changeResolutionButton)
+        changeResolutionButton.setTitle("3K", for: .normal)
+        changeResolutionButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        changeResolutionButton.setTitleColor(.white, for: .normal)
+        changeResolutionButton.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView)
+            make.leadingMargin.equalTo(settingsBarBackgroundView.snp_leadingMargin).offset(15)
+        }
+        
+        settingsBarBackgroundView.addSubview(divider)
+        divider.text = "·"
+        divider.font = .boldSystemFont(ofSize: 25)
+        divider.textColor = .white
+        divider.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView.snp.centerY)
+            make.leadingMargin.equalTo(changeResolutionButton.snp_trailingMargin).offset(25)
+        }
+        
+        settingsBarBackgroundView.addSubview(changeFPSButton)
+        changeFPSButton.setTitle("22", for: .normal)
+        changeFPSButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        changeFPSButton.setTitleColor(.white, for: .normal)
+        changeFPSButton.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView)
+            make.leadingMargin.equalTo(divider.snp.trailingMargin).offset(25)
+        }
+        
+        let wbLabel = UILabel()
+        wbLabel.text = "WB"
+        wbLabel.textColor = .lightGray
+        wbLabel.font = .systemFont(ofSize: 14)
+        settingsBarBackgroundView.addSubview(wbLabel)
+        
+        changeWBButton.setTitle("9999K", for: .normal)
+        changeWBButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        changeWBButton.setTitleColor(.white, for: .normal)
+        settingsBarBackgroundView.addSubview(changeWBButton)
+        changeWBButton.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView).inset(17.5)
+            make.trailingMargin.equalTo(settingsBarBackgroundView.snp.trailingMargin).inset(15)
+        }
+        wbLabel.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView).offset(17.5)
+            make.centerX.equalTo(changeWBButton.snp.centerX)
+        }
+        
+        let isoLabel = UILabel()
+        isoLabel.text = "ISO"
+        isoLabel.textColor = .lightGray
+        isoLabel.font = .systemFont(ofSize: 14)
+        settingsBarBackgroundView.addSubview(isoLabel)
+        
+        changeISOButton.setTitle("230", for: .normal)
+        changeISOButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        changeISOButton.setTitleColor(.white, for: .normal)
+        settingsBarBackgroundView.addSubview(changeISOButton)
+        changeISOButton.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView).inset(17.5)
+            make.trailingMargin.equalTo(changeWBButton.snp.leadingMargin).offset(-50)
+        }
+        isoLabel.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView).offset(17.5)
+            make.centerX.equalTo(changeISOButton.snp.centerX)
+        }
+        
+        
     }
     
     private func setupARView(arView: ARView) {
@@ -226,7 +321,7 @@ class CameraScreenViewController: UIViewController {
         addActorButton.isHidden = true
         finishEditingButton.isHidden = true
         changeNameButton.isHidden = true
-        settingsButton.isHidden = true
+        //settingsButton.isHidden = true
         stopwatchBackgroundView.isHidden = false
         stopwatchLabel.isHidden = false
         stopButton.isHidden = false
@@ -243,7 +338,7 @@ class CameraScreenViewController: UIViewController {
         }
         stopwatchBackgroundView.isHidden = true
         stopwatchLabel.isHidden = true
-        settingsButton.isHidden = false
+        //settingsButton.isHidden = false
         recordButton.isHidden = false
         
         presenter?.stopRecording()
