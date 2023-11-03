@@ -58,11 +58,14 @@ class CameraScreenViewController: UIViewController {
         tapGesture.delegate = self
         setupARView(arView: arView)
         setupUI()
+        fetchSettingsButtonValues()
         
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
         longGesture.minimumPressDuration = 1.7
         //settingsButton.addTarget(self, action: #selector(settingsButtonPressed), for: .touchUpInside)
+        changeResolutionButton.addTarget(self, action: #selector(changeResolutionButtonPressed), for: .touchUpInside)
+        changeFPSButton.addTarget(self, action: #selector(changeFPSButtonPressed), for: .touchUpInside)
         addActorButton.addTarget(self, action: #selector(addActor), for: .touchUpInside)
         finishEditingButton.addTarget(self, action: #selector(finishEditing), for: .touchUpInside)
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
@@ -164,26 +167,26 @@ class CameraScreenViewController: UIViewController {
         stopButton.tintColor = UIColor.black
         stopButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.rightMargin.equalToSuperview().inset(40)
-            make.centerY.equalTo(addActorButton.snp_centerYWithinMargins)
+            make.bottomMargin.equalToSuperview()
+            make.centerX.equalTo(addActorButton.snp.centerX)
         }
         
-        backgroundView.addSubview(stopwatchBackgroundView)
+        settingsBarBackgroundView.addSubview(stopwatchBackgroundView)
         stopwatchBackgroundView.isHidden = true
-        stopwatchBackgroundView.backgroundColor = .black.withAlphaComponent(0.5)
+        stopwatchBackgroundView.backgroundColor = .red.withAlphaComponent(0.8)
         stopwatchBackgroundView.layer.cornerRadius = 10
         stopwatchBackgroundView.layer.masksToBounds = true
         stopwatchBackgroundView.snp.makeConstraints { make in
             make.width.equalTo(120)
             make.height.equalTo(30)
-            make.centerX.equalToSuperview()
-            make.bottom.equalToSuperview().inset(50)
+            make.center.equalTo(settingsBarBackgroundView)
         }
         
         stopwatchBackgroundView.addSubview(stopwatchLabel)
         stopwatchLabel.isHidden = true
         stopwatchLabel.textColor = .white
         stopwatchLabel.text = "00:00"
+        stopwatchLabel.font = .boldSystemFont(ofSize: 16)
         stopwatchLabel.snp.makeConstraints { make in
             make.center.equalTo(stopwatchBackgroundView)
         }
@@ -209,7 +212,7 @@ class CameraScreenViewController: UIViewController {
         settingsBarBackgroundView.backgroundColor = .black.withAlphaComponent(0.4)
         settingsBarBackgroundView.snp.makeConstraints { make in
             make.leading.top.trailing.equalTo(arView)
-            make.height.equalTo(35)
+            make.height.equalTo(37.5)
         }
         
         settingsBarBackgroundView.addSubview(changeResolutionButton)
@@ -242,7 +245,7 @@ class CameraScreenViewController: UIViewController {
         let wbLabel = UILabel()
         wbLabel.text = "WB"
         wbLabel.textColor = .lightGray
-        wbLabel.font = .systemFont(ofSize: 14)
+        wbLabel.font = .systemFont(ofSize: 11)
         settingsBarBackgroundView.addSubview(wbLabel)
         
         changeWBButton.setTitle("9999K", for: .normal)
@@ -250,18 +253,18 @@ class CameraScreenViewController: UIViewController {
         changeWBButton.setTitleColor(.white, for: .normal)
         settingsBarBackgroundView.addSubview(changeWBButton)
         changeWBButton.snp.makeConstraints { make in
-            make.centerY.equalTo(settingsBarBackgroundView).inset(17.5)
+            make.topMargin.equalTo(settingsBarBackgroundView.snp_topMargin).offset(-2)
             make.trailingMargin.equalTo(settingsBarBackgroundView.snp.trailingMargin).inset(15)
         }
         wbLabel.snp.makeConstraints { make in
-            make.centerY.equalTo(settingsBarBackgroundView).offset(17.5)
+            make.topMargin.equalTo(changeWBButton.snp_bottomMargin).offset(8)
             make.centerX.equalTo(changeWBButton.snp.centerX)
         }
         
         let isoLabel = UILabel()
         isoLabel.text = "ISO"
         isoLabel.textColor = .lightGray
-        isoLabel.font = .systemFont(ofSize: 14)
+        isoLabel.font = .systemFont(ofSize: 11)
         settingsBarBackgroundView.addSubview(isoLabel)
         
         changeISOButton.setTitle("230", for: .normal)
@@ -269,14 +272,23 @@ class CameraScreenViewController: UIViewController {
         changeISOButton.setTitleColor(.white, for: .normal)
         settingsBarBackgroundView.addSubview(changeISOButton)
         changeISOButton.snp.makeConstraints { make in
-            make.centerY.equalTo(settingsBarBackgroundView).inset(17.5)
-            make.trailingMargin.equalTo(changeWBButton.snp.leadingMargin).offset(-50)
+            make.topMargin.equalTo(settingsBarBackgroundView.snp_topMargin).offset(-2)
+            make.rightMargin.equalTo(changeWBButton.snp.leftMargin).inset(-50)
         }
         isoLabel.snp.makeConstraints { make in
-            make.centerY.equalTo(settingsBarBackgroundView).offset(17.5)
+            make.topMargin.equalTo(changeISOButton.snp_bottomMargin).offset(8)
             make.centerX.equalTo(changeISOButton.snp.centerX)
         }
         
+    }
+    
+    private func fetchSettingsButtonValues() {
+        //Анимировать
+        guard let (settingsValues, convertedResolution) = presenter?.fetchSettingsButtonValues() else { return }
+        changeResolutionButton.setTitle(convertedResolution, for: .normal)
+        changeFPSButton.setTitle(settingsValues.fps.description, for: .normal)
+        changeWBButton.setTitle(settingsValues.wb.description, for: .normal)
+        changeISOButton.setTitle(settingsValues.iso.description, for: .normal)
         
     }
     
@@ -342,6 +354,18 @@ class CameraScreenViewController: UIViewController {
         recordButton.isHidden = false
         
         presenter?.stopRecording()
+    }
+    
+    @objc
+    private func changeResolutionButtonPressed() {
+        presenter?.changeResolution()
+        fetchSettingsButtonValues()
+    }
+    
+    @objc
+    private func changeFPSButtonPressed() {
+        presenter?.changeFPS()
+        fetchSettingsButtonValues()
     }
     
     @objc

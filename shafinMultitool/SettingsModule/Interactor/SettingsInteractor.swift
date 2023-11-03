@@ -41,11 +41,13 @@ extension SettingsInteractor: SettingsInteractorProtocol {
     }
     
     func titleForRow(row: Int) -> String {
-        return cameraService.resolutions[row].width.description + "x" + cameraService.resolutions[row].height.description
+        return ""
+        //return cameraService.resolutions[row].width.description + "x" + cameraService.resolutions[row].height.description
     }
     
     func getResolutionsArrayLength() -> Int {
-        return cameraService.resolutions.count
+        return 0
+        //return cameraService.resolutions.count
     }
     
     

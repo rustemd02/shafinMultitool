@@ -15,6 +15,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     //MARK: - Properties
     static let shared = CameraService()
     
+    private var settingsValues: SettingsValues?
+    
     private var assetWriter: AVAssetWriter!
     private var assetWriterVideoInput: AVAssetWriterInput!
     
@@ -31,8 +33,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var isRecording = false
     private var outputURL: URL?
     
-    let resolutions: [(width: Int, height: Int)] = [(1280, 720), (1920, 1080), (3840, 2160)]
-
     
     private override init() {
         super.init()
@@ -41,12 +41,11 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     func prepareRecorder() {
         guard let outputURL = getVideoFileURL() else { return }
         self.outputURL = outputURL
+        settingsValues = DBService.shared.fetchSettingsButtonValues()
         
         assetWriter = try? AVAssetWriter(outputURL: outputURL, fileType: .mov)
         assetWriter.movieFragmentInterval = CMTime.invalid
-        
-        videoSettingsUpdate()
-        
+                
         audioSession = AVAudioSession.sharedInstance()
         try? audioSession.setCategory(.playAndRecord, mode: .default, options: [])
         try? audioSession.setActive(true, options: [])
@@ -55,6 +54,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         audioCaptureSession.beginConfiguration()
         
         videoCaptureDevice = AVCaptureDevice.default(for: .video)
+        
+        videoSettingsUpdate()
 
         audioCaptureDevice = AVCaptureDevice.default(for: .audio)!
         audioCaptureDeviceInput = try! AVCaptureDeviceInput(device: audioCaptureDevice)
@@ -77,6 +78,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     func videoSettingsUpdate() {
         let existingVideoInput = assetWriter.inputs.first { $0 == assetWriterVideoInput }
         let existingAudioInput = assetWriter.inputs.first { $0 == assetWriterAudioInput }
+        guard let settingsValues = settingsValues else { return }
         
         if let existingVideoInput = existingVideoInput {
             existingVideoInput.markAsFinished()
@@ -89,13 +91,12 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
         
         guard let outputURL = getVideoFileURL() else { return }
-        let width = resolutions[UserDefaults.standard.integer(forKey: "selectedResoultionsRow")].width
-        let height = resolutions[UserDefaults.standard.integer(forKey: "selectedResoultionsRow")].height
+        guard let resolution = settingsValues.resolution.first else { return }
         
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.hevc,
-            AVVideoWidthKey: width,
-            AVVideoHeightKey: height,
+            AVVideoWidthKey: resolution.width,
+            AVVideoHeightKey: resolution.height,
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspectFill,
         ]
 
@@ -104,8 +105,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
         let pixelBufferAttributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferWidthKey as String: resolution.width,
+            kCVPixelBufferHeightKey as String: resolution.height,
         ]
         pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: assetWriterVideoInput, sourcePixelBufferAttributes: pixelBufferAttributes)
         
@@ -116,6 +117,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         ]
         assetWriterAudioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
         assetWriterAudioInput.expectsMediaDataInRealTime = true
+        
+        changeFPS(fps: settingsValues.fps)
         
         assetWriter.add(assetWriterVideoInput)
         assetWriter.add(assetWriterAudioInput)
@@ -206,8 +209,31 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         videoCaptureDevice.unlockForConfiguration()
     }
     
-    func changeIso() {
+    func changeResolution(width: Int, height: Int) {
+        print("change to" + width.description, height.description)
         try? videoCaptureDevice.lockForConfiguration()
+        
+        assetWriter = nil
+        prepareRecorder()
+        
+        videoCaptureDevice.unlockForConfiguration()
+    }
+    
+    func changeISO(iso: Int) {
+        try? videoCaptureDevice.lockForConfiguration()
+        
+        videoCaptureDevice.unlockForConfiguration()
+        
+    }
+    
+    func changeFPS(fps: Int) {
+        try? videoCaptureDevice.lockForConfiguration()
+        
+        videoCaptureDevice.activeVideoMinFrameDuration = CMTimeMake(value: 1, timescale: Int32(fps))
+        videoCaptureDevice.activeVideoMaxFrameDuration = CMTimeMake(value: 1, timescale: Int32(fps))
+        
+        videoCaptureDevice.unlockForConfiguration()
+    
     }
     
     
@@ -222,7 +248,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             }
         }
     }
-    
+        
     
     private func getVideoFileURL() -> URL? {
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

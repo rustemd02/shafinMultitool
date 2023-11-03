@@ -17,6 +17,9 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func prepareRecorder()
     func addActor(arView: ARView)
     func finishEditing()
+    func changeResolution()
+    func changeFPS()
+    func fetchSettingsButtonValues() -> SettingsValues
     func changeName(arView: ARView)
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
     func session(_ session: ARSession, didUpdate frame: ARFrame)
@@ -126,11 +129,56 @@ class CameraScreenInteractor {
             }
         }
     }
+    
+    func setDefaultSettings() {
+        let defaultWidth = 3840
+        let defaultHeight = 2160
+        let defaultResolutionDescription = "uhd"
+        let defaultFps = 25
+        let defaultWhiteBalance = 5600
+        let defaultISO = 800
+
+        var width = UserDefaults.standard.integer(forKey: "resolutionWidth")
+        var height = UserDefaults.standard.integer(forKey: "resolutionHeight")
+        var resolutionDescription = UserDefaults.standard.string(forKey: "resolutionDescription")
+        var fps = UserDefaults.standard.integer(forKey: "framerate")
+        var wb = UserDefaults.standard.integer(forKey: "whiteBalance")
+        var iso = UserDefaults.standard.integer(forKey: "iso")
+
+        if width == 0 {
+            width = defaultWidth
+            UserDefaults.standard.set(width, forKey: "resolutionWidth")
+        }
+        if height == 0 {
+            height = defaultHeight
+            UserDefaults.standard.set(height, forKey: "resolutionHeight")
+        }
+        
+        if resolutionDescription == nil {
+            resolutionDescription = defaultResolutionDescription
+            UserDefaults.standard.set(resolutionDescription, forKey: "resolutionDescription")
+        }
+        
+        if fps == 0 {
+            fps = defaultFps
+            UserDefaults.standard.set(fps, forKey: "framerate")
+        }
+        if wb == 0 {
+            wb = defaultWhiteBalance
+            UserDefaults.standard.set(wb, forKey: "whiteBalance")
+        }
+        if iso == 0 {
+            iso = defaultISO
+            UserDefaults.standard.set(iso, forKey: "iso")
+        }
+    }
+
 }
 
 extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     // MARK: - Videorecording
     func prepareRecorder() {
+        setDefaultSettings()
         cameraService.prepareRecorder()
     }
     
@@ -155,6 +203,25 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let minutes = (elapsedTime / 60) % 60
         presenter?.updateStopwatchLabel(formattedTime: String(format: "%02d:%02d", minutes, seconds))
         elapsedTime+=1
+    }
+    
+    func changeResolution() {
+        guard let currResDescription = UserDefaults.standard.string(forKey: "resolutionDescription") else { return }
+        guard let currResEnum = Resolutions.withLabel(currResDescription) else { return }
+        let newResEnum = currResEnum.next()
+        let (width, height) = Converter.shared.resolutionEnumToRawValues(Resolution: newResEnum)
+        UserDefaults.standard.set(width, forKey: "resolutionWidth")
+        UserDefaults.standard.set(height, forKey: "resolutionHeight")
+        UserDefaults.standard.set(String(describing: newResEnum), forKey: "resolutionDescription")
+        cameraService.changeResolution(width: width, height: height)
+    }
+    
+    func changeFPS() {
+        guard let currFPSDescription = UserDefaults.standard.string(forKey: "framerate") else { return }
+        guard let currFPSEnum = FPSValues.withLabel("fps" + currFPSDescription) else { return }
+        let newFPSEnum = currFPSEnum.next()
+        cameraService.changeFPS(fps: newFPSEnum.rawValue)
+        UserDefaults.standard.set(newFPSEnum.rawValue, forKey: "framerate")
     }
     
     func stopRecording() {
@@ -277,6 +344,10 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             _ = self.setTextEntity(parentEntity: selectedEntity, name: result, size: 0.1, color: .green)
         })
         
+    }
+    
+    func fetchSettingsButtonValues() -> SettingsValues {
+        return DBService.shared.fetchSettingsButtonValues()
     }
     
 }

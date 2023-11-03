@@ -25,6 +25,9 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func stopRecording()
     func prepareRecorder()
     func openSettings()
+    func fetchSettingsButtonValues() -> (SettingsValues, String)
+    func changeFPS()
+    func changeResolution()
     
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
@@ -50,6 +53,14 @@ class CameraScreenPresenter {
 extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     func ifChangeNameButtonVisible() -> Bool {
         return ((view?.ifChangeNameButtonVisible()) != nil)
+    }
+    
+    func changeResolution() {
+        interactor.changeResolution()
+    }
+    
+    func changeFPS() {
+        interactor.changeFPS()
     }
     
     func openSettings() {
@@ -114,6 +125,25 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     
     func prepareARView(arView: ARView) {
         interactor.prepareARView(arView: arView)
+    }
+    
+    func fetchSettingsButtonValues() -> (SettingsValues, String) {
+        let settingsValues = interactor.fetchSettingsButtonValues()
+        let resolution = settingsValues.resolution
+        var convertedResolution = ""
+        if ifResolutionsEqual(resolution, [(1280,720)]) {
+            convertedResolution = "HD"
+        } else if ifResolutionsEqual(resolution, [(1920,1080)]) {
+            convertedResolution = "FHD"
+        } else if ifResolutionsEqual(resolution, [(3840,2160)]) {
+            convertedResolution = "4K"
+        }
+        return (settingsValues, convertedResolution)
+        
+    }
+    
+    func ifResolutionsEqual(_ array1: [(width: Int, height: Int)], _ array2: [(width: Int, height: Int)]) -> Bool {
+        return array1.count == array2.count && array1.elementsEqual(array2, by: { $0 == $1 })
     }
     
     
