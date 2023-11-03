@@ -20,6 +20,11 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func changeResolution()
     func changeFPS()
     func fetchSettingsButtonValues() -> SettingsValues
+    
+    func getNumberOfRowsInPickerView(tag: Int) -> Int
+    func titleForRow(row: Int, tag: Int) -> String
+    func didSelectRow(row: Int, tag: Int)
+    
     func changeName(arView: ARView)
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
     func session(_ session: ARSession, didUpdate frame: ARFrame)
@@ -136,7 +141,7 @@ class CameraScreenInteractor {
         let defaultResolutionDescription = "uhd"
         let defaultFps = 25
         let defaultWhiteBalance = 5600
-        let defaultISO = 800
+        let defaultISO = 100
 
         var width = UserDefaults.standard.integer(forKey: "resolutionWidth")
         var height = UserDefaults.standard.integer(forKey: "resolutionHeight")
@@ -224,13 +229,53 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         UserDefaults.standard.set(newFPSEnum.rawValue, forKey: "framerate")
     }
     
+    
     func stopRecording() {
         cameraService.stopRecording()
         timer.invalidate()
+        elapsedTime = 1
         RunLoop.main.perform {
             CFRunLoopStop(CFRunLoopGetCurrent())
         }
-        elapsedTime = 1
+    }
+    
+    // MARK: - PickerView
+    func getNumberOfRowsInPickerView(tag: Int) -> Int {
+        if tag == 1 {
+            return cameraService.getIsoValues().count
+        } else if tag == 2 {
+            return cameraService.getWBValues().count
+        }
+        return 0
+    }
+    
+    func titleForRow(row: Int, tag: Int) -> String {
+        if tag == 1 {
+            return cameraService.getIsoValues()[row].description
+        } else if tag == 2 {
+            return cameraService.getWBValues()[row].description + "K"
+        }
+        return ""
+    }
+    
+    func didSelectRow(row: Int, tag: Int) {
+        if tag == 1 {
+            let isoValue = cameraService.getIsoValues()[row]
+            changeISO(iso: isoValue)
+        } else if tag == 2 {
+            let wbValue = cameraService.getWBValues()[row]
+            changeWB(wb: wbValue)
+        }
+    }
+    
+    func changeISO(iso: Int) {
+        cameraService.changeISO(iso: iso)
+        UserDefaults.standard.set(iso, forKey: "iso")
+    }
+    
+    func changeWB(wb: Int) {
+        cameraService.changeWB(wb: wb)
+        UserDefaults.standard.set(wb, forKey: "whiteBalance")
     }
     
     // MARK: - AR handling functions

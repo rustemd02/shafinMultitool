@@ -24,6 +24,7 @@ class CameraScreenViewController: UIViewController {
     private var ifFinishEditingButtonHidden = true
     
     private var backgroundView = UIView()
+    private let coverView = UIView()
     
     private var arView = ARView()
     private var loadingView = UIView()
@@ -38,8 +39,8 @@ class CameraScreenViewController: UIViewController {
     private let changeFPSButton = UIButton(type: .custom)
     private let changeWBButton = UIButton(type: .custom)
     private let changeISOButton = UIButton(type: .custom)
+    private let settingPickerView = UIPickerView()
     
-    //private let settingsButton = UIButton(type: .custom)
     private let addActorButton = UIButton(type: .custom)
     private let finishEditingButton = UIButton(type: .custom)
     private let changeNameButton = UIButton(type: .custom)
@@ -56,6 +57,8 @@ class CameraScreenViewController: UIViewController {
         presenter?.prepareRecorder()
         arView.session.delegate = self
         tapGesture.delegate = self
+        settingPickerView.dataSource = self
+        settingPickerView.delegate = self
         setupARView(arView: arView)
         setupUI()
         fetchSettingsButtonValues()
@@ -63,9 +66,10 @@ class CameraScreenViewController: UIViewController {
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
         longGesture.minimumPressDuration = 1.7
-        //settingsButton.addTarget(self, action: #selector(settingsButtonPressed), for: .touchUpInside)
         changeResolutionButton.addTarget(self, action: #selector(changeResolutionButtonPressed), for: .touchUpInside)
         changeFPSButton.addTarget(self, action: #selector(changeFPSButtonPressed), for: .touchUpInside)
+        changeISOButton.addTarget(self, action: #selector(changeISOButtonPressed), for: .touchUpInside)
+        changeWBButton.addTarget(self, action: #selector(changeWBButtonPressed), for: .touchUpInside)
         addActorButton.addTarget(self, action: #selector(addActor), for: .touchUpInside)
         finishEditingButton.addTarget(self, action: #selector(finishEditing), for: .touchUpInside)
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
@@ -191,19 +195,6 @@ class CameraScreenViewController: UIViewController {
             make.center.equalTo(stopwatchBackgroundView)
         }
         
-//        backgroundView.addSubview(settingsButton)
-//        settingsButton.backgroundColor = .white.withAlphaComponent(0.5)
-//        settingsButton.layer.cornerRadius = 16
-//        settingsButton.layer.masksToBounds = true
-//        settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
-//        settingsButton.tintColor = .black
-//        settingsButton.snp.makeConstraints { make in
-//            make.width.equalTo(55)
-//            make.height.equalTo(30)
-//            make.top.equalTo(arView.snp_topMargin).offset(20)
-//            make.centerX.equalTo(recordButton.snp_centerXWithinMargins)
-//        }
-        
         loadingAnimation()
     }
     
@@ -280,6 +271,18 @@ class CameraScreenViewController: UIViewController {
             make.centerX.equalTo(changeISOButton.snp.centerX)
         }
         
+        settingsBarBackgroundView.addSubview(coverView)
+        coverView.snp.makeConstraints { make in
+            make.edges.equalTo(settingsBarBackgroundView)
+        }
+        coverView.isHidden = true
+        
+        backgroundView.addSubview(settingPickerView)
+        settingPickerView.isHidden = true
+        settingPickerView.snp.makeConstraints { make in
+            make.rightMargin.equalTo(arView.snp_rightMargin)
+            make.bottomMargin.equalTo(backgroundView.snp_bottomMargin)
+        }
     }
     
     private func fetchSettingsButtonValues() {
@@ -333,6 +336,7 @@ class CameraScreenViewController: UIViewController {
         addActorButton.isHidden = true
         finishEditingButton.isHidden = true
         changeNameButton.isHidden = true
+        coverView.isHidden = false
         //settingsButton.isHidden = true
         stopwatchBackgroundView.isHidden = false
         stopwatchLabel.isHidden = false
@@ -348,6 +352,7 @@ class CameraScreenViewController: UIViewController {
         if !ifFinishEditingButtonHidden {
             finishEditingButton.isHidden = false
         }
+        coverView.isHidden = true
         stopwatchBackgroundView.isHidden = true
         stopwatchLabel.isHidden = true
         //settingsButton.isHidden = false
@@ -366,6 +371,20 @@ class CameraScreenViewController: UIViewController {
     private func changeFPSButtonPressed() {
         presenter?.changeFPS()
         fetchSettingsButtonValues()
+    }
+    
+    @objc
+    private func changeISOButtonPressed() {
+        settingPickerView.tag = 1
+        settingPickerView.reloadAllComponents()
+        settingPickerView.isHidden = false
+    }
+    
+    @objc
+    private func changeWBButtonPressed() {
+        settingPickerView.tag = 2
+        settingPickerView.reloadAllComponents()
+        settingPickerView.isHidden = false
     }
     
     @objc
@@ -453,6 +472,31 @@ extension CameraScreenViewController: ARSessionDelegate {
 extension CameraScreenViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         if let _ = touch.view as? UIButton { return false }
+        fetchSettingsButtonValues()
+        settingPickerView.isHidden = true
         return true
+    }
+}
+
+extension CameraScreenViewController: UIPickerViewDataSource {
+    func numberOfComponents(in pickerView: UIPickerView) -> Int {
+        1
+    }
+    
+    func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
+        guard let numberOfRows = presenter?.getNumberOfRowsInPickerView(tag: settingPickerView.tag) else { return 0 }
+        return numberOfRows
+    }
+    
+    
+}
+
+extension CameraScreenViewController: UIPickerViewDelegate {
+    func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
+        return presenter?.titleForRow(row: row, tag: settingPickerView.tag)
+    }
+    
+    func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
+        presenter?.didSelectRow(row: row, tag: settingPickerView.tag)
     }
 }

@@ -33,6 +33,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var isRecording = false
     private var outputURL: URL?
     
+    var wbValues: [Int] = []
+        
     
     private override init() {
         super.init()
@@ -42,6 +44,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         guard let outputURL = getVideoFileURL() else { return }
         self.outputURL = outputURL
         settingsValues = DBService.shared.fetchSettingsButtonValues()
+        generateWBValues()
         
         assetWriter = try? AVAssetWriter(outputURL: outputURL, fileType: .mov)
         assetWriter.movieFragmentInterval = CMTime.invalid
@@ -210,7 +213,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
     
     func changeResolution(width: Int, height: Int) {
-        print("change to" + width.description, height.description)
         try? videoCaptureDevice.lockForConfiguration()
         
         assetWriter = nil
@@ -221,9 +223,19 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     func changeISO(iso: Int) {
         try? videoCaptureDevice.lockForConfiguration()
+        videoCaptureDevice.setExposureModeCustom(duration: AVCaptureDevice.currentExposureDuration, iso: Float(iso), completionHandler: nil)
         
         videoCaptureDevice.unlockForConfiguration()
         
+    }
+    
+    func changeWB(wb: Int) {
+        try? videoCaptureDevice.lockForConfiguration()
+        guard let (red, green, blue) = Converter.shared.kelvinToWhiteBalanceGains(kelvin: Double(wb)) else { return }
+        print(red, green, blue)
+        videoCaptureDevice.setWhiteBalanceModeLocked(with: AVCaptureDevice.WhiteBalanceGains(redGain: red, greenGain: green, blueGain: blue), completionHandler: nil)
+        
+        videoCaptureDevice.unlockForConfiguration()
     }
     
     func changeFPS(fps: Int) {
@@ -236,6 +248,20 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     }
     
+    func getIsoValues() -> [Int] {
+        return [50,100,200,400,800]
+    }
+    
+    func getWBValues() -> [Int] {
+        return wbValues
+    }
+    
+    func generateWBValues() {
+        wbValues.append(2000)
+        while wbValues.last != 8000 {
+            wbValues.append((wbValues.last ?? 2000) + 100)
+        }
+    }
     
     func saveVideoToLibrary(videoURL: URL) {
         PHPhotoLibrary.shared().performChanges({

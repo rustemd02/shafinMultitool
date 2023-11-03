@@ -29,6 +29,10 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func changeFPS()
     func changeResolution()
     
+    func getNumberOfRowsInPickerView(tag: Int) -> Int
+    func titleForRow(row: Int, tag: Int) -> String
+    func didSelectRow(row: Int, tag: Int)
+    
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
     func ifChangeNameButtonVisible() -> Bool
@@ -61,6 +65,18 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     
     func changeFPS() {
         interactor.changeFPS()
+    }
+    
+    func getNumberOfRowsInPickerView(tag: Int) -> Int {
+        return interactor.getNumberOfRowsInPickerView(tag: tag)
+    }
+    
+    func titleForRow(row: Int, tag: Int) -> String {
+        return interactor.titleForRow(row: row, tag: tag)
+    }
+    
+    func didSelectRow(row: Int, tag: Int) {
+        return interactor.didSelectRow(row: row, tag: tag)
     }
     
     func openSettings() {
