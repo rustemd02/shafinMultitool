@@ -132,8 +132,8 @@ class CameraScreenViewController: UIViewController {
         finishEditingButton.tintColor = .black
         finishEditingButton.snp.makeConstraints { make in
             make.width.height.equalTo(45)
-            make.left.equalTo(addActorButton.snp_rightMargin).offset(20)
-            make.bottom.equalToSuperview().inset(50)
+            make.rightMargin.equalTo(addActorButton.snp_rightMargin).offset(20)
+            make.centerY.equalToSuperview()
         }
         
         
@@ -276,11 +276,14 @@ class CameraScreenViewController: UIViewController {
             make.edges.equalTo(settingsBarBackgroundView)
         }
         coverView.isHidden = true
-        
+
         backgroundView.addSubview(settingPickerView)
         settingPickerView.isHidden = true
+        settingPickerView.setValue(UIColor.white, forKeyPath: "textColor")
+        settingPickerView.backgroundColor = .black.withAlphaComponent(0.4)
+        settingPickerView.layer.cornerRadius = 10
         settingPickerView.snp.makeConstraints { make in
-            make.rightMargin.equalTo(arView.snp_rightMargin)
+            make.rightMargin.equalTo(arView.snp_rightMargin).offset(-12.5)
             make.bottomMargin.equalTo(backgroundView.snp_bottomMargin)
         }
     }
@@ -297,13 +300,6 @@ class CameraScreenViewController: UIViewController {
     
     private func setupARView(arView: ARView) {
         presenter?.prepareARView(arView: arView)
-    }
-    
-    private func loadingAnimation() {
-        UIView.animate(withDuration: 0.5, delay: 3) {
-            self.loadingView.alpha = 0
-            self.loadingLabel.alpha = 0
-        }
     }
     
     @objc
@@ -337,7 +333,6 @@ class CameraScreenViewController: UIViewController {
         finishEditingButton.isHidden = true
         changeNameButton.isHidden = true
         coverView.isHidden = false
-        //settingsButton.isHidden = true
         stopwatchBackgroundView.isHidden = false
         stopwatchLabel.isHidden = false
         stopButton.isHidden = false
@@ -355,7 +350,6 @@ class CameraScreenViewController: UIViewController {
         coverView.isHidden = true
         stopwatchBackgroundView.isHidden = true
         stopwatchLabel.isHidden = true
-        //settingsButton.isHidden = false
         recordButton.isHidden = false
         
         presenter?.stopRecording()
@@ -364,27 +358,27 @@ class CameraScreenViewController: UIViewController {
     @objc
     private func changeResolutionButtonPressed() {
         presenter?.changeResolution()
-        fetchSettingsButtonValues()
+        settingValueAnimation(button: changeResolutionButton)
     }
     
     @objc
     private func changeFPSButtonPressed() {
         presenter?.changeFPS()
-        fetchSettingsButtonValues()
+        settingValueAnimation(button: changeFPSButton)
     }
     
     @objc
     private func changeISOButtonPressed() {
         settingPickerView.tag = 1
         settingPickerView.reloadAllComponents()
-        settingPickerView.isHidden = false
+        pickerViewShowAnimation()
     }
     
     @objc
     private func changeWBButtonPressed() {
         settingPickerView.tag = 2
         settingPickerView.reloadAllComponents()
-        settingPickerView.isHidden = false
+        pickerViewShowAnimation()
     }
     
     @objc
@@ -396,6 +390,51 @@ class CameraScreenViewController: UIViewController {
     private func longTap(_ gesture: UILongPressGestureRecognizer) {
         presenter?.longTap(gesture, arView)
     }
+    
+    // MARK: - Animations
+    private func loadingAnimation() {
+        UIView.animate(withDuration: 0.5, delay: 3) {
+            self.loadingView.alpha = 0
+            self.loadingLabel.alpha = 0
+        }
+    }
+    
+    private func pickerViewShowAnimation() {
+        if !settingPickerView.isHidden { return }
+        
+        settingPickerView.alpha = 0
+        settingPickerView.isHidden = false
+        
+        let startY = view.frame.size.height
+        let finishY = settingPickerView.frame.origin.y
+        settingPickerView.frame.origin.y = startY
+        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut) {
+            self.settingPickerView.alpha = 1
+            self.settingPickerView.frame.origin.y = finishY
+        }
+    }
+    
+    private func pickerViewDismissAnimation() {
+        if settingPickerView.isHidden { return }
+        
+        UIView.animate(withDuration: 0.2) {
+            self.settingPickerView.alpha = 0
+        } completion: { _ in
+            self.settingPickerView.isHidden = true
+        }
+    }
+    
+    private func settingValueAnimation(button: UIButton) {
+        UIView.animate(withDuration: 0.15) {
+            button.alpha = 0
+        } completion: { _ in
+            self.fetchSettingsButtonValues()
+            UIView.animate(withDuration: 0.15) {
+                button.alpha = 1
+            }
+        }
+    }
+    
     
     
 }
@@ -473,7 +512,7 @@ extension CameraScreenViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         if let _ = touch.view as? UIButton { return false }
         fetchSettingsButtonValues()
-        settingPickerView.isHidden = true
+        pickerViewDismissAnimation()
         return true
     }
 }

@@ -223,6 +223,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     func changeISO(iso: Int) {
         try? videoCaptureDevice.lockForConfiguration()
+        
         videoCaptureDevice.setExposureModeCustom(duration: AVCaptureDevice.currentExposureDuration, iso: Float(iso), completionHandler: nil)
         
         videoCaptureDevice.unlockForConfiguration()
@@ -231,9 +232,10 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     func changeWB(wb: Int) {
         try? videoCaptureDevice.lockForConfiguration()
+        
         guard let (red, green, blue) = Converter.shared.kelvinToWhiteBalanceGains(kelvin: Double(wb)) else { return }
         print(red, green, blue)
-        videoCaptureDevice.setWhiteBalanceModeLocked(with: AVCaptureDevice.WhiteBalanceGains(redGain: red, greenGain: green, blueGain: blue), completionHandler: nil)
+        videoCaptureDevice.setWhiteBalanceModeLocked(with: AVCaptureDevice.WhiteBalanceGains(redGain: Float(red), greenGain: Float(green), blueGain: Float(blue)), completionHandler: nil)
         
         videoCaptureDevice.unlockForConfiguration()
     }

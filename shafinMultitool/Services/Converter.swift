@@ -21,23 +21,70 @@ class Converter {
         }
     }
     
-    func kelvinToWhiteBalanceGains(kelvin: Double) -> (red: Float, green: Float, blue: Float)? {
-        let redGain: Float
-        let greenGain: Float
-        let blueGain: Float
-        
-        if kelvin <= 6600 {
-            let temperature = (kelvin - 2000) / 4600.0
-            redGain = 1.0
-            greenGain = Float(max(1.0, min(2.5 - temperature, 1.0)))
-            blueGain = Float(2.5 - temperature)
-        } else {
-            let temperature = (kelvin - 6600) / 3400.0
-            redGain = Float(max(1.0, min(3.5 - temperature, 1.0)))
-            greenGain = 1.0
-            blueGain = 1.0
-        }
-        return (redGain, greenGain, blueGain)
-    }
+    func kelvinToWhiteBalanceGains(kelvin: Double) -> (red: Double, green: Double, blue: Double)? {
+        var r = 0
+        var g = 0
+        var b = 0
 
+        // Температура должна быть в диапазоне от 1000 до 40000 градусов
+        var tmpKelvin = kelvin
+        if tmpKelvin < 1000 { tmpKelvin = 1000 }
+        if tmpKelvin > 40000 { tmpKelvin = 40000 }
+
+        // Все вычисления требуют tmpKelvin / 100, так что можно обойтись однократным преобразованием
+        tmpKelvin = tmpKelvin / 100.0
+
+        // Вычисляем красный
+        if tmpKelvin <= 66 {
+            r = 255
+        } else {
+            // Примечание: значение R-квадрата для этого приближения 0,988
+            var tmpCalc = tmpKelvin - 60.0
+            tmpCalc = 329.698727446 * pow(tmpCalc, -0.1332047592)
+            r = Int(tmpCalc)
+            if r < 0 { r = 0 }
+            if r > 255 { r = 255 }
+        }
+
+        // Затем зелёный
+        if tmpKelvin <= 66 {
+            // Примечание: значение R-квадрата для этого приближения 0,996
+            var tmpCalc = tmpKelvin
+            tmpCalc = 99.4708025861 * log(tmpCalc) - 161.1195681661
+            g = Int(tmpCalc)
+            if g < 0 { g = 0 }
+            if g > 255 { g = 255 }
+        } else {
+            // Примечание: значение R-квадрата для этого приближения 0,987
+            var tmpCalc = tmpKelvin - 60.0
+            tmpCalc = 288.1221695283 * pow(tmpCalc, -0.0755148492)
+            g = Int(tmpCalc)
+            if g < 0 { g = 0 }
+            if g > 255 { g = 255 }
+        }
+
+        // Наконец, синий
+        if tmpKelvin >= 66 {
+            b = 255
+        } else if tmpKelvin <= 19 {
+            b = 0
+        } else {
+            // Примечание: значение R-квадрата для этого приближения 0,998
+            var tmpCalc = tmpKelvin - 10.0
+            tmpCalc = 138.5177312231 * log(tmpCalc) - 305.0447927307
+            b = Int(tmpCalc)
+            if b < 0 { b = 0 }
+            if b > 255 { b = 255 }
+        }
+        let maxColorValue = 255.0
+        let minNormalizedValue = 1.0
+        let maxNormalizedValue = 4.0
+        
+        let normalizedRed = minNormalizedValue + ((Double(r) / maxColorValue) * (maxNormalizedValue - minNormalizedValue))
+        let normalizedGreen = minNormalizedValue + ((Double(g) / maxColorValue) * (maxNormalizedValue - minNormalizedValue))
+        let normalizedBlue = minNormalizedValue + ((Double(b) / maxColorValue) * (maxNormalizedValue - minNormalizedValue))
+        
+        print(normalizedRed,normalizedGreen,normalizedBlue)
+        return (red: normalizedRed, green: normalizedGreen, blue: normalizedBlue)
+    }
 }
