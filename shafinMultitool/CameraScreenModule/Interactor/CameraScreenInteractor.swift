@@ -19,6 +19,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func finishEditing()
     func changeResolution()
     func changeFPS()
+    func focusOnTap(focusPoint: CGPoint)
     func fetchSettingsButtonValues() -> SettingsValues
     
     func getNumberOfRowsInPickerView(tag: Int) -> Int
@@ -393,6 +394,10 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     func fetchSettingsButtonValues() -> SettingsValues {
         return DBService.shared.fetchSettingsButtonValues()
+    }
+    
+    func focusOnTap(focusPoint: CGPoint) {
+        cameraService.focusOnTap(focusPoint: focusPoint)
     }
     
 }

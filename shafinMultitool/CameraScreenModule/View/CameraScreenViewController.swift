@@ -435,6 +435,21 @@ class CameraScreenViewController: UIViewController {
         }
     }
     
+    private func focusPointAnimation(coordinates: CGPoint) {
+        let focusPointView = UIView(frame: CGRect(x: coordinates.x - 50, y: coordinates.y - 50, width: 100, height: 100))
+        focusPointView.layer.borderWidth = 2.0
+        focusPointView.layer.borderColor = UIColor.yellow.cgColor
+        focusPointView.backgroundColor = .clear
+        arView.addSubview(focusPointView)
+        
+        UIView.animate(withDuration: 0.5) {
+            focusPointView.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
+            focusPointView.alpha = 0
+        }
+        
+        
+    }
+    
     
     
 }
@@ -511,12 +526,21 @@ extension CameraScreenViewController: ARSessionDelegate {
 extension CameraScreenViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         if let _ = touch.view as? UIButton { return false }
-        fetchSettingsButtonValues()
+        let touchPoint = touch.location(in: self.view)
+        let arViewTouchPoint = touch.location(in: arView)
+        let focusPoint = CGPoint(x: touchPoint.y / arView.bounds.height, y: touchPoint.x / arView.bounds.width)
+            
+        if settingsBarBackgroundView.frame.contains(touchPoint) {
+            fetchSettingsButtonValues()
+        }
+        presenter?.focusOnTap(focusPoint: focusPoint)
+        focusPointAnimation(coordinates: arViewTouchPoint)
         pickerViewDismissAnimation()
         return true
     }
 }
 
+    // MARK: - PickerView classes
 extension CameraScreenViewController: UIPickerViewDataSource {
     func numberOfComponents(in pickerView: UIPickerView) -> Int {
         1

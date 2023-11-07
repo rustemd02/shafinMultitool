@@ -28,6 +28,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func fetchSettingsButtonValues() -> (SettingsValues, String)
     func changeFPS()
     func changeResolution()
+    func focusOnTap(focusPoint: CGPoint)
     
     func getNumberOfRowsInPickerView(tag: Int) -> Int
     func titleForRow(row: Int, tag: Int) -> String
@@ -61,6 +62,10 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     
     func changeResolution() {
         interactor.changeResolution()
+    }
+    
+    func focusOnTap(focusPoint: CGPoint) {
+        interactor.focusOnTap(focusPoint: focusPoint)
     }
     
     func changeFPS() {

@@ -250,6 +250,18 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     }
     
+    func focusOnTap(focusPoint: CGPoint) {
+        try? videoCaptureDevice.lockForConfiguration()
+        
+        videoCaptureDevice.focusPointOfInterest = focusPoint
+        videoCaptureDevice.focusMode = .autoFocus
+        
+        videoCaptureDevice.exposurePointOfInterest = focusPoint
+        videoCaptureDevice.exposureMode = .autoExpose
+        
+        videoCaptureDevice.unlockForConfiguration()
+    }
+    
     func getIsoValues() -> [Int] {
         return [50,100,200,400,800]
     }
