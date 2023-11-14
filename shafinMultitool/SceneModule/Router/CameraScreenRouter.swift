@@ -9,6 +9,7 @@ import Foundation
 
 protocol CameraScreenRouterProtocol: AnyObject {
     func openSettings()
+    func openScenesOverviewScreen()
 }
 
 class CameraScreenRouter: CameraScreenRouterProtocol {
@@ -17,5 +18,9 @@ class CameraScreenRouter: CameraScreenRouterProtocol {
     func openSettings() {
         let vc = SettingsBuilder.build()
         view?.present(vc, animated: true)
+    }
+    
+    func openScenesOverviewScreen() {
+        view?.navigationController?.popToRootViewController(animated: true)
     }
 }

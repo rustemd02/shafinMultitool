@@ -8,8 +8,10 @@
 import UIKit
 
 class CameraScreenBuilder: UIViewController {
-    static func build() -> CameraScreenViewController {
+    static func build(sceneName: String, newScene: Bool) -> CameraScreenViewController {
         let interactor = CameraScreenInteractor()
+        interactor.sceneName = sceneName
+        interactor.newScene = newScene
         let router = CameraScreenRouter()
         let presenter = CameraScreenPresenter(router: router, interactor: interactor)
         let viewController = CameraScreenViewController()

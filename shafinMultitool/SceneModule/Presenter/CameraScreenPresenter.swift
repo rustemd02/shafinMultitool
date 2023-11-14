@@ -28,6 +28,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func fetchSettingsButtonValues() -> (SettingsValues, String)
     func changeFPS()
     func changeResolution()
+    func goToScenesOverviewScreen(arView: ARView)
     func focusOnTap(focusPoint: CGPoint)
     
     func getNumberOfRowsInPickerView(tag: Int) -> Int
@@ -38,6 +39,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func changeNameButtonVisibility()
     func ifChangeNameButtonVisible() -> Bool
     func updateStopwatchLabel(formattedTime: String)
+    func getCurrentARView() -> ARView?
 
 }
 
@@ -56,8 +58,18 @@ class CameraScreenPresenter {
 
 
 extension CameraScreenPresenter: CameraScreenPresenterProtocol {
+    func getCurrentARView() -> ARView? {
+        return view?.getCurrentARView()
+    }
+    
     func ifChangeNameButtonVisible() -> Bool {
         return ((view?.ifChangeNameButtonVisible()) != nil)
+    }
+    
+    func goToScenesOverviewScreen(arView: ARView) {
+        interactor.goToScenesOverviewScreen(arView: arView) { didSave in
+            self.router.openScenesOverviewScreen()
+        }
     }
     
     func changeResolution() {

@@ -15,8 +15,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = UIWindow(frame: UIScreen.main.bounds)
         window?.windowScene = windowScene
         window?.backgroundColor = .black
-        let vc = CameraScreenBuilder.build()
-        window?.rootViewController = vc
+        let vc = SOModuleBuilder.build()
+        let navigationController = UINavigationController(rootViewController: vc)
+        navigationController.navigationBar.isHidden = true
+        window?.rootViewController = navigationController
         window?.makeKeyAndVisible()
     }
 }

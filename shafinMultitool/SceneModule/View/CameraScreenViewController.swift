@@ -15,6 +15,7 @@ protocol CameraScreenViewProtocol: AnyObject {
     func changeNameButtonVisibility()
     func ifChangeNameButtonVisible() -> Bool
     func updateStopwatchLabel(formattedTime: String)
+    func getCurrentARView() -> ARView?
 }
 
 class CameraScreenViewController: UIViewController {
@@ -34,6 +35,7 @@ class CameraScreenViewController: UIViewController {
     private let longGesture = UILongPressGestureRecognizer()
     
     private let settingsBarBackgroundView = UIView()
+    private let backButton = UIButton(type: .custom)
     private let changeResolutionButton = UIButton(type: .custom)
     private let divider = UILabel()
     private let changeFPSButton = UIButton(type: .custom)
@@ -66,6 +68,7 @@ class CameraScreenViewController: UIViewController {
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
         longGesture.minimumPressDuration = 1.7
+        backButton.addTarget(self, action: #selector(goToScenesOverviewScreen), for: .touchUpInside)
         changeResolutionButton.addTarget(self, action: #selector(changeResolutionButtonPressed), for: .touchUpInside)
         changeFPSButton.addTarget(self, action: #selector(changeFPSButtonPressed), for: .touchUpInside)
         changeISOButton.addTarget(self, action: #selector(changeISOButtonPressed), for: .touchUpInside)
@@ -206,13 +209,21 @@ class CameraScreenViewController: UIViewController {
             make.height.equalTo(37.5)
         }
         
+        settingsBarBackgroundView.addSubview(backButton)
+        backButton.setImage(UIImage(systemName: "arrow.uturn.backward.circle.fill"), for: .normal)
+        backButton.tintColor = .white
+        backButton.snp.makeConstraints { make in
+            make.centerY.equalTo(settingsBarBackgroundView)
+            make.leadingMargin.equalTo(settingsBarBackgroundView.snp_leadingMargin).offset(15)
+        }
+        
         settingsBarBackgroundView.addSubview(changeResolutionButton)
         changeResolutionButton.setTitle("3K", for: .normal)
         changeResolutionButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         changeResolutionButton.setTitleColor(.white, for: .normal)
         changeResolutionButton.snp.makeConstraints { make in
             make.centerY.equalTo(settingsBarBackgroundView)
-            make.leadingMargin.equalTo(settingsBarBackgroundView.snp_leadingMargin).offset(15)
+            make.leadingMargin.equalTo(backButton.snp_trailingMargin).offset(40)
         }
         
         settingsBarBackgroundView.addSubview(divider)
@@ -353,6 +364,11 @@ class CameraScreenViewController: UIViewController {
         recordButton.isHidden = false
         
         presenter?.stopRecording()
+    }
+    
+    @objc
+    private func goToScenesOverviewScreen() {
+        presenter?.goToScenesOverviewScreen(arView: arView)
     }
     
     @objc
@@ -507,6 +523,10 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
             })
         }
         
+    }
+    
+    func getCurrentARView() -> ARView? {
+        return arView
     }
     
 }

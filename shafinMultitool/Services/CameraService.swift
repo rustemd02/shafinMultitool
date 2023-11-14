@@ -58,6 +58,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         
         videoCaptureDevice = AVCaptureDevice.default(for: .video)
         
+        
+        
         videoSettingsUpdate()
 
         audioCaptureDevice = AVCaptureDevice.default(for: .audio)!
@@ -72,6 +74,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             self.audioCaptureSession.commitConfiguration()
             self.audioCaptureSession.startRunning()
         }
+        
         if assetWriter.status != .writing {
             assetWriter.startWriting()
             assetWriter.startSession(atSourceTime: CMTime.zero)

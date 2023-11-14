@@ -19,6 +19,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func finishEditing()
     func changeResolution()
     func changeFPS()
+    func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ())
     func focusOnTap(focusPoint: CGPoint)
     func fetchSettingsButtonValues() -> SettingsValues
     
@@ -26,6 +27,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func titleForRow(row: Int, tag: Int) -> String
     func didSelectRow(row: Int, tag: Int)
     
+    func getCurrentARView() -> ARView?
     func changeName(arView: ARView)
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
     func session(_ session: ARSession, didUpdate frame: ARFrame)
@@ -45,6 +47,9 @@ class CameraScreenInteractor {
     
     private var timer = Timer()
     private var elapsedTime = 1
+    
+    var sceneName: String?
+    var newScene: Bool?
     
     
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) {
@@ -182,6 +187,10 @@ class CameraScreenInteractor {
 }
 
 extension CameraScreenInteractor: CameraScreenInteractorProtocol {
+    func getCurrentARView() -> ARView? {
+        return presenter?.getCurrentARView()
+    }
+    
     // MARK: - Videorecording
     func prepareRecorder() {
         setDefaultSettings()
@@ -189,10 +198,16 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-//        session.getCurrentWorldMap { <#ARWorldMap?#>, <#Error?#> in
-//            <#code#>
-//        }
         cameraService.session(session, didUpdate: frame)
+    }
+    
+    func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ()) {
+        guard let sceneName = sceneName else { return }
+        // возвращаются не те якори, якори без названий
+        arView.session.getCurrentWorldMap { map, _ in
+            try? DBService.shared.saveARWorldMap(map: map, sceneName: sceneName)
+            completion(true)
+        }
     }
     
     
@@ -331,11 +346,33 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     
     func prepareARView(arView: ARView) {
+        guard let sceneName = sceneName else { return }
+        guard let newScene = newScene else { return }
+        
         arView.automaticallyConfigureSession = false
         let configuration = ARWorldTrackingConfiguration()
+        if !newScene {
+            guard let worldMap = DBService.shared.loadARWorldMap(sceneName: sceneName) else { return }
+            print(worldMap)
+            retrieveActorModels(worldMap: worldMap)
+            configuration.initialWorldMap = worldMap
+        }
         configuration.planeDetection = [.horizontal, .vertical]
         configuration.environmentTexturing = .automatic
         arView.session.run(configuration)
+    }
+    
+    func retrieveActorModels(worldMap: ARWorldMap) {
+        let anchors = worldMap.anchors
+        guard let arView = getCurrentARView() else { return }
+        for anchor in anchors {
+            guard let anchorName = anchor.name, anchorName == "Person" else { return }
+            if selectedEntity == nil {
+                placeActor(named: anchorName, for: anchor, arView: arView)
+            } else {
+                addPoint(named: "Circle", for: anchor, arView: arView)
+            }
+        }
     }
     
     func addActor(arView: ARView) {
@@ -345,6 +382,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let anchor = ARAnchor(name: "Person", transform: result.worldTransform)
         arView.session.add(anchor: anchor)
     }
+    
     
     func finishEditing() {
         for pathEntity in pathEntities {
