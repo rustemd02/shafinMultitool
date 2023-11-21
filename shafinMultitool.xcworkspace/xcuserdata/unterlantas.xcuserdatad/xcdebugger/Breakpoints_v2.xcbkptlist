@@ -1539,22 +1539,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "466AE54B-3DB1-49ED-AAD3-265B4EAF50E5"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/Services/DBService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "30"
-            endingLineNumber = "30"
-            landmarkName = "saveARWorldMap(map:sceneName:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "35EA7509-B51C-4B2C-B081-D7A5CF8B406F"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -1731,150 +1715,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "CE25AA2F-4DE1-4925-BBD9-3E6065B168C7"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/Services/DBService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "50"
-            endingLineNumber = "50"
-            landmarkName = "getAllARWorldMapTitles()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "70EE508D-FF45-48AB-9E1C-360F05F3AB69"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/Services/DBService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "35"
-            endingLineNumber = "35"
-            landmarkName = "getAllARWorldMapTitles()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "2F534124-0705-4C86-841A-E2D783E332A7"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/Services/DBService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "43"
-            endingLineNumber = "43"
-            landmarkName = "getAllARWorldMapTitles()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "8E2DAA08-0CCE-4100-BE88-3F1D339D4FF6"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/Services/DBService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "41"
-            endingLineNumber = "41"
-            landmarkName = "getAllARWorldMapTitles()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "B4FD630D-70CC-4E03-B20E-1F5D4470069B"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/Services/DBService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "45"
-            endingLineNumber = "45"
-            landmarkName = "getAllARWorldMapTitles()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "18778E87-ED8D-4275-AEE8-E4DF2E8FE0CA"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/Services/DBService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "47"
-            endingLineNumber = "47"
-            landmarkName = "getAllARWorldMapTitles()"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "8B0BD790-8585-4175-8B26-96F95427D6B3"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "356"
-            endingLineNumber = "356"
-            landmarkName = "prepareARView(arView:)"
-            landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "8B0BD790-8585-4175-8B26-96F95427D6B3 - 95d1f63dc6cb94e6"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "shafinMultitool.CameraScreenInteractor.prepareARView(arView: RealityKit.ARView) -&gt; ()"
-                  moduleName = "shafinMultitool"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "354"
-                  endingLineNumber = "354"
-                  offsetFromSymbolStart = "524">
-               </Location>
-               <Location
-                  uuid = "8B0BD790-8585-4175-8B26-96F95427D6B3 - 95d1f63dc6cb9745"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "shafinMultitool.CameraScreenInteractor.prepareARView(arView: RealityKit.ARView) -&gt; ()"
-                  moduleName = "shafinMultitool"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "357"
-                  endingLineNumber = "357"
-                  offsetFromSymbolStart = "420">
-               </Location>
-            </Locations>
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "EB0508AB-ABEE-4B4D-840C-17A585846774"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -1882,8 +1722,8 @@
             filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "358"
-            endingLineNumber = "358"
+            startingLineNumber = "373"
+            endingLineNumber = "373"
             landmarkName = "prepareARView(arView:)"
             landmarkType = "7">
             <Locations>
@@ -1923,22 +1763,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "98D30522-653C-4CB1-A262-B7EA73F8696C"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "371"
-            endingLineNumber = "371"
-            landmarkName = "retrieveActorModels(worldMap:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "D8FC1E70-CD6D-4268-9B74-4AA72B7E0F34"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -1946,8 +1770,8 @@
             filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "370"
-            endingLineNumber = "370"
+            startingLineNumber = "385"
+            endingLineNumber = "385"
             landmarkName = "retrieveActorModels(worldMap:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -1962,8 +1786,8 @@
             filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "365"
-            endingLineNumber = "365"
+            startingLineNumber = "380"
+            endingLineNumber = "380"
             landmarkName = "retrieveActorModels(worldMap:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -1978,42 +1802,10 @@
             filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "369"
-            endingLineNumber = "369"
+            startingLineNumber = "384"
+            endingLineNumber = "384"
             landmarkName = "retrieveActorModels(worldMap:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "92638D33-E568-45A0-A79C-6DFD72078134 - f1896d26386da605"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "shafinMultitool.CameraScreenInteractor.retrieveActorModels(worldMap: __C.ARWorldMap) -&gt; ()"
-                  moduleName = "shafinMultitool"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "370"
-                  endingLineNumber = "370"
-                  offsetFromSymbolStart = "320">
-               </Location>
-               <Location
-                  uuid = "92638D33-E568-45A0-A79C-6DFD72078134 - f1896d26386da605"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "shafinMultitool.CameraScreenInteractor.retrieveActorModels(worldMap: __C.ARWorldMap) -&gt; ()"
-                  moduleName = "shafinMultitool"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "370"
-                  endingLineNumber = "370"
-                  offsetFromSymbolStart = "540">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -2026,8 +1818,8 @@
             filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "337"
-            endingLineNumber = "337"
+            startingLineNumber = "353"
+            endingLineNumber = "353"
             landmarkName = "session(_:didAdd:arView:)"
             landmarkType = "7">
             <Locations>
@@ -2068,48 +1860,16 @@
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "94ECB657-DFE9-4E11-B816-11A6DDB712C8"
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "338"
-            endingLineNumber = "338"
+            startingLineNumber = "354"
+            endingLineNumber = "354"
             landmarkName = "session(_:didAdd:arView:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "94ECB657-DFE9-4E11-B816-11A6DDB712C8 - 7c990a5e34dd636e"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "shafinMultitool.CameraScreenInteractor.session(_: __C.ARSession, didAdd: Swift.Array&lt;__C.ARAnchor&gt;, arView: RealityKit.ARView) -&gt; ()"
-                  moduleName = "shafinMultitool"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "339"
-                  endingLineNumber = "339"
-                  offsetFromSymbolStart = "516">
-               </Location>
-               <Location
-                  uuid = "94ECB657-DFE9-4E11-B816-11A6DDB712C8 - 7c990a5e34dd9c8f"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "shafinMultitool.CameraScreenInteractor.session(_: __C.ARSession, didAdd: Swift.Array&lt;__C.ARAnchor&gt;, arView: RealityKit.ARView) -&gt; ()"
-                  moduleName = "shafinMultitool"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "338"
-                  endingLineNumber = "338"
-                  offsetFromSymbolStart = "516">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -2173,6 +1933,358 @@
             startingLineNumber = "75"
             endingLineNumber = "75"
             landmarkName = "deleteSceneButtonPressed(_:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "3CFF6C4D-820F-4F26-9998-CA23C8FC33B4"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "382"
+            endingLineNumber = "382"
+            landmarkName = "retrieveActorModels(worldMap:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "1926AEC1-A3B1-42F3-BC5F-5D2DE616F875"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Services/DBService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "70"
+            endingLineNumber = "70"
+            landmarkName = "loadARWorldMap(sceneName:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "C0099825-EE10-40A2-BBC6-6CB299138EAB"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Services/DBService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "71"
+            endingLineNumber = "71"
+            landmarkName = "loadARWorldMap(sceneName:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "B9A6ED58-5AB0-4D27-A5F7-FA75F3F05FA2"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Services/DBService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "61"
+            endingLineNumber = "61"
+            landmarkName = "loadARWorldMap(sceneName:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "612D8A3E-980B-4055-97B5-896517403596"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Services/DBService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "33"
+            endingLineNumber = "33"
+            landmarkName = "saveARWorldMap(map:sceneData:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "0C1CF9E7-88A7-412B-9AD4-8585D668D12F"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Services/DBService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "34"
+            endingLineNumber = "34"
+            landmarkName = "saveARWorldMap(map:sceneData:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "C44DDB75-E0A4-453A-8CB1-910A2DE3ADC7"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Services/DBService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "35"
+            endingLineNumber = "35"
+            landmarkName = "saveARWorldMap(map:sceneData:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "E058C4DC-B50A-46E1-B424-C85F7C77E68F"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Entity/ActorData.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "60"
+            endingLineNumber = "60"
+            landmarkName = "encode(to:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "42B8C426-E9E3-4B3B-90EF-DA6FF8E1D8E8"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/Services/DBService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "73"
+            endingLineNumber = "73"
+            landmarkName = "loadARWorldMap(sceneName:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "9894810B-0335-4345-8D5E-5FF55573C983"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "372"
+            endingLineNumber = "372"
+            landmarkName = "prepareARView(arView:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "97F6D839-3C51-45A9-9A4E-9063CA62F11E"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "370"
+            endingLineNumber = "370"
+            landmarkName = "prepareARView(arView:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "355F4456-5BDF-41A0-ABAA-0EC4F0807D8A"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "132"
+            endingLineNumber = "132"
+            landmarkName = "setColorToModel(entity:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "4B3FE367-3B1F-44D6-8EE1-5EA9B591D810"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "131"
+            endingLineNumber = "131"
+            landmarkName = "setColorToModel(entity:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "0D37F41E-1AD4-4317-855D-4EE1D9A7101D"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "128"
+            endingLineNumber = "128"
+            landmarkName = "CameraScreenInteractor"
+            landmarkType = "3">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "E524A427-22F1-4AE7-A6AF-61114E5ADEF7"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "129"
+            endingLineNumber = "129"
+            landmarkName = "setColorToModel(entity:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "5F2A3F59-E165-4728-89BE-4AE35E7DA82A"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "387"
+            endingLineNumber = "387"
+            landmarkName = "retrieveActorModels(worldMap:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "7DF29B75-6CB1-46CE-85D9-B08B6D578D66"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "388"
+            endingLineNumber = "388"
+            landmarkName = "retrieveActorModels(worldMap:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "2754EC66-70C9-4015-BA78-7AEACC668440"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "70"
+            endingLineNumber = "70"
+            landmarkName = "placeActor(named:for:arView:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "FABC5656-2E62-4CBC-B1D8-84DCB2C31EEF"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "58"
+            endingLineNumber = "58"
+            landmarkName = "placeActor(named:for:arView:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "FABC5656-2E62-4CBC-B1D8-84DCB2C31EEF - 1453e5caa29038f0"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.placeActor(named: Swift.String, for: __C.ARAnchor, arView: RealityKit.ARView) -&gt; Swift.Optional&lt;RealityKit.ModelEntity&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "58"
+                  endingLineNumber = "58"
+                  offsetFromSymbolStart = "356">
+               </Location>
+               <Location
+                  uuid = "FABC5656-2E62-4CBC-B1D8-84DCB2C31EEF - 1453e5caa29038d1"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.placeActor(named: Swift.String, for: __C.ARAnchor, arView: RealityKit.ARView) -&gt; Swift.Optional&lt;RealityKit.ModelEntity&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "59"
+                  endingLineNumber = "59"
+                  offsetFromSymbolStart = "448">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "DD634A7A-FBEA-4F84-8296-5A9A790954F5"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "68"
+            endingLineNumber = "68"
+            landmarkName = "placeActor(named:for:arView:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

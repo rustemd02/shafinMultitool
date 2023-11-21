@@ -22,19 +22,20 @@ class DBService {
         return settingsValues
     }
     
-    func saveARWorldMap(map: ARWorldMap?, sceneName: String) throws {
+    func saveARWorldMap(map: ARWorldMap?, sceneData: SceneData) throws {
         guard let map = map else { return }
-        createARMapsDirectory()
         let arMapsDirectory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false).appendingPathComponent("Scenes")
         
-        let mapURL = arMapsDirectory.appendingPathComponent(sceneName)
-        let data = try NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
-        try data.write(to: mapURL, options: [.atomic])
+        let mapURL = arMapsDirectory.appendingPathComponent(sceneData.name + "_map")
+        let dataMap = try NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
+        try dataMap.write(to: mapURL, options: [.atomic])
+        
+        let sceneDataURL = arMapsDirectory.appendingPathComponent(sceneData.name + "_data")
+        let dataScene = try JSONEncoder().encode(sceneData)
+        try dataScene.write(to: sceneDataURL, options: [.atomic])
     }
     
     func getAllARWorldMapTitles() -> [String]? {
-        //return ["FDSF", "fdsgg", "gdga dajsfdisfj f"]
-        
         do {
             createARMapsDirectory()
             
@@ -44,9 +45,12 @@ class DBService {
             
             var fileNames: [String] = []
             
-            for fileURL in fileURLs {
-                fileNames.append(fileURL.lastPathComponent)
+            for fileURL in fileURLs where fileURL.path.hasSuffix("_map") {
+                let fileName = fileURL.deletingPathExtension().lastPathComponent
+                let cleanFileName = fileName.replacingOccurrences(of: "_map", with: "")
+                fileNames.append(cleanFileName)
             }
+            
             return fileNames
         } catch {
             print(error)
@@ -54,13 +58,19 @@ class DBService {
         }
     }
     
-    func loadARWorldMap(sceneName: String) -> ARWorldMap? {
+    func loadARWorldMap(sceneName: String) -> (ARWorldMap, SceneData)? {
         do {
             let arMapsDirectory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false).appendingPathComponent("Scenes")
-            let mapURL = arMapsDirectory.appendingPathComponent(sceneName)
+            
+            let mapURL = arMapsDirectory.appendingPathComponent(sceneName + "_map")
             let mapData = try Data(contentsOf: mapURL)
-            guard let unarchievedMap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: mapData) else { return nil }
-            return unarchievedMap
+            guard let unarchivedMap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: mapData) else { return nil }
+            
+            let sceneDataURL = arMapsDirectory.appendingPathComponent(sceneName + "_data")
+            let sceneData = try Data(contentsOf: sceneDataURL)
+            let sceneDataDecoded = try JSONDecoder().decode(SceneData.self, from: sceneData)
+            
+            return (unarchivedMap, sceneDataDecoded)
         } catch {
             print("Error loading ARWorldMap: \(error)")
             return nil
@@ -70,11 +80,17 @@ class DBService {
     func deleteMap(with name: String, completion: @escaping (Bool) -> ()) {
         do {
             let arMapsDirectory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false).appendingPathComponent("Scenes")
-            let mapURL = arMapsDirectory.appendingPathComponent(name)
             
+            let mapURL = arMapsDirectory.appendingPathComponent(name + "_map")
             if FileManager.default.fileExists(atPath: mapURL.path) {
                 try FileManager.default.removeItem(at: mapURL)
             }
+            
+            let sceneDataURL = arMapsDirectory.appendingPathComponent(name + "_data")
+            if FileManager.default.fileExists(atPath: sceneDataURL.path) {
+                try FileManager.default.removeItem(at: sceneDataURL)
+            }
+            
             completion(true)
         } catch {
             print(error)

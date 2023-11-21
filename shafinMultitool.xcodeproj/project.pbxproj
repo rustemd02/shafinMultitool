@@ -29,7 +29,8 @@
 		CF8AD3832A12BABB0004B378 /* SettingsRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */; };
 		CF9BD4002AF51456001009B6 /* Converter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD3FF2AF51456001009B6 /* Converter.swift */; };
 		CF9BD4022AF526C7001009B6 /* DBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD4012AF526C7001009B6 /* DBService.swift */; };
-		CFF027952A0AA6710042951B /* ActorEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorEntity.swift */; };
+		CFAEB4092B03F4F700275DD5 /* SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFAEB4082B03F4F700275DD5 /* SceneData.swift */; };
+		CFF027952A0AA6710042951B /* ActorData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorData.swift */; };
 		CFF5C1752AE95329000D7C2A /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF5C1742AE95329000D7C2A /* CameraService.swift */; };
 		CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20729CC876400C3B73E /* AppDelegate.swift */; };
 		CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CFF7B21029CC876500C3B73E /* Assets.xcassets */; };
@@ -65,7 +66,8 @@
 		CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRouter.swift; sourceTree = "<group>"; };
 		CF9BD3FF2AF51456001009B6 /* Converter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Converter.swift; sourceTree = "<group>"; };
 		CF9BD4012AF526C7001009B6 /* DBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DBService.swift; sourceTree = "<group>"; };
-		CFF027942A0AA6710042951B /* ActorEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorEntity.swift; sourceTree = "<group>"; };
+		CFAEB4082B03F4F700275DD5 /* SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneData.swift; sourceTree = "<group>"; };
+		CFF027942A0AA6710042951B /* ActorData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorData.swift; sourceTree = "<group>"; };
 		CFF5C1742AE95329000D7C2A /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFF7B20729CC876400C3B73E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -126,8 +128,9 @@
 		CF506F832A01252F005E959C /* Entity */ = {
 			isa = PBXGroup;
 			children = (
-				CFF027942A0AA6710042951B /* ActorEntity.swift */,
+				CFF027942A0AA6710042951B /* ActorData.swift */,
 				CF09804E2AF153A500DC21F8 /* SettingsValues.swift */,
+				CFAEB4082B03F4F700275DD5 /* SceneData.swift */,
 			);
 			path = Entity;
 			sourceTree = "<group>";
@@ -404,9 +407,10 @@
 				CFF7B22729CC8C7B00C3B73E /* CameraScreenRouter.swift in Sources */,
 				CF8AD3772A12BA5B0004B378 /* SettingsBuilder.swift in Sources */,
 				CF9BD4002AF51456001009B6 /* Converter.swift in Sources */,
+				CFAEB4092B03F4F700275DD5 /* SceneData.swift in Sources */,
 				CF10E5ED29F8211600D3E39A /* SceneDelegate.swift in Sources */,
 				CFF5C1752AE95329000D7C2A /* CameraService.swift in Sources */,
-				CFF027952A0AA6710042951B /* ActorEntity.swift in Sources */,
+				CFF027952A0AA6710042951B /* ActorData.swift in Sources */,
 				CF506F802A010F29005E959C /* Circle.rcproject in Sources */,
 				CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */,
 				CF8AD3832A12BABB0004B378 /* SettingsRouter.swift in Sources */,

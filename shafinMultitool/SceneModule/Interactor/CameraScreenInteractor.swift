@@ -49,36 +49,44 @@ class CameraScreenInteractor {
     private var elapsedTime = 1
     
     var sceneName: String?
+    var sceneData: SceneData?
     var newScene: Bool?
     
     
-    func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) {
+    func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity? {
         let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
-        let color = giveRandomColorToModel(entity: modelEntity)
-        let textEntity = modelEntity.children.first
-        var actor = ActorEntity(id: modelEntity.id, nameEntity: textEntity as! ModelEntity, color: color)
-        guard let raycastCoordinates = raycastCoordinates else { return }
-        actor.coordinates.append(raycastCoordinates)
-        actors.append(actor)
+        //guard let raycastCoordinates = raycastCoordinates else { return nil }
+        if let raycastCoordinates = raycastCoordinates {
+            let color = setRandomColorToModel(entity: modelEntity)
+            guard let actorName = modelEntity.children.first?.name else { return nil }
+            let (red, green, blue, alpha) = Converter.shared.cgFloatValuesFromUIColor(color: color)
+            var actor = ActorData(id: modelEntity.id, name: actorName, red: red, green: green, blue: blue, alpha: alpha)
+            let convertedCoordinates = raycastCoordinates.toArray()
+            actor.coordinates.append(convertedCoordinates)
+            actors.append(actor)
+        }
         actorEntities.append(modelEntity)
         checkOnSelected()
+        return modelEntity
     }
     
-    func addPoint(named entityName: String, for anchor: ARAnchor, arView: ARView) {
-        let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
-        modelEntity.scale = modelEntity.scale - 0.4
-        guard let raycastCoordinates = raycastCoordinates else { return }
-        
+    func addPoint(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity? {
+        let pointEntity = createModel(named: entityName, for: anchor, arView: arView)
+        pointEntity.scale = pointEntity.scale - 0.4
+        guard let raycastCoordinates = raycastCoordinates else { return nil }
+        // придумать как получить актера, кому принадлежит точка, не за О^2
         if let index = actors.firstIndex(where: { $0.id == selectedEntity?.id }) {
             let color = actors[index].color
-            modelEntity.model?.materials = [SimpleMaterial(color: color ?? .white, roughness: 4, isMetallic: true)]
-            actors[index].coordinates.append(raycastCoordinates)
+            pointEntity.model?.materials = [SimpleMaterial(color: color, roughness: 4, isMetallic: true)]
+            let convertedCoordinates = raycastCoordinates.toArray()
+            actors[index].coordinates.append(convertedCoordinates)
             
-            let pathNumberEntity = setTextEntity(parentEntity: modelEntity, name: (actors[index].coordinates.count - 1).description, size: 0.1, color: .white)
+            let pathNumberEntity = setTextEntity(parentEntity: pointEntity, name: (actors[index].coordinates.count - 1).description, size: 0.1, color: .white)
             pathNumberEntity.position.y += 0.3
-            modelEntity.addChild(pathNumberEntity)
+            pointEntity.addChild(pathNumberEntity)
         }
-        pathEntities.append(modelEntity)
+        pathEntities.append(pointEntity)
+        return pointEntity
     }
     
     func createModel(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity {
@@ -104,11 +112,11 @@ class CameraScreenInteractor {
             
             return modelEntity
         }
-
+        
         return ModelEntity()
     }
     
-    func giveRandomColorToModel(entity: ModelEntity) -> UIColor {
+    func setRandomColorToModel(entity: ModelEntity) -> UIColor {
         var newMaterial = SimpleMaterial()
         let red = CGFloat.random(in: 0.1...0.9)
         let green = CGFloat.random(in: 0.1...0.9)
@@ -118,14 +126,32 @@ class CameraScreenInteractor {
         return UIColor(red: red, green: green, blue: blue, alpha: 1.0)
     }
     
+    func setColorToModel(entity: ModelEntity) {
+        var newMaterial = SimpleMaterial()
+        if let actor = sceneData?.actors?.first(where: { actor in
+            actor.id == entity.id
+        }) {
+            let red = actor.red
+            let green = actor.green
+            let blue = actor.blue
+            let alpha = actor.alpha
+            newMaterial.color.tint = UIColor(red: red, green: green, blue: blue, alpha: alpha)
+            entity.model?.materials = [newMaterial]
+        }
+    }
+    
     func setTextEntity(parentEntity: ModelEntity, name: String, size: CGFloat, color: UIColor) -> ModelEntity {
-        let actor = actors.first { actor in
+        var actor = actors.first { actor in
             actor.id == parentEntity.id
         }
+
+        var textEntity = parentEntity.children.first as? ModelEntity
+        
         let text = MeshResource.generateText(name, extrusionDepth: 0.02, font: .boldSystemFont(ofSize: size))
         let shader = SimpleMaterial(color: color, roughness: 10, isMetallic: false)
-        actor?.nameEntity.model?.mesh = text
-        actor?.nameEntity.name = name
+        actor?.name = name
+        textEntity?.model?.mesh = text
+        textEntity?.name = name
         return ModelEntity(mesh: text, materials: [shader])
     }
     
@@ -148,14 +174,14 @@ class CameraScreenInteractor {
         let defaultFps = 25
         let defaultWhiteBalance = 5600
         let defaultISO = 100
-
+        
         var width = UserDefaults.standard.integer(forKey: "resolutionWidth")
         var height = UserDefaults.standard.integer(forKey: "resolutionHeight")
         var resolutionDescription = UserDefaults.standard.string(forKey: "resolutionDescription")
         var fps = UserDefaults.standard.integer(forKey: "framerate")
         var wb = UserDefaults.standard.integer(forKey: "whiteBalance")
         var iso = UserDefaults.standard.integer(forKey: "iso")
-
+        
         if width == 0 {
             width = defaultWidth
             UserDefaults.standard.set(width, forKey: "resolutionWidth")
@@ -183,7 +209,7 @@ class CameraScreenInteractor {
             UserDefaults.standard.set(iso, forKey: "iso")
         }
     }
-
+    
 }
 
 extension CameraScreenInteractor: CameraScreenInteractorProtocol {
@@ -200,16 +226,6 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         cameraService.session(session, didUpdate: frame)
     }
-    
-    func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ()) {
-        guard let sceneName = sceneName else { return }
-        // возвращаются не те якори, якори без названий
-        arView.session.getCurrentWorldMap { map, _ in
-            try? DBService.shared.saveARWorldMap(map: map, sceneName: sceneName)
-            completion(true)
-        }
-    }
-    
     
     func startRecording() {
         timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
@@ -334,16 +350,15 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) {
         for anchor in anchors {
-            guard let anchorName = anchor.name, anchorName == "Person" else { return }
-            if selectedEntity == nil {
-                placeActor(named: anchorName, for: anchor, arView: arView)
+            guard let anchorName = anchor.name, anchorName == "Person" || anchorName == "Circle" else { return }
+            if anchorName == "Person" {
+                _ = placeActor(named: anchorName, for: anchor, arView: arView)
             } else {
-                addPoint(named: "Circle", for: anchor, arView: arView)
+                _ = addPoint(named: anchorName, for: anchor, arView: arView)
             }
             
         }
     }
-    
     
     func prepareARView(arView: ARView) {
         guard let sceneName = sceneName else { return }
@@ -352,8 +367,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         arView.automaticallyConfigureSession = false
         let configuration = ARWorldTrackingConfiguration()
         if !newScene {
-            guard let worldMap = DBService.shared.loadARWorldMap(sceneName: sceneName) else { return }
-            print(worldMap)
+            guard let (worldMap, sceneData) = DBService.shared.loadARWorldMap(sceneName: sceneName) else { return }
+            self.sceneData = sceneData
             retrieveActorModels(worldMap: worldMap)
             configuration.initialWorldMap = worldMap
         }
@@ -366,12 +381,26 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let anchors = worldMap.anchors
         guard let arView = getCurrentARView() else { return }
         for anchor in anchors {
-            guard let anchorName = anchor.name, anchorName == "Person" else { return }
-            if selectedEntity == nil {
-                placeActor(named: anchorName, for: anchor, arView: arView)
+            guard let anchorName = anchor.name, anchorName == "Person" || anchorName == "Circle" else { continue }
+            if anchorName == "Person" {
+                let modelEntity = placeActor(named: anchorName, for: anchor, arView: arView)
+                guard let modelEntity = modelEntity else { return }
+                setColorToModel(entity: modelEntity)
             } else {
-                addPoint(named: "Circle", for: anchor, arView: arView)
+                let modelEntity = addPoint(named: anchorName, for: anchor, arView: arView)
+                guard let modelEntity = modelEntity else { return }
+                setColorToModel(entity: modelEntity)
             }
+        }
+    }
+    
+    func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ()) {
+        guard let sceneName = sceneName else { return }
+        let sceneData = SceneData(name: sceneName, actors: actors)
+        arView.session.pause()
+        arView.session.getCurrentWorldMap { map, _ in
+            try? DBService.shared.saveARWorldMap(map: map, sceneData: sceneData)
+            completion(true)
         }
     }
     
@@ -379,8 +408,13 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let results = arView.raycast(from: arView.center, allowing: .estimatedPlane, alignment: .horizontal)
         guard let result = results.first else { return }
         self.raycastCoordinates = result.worldTransform
-        let anchor = ARAnchor(name: "Person", transform: result.worldTransform)
-        arView.session.add(anchor: anchor)
+        if selectedEntity == nil {
+            let anchor = ARAnchor(name: "Person", transform: result.worldTransform)
+            arView.session.add(anchor: anchor)
+        } else {
+            let anchor = ARAnchor(name: "Circle", transform: result.worldTransform)
+            arView.session.add(anchor: anchor)
+        }
     }
     
     
@@ -398,8 +432,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             guard let coordinates = actor?.coordinates else { continue }
             
             for i in 0..<coordinates.count - 1 {
-                let currentPosition = coordinates[i]
-                let destination = coordinates[i+1]
+                let currentPosition = simd_float4x4.fromArray(coordinates[i])
+                let destination = simd_float4x4.fromArray(coordinates[i+1])
                 
                 let x1: Float = currentPosition.columns.0.x
                 let y1: Float = currentPosition.columns.0.z
@@ -411,7 +445,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
                 let duration = distance / speed
                 
                 queue.asyncAfter(deadline: .now() + Double(index) * 1) {
-                    actorEntity.move(to: coordinates[i+1], relativeTo: nil, duration: TimeInterval(duration))
+                    actorEntity.move(to: destination, relativeTo: nil, duration: TimeInterval(duration))
                 }
                 index += 1
             }
@@ -424,8 +458,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     func changeName(arView: ARView) {
         guard let selectedEntity = selectedEntity else { return }
-        presenter?.changeNameAlert(completion: { result in
-            _ = self.setTextEntity(parentEntity: selectedEntity, name: result, size: 0.1, color: .green)
+        presenter?.changeNameAlert(completion: { newName in
+            _ = self.setTextEntity(parentEntity: selectedEntity, name: newName, size: 0.1, color: .green)
         })
         
     }
