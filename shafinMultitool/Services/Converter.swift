@@ -90,7 +90,6 @@ class Converter {
         let normalizedGreen = minNormalizedValue + ((Double(g) / maxColorValue) * (maxNormalizedValue - minNormalizedValue))
         let normalizedBlue = minNormalizedValue + ((Double(b) / maxColorValue) * (maxNormalizedValue - minNormalizedValue))
         
-        print(normalizedRed,normalizedGreen,normalizedBlue)
         return (red: normalizedRed, green: normalizedGreen, blue: normalizedBlue)
     }
 }

@@ -239,7 +239,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         guard let (red, green, blue) = Converter.shared.kelvinToWhiteBalanceGains(kelvin: Double(wb)) else { return }
         print(red, green, blue)
         videoCaptureDevice.setWhiteBalanceModeLocked(with: AVCaptureDevice.WhiteBalanceGains(redGain: Float(red), greenGain: Float(green), blueGain: Float(blue)), completionHandler: nil)
-        
         videoCaptureDevice.unlockForConfiguration()
     }
     

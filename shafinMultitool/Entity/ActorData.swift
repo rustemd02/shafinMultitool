@@ -16,7 +16,7 @@ struct ActorData: Codable {
     var color : UIColor {
         return UIColor(red: red, green: green, blue: blue, alpha: alpha)
     }
-    var coordinates: [[Float]] = [[]]
+    var anchorIDs: [UUID] = []
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -25,7 +25,7 @@ struct ActorData: Codable {
         case green
         case blue
         case alpha
-        case coordinates
+        case anchor_ids
     }
     
     init(id: UInt64, name: String, red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
@@ -45,7 +45,7 @@ struct ActorData: Codable {
         green = try container.decode(CGFloat.self, forKey: .green)
         blue = try container.decode(CGFloat.self, forKey: .blue)
         alpha = try container.decode(CGFloat.self, forKey: .alpha)
-        coordinates = try container.decode([[Float]].self, forKey: .coordinates)
+        anchorIDs = try container.decode([UUID].self, forKey: .anchor_ids)
 
     }
     
@@ -57,7 +57,7 @@ struct ActorData: Codable {
         try container.encode(green, forKey: .green)
         try container.encode(blue, forKey: .blue)
         try container.encode(alpha, forKey: .alpha)
-        try container.encode(coordinates, forKey: .coordinates)
+        try container.encode(anchorIDs, forKey: .anchor_ids)
     }
 }
 

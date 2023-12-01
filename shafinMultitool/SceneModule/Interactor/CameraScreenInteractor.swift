@@ -49,22 +49,24 @@ class CameraScreenInteractor {
     private var elapsedTime = 1
     
     var sceneName: String?
-    var sceneData: SceneData?
     var newScene: Bool?
+
+    var anchors: [ARAnchor] = []
+    var sceneData: SceneData?
     
     
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity? {
         let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
-        //guard let raycastCoordinates = raycastCoordinates else { return nil }
+        
         if let raycastCoordinates = raycastCoordinates {
             let color = setRandomColorToModel(entity: modelEntity)
             guard let actorName = modelEntity.children.first?.name else { return nil }
             let (red, green, blue, alpha) = Converter.shared.cgFloatValuesFromUIColor(color: color)
             var actor = ActorData(id: modelEntity.id, name: actorName, red: red, green: green, blue: blue, alpha: alpha)
-            let convertedCoordinates = raycastCoordinates.toArray()
-            actor.coordinates.append(convertedCoordinates)
+            actor.anchorIDs.append(anchor.identifier)
             actors.append(actor)
         }
+        
         actorEntities.append(modelEntity)
         checkOnSelected()
         return modelEntity
@@ -73,18 +75,20 @@ class CameraScreenInteractor {
     func addPoint(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity? {
         let pointEntity = createModel(named: entityName, for: anchor, arView: arView)
         pointEntity.scale = pointEntity.scale - 0.4
-        guard let raycastCoordinates = raycastCoordinates else { return nil }
-        // придумать как получить актера, кому принадлежит точка, не за О^2
-        if let index = actors.firstIndex(where: { $0.id == selectedEntity?.id }) {
+        let actor = getActorByHisAnchor(anchor: anchor)
+        
+        if let index = actors.firstIndex(where: { $0.anchorIDs.first == selectedEntity?.anchor?.anchorIdentifier ?? actor?.anchorIDs.first }) {
             let color = actors[index].color
             pointEntity.model?.materials = [SimpleMaterial(color: color, roughness: 4, isMetallic: true)]
-            let convertedCoordinates = raycastCoordinates.toArray()
-            actors[index].coordinates.append(convertedCoordinates)
+            if selectedEntity != nil {
+                actors[index].anchorIDs.append(anchor.identifier)
+            }
             
-            let pathNumberEntity = setTextEntity(parentEntity: pointEntity, name: (actors[index].coordinates.count - 1).description, size: 0.1, color: .white)
+            let pathNumberEntity = setTextEntity(parentEntity: pointEntity, name: (actors[index].anchorIDs.count - 1).description, size: 0.1, color: .white)
             pathNumberEntity.position.y += 0.3
             pointEntity.addChild(pathNumberEntity)
         }
+        
         pathEntities.append(pointEntity)
         return pointEntity
     }
@@ -102,8 +106,12 @@ class CameraScreenInteractor {
                 return modelEntity
             }
             
-            let textEntity = setTextEntity(parentEntity: modelEntity, name: "Актёр " + (actors.count + 1).description, size: 0.1, color: .green)
-            textEntity.name = "Актёр " + (actors.count + 1).description
+            var name = "Актёр " + (actors.count + 1).description
+            let actor = getActorByHisAnchor(anchor: anchor)
+            if actor != nil { name = actor?.name ?? name }
+            
+            let textEntity = setTextEntity(parentEntity: modelEntity, name: name, size: 0.1, color: .white)
+            textEntity.name = name
             
             textEntity.position.y += 1.05
             textEntity.position.x -= 0.2
@@ -126,30 +134,36 @@ class CameraScreenInteractor {
         return UIColor(red: red, green: green, blue: blue, alpha: 1.0)
     }
     
-    func setColorToModel(entity: ModelEntity) {
+    func setColorToModel(entity: ModelEntity, anchor: ARAnchor) {
         var newMaterial = SimpleMaterial()
-        if let actor = sceneData?.actors?.first(where: { actor in
-            actor.id == entity.id
-        }) {
-            let red = actor.red
-            let green = actor.green
-            let blue = actor.blue
-            let alpha = actor.alpha
-            newMaterial.color.tint = UIColor(red: red, green: green, blue: blue, alpha: alpha)
-            entity.model?.materials = [newMaterial]
-        }
+        guard let actor = getActorByHisAnchor(anchor: anchor) else { return }
+        
+        let red = actor.red
+        let green = actor.green
+        let blue = actor.blue
+        let alpha = actor.alpha
+        newMaterial.color.tint = UIColor(red: red, green: green, blue: blue, alpha: alpha)
+        entity.model?.materials = [newMaterial]
     }
     
     func setTextEntity(parentEntity: ModelEntity, name: String, size: CGFloat, color: UIColor) -> ModelEntity {
         var actor = actors.first { actor in
-            actor.id == parentEntity.id
+            actor.anchorIDs.first == parentEntity.anchor?.anchorIdentifier
+        }
+        
+        if actor == nil {
+            actor = actors.first { actor in
+                actor.id == parentEntity.id
+            }
         }
 
-        var textEntity = parentEntity.children.first as? ModelEntity
+        let textEntity = parentEntity.children.first as? ModelEntity
         
         let text = MeshResource.generateText(name, extrusionDepth: 0.02, font: .boldSystemFont(ofSize: size))
         let shader = SimpleMaterial(color: color, roughness: 10, isMetallic: false)
-        actor?.name = name
+        if let index = actors.firstIndex(where: { $0.id == actor?.id }) {
+            actors[index].name = name
+        }
         textEntity?.model?.mesh = text
         textEntity?.name = name
         return ModelEntity(mesh: text, materials: [shader])
@@ -165,6 +179,18 @@ class CameraScreenInteractor {
                 textEntity?.model?.materials = [SimpleMaterial(color: .white, roughness: 4, isMetallic: true)]
             }
         }
+    }
+    
+    func getActorByHisAnchor(anchor: ARAnchor) -> ActorData? {
+        guard let sceneData = sceneData, let actors = sceneData.actors else { return nil }
+        for actor in actors {
+            for anchorID in actor.anchorIDs {
+                if anchorID == anchor.identifier {
+                    return actor
+                }
+            }
+        }
+        return nil
     }
     
     func setDefaultSettings() {
@@ -351,6 +377,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView) {
         for anchor in anchors {
             guard let anchorName = anchor.name, anchorName == "Person" || anchorName == "Circle" else { return }
+            self.anchors.append(anchor)
             if anchorName == "Person" {
                 _ = placeActor(named: anchorName, for: anchor, arView: arView)
             } else {
@@ -369,6 +396,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         if !newScene {
             guard let (worldMap, sceneData) = DBService.shared.loadARWorldMap(sceneName: sceneName) else { return }
             self.sceneData = sceneData
+            actors = sceneData.actors ?? []
             retrieveActorModels(worldMap: worldMap)
             configuration.initialWorldMap = worldMap
         }
@@ -378,18 +406,31 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func retrieveActorModels(worldMap: ARWorldMap) {
-        let anchors = worldMap.anchors
+        let anchors = worldMap.anchors.sorted {
+            switch ($0.name, $1.name) {
+                case let (a?, b?):
+                    return a > b
+                case (.none, .some):
+                    return false
+                case (.some, .none):
+                    return true
+                case (.none, .none):
+                    return false
+                }
+        }
+        
         guard let arView = getCurrentARView() else { return }
         for anchor in anchors {
             guard let anchorName = anchor.name, anchorName == "Person" || anchorName == "Circle" else { continue }
+            self.anchors.append(anchor)
             if anchorName == "Person" {
                 let modelEntity = placeActor(named: anchorName, for: anchor, arView: arView)
                 guard let modelEntity = modelEntity else { return }
-                setColorToModel(entity: modelEntity)
+                setColorToModel(entity: modelEntity, anchor: anchor)
             } else {
                 let modelEntity = addPoint(named: anchorName, for: anchor, arView: arView)
                 guard let modelEntity = modelEntity else { return }
-                setColorToModel(entity: modelEntity)
+                setColorToModel(entity: modelEntity, anchor: anchor)
             }
         }
     }
@@ -397,6 +438,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ()) {
         guard let sceneName = sceneName else { return }
         let sceneData = SceneData(name: sceneName, actors: actors)
+        actors = []
+        self.anchors = []
         arView.session.pause()
         arView.session.getCurrentWorldMap { map, _ in
             try? DBService.shared.saveARWorldMap(map: map, sceneData: sceneData)
@@ -427,13 +470,21 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         var index = 0
         for actorEntity in self.actorEntities {
             let actor = actors.first { actor in
-                actor.id == actorEntity.id
+                actor.anchorIDs.first == actorEntity.anchor?.anchorIdentifier
             }
-            guard let coordinates = actor?.coordinates else { continue }
+            guard let actor = actor else { return }
+            var coordinates: [simd_float4x4] = []
+            for anchorID in actor.anchorIDs {
+                for anchor in anchors {
+                    if anchor.identifier == anchorID {
+                        coordinates.append(anchor.transform)
+                    }
+                }
+            }
             
             for i in 0..<coordinates.count - 1 {
-                let currentPosition = simd_float4x4.fromArray(coordinates[i])
-                let destination = simd_float4x4.fromArray(coordinates[i+1])
+                let currentPosition = coordinates[i]
+                let destination = coordinates[i+1]
                 
                 let x1: Float = currentPosition.columns.0.x
                 let y1: Float = currentPosition.columns.0.z
