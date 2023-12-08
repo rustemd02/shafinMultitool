@@ -47,12 +47,14 @@ class SceneInfoCell: UICollectionViewCell {
         }
         
         contentView.addSubview(deleteButton)
-        deleteButton.setImage(UIImage(systemName: "trash.square.fill"), for: .normal)
+        deleteButton.setImage(UIImage(systemName: "trash.circle.fill"), for: .normal)
         deleteButton.tintColor = .black
+        deleteButton.contentVerticalAlignment = .fill
+        deleteButton.contentHorizontalAlignment = .fill
         deleteButton.snp.makeConstraints { make in
-            make.width.height.equalTo(100)
-            make.top.equalTo(contentView.snp.top)
-            make.trailing.equalTo(contentView.snp.trailing)
+            make.width.height.equalTo(30)
+            make.top.equalTo(contentView.snp.top).offset(7)
+            make.trailing.equalTo(contentView.snp.trailing).offset(-7)
         }
     }
     

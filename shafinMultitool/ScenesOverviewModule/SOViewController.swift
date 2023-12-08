@@ -124,7 +124,7 @@ extension SOViewController: UICollectionViewDelegate, UICollectionViewDataSource
             let saveAction = UIAlertAction(title: "Сохранить", style: .default) { _ in
                 guard let nameTextField = alertController.textFields?.first, let newName = nameTextField.text else { return }
                 if self.sceneNames.contains(newName) {
-                    alertController.view.shake()
+                    collectionView.shake()
                     return
                 } else {
                     self.presenter?.loadSceneWithName(title: newName, newScene: true)

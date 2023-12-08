@@ -32,6 +32,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func focusOnTap(focusPoint: CGPoint)
     
     func getNumberOfRowsInPickerView(tag: Int) -> Int
+    func getSelectedRowNumberForPickerView(tag: Int) -> Int
     func titleForRow(row: Int, tag: Int) -> String
     func didSelectRow(row: Int, tag: Int)
     
@@ -86,6 +87,10 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     
     func getNumberOfRowsInPickerView(tag: Int) -> Int {
         return interactor.getNumberOfRowsInPickerView(tag: tag)
+    }
+    
+    func getSelectedRowNumberForPickerView(tag: Int) -> Int {
+        return interactor.getSelectedRowNumberForPickerView(tag: tag)
     }
     
     func titleForRow(row: Int, tag: Int) -> String {

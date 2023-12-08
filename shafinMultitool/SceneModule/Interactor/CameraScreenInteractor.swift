@@ -24,6 +24,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func fetchSettingsButtonValues() -> SettingsValues
     
     func getNumberOfRowsInPickerView(tag: Int) -> Int
+    func getSelectedRowNumberForPickerView(tag: Int) -> Int
     func titleForRow(row: Int, tag: Int) -> String
     func didSelectRow(row: Int, tag: Int)
     
@@ -198,8 +199,8 @@ class CameraScreenInteractor {
         let defaultHeight = 2160
         let defaultResolutionDescription = "uhd"
         let defaultFps = 25
-        let defaultWhiteBalance = 5600
-        let defaultISO = 100
+        let defaultWhiteBalance = 4000
+        let defaultISO = 200
         
         var width = UserDefaults.standard.integer(forKey: "resolutionWidth")
         var height = UserDefaults.standard.integer(forKey: "resolutionHeight")
@@ -303,6 +304,20 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             return cameraService.getIsoValues().count
         } else if tag == 2 {
             return cameraService.getWBValues().count
+        }
+        return 0
+    }
+    
+    func getSelectedRowNumberForPickerView(tag: Int) -> Int {
+        let settingsValues = DBService.shared.fetchSettingsButtonValues()
+        if tag == 1 {
+            return cameraService.getIsoValues().firstIndex { iso in
+                settingsValues.iso == iso
+            }!
+        } else if tag == 2 {
+            return cameraService.getWBValues().firstIndex { wb in
+                settingsValues.wb == wb
+            }!
         }
         return 0
     }

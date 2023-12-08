@@ -236,9 +236,9 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     func changeWB(wb: Int) {
         try? videoCaptureDevice.lockForConfiguration()
         
-        guard let (red, green, blue) = Converter.shared.kelvinToWhiteBalanceGains(kelvin: Double(wb)) else { return }
-        print(red, green, blue)
-        videoCaptureDevice.setWhiteBalanceModeLocked(with: AVCaptureDevice.WhiteBalanceGains(redGain: Float(red), greenGain: Float(green), blueGain: Float(blue)), completionHandler: nil)
+        let newWhiteBalanceValue = AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(temperature: Float(wb), tint: 0.0)
+        videoCaptureDevice.setWhiteBalanceModeLocked(with: videoCaptureDevice.deviceWhiteBalanceGains(for: newWhiteBalanceValue))
+        
         videoCaptureDevice.unlockForConfiguration()
     }
     
@@ -273,9 +273,9 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
     
     func generateWBValues() {
-        wbValues.append(2000)
+        wbValues.append(2400)
         while wbValues.last != 8000 {
-            wbValues.append((wbValues.last ?? 2000) + 100)
+            wbValues.append((wbValues.last ?? 2400) + 100)
         }
     }
     

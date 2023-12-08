@@ -100,22 +100,9 @@ class CameraScreenViewController: UIViewController {
         }
         
         setupSettingsBar()
-        
-        backgroundView.addSubview(loadingView)
-        loadingView.backgroundColor = .black.withAlphaComponent(0.7)
-        loadingView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-        }
-        
-        backgroundView.addSubview(loadingLabel)
-        loadingLabel.textColor = .white
-        loadingLabel.text = "Перемещайте устройство, чтобы начать"
-        loadingLabel.snp.makeConstraints { make in
-            make.center.equalToSuperview()
-        }
-        
+      
         backgroundView.addSubview(addActorButton)
-        addActorButton.backgroundColor = .white.withAlphaComponent(0.5)
+        addActorButton.backgroundColor = .white
         addActorButton.layer.cornerRadius = 37.5
         addActorButton.layer.masksToBounds = true
         addActorButton.setImage(UIImage(systemName: "plus"), for: .normal)
@@ -154,7 +141,7 @@ class CameraScreenViewController: UIViewController {
         changeNameButton.isHidden = true
         
         backgroundView.addSubview(recordButton)
-        recordButton.backgroundColor = .red.withAlphaComponent(0.5)
+        recordButton.backgroundColor = .red
         //recordButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
         recordButton.layer.cornerRadius = 30
         recordButton.layer.masksToBounds = true
@@ -167,7 +154,7 @@ class CameraScreenViewController: UIViewController {
         
         backgroundView.addSubview(stopButton)
         stopButton.isHidden = true
-        stopButton.backgroundColor = .green.withAlphaComponent(0.5)
+        stopButton.backgroundColor = .green
         //stopButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
         stopButton.layer.cornerRadius = 30
         stopButton.layer.masksToBounds = true
@@ -197,6 +184,20 @@ class CameraScreenViewController: UIViewController {
         stopwatchLabel.snp.makeConstraints { make in
             make.center.equalTo(stopwatchBackgroundView)
         }
+        
+        backgroundView.addSubview(loadingView)
+        loadingView.backgroundColor = .black.withAlphaComponent(0.7)
+        loadingView.snp.makeConstraints { make in
+            make.edges.equalToSuperview()
+        }
+        
+        backgroundView.addSubview(loadingLabel)
+        loadingLabel.textColor = .white
+        loadingLabel.text = "Перемещайте устройство, чтобы начать"
+        loadingLabel.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+        }
+        
         
         loadingAnimation()
     }
@@ -300,12 +301,12 @@ class CameraScreenViewController: UIViewController {
     }
     
     private func fetchSettingsButtonValues() {
-        //Анимировать
         guard let (settingsValues, convertedResolution) = presenter?.fetchSettingsButtonValues() else { return }
         changeResolutionButton.setTitle(convertedResolution, for: .normal)
         changeFPSButton.setTitle(settingsValues.fps.description, for: .normal)
         changeWBButton.setTitle(settingsValues.wb.description, for: .normal)
         changeISOButton.setTitle(settingsValues.iso.description, for: .normal)
+
         
     }
     
@@ -387,6 +388,8 @@ class CameraScreenViewController: UIViewController {
     private func changeISOButtonPressed() {
         settingPickerView.tag = 1
         settingPickerView.reloadAllComponents()
+        let selectedRow = presenter?.getSelectedRowNumberForPickerView(tag: 1)
+        settingPickerView.selectRow(selectedRow ?? 0, inComponent: 0, animated: false)
         pickerViewShowAnimation()
     }
     
@@ -394,6 +397,8 @@ class CameraScreenViewController: UIViewController {
     private func changeWBButtonPressed() {
         settingPickerView.tag = 2
         settingPickerView.reloadAllComponents()
+        let selectedRow = presenter?.getSelectedRowNumberForPickerView(tag: 2)
+        settingPickerView.selectRow(selectedRow ?? 0, inComponent: 0, animated: false)
         pickerViewShowAnimation()
     }
     
@@ -462,12 +467,7 @@ class CameraScreenViewController: UIViewController {
             focusPointView.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
             focusPointView.alpha = 0
         }
-        
-        
     }
-    
-    
-    
 }
 
 extension CameraScreenViewController: CameraScreenViewProtocol {
@@ -581,5 +581,6 @@ extension CameraScreenViewController: UIPickerViewDelegate {
     
     func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
         presenter?.didSelectRow(row: row, tag: settingPickerView.tag)
+        self.fetchSettingsButtonValues()
     }
 }
