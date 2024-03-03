@@ -24,11 +24,11 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func startRecording()
     func stopRecording()
     func prepareRecorder()
-    func openSettings()
     func fetchSettingsButtonValues() -> (SettingsValues, String)
     func changeFPS()
     func changeResolution()
     func goToScenesOverviewScreen(arView: ARView)
+    func goToEditScriptScreen(with sceneData: SceneData)
     func focusOnTap(focusPoint: CGPoint)
     
     func getNumberOfRowsInPickerView(tag: Int) -> Int
@@ -36,6 +36,12 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func titleForRow(row: Int, tag: Int) -> String
     func didSelectRow(row: Int, tag: Int)
     
+    func startDialogueRecogniotion(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int)
+    
+    func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int)
+    func updateScript(newScript: String)
+    func reformatScript(script: String) -> (names: [String], phrases: [String])
+    func setSceneData(sceneData: SceneData)
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
     func ifChangeNameButtonVisible() -> Bool
@@ -59,6 +65,33 @@ class CameraScreenPresenter {
 
 
 extension CameraScreenPresenter: CameraScreenPresenterProtocol {
+    
+    func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
+        view?.displayDialogue(names: names, curNameIndex: curNameIndex, phrases: phrases, curPhraseIndex: curPhraseIndex)
+    }
+    
+    func startDialogueRecogniotion(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
+        interactor.startDialogueRecogniotion(names: names, curNameIndex: curNameIndex, phrases: phrases, curPhraseIndex: curPhraseIndex)
+    }
+    
+    func updateScript(newScript: String) {
+        interactor.updateScript(newScript: newScript)
+    }
+    
+    func reformatScript(script: String) -> (names: [String], phrases: [String]) {
+        return interactor.reformatScript(script: script)
+    }
+    
+    func setSceneData(sceneData: SceneData) {
+        view?.setSceneData(sceneData: sceneData)
+    }
+    
+    func goToEditScriptScreen(with sceneData: SceneData) {
+        router.openEditScriptScreen(with: sceneData) { updatedScript in
+            self.interactor.updateScript(newScript: updatedScript)
+        }
+    }
+    
     func getCurrentARView() -> ARView? {
         return view?.getCurrentARView()
     }
@@ -101,9 +134,6 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
         return interactor.didSelectRow(row: row, tag: tag)
     }
     
-    func openSettings() {
-        router.openSettings()
-    }
     
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         interactor.session(session, didUpdate: frame)

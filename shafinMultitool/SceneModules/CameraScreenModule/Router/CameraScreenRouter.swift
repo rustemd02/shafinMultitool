@@ -8,19 +8,20 @@
 import Foundation
 
 protocol CameraScreenRouterProtocol: AnyObject {
-    func openSettings()
+    func openEditScriptScreen(with sceneData: SceneData, newScriptHandler: @escaping (String) -> Void)
     func openScenesOverviewScreen()
 }
 
 class CameraScreenRouter: CameraScreenRouterProtocol {
     weak var view: CameraScreenViewController?
     
-    func openSettings() {
-        let vc = SettingsBuilder.build()
+    func openEditScriptScreen(with sceneData: SceneData, newScriptHandler: @escaping (String) -> Void) {
+        let vc = EditScriptBuilder.build(with: sceneData, newScriptHandler: newScriptHandler)
         view?.present(vc, animated: true)
     }
     
     func openScenesOverviewScreen() {
         view?.navigationController?.popToRootViewController(animated: true)
     }
+    
 }

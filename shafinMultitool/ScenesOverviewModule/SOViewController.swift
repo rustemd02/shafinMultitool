@@ -32,7 +32,7 @@ class SOViewController: UIViewController {
     }
     
     private func setupUI() {
-        view.backgroundColor = .white
+        view.backgroundColor = #colorLiteral(red: 0.1125308201, green: 0.1222153977, blue: 0.1352786422, alpha: 1)
         
         scenesListCollectionView = UICollectionView(frame: .zero, collectionViewLayout: setupFlowLayout())
         scenesListCollectionView.translatesAutoresizingMaskIntoConstraints = false
@@ -44,10 +44,10 @@ class SOViewController: UIViewController {
         view.addSubview(titleName)
         titleName.text = "Выберите сцену:"
         titleName.font = .systemFont(ofSize: 24, weight: .black)
-        titleName.textColor = .black
+        titleName.textColor = .white
         titleName.snp.makeConstraints { make in
             make.leadingMargin.equalTo(view.snp_leadingMargin)
-            make.topMargin.equalTo(view.safeAreaLayoutGuide).offset(25)
+            make.topMargin.equalTo(view.safeAreaLayoutGuide).offset(35)
         }
         
         view.addSubview(scenesListCollectionView)
@@ -110,9 +110,7 @@ extension SOViewController: UICollectionViewDelegate, UICollectionViewDataSource
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard let cell = scenesListCollectionView.dequeueReusableCell(withReuseIdentifier: "\(SceneInfoCell.self)", for: indexPath) as? SceneInfoCell else { return }
-        
-        //guard let sceneName = cell.titleLabel.text else { return }
-    
+            
         if indexPath.item == 0 {
             let alertController = UIAlertController(title: "Введите название новой сцены:", message: nil, preferredStyle: .alert)
             

@@ -26,7 +26,7 @@ class SceneInfoCell: UICollectionViewCell {
         contentView.addSubview(titleLabel)
         self.layer.cornerRadius = 10
         self.layer.borderWidth = 1.0
-        self.layer.borderColor = UIColor.lightGray.cgColor
+        self.layer.borderColor = UIColor.red.cgColor
         
         self.layer.backgroundColor = UIColor.white.cgColor
         self.layer.shadowColor = UIColor.gray.cgColor

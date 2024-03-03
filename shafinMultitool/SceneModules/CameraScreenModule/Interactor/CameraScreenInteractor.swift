@@ -28,6 +28,9 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func titleForRow(row: Int, tag: Int) -> String
     func didSelectRow(row: Int, tag: Int)
     
+    func startDialogueRecogniotion(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int)
+    func updateScript(newScript: String)
+    func reformatScript(script: String) -> (names: [String], phrases: [String])
     func getCurrentARView() -> ARView?
     func changeName(arView: ARView)
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
@@ -44,6 +47,7 @@ class CameraScreenInteractor {
     private var pathEntities: [ModelEntity] = []
     private var selectedEntity: ModelEntity?
     private var cameraService = CameraService.shared
+    private var speechRecognitionService = SpeechRecognitionService.shared
     private var raycastCoordinates: simd_float4x4?
     
     private var timer = Timer()
@@ -51,7 +55,7 @@ class CameraScreenInteractor {
     
     var sceneName: String?
     var newScene: Bool?
-
+    
     var anchors: [ARAnchor] = []
     var sceneData: SceneData?
     
@@ -157,7 +161,7 @@ class CameraScreenInteractor {
                 actor.id == parentEntity.id
             }
         }
-
+        
         let textEntity = parentEntity.children.first as? ModelEntity
         
         let text = MeshResource.generateText(name, extrusionDepth: 0.02, font: .boldSystemFont(ofSize: size))
@@ -401,15 +405,20 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             
         }
     }
-    
+
     func prepareARView(arView: ARView) {
         guard let sceneName = sceneName else { return }
         guard let newScene = newScene else { return }
         
         arView.automaticallyConfigureSession = false
         let configuration = ARWorldTrackingConfiguration()
-        if !newScene {
+        if newScene {
+            let sceneData = SceneData(name: sceneName, actors: actors, script: "")
+            self.sceneData = sceneData
+            presenter?.setSceneData(sceneData: sceneData)
+        } else {
             guard let (worldMap, sceneData) = DBService.shared.loadARWorldMap(sceneName: sceneName) else { return }
+            presenter?.setSceneData(sceneData: sceneData)
             self.sceneData = sceneData
             actors = sceneData.actors ?? []
             retrieveActorModels(worldMap: worldMap)
@@ -423,15 +432,15 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func retrieveActorModels(worldMap: ARWorldMap) {
         let anchors = worldMap.anchors.sorted {
             switch ($0.name, $1.name) {
-                case let (a?, b?):
-                    return a > b
-                case (.none, .some):
-                    return false
-                case (.some, .none):
-                    return true
-                case (.none, .none):
-                    return false
-                }
+            case let (a?, b?):
+                return a > b
+            case (.none, .some):
+                return false
+            case (.some, .none):
+                return true
+            case (.none, .none):
+                return false
+            }
         }
         
         guard let arView = getCurrentARView() else { return }
@@ -451,8 +460,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ()) {
-        guard let sceneName = sceneName else { return }
-        let sceneData = SceneData(name: sceneName, actors: actors)
+        sceneData?.actors = actors
+        guard let sceneData = sceneData else { return }
         actors = []
         self.anchors = []
         arView.session.pause()
@@ -536,6 +545,100 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     func focusOnTap(focusPoint: CGPoint) {
         cameraService.focusOnTap(focusPoint: focusPoint)
+    }
+    
+    func startDialogueRecogniotion(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
+        if speechRecognitionService.task != nil {
+            speechRecognitionService.stopRecognition()
+        }
+        
+        speechRecognitionService.recognise { recognised in
+            let lastTwoWordsRecognised = recognised
+                .split(separator: " ")
+                .suffix(2)
+                .joined(separator: " ")
+                .lowercased()
+            
+            let lastTwoWordsScript = phrases[curPhraseIndex]
+                .split(separator: " ")
+                .suffix(2)
+                .joined(separator: " ")
+                .components(separatedBy: CharacterSet.letters.inverted)
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespaces)
+                .lowercased()
+            
+            if lastTwoWordsScript.elementsEqual(lastTwoWordsRecognised) {
+                var newNameIndex = curNameIndex
+                let newPhraseIndex = curPhraseIndex + 1
+                
+                if newPhraseIndex >= phrases.count { return }
+                
+                if phrases[newPhraseIndex].contains(":") {
+                    newNameIndex += 1
+                }
+                self.presenter?.displayDialogue(names: names, curNameIndex: newNameIndex, phrases: phrases, curPhraseIndex: newPhraseIndex)
+                //self.speechRecognitionService.stopRecognition()
+            }
+            
+        }
+    }
+    
+    func updateScript(newScript: String) {
+        self.sceneData?.script = newScript
+        guard let sceneData = sceneData else { return }
+        presenter?.setSceneData(sceneData: sceneData)
+    }
+    
+    func reformatScript(script: String) -> (names: [String], phrases: [String]) {
+        var currentName: String = ""
+        var currentMessage: String = ""
+        var text = script
+        var names: [String] = []
+        var phrases: [String] = []
+        
+        var readingName = true
+        var nextName = ""
+        var possibleName = false
+        
+        for char in text {
+            if char != ":" && readingName { // Читаем имя
+                if char != " " {
+                    currentName.append(char)
+                }
+                if possibleName { // Допустим новое имя
+                    if (char == " " && !currentName.isEmpty) || char == "," {
+                        possibleName = false
+                        readingName = false
+                        currentName = ""
+                    }
+                    currentMessage.append(char) // На всякий добавляем и как фразу
+                }
+                
+            } else if (char != ":" && char != "." && char != "?" && char != "!") && !readingName { // Читаем фразу
+                currentMessage.append(char)
+                
+            } else { // Двоеточие или зн. препинания
+                if char == ":" {
+                    names.append(currentName)
+                    currentMessage = ""
+                }
+                currentName = ""
+                readingName = false
+                
+                if char != "." && char != "?" && char != "!" {
+                    currentMessage.append(char)
+                    
+                } else {
+                    currentMessage.append(char)
+                    phrases.append(currentMessage)
+                    currentMessage = ""
+                    readingName = true
+                    possibleName = true
+                }
+            }
+        }
+        return (names, phrases)
     }
     
 }

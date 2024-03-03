@@ -10,6 +10,7 @@ import AVKit
 import ARKit
 import RealityKit
 import Photos
+import Vision
 
 class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     //MARK: - Properties
@@ -34,6 +35,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var outputURL: URL?
     
     var wbValues: [Int] = []
+    
+    private let processingQueue = DispatchQueue(label: "processingQueue")
         
     
     private override init() {
@@ -57,8 +60,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         audioCaptureSession.beginConfiguration()
         
         videoCaptureDevice = AVCaptureDevice.default(for: .video)
-        
-        
+        //videoCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
         
         videoSettingsUpdate()
 
@@ -110,7 +112,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         assetWriterVideoInput.expectsMediaDataInRealTime = true
 
         let pixelBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: resolution.width,
             kCVPixelBufferHeightKey as String: resolution.height,
         ]
@@ -152,6 +154,10 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        processingQueue.async {
+            self.gazeDetection(pixelBuffer: frame.capturedImage)
+        }
+
         guard isRecording else {
             return
         }
@@ -159,7 +165,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         let pixelBuffer = frame.capturedImage
         let cmTime = CMTimeMakeWithSeconds(frame.timestamp, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         if startTime == nil {
-            print("yes")
             startTime = cmTime
             assetWriter.startSession(atSourceTime: CMTime.zero)
         }
@@ -171,7 +176,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         
         if assetWriterAudioInput.isReadyForMoreMediaData {
             if pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime) {
-                print("Pixel buffer appended at time \(cmTime)")
             } else {
                 print("Failed to append pixel buffer at time \(cmTime)")
             }
@@ -197,11 +201,64 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
         
         if assetWriterAudioInput.append(syncedBuffer) {
-            print("Audio sample buffer appended at time \(presentationTime)")
         } else {
             print("Failed to append audio sample buffer at time \(presentationTime)")
         }
     }
+     
+    func gazeDetection(pixelBuffer: CVPixelBuffer) {
+        //guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        
+        let request = VNDetectFaceLandmarksRequest { [weak self] request, error in
+            if let error = error {
+                print("Error detecting faces: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let observation = request.results as? [VNFaceObservation] else { return }
+            
+            for face in observation {
+                let leftEye = face.landmarks?.leftEye
+                let rightEye = face.landmarks?.rightEye
+                //print("\ncapture qualtiy " + face.faceCaptureQuality)
+                print("left - " + (leftEye?.normalizedPoints.description ?? ""))
+                print("\nright - " + (rightEye?.normalizedPoints.description ?? ""))
+                
+            }
+        }
+        
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            print("Error performing Vision request: \(error.localizedDescription)")
+        }
+    }
+    
+//    func drawLines() {
+//        let path = UIBezierPath()
+//
+//        for i in 0..<min(leftEyeNormalizedPoints.count, rightEyeNormalizedPoints.count) {
+//            let leftPoint = leftEyeNormalizedPoints[i]
+//            let rightPoint = rightEyeNormalizedPoints[i]
+//
+//            if i == 0 {
+//                path.move(to: CGPoint(x: leftPoint.0, y: leftPoint.1))
+//                path.addLine(to: CGPoint(x: rightPoint.0, y: rightPoint.1))
+//            } else {
+//                path.addLine(to: CGPoint(x: leftPoint.0, y: leftPoint.1))
+//                path.addLine(to: CGPoint(x: rightPoint.0, y: rightPoint.1))
+//            }
+//        }
+//
+//        let shapeLayer = CAShapeLayer()
+//        shapeLayer.path = path.cgPath
+//        shapeLayer.strokeColor = UIColor.red.cgColor
+//        shapeLayer.lineWidth = 2.0
+//        shapeLayer.fillColor = UIColor.clear.cgColor
+//
+//        view.layer.addSublayer(shapeLayer)
+//    }
     
     func switchFlashlight() {
         try? videoCaptureDevice.lockForConfiguration()

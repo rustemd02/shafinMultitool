@@ -14,6 +14,7 @@
 		CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5F129F8238100D3E39A /* RealityKit.framework */; };
 		CF506F802A010F29005E959C /* Circle.rcproject in Sources */ = {isa = PBXBuildFile; fileRef = CF506F7F2A010F29005E959C /* Circle.rcproject */; };
 		CF506F822A011445005E959C /* Person.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF506F812A011445005E959C /* Person.usdz */; };
+		CF5C60412B84C0E100218148 /* shafinMultitoolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */; };
 		CF5E4B1B2AE95A36002A23BE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF5E4B1A2AE95A36002A23BE /* LaunchScreen.storyboard */; };
 		CF7C32AD2AFAB127006FDE39 /* SOViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32AC2AFAB127006FDE39 /* SOViewController.swift */; };
 		CF7C32AF2AFAB132006FDE39 /* SOPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32AE2AFAB132006FDE39 /* SOPresenter.swift */; };
@@ -22,14 +23,15 @@
 		CF7C32B52AFAB268006FDE39 /* SOModuleBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32B42AFAB268006FDE39 /* SOModuleBuilder.swift */; };
 		CF7C32B72B001177006FDE39 /* SceneInfoCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32B62B001177006FDE39 /* SceneInfoCell.swift */; };
 		CF8AD3752A12A9B20004B378 /* Circle.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF8AD3742A12A9B20004B378 /* Circle.usdz */; };
-		CF8AD3772A12BA5B0004B378 /* SettingsBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3762A12BA5B0004B378 /* SettingsBuilder.swift */; };
-		CF8AD37D2A12BA9B0004B378 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37C2A12BA9B0004B378 /* SettingsViewController.swift */; };
-		CF8AD37F2A12BAA80004B378 /* SettingsInteractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37E2A12BAA80004B378 /* SettingsInteractor.swift */; };
-		CF8AD3812A12BAB10004B378 /* SettingsPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3802A12BAB10004B378 /* SettingsPresenter.swift */; };
-		CF8AD3832A12BABB0004B378 /* SettingsRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */; };
+		CF8AD3772A12BA5B0004B378 /* EditScriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3762A12BA5B0004B378 /* EditScriptBuilder.swift */; };
+		CF8AD37D2A12BA9B0004B378 /* EditScriptViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37C2A12BA9B0004B378 /* EditScriptViewController.swift */; };
+		CF8AD37F2A12BAA80004B378 /* EditScriptInteractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37E2A12BAA80004B378 /* EditScriptInteractor.swift */; };
+		CF8AD3812A12BAB10004B378 /* EditScriptPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3802A12BAB10004B378 /* EditScriptPresenter.swift */; };
+		CF8AD3832A12BABB0004B378 /* EditScriptRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */; };
 		CF9BD4002AF51456001009B6 /* Converter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD3FF2AF51456001009B6 /* Converter.swift */; };
 		CF9BD4022AF526C7001009B6 /* DBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD4012AF526C7001009B6 /* DBService.swift */; };
 		CFAEB4092B03F4F700275DD5 /* SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFAEB4082B03F4F700275DD5 /* SceneData.swift */; };
+		CFD45A982B238A2800BEF3C0 /* SpeechRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */; };
 		CFF027952A0AA6710042951B /* ActorData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorData.swift */; };
 		CFF5C1752AE95329000D7C2A /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF5C1742AE95329000D7C2A /* CameraService.swift */; };
 		CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20729CC876400C3B73E /* AppDelegate.swift */; };
@@ -41,6 +43,16 @@
 		CFF7B22929CC8CA400C3B73E /* CameraScreenBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		CF5C60422B84C0E100218148 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CFF7B1FC29CC876400C3B73E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CFF7B20329CC876400C3B73E;
+			remoteInfo = shafinMultitool;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		08C5AE5ADFDF9B02E49CF3EE /* Pods-shafinMultitool.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.release.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.release.xcconfig"; sourceTree = "<group>"; };
 		7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_shafinMultitool.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -50,6 +62,8 @@
 		CF10E5F129F8238100D3E39A /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
 		CF506F7F2A010F29005E959C /* Circle.rcproject */ = {isa = PBXFileReference; lastKnownFileType = file.rcproject; path = Circle.rcproject; sourceTree = "<group>"; };
 		CF506F812A011445005E959C /* Person.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Person.usdz; sourceTree = "<group>"; };
+		CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shafinMultitoolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shafinMultitoolTests.swift; sourceTree = "<group>"; };
 		CF5E4B192AE95618002A23BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CF5E4B1A2AE95A36002A23BE /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		CF7C32AC2AFAB127006FDE39 /* SOViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOViewController.swift; sourceTree = "<group>"; };
@@ -59,14 +73,15 @@
 		CF7C32B42AFAB268006FDE39 /* SOModuleBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOModuleBuilder.swift; sourceTree = "<group>"; };
 		CF7C32B62B001177006FDE39 /* SceneInfoCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneInfoCell.swift; sourceTree = "<group>"; };
 		CF8AD3742A12A9B20004B378 /* Circle.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Circle.usdz; sourceTree = "<group>"; };
-		CF8AD3762A12BA5B0004B378 /* SettingsBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsBuilder.swift; sourceTree = "<group>"; };
-		CF8AD37C2A12BA9B0004B378 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
-		CF8AD37E2A12BAA80004B378 /* SettingsInteractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsInteractor.swift; sourceTree = "<group>"; };
-		CF8AD3802A12BAB10004B378 /* SettingsPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPresenter.swift; sourceTree = "<group>"; };
-		CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRouter.swift; sourceTree = "<group>"; };
+		CF8AD3762A12BA5B0004B378 /* EditScriptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptBuilder.swift; sourceTree = "<group>"; };
+		CF8AD37C2A12BA9B0004B378 /* EditScriptViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptViewController.swift; sourceTree = "<group>"; };
+		CF8AD37E2A12BAA80004B378 /* EditScriptInteractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptInteractor.swift; sourceTree = "<group>"; };
+		CF8AD3802A12BAB10004B378 /* EditScriptPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptPresenter.swift; sourceTree = "<group>"; };
+		CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptRouter.swift; sourceTree = "<group>"; };
 		CF9BD3FF2AF51456001009B6 /* Converter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Converter.swift; sourceTree = "<group>"; };
 		CF9BD4012AF526C7001009B6 /* DBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DBService.swift; sourceTree = "<group>"; };
 		CFAEB4082B03F4F700275DD5 /* SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneData.swift; sourceTree = "<group>"; };
+		CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionService.swift; sourceTree = "<group>"; };
 		CFF027942A0AA6710042951B /* ActorData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorData.swift; sourceTree = "<group>"; };
 		CFF5C1742AE95329000D7C2A /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -81,6 +96,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		CF5C603B2B84C0E100218148 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CFF7B20129CC876400C3B73E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -103,16 +125,28 @@
 			path = Pods;
 			sourceTree = "<group>";
 		};
-		CF10E5D529F412C900D3E39A /* SettingsModule */ = {
+		CF036E752B7E18FF004176BB /* EditScriptModule */ = {
 			isa = PBXGroup;
 			children = (
 				CF8AD37B2A12BA8D0004B378 /* View */,
 				CF8AD37A2A12BA7C0004B378 /* Interactor */,
 				CF8AD3792A12BA6F0004B378 /* Presenter */,
 				CF8AD3782A12BA650004B378 /* Router */,
-				CF8AD3762A12BA5B0004B378 /* SettingsBuilder.swift */,
+				CF8AD3762A12BA5B0004B378 /* EditScriptBuilder.swift */,
 			);
-			path = SettingsModule;
+			path = EditScriptModule;
+			sourceTree = "<group>";
+		};
+		CF036E762B7E190E004176BB /* CameraScreenModule */ = {
+			isa = PBXGroup;
+			children = (
+				CFF7B21F29CC87AE00C3B73E /* Router */,
+				CFF7B21D29CC879E00C3B73E /* Presenter */,
+				CFF7B21C29CC879400C3B73E /* View */,
+				CFF7B21B29CC878F00C3B73E /* Interactor */,
+				CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */,
+			);
+			path = CameraScreenModule;
 			sourceTree = "<group>";
 		};
 		CF10E5EE29F8236100D3E39A /* Frameworks */ = {
@@ -135,6 +169,14 @@
 			path = Entity;
 			sourceTree = "<group>";
 		};
+		CF5C603F2B84C0E100218148 /* shafinMultitoolTests */ = {
+			isa = PBXGroup;
+			children = (
+				CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */,
+			);
+			path = shafinMultitoolTests;
+			sourceTree = "<group>";
+		};
 		CF7C32AB2AFAB0C6006FDE39 /* ScenesOverviewModule */ = {
 			isa = PBXGroup;
 			children = (
@@ -154,6 +196,7 @@
 				CFF5C1742AE95329000D7C2A /* CameraService.swift */,
 				CF9BD3FF2AF51456001009B6 /* Converter.swift */,
 				CF9BD4012AF526C7001009B6 /* DBService.swift */,
+				CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -174,7 +217,7 @@
 		CF8AD3782A12BA650004B378 /* Router */ = {
 			isa = PBXGroup;
 			children = (
-				CF8AD3822A12BABB0004B378 /* SettingsRouter.swift */,
+				CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */,
 			);
 			path = Router;
 			sourceTree = "<group>";
@@ -182,7 +225,7 @@
 		CF8AD3792A12BA6F0004B378 /* Presenter */ = {
 			isa = PBXGroup;
 			children = (
-				CF8AD3802A12BAB10004B378 /* SettingsPresenter.swift */,
+				CF8AD3802A12BAB10004B378 /* EditScriptPresenter.swift */,
 			);
 			path = Presenter;
 			sourceTree = "<group>";
@@ -190,7 +233,7 @@
 		CF8AD37A2A12BA7C0004B378 /* Interactor */ = {
 			isa = PBXGroup;
 			children = (
-				CF8AD37E2A12BAA80004B378 /* SettingsInteractor.swift */,
+				CF8AD37E2A12BAA80004B378 /* EditScriptInteractor.swift */,
 			);
 			path = Interactor;
 			sourceTree = "<group>";
@@ -198,7 +241,7 @@
 		CF8AD37B2A12BA8D0004B378 /* View */ = {
 			isa = PBXGroup;
 			children = (
-				CF8AD37C2A12BA9B0004B378 /* SettingsViewController.swift */,
+				CF8AD37C2A12BA9B0004B378 /* EditScriptViewController.swift */,
 			);
 			path = View;
 			sourceTree = "<group>";
@@ -207,6 +250,7 @@
 			isa = PBXGroup;
 			children = (
 				CFF7B20629CC876400C3B73E /* shafinMultitool */,
+				CF5C603F2B84C0E100218148 /* shafinMultitoolTests */,
 				CFF7B20529CC876400C3B73E /* Products */,
 				CF10E5EE29F8236100D3E39A /* Frameworks */,
 				457F7D83A82BD1A3BB0F89BB /* Pods */,
@@ -217,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				CFF7B20429CC876400C3B73E /* shafinMultitool.app */,
+				CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -229,23 +274,19 @@
 				CF8AD36F2A0D63230004B378 /* Resources */,
 				CF8AD36E2A0D63180004B378 /* Services */,
 				CF506F832A01252F005E959C /* Entity */,
-				CF10E5D529F412C900D3E39A /* SettingsModule */,
-				CFF7B21A29CC878000C3B73E /* SceneModule */,
+				CFF7B21A29CC878000C3B73E /* SceneModules */,
 				CF5E4B1A2AE95A36002A23BE /* LaunchScreen.storyboard */,
 			);
 			path = shafinMultitool;
 			sourceTree = "<group>";
 		};
-		CFF7B21A29CC878000C3B73E /* SceneModule */ = {
+		CFF7B21A29CC878000C3B73E /* SceneModules */ = {
 			isa = PBXGroup;
 			children = (
-				CFF7B21F29CC87AE00C3B73E /* Router */,
-				CFF7B21D29CC879E00C3B73E /* Presenter */,
-				CFF7B21C29CC879400C3B73E /* View */,
-				CFF7B21B29CC878F00C3B73E /* Interactor */,
-				CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */,
+				CF036E762B7E190E004176BB /* CameraScreenModule */,
+				CF036E752B7E18FF004176BB /* EditScriptModule */,
 			);
-			path = SceneModule;
+			path = SceneModules;
 			sourceTree = "<group>";
 		};
 		CFF7B21B29CC878F00C3B73E /* Interactor */ = {
@@ -283,6 +324,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		CF5C603D2B84C0E100218148 /* shafinMultitoolTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CF5C60442B84C0E100218148 /* Build configuration list for PBXNativeTarget "shafinMultitoolTests" */;
+			buildPhases = (
+				CF5C603A2B84C0E100218148 /* Sources */,
+				CF5C603B2B84C0E100218148 /* Frameworks */,
+				CF5C603C2B84C0E100218148 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CF5C60432B84C0E100218148 /* PBXTargetDependency */,
+			);
+			name = shafinMultitoolTests;
+			productName = shafinMultitoolTests;
+			productReference = CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		CFF7B20329CC876400C3B73E /* shafinMultitool */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CFF7B21729CC876500C3B73E /* Build configuration list for PBXNativeTarget "shafinMultitool" */;
@@ -309,9 +368,13 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1420;
+				LastSwiftUpdateCheck = 1520;
 				LastUpgradeCheck = 1420;
 				TargetAttributes = {
+					CF5C603D2B84C0E100218148 = {
+						CreatedOnToolsVersion = 15.2;
+						TestTargetID = CFF7B20329CC876400C3B73E;
+					};
 					CFF7B20329CC876400C3B73E = {
 						CreatedOnToolsVersion = 14.2;
 					};
@@ -333,11 +396,19 @@
 			projectRoot = "";
 			targets = (
 				CFF7B20329CC876400C3B73E /* shafinMultitool */,
+				CF5C603D2B84C0E100218148 /* shafinMultitoolTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		CF5C603C2B84C0E100218148 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CFF7B20229CC876400C3B73E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -394,6 +465,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		CF5C603A2B84C0E100218148 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CF5C60412B84C0E100218148 /* shafinMultitoolTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CFF7B20029CC876400C3B73E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -401,11 +480,11 @@
 				CF7C32B72B001177006FDE39 /* SceneInfoCell.swift in Sources */,
 				CF7C32B32AFAB1B6006FDE39 /* SORouter.swift in Sources */,
 				CF09804F2AF153A500DC21F8 /* SettingsValues.swift in Sources */,
-				CF8AD37F2A12BAA80004B378 /* SettingsInteractor.swift in Sources */,
+				CF8AD37F2A12BAA80004B378 /* EditScriptInteractor.swift in Sources */,
 				CF7C32B12AFAB140006FDE39 /* SOInteractor.swift in Sources */,
 				CFF7B22929CC8CA400C3B73E /* CameraScreenBuilder.swift in Sources */,
 				CFF7B22729CC8C7B00C3B73E /* CameraScreenRouter.swift in Sources */,
-				CF8AD3772A12BA5B0004B378 /* SettingsBuilder.swift in Sources */,
+				CF8AD3772A12BA5B0004B378 /* EditScriptBuilder.swift in Sources */,
 				CF9BD4002AF51456001009B6 /* Converter.swift in Sources */,
 				CFAEB4092B03F4F700275DD5 /* SceneData.swift in Sources */,
 				CF10E5ED29F8211600D3E39A /* SceneDelegate.swift in Sources */,
@@ -413,14 +492,15 @@
 				CFF027952A0AA6710042951B /* ActorData.swift in Sources */,
 				CF506F802A010F29005E959C /* Circle.rcproject in Sources */,
 				CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */,
-				CF8AD3832A12BABB0004B378 /* SettingsRouter.swift in Sources */,
+				CF8AD3832A12BABB0004B378 /* EditScriptRouter.swift in Sources */,
 				CFF7B22129CC87C200C3B73E /* CameraScreenViewController.swift in Sources */,
 				CFF7B22329CC8C6000C3B73E /* CameraScreenPresenter.swift in Sources */,
 				CFF7B22529CC8C7200C3B73E /* CameraScreenInteractor.swift in Sources */,
 				CF7C32AD2AFAB127006FDE39 /* SOViewController.swift in Sources */,
 				CF7C32B52AFAB268006FDE39 /* SOModuleBuilder.swift in Sources */,
-				CF8AD37D2A12BA9B0004B378 /* SettingsViewController.swift in Sources */,
-				CF8AD3812A12BAB10004B378 /* SettingsPresenter.swift in Sources */,
+				CF8AD37D2A12BA9B0004B378 /* EditScriptViewController.swift in Sources */,
+				CF8AD3812A12BAB10004B378 /* EditScriptPresenter.swift in Sources */,
+				CFD45A982B238A2800BEF3C0 /* SpeechRecognitionService.swift in Sources */,
 				CF7C32AF2AFAB132006FDE39 /* SOPresenter.swift in Sources */,
 				CF9BD4022AF526C7001009B6 /* DBService.swift in Sources */,
 			);
@@ -428,7 +508,62 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		CF5C60432B84C0E100218148 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CFF7B20329CC876400C3B73E /* shafinMultitool */;
+			targetProxy = CF5C60422B84C0E100218148 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		CF5C60452B84C0E100218148 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5NAKQ28539;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.vigvamcev-media.shafinMultitoolTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/shafinMultitool.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/shafinMultitool";
+			};
+			name = Debug;
+		};
+		CF5C60462B84C0E100218148 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5NAKQ28539;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.vigvamcev-media.shafinMultitoolTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/shafinMultitool.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/shafinMultitool";
+			};
+			name = Release;
+		};
 		CFF7B21529CC876500C3B73E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -561,6 +696,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на сохранение файлов в галерею";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Для распознавания речи сценария \"Шафин Мультитул\" необходимы права на отправку звука на сервера Apple";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -594,6 +730,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на сохранение файлов в галерею";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Для распознавания речи сценария \"Шафин Мультитул\" необходимы права на отправку звука на сервера Apple";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -616,6 +753,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		CF5C60442B84C0E100218148 /* Build configuration list for PBXNativeTarget "shafinMultitoolTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CF5C60452B84C0E100218148 /* Debug */,
+				CF5C60462B84C0E100218148 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		CFF7B1FF29CC876400C3B73E /* Build configuration list for PBXProject "shafinMultitool" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

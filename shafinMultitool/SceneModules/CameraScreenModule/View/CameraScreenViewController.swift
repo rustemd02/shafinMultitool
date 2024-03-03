@@ -11,6 +11,8 @@ import ARKit
 import SnapKit
 
 protocol CameraScreenViewProtocol: AnyObject {
+    func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int)
+    func setSceneData(sceneData: SceneData)
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeNameButtonVisibility()
     func ifChangeNameButtonVisible() -> Bool
@@ -30,6 +32,7 @@ class CameraScreenViewController: UIViewController {
     private var arView = ARView()
     private var loadingView = UIView()
     private var loadingLabel = UILabel()
+    private var sceneData: SceneData?
     
     private let tapGesture = UITapGestureRecognizer()
     private let longGesture = UILongPressGestureRecognizer()
@@ -39,6 +42,8 @@ class CameraScreenViewController: UIViewController {
     private let changeResolutionButton = UIButton(type: .custom)
     private let divider = UILabel()
     private let changeFPSButton = UIButton(type: .custom)
+    private let changeScriptButtonBackgroundView = UIView()
+    private let changeScriptButton = UIButton(type: .custom)
     private let changeWBButton = UIButton(type: .custom)
     private let changeISOButton = UIButton(type: .custom)
     private let settingPickerView = UIPickerView()
@@ -51,6 +56,9 @@ class CameraScreenViewController: UIViewController {
     
     private let stopwatchBackgroundView = UIView()
     private let stopwatchLabel = UILabel()
+    
+    private var subtitlesNameLabel = UILabel.subtitlesNameLabel(withText: "")
+    private var subtitlesPhraseLabel = UILabel.subtitlesPhraseLabel(withText: "")
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -69,6 +77,7 @@ class CameraScreenViewController: UIViewController {
         longGesture.addTarget(self, action: #selector(longTap))
         longGesture.minimumPressDuration = 1.7
         backButton.addTarget(self, action: #selector(goToScenesOverviewScreen), for: .touchUpInside)
+        changeScriptButton.addTarget(self, action: #selector(changeScriptButtonPressed), for: .touchUpInside)
         changeResolutionButton.addTarget(self, action: #selector(changeResolutionButtonPressed), for: .touchUpInside)
         changeFPSButton.addTarget(self, action: #selector(changeFPSButtonPressed), for: .touchUpInside)
         changeISOButton.addTarget(self, action: #selector(changeISOButtonPressed), for: .touchUpInside)
@@ -99,6 +108,23 @@ class CameraScreenViewController: UIViewController {
             make.height.equalToSuperview()
         }
         
+//        arView.addSubview(subtitlesLabel)
+//        subtitlesLabel.text = sceneData?.script
+//        subtitlesLabel.textColor = .white
+//        subtitlesLabel.numberOfLines = 2
+//        subtitlesLabel.textAlignment = .center
+//        subtitlesLabel.layer.shadowColor = UIColor.black.cgColor
+//        subtitlesLabel.layer.shadowRadius = 3.0
+//        subtitlesLabel.layer.shadowOpacity = 1.0
+//        subtitlesLabel.layer.shadowOffset = CGSize(width: 4, height: 4)
+//        subtitlesLabel.layer.masksToBounds = false
+//        subtitlesLabel.snp.makeConstraints { make in
+//            make.centerX.equalTo(arView)
+//            make.leftMargin.equalTo(arView.snp_leftMargin).inset(45)
+//            make.rightMargin.equalTo(arView.snp_rightMargin).offset(-45)
+//            make.bottomMargin.equalTo(arView.snp_bottomMargin).inset(15)
+//        }
+        
         setupSettingsBar()
       
         backgroundView.addSubview(addActorButton)
@@ -121,9 +147,9 @@ class CameraScreenViewController: UIViewController {
         finishEditingButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
         finishEditingButton.tintColor = .black
         finishEditingButton.snp.makeConstraints { make in
-            make.width.height.equalTo(45)
-            make.rightMargin.equalTo(addActorButton.snp_rightMargin).offset(20)
-            make.centerY.equalToSuperview()
+            make.width.height.equalTo(60)
+            make.topMargin.equalToSuperview()
+            make.centerX.equalTo(addActorButton.snp.centerX)
         }
         
         
@@ -142,10 +168,10 @@ class CameraScreenViewController: UIViewController {
         
         backgroundView.addSubview(recordButton)
         recordButton.backgroundColor = .red
-        //recordButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
+        recordButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
         recordButton.layer.cornerRadius = 30
         recordButton.layer.masksToBounds = true
-        recordButton.tintColor = UIColor.black
+        recordButton.tintColor = UIColor.white
         recordButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
             make.bottomMargin.equalToSuperview()
@@ -245,6 +271,24 @@ class CameraScreenViewController: UIViewController {
             make.leadingMargin.equalTo(divider.snp.trailingMargin).offset(25)
         }
         
+        changeScriptButtonBackgroundView.backgroundColor = .systemBlue.withAlphaComponent(0.8)
+        changeScriptButtonBackgroundView.layer.cornerRadius = 10
+        changeScriptButtonBackgroundView.layer.masksToBounds = true
+        settingsBarBackgroundView.addSubview(changeScriptButtonBackgroundView)
+        changeScriptButtonBackgroundView.snp.makeConstraints { make in
+            make.height.equalTo(30)
+            make.center.equalTo(settingsBarBackgroundView)
+        }
+
+        changeScriptButton.setTitle(sceneData?.name, for: .normal)
+        changeScriptButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
+        changeScriptButtonBackgroundView.addSubview(changeScriptButton)
+        changeScriptButton.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+            make.top.bottom.leading.trailing.equalToSuperview().inset(10)
+        }
+        
+        
         let wbLabel = UILabel()
         wbLabel.text = "WB"
         wbLabel.textColor = .lightGray
@@ -306,8 +350,6 @@ class CameraScreenViewController: UIViewController {
         changeFPSButton.setTitle(settingsValues.fps.description, for: .normal)
         changeWBButton.setTitle(settingsValues.wb.description, for: .normal)
         changeISOButton.setTitle(settingsValues.iso.description, for: .normal)
-
-        
     }
     
     private func setupARView(arView: ARView) {
@@ -333,9 +375,11 @@ class CameraScreenViewController: UIViewController {
         presenter?.changeName(arView: arView)
     }
     
+    
     @objc
-    private func settingsButtonPressed() {
-        presenter?.openSettings()
+    private func changeScriptButtonPressed() {
+        guard let sceneData = sceneData else { return }
+        presenter?.goToEditScriptScreen(with: sceneData)
     }
     
     @objc
@@ -347,6 +391,8 @@ class CameraScreenViewController: UIViewController {
         coverView.isHidden = false
         stopwatchBackgroundView.isHidden = false
         stopwatchLabel.isHidden = false
+        changeScriptButtonBackgroundView.isHidden = true
+        changeScriptButton.isHidden = true
         stopButton.isHidden = false
         
         presenter?.startRecording()
@@ -362,6 +408,8 @@ class CameraScreenViewController: UIViewController {
         coverView.isHidden = true
         stopwatchBackgroundView.isHidden = true
         stopwatchLabel.isHidden = true
+        changeScriptButtonBackgroundView.isHidden = false
+        changeScriptButton.isHidden = false
         recordButton.isHidden = false
         
         presenter?.stopRecording()
@@ -471,6 +519,49 @@ class CameraScreenViewController: UIViewController {
 }
 
 extension CameraScreenViewController: CameraScreenViewProtocol {
+
+    func setSceneData(sceneData: SceneData) {
+        self.sceneData = sceneData
+        changeScriptButton.setTitle(sceneData.name, for: .normal)
+        destroySubtitles()
+        reformatScript(from: sceneData.script ?? "")
+    }
+    
+    func reformatScript(from text: String) {
+        if let result = presenter?.reformatScript(script: text) {
+            let names = result.names
+            let phrases = result.phrases
+            displayDialogue(names: names, curNameIndex: 0, phrases: phrases, curPhraseIndex: 0)
+        }
+    }
+
+    func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
+        if names.isEmpty || phrases.isEmpty { return }
+        
+        subtitlesNameLabel.text = names[curNameIndex] + ":"
+        subtitlesPhraseLabel.text = phrases[curPhraseIndex]
+        
+        let stackView = UIStackView(arrangedSubviews: [subtitlesNameLabel, subtitlesPhraseLabel])
+        stackView.axis = .horizontal
+        stackView.alignment = .leading
+        stackView.distribution = .fill
+        
+        view.addSubview(stackView)
+        
+        stackView.snp.makeConstraints { make in
+            make.centerX.equalToSuperview().offset(-15)
+            make.bottom.equalToSuperview().offset(-30)
+        }
+        
+        presenter?.startDialogueRecogniotion(names: names, curNameIndex: curNameIndex, phrases: phrases, curPhraseIndex: curPhraseIndex)
+        
+    }
+    
+    func destroySubtitles() {
+        subtitlesNameLabel.text = ""
+        subtitlesPhraseLabel.text = ""
+    }
+    
     func ifChangeNameButtonVisible() -> Bool {
         return changeNameButton.isHidden ? true : false
     }
@@ -582,5 +673,29 @@ extension CameraScreenViewController: UIPickerViewDelegate {
     func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
         presenter?.didSelectRow(row: row, tag: settingPickerView.tag)
         self.fetchSettingsButtonValues()
+    }
+}
+
+extension UILabel {
+    static func subtitlesNameLabel(withText text: String?) -> UILabel {
+        let label = UILabel()
+        label.text = text
+        label.font = .boldSystemFont(ofSize: 16)
+        label.textColor = .yellow
+        label.numberOfLines = 2
+        label.textAlignment = .center
+        label.layer.shadowColor = UIColor.black.cgColor
+        label.layer.shadowRadius = 3.0
+        label.layer.shadowOpacity = 1.0
+        label.layer.shadowOffset = CGSize(width: 4, height: 4)
+        label.layer.masksToBounds = false
+        return label
+    }
+    
+    static func subtitlesPhraseLabel(withText text: String?) -> UILabel {
+        let label = subtitlesNameLabel(withText: text)
+        label.font = .systemFont(ofSize: 16)
+        label.textColor = .white
+        return label
     }
 }
