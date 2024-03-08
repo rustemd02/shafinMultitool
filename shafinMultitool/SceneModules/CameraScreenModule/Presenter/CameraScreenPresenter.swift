@@ -43,7 +43,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func reformatScript(script: String) -> (names: [String], phrases: [String])
     func setSceneData(sceneData: SceneData)
     func changeNameAlert(completion: @escaping (String) -> ())
-    func changeNameButtonVisibility()
+    func changeButtonVisibility(buttonName: String)
     func ifChangeNameButtonVisible() -> Bool
     func updateStopwatchLabel(formattedTime: String)
     func getCurrentARView() -> ARView?
@@ -140,8 +140,8 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     }
     
     
-    func changeNameButtonVisibility() {
-        view?.changeNameButtonVisibility()
+    func changeButtonVisibility(buttonName: String) {
+        view?.changeButtonVisibility(buttonName: buttonName)
     }
     
     func changeNameAlert(completion: @escaping (String) -> ()) {

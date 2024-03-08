@@ -14,7 +14,7 @@ protocol CameraScreenViewProtocol: AnyObject {
     func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int)
     func setSceneData(sceneData: SceneData)
     func changeNameAlert(completion: @escaping (String) -> ())
-    func changeNameButtonVisibility()
+    func changeButtonVisibility(buttonName: String)
     func ifChangeNameButtonVisible() -> Bool
     func updateStopwatchLabel(formattedTime: String)
     func getCurrentARView() -> ARView?
@@ -140,18 +140,17 @@ class CameraScreenViewController: UIViewController {
         }
         
         backgroundView.addSubview(finishEditingButton)
-        finishEditingButton.isHidden = true
-        finishEditingButton.backgroundColor = .white.withAlphaComponent(0.5)
-        finishEditingButton.layer.cornerRadius = 22.5
+        if ifFinishEditingButtonHidden { finishEditingButton.isHidden = true }
+        finishEditingButton.backgroundColor = .white
+        finishEditingButton.layer.cornerRadius = 30
         finishEditingButton.layer.masksToBounds = true
         finishEditingButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
         finishEditingButton.tintColor = .black
         finishEditingButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.topMargin.equalToSuperview()
+            make.topMargin.equalToSuperview().offset(7)
             make.centerX.equalTo(addActorButton.snp.centerX)
         }
-        
         
         backgroundView.addSubview(changeNameButton)
         changeNameButton.backgroundColor = .white.withAlphaComponent(0.5)
@@ -223,7 +222,6 @@ class CameraScreenViewController: UIViewController {
         loadingLabel.snp.makeConstraints { make in
             make.center.equalToSuperview()
         }
-        
         
         loadingAnimation()
     }
@@ -538,13 +536,18 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
     func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
         if names.isEmpty || phrases.isEmpty { return }
         
-        subtitlesNameLabel.text = names[curNameIndex] + ":"
+        if curNameIndex > 0 {
+            subtitlesNameLabel.text = names[curNameIndex] + ":"
+        } else {
+            subtitlesNameLabel.text = names[curNameIndex]
+        }
         subtitlesPhraseLabel.text = phrases[curPhraseIndex]
         
         let stackView = UIStackView(arrangedSubviews: [subtitlesNameLabel, subtitlesPhraseLabel])
         stackView.axis = .horizontal
         stackView.alignment = .leading
         stackView.distribution = .fill
+        stackView.spacing = -10
         
         view.addSubview(stackView)
         
@@ -595,25 +598,33 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
         self.arView = arView
     }
     
-    func changeNameButtonVisibility() {
-        changeNameButton.alpha = changeNameButton.isHidden ? 0 : 1
-        changeNameButton.transform = changeNameButton.isHidden ? CGAffineTransform(scaleX: 0.1, y: 0.1) : .identity
+    fileprivate func changeButtonVisibilityAnimation(button: UIButton) {
+        button.alpha = button.isHidden ? 0 : 1
+        button.transform = button.isHidden ? CGAffineTransform(scaleX: 0.1, y: 0.1) : .identity
         
-        if changeNameButton.isHidden {
-            changeNameButton.isHidden = !changeNameButton.isHidden
+        if button.isHidden {
+            button.isHidden = !button.isHidden
             UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut, animations: {
-                self.changeNameButton.alpha = 1
-                self.changeNameButton.transform = .identity
+                button.alpha = 1
+                button.transform = .identity
             })
         } else {
             UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut, animations: {
-                self.changeNameButton.alpha = 0
-                self.changeNameButton.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
+                button.alpha = 0
+                button.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
             }, completion: { _ in
-                self.changeNameButton.isHidden = !self.changeNameButton.isHidden
+                button.isHidden = !button.isHidden
             })
         }
-        
+    }
+    
+    func changeButtonVisibility(buttonName: String) {
+        if buttonName == "changeNameButton" {
+            changeButtonVisibilityAnimation(button: changeNameButton)
+        } else if buttonName == "finishEditingButton" {
+            finishEditingButton.isHidden = false
+            ifFinishEditingButtonHidden = false
+        }
     }
     
     func getCurrentARView() -> ARView? {

@@ -2682,10 +2682,72 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "191"
-            endingLineNumber = "191"
+            startingLineNumber = "199"
+            endingLineNumber = "199"
             landmarkName = "getActorByHisAnchor(anchor:)"
             landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "47B6B487-A3EE-4AEB-A058-0A1538DA23CB - 7b9adef9b1f3b15b"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.getActorByHisAnchor(anchor: __C.ARAnchor) -&gt; Swift.Optional&lt;shafinMultitool.ActorData&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "194"
+                  endingLineNumber = "194"
+                  offsetFromSymbolStart = "496">
+               </Location>
+               <Location
+                  uuid = "47B6B487-A3EE-4AEB-A058-0A1538DA23CB - 7b9adef9b1f3b15b"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.getActorByHisAnchor(anchor: __C.ARAnchor) -&gt; Swift.Optional&lt;shafinMultitool.ActorData&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "194"
+                  endingLineNumber = "194"
+                  offsetFromSymbolStart = "792">
+               </Location>
+               <Location
+                  uuid = "47B6B487-A3EE-4AEB-A058-0A1538DA23CB - 7b9adef9b1f3b23e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.getActorByHisAnchor(anchor: __C.ARAnchor) -&gt; Swift.Optional&lt;shafinMultitool.ActorData&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "199"
+                  endingLineNumber = "199"
+                  offsetFromSymbolStart = "712">
+               </Location>
+               <Location
+                  uuid = "47B6B487-A3EE-4AEB-A058-0A1538DA23CB - 7b9adef9b1f3b23e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.getActorByHisAnchor(anchor: __C.ARAnchor) -&gt; Swift.Optional&lt;shafinMultitool.ActorData&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "199"
+                  endingLineNumber = "199"
+                  offsetFromSymbolStart = "1008">
+               </Location>
+            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -2698,8 +2760,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "398"
-            endingLineNumber = "398"
+            startingLineNumber = "406"
+            endingLineNumber = "406"
             landmarkName = "session(_:didAdd:arView:)"
             landmarkType = "7">
             <Locations>
@@ -2746,8 +2808,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "397"
-            endingLineNumber = "397"
+            startingLineNumber = "405"
+            endingLineNumber = "405"
             landmarkName = "session(_:didAdd:arView:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -2762,8 +2824,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "464"
-            endingLineNumber = "464"
+            startingLineNumber = "474"
+            endingLineNumber = "474"
             landmarkName = "goToScenesOverviewScreen(arView:completion:)"
             landmarkType = "7">
             <Locations>
@@ -2810,8 +2872,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "448"
-            endingLineNumber = "448"
+            startingLineNumber = "458"
+            endingLineNumber = "458"
             landmarkName = "retrieveActorModels(worldMap:)"
             landmarkType = "7">
             <Locations>
@@ -2888,8 +2950,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "450"
-            endingLineNumber = "450"
+            startingLineNumber = "460"
+            endingLineNumber = "460"
             landmarkName = "retrieveActorModels(worldMap:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -2968,8 +3030,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "468"
-            endingLineNumber = "468"
+            startingLineNumber = "479"
+            endingLineNumber = "479"
             landmarkName = "goToScenesOverviewScreen(arView:completion:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -3000,8 +3062,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "480"
-            endingLineNumber = "480"
+            startingLineNumber = "491"
+            endingLineNumber = "491"
             landmarkName = "addActor(arView:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -3016,8 +3078,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "469"
-            endingLineNumber = "469"
+            startingLineNumber = "480"
+            endingLineNumber = "480"
             landmarkName = "goToScenesOverviewScreen(arView:completion:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -3032,8 +3094,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "525"
-            endingLineNumber = "525"
+            startingLineNumber = "523"
+            endingLineNumber = "523"
             landmarkName = "setSceneData(sceneData:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -3048,10 +3110,10 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "530"
-            endingLineNumber = "530"
-            landmarkName = "reformatScript(from:)"
-            landmarkType = "7">
+            startingLineNumber = "528"
+            endingLineNumber = "528"
+            landmarkName = "CameraScreenViewController"
+            landmarkType = "21">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -3393,8 +3455,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "556"
-            endingLineNumber = "556"
+            startingLineNumber = "567"
+            endingLineNumber = "567"
             landmarkName = "startDialogueRecogniotion(names:curNameIndex:phrases:curPhraseIndex:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -3409,8 +3471,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "571"
-            endingLineNumber = "571"
+            startingLineNumber = "582"
+            endingLineNumber = "582"
             landmarkName = "startDialogueRecogniotion(names:curNameIndex:phrases:curPhraseIndex:)"
             landmarkType = "7">
             <Locations>
@@ -3457,8 +3519,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "580"
-            endingLineNumber = "580"
+            startingLineNumber = "591"
+            endingLineNumber = "591"
             landmarkName = "startDialogueRecogniotion(names:curNameIndex:phrases:curPhraseIndex:)"
             landmarkType = "7">
             <Locations>
@@ -3505,8 +3567,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "577"
-            endingLineNumber = "577"
+            startingLineNumber = "588"
+            endingLineNumber = "588"
             landmarkName = "startDialogueRecogniotion(names:curNameIndex:phrases:curPhraseIndex:)"
             landmarkType = "7">
             <Locations>
@@ -3553,10 +3615,314 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "549"
-            endingLineNumber = "549"
+            startingLineNumber = "552"
+            endingLineNumber = "552"
             landmarkName = "displayDialogue(names:curNameIndex:phrases:curPhraseIndex:)"
             landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "388C692A-9A03-44AB-B66B-2335ADBB1868"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "520"
+            endingLineNumber = "520"
+            landmarkName = "finishEditing()"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "388C692A-9A03-44AB-B66B-2335ADBB1868 - a1b1ae757cea3a1a"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.finishEditing() -&gt; ()"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "509"
+                  endingLineNumber = "509"
+                  offsetFromSymbolStart = "2520">
+               </Location>
+               <Location
+                  uuid = "388C692A-9A03-44AB-B66B-2335ADBB1868 - a1b1ae757cea3a1a"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.finishEditing() -&gt; ()"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "509"
+                  endingLineNumber = "509"
+                  offsetFromSymbolStart = "2964">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "85B6091A-2E86-42DC-8DFB-B702C467CC7D"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "430"
+            endingLineNumber = "430"
+            landmarkName = "prepareARView(arView:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "58FA26D2-D884-48A0-93BB-E7148A76B25B"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "525"
+            endingLineNumber = "525"
+            landmarkName = "setSceneData(sceneData:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "57A6DF46-3C1B-4CEF-BC2A-86C6A1C661A2"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "598"
+            endingLineNumber = "598"
+            landmarkName = "updateScript(newScript:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "0A801F21-9154-41EE-80DC-C3DD8963F7BA"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "537"
+            endingLineNumber = "537"
+            landmarkName = "displayDialogue(names:curNameIndex:phrases:curPhraseIndex:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "A0918014-E758-468C-BC82-0A7107AF6531"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "530"
+            endingLineNumber = "530"
+            landmarkName = "reformatScript(from:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "22A822DB-7D00-4B30-B17A-5DBDC55AC7FF"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "529"
+            endingLineNumber = "529"
+            landmarkName = "reformatScript(from:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "22A822DB-7D00-4B30-B17A-5DBDC55AC7FF - cb478173702460b3"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenViewController.reformatScript(from: Swift.String) -&gt; ()"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "529"
+                  endingLineNumber = "529"
+                  offsetFromSymbolStart = "100">
+               </Location>
+               <Location
+                  uuid = "22A822DB-7D00-4B30-B17A-5DBDC55AC7FF - cb478173702460b3"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenViewController.reformatScript(from: Swift.String) -&gt; ()"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "529"
+                  endingLineNumber = "529"
+                  offsetFromSymbolStart = "356">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "3461C1A1-1310-45A8-9D62-771B9F135632"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "202"
+            endingLineNumber = "202"
+            landmarkName = "getActorByHisAnchor(anchor:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "3461C1A1-1310-45A8-9D62-771B9F135632 - 7b9adef9b1f3b2f8"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.getActorByHisAnchor(anchor: __C.ARAnchor) -&gt; Swift.Optional&lt;shafinMultitool.ActorData&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "197"
+                  endingLineNumber = "197"
+                  offsetFromSymbolStart = "1116">
+               </Location>
+               <Location
+                  uuid = "3461C1A1-1310-45A8-9D62-771B9F135632 - 7b9adef9b1f3b253"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenInteractor.getActorByHisAnchor(anchor: __C.ARAnchor) -&gt; Swift.Optional&lt;shafinMultitool.ActorData&gt;"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "202"
+                  endingLineNumber = "202"
+                  offsetFromSymbolStart = "1332">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "F1EB0FA5-68A5-4D37-BA19-9FB8D8846D44"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "602"
+            endingLineNumber = "602"
+            landmarkName = "changeButtonVisibilityAnimation(button:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "54422C2F-9F02-4759-88C1-97F7E001F75F"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "433"
+            endingLineNumber = "433"
+            landmarkName = "prepareARView(arView:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "2FF32C67-8C31-4520-8592-F8F7806E2F61"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "625"
+            endingLineNumber = "625"
+            landmarkName = "changeButtonVisibility(buttonName:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "2FF32C67-8C31-4520-8592-F8F7806E2F61 - feea4d3a01b26222"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenViewController.changeButtonVisibility(buttonName: Swift.String) -&gt; ()"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "625"
+                  endingLineNumber = "625"
+                  offsetFromSymbolStart = "328">
+               </Location>
+               <Location
+                  uuid = "2FF32C67-8C31-4520-8592-F8F7806E2F61 - feea4d3a01b26241"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "shafinMultitool.CameraScreenViewController.changeButtonVisibility(buttonName: Swift.String) -&gt; ()"
+                  moduleName = "shafinMultitool"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "626"
+                  endingLineNumber = "626"
+                  offsetFromSymbolStart = "320">
+               </Location>
+            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

@@ -89,7 +89,10 @@ class CameraScreenInteractor {
                 actors[index].anchorIDs.append(anchor.identifier)
             }
             
-            let pathNumberEntity = setTextEntity(parentEntity: pointEntity, name: (actors[index].anchorIDs.count - 1).description, size: 0.1, color: .white)
+//            let components = entityName.components(separatedBy: "_")
+//            let pathNumberEntityName = components[1]
+            
+            let pathNumberEntity = setTextEntity(parentEntity: pointEntity, name: "", size: 0.1, color: .white)
             pathNumberEntity.position.y += 0.3
             pointEntity.addChild(pathNumberEntity)
         }
@@ -187,8 +190,13 @@ class CameraScreenInteractor {
     }
     
     func getActorByHisAnchor(anchor: ARAnchor) -> ActorData? {
-        guard let sceneData = sceneData, let actors = sceneData.actors else { return nil }
-        for actor in actors {
+        guard let sceneData = sceneData else { return nil }
+        var sceneActors = sceneData.actors
+        if sceneActors == nil {
+            sceneActors = actors
+        }
+        guard let sceneActors = sceneActors else { return nil }
+        for actor in sceneActors {
             for anchorID in actor.anchorIDs {
                 if anchorID == anchor.identifier {
                     return actor
@@ -365,7 +373,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
                     actor.id == tappedEntity.id
                 }
                 if tappedEntity == selectedEntity {
-                    presenter?.changeNameButtonVisibility()
+                    presenter?.changeButtonVisibility(buttonName: "changeNameButton")
                 }
                 selectedEntity = nil
             }
@@ -376,14 +384,14 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let location = gesture.location(in: arView)
         if let tappedEntity = arView.entity(at: location) {
             if tappedEntity == selectedEntity {
-                presenter?.changeNameButtonVisibility()
+                presenter?.changeButtonVisibility(buttonName: "changeNameButton")
                 selectedEntity = nil
                 checkOnSelected()
             } else if actorEntities.contains(where: { entity in
                 tappedEntity == entity
             }) {
                 if selectedEntity == nil {
-                    presenter?.changeNameButtonVisibility()
+                    presenter?.changeButtonVisibility(buttonName: "changeNameButton")
                 }
                 guard let tappedEntity = tappedEntity as? ModelEntity else { return }
                 selectedEntity = tappedEntity
@@ -419,8 +427,10 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         } else {
             guard let (worldMap, sceneData) = DBService.shared.loadARWorldMap(sceneName: sceneName) else { return }
             presenter?.setSceneData(sceneData: sceneData)
+            updateScript(newScript: sceneData.script ?? "")
             self.sceneData = sceneData
             actors = sceneData.actors ?? []
+            if !actors.isEmpty { presenter?.changeButtonVisibility(buttonName: "finishEditingButton") }
             retrieveActorModels(worldMap: worldMap)
             configuration.initialWorldMap = worldMap
         }
@@ -445,7 +455,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         
         guard let arView = getCurrentARView() else { return }
         for anchor in anchors {
-            guard let anchorName = anchor.name, anchorName == "Person" || anchorName == "Circle" else { continue }
+            guard let anchorName = anchor.name, anchorName == "Person" || anchorName.contains("Circle") else { continue }
             self.anchors.append(anchor)
             if anchorName == "Person" {
                 let modelEntity = placeActor(named: anchorName, for: anchor, arView: arView)
@@ -464,6 +474,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         guard let sceneData = sceneData else { return }
         actors = []
         self.anchors = []
+        speechRecognitionService.stopRecognition()
         arView.session.pause()
         arView.session.getCurrentWorldMap { map, _ in
             try? DBService.shared.saveARWorldMap(map: map, sceneData: sceneData)
