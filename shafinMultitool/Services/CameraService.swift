@@ -35,10 +35,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var outputURL: URL?
     
     var wbValues: [Int] = []
-    
-    private let processingQueue = DispatchQueue(label: "processingQueue")
-        
-    
+            
+
     private override init() {
         super.init()
     }
@@ -154,10 +152,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        processingQueue.async {
-            self.gazeDetection(pixelBuffer: frame.capturedImage)
-        }
-
         guard isRecording else {
             return
         }
@@ -206,10 +200,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         }
     }
      
-    func gazeDetection(pixelBuffer: CVPixelBuffer) {
-        //guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        
-        let request = VNDetectFaceLandmarksRequest { [weak self] request, error in
+    func gazeDetection(pixelBuffer: CVPixelBuffer, completion: @escaping ([VNFaceObservation]) -> ()) {
+        let request = VNDetectFaceCaptureQualityRequest { [weak self] request, error in
             if let error = error {
                 print("Error detecting faces: \(error.localizedDescription)")
                 return
@@ -217,14 +209,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             
             guard let observation = request.results as? [VNFaceObservation] else { return }
             
-            for face in observation {
-                let leftEye = face.landmarks?.leftEye
-                let rightEye = face.landmarks?.rightEye
-                //print("\ncapture qualtiy " + face.faceCaptureQuality)
-                print("left - " + (leftEye?.normalizedPoints.description ?? ""))
-                print("\nright - " + (rightEye?.normalizedPoints.description ?? ""))
-                
-            }
+            completion(observation)
         }
         
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
@@ -234,31 +219,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             print("Error performing Vision request: \(error.localizedDescription)")
         }
     }
-    
-//    func drawLines() {
-//        let path = UIBezierPath()
-//
-//        for i in 0..<min(leftEyeNormalizedPoints.count, rightEyeNormalizedPoints.count) {
-//            let leftPoint = leftEyeNormalizedPoints[i]
-//            let rightPoint = rightEyeNormalizedPoints[i]
-//
-//            if i == 0 {
-//                path.move(to: CGPoint(x: leftPoint.0, y: leftPoint.1))
-//                path.addLine(to: CGPoint(x: rightPoint.0, y: rightPoint.1))
-//            } else {
-//                path.addLine(to: CGPoint(x: leftPoint.0, y: leftPoint.1))
-//                path.addLine(to: CGPoint(x: rightPoint.0, y: rightPoint.1))
-//            }
-//        }
-//
-//        let shapeLayer = CAShapeLayer()
-//        shapeLayer.path = path.cgPath
-//        shapeLayer.strokeColor = UIColor.red.cgColor
-//        shapeLayer.lineWidth = 2.0
-//        shapeLayer.fillColor = UIColor.clear.cgColor
-//
-//        view.layer.addSublayer(shapeLayer)
-//    }
     
     func switchFlashlight() {
         try? videoCaptureDevice.lockForConfiguration()

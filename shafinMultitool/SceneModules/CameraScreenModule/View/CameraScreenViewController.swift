@@ -34,6 +34,8 @@ class CameraScreenViewController: UIViewController {
     private var loadingLabel = UILabel()
     private var sceneData: SceneData?
     
+    private var warningTimer = Timer()
+    
     private let tapGesture = UITapGestureRecognizer()
     private let longGesture = UILongPressGestureRecognizer()
     
@@ -59,6 +61,11 @@ class CameraScreenViewController: UIViewController {
     
     private var subtitlesNameLabel = UILabel.subtitlesNameLabel(withText: "")
     private var subtitlesPhraseLabel = UILabel.subtitlesPhraseLabel(withText: "")
+    
+    private let processingQueue = DispatchQueue(label: "processingQueue")
+    private var warnings: [UIView] = []
+    private var drawings: [CAShapeLayer] = []
+
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -107,24 +114,7 @@ class CameraScreenViewController: UIViewController {
             make.width.equalTo(arView.snp.height).multipliedBy(16.0/9.0)
             make.height.equalToSuperview()
         }
-        
-//        arView.addSubview(subtitlesLabel)
-//        subtitlesLabel.text = sceneData?.script
-//        subtitlesLabel.textColor = .white
-//        subtitlesLabel.numberOfLines = 2
-//        subtitlesLabel.textAlignment = .center
-//        subtitlesLabel.layer.shadowColor = UIColor.black.cgColor
-//        subtitlesLabel.layer.shadowRadius = 3.0
-//        subtitlesLabel.layer.shadowOpacity = 1.0
-//        subtitlesLabel.layer.shadowOffset = CGSize(width: 4, height: 4)
-//        subtitlesLabel.layer.masksToBounds = false
-//        subtitlesLabel.snp.makeConstraints { make in
-//            make.centerX.equalTo(arView)
-//            make.leftMargin.equalTo(arView.snp_leftMargin).inset(45)
-//            make.rightMargin.equalTo(arView.snp_rightMargin).offset(-45)
-//            make.bottomMargin.equalTo(arView.snp_bottomMargin).inset(15)
-//        }
-        
+                
         setupSettingsBar()
       
         backgroundView.addSubview(addActorButton)
@@ -224,6 +214,8 @@ class CameraScreenViewController: UIViewController {
         }
         
         loadingAnimation()
+        
+        drawRuleOfThirdsLines()
     }
     
     private func setupSettingsBar() {
@@ -341,6 +333,53 @@ class CameraScreenViewController: UIViewController {
             make.bottomMargin.equalTo(backgroundView.snp_bottomMargin)
         }
     }
+    
+    func drawRuleOfThirdsLines() {
+        let screenWidth = arView.bounds.width
+        let screenHeight = arView.bounds.height
+        
+        let lineColor = UIColor.red.cgColor
+        let lineWidth: CGFloat = 1.0
+        
+        // Создаем слой для рисования линий
+        let linesLayer = CALayer()
+        linesLayer.frame = arView.bounds
+        arView.layer.addSublayer(linesLayer)
+        
+        // Вертикальная линия, разделяющая экран на три части
+        let verticalLinePath = UIBezierPath()
+        verticalLinePath.move(to: CGPoint(x: screenWidth / 3, y: 0))
+        verticalLinePath.addLine(to: CGPoint(x: screenWidth / 3, y: screenHeight))
+        
+        let verticalLineLayer = CAShapeLayer()
+        verticalLineLayer.path = verticalLinePath.cgPath
+        verticalLineLayer.strokeColor = lineColor
+        verticalLineLayer.lineWidth = lineWidth
+        linesLayer.addSublayer(verticalLineLayer)
+        
+        // Горизонтальная линия, представляющая верхнюю треть экрана
+        let topHorizontalLinePath = UIBezierPath()
+        topHorizontalLinePath.move(to: CGPoint(x: 0, y: screenHeight / 3))
+        topHorizontalLinePath.addLine(to: CGPoint(x: screenWidth, y: screenHeight / 3))
+        
+        let topHorizontalLineLayer = CAShapeLayer()
+        topHorizontalLineLayer.path = topHorizontalLinePath.cgPath
+        topHorizontalLineLayer.strokeColor = lineColor
+        topHorizontalLineLayer.lineWidth = lineWidth
+        linesLayer.addSublayer(topHorizontalLineLayer)
+        
+        // Горизонтальная линия, представляющая нижнюю треть экрана
+        let bottomHorizontalLinePath = UIBezierPath()
+        bottomHorizontalLinePath.move(to: CGPoint(x: 0, y: 2 * screenHeight / 3))
+        bottomHorizontalLinePath.addLine(to: CGPoint(x: screenWidth, y: 2 * screenHeight / 3))
+        
+        let bottomHorizontalLineLayer = CAShapeLayer()
+        bottomHorizontalLineLayer.path = bottomHorizontalLinePath.cgPath
+        bottomHorizontalLineLayer.strokeColor = lineColor
+        bottomHorizontalLineLayer.lineWidth = lineWidth
+        linesLayer.addSublayer(bottomHorizontalLineLayer)
+    }
+
     
     private func fetchSettingsButtonValues() {
         guard let (settingsValues, convertedResolution) = presenter?.fetchSettingsButtonValues() else { return }
@@ -517,7 +556,7 @@ class CameraScreenViewController: UIViewController {
 }
 
 extension CameraScreenViewController: CameraScreenViewProtocol {
-
+    
     func setSceneData(sceneData: SceneData) {
         self.sceneData = sceneData
         changeScriptButton.setTitle(sceneData.name, for: .normal)
@@ -532,7 +571,7 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
             displayDialogue(names: names, curNameIndex: 0, phrases: phrases, curPhraseIndex: 0)
         }
     }
-
+    
     func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
         if names.isEmpty || phrases.isEmpty { return }
         
@@ -631,10 +670,86 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
         return arView
     }
     
+    @objc
+    func hideWarning() {
+        UIView.animate(withDuration: 0.4, animations: {
+            self.warnings.first?.alpha = 0
+        }, completion: { _ in
+            self.warnings.forEach { warning in
+                warning.removeFromSuperview()
+            }
+        })
+    }
+    
+    func highlightFace(face: VNFaceObservation) {
+        let boundingBox = face.boundingBox
+        
+        let screenWidth = arView.bounds.width
+        let screenHeight = arView.bounds.height
+        
+        let distanceThreshold: CGFloat = 0.1 // Пороговое значение для определения близости к краю
+        let isCloseToEdge = boundingBox.origin.x < distanceThreshold || boundingBox.origin.y < distanceThreshold ||
+        (1 - (boundingBox.origin.x + boundingBox.width)) < distanceThreshold ||
+        (1 - (boundingBox.origin.y + boundingBox.height)) < distanceThreshold
+        
+        // Проверим, нарушается ли правило третей для лица
+        let isViolation = boundingBox.origin.x < 0.33 || boundingBox.origin.x + boundingBox.width > 0.66
+        
+        // Если лицо близко к краю экрана и нарушается правило третей, рисуем boundingBox
+        if isCloseToEdge && isViolation {
+            let convertedBoundingBox = CGRect(x: boundingBox.origin.x * screenWidth,
+                                              y: (1 - boundingBox.origin.y) * screenHeight - boundingBox.height * screenHeight,
+                                              width: boundingBox.width * screenWidth,
+                                              height: boundingBox.height * screenHeight)
+            
+            let faceBoundingBoxShape = CAShapeLayer()
+            faceBoundingBoxShape.frame = convertedBoundingBox
+            faceBoundingBoxShape.fillColor = UIColor.clear.cgColor
+            faceBoundingBoxShape.strokeColor = UIColor.red.cgColor
+            faceBoundingBoxShape.path = UIBezierPath(rect: CGRect(x: 0, y: 0, width: convertedBoundingBox.width, height: convertedBoundingBox.height)).cgPath
+            
+            arView.layer.addSublayer(faceBoundingBoxShape)
+            
+            self.drawings.append(faceBoundingBoxShape)
+            
+        }
+    }
 }
 
 extension CameraScreenViewController: ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        processingQueue.async {
+            CameraService.shared.gazeDetection(pixelBuffer: frame.capturedImage) { observation in
+                DispatchQueue.main.async {
+                    self.drawings.forEach { drawing in drawing.removeFromSuperlayer() }
+                }
+
+                for face in observation {
+                    guard let faceCaptureQuality = face.faceCaptureQuality else { return }
+                    DispatchQueue.main.async {
+                        self.highlightFace(face: face)
+                        if faceCaptureQuality < 0.35 {
+                            let warning = UIView.warningView(withText: "1 лицо не в фокусе")
+                            self.arView.addSubview(warning)
+                            warning.alpha = 0
+                            warning.snp.makeConstraints { make in
+                                make.centerX.equalTo(self.settingsBarBackgroundView.center)
+                                make.topMargin.equalTo(self.settingsBarBackgroundView.snp_bottomMargin).offset(25)
+                            }
+                            self.warnings.append(warning)
+                            UIView.animate(withDuration: 0.4) {
+                                warning.alpha = 1
+                            } completion: { _ in
+                                Timer.scheduledTimer(timeInterval: TimeInterval(2), target: self, selector: #selector(self.hideWarning), userInfo: nil, repeats: false)
+
+                            }
+
+                        }
+                    }
+                    
+                }
+            }
+        }
         presenter?.session(session, didUpdate: frame)
     }
     
@@ -708,5 +823,34 @@ extension UILabel {
         label.font = .systemFont(ofSize: 16)
         label.textColor = .white
         return label
+    }
+}
+
+extension UIView {
+    static func warningView(withText text: String?) -> UIView {
+        let warningView = UIView()
+        warningView.backgroundColor = .red.withAlphaComponent(0.3)
+        warningView.layer.cornerRadius = 10
+        warningView.layer.masksToBounds = true
+        warningView.applyBlurEffect()
+        
+        warningView.snp.makeConstraints { make in
+            make.height.equalTo(30)
+            make.width.equalTo(200)
+        }
+        
+        let warningLabel = UILabel()
+        warningView.addSubview(warningLabel)
+
+        warningLabel.text = text
+        warningLabel.font = .boldSystemFont(ofSize: 14)
+        warningLabel.textColor = .white
+        warningLabel.numberOfLines = 1
+        warningLabel.textAlignment = .center
+        warningLabel.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+        }
+        
+        return warningView
     }
 }

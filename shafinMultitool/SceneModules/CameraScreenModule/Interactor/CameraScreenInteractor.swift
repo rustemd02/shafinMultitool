@@ -59,6 +59,8 @@ class CameraScreenInteractor {
     var anchors: [ARAnchor] = []
     var sceneData: SceneData?
     
+    private let processingQueue = DispatchQueue(label: "processingQueue")
+    
     
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity? {
         let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
@@ -263,6 +265,40 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+//        processingQueue.async {
+//            self.cameraService.gazeDetection(pixelBuffer: frame.capturedImage) { observation in
+//                for face in observation {
+//                    let leftEye = face.landmarks?.leftEye
+//                    let rightEye = face.landmarks?.rightEye
+//                    //print("\ncapture qualtiy " + (face.faceCaptureQuality?.description ?? "nichego"))
+//                    print("left - " + (leftEye?.normalizedPoints.description ?? ""))
+//                    print("\nright - " + (rightEye?.normalizedPoints.description ?? ""))
+//                    
+//                    let path = UIBezierPath()
+//
+//                    for i in 0..<min(leftEye!.normalizedPoints.count, rightEye!.normalizedPoints.count) {
+//                        let leftPoint = leftEye!.normalizedPoints[i]
+//                        let rightPoint = rightEye!.normalizedPoints[i]
+//
+//                        if i == 0 {
+//                            path.move(to: CGPoint(x: leftPoint.x, y: leftPoint.y))
+//                            path.addLine(to: CGPoint(x: rightPoint.x, y: rightPoint.y))
+//                        } else {
+//                            path.addLine(to: CGPoint(x: leftPoint.x, y: leftPoint.y))
+//                            path.addLine(to: CGPoint(x: rightPoint.x, y: rightPoint.y))
+//                        }
+//                    }
+//
+//                    let shapeLayer = CAShapeLayer()
+//                    shapeLayer.path = path.cgPath
+//                    shapeLayer.strokeColor = UIColor.red.cgColor
+//                    shapeLayer.lineWidth = 2.0
+//                    shapeLayer.fillColor = UIColor.clear.cgColor
+//
+//                    arView.layer.addSublayer(shapeLayer)
+//                }
+//            }
+//        }
         cameraService.session(session, didUpdate: frame)
     }
     
