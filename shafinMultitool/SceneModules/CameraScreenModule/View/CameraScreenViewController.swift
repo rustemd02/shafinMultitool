@@ -63,7 +63,8 @@ class CameraScreenViewController: UIViewController {
     private var subtitlesPhraseLabel = UILabel.subtitlesPhraseLabel(withText: "")
     
     private let processingQueue = DispatchQueue(label: "processingQueue")
-    private var warnings: [UIView] = []
+    private var currentWarnings: [String] = []
+    private var warningViews: [UIView] = []
     private var drawings: [CAShapeLayer] = []
 
     
@@ -138,7 +139,7 @@ class CameraScreenViewController: UIViewController {
         finishEditingButton.tintColor = .black
         finishEditingButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.topMargin.equalToSuperview().offset(7)
+            make.topMargin.equalToSuperview().offset(10)
             make.centerX.equalTo(addActorButton.snp.centerX)
         }
         
@@ -163,7 +164,7 @@ class CameraScreenViewController: UIViewController {
         recordButton.tintColor = UIColor.white
         recordButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.bottomMargin.equalToSuperview()
+            make.bottomMargin.equalToSuperview().inset(5)
             make.centerX.equalTo(addActorButton.snp.centerX)
         }
         
@@ -176,7 +177,7 @@ class CameraScreenViewController: UIViewController {
         stopButton.tintColor = UIColor.black
         stopButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.bottomMargin.equalToSuperview()
+            make.bottomMargin.equalToSuperview().inset(5)
             make.centerX.equalTo(addActorButton.snp.centerX)
         }
         
@@ -670,14 +671,35 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
         return arView
     }
     
+    func addWarning(with text: String) {
+        if currentWarnings.contains(text) { return }
+        let warning = UIView.warningView(withImageName: text)
+        currentWarnings.append(text)
+        self.arView.addSubview(warning)
+        warning.alpha = 0
+        var offsetValue = 35
+        if warningViews.count == 1 { offsetValue += 65 }
+        if warningViews.count == 2 { return }
+        warning.snp.makeConstraints { make in
+            make.centerX.equalTo(backButton.snp.centerXWithinMargins)
+            make.topMargin.equalTo(self.settingsBarBackgroundView.snp_bottomMargin).offset(offsetValue)
+        }
+        self.warningViews.append(warning)
+        UIView.animate(withDuration: 0.4) {
+            warning.alpha = 1
+        } completion: { _ in
+            Timer.scheduledTimer(timeInterval: TimeInterval(2), target: self, selector: #selector(self.hideWarning), userInfo: nil, repeats: false)
+        }
+    }
+    
     @objc
     func hideWarning() {
         UIView.animate(withDuration: 0.4, animations: {
-            self.warnings.first?.alpha = 0
+            self.warningViews.first?.alpha = 0
         }, completion: { _ in
-            self.warnings.forEach { warning in
-                warning.removeFromSuperview()
-            }
+            self.currentWarnings.removeFirst()
+            self.warningViews.first?.removeFromSuperview()
+            self.warningViews.removeFirst()
         })
     }
     
@@ -710,6 +732,8 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
             
             arView.layer.addSublayer(faceBoundingBoxShape)
             
+            addWarning(with: "person.crop.rectangle")
+            
             self.drawings.append(faceBoundingBoxShape)
             
         }
@@ -729,21 +753,7 @@ extension CameraScreenViewController: ARSessionDelegate {
                     DispatchQueue.main.async {
                         self.highlightFace(face: face)
                         if faceCaptureQuality < 0.35 {
-                            let warning = UIView.warningView(withText: "1 лицо не в фокусе")
-                            self.arView.addSubview(warning)
-                            warning.alpha = 0
-                            warning.snp.makeConstraints { make in
-                                make.centerX.equalTo(self.settingsBarBackgroundView.center)
-                                make.topMargin.equalTo(self.settingsBarBackgroundView.snp_bottomMargin).offset(25)
-                            }
-                            self.warnings.append(warning)
-                            UIView.animate(withDuration: 0.4) {
-                                warning.alpha = 1
-                            } completion: { _ in
-                                Timer.scheduledTimer(timeInterval: TimeInterval(2), target: self, selector: #selector(self.hideWarning), userInfo: nil, repeats: false)
-
-                            }
-
+                            self.addWarning(with: "blur")
                         }
                     }
                     
@@ -827,7 +837,7 @@ extension UILabel {
 }
 
 extension UIView {
-    static func warningView(withText text: String?) -> UIView {
+    static func warningView(withImageName text: String) -> UIView {
         let warningView = UIView()
         warningView.backgroundColor = .red.withAlphaComponent(0.3)
         warningView.layer.cornerRadius = 10
@@ -835,22 +845,25 @@ extension UIView {
         warningView.applyBlurEffect()
         
         warningView.snp.makeConstraints { make in
-            make.height.equalTo(30)
-            make.width.equalTo(200)
+            make.height.equalTo(45)
+            make.width.equalTo(45)
         }
+        var warningIcon = UIImage()
+        if text == "blur" {
+            warningIcon = (UIImage(named: text)?.withTintColor(.white, renderingMode: .alwaysOriginal))!.resize(withSize: CGSize(width: 25, height: 25))
+        } else {
+            warningIcon = (UIImage(systemName: text)?.withTintColor(.white, renderingMode: .alwaysOriginal))!
+        }
+        let warningIconView = UIImageView(image: warningIcon)
+        warningView.addSubview(warningIconView)
+        warningIconView.layer.masksToBounds = true
         
-        let warningLabel = UILabel()
-        warningView.addSubview(warningLabel)
-
-        warningLabel.text = text
-        warningLabel.font = .boldSystemFont(ofSize: 14)
-        warningLabel.textColor = .white
-        warningLabel.numberOfLines = 1
-        warningLabel.textAlignment = .center
-        warningLabel.snp.makeConstraints { make in
+        warningIconView.snp.makeConstraints { make in
             make.center.equalToSuperview()
         }
         
         return warningView
     }
 }
+
+

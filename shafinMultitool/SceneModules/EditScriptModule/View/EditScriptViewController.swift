@@ -142,3 +142,12 @@ extension UIViewController: UITextFieldDelegate {
     }
 
 }
+
+extension UIImage {
+    func resize(withSize newSize: CGSize) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { (context) in
+            self.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
+}
