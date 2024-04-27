@@ -575,27 +575,21 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
     
     func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
         if names.isEmpty || phrases.isEmpty { return }
-        
-        if curNameIndex > 0 {
-            subtitlesNameLabel.text = names[curNameIndex] + ":"
-        } else {
-            subtitlesNameLabel.text = names[curNameIndex]
-        }
+        subtitlesNameLabel.text = names[curNameIndex]
         subtitlesPhraseLabel.text = phrases[curPhraseIndex]
-        
+
         let stackView = UIStackView(arrangedSubviews: [subtitlesNameLabel, subtitlesPhraseLabel])
         stackView.axis = .horizontal
-        stackView.alignment = .leading
+        stackView.alignment = .firstBaseline
         stackView.distribution = .fill
-        stackView.spacing = -10
-        
+        stackView.spacing = 0
         view.addSubview(stackView)
         
-        stackView.snp.makeConstraints { make in
+        stackView.snp.remakeConstraints { make in
             make.centerX.equalToSuperview().offset(-15)
             make.bottom.equalToSuperview().offset(-30)
         }
-        
+
         presenter?.startDialogueRecogniotion(names: names, curNameIndex: curNameIndex, phrases: phrases, curPhraseIndex: curPhraseIndex)
         
     }
@@ -818,13 +812,13 @@ extension UILabel {
         label.text = text
         label.font = .boldSystemFont(ofSize: 16)
         label.textColor = .yellow
-        label.numberOfLines = 2
         label.textAlignment = .center
         label.layer.shadowColor = UIColor.black.cgColor
         label.layer.shadowRadius = 3.0
         label.layer.shadowOpacity = 1.0
         label.layer.shadowOffset = CGSize(width: 4, height: 4)
         label.layer.masksToBounds = false
+        label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }
     

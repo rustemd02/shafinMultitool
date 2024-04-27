@@ -2199,22 +2199,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "F0EE670A-BEAC-4A4B-A71E-F98B05488FB6"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "592"
-            endingLineNumber = "592"
-            landmarkName = "displayDialogue(names:curNameIndex:phrases:curPhraseIndex:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "388C692A-9A03-44AB-B66B-2335ADBB1868"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -2350,8 +2334,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "642"
-            endingLineNumber = "642"
+            startingLineNumber = "636"
+            endingLineNumber = "636"
             landmarkName = "changeButtonVisibilityAnimation(button:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -2382,8 +2366,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "665"
-            endingLineNumber = "665"
+            startingLineNumber = "659"
+            endingLineNumber = "659"
             landmarkName = "changeButtonVisibility(buttonName:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -2414,8 +2398,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "755"
-            endingLineNumber = "755"
+            startingLineNumber = "749"
+            endingLineNumber = "749"
             landmarkName = "session(_:didUpdate:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -2430,8 +2414,8 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "713"
-            endingLineNumber = "713"
+            startingLineNumber = "707"
+            endingLineNumber = "707"
             landmarkName = "highlightFace(face:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -2446,9 +2430,41 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "712"
-            endingLineNumber = "712"
+            startingLineNumber = "706"
+            endingLineNumber = "706"
             landmarkName = "highlightFace(face:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "3E1EAAE3-2CC2-4B50-AA68-EC55475952B8"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "581"
+            endingLineNumber = "581"
+            landmarkName = "displayDialogue(names:curNameIndex:phrases:curPhraseIndex:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "A1FAD094-3D9F-4AEE-8B3B-49DAB0685AEB"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "580"
+            endingLineNumber = "580"
+            landmarkName = "displayDialogue(names:curNameIndex:phrases:curPhraseIndex:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

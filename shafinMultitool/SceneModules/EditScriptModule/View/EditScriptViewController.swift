@@ -20,7 +20,7 @@ class EditScriptViewController: UIViewController {
     private let settingsBackgroundView = UIView()
     
     private let scriptTextFieldLabel = UILabel()
-    private let scriptTextField = UITextField()
+    private let scriptTextView = UITextView()
     private let submitButton = UIButton()
     
     
@@ -48,20 +48,18 @@ class EditScriptViewController: UIViewController {
             make.bottomMargin.equalTo(view.snp_bottomMargin).inset(30)
         }
         
-        view.addSubview(scriptTextField)
+        view.addSubview(scriptTextView)
         if let script = self.script {
-            scriptTextField.text = script
+            scriptTextView.text = script
         }
 
-        scriptTextField.placeholder = "Даня: какая прекрасная сегодня погода! Вы так не считаете? \nПётр: Ага!"
-        scriptTextField.borderStyle = .roundedRect
-        scriptTextField.textAlignment = .left
-        scriptTextField.returnKeyType = .default
-        scriptTextField.contentVerticalAlignment = .top
-        scriptTextField.backgroundColor = #colorLiteral(red: 0.9607006907, green: 0.9607006907, blue: 0.9607006907, alpha: 1)
-        scriptTextField.textColor = .black
-        addToolBar(textField: scriptTextField)
-        scriptTextField.snp.makeConstraints { make in
+        scriptTextView.isEditable = true
+        scriptTextView.textAlignment = .left
+        scriptTextView.returnKeyType = .default
+        scriptTextView.backgroundColor = #colorLiteral(red: 0.9607006907, green: 0.9607006907, blue: 0.9607006907, alpha: 1)
+        scriptTextView.textColor = .black
+        addToolBar(textView: scriptTextView)
+        scriptTextView.snp.makeConstraints { make in
             make.topMargin.equalTo(settingsBackgroundView.snp_topMargin).offset(45)
             make.leftMargin.equalTo(settingsBackgroundView.snp_leftMargin).inset(45)
             make.rightMargin.equalTo(settingsBackgroundView.snp_rightMargin).inset(45)
@@ -76,18 +74,18 @@ class EditScriptViewController: UIViewController {
                             
         let pasteButton = UIPasteControl(configuration: configuration)
         pasteButton.frame = CGRect(x: view.bounds.width/2.0, y: view.bounds.height/2.0, width: 120, height: 45)
-        scriptTextField.addSubview(pasteButton)
+        scriptTextView.addSubview(pasteButton)
 
 
-        pasteButton.target = scriptTextField
+        pasteButton.target = scriptTextView
         
         view.addSubview(scriptTextFieldLabel)
         scriptTextFieldLabel.text = "Введите сценарий"
         scriptTextFieldLabel.font = .boldSystemFont(ofSize: 16)
         scriptTextFieldLabel.textColor = .lightGray
         scriptTextFieldLabel.snp.makeConstraints { make in
-            make.leadingMargin.equalTo(scriptTextField.snp_leadingMargin)
-            make.bottomMargin.equalTo(scriptTextField.snp_topMargin).offset(-20)
+            make.leadingMargin.equalTo(scriptTextView.snp_leadingMargin)
+            make.bottomMargin.equalTo(scriptTextView.snp_topMargin).offset(-20)
         }
         
         view.addSubview(submitButton)
@@ -101,7 +99,7 @@ class EditScriptViewController: UIViewController {
     
     @objc
     private func submitButtonPressed() {
-        let newScript = scriptTextField.text ?? ""
+        let newScript = scriptTextView.text ?? ""
         presenter?.submitButtonPressed(newScript: newScript)
     }
 }
@@ -123,7 +121,7 @@ extension UIView {
 }
 
 extension UIViewController: UITextFieldDelegate {
-    func addToolBar(textField: UITextField){
+    func addToolBar(textView: UITextView){
         let toolBar = UIToolbar()
         toolBar.barStyle = UIBarStyle.default
         toolBar.isTranslucent = true
@@ -133,8 +131,7 @@ extension UIViewController: UITextFieldDelegate {
         toolBar.isUserInteractionEnabled = true
         toolBar.sizeToFit()
 
-        textField.delegate = self
-        textField.inputAccessoryView = toolBar
+        textView.inputAccessoryView = toolBar
     }
     
     @objc func donePressed(){

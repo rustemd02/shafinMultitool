@@ -667,6 +667,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
                 
             } else { // Двоеточие или зн. препинания
                 if char == ":" {
+                    currentName = currentName.replacingOccurrences(of: "\n", with: "")
                     names.append(currentName)
                     currentMessage = ""
                 }
