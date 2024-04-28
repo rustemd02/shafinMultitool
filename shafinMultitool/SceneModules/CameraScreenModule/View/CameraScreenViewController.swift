@@ -43,6 +43,7 @@ class CameraScreenViewController: UIViewController {
     private let backButton = UIButton(type: .custom)
     private let changeResolutionButton = UIButton(type: .custom)
     private let divider = UILabel()
+    private let centerDot = UILabel()
     private let changeFPSButton = UIButton(type: .custom)
     private let changeScriptButtonBackgroundView = UIView()
     private let changeScriptButton = UIButton(type: .custom)
@@ -66,6 +67,8 @@ class CameraScreenViewController: UIViewController {
     private var currentWarnings: [String] = []
     private var warningViews: [UIView] = []
     private var drawings: [CAShapeLayer] = []
+    
+    private var linesLayer: CALayer!
 
     
     // MARK: - Lifecycle
@@ -79,7 +82,6 @@ class CameraScreenViewController: UIViewController {
         settingPickerView.delegate = self
         setupARView(arView: arView)
         setupUI()
-        fetchSettingsButtonValues()
         
         tapGesture.addTarget(self, action: #selector(handleTap))
         longGesture.addTarget(self, action: #selector(longTap))
@@ -116,8 +118,6 @@ class CameraScreenViewController: UIViewController {
             make.height.equalToSuperview()
         }
                 
-        setupSettingsBar()
-      
         backgroundView.addSubview(addActorButton)
         addActorButton.backgroundColor = .white
         addActorButton.layer.cornerRadius = 37.5
@@ -139,7 +139,7 @@ class CameraScreenViewController: UIViewController {
         finishEditingButton.tintColor = .black
         finishEditingButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.topMargin.equalToSuperview().offset(10)
+            make.topMargin.equalToSuperview().offset(20)
             make.centerX.equalTo(addActorButton.snp.centerX)
         }
         
@@ -170,8 +170,8 @@ class CameraScreenViewController: UIViewController {
         
         backgroundView.addSubview(stopButton)
         stopButton.isHidden = true
-        stopButton.backgroundColor = .green
-        //stopButton.setImage(UIImage(systemName: "largecircle.fill.circle"), for: .normal)
+        stopButton.backgroundColor = .white
+        stopButton.setImage(UIImage(systemName: "stop.fill"), for: .normal)
         stopButton.layer.cornerRadius = 30
         stopButton.layer.masksToBounds = true
         stopButton.tintColor = UIColor.black
@@ -214,9 +214,22 @@ class CameraScreenViewController: UIViewController {
             make.center.equalToSuperview()
         }
         
-        loadingAnimation()
+        arView.addSubview(centerDot)
+        centerDot.text = "+"
+        centerDot.font = .systemFont(ofSize: 30)
+        centerDot.textColor = .white
+        centerDot.snp.makeConstraints { make in
+            make.center.equalTo(arView.snp.center)
+        }
         
+        loadingAnimation()
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         drawRuleOfThirdsLines()
+        setupSettingsBar()
+        fetchSettingsButtonValues()
     }
     
     private func setupSettingsBar() {
@@ -338,50 +351,30 @@ class CameraScreenViewController: UIViewController {
     func drawRuleOfThirdsLines() {
         let screenWidth = arView.bounds.width
         let screenHeight = arView.bounds.height
-        
-        let lineColor = UIColor.red.cgColor
-        let lineWidth: CGFloat = 1.0
-        
-        // Создаем слой для рисования линий
-        let linesLayer = CALayer()
+
+        linesLayer = CALayer()
         linesLayer.frame = arView.bounds
         arView.layer.addSublayer(linesLayer)
         
-        // Вертикальная линия, разделяющая экран на три части
-        let verticalLinePath = UIBezierPath()
-        verticalLinePath.move(to: CGPoint(x: screenWidth / 3, y: 0))
-        verticalLinePath.addLine(to: CGPoint(x: screenWidth / 3, y: screenHeight))
-        
-        let verticalLineLayer = CAShapeLayer()
-        verticalLineLayer.path = verticalLinePath.cgPath
-        verticalLineLayer.strokeColor = lineColor
-        verticalLineLayer.lineWidth = lineWidth
-        linesLayer.addSublayer(verticalLineLayer)
-        
-        // Горизонтальная линия, представляющая верхнюю треть экрана
-        let topHorizontalLinePath = UIBezierPath()
-        topHorizontalLinePath.move(to: CGPoint(x: 0, y: screenHeight / 3))
-        topHorizontalLinePath.addLine(to: CGPoint(x: screenWidth, y: screenHeight / 3))
-        
-        let topHorizontalLineLayer = CAShapeLayer()
-        topHorizontalLineLayer.path = topHorizontalLinePath.cgPath
-        topHorizontalLineLayer.strokeColor = lineColor
-        topHorizontalLineLayer.lineWidth = lineWidth
-        linesLayer.addSublayer(topHorizontalLineLayer)
-        
-        // Горизонтальная линия, представляющая нижнюю треть экрана
-        let bottomHorizontalLinePath = UIBezierPath()
-        bottomHorizontalLinePath.move(to: CGPoint(x: 0, y: 2 * screenHeight / 3))
-        bottomHorizontalLinePath.addLine(to: CGPoint(x: screenWidth, y: 2 * screenHeight / 3))
-        
-        let bottomHorizontalLineLayer = CAShapeLayer()
-        bottomHorizontalLineLayer.path = bottomHorizontalLinePath.cgPath
-        bottomHorizontalLineLayer.strokeColor = lineColor
-        bottomHorizontalLineLayer.lineWidth = lineWidth
-        linesLayer.addSublayer(bottomHorizontalLineLayer)
+        ruleOfThirdsLineConfig(at: CGPoint(x: screenWidth / 3, y: 0), to: CGPoint(x: screenWidth / 3, y: screenHeight))
+        ruleOfThirdsLineConfig(at: CGPoint(x: 2 * screenWidth / 3, y: 0), to: CGPoint(x: 2 * screenWidth / 3, y: screenHeight))
+
+        ruleOfThirdsLineConfig(at: CGPoint(x: 0, y: screenHeight / 3), to: CGPoint(x: screenWidth, y: screenHeight / 3))
+        ruleOfThirdsLineConfig(at: CGPoint(x: 0, y: 2 * screenHeight / 3), to: CGPoint(x: screenWidth, y: 2 * screenHeight / 3))
     }
 
-    
+    func ruleOfThirdsLineConfig(at start: CGPoint, to end: CGPoint) {
+        let linePath = UIBezierPath()
+        linePath.move(to: start)
+        linePath.addLine(to: end)
+        
+        let lineLayer = CAShapeLayer()
+        lineLayer.path = linePath.cgPath
+        lineLayer.strokeColor = UIColor.darkGray.cgColor
+        lineLayer.lineWidth = 1.0
+        linesLayer.addSublayer(lineLayer)
+    }
+
     private func fetchSettingsButtonValues() {
         guard let (settingsValues, convertedResolution) = presenter?.fetchSettingsButtonValues() else { return }
         changeResolutionButton.setTitle(convertedResolution, for: .normal)
@@ -398,6 +391,7 @@ class CameraScreenViewController: UIViewController {
     private func addActor() {
         finishEditingButton.isHidden = false
         ifFinishEditingButtonHidden = false
+        animateButtonPress(button: finishEditingButton)
         presenter?.addActor(arView: arView)
     }
     
@@ -405,6 +399,7 @@ class CameraScreenViewController: UIViewController {
     private func finishEditing() {
         finishEditingButton.isHidden = true
         ifFinishEditingButtonHidden = true
+        animateButtonPress(button: finishEditingButton)
         presenter?.finishEditing()
     }
     
@@ -417,44 +412,88 @@ class CameraScreenViewController: UIViewController {
     @objc
     private func changeScriptButtonPressed() {
         guard let sceneData = sceneData else { return }
+        animateButtonPress(button: self.changeScriptButton)
         presenter?.goToEditScriptScreen(with: sceneData)
     }
     
     @objc
     private func recordButtonPressed() {
-        recordButton.isHidden = true
-        addActorButton.isHidden = true
-        finishEditingButton.isHidden = true
-        changeNameButton.isHidden = true
-        coverView.isHidden = false
-        stopwatchBackgroundView.isHidden = false
-        stopwatchLabel.isHidden = false
-        changeScriptButtonBackgroundView.isHidden = true
-        changeScriptButton.isHidden = true
-        stopButton.isHidden = false
+        self.centerDot.isHidden = true
+        
+        UIView.animate(withDuration: 0.2, animations: {
+            self.recordButton.alpha = 0
+            self.addActorButton.alpha = 0
+            self.finishEditingButton.alpha = 0
+            self.changeNameButton.alpha = 0
+            self.changeScriptButtonBackgroundView.alpha = 0
+            self.changeScriptButton.alpha = 0
+            self.stopwatchBackgroundView.alpha = 1
+            self.stopwatchLabel.alpha = 1
+        }, completion: { _ in
+            self.recordButton.isHidden = true
+            self.addActorButton.isHidden = true
+            self.finishEditingButton.isHidden = true
+            self.changeNameButton.isHidden = true
+            self.changeScriptButtonBackgroundView.isHidden = true
+            self.changeScriptButton.isHidden = true
+            self.stopButton.isHidden = false
+            self.coverView.isHidden = false
+            self.stopwatchBackgroundView.isHidden = false
+            self.stopwatchLabel.isHidden = false
+            
+            UIView.animate(withDuration: 0.2) {
+                self.stopButton.alpha = 1
+                self.coverView.alpha = 1
+                self.stopwatchBackgroundView.alpha = 1
+                self.stopwatchLabel.alpha = 1
+            }
+        })
+
         
         presenter?.startRecording()
     }
     
     @objc
     private func stopButtonPressed() {
-        stopButton.isHidden = true
-        addActorButton.isHidden = false
-        if !ifFinishEditingButtonHidden {
-            finishEditingButton.isHidden = false
-        }
-        coverView.isHidden = true
-        stopwatchBackgroundView.isHidden = true
-        stopwatchLabel.isHidden = true
-        changeScriptButtonBackgroundView.isHidden = false
-        changeScriptButton.isHidden = false
-        recordButton.isHidden = false
+        self.centerDot.isHidden = false
+        
+        UIView.animate(withDuration: 0.2, animations: {
+            self.stopButton.alpha = 0
+            self.coverView.alpha = 0
+            self.stopwatchBackgroundView.alpha = 0
+            self.stopwatchLabel.alpha = 0
+        }, completion: { _ in
+            self.stopButton.isHidden = true
+            self.coverView.isHidden = true
+            self.stopwatchBackgroundView.isHidden = true
+            self.stopwatchLabel.isHidden = true
+            
+            self.recordButton.isHidden = false
+            self.addActorButton.isHidden = false
+            if !self.ifFinishEditingButtonHidden {
+                self.finishEditingButton.isHidden = false
+            }
+            self.changeScriptButtonBackgroundView.isHidden = false
+            self.changeScriptButton.isHidden = false
+            
+            UIView.animate(withDuration: 0.2) {
+                self.recordButton.alpha = 1
+                self.addActorButton.alpha = 1
+                if !self.ifFinishEditingButtonHidden {
+                    self.finishEditingButton.alpha = 1
+                }
+                self.changeScriptButtonBackgroundView.alpha = 1
+                self.changeScriptButton.alpha = 1
+            }
+        })
+
         
         presenter?.stopRecording()
     }
     
     @objc
     private func goToScenesOverviewScreen() {
+        animateButtonPress(button: backButton)
         presenter?.goToScenesOverviewScreen(arView: arView)
     }
     
@@ -473,17 +512,19 @@ class CameraScreenViewController: UIViewController {
     @objc
     private func changeISOButtonPressed() {
         settingPickerView.tag = 1
-        settingPickerView.reloadAllComponents()
-        let selectedRow = presenter?.getSelectedRowNumberForPickerView(tag: 1)
-        settingPickerView.selectRow(selectedRow ?? 0, inComponent: 0, animated: false)
-        pickerViewShowAnimation()
+        changeSettingButtonPressed(tag: 1)
     }
     
     @objc
     private func changeWBButtonPressed() {
         settingPickerView.tag = 2
+        changeSettingButtonPressed(tag: 2)
+        
+    }
+    
+    private func changeSettingButtonPressed(tag: Int) {
         settingPickerView.reloadAllComponents()
-        let selectedRow = presenter?.getSelectedRowNumberForPickerView(tag: 2)
+        let selectedRow = presenter?.getSelectedRowNumberForPickerView(tag: tag)
         settingPickerView.selectRow(selectedRow ?? 0, inComponent: 0, animated: false)
         pickerViewShowAnimation()
     }
@@ -553,6 +594,18 @@ class CameraScreenViewController: UIViewController {
             focusPointView.transform = CGAffineTransform(scaleX: 1.2, y: 1.2)
             focusPointView.alpha = 0
         }
+    }
+    
+    func animateButtonPress(button: UIButton) {
+        UIView.animate(withDuration: 0.2, animations: {
+            button.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+            button.alpha = 0.8
+        }, completion: { _ in
+            UIView.animate(withDuration: 0.1) {
+                button.transform = CGAffineTransform(scaleX: 1, y: 1)
+                button.alpha = 1
+            }
+        })
     }
 }
 
@@ -803,60 +856,6 @@ extension CameraScreenViewController: UIPickerViewDelegate {
     func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
         presenter?.didSelectRow(row: row, tag: settingPickerView.tag)
         self.fetchSettingsButtonValues()
-    }
-}
-
-extension UILabel {
-    static func subtitlesNameLabel(withText text: String?) -> UILabel {
-        let label = UILabel()
-        label.text = text
-        label.font = .boldSystemFont(ofSize: 16)
-        label.textColor = .yellow
-        label.textAlignment = .center
-        label.layer.shadowColor = UIColor.black.cgColor
-        label.layer.shadowRadius = 3.0
-        label.layer.shadowOpacity = 1.0
-        label.layer.shadowOffset = CGSize(width: 4, height: 4)
-        label.layer.masksToBounds = false
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }
-    
-    static func subtitlesPhraseLabel(withText text: String?) -> UILabel {
-        let label = subtitlesNameLabel(withText: text)
-        label.font = .systemFont(ofSize: 16)
-        label.textColor = .white
-        return label
-    }
-}
-
-extension UIView {
-    static func warningView(withImageName text: String) -> UIView {
-        let warningView = UIView()
-        warningView.backgroundColor = .red.withAlphaComponent(0.3)
-        warningView.layer.cornerRadius = 10
-        warningView.layer.masksToBounds = true
-        warningView.applyBlurEffect()
-        
-        warningView.snp.makeConstraints { make in
-            make.height.equalTo(45)
-            make.width.equalTo(45)
-        }
-        var warningIcon = UIImage()
-        if text == "blur" {
-            warningIcon = (UIImage(named: text)?.withTintColor(.white, renderingMode: .alwaysOriginal))!.resize(withSize: CGSize(width: 25, height: 25))
-        } else {
-            warningIcon = (UIImage(systemName: text)?.withTintColor(.white, renderingMode: .alwaysOriginal))!
-        }
-        let warningIconView = UIImageView(image: warningIcon)
-        warningView.addSubview(warningIconView)
-        warningIconView.layer.masksToBounds = true
-        
-        warningIconView.snp.makeConstraints { make in
-            make.center.equalToSuperview()
-        }
-        
-        return warningView
     }
 }
 

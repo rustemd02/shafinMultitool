@@ -30,6 +30,8 @@
 		CF8AD3832A12BABB0004B378 /* EditScriptRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */; };
 		CF9BD4002AF51456001009B6 /* Converter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD3FF2AF51456001009B6 /* Converter.swift */; };
 		CF9BD4022AF526C7001009B6 /* DBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD4012AF526C7001009B6 /* DBService.swift */; };
+		CFA150FF2BDE73E5007A2456 /* UIView+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA150FE2BDE73E5007A2456 /* UIView+Extensions.swift */; };
+		CFA151012BDE741F007A2456 /* UILabel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA151002BDE741F007A2456 /* UILabel+Extensions.swift */; };
 		CFAEB4092B03F4F700275DD5 /* SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFAEB4082B03F4F700275DD5 /* SceneData.swift */; };
 		CFD45A982B238A2800BEF3C0 /* SpeechRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */; };
 		CFF027952A0AA6710042951B /* ActorData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorData.swift */; };
@@ -80,6 +82,8 @@
 		CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptRouter.swift; sourceTree = "<group>"; };
 		CF9BD3FF2AF51456001009B6 /* Converter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Converter.swift; sourceTree = "<group>"; };
 		CF9BD4012AF526C7001009B6 /* DBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DBService.swift; sourceTree = "<group>"; };
+		CFA150FE2BDE73E5007A2456 /* UIView+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIView+Extensions.swift"; sourceTree = "<group>"; };
+		CFA151002BDE741F007A2456 /* UILabel+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UILabel+Extensions.swift"; sourceTree = "<group>"; };
 		CFAEB4082B03F4F700275DD5 /* SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneData.swift; sourceTree = "<group>"; };
 		CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionService.swift; sourceTree = "<group>"; };
 		CFF027942A0AA6710042951B /* ActorData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorData.swift; sourceTree = "<group>"; };
@@ -246,6 +250,15 @@
 			path = View;
 			sourceTree = "<group>";
 		};
+		CFA150FD2BDE739D007A2456 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				CFA150FE2BDE73E5007A2456 /* UIView+Extensions.swift */,
+				CFA151002BDE741F007A2456 /* UILabel+Extensions.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
 		CFF7B1FB29CC876400C3B73E = {
 			isa = PBXGroup;
 			children = (
@@ -269,6 +282,7 @@
 		CFF7B20629CC876400C3B73E /* shafinMultitool */ = {
 			isa = PBXGroup;
 			children = (
+				CFA150FD2BDE739D007A2456 /* Extensions */,
 				CF7C32AB2AFAB0C6006FDE39 /* ScenesOverviewModule */,
 				CF5E4B192AE95618002A23BE /* Info.plist */,
 				CF8AD36F2A0D63230004B378 /* Resources */,
@@ -494,8 +508,10 @@
 				CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */,
 				CF8AD3832A12BABB0004B378 /* EditScriptRouter.swift in Sources */,
 				CFF7B22129CC87C200C3B73E /* CameraScreenViewController.swift in Sources */,
+				CFA150FF2BDE73E5007A2456 /* UIView+Extensions.swift in Sources */,
 				CFF7B22329CC8C6000C3B73E /* CameraScreenPresenter.swift in Sources */,
 				CFF7B22529CC8C7200C3B73E /* CameraScreenInteractor.swift in Sources */,
+				CFA151012BDE741F007A2456 /* UILabel+Extensions.swift in Sources */,
 				CF7C32AD2AFAB127006FDE39 /* SOViewController.swift in Sources */,
 				CF7C32B52AFAB268006FDE39 /* SOModuleBuilder.swift in Sources */,
 				CF8AD37D2A12BA9B0004B378 /* EditScriptViewController.swift in Sources */,
