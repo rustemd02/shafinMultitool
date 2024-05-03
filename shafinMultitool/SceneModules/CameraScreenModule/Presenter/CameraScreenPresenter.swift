@@ -15,7 +15,8 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func viewDidLoad()
     func prepareARView(arView: ARView)
     func addActor(arView: ARView)
-    func finishEditing()
+    func finishEditingAtOnce(completion: @escaping (Bool) -> ())
+    func finishEditingOneByOne(completion: @escaping (Bool) -> ())
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
     func session(_ session: ARSession, didUpdate frame: ARFrame)
     func handleTap(_ gesture: UITapGestureRecognizer, _ arView: ARView)
@@ -180,8 +181,12 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
         return interactor.addActor(arView: arView)
     }
     
-    func finishEditing() {
-        interactor.finishEditing()
+    func finishEditingAtOnce(completion: @escaping (Bool) -> ()) {
+        interactor.finishEditingAtOnce(completion: completion)
+    }
+    
+    func finishEditingOneByOne(completion: @escaping (Bool) -> ()) {
+        interactor.finishEditingOneByOne(completion: completion)
     }
     
     func changeName(arView: ARView) {

@@ -16,7 +16,8 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func prepareARView(arView: ARView)
     func prepareRecorder()
     func addActor(arView: ARView)
-    func finishEditing()
+    func finishEditingAtOnce(completion: @escaping (Bool) -> ())
+    func finishEditingOneByOne(completion: @escaping (Bool) -> ())
     func changeResolution()
     func changeFPS()
     func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ())
@@ -65,7 +66,7 @@ class CameraScreenInteractor {
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity? {
         let modelEntity = createModel(named: entityName, for: anchor, arView: arView)
         
-        if let raycastCoordinates = raycastCoordinates {
+        if raycastCoordinates != nil {
             let color = setRandomColorToModel(entity: modelEntity)
             guard let actorName = modelEntity.children.first?.name else { return nil }
             let (red, green, blue, alpha) = Converter.shared.cgFloatValuesFromUIColor(color: color)
@@ -152,6 +153,7 @@ class CameraScreenInteractor {
         let green = actor.green
         let blue = actor.blue
         let alpha = actor.alpha
+        
         newMaterial.color.tint = UIColor(red: red, green: green, blue: blue, alpha: alpha)
         entity.model?.materials = [newMaterial]
     }
@@ -305,7 +307,11 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func startRecording() {
         timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: .default)
-        finishEditing()
+        finishEditingAtOnce { _ in }
+        for actorEntity in self.actorEntities {
+            //var material = SimpleMaterial()
+            
+        }
         cameraService.startRecording()
         
     }
@@ -531,52 +537,118 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         }
     }
     
-    
-    func finishEditing() {
+    func finishEditingAtOnce(completion: @escaping (Bool) -> Void) {
         for pathEntity in pathEntities {
             pathEntity.isEnabled = false
         }
-        
-        let queue = DispatchQueue(label: "moveQueue")
-        var index = 0
-        for actorEntity in self.actorEntities {
-            let actor = actors.first { actor in
-                actor.anchorIDs.first == actorEntity.anchor?.anchorIdentifier
+
+        let group = DispatchGroup()
+
+        actorEntities.forEach { actorEntity in
+            group.enter()
+
+            guard let actor = actors.first(where: { $0.anchorIDs.first == actorEntity.anchor?.anchorIdentifier }) else {
+                group.leave()
+                return
             }
-            guard let actor = actor else { return }
-            var coordinates: [simd_float4x4] = []
-            for anchorID in actor.anchorIDs {
-                for anchor in anchors {
-                    if anchor.identifier == anchorID {
-                        coordinates.append(anchor.transform)
-                    }
+
+            let coordinates = actor.anchorIDs.compactMap { anchorID in
+                anchors.first(where: { $0.identifier == anchorID })?.transform
+            }
+
+            guard coordinates.count > 1 else {
+                group.leave()
+                return
+            }
+
+            // Скорость движения модели в метрах в секунду
+            let speed: Float = 0.15 // Примерное значение, подберите соответственно вашим нуждам
+
+            for i in 0..<coordinates.count - 1 {
+                let startPosition = coordinates[i].columns.3
+                let endPosition = coordinates[i + 1].columns.3
+                let distance = simd_distance(startPosition, endPosition)
+                let moveDuration = TimeInterval(distance) / TimeInterval(speed) // Вычисление продолжительности на основе расстояния и скорости
+
+                DispatchQueue.main.async {
+                    actorEntity.move(to: coordinates[i + 1], relativeTo: nil, duration: moveDuration)
                 }
+            }
+
+            // Подсчет общего времени перемещения всех сегментов
+            let totalDuration = coordinates.dropFirst().enumerated().reduce(0.0) { (total, arg) -> TimeInterval in
+                let (index, endPosition) = arg
+                let startPosition = coordinates[index].columns.3
+                let distance = simd_distance(startPosition, endPosition.columns.3)
+                return total + TimeInterval(distance) / TimeInterval(speed)
+            }
+
+            // Ожидание завершения всех анимаций
+            DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration) {
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            self.pathEntities.forEach { $0.isEnabled = true }
+            completion(true)
+        }
+    }
+    
+    func finishEditingOneByOne(completion: @escaping (Bool) -> Void) {
+        for pathEntity in self.pathEntities {
+            pathEntity.isEnabled = false
+        }
+        
+        let moveQueue = DispatchQueue(label: "moveQueue")
+        let group = DispatchGroup()
+        
+        for actorEntity in self.actorEntities {
+            guard let actor = actors.first(where: { $0.anchorIDs.first == actorEntity.anchor?.anchorIdentifier }) else { continue }
+
+            var coordinates: [simd_float4x4] = actor.anchorIDs.compactMap { anchorID in
+                self.anchors.first(where: { $0.identifier == anchorID })?.transform
             }
             
-            for i in 0..<coordinates.count - 1 {
-                let currentPosition = coordinates[i]
-                let destination = coordinates[i+1]
-                
-                let x1: Float = currentPosition.columns.0.x
-                let y1: Float = currentPosition.columns.0.z
-                let x2: Float = destination.columns.0.x
-                let y2: Float = destination.columns.0.z
-                let distance = sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2))
-                
-                let speed: Float = 0.07
-                let duration = distance / speed
-                
-                queue.asyncAfter(deadline: .now() + Double(index) * 1) {
-                    actorEntity.move(to: destination, relativeTo: nil, duration: TimeInterval(duration))
-                }
-                index += 1
+            guard coordinates.count > 1 else {
+                continue
             }
-            for pathEntity in pathEntities {
-                pathEntity.isEnabled = true
+            
+            moveQueue.async {
+                for i in 0..<(coordinates.count - 1) {
+                    group.enter()
+                    
+                    let currentPosition = coordinates[i]
+                    let destination = coordinates[i + 1]
+
+                    let x1 = currentPosition.columns.3.x
+                    let z1 = currentPosition.columns.3.z
+                    let x2 = destination.columns.3.x
+                    let z2 = destination.columns.3.z
+                    let distance = hypot(x2 - x1, z2 - z1)
+                    
+                    let speed: Float = 0.3 // Скорость должна быть определена вашими требованиями
+                    let duration = TimeInterval(distance / speed)
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                        actorEntity.move(to: destination, relativeTo: nil, duration: duration)
+                    }
+                    
+                    // Ждем пока не завершится текущее перемещение перед тем как начать следующее
+                    Thread.sleep(forTimeInterval: duration)
+                    group.leave()
+                }
             }
         }
         
+        group.notify(queue: .main) {
+            for pathEntity in self.pathEntities {
+                pathEntity.isEnabled = true
+            }
+            completion(true)
+        }
     }
+    
     
     func changeName(arView: ARView) {
         guard let selectedEntity = selectedEntity else { return }

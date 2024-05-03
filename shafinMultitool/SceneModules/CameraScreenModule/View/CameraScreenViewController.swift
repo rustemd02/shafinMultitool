@@ -52,7 +52,8 @@ class CameraScreenViewController: UIViewController {
     private let settingPickerView = UIPickerView()
     
     private let addActorButton = UIButton(type: .custom)
-    private let finishEditingButton = UIButton(type: .custom)
+    private var finishEditingAtOnceButton = UIButton(type: .custom)
+    private var finishEditingOneByOneButton = UIButton(type: .custom)
     private let changeNameButton = UIButton(type: .custom)
     private let recordButton = UIButton(type: .custom)
     private let stopButton = UIButton(type: .custom)
@@ -60,6 +61,7 @@ class CameraScreenViewController: UIViewController {
     private let stopwatchBackgroundView = UIView()
     private let stopwatchLabel = UILabel()
     
+    //private var subtitlesStackView = UIStackView()
     private var subtitlesNameLabel = UILabel.subtitlesNameLabel(withText: "")
     private var subtitlesPhraseLabel = UILabel.subtitlesPhraseLabel(withText: "")
     
@@ -93,7 +95,8 @@ class CameraScreenViewController: UIViewController {
         changeISOButton.addTarget(self, action: #selector(changeISOButtonPressed), for: .touchUpInside)
         changeWBButton.addTarget(self, action: #selector(changeWBButtonPressed), for: .touchUpInside)
         addActorButton.addTarget(self, action: #selector(addActor), for: .touchUpInside)
-        finishEditingButton.addTarget(self, action: #selector(finishEditing), for: .touchUpInside)
+        finishEditingAtOnceButton.addTarget(self, action: #selector(finishEditingAtOnce), for: .touchUpInside)
+        finishEditingOneByOneButton.addTarget(self, action: #selector(finishEditingOneByOne), for: .touchUpInside)
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
         recordButton.addTarget(self, action: #selector(recordButtonPressed), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopButtonPressed), for: .touchUpInside)
@@ -130,18 +133,33 @@ class CameraScreenViewController: UIViewController {
             make.trailing.equalToSuperview().inset(10)
         }
         
-        backgroundView.addSubview(finishEditingButton)
-        if ifFinishEditingButtonHidden { finishEditingButton.isHidden = true }
-        finishEditingButton.backgroundColor = .white
-        finishEditingButton.layer.cornerRadius = 30
-        finishEditingButton.layer.masksToBounds = true
-        finishEditingButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
-        finishEditingButton.tintColor = .black
-        finishEditingButton.snp.makeConstraints { make in
+        backgroundView.addSubview(finishEditingAtOnceButton)
+        //if ifFinishEditingButtonHidden { finishEditingAtOnceButton.isHidden = true }
+        finishEditingAtOnceButton.backgroundColor = .white
+        finishEditingAtOnceButton.layer.cornerRadius = 30
+        finishEditingAtOnceButton.layer.masksToBounds = true
+        finishEditingAtOnceButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
+        finishEditingAtOnceButton.tintColor = .black
+        finishEditingAtOnceButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
-            make.topMargin.equalToSuperview().offset(20)
-            make.centerX.equalTo(addActorButton.snp.centerX)
+            make.topMargin.equalToSuperview().offset(15)
+            make.centerX.equalTo(addActorButton.snp.centerX).offset(-10)
         }
+        finishEditingAtOnceButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 0, bottom: finishEditingAtOnceButton.frame.height/2, right: finishEditingAtOnceButton.frame.width/2)
+        
+        backgroundView.addSubview(finishEditingOneByOneButton)
+        finishEditingOneByOneButton.backgroundColor = .white
+        finishEditingOneByOneButton.layer.cornerRadius = 30
+        finishEditingOneByOneButton.layer.masksToBounds = true
+        finishEditingOneByOneButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
+        finishEditingOneByOneButton.tintColor = .black
+        finishEditingOneByOneButton.snp.makeConstraints { make in
+            make.width.height.equalTo(60)
+            make.topMargin.equalToSuperview().offset(25)
+            make.centerX.equalTo(addActorButton.snp.centerX).offset(10)
+        }
+        finishEditingOneByOneButton.imageEdgeInsets = UIEdgeInsets(top: finishEditingOneByOneButton.frame.height/2, left: finishEditingOneByOneButton.frame.width/2, bottom: 0, right: 0)
+        
         
         backgroundView.addSubview(changeNameButton)
         changeNameButton.backgroundColor = .white.withAlphaComponent(0.5)
@@ -222,12 +240,24 @@ class CameraScreenViewController: UIViewController {
             make.center.equalTo(arView.snp.center)
         }
         
+//        arView.addSubview(subtitlesStackView)
+//        subtitlesStackView.axis = .horizontal
+//        subtitlesStackView.alignment = .firstBaseline
+//        subtitlesStackView.distribution = .fill
+//        subtitlesStackView.spacing = 0
+//        
+//        subtitlesStackView.snp.makeConstraints { make in
+//            make.centerX.equalToSuperview().offset(-15)
+//            make.bottom.equalToSuperview().offset(-30)
+//        }
+        
         loadingAnimation()
     }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         drawRuleOfThirdsLines()
+        createPlayButtonMasks()
         setupSettingsBar()
         fetchSettingsButtonValues()
     }
@@ -348,6 +378,28 @@ class CameraScreenViewController: UIViewController {
         }
     }
     
+    func createPlayButtonMasks() {
+        let maskLayer1 = CAShapeLayer()
+        maskLayer1.frame = finishEditingAtOnceButton.bounds
+        let path1 = UIBezierPath()
+        path1.move(to: CGPoint(x: 0, y: 0))
+        path1.addLine(to: CGPoint(x: 0, y: finishEditingAtOnceButton.frame.height))
+        path1.addLine(to: CGPoint(x: finishEditingAtOnceButton.frame.width, y: 0))
+        path1.close()
+        maskLayer1.path = path1.cgPath
+        finishEditingAtOnceButton.layer.mask = maskLayer1
+        
+        let maskLayer2 = CAShapeLayer()
+        maskLayer2.frame = finishEditingOneByOneButton.bounds
+        let path2 = UIBezierPath()
+        path2.move(to: CGPoint(x: 0, y: finishEditingOneByOneButton.frame.height))
+        path2.addLine(to: CGPoint(x: finishEditingOneByOneButton.frame.width, y: finishEditingAtOnceButton.frame.height))
+        path2.addLine(to: CGPoint(x: finishEditingOneByOneButton.frame.width, y: 0))
+        path2.close()
+        maskLayer2.path = path2.cgPath
+        finishEditingOneByOneButton.layer.mask = maskLayer2
+    }
+    
     func drawRuleOfThirdsLines() {
         let screenWidth = arView.bounds.width
         let screenHeight = arView.bounds.height
@@ -389,22 +441,43 @@ class CameraScreenViewController: UIViewController {
     
     @objc
     private func addActor() {
-        finishEditingButton.isHidden = false
+        finishEditingAtOnceButton.isHidden = false
         ifFinishEditingButtonHidden = false
-        animateButtonPress(button: finishEditingButton)
+        animateButtonPress(button: addActorButton)
         presenter?.addActor(arView: arView)
     }
     
     @objc
-    private func finishEditing() {
-        finishEditingButton.isHidden = true
-        ifFinishEditingButtonHidden = true
-        animateButtonPress(button: finishEditingButton)
-        presenter?.finishEditing()
+    private func finishEditingAtOnce() {
+        //animateButtonPress(button: finishEditingButton)
+        //changeButtonVisibilityAnimation(button: finishEditingAtOnceButton)
+        //ifFinishEditingButtonHidden = true
+        animateButtonPress(button: finishEditingAtOnceButton)
+        presenter?.finishEditingAtOnce(completion: { completed in
+            if completed {
+//                self.changeButtonVisibilityAnimation(button: self.finishEditingAtOnceButton)
+//                self.ifFinishEditingButtonHidden = false
+            }
+        })
+    }
+    
+    @objc
+    private func finishEditingOneByOne() {
+        //animateButtonPress(button: finishEditingButton)
+        //changeButtonVisibilityAnimation(button: finishEditingAtOnceButton)
+        //ifFinishEditingButtonHidden = true
+        animateButtonPress(button: finishEditingOneByOneButton)
+        presenter?.finishEditingOneByOne(completion: { completed in
+            if completed {
+//                self.changeButtonVisibilityAnimation(button: self.finishEditingOneByOneButton)
+//                self.ifFinishEditingButtonHidden = false
+            }
+        })
     }
     
     @objc
     private func changeName() {
+        animateButtonPress(button: changeNameButton)
         presenter?.changeName(arView: arView)
     }
     
@@ -423,7 +496,8 @@ class CameraScreenViewController: UIViewController {
         UIView.animate(withDuration: 0.2, animations: {
             self.recordButton.alpha = 0
             self.addActorButton.alpha = 0
-            self.finishEditingButton.alpha = 0
+            self.finishEditingAtOnceButton.alpha = 0
+            self.finishEditingOneByOneButton.alpha = 0
             self.changeNameButton.alpha = 0
             self.changeScriptButtonBackgroundView.alpha = 0
             self.changeScriptButton.alpha = 0
@@ -432,7 +506,8 @@ class CameraScreenViewController: UIViewController {
         }, completion: { _ in
             self.recordButton.isHidden = true
             self.addActorButton.isHidden = true
-            self.finishEditingButton.isHidden = true
+            self.finishEditingAtOnceButton.isHidden = true
+            self.finishEditingOneByOneButton.isHidden = true
             self.changeNameButton.isHidden = true
             self.changeScriptButtonBackgroundView.isHidden = true
             self.changeScriptButton.isHidden = true
@@ -470,18 +545,16 @@ class CameraScreenViewController: UIViewController {
             
             self.recordButton.isHidden = false
             self.addActorButton.isHidden = false
-            if !self.ifFinishEditingButtonHidden {
-                self.finishEditingButton.isHidden = false
-            }
+            self.finishEditingAtOnceButton.isHidden = false
+            self.finishEditingOneByOneButton.isHidden = false
             self.changeScriptButtonBackgroundView.isHidden = false
             self.changeScriptButton.isHidden = false
             
             UIView.animate(withDuration: 0.2) {
                 self.recordButton.alpha = 1
                 self.addActorButton.alpha = 1
-                if !self.ifFinishEditingButtonHidden {
-                    self.finishEditingButton.alpha = 1
-                }
+                self.finishEditingAtOnceButton.alpha = 1
+                self.finishEditingOneByOneButton.alpha = 1
                 self.changeScriptButtonBackgroundView.alpha = 1
                 self.changeScriptButton.alpha = 1
             }
@@ -630,18 +703,27 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
         if names.isEmpty || phrases.isEmpty { return }
         subtitlesNameLabel.text = names[curNameIndex]
         subtitlesPhraseLabel.text = phrases[curPhraseIndex]
-
-        let stackView = UIStackView(arrangedSubviews: [subtitlesNameLabel, subtitlesPhraseLabel])
-        stackView.axis = .horizontal
-        stackView.alignment = .firstBaseline
-        stackView.distribution = .fill
-        stackView.spacing = 0
-        view.addSubview(stackView)
         
-        stackView.snp.remakeConstraints { make in
+        let subtitlesStackView = UIStackView(arrangedSubviews: [subtitlesNameLabel, subtitlesPhraseLabel])
+        subtitlesStackView.axis = .horizontal
+        subtitlesStackView.alignment = .firstBaseline
+        subtitlesStackView.distribution = .fill
+        subtitlesStackView.spacing = 0
+        view.addSubview(subtitlesStackView)
+        
+        subtitlesStackView.snp.makeConstraints { make in
             make.centerX.equalToSuperview().offset(-15)
             make.bottom.equalToSuperview().offset(-30)
         }
+        
+//        UIView.animate(withDuration: 0.2) {
+//            self.subtitlesStackView.alpha = 0
+//        } completion: { _ in
+//            self.subtitlesStackView = UIStackView(arrangedSubviews: [self.subtitlesNameLabel, self.subtitlesPhraseLabel])
+//            UIView.animate(withDuration: 0.2) {
+//                self.subtitlesStackView.alpha = 1
+//            }
+//        }
 
         presenter?.startDialogueRecogniotion(names: names, curNameIndex: curNameIndex, phrases: phrases, curPhraseIndex: curPhraseIndex)
         
@@ -709,7 +791,7 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
         if buttonName == "changeNameButton" {
             changeButtonVisibilityAnimation(button: changeNameButton)
         } else if buttonName == "finishEditingButton" {
-            finishEditingButton.isHidden = false
+            finishEditingAtOnceButton.isHidden = false
             ifFinishEditingButtonHidden = false
         }
     }
