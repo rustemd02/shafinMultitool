@@ -9,9 +9,9 @@ import Foundation
 import ARKit
 
 class DBService {
+    
     static let shared = DBService()
 
-    
     func fetchSettingsButtonValues() -> SettingsValues {
         let width = UserDefaults.standard.integer(forKey: "resolutionWidth")
         let height = UserDefaults.standard.integer(forKey: "resolutionHeight")

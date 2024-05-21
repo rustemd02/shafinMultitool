@@ -138,28 +138,29 @@ class CameraScreenViewController: UIViewController {
         finishEditingAtOnceButton.backgroundColor = .white
         finishEditingAtOnceButton.layer.cornerRadius = 30
         finishEditingAtOnceButton.layer.masksToBounds = true
-        finishEditingAtOnceButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
+        finishEditingAtOnceButton.setImage(UIImage(systemName: "play"), for: .normal)
+        finishEditingAtOnceButton.imageView?.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
         finishEditingAtOnceButton.tintColor = .black
+        finishEditingAtOnceButton.isHidden = true
         finishEditingAtOnceButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
             make.topMargin.equalToSuperview().offset(15)
             make.centerX.equalTo(addActorButton.snp.centerX).offset(-10)
         }
-        finishEditingAtOnceButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 0, bottom: finishEditingAtOnceButton.frame.height/2, right: finishEditingAtOnceButton.frame.width/2)
         
         backgroundView.addSubview(finishEditingOneByOneButton)
         finishEditingOneByOneButton.backgroundColor = .white
         finishEditingOneByOneButton.layer.cornerRadius = 30
         finishEditingOneByOneButton.layer.masksToBounds = true
-        finishEditingOneByOneButton.setImage(UIImage(systemName: "checkmark.circle"), for: .normal)
+        finishEditingOneByOneButton.setImage(UIImage(systemName: "forward.frame"), for: .normal)
+        finishEditingOneByOneButton.imageView?.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
         finishEditingOneByOneButton.tintColor = .black
+        finishEditingOneByOneButton.isHidden = true
         finishEditingOneByOneButton.snp.makeConstraints { make in
             make.width.height.equalTo(60)
             make.topMargin.equalToSuperview().offset(25)
             make.centerX.equalTo(addActorButton.snp.centerX).offset(10)
         }
-        finishEditingOneByOneButton.imageEdgeInsets = UIEdgeInsets(top: finishEditingOneByOneButton.frame.height/2, left: finishEditingOneByOneButton.frame.width/2, bottom: 0, right: 0)
-        
         
         backgroundView.addSubview(changeNameButton)
         changeNameButton.backgroundColor = .white.withAlphaComponent(0.5)
@@ -388,6 +389,8 @@ class CameraScreenViewController: UIViewController {
         path1.close()
         maskLayer1.path = path1.cgPath
         finishEditingAtOnceButton.layer.mask = maskLayer1
+        finishEditingAtOnceButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 0, bottom: finishEditingAtOnceButton.frame.height/3.5, right: finishEditingAtOnceButton.frame.width/3.5)
+
         
         let maskLayer2 = CAShapeLayer()
         maskLayer2.frame = finishEditingOneByOneButton.bounds
@@ -398,6 +401,10 @@ class CameraScreenViewController: UIViewController {
         path2.close()
         maskLayer2.path = path2.cgPath
         finishEditingOneByOneButton.layer.mask = maskLayer2
+        finishEditingOneByOneButton.imageEdgeInsets = UIEdgeInsets(top: finishEditingOneByOneButton.frame.height/3.5, left: finishEditingOneByOneButton.frame.width/3.5, bottom: 0, right: 0)
+        
+        finishEditingAtOnceButton.isHidden = false
+        finishEditingOneByOneButton.isHidden = false
     }
     
     func drawRuleOfThirdsLines() {
