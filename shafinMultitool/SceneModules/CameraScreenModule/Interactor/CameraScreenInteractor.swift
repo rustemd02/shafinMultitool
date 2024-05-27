@@ -20,6 +20,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func finishEditingOneByOne(completion: @escaping (Bool) -> ())
     func changeResolution()
     func changeFPS()
+    func changeSpeed()
     func goToScenesOverviewScreen(arView: ARView, completion: @escaping (Bool) -> ())
     func focusOnTap(focusPoint: CGPoint)
     func fetchSettingsButtonValues() -> SettingsValues
@@ -59,6 +60,8 @@ class CameraScreenInteractor {
     
     var anchors: [ARAnchor] = []
     var sceneData: SceneData?
+    
+    var currentSpeedMultiplier: Double = 1
     
     private let processingQueue = DispatchQueue(label: "processingQueue")
     
@@ -217,6 +220,7 @@ class CameraScreenInteractor {
         let defaultFps = 25
         let defaultWhiteBalance = 4000
         let defaultISO = 200
+        let defaultSpeedMultiplier: Double = 1
         
         var width = UserDefaults.standard.integer(forKey: "resolutionWidth")
         var height = UserDefaults.standard.integer(forKey: "resolutionHeight")
@@ -224,6 +228,7 @@ class CameraScreenInteractor {
         var fps = UserDefaults.standard.integer(forKey: "framerate")
         var wb = UserDefaults.standard.integer(forKey: "whiteBalance")
         var iso = UserDefaults.standard.integer(forKey: "iso")
+        var speedMultiplier = UserDefaults.standard.double(forKey: "speedMultiplier")
         
         if width == 0 {
             width = defaultWidth
@@ -250,6 +255,11 @@ class CameraScreenInteractor {
         if iso == 0 {
             iso = defaultISO
             UserDefaults.standard.set(iso, forKey: "iso")
+        }
+        
+        if speedMultiplier == 0 {
+            speedMultiplier = defaultSpeedMultiplier
+            UserDefaults.standard.set(speedMultiplier, forKey: "speedMultiplier")
         }
     }
     
@@ -306,6 +316,14 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         let newFPSEnum = currFPSEnum.next()
         cameraService.changeFPS(fps: newFPSEnum.rawValue)
         UserDefaults.standard.set(newFPSEnum.rawValue, forKey: "framerate")
+    }
+    
+    func changeSpeed() {
+        guard let currSpeedDescription = UserDefaults.standard.string(forKey: "speedMultiplier") else { return }
+        let currSpeedEnum = SpeedValues.withLabel("speed" + currSpeedDescription.replacingOccurrences(of: ".", with: ""))
+        let newSpeedEnum = currSpeedEnum?.next()
+        currentSpeedMultiplier = newSpeedEnum?.rawValue ?? 1
+        UserDefaults.standard.set(newSpeedEnum?.rawValue, forKey: "speedMultiplier")
     }
     
     
@@ -528,7 +546,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             }
 
             // Скорость движения модели в метрах в секунду
-            let speed: Float = 0.15 // Примерное значение, подберите соответственно вашим нуждам
+            let speed: Double = 0.15 * currentSpeedMultiplier // Примерное значение, подберите соответственно вашим нуждам
 
             for i in 0..<coordinates.count - 1 {
                 let startPosition = coordinates[i].columns.3
@@ -593,8 +611,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
                     let z2 = destination.columns.3.z
                     let distance = hypot(x2 - x1, z2 - z1)
                     
-                    let speed: Float = 0.3 // Скорость должна быть определена вашими требованиями
-                    let duration = TimeInterval(distance / speed)
+                    let speed: Double = 0.15 * self.currentSpeedMultiplier // Скорость должна быть определена вашими требованиями
+                    let duration = TimeInterval(Double(distance) / speed)
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
                         actorEntity.move(to: destination, relativeTo: nil, duration: duration)

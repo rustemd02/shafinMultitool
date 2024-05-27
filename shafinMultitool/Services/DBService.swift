@@ -18,7 +18,8 @@ class DBService {
         let fps = UserDefaults.standard.integer(forKey: "framerate")
         let wb = UserDefaults.standard.integer(forKey: "whiteBalance")
         let iso = UserDefaults.standard.integer(forKey: "iso")
-        let settingsValues = SettingsValues(resolution: [(width: width, height: height)], fps: fps, wb: wb, iso: iso)
+        let speed = UserDefaults.standard.double(forKey: "speedMultiplier")
+        let settingsValues = SettingsValues(resolution: [(width: width, height: height)], fps: fps, wb: wb, iso: iso, speed: speed)
         return settingsValues
     }
     

@@ -15,6 +15,8 @@ protocol SOViewControllerProtocol: AnyObject {
 class SOViewController: UIViewController {
     var presenter: SOPresenter?
     
+    private var backgroundImageView = UIImageView()
+    private var logoImageView = UIImageView()
     private let titleName = UILabel()
     private var sceneNames: [String] = []
     private var scenesListCollectionView: UICollectionView!
@@ -33,6 +35,12 @@ class SOViewController: UIViewController {
     
     private func setupUI() {
         view.backgroundColor = #colorLiteral(red: 0.1125308201, green: 0.1222153977, blue: 0.1352786422, alpha: 1)
+        
+        view.addSubview(backgroundImageView)
+        backgroundImageView.image = UIImage(named: "background")!
+        backgroundImageView.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+        }
         
         scenesListCollectionView = UICollectionView(frame: .zero, collectionViewLayout: setupFlowLayout())
         scenesListCollectionView.translatesAutoresizingMaskIntoConstraints = false
@@ -56,6 +64,16 @@ class SOViewController: UIViewController {
             make.topMargin.equalTo(titleName.snp_bottomMargin).offset(35)
             make.center.equalToSuperview()
             make.horizontalEdges.equalTo(view)
+        }
+        
+        view.addSubview(logoImageView)
+        logoImageView.image = UIImage(named: "logo_menu")
+        logoImageView.alpha = 0.65
+        logoImageView.snp.makeConstraints { make in
+            make.height.equalTo(30)
+            make.width.equalTo(275)
+            make.trailingMargin.equalTo(view.snp_trailingMargin)
+            make.bottomMargin.equalTo(view.safeAreaLayoutGuide).offset(-15)
         }
         
     }
@@ -109,17 +127,7 @@ extension SOViewController: UICollectionViewDelegate, UICollectionViewDataSource
     }
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        guard let cell = scenesListCollectionView.dequeueReusableCell(withReuseIdentifier: "\(SceneInfoCell.self)", for: indexPath) as? SceneInfoCell else { return }
-//        UIView.animate(withDuration: 0.2, animations: {
-//            cell.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
-//            cell.alpha = 0.8
-//        }, completion: { _ in
-//            UIView.animate(withDuration: 0.1) {
-//                cell.transform = CGAffineTransform(scaleX: 1, y: 1)
-//                cell.alpha = 1
-//            }
-//        })
-            
+        guard scenesListCollectionView.dequeueReusableCell(withReuseIdentifier: "\(SceneInfoCell.self)", for: indexPath) is SceneInfoCell else { return }
         if indexPath.item == 0 {
             let alertController = UIAlertController(title: "Введите название новой сцены:", message: nil, preferredStyle: .alert)
             
@@ -153,17 +161,5 @@ extension SOViewController: UICollectionViewDelegate, UICollectionViewDataSource
 extension SOViewController: SOViewControllerProtocol {
     func updateUI() {
         sceneNames = presenter?.getSceneNames() ?? []
-    }
-}
-
-extension UIView {
-    func shake(duration timeDuration: Double = 0.07, repeat countRepeat: Float = 3){
-        let animation = CABasicAnimation(keyPath: "position")
-        animation.duration = timeDuration
-        animation.repeatCount = countRepeat
-        animation.autoreverses = true
-        animation.fromValue = NSValue(cgPoint: CGPoint(x: self.center.x - 10, y: self.center.y))
-        animation.toValue = NSValue(cgPoint: CGPoint(x: self.center.x + 10, y: self.center.y))
-        self.layer.add(animation, forKey: "position")
     }
 }

@@ -58,7 +58,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         audioCaptureSession.beginConfiguration()
         
         videoCaptureDevice = AVCaptureDevice.default(for: .video)
-        //videoCaptureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
         
         videoSettingsUpdate()
 
@@ -128,7 +127,6 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         
         assetWriter.add(assetWriterVideoInput)
         assetWriter.add(assetWriterAudioInput)
-        
     }
 
     

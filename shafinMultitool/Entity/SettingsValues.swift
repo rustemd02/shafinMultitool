@@ -12,6 +12,7 @@ struct SettingsValues {
     var fps: Int
     var wb: Int
     var iso: Int
+    var speed: Double
 }
 
 enum Resolutions: CaseIterable {
@@ -23,6 +24,13 @@ enum FPSValues: Int, CaseIterable {
     case fps25 = 25
     case fps30 = 30
     
+}
+
+enum SpeedValues: Double, CaseIterable {
+    case speed05 = 0.5
+    case speed07 = 0.7
+    case speed1 = 1
+    case speed15 = 1.5
 }
 
 extension CaseIterable where Self: Equatable {

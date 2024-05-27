@@ -28,6 +28,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func fetchSettingsButtonValues() -> (SettingsValues, String)
     func changeFPS()
     func changeResolution()
+    func changeSpeed()
     func goToScenesOverviewScreen(arView: ARView)
     func goToEditScriptScreen(with sceneData: SceneData)
     func focusOnTap(focusPoint: CGPoint)
@@ -109,6 +110,10 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     
     func changeResolution() {
         interactor.changeResolution()
+    }
+    
+    func changeSpeed() {
+        interactor.changeSpeed()
     }
     
     func focusOnTap(focusPoint: CGPoint) {

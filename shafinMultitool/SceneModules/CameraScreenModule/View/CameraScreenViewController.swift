@@ -51,6 +51,7 @@ class CameraScreenViewController: UIViewController {
     private let changeISOButton = UIButton(type: .custom)
     private let settingPickerView = UIPickerView()
     
+    private let changeSpeedButton = UIButton(type: .custom)
     private let addActorButton = UIButton(type: .custom)
     private var finishEditingAtOnceButton = UIButton(type: .custom)
     private var finishEditingOneByOneButton = UIButton(type: .custom)
@@ -100,6 +101,7 @@ class CameraScreenViewController: UIViewController {
         changeNameButton.addTarget(self, action: #selector(changeName), for: .touchUpInside)
         recordButton.addTarget(self, action: #selector(recordButtonPressed), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopButtonPressed), for: .touchUpInside)
+        changeSpeedButton.addTarget(self, action: #selector(changeSpeedButtonPressed), for: .touchUpInside)
         
     }
     
@@ -241,17 +243,6 @@ class CameraScreenViewController: UIViewController {
             make.center.equalTo(arView.snp.center)
         }
         
-//        arView.addSubview(subtitlesStackView)
-//        subtitlesStackView.axis = .horizontal
-//        subtitlesStackView.alignment = .firstBaseline
-//        subtitlesStackView.distribution = .fill
-//        subtitlesStackView.spacing = 0
-//        
-//        subtitlesStackView.snp.makeConstraints { make in
-//            make.centerX.equalToSuperview().offset(-15)
-//            make.bottom.equalToSuperview().offset(-30)
-//        }
-        
         loadingAnimation()
     }
     
@@ -362,6 +353,25 @@ class CameraScreenViewController: UIViewController {
             make.centerX.equalTo(changeISOButton.snp.centerX)
         }
         
+        let speedLabel = UILabel()
+        speedLabel.text = "SPEED"
+        speedLabel.textColor = .lightGray
+        speedLabel.font = .systemFont(ofSize: 11)
+        settingsBarBackgroundView.addSubview(speedLabel)
+        
+        changeSpeedButton.setTitle("x1", for: .normal)
+        changeSpeedButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        changeSpeedButton.setTitleColor(.white, for: .normal)
+        settingsBarBackgroundView.addSubview(changeSpeedButton)
+        changeSpeedButton.snp.makeConstraints { make in
+            make.topMargin.equalTo(settingsBarBackgroundView.snp_topMargin).offset(-2)
+            make.rightMargin.equalTo(changeISOButton.snp.leftMargin).inset(-50)
+        }
+        speedLabel.snp.makeConstraints { make in
+            make.topMargin.equalTo(changeSpeedButton.snp_bottomMargin).offset(8)
+            make.centerX.equalTo(changeSpeedButton.snp.centerX)
+        }
+        
         settingsBarBackgroundView.addSubview(coverView)
         coverView.snp.makeConstraints { make in
             make.edges.equalTo(settingsBarBackgroundView)
@@ -440,6 +450,7 @@ class CameraScreenViewController: UIViewController {
         changeFPSButton.setTitle(settingsValues.fps.description, for: .normal)
         changeWBButton.setTitle(settingsValues.wb.description, for: .normal)
         changeISOButton.setTitle(settingsValues.iso.description, for: .normal)
+        changeSpeedButton.setTitle("x" + settingsValues.speed.description, for: .normal)
     }
     
     private func setupARView(arView: ARView) {
@@ -590,6 +601,12 @@ class CameraScreenViewController: UIViewController {
     }
     
     @objc
+    private func changeSpeedButtonPressed () {
+        presenter?.changeSpeed()
+        settingValueAnimation(button: changeSpeedButton)
+    }
+    
+    @objc
     private func changeISOButtonPressed() {
         settingPickerView.tag = 1
         changeSettingButtonPressed(tag: 1)
@@ -722,15 +739,6 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
             make.centerX.equalToSuperview().offset(-15)
             make.bottom.equalToSuperview().offset(-30)
         }
-        
-//        UIView.animate(withDuration: 0.2) {
-//            self.subtitlesStackView.alpha = 0
-//        } completion: { _ in
-//            self.subtitlesStackView = UIStackView(arrangedSubviews: [self.subtitlesNameLabel, self.subtitlesPhraseLabel])
-//            UIView.animate(withDuration: 0.2) {
-//                self.subtitlesStackView.alpha = 1
-//            }
-//        }
 
         presenter?.startDialogueRecogniotion(names: names, curNameIndex: curNameIndex, phrases: phrases, curPhraseIndex: curPhraseIndex)
         
