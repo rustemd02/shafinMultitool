@@ -705,23 +705,23 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         var possibleName = false
         
         for char in text {
-            if char != ":" && readingName { // Читаем имя
+            if char != ":" && readingName {
                 if char != " " {
                     currentName.append(char)
                 }
-                if possibleName { // Допустим новое имя
+                if possibleName {
                     if (char == " " && !currentName.isEmpty) || char == "," {
                         possibleName = false
                         readingName = false
                         currentName = ""
                     }
-                    currentMessage.append(char) // На всякий добавляем и как фразу
+                    currentMessage.append(char)
                 }
                 
-            } else if (char != ":" && char != "." && char != "?" && char != "!") && !readingName { // Читаем фразу
+            } else if (char != ":" && char != "." && char != "?" && char != "!") && !readingName {
                 currentMessage.append(char)
                 
-            } else { // Двоеточие или зн. препинания
+            } else {
                 if char == ":" {
                     currentName = currentName.replacingOccurrences(of: "\n", with: "")
                     names.append(currentName)
