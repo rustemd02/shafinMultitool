@@ -854,17 +854,21 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
         let screenHeight = arView.bounds.height
         
         let distanceThreshold: CGFloat = 0.1 // Пороговое значение для определения близости к краю
-        let isCloseToEdge = boundingBox.origin.x < distanceThreshold || boundingBox.origin.y < distanceThreshold ||
-        (1 - (boundingBox.origin.x + boundingBox.width)) < distanceThreshold ||
-        (1 - (boundingBox.origin.y + boundingBox.height)) < distanceThreshold
+        let isCloseToEdge = boundingBox.origin.x < distanceThreshold ||
+                            boundingBox.origin.y < distanceThreshold ||
+                            (1 - (boundingBox.origin.x + boundingBox.width)) < distanceThreshold ||
+                            (1 - (boundingBox.origin.y + boundingBox.height)) < distanceThreshold
         
         // Проверим, нарушается ли правило третей для лица
-        let isViolation = boundingBox.origin.x < 0.33 || boundingBox.origin.x + boundingBox.width > 0.66
+        let isViolation = boundingBox.origin.x < 0.33 ||
+                          boundingBox.origin.x + boundingBox.width > 0.66 ||
+                          boundingBox.origin.y < 0.33 ||
+                          boundingBox.origin.y + boundingBox.height > 0.66
         
         // Если лицо близко к краю экрана и нарушается правило третей, рисуем boundingBox
         if isCloseToEdge && isViolation {
             let convertedBoundingBox = CGRect(x: boundingBox.origin.x * screenWidth,
-                                              y: (1 - boundingBox.origin.y) * screenHeight - boundingBox.height * screenHeight,
+                                              y: (1 - boundingBox.origin.y - boundingBox.height) * screenHeight,
                                               width: boundingBox.width * screenWidth,
                                               height: boundingBox.height * screenHeight)
             
@@ -879,9 +883,9 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
             addWarning(with: "person.crop.rectangle")
             
             self.drawings.append(faceBoundingBoxShape)
-            
         }
     }
+
 }
 
 extension CameraScreenViewController: ARSessionDelegate {

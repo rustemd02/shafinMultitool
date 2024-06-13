@@ -61,7 +61,7 @@ class CameraScreenInteractor {
     var anchors: [ARAnchor] = []
     var sceneData: SceneData?
     
-    var currentSpeedMultiplier: Double = 1
+    var currentSpeedMultiplier: Double = 0.7
     
     private let processingQueue = DispatchQueue(label: "processingQueue")
     
@@ -284,10 +284,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: .default)
         finishEditingAtOnce { _ in }
-        for actorEntity in self.actorEntities {
-            //var material = SimpleMaterial()
-            
-        }
+        //finishEditingOneByOne {_ in}
         cameraService.startRecording()
         
     }
@@ -452,6 +449,7 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             presenter?.setSceneData(sceneData: sceneData)
         } else {
             guard let (worldMap, sceneData) = DBService.shared.loadARWorldMap(sceneName: sceneName) else { return }
+            speechRecognitionService.stopRecognition()
             presenter?.setSceneData(sceneData: sceneData)
             updateScript(newScript: sceneData.script ?? "")
             self.sceneData = sceneData
@@ -548,28 +546,14 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             // Скорость движения модели в метрах в секунду
             let speed: Double = 0.15 * currentSpeedMultiplier // Примерное значение, подберите соответственно вашим нуждам
 
-            for i in 0..<coordinates.count - 1 {
-                let startPosition = coordinates[i].columns.3
-                let endPosition = coordinates[i + 1].columns.3
-                let distance = simd_distance(startPosition, endPosition)
-                let moveDuration = TimeInterval(distance) / TimeInterval(speed) // Вычисление продолжительности на основе расстояния и скорости
-
-                DispatchQueue.main.async {
-                    actorEntity.move(to: coordinates[i + 1], relativeTo: nil, duration: moveDuration)
-                }
+            // Устанавливаем модель на первую точку
+            DispatchQueue.main.async {
+                actorEntity.setTransformMatrix(coordinates[0], relativeTo: nil)
             }
 
-            // Подсчет общего времени перемещения всех сегментов
-            let totalDuration = coordinates.dropFirst().enumerated().reduce(0.0) { (total, arg) -> TimeInterval in
-                let (index, endPosition) = arg
-                let startPosition = coordinates[index].columns.3
-                let distance = simd_distance(startPosition, endPosition.columns.3)
-                return total + TimeInterval(distance) / TimeInterval(speed)
-            }
-
-            // Ожидание завершения всех анимаций
-            DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration) {
-                group.leave()
+            // Задержка для установки начальной позиции
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.moveActorEntity(actorEntity, along: coordinates, with: speed, group: group)
             }
         }
 
@@ -578,6 +562,43 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             completion(true)
         }
     }
+
+    private func moveActorEntity(_ actorEntity: ModelEntity, along coordinates: [simd_float4x4], with speed: Double, group: DispatchGroup) {
+        guard coordinates.count > 1 else {
+            group.leave()
+            return
+        }
+
+        let totalDuration = coordinates.dropFirst().enumerated().reduce(0.0) { (total, arg) -> TimeInterval in
+            let (index, endPosition) = arg
+            let startPosition = coordinates[index].columns.3
+            let distance = simd_distance(startPosition, endPosition.columns.3)
+            return total + TimeInterval(distance) / TimeInterval(speed)
+        }
+
+        func moveToNextCoordinate(index: Int) {
+            guard index < coordinates.count - 1 else {
+                group.leave()
+                return
+            }
+
+            let startPosition = coordinates[index].columns.3
+            let endPosition = coordinates[index + 1].columns.3
+            let distance = simd_distance(startPosition, endPosition)
+            let moveDuration = TimeInterval(distance) / TimeInterval(speed)
+
+            DispatchQueue.main.async {
+                actorEntity.move(to: coordinates[index + 1], relativeTo: nil, duration: moveDuration)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + moveDuration) {
+                moveToNextCoordinate(index: index + 1)
+            }
+        }
+
+        moveToNextCoordinate(index: 0)
+    }
+
     
     func finishEditingOneByOne(completion: @escaping (Bool) -> Void) {
         for pathEntity in self.pathEntities {

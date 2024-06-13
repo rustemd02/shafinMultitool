@@ -13,7 +13,6 @@ class SpeechRecognitionService {
     
     let audioEngine = AVAudioEngine()
     let speechRecogniser: SFSpeechRecognizer? = SFSpeechRecognizer(locale: Locale.init(identifier: "ru-RU"))
-    let request = SFSpeechAudioBufferRecognitionRequest()
     var task: SFSpeechRecognitionTask? = nil
     
     
@@ -21,6 +20,8 @@ class SpeechRecognitionService {
         let node = audioEngine.inputNode
         let recordingFormat = node.outputFormat(forBus: 0)
         
+        let request = SFSpeechAudioBufferRecognitionRequest()
+
         audioEngine.prepare()
         do {
             try audioEngine.start()
@@ -29,7 +30,7 @@ class SpeechRecognitionService {
         }
         
         node.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            self.request.append(buffer)
+            request.append(buffer)
         }
         
         task = speechRecogniser?.recognitionTask(with: request, resultHandler: { response, error in
@@ -38,13 +39,13 @@ class SpeechRecognitionService {
             completion(message)
         })
     }
+
     
     func stopRecognition() {
         task?.finish()
         task?.cancel()
         task = nil
         
-        request.endAudio()
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
     }
