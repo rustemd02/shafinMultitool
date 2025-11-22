@@ -15,7 +15,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = UIWindow(frame: UIScreen.main.bounds)
         window?.windowScene = windowScene
         window?.backgroundColor = .black
-        let vc = SOModuleBuilder.build()
+        let vc = StageSelectionViewController()
         let navigationController = UINavigationController(rootViewController: vc)
         navigationController.navigationBar.isHidden = true
         window?.rootViewController = navigationController

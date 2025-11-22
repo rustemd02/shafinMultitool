@@ -3,46 +3,14 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 55;
+	objectVersion = 73;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		965FEAE79C4978DC87D1FBB2 /* Pods_shafinMultitool.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */; };
-		CF09804F2AF153A500DC21F8 /* SettingsValues.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF09804E2AF153A500DC21F8 /* SettingsValues.swift */; };
-		CF10E5ED29F8211600D3E39A /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */; };
 		CF10E5F029F8236100D3E39A /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5EF29F8236100D3E39A /* ARKit.framework */; };
 		CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5F129F8238100D3E39A /* RealityKit.framework */; };
-		CF506F802A010F29005E959C /* Circle.rcproject in Sources */ = {isa = PBXBuildFile; fileRef = CF506F7F2A010F29005E959C /* Circle.rcproject */; };
-		CF506F822A011445005E959C /* Person.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF506F812A011445005E959C /* Person.usdz */; };
 		CF5C60412B84C0E100218148 /* shafinMultitoolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */; };
-		CF5E4B1B2AE95A36002A23BE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CF5E4B1A2AE95A36002A23BE /* LaunchScreen.storyboard */; };
-		CF7C32AD2AFAB127006FDE39 /* SOViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32AC2AFAB127006FDE39 /* SOViewController.swift */; };
-		CF7C32AF2AFAB132006FDE39 /* SOPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32AE2AFAB132006FDE39 /* SOPresenter.swift */; };
-		CF7C32B12AFAB140006FDE39 /* SOInteractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32B02AFAB140006FDE39 /* SOInteractor.swift */; };
-		CF7C32B32AFAB1B6006FDE39 /* SORouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32B22AFAB1B6006FDE39 /* SORouter.swift */; };
-		CF7C32B52AFAB268006FDE39 /* SOModuleBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32B42AFAB268006FDE39 /* SOModuleBuilder.swift */; };
-		CF7C32B72B001177006FDE39 /* SceneInfoCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7C32B62B001177006FDE39 /* SceneInfoCell.swift */; };
-		CF8AD3752A12A9B20004B378 /* Circle.usdz in Resources */ = {isa = PBXBuildFile; fileRef = CF8AD3742A12A9B20004B378 /* Circle.usdz */; };
-		CF8AD3772A12BA5B0004B378 /* EditScriptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3762A12BA5B0004B378 /* EditScriptBuilder.swift */; };
-		CF8AD37D2A12BA9B0004B378 /* EditScriptViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37C2A12BA9B0004B378 /* EditScriptViewController.swift */; };
-		CF8AD37F2A12BAA80004B378 /* EditScriptInteractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD37E2A12BAA80004B378 /* EditScriptInteractor.swift */; };
-		CF8AD3812A12BAB10004B378 /* EditScriptPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3802A12BAB10004B378 /* EditScriptPresenter.swift */; };
-		CF8AD3832A12BABB0004B378 /* EditScriptRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */; };
-		CF9BD4002AF51456001009B6 /* Converter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD3FF2AF51456001009B6 /* Converter.swift */; };
-		CF9BD4022AF526C7001009B6 /* DBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9BD4012AF526C7001009B6 /* DBService.swift */; };
-		CFA150FF2BDE73E5007A2456 /* UIView+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA150FE2BDE73E5007A2456 /* UIView+Extensions.swift */; };
-		CFA151012BDE741F007A2456 /* UILabel+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA151002BDE741F007A2456 /* UILabel+Extensions.swift */; };
-		CFAEB4092B03F4F700275DD5 /* SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFAEB4082B03F4F700275DD5 /* SceneData.swift */; };
-		CFD45A982B238A2800BEF3C0 /* SpeechRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */; };
-		CFF027952A0AA6710042951B /* ActorData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF027942A0AA6710042951B /* ActorData.swift */; };
-		CFF5C1752AE95329000D7C2A /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF5C1742AE95329000D7C2A /* CameraService.swift */; };
-		CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B20729CC876400C3B73E /* AppDelegate.swift */; };
-		CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CFF7B21029CC876500C3B73E /* Assets.xcassets */; };
-		CFF7B22129CC87C200C3B73E /* CameraScreenViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22029CC87C200C3B73E /* CameraScreenViewController.swift */; };
-		CFF7B22329CC8C6000C3B73E /* CameraScreenPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22229CC8C6000C3B73E /* CameraScreenPresenter.swift */; };
-		CFF7B22529CC8C7200C3B73E /* CameraScreenInteractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22429CC8C7200C3B73E /* CameraScreenInteractor.swift */; };
-		CFF7B22729CC8C7B00C3B73E /* CameraScreenRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22629CC8C7B00C3B73E /* CameraScreenRouter.swift */; };
-		CFF7B22929CC8CA400C3B73E /* CameraScreenBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,46 +26,38 @@
 /* Begin PBXFileReference section */
 		08C5AE5ADFDF9B02E49CF3EE /* Pods-shafinMultitool.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.release.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.release.xcconfig"; sourceTree = "<group>"; };
 		7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_shafinMultitool.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		CF09804E2AF153A500DC21F8 /* SettingsValues.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsValues.swift; sourceTree = "<group>"; };
-		CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		CF10E5EF29F8236100D3E39A /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 		CF10E5F129F8238100D3E39A /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
-		CF506F7F2A010F29005E959C /* Circle.rcproject */ = {isa = PBXFileReference; lastKnownFileType = file.rcproject; path = Circle.rcproject; sourceTree = "<group>"; };
-		CF506F812A011445005E959C /* Person.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Person.usdz; sourceTree = "<group>"; };
 		CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shafinMultitoolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shafinMultitoolTests.swift; sourceTree = "<group>"; };
-		CF5E4B192AE95618002A23BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		CF5E4B1A2AE95A36002A23BE /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-		CF7C32AC2AFAB127006FDE39 /* SOViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOViewController.swift; sourceTree = "<group>"; };
-		CF7C32AE2AFAB132006FDE39 /* SOPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOPresenter.swift; sourceTree = "<group>"; };
-		CF7C32B02AFAB140006FDE39 /* SOInteractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOInteractor.swift; sourceTree = "<group>"; };
-		CF7C32B22AFAB1B6006FDE39 /* SORouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SORouter.swift; sourceTree = "<group>"; };
-		CF7C32B42AFAB268006FDE39 /* SOModuleBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOModuleBuilder.swift; sourceTree = "<group>"; };
-		CF7C32B62B001177006FDE39 /* SceneInfoCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneInfoCell.swift; sourceTree = "<group>"; };
-		CF8AD3742A12A9B20004B378 /* Circle.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Circle.usdz; sourceTree = "<group>"; };
-		CF8AD3762A12BA5B0004B378 /* EditScriptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptBuilder.swift; sourceTree = "<group>"; };
-		CF8AD37C2A12BA9B0004B378 /* EditScriptViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptViewController.swift; sourceTree = "<group>"; };
-		CF8AD37E2A12BAA80004B378 /* EditScriptInteractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptInteractor.swift; sourceTree = "<group>"; };
-		CF8AD3802A12BAB10004B378 /* EditScriptPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptPresenter.swift; sourceTree = "<group>"; };
-		CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditScriptRouter.swift; sourceTree = "<group>"; };
-		CF9BD3FF2AF51456001009B6 /* Converter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Converter.swift; sourceTree = "<group>"; };
-		CF9BD4012AF526C7001009B6 /* DBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DBService.swift; sourceTree = "<group>"; };
-		CFA150FE2BDE73E5007A2456 /* UIView+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIView+Extensions.swift"; sourceTree = "<group>"; };
-		CFA151002BDE741F007A2456 /* UILabel+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UILabel+Extensions.swift"; sourceTree = "<group>"; };
-		CFAEB4082B03F4F700275DD5 /* SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneData.swift; sourceTree = "<group>"; };
-		CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionService.swift; sourceTree = "<group>"; };
-		CFF027942A0AA6710042951B /* ActorData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActorData.swift; sourceTree = "<group>"; };
-		CFF5C1742AE95329000D7C2A /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		CFF7B20729CC876400C3B73E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		CFF7B21029CC876500C3B73E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		CFF7B22029CC87C200C3B73E /* CameraScreenViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenViewController.swift; sourceTree = "<group>"; };
-		CFF7B22229CC8C6000C3B73E /* CameraScreenPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenPresenter.swift; sourceTree = "<group>"; };
-		CFF7B22429CC8C7200C3B73E /* CameraScreenInteractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenInteractor.swift; sourceTree = "<group>"; };
-		CFF7B22629CC8C7B00C3B73E /* CameraScreenRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenRouter.swift; sourceTree = "<group>"; };
-		CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenBuilder.swift; sourceTree = "<group>"; };
 		DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.debug.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CF3740C22EC890C80005765D /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				Resources/Circle.rcproject,
+			);
+			target = CFF7B20329CC876400C3B73E /* shafinMultitool */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		CF3740C32EC890C80005765D /* PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = CFF7B20029CC876400C3B73E /* Sources */;
+			membershipExceptions = (
+				Resources/Circle.rcproject,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		CF37407A2EC890C80005765D /* shafinMultitool */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (CF3740C22EC890C80005765D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, CF3740C32EC890C80005765D /* PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (Resources/Circle.rcproject, ); path = shafinMultitool; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		CF5C603B2B84C0E100218148 /* Frameworks */ = {
@@ -129,30 +89,6 @@
 			path = Pods;
 			sourceTree = "<group>";
 		};
-		CF036E752B7E18FF004176BB /* EditScriptModule */ = {
-			isa = PBXGroup;
-			children = (
-				CF8AD37B2A12BA8D0004B378 /* View */,
-				CF8AD37A2A12BA7C0004B378 /* Interactor */,
-				CF8AD3792A12BA6F0004B378 /* Presenter */,
-				CF8AD3782A12BA650004B378 /* Router */,
-				CF8AD3762A12BA5B0004B378 /* EditScriptBuilder.swift */,
-			);
-			path = EditScriptModule;
-			sourceTree = "<group>";
-		};
-		CF036E762B7E190E004176BB /* CameraScreenModule */ = {
-			isa = PBXGroup;
-			children = (
-				CFF7B21F29CC87AE00C3B73E /* Router */,
-				CFF7B21D29CC879E00C3B73E /* Presenter */,
-				CFF7B21C29CC879400C3B73E /* View */,
-				CFF7B21B29CC878F00C3B73E /* Interactor */,
-				CFF7B22829CC8CA400C3B73E /* CameraScreenBuilder.swift */,
-			);
-			path = CameraScreenModule;
-			sourceTree = "<group>";
-		};
 		CF10E5EE29F8236100D3E39A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -163,16 +99,6 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		CF506F832A01252F005E959C /* Entity */ = {
-			isa = PBXGroup;
-			children = (
-				CFF027942A0AA6710042951B /* ActorData.swift */,
-				CF09804E2AF153A500DC21F8 /* SettingsValues.swift */,
-				CFAEB4082B03F4F700275DD5 /* SceneData.swift */,
-			);
-			path = Entity;
-			sourceTree = "<group>";
-		};
 		CF5C603F2B84C0E100218148 /* shafinMultitoolTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -181,88 +107,10 @@
 			path = shafinMultitoolTests;
 			sourceTree = "<group>";
 		};
-		CF7C32AB2AFAB0C6006FDE39 /* ScenesOverviewModule */ = {
-			isa = PBXGroup;
-			children = (
-				CF7C32AC2AFAB127006FDE39 /* SOViewController.swift */,
-				CF7C32AE2AFAB132006FDE39 /* SOPresenter.swift */,
-				CF7C32B02AFAB140006FDE39 /* SOInteractor.swift */,
-				CF7C32B22AFAB1B6006FDE39 /* SORouter.swift */,
-				CF7C32B42AFAB268006FDE39 /* SOModuleBuilder.swift */,
-				CF7C32B62B001177006FDE39 /* SceneInfoCell.swift */,
-			);
-			path = ScenesOverviewModule;
-			sourceTree = "<group>";
-		};
-		CF8AD36E2A0D63180004B378 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				CFF5C1742AE95329000D7C2A /* CameraService.swift */,
-				CF9BD3FF2AF51456001009B6 /* Converter.swift */,
-				CF9BD4012AF526C7001009B6 /* DBService.swift */,
-				CFD45A972B238A2800BEF3C0 /* SpeechRecognitionService.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		CF8AD36F2A0D63230004B378 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				CFF7B21029CC876500C3B73E /* Assets.xcassets */,
-				CFF7B20729CC876400C3B73E /* AppDelegate.swift */,
-				CF10E5EC29F8211600D3E39A /* SceneDelegate.swift */,
-				CF506F812A011445005E959C /* Person.usdz */,
-				CF8AD3742A12A9B20004B378 /* Circle.usdz */,
-				CF506F7F2A010F29005E959C /* Circle.rcproject */,
-			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
-		CF8AD3782A12BA650004B378 /* Router */ = {
-			isa = PBXGroup;
-			children = (
-				CF8AD3822A12BABB0004B378 /* EditScriptRouter.swift */,
-			);
-			path = Router;
-			sourceTree = "<group>";
-		};
-		CF8AD3792A12BA6F0004B378 /* Presenter */ = {
-			isa = PBXGroup;
-			children = (
-				CF8AD3802A12BAB10004B378 /* EditScriptPresenter.swift */,
-			);
-			path = Presenter;
-			sourceTree = "<group>";
-		};
-		CF8AD37A2A12BA7C0004B378 /* Interactor */ = {
-			isa = PBXGroup;
-			children = (
-				CF8AD37E2A12BAA80004B378 /* EditScriptInteractor.swift */,
-			);
-			path = Interactor;
-			sourceTree = "<group>";
-		};
-		CF8AD37B2A12BA8D0004B378 /* View */ = {
-			isa = PBXGroup;
-			children = (
-				CF8AD37C2A12BA9B0004B378 /* EditScriptViewController.swift */,
-			);
-			path = View;
-			sourceTree = "<group>";
-		};
-		CFA150FD2BDE739D007A2456 /* Extensions */ = {
-			isa = PBXGroup;
-			children = (
-				CFA150FE2BDE73E5007A2456 /* UIView+Extensions.swift */,
-				CFA151002BDE741F007A2456 /* UILabel+Extensions.swift */,
-			);
-			path = Extensions;
-			sourceTree = "<group>";
-		};
 		CFF7B1FB29CC876400C3B73E = {
 			isa = PBXGroup;
 			children = (
-				CFF7B20629CC876400C3B73E /* shafinMultitool */,
+				CF37407A2EC890C80005765D /* shafinMultitool */,
 				CF5C603F2B84C0E100218148 /* shafinMultitoolTests */,
 				CFF7B20529CC876400C3B73E /* Products */,
 				CF10E5EE29F8236100D3E39A /* Frameworks */,
@@ -277,62 +125,6 @@
 				CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		CFF7B20629CC876400C3B73E /* shafinMultitool */ = {
-			isa = PBXGroup;
-			children = (
-				CFA150FD2BDE739D007A2456 /* Extensions */,
-				CF7C32AB2AFAB0C6006FDE39 /* ScenesOverviewModule */,
-				CF5E4B192AE95618002A23BE /* Info.plist */,
-				CF8AD36F2A0D63230004B378 /* Resources */,
-				CF8AD36E2A0D63180004B378 /* Services */,
-				CF506F832A01252F005E959C /* Entity */,
-				CFF7B21A29CC878000C3B73E /* SceneModules */,
-				CF5E4B1A2AE95A36002A23BE /* LaunchScreen.storyboard */,
-			);
-			path = shafinMultitool;
-			sourceTree = "<group>";
-		};
-		CFF7B21A29CC878000C3B73E /* SceneModules */ = {
-			isa = PBXGroup;
-			children = (
-				CF036E762B7E190E004176BB /* CameraScreenModule */,
-				CF036E752B7E18FF004176BB /* EditScriptModule */,
-			);
-			path = SceneModules;
-			sourceTree = "<group>";
-		};
-		CFF7B21B29CC878F00C3B73E /* Interactor */ = {
-			isa = PBXGroup;
-			children = (
-				CFF7B22429CC8C7200C3B73E /* CameraScreenInteractor.swift */,
-			);
-			path = Interactor;
-			sourceTree = "<group>";
-		};
-		CFF7B21C29CC879400C3B73E /* View */ = {
-			isa = PBXGroup;
-			children = (
-				CFF7B22029CC87C200C3B73E /* CameraScreenViewController.swift */,
-			);
-			path = View;
-			sourceTree = "<group>";
-		};
-		CFF7B21D29CC879E00C3B73E /* Presenter */ = {
-			isa = PBXGroup;
-			children = (
-				CFF7B22229CC8C6000C3B73E /* CameraScreenPresenter.swift */,
-			);
-			path = Presenter;
-			sourceTree = "<group>";
-		};
-		CFF7B21F29CC87AE00C3B73E /* Router */ = {
-			isa = PBXGroup;
-			children = (
-				CFF7B22629CC8C7B00C3B73E /* CameraScreenRouter.swift */,
-			);
-			path = Router;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -370,6 +162,9 @@
 			);
 			dependencies = (
 			);
+			fileSystemSynchronizedGroups = (
+				CF37407A2EC890C80005765D /* shafinMultitool */,
+			);
 			name = shafinMultitool;
 			productName = shafinMultitool;
 			productReference = CFF7B20429CC876400C3B73E /* shafinMultitool.app */;
@@ -395,7 +190,6 @@
 				};
 			};
 			buildConfigurationList = CFF7B1FF29CC876400C3B73E /* Build configuration list for PBXProject "shafinMultitool" */;
-			compatibilityVersion = "Xcode 13.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -405,6 +199,7 @@
 			mainGroup = CFF7B1FB29CC876400C3B73E;
 			packageReferences = (
 			);
+			preferredProjectObjectVersion = 55;
 			productRefGroup = CFF7B20529CC876400C3B73E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -427,10 +222,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CF506F822A011445005E959C /* Person.usdz in Resources */,
-				CF5E4B1B2AE95A36002A23BE /* LaunchScreen.storyboard in Resources */,
-				CFF7B21129CC876500C3B73E /* Assets.xcassets in Resources */,
-				CF8AD3752A12A9B20004B378 /* Circle.usdz in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -445,9 +236,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -491,34 +286,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CF7C32B72B001177006FDE39 /* SceneInfoCell.swift in Sources */,
-				CF7C32B32AFAB1B6006FDE39 /* SORouter.swift in Sources */,
-				CF09804F2AF153A500DC21F8 /* SettingsValues.swift in Sources */,
-				CF8AD37F2A12BAA80004B378 /* EditScriptInteractor.swift in Sources */,
-				CF7C32B12AFAB140006FDE39 /* SOInteractor.swift in Sources */,
-				CFF7B22929CC8CA400C3B73E /* CameraScreenBuilder.swift in Sources */,
-				CFF7B22729CC8C7B00C3B73E /* CameraScreenRouter.swift in Sources */,
-				CF8AD3772A12BA5B0004B378 /* EditScriptBuilder.swift in Sources */,
-				CF9BD4002AF51456001009B6 /* Converter.swift in Sources */,
-				CFAEB4092B03F4F700275DD5 /* SceneData.swift in Sources */,
-				CF10E5ED29F8211600D3E39A /* SceneDelegate.swift in Sources */,
-				CFF5C1752AE95329000D7C2A /* CameraService.swift in Sources */,
-				CFF027952A0AA6710042951B /* ActorData.swift in Sources */,
-				CF506F802A010F29005E959C /* Circle.rcproject in Sources */,
-				CFF7B20829CC876400C3B73E /* AppDelegate.swift in Sources */,
-				CF8AD3832A12BABB0004B378 /* EditScriptRouter.swift in Sources */,
-				CFF7B22129CC87C200C3B73E /* CameraScreenViewController.swift in Sources */,
-				CFA150FF2BDE73E5007A2456 /* UIView+Extensions.swift in Sources */,
-				CFF7B22329CC8C6000C3B73E /* CameraScreenPresenter.swift in Sources */,
-				CFF7B22529CC8C7200C3B73E /* CameraScreenInteractor.swift in Sources */,
-				CFA151012BDE741F007A2456 /* UILabel+Extensions.swift in Sources */,
-				CF7C32AD2AFAB127006FDE39 /* SOViewController.swift in Sources */,
-				CF7C32B52AFAB268006FDE39 /* SOModuleBuilder.swift in Sources */,
-				CF8AD37D2A12BA9B0004B378 /* EditScriptViewController.swift in Sources */,
-				CF8AD3812A12BAB10004B378 /* EditScriptPresenter.swift in Sources */,
-				CFD45A982B238A2800BEF3C0 /* SpeechRecognitionService.swift in Sources */,
-				CF7C32AF2AFAB132006FDE39 /* SOPresenter.swift in Sources */,
-				CF9BD4022AF526C7001009B6 /* DBService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
