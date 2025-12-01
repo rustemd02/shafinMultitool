@@ -11,10 +11,10 @@ import SwiftUI
 // MARK: - SwiftUI View
 struct StageSelectionView: View {
     @Environment(\.presentationMode) var presentationMode
-    @State private var showEditingAlert = false
 
     let onPreProductionTapped: () -> Void
     let onFilmingTapped: () -> Void
+    let onSceneGeneratorTapped: () -> Void
 
     var body: some View {
         ZStack {
@@ -70,26 +70,21 @@ struct StageSelectionView: View {
                     }
 
                     StageCard(
-                        title: "Монтаж",
-                        subtitle: "Постобработка и монтаж",
-                        emoji: "✂️",
+                        title: "Scene Generator",
+                        subtitle: "Генерация сцен из текста",
+                        emoji: "✨",
                         gradientColors: [
-                            Color(red: 0.6, green: 0.9, blue: 0.4),
-                            Color(red: 0.4, green: 0.7, blue: 0.2)
+                            Color(red: 0.6, green: 0.4, blue: 1.0),
+                            Color(red: 0.4, green: 0.2, blue: 0.8)
                         ]
                     ) {
-                        showEditingAlert = true
+                        onSceneGeneratorTapped()
                     }
                 }
                 .padding(.horizontal, 24)
 
                 Spacer()
             }
-        }
-        .alert("Монтаж", isPresented: $showEditingAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Данный раздел в разработке")
         }
     }
 }
@@ -203,6 +198,9 @@ class StageSelectionViewController: UIViewController {
             },
             onFilmingTapped: { [weak self] in
                 self?.filmingTapped()
+            },
+            onSceneGeneratorTapped: { [weak self] in
+                self?.sceneGeneratorTapped()
             }
         )
         let hostingController = UIHostingController(rootView: swiftUIView)
@@ -222,6 +220,13 @@ class StageSelectionViewController: UIViewController {
     private func filmingTapped() {
         let contentView = ContentView()
         let hostingController = LandscapeHostingController(rootView: contentView)
+        hostingController.modalPresentationStyle = .fullScreen
+        present(hostingController, animated: true)
+    }
+    
+    private func sceneGeneratorTapped() {
+        let sceneGeneratorView = SceneGeneratorView()
+        let hostingController = LandscapeHostingController(rootView: sceneGeneratorView)
         hostingController.modalPresentationStyle = .fullScreen
         present(hostingController, animated: true)
     }

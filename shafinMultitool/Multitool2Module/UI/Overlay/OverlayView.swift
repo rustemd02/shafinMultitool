@@ -35,7 +35,7 @@ struct OverlayView: View {
                                     .background(Color.white.opacity(0.9), in: Circle())
                             }
                             .padding(.top, 16)
-                            .padding(.trailing, 16
+                            .padding(.trailing, 16)
                         }
                         Spacer()
                     }

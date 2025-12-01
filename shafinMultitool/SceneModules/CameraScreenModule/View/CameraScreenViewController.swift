@@ -73,7 +73,9 @@ class CameraScreenViewController: UIViewController {
     
     private var linesLayer: CALayer!
 
-    
+    private let performanceOverlayView = PerformanceOverlayView()
+
+
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -102,7 +104,13 @@ class CameraScreenViewController: UIViewController {
         recordButton.addTarget(self, action: #selector(recordButtonPressed), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopButtonPressed), for: .touchUpInside)
         changeSpeedButton.addTarget(self, action: #selector(changeSpeedButtonPressed), for: .touchUpInside)
-        
+
+        setupPerformanceOverlay()
+        startPerformanceMonitoring()
+    }
+
+    deinit {
+        PerformanceMonitor.shared.stopMonitoring()
     }
     
     // MARK: - Private functions
@@ -388,7 +396,22 @@ class CameraScreenViewController: UIViewController {
             make.bottomMargin.equalTo(backgroundView.snp_bottomMargin)
         }
     }
-    
+
+    private func setupPerformanceOverlay() {
+        arView.addSubview(performanceOverlayView)
+        performanceOverlayView.snp.makeConstraints { make in
+            make.leading.equalToSuperview().offset(10)
+            make.bottom.equalToSuperview().offset(-10)
+            make.width.equalTo(110)
+        }
+    }
+
+    private func startPerformanceMonitoring() {
+        PerformanceMonitor.shared.startMonitoring { [weak self] metrics in
+            self?.performanceOverlayView.updateMetrics(metrics)
+        }
+    }
+
     func createPlayButtonMasks() {
         let maskLayer1 = CAShapeLayer()
         maskLayer1.frame = finishEditingAtOnceButton.bounds
@@ -890,6 +913,9 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
 
 extension CameraScreenViewController: ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        // Track AR frame time for performance monitoring
+        PerformanceMonitor.shared.recordFrame()
+
         processingQueue.async {
             CameraService.shared.gazeDetection(pixelBuffer: frame.capturedImage) { observation in
                 DispatchQueue.main.async {
