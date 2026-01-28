@@ -17,6 +17,9 @@ struct PerformanceMetrics {
     var thermalState: String
     var gpuUtilization: Double // % (estimated)
     var droppedFrames: Int
+    var visionLatency: Double // ms
+    var speechLatency: Double // ms
+    var overlayLatency: Double // ms
 }
 
 final class PerformanceMonitor {
@@ -27,6 +30,9 @@ final class PerformanceMonitor {
     private var displayLink: CADisplayLink?
     private var frameTimestamps: [CFTimeInterval] = []
     private var frameTimes: [Double] = []
+    private var visionLatencies: [Double] = []
+    private var speechLatencies: [Double] = []
+    private var overlayLatencies: [Double] = []
     private var lastTimestamp: CFTimeInterval = 0
     private var droppedFramesCount: Int = 0
     private var expectedFrameTime: Double = 1.0 / 60.0
@@ -69,6 +75,9 @@ final class PerformanceMonitor {
         updateTimer = nil
         frameTimestamps.removeAll()
         frameTimes.removeAll()
+        visionLatencies.removeAll()
+        speechLatencies.removeAll()
+        overlayLatencies.removeAll()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -82,6 +91,27 @@ final class PerformanceMonitor {
             }
         }
         lastTimestamp = now
+    }
+
+    func recordVisionLatency(_ duration: CFTimeInterval) {
+        metricsQueue.async { [weak self] in
+            guard let self else { return }
+            self.append(duration * 1000, to: &self.visionLatencies)
+        }
+    }
+
+    func recordSpeechLatency(_ duration: CFTimeInterval) {
+        metricsQueue.async { [weak self] in
+            guard let self else { return }
+            self.append(duration * 1000, to: &self.speechLatencies)
+        }
+    }
+
+    func recordOverlayLatency(_ duration: CFTimeInterval) {
+        metricsQueue.async { [weak self] in
+            guard let self else { return }
+            self.append(duration * 1000, to: &self.overlayLatencies)
+        }
     }
 
     // MARK: - Private Methods
@@ -122,12 +152,20 @@ final class PerformanceMonitor {
                 memoryUsage: self.getMemoryUsage(),
                 thermalState: self.getThermalStateString(),
                 gpuUtilization: self.estimateGPUUtilization(),
-                droppedFrames: self.droppedFramesCount
+                droppedFrames: self.droppedFramesCount,
+                visionLatency: self.average(of: self.visionLatencies),
+                speechLatency: self.average(of: self.speechLatencies),
+                overlayLatency: self.average(of: self.overlayLatencies)
             )
 
             // Reset dropped frames counter
             self.droppedFramesCount = 0
             self.frameTimes.removeAll()
+            self.visionLatencies.removeAll()
+            self.speechLatencies.removeAll()
+            self.overlayLatencies.removeAll()
+
+            DiagnosticsLogger.shared.log(metrics: metrics)
 
             DispatchQueue.main.async { [weak self] in
                 self?.onMetricsUpdate?(metrics)
@@ -241,5 +279,17 @@ final class PerformanceMonitor {
         }
 
         return min(baseUtilization, 100.0)
+    }
+
+    private func append(_ value: Double, to array: inout [Double], maxCount: Int = 60) {
+        array.append(value)
+        if array.count > maxCount {
+            array.removeFirst(array.count - maxCount)
+        }
+    }
+
+    private func average(of values: [Double]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        return values.reduce(0, +) / Double(values.count)
     }
 }

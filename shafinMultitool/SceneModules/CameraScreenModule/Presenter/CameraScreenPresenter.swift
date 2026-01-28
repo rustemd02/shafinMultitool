@@ -43,6 +43,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int)
     func updateScript(newScript: String)
     func reformatScript(script: String) -> (names: [String], phrases: [String])
+    func reformatScriptAsync(script: String, completion: @escaping (_ names: [String], _ phrases: [String]) -> Void)
     func setSceneData(sceneData: SceneData)
     func changeNameAlert(completion: @escaping (String) -> ())
     func changeButtonVisibility(buttonName: String)
@@ -82,6 +83,10 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
     
     func reformatScript(script: String) -> (names: [String], phrases: [String]) {
         return interactor.reformatScript(script: script)
+    }
+
+    func reformatScriptAsync(script: String, completion: @escaping (_ names: [String], _ phrases: [String]) -> Void) {
+        interactor.reformatScriptAsync(script: script, completion: completion)
     }
     
     func setSceneData(sceneData: SceneData) {

@@ -11,6 +11,7 @@ import ARKit
 import RealityKit
 import Photos
 import Vision
+import CoreGraphics
 
 class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     //MARK: - Properties
@@ -35,6 +36,15 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var outputURL: URL?
     
     var wbValues: [Int] = []
+    
+    private let metalPreprocessor = MetalPreprocessor()
+    private let visionTargetSize = CGSize(width: 512, height: 512)
+    private let auxiliaryFrameSkipper = FrameSkipController(sourceFPS: 60, targetFPS: 12)
+    
+    // MARK: - Cached Vision Request (performance optimization)
+    private var cachedFaceRequest: VNDetectFaceCaptureQualityRequest?
+    private var isVisionRequestInProgress = false
+    private let visionQueue = DispatchQueue(label: "com.shafinMultitool.visionQueue", qos: .userInitiated)
             
 
     private override init() {
@@ -199,22 +209,37 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
      
     func gazeDetection(pixelBuffer: CVPixelBuffer, completion: @escaping ([VNFaceObservation]) -> ()) {
-        let request = VNDetectFaceCaptureQualityRequest { [weak self] request, error in
-            if let error = error {
-                print("Error detecting faces: \(error.localizedDescription)")
-                return
+        // Prevent concurrent Vision requests to reduce CPU/GPU load
+        guard !isVisionRequestInProgress else { return }
+        isVisionRequestInProgress = true
+        
+        visionQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Create or reuse the cached request
+            let request: VNDetectFaceCaptureQualityRequest
+            if let cached = self.cachedFaceRequest {
+                request = cached
+            } else {
+                request = VNDetectFaceCaptureQualityRequest()
+                self.cachedFaceRequest = request
             }
             
-            guard let observation = request.results as? [VNFaceObservation] else { return }
+            let resizedBuffer = self.metalPreprocessor.resizedPixelBuffer(from: pixelBuffer,
+                                                                           targetSize: self.visionTargetSize) ?? pixelBuffer
+            // Use minimal options for performance
+            let handler = VNImageRequestHandler(cvPixelBuffer: resizedBuffer, options: [:])
             
-            completion(observation)
-        }
-        
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-        do {
-            try handler.perform([request])
-        } catch {
-            print("Error performing Vision request: \(error.localizedDescription)")
+            do {
+                try handler.perform([request])
+                
+                let observations = request.results ?? []
+                completion(observations)
+            } catch {
+                print("Error performing Vision request: \(error.localizedDescription)")
+            }
+            
+            self.isVisionRequestInProgress = false
         }
     }
     
@@ -285,6 +310,14 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     func getWBValues() -> [Int] {
         return wbValues
+    }
+    
+    func shouldProcessAuxiliaryFrame() -> Bool {
+        return auxiliaryFrameSkipper.shouldProcessFrame()
+    }
+
+    func updateAuxiliaryTargetFPS(_ targetFPS: Int) {
+        auxiliaryFrameSkipper.updateTarget(sourceFPS: 60, targetFPS: max(1, targetFPS))
     }
     
     func generateWBValues() {

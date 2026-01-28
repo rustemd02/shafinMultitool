@@ -61,5 +61,5 @@ struct ActorData: Codable {
     }
 }
 
-
-var actors: [ActorData] = []
+// NOTE: Global 'actors' variable has been moved to CameraScreenInteractor
+// for proper memory management and to avoid memory leaks.

@@ -27,9 +27,12 @@ final class PerformanceOverlayView: UIView {
     private let thermalLabel = UILabel()
     private let gpuLabel = UILabel()
     private let droppedFramesLabel = UILabel()
+    private let visionLabel = UILabel()
+    private let speechLabel = UILabel()
+    private let overlayLabel = UILabel()
 
     private var allLabels: [UILabel] {
-        [fpsLabel, frameTimeLabel, cpuLabel, memoryLabel, thermalLabel, gpuLabel, droppedFramesLabel]
+        [fpsLabel, frameTimeLabel, cpuLabel, memoryLabel, thermalLabel, gpuLabel, droppedFramesLabel, visionLabel, speechLabel, overlayLabel]
     }
 
     // MARK: - Init
@@ -134,6 +137,30 @@ final class PerformanceOverlayView: UIView {
             value: "\(metrics.droppedFrames)",
             valueColor: droppedColor
         )
+
+        // Vision latency
+        let visionColor = colorForLatency(metrics.visionLatency)
+        visionLabel.attributedText = createAttributedText(
+            title: "Vision",
+            value: String(format: "%.1f ms", metrics.visionLatency),
+            valueColor: visionColor
+        )
+
+        // Speech latency
+        let speechColor = colorForLatency(metrics.speechLatency)
+        speechLabel.attributedText = createAttributedText(
+            title: "Speech",
+            value: String(format: "%.1f ms", metrics.speechLatency),
+            valueColor: speechColor
+        )
+
+        // Overlay latency
+        let overlayColor = colorForLatency(metrics.overlayLatency)
+        overlayLabel.attributedText = createAttributedText(
+            title: "Overlay",
+            value: String(format: "%.1f ms", metrics.overlayLatency),
+            valueColor: overlayColor
+        )
     }
 
     // MARK: - Helpers
@@ -198,6 +225,15 @@ final class PerformanceOverlayView: UIView {
         case "Serious": return .systemOrange
         case "Critical": return .systemRed
         default: return .white
+        }
+    }
+
+    private func colorForLatency(_ latency: Double) -> UIColor {
+        switch latency {
+        case 0..<20: return .systemGreen
+        case 20..<40: return .systemYellow
+        case 40..<70: return .systemOrange
+        default: return .systemRed
         }
     }
 }

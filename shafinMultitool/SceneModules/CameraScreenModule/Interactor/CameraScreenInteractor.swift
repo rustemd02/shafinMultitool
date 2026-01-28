@@ -33,6 +33,7 @@ protocol CameraScreenInteractorProtocol: AnyObject {
     func startDialogueRecogniotion(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int)
     func updateScript(newScript: String)
     func reformatScript(script: String) -> (names: [String], phrases: [String])
+    func reformatScriptAsync(script: String, completion: @escaping (_ names: [String], _ phrases: [String]) -> Void)
     func getCurrentARView() -> ARView?
     func changeName(arView: ARView)
     func session(_ session: ARSession, didAdd anchors: [ARAnchor], arView: ARView)
@@ -63,7 +64,27 @@ class CameraScreenInteractor {
     
     var currentSpeedMultiplier: Double = 0.7
     
-    private let processingQueue = DispatchQueue(label: "processingQueue")
+    private let processingQueue = DispatchQueue(label: "processingQueue", qos: .userInitiated)
+    private let scriptQueue = DispatchQueue(label: "cameraScreen.scriptQueue", qos: .utility)
+    private let pathOperationQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "cameraScreen.pathOperationQueue"
+        queue.qualityOfService = .userInitiated
+        queue.maxConcurrentOperationCount = 2
+        return queue
+    }()
+    private var speechRecognitionWindowWorkItem: DispatchWorkItem?
+    private var isSpeechRecognitionActive = false
+    private var activeSpeechPhraseIndex: Int?
+    
+    // MARK: - Actors Storage (moved from global variable for proper memory management)
+    private var actors: [ActorData] = []
+
+    private struct ActorPathSnapshot {
+        let entity: ModelEntity
+        let transforms: [simd_float4x4]
+        let speed: Double
+    }
     
     
     func placeActor(named entityName: String, for anchor: ARAnchor, arView: ARView) -> ModelEntity? {
@@ -518,74 +539,85 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             arView.session.add(anchor: anchor)
         }
     }
+
+    private func buildPathSnapshots() -> [ActorPathSnapshot] {
+        let anchorSnapshot = anchors
+        let actorsSnapshot = actors
+        let baseSpeed = 0.15 * currentSpeedMultiplier
+
+        return actorEntities.compactMap { entity in
+            return autoreleasepool {
+                guard let anchorIdentifier = entity.anchor?.anchorIdentifier,
+                      let actor = actorsSnapshot.first(where: { $0.anchorIDs.first == anchorIdentifier }) else {
+                    return nil
+                }
+
+                let transforms = actor.anchorIDs.compactMap { anchorID in
+                    anchorSnapshot.first(where: { $0.identifier == anchorID })?.transform
+                }
+
+                guard transforms.count > 1 else { return nil }
+
+                return ActorPathSnapshot(entity: entity, transforms: transforms, speed: baseSpeed)
+            }
+        }
+    }
     
     func finishEditingAtOnce(completion: @escaping (Bool) -> Void) {
         for pathEntity in pathEntities {
             pathEntity.isEnabled = false
         }
 
-        let group = DispatchGroup()
+        pathOperationQueue.addOperation { [weak self] in
+            guard let self = self else { return }
+            let snapshots = self.buildPathSnapshots()
 
-        actorEntities.forEach { actorEntity in
-            group.enter()
-
-            guard let actor = actors.first(where: { $0.anchorIDs.first == actorEntity.anchor?.anchorIdentifier }) else {
-                group.leave()
-                return
-            }
-
-            let coordinates = actor.anchorIDs.compactMap { anchorID in
-                anchors.first(where: { $0.identifier == anchorID })?.transform
-            }
-
-            guard coordinates.count > 1 else {
-                group.leave()
-                return
-            }
-
-            // Скорость движения модели в метрах в секунду
-            let speed: Double = 0.15 * currentSpeedMultiplier // Примерное значение, подберите соответственно вашим нуждам
-
-            // Устанавливаем модель на первую точку
             DispatchQueue.main.async {
-                actorEntity.setTransformMatrix(coordinates[0], relativeTo: nil)
-            }
+                guard !snapshots.isEmpty else {
+                    self.pathEntities.forEach { $0.isEnabled = true }
+                    completion(true)
+                    return
+                }
 
-            // Задержка для установки начальной позиции
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.moveActorEntity(actorEntity, along: coordinates, with: speed, group: group)
-            }
-        }
+                let group = DispatchGroup()
 
-        group.notify(queue: .main) {
-            self.pathEntities.forEach { $0.isEnabled = true }
-            completion(true)
+                snapshots.forEach { snapshot in
+                    group.enter()
+                    snapshot.entity.setTransformMatrix(snapshot.transforms[0], relativeTo: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.moveActorEntity(snapshot.entity, along: snapshot.transforms, with: snapshot.speed) {
+                            group.leave()
+                        }
+                    }
+                }
+
+                group.notify(queue: .main) {
+                    self.pathEntities.forEach { $0.isEnabled = true }
+                    completion(true)
+                }
+            }
         }
     }
 
-    private func moveActorEntity(_ actorEntity: ModelEntity, along coordinates: [simd_float4x4], with speed: Double, group: DispatchGroup) {
+    private func moveActorEntity(_ actorEntity: ModelEntity,
+                                 along coordinates: [simd_float4x4],
+                                 with speed: Double,
+                                 completion: @escaping () -> Void) {
         guard coordinates.count > 1 else {
-            group.leave()
+            completion()
             return
-        }
-
-        let totalDuration = coordinates.dropFirst().enumerated().reduce(0.0) { (total, arg) -> TimeInterval in
-            let (index, endPosition) = arg
-            let startPosition = coordinates[index].columns.3
-            let distance = simd_distance(startPosition, endPosition.columns.3)
-            return total + TimeInterval(distance) / TimeInterval(speed)
         }
 
         func moveToNextCoordinate(index: Int) {
             guard index < coordinates.count - 1 else {
-                group.leave()
+                completion()
                 return
             }
 
             let startPosition = coordinates[index].columns.3
             let endPosition = coordinates[index + 1].columns.3
             let distance = simd_distance(startPosition, endPosition)
-            let moveDuration = TimeInterval(distance) / TimeInterval(speed)
+            let moveDuration = max(0.01, TimeInterval(distance) / TimeInterval(speed))
 
             DispatchQueue.main.async {
                 actorEntity.move(to: coordinates[index + 1], relativeTo: nil, duration: moveDuration)
@@ -601,56 +633,41 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
 
     
     func finishEditingOneByOne(completion: @escaping (Bool) -> Void) {
-        for pathEntity in self.pathEntities {
+        for pathEntity in pathEntities {
             pathEntity.isEnabled = false
         }
-        
-        let moveQueue = DispatchQueue(label: "moveQueue")
-        let group = DispatchGroup()
-        
-        for actorEntity in self.actorEntities {
-            guard let actor = actors.first(where: { $0.anchorIDs.first == actorEntity.anchor?.anchorIdentifier }) else { continue }
 
-            var coordinates: [simd_float4x4] = actor.anchorIDs.compactMap { anchorID in
-                self.anchors.first(where: { $0.identifier == anchorID })?.transform
-            }
-            
-            guard coordinates.count > 1 else {
-                continue
-            }
-            
-            moveQueue.async {
-                for i in 0..<(coordinates.count - 1) {
-                    group.enter()
-                    
-                    let currentPosition = coordinates[i]
-                    let destination = coordinates[i + 1]
+        pathOperationQueue.addOperation { [weak self] in
+            guard let self = self else { return }
+            let snapshots = self.buildPathSnapshots()
 
-                    let x1 = currentPosition.columns.3.x
-                    let z1 = currentPosition.columns.3.z
-                    let x2 = destination.columns.3.x
-                    let z2 = destination.columns.3.z
-                    let distance = hypot(x2 - x1, z2 - z1)
-                    
-                    let speed: Double = 0.15 * self.currentSpeedMultiplier // Скорость должна быть определена вашими требованиями
-                    let duration = TimeInterval(Double(distance) / speed)
+            DispatchQueue.main.async {
+                guard !snapshots.isEmpty else {
+                    self.pathEntities.forEach { $0.isEnabled = true }
+                    completion(true)
+                    return
+                }
 
-                    DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
-                        actorEntity.move(to: destination, relativeTo: nil, duration: duration)
-                    }
-                    
-                    // Ждем пока не завершится текущее перемещение перед тем как начать следующее
-                    Thread.sleep(forTimeInterval: duration)
-                    group.leave()
+                self.runSnapshotsSequentially(snapshots, index: 0) {
+                    self.pathEntities.forEach { $0.isEnabled = true }
+                    completion(true)
                 }
             }
         }
-        
-        group.notify(queue: .main) {
-            for pathEntity in self.pathEntities {
-                pathEntity.isEnabled = true
+    }
+
+    private func runSnapshotsSequentially(_ snapshots: [ActorPathSnapshot], index: Int, completion: @escaping () -> Void) {
+        guard index < snapshots.count else {
+            completion()
+            return
+        }
+
+        let snapshot = snapshots[index]
+        snapshot.entity.setTransformMatrix(snapshot.transforms[0], relativeTo: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.moveActorEntity(snapshot.entity, along: snapshot.transforms, with: snapshot.speed) {
+                self.runSnapshotsSequentially(snapshots, index: index + 1, completion: completion)
             }
-            completion(true)
         }
     }
     
@@ -672,40 +689,78 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func startDialogueRecogniotion(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
-        if speechRecognitionService.task != nil {
-            speechRecognitionService.stopRecognition()
+        guard !phrases.isEmpty else { return }
+
+        if let activeIndex = activeSpeechPhraseIndex,
+           activeIndex == curPhraseIndex,
+           isSpeechRecognitionActive {
+            scheduleSpeechRecognitionStop(after: 6)
+            return
         }
-        
-        speechRecognitionService.recognise { recognised in
-            let lastTwoWordsRecognised = recognised
-                .split(separator: " ")
-                .suffix(2)
-                .joined(separator: " ")
-                .lowercased()
-            
-            let lastTwoWordsScript = phrases[curPhraseIndex]
-                .split(separator: " ")
-                .suffix(2)
-                .joined(separator: " ")
-                .components(separatedBy: CharacterSet.letters.inverted)
-                .joined(separator: " ")
-                .trimmingCharacters(in: .whitespaces)
-                .lowercased()
-            
-            if lastTwoWordsScript.elementsEqual(lastTwoWordsRecognised) {
-                var newNameIndex = curNameIndex
-                let newPhraseIndex = curPhraseIndex + 1
-                
-                if newPhraseIndex >= phrases.count { return }
-                
-                if phrases[newPhraseIndex].contains(":") {
-                    newNameIndex += 1
-                }
-                self.presenter?.displayDialogue(names: names, curNameIndex: newNameIndex, phrases: phrases, curPhraseIndex: newPhraseIndex)
-                //self.speechRecognitionService.stopRecognition()
+
+        speechRecognitionService.stopRecognition()
+        isSpeechRecognitionActive = false
+        activeSpeechPhraseIndex = curPhraseIndex
+
+        speechRecognitionService.recognise { [weak self] recognised in
+            self?.handleRecognisedText(recognised,
+                                       names: names,
+                                       curNameIndex: curNameIndex,
+                                       phrases: phrases,
+                                       curPhraseIndex: curPhraseIndex)
+        }
+
+        isSpeechRecognitionActive = true
+        scheduleSpeechRecognitionStop(after: 6)
+    }
+
+    private func handleRecognisedText(_ recognised: String,
+                                      names: [String],
+                                      curNameIndex: Int,
+                                      phrases: [String],
+                                      curPhraseIndex: Int) {
+        let lastTwoWordsRecognised = recognised
+            .split(separator: " ")
+            .suffix(2)
+            .joined(separator: " ")
+            .lowercased()
+
+        let lastTwoWordsScript = phrases[curPhraseIndex]
+            .split(separator: " ")
+            .suffix(2)
+            .joined(separator: " ")
+            .components(separatedBy: CharacterSet.letters.inverted)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased()
+
+        if lastTwoWordsScript.elementsEqual(lastTwoWordsRecognised) {
+            var newNameIndex = curNameIndex
+            let newPhraseIndex = curPhraseIndex + 1
+
+            guard newPhraseIndex < phrases.count else { return }
+
+            if phrases[newPhraseIndex].contains(":") {
+                newNameIndex += 1
             }
-            
+
+            speechRecognitionService.stopRecognition()
+            isSpeechRecognitionActive = false
+            activeSpeechPhraseIndex = nil
+            presenter?.displayDialogue(names: names, curNameIndex: newNameIndex, phrases: phrases, curPhraseIndex: newPhraseIndex)
         }
+    }
+
+    private func scheduleSpeechRecognitionStop(after duration: TimeInterval) {
+        speechRecognitionWindowWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.speechRecognitionService.stopRecognition()
+            self.isSpeechRecognitionActive = false
+            self.activeSpeechPhraseIndex = nil
+        }
+        speechRecognitionWindowWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: workItem)
     }
     
     func updateScript(newScript: String) {
@@ -713,57 +768,68 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         guard let sceneData = sceneData else { return }
         presenter?.setSceneData(sceneData: sceneData)
     }
+
+    func reformatScriptAsync(script: String, completion: @escaping (_ names: [String], _ phrases: [String]) -> Void) {
+        scriptQueue.async { [weak self] in
+            guard let self = self else { return }
+            let result = self.reformatScript(script: script)
+            DispatchQueue.main.async {
+                completion(result.names, result.phrases)
+            }
+        }
+    }
     
     func reformatScript(script: String) -> (names: [String], phrases: [String]) {
-        var currentName: String = ""
-        var currentMessage: String = ""
-        var text = script
-        var names: [String] = []
-        var phrases: [String] = []
-        
-        var readingName = true
-        var nextName = ""
-        var possibleName = false
-        
-        for char in text {
-            if char != ":" && readingName {
-                if char != " " {
-                    currentName.append(char)
-                }
-                if possibleName {
-                    if (char == " " && !currentName.isEmpty) || char == "," {
-                        possibleName = false
-                        readingName = false
-                        currentName = ""
+        return autoreleasepool {
+            var currentName: String = ""
+            var currentMessage: String = ""
+            let text = script
+            var names: [String] = []
+            var phrases: [String] = []
+            
+            var readingName = true
+            var possibleName = false
+            
+            for char in text {
+                if char != ":" && readingName {
+                    if char != " " {
+                        currentName.append(char)
                     }
-                    currentMessage.append(char)
-                }
-                
-            } else if (char != ":" && char != "." && char != "?" && char != "!") && !readingName {
-                currentMessage.append(char)
-                
-            } else {
-                if char == ":" {
-                    currentName = currentName.replacingOccurrences(of: "\n", with: "")
-                    names.append(currentName)
-                    currentMessage = ""
-                }
-                currentName = ""
-                readingName = false
-                
-                if char != "." && char != "?" && char != "!" {
+                    if possibleName {
+                        if (char == " " && !currentName.isEmpty) || char == "," {
+                            possibleName = false
+                            readingName = false
+                            currentName = ""
+                        }
+                        currentMessage.append(char)
+                    }
+                    
+                } else if (char != ":" && char != "." && char != "?" && char != "!") && !readingName {
                     currentMessage.append(char)
                     
                 } else {
-                    currentMessage.append(char)
-                    phrases.append(currentMessage)
-                    currentMessage = ""
-                    readingName = true
-                    possibleName = true
+                    if char == ":" {
+                        currentName = currentName.replacingOccurrences(of: "\n", with: "")
+                        names.append(currentName)
+                        currentMessage = ""
+                    }
+                    currentName = ""
+                    readingName = false
+                    
+                    if char != "." && char != "?" && char != "!" {
+                        currentMessage.append(char)
+                        
+                    } else {
+                        currentMessage.append(char)
+                        phrases.append(currentMessage)
+                        currentMessage = ""
+                        readingName = true
+                        possibleName = true
+                    }
                 }
             }
+            return (names, phrases)
         }
-        return (names, phrases)
     }
     
 }

@@ -69,9 +69,21 @@ class CameraScreenViewController: UIViewController {
     private let processingQueue = DispatchQueue(label: "processingQueue")
     private var currentWarnings: [String] = []
     private var warningViews: [UIView] = []
+    private var warningReusePool: [UIView] = []
     private var drawings: [CAShapeLayer] = []
+    private var lastWarningTimestamp: CFTimeInterval = 0
     
     private var linesLayer: CALayer!
+    
+    // MARK: - Vision Throttling with ThermalGovernor
+    private var lastVisionProcessTime: CFTimeInterval = 0
+    private var visionThrottleInterval: CFTimeInterval = 0.125 // 8 FPS max for Vision requests (default)
+    private let thermalGovernor = PreProductionThermalGovernor.shared
+    private var adaptiveRenderingApplied = false
+    
+    // MARK: - Reusable CAShapeLayer Pool (performance optimization)
+    private var reusableFaceLayers: [CAShapeLayer] = []
+    private let maxFaceLayers = 5 // Max number of faces to track simultaneously
 
     private let performanceOverlayView = PerformanceOverlayView()
 
@@ -107,10 +119,57 @@ class CameraScreenViewController: UIViewController {
 
         setupPerformanceOverlay()
         startPerformanceMonitoring()
+        setupThermalGovernor()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyAdaptiveRenderingPreset()
+    }
+    
+    private func setupThermalGovernor() {
+        // Set initial throttle interval based on current thermal state
+        visionThrottleInterval = thermalGovernor.visionThrottleInterval()
+        
+        // Listen for thermal state changes and adjust throttling dynamically
+        thermalGovernor.onBudgetChange = { [weak self] budget in
+            guard let self = self else { return }
+            self.visionThrottleInterval = 1.0 / budget.visionFrequency
+            print("🔥 Thermal budget changed: Vision at \(budget.visionFrequency) FPS")
+            CameraService.shared.updateAuxiliaryTargetFPS(Int(budget.visionFrequency.rounded(.toNearestOrAwayFromZero)))
+        }
     }
 
     deinit {
         PerformanceMonitor.shared.stopMonitoring()
+        cleanupResources()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Clean up resources when leaving the screen
+        cleanupResources()
+    }
+    
+    private func cleanupResources() {
+        // Clean up CAShapeLayers to prevent memory leaks
+        drawings.forEach { $0.removeFromSuperlayer() }
+        drawings.removeAll()
+        
+        // Clean up reusable face layers pool
+        reusableFaceLayers.forEach { $0.removeFromSuperlayer() }
+        reusableFaceLayers.removeAll()
+        
+        // Clean up warning views
+        warningViews.forEach { $0.removeFromSuperview() }
+        warningViews.removeAll()
+        warningReusePool.removeAll()
+        currentWarnings.removeAll()
+        lastWarningTimestamp = 0
+        
+        // Invalidate any pending timers
+        warningTimer.invalidate()
+        DiagnosticsLogger.shared.flush()
     }
     
     // MARK: - Private functions
@@ -252,6 +311,27 @@ class CameraScreenViewController: UIViewController {
         }
         
         loadingAnimation()
+    }
+
+    private func applyAdaptiveRenderingPreset() {
+        let maxDimension = max(arView.bounds.width, arView.bounds.height)
+        guard maxDimension > 0 else { return }
+
+        let targetDisplayHeight: CGFloat = 720.0
+        let ratio = min(1.0, targetDisplayHeight / maxDimension)
+        let scale = max(0.5, ratio) * UIScreen.main.scale
+
+        if abs(arView.contentScaleFactor - scale) > 0.05 {
+            arView.contentScaleFactor = scale
+        }
+
+        arView.preferredFramesPerSecond = 48
+        arView.renderOptions.insert(.disableMotionBlur)
+        arView.renderOptions.insert(.disableDepthOfField)
+        arView.renderOptions.insert(.disableCameraGrain)
+        performanceOverlayView.layer.contentsScale = 1.0
+        centerDot.layer.contentsScale = 1.0
+        adaptiveRenderingApplied = true
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -739,11 +819,11 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
     }
     
     func reformatScript(from text: String) {
-        if let result = presenter?.reformatScript(script: text) {
-            let names = result.names
-            let phrases = result.phrases
-            displayDialogue(names: names, curNameIndex: 0, phrases: phrases, curPhraseIndex: 0)
-        }
+        presenter?.reformatScriptAsync(script: text, completion: { [weak self] names, phrases in
+            guard let self = self else { return }
+            guard !names.isEmpty, !phrases.isEmpty else { return }
+            self.displayDialogue(names: names, curNameIndex: 0, phrases: phrases, curPhraseIndex: 0)
+        })
     }
     
     func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
@@ -839,8 +919,12 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
     }
     
     func addWarning(with text: String) {
+        let now = CACurrentMediaTime()
+        if now - lastWarningTimestamp < 0.5 { return }
+        lastWarningTimestamp = now
         if currentWarnings.contains(text) { return }
-        let warning = UIView.warningView(withImageName: text)
+        let warning = warningReusePool.popLast() ?? UIView.warningView(withImageName: text)
+        warning.configureWarningView(withImageName: text)
         currentWarnings.append(text)
         self.arView.addSubview(warning)
         warning.alpha = 0
@@ -854,19 +938,29 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
         self.warningViews.append(warning)
         UIView.animate(withDuration: 0.4) {
             warning.alpha = 1
-        } completion: { _ in
-            Timer.scheduledTimer(timeInterval: TimeInterval(2), target: self, selector: #selector(self.hideWarning), userInfo: nil, repeats: false)
+        } completion: { [weak self] _ in
+            // Use block-based timer to avoid retain cycle (memory leak fix)
+            Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                self?.hideWarning()
+            }
         }
     }
     
     @objc
     func hideWarning() {
-        UIView.animate(withDuration: 0.4, animations: {
-            self.warningViews.first?.alpha = 0
-        }, completion: { _ in
+        guard !warningViews.isEmpty, !currentWarnings.isEmpty else { return }
+        UIView.animate(withDuration: 0.4, animations: { [weak self] in
+            self?.warningViews.first?.alpha = 0
+        }, completion: { [weak self] _ in
+            guard let self = self, !self.warningViews.isEmpty, !self.currentWarnings.isEmpty else { return }
             self.currentWarnings.removeFirst()
-            self.warningViews.first?.removeFromSuperview()
-            self.warningViews.removeFirst()
+            if let warningView = self.warningViews.first {
+                warningView.removeFromSuperview()
+                self.warningViews.removeFirst()
+                if self.warningReusePool.count < 3 {
+                    self.warningReusePool.append(warningView)
+                }
+            }
         })
     }
     
@@ -895,18 +989,58 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
                                               width: boundingBox.width * screenWidth,
                                               height: boundingBox.height * screenHeight)
             
-            let faceBoundingBoxShape = CAShapeLayer()
-            faceBoundingBoxShape.frame = convertedBoundingBox
-            faceBoundingBoxShape.fillColor = UIColor.clear.cgColor
-            faceBoundingBoxShape.strokeColor = UIColor.red.cgColor
-            faceBoundingBoxShape.path = UIBezierPath(rect: CGRect(x: 0, y: 0, width: convertedBoundingBox.width, height: convertedBoundingBox.height)).cgPath
+            // Reuse or create CAShapeLayer (performance optimization)
+            let faceBoundingBoxShape = getOrCreateFaceLayer()
             
-            arView.layer.addSublayer(faceBoundingBoxShape)
+            // Update layer properties (reusing the layer)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true) // Disable implicit animations for performance
+            faceBoundingBoxShape.frame = convertedBoundingBox
+            faceBoundingBoxShape.path = UIBezierPath(rect: CGRect(x: 0, y: 0, width: convertedBoundingBox.width, height: convertedBoundingBox.height)).cgPath
+            faceBoundingBoxShape.isHidden = false
+            CATransaction.commit()
+            
+            if faceBoundingBoxShape.superlayer == nil {
+                arView.layer.addSublayer(faceBoundingBoxShape)
+            }
             
             addWarning(with: "person.crop.rectangle")
             
-            self.drawings.append(faceBoundingBoxShape)
+            if !drawings.contains(faceBoundingBoxShape) {
+                drawings.append(faceBoundingBoxShape)
+            }
         }
+    }
+    
+    /// Returns a reusable CAShapeLayer from the pool or creates a new one
+    private func getOrCreateFaceLayer() -> CAShapeLayer {
+        // Check if there's an available layer in the pool
+        if let availableLayer = reusableFaceLayers.first(where: { $0.isHidden || $0.superlayer == nil }) {
+            return availableLayer
+        }
+        
+        // Create new layer only if pool is not full
+        if reusableFaceLayers.count < maxFaceLayers {
+            let newLayer = CAShapeLayer()
+            newLayer.fillColor = UIColor.clear.cgColor
+            newLayer.strokeColor = UIColor.red.cgColor
+            newLayer.lineWidth = 2.0
+            reusableFaceLayers.append(newLayer)
+            return newLayer
+        }
+        
+        // If pool is full, reuse the first one
+        return reusableFaceLayers[0]
+    }
+    
+    /// Hides all face layers (called before new detection cycle)
+    private func hideAllFaceLayers() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for layer in reusableFaceLayers {
+            layer.isHidden = true
+        }
+        CATransaction.commit()
     }
 
 }
@@ -916,21 +1050,40 @@ extension CameraScreenViewController: ARSessionDelegate {
         // Track AR frame time for performance monitoring
         PerformanceMonitor.shared.recordFrame()
 
-        processingQueue.async {
-            CameraService.shared.gazeDetection(pixelBuffer: frame.capturedImage) { observation in
-                DispatchQueue.main.async {
-                    self.drawings.forEach { drawing in drawing.removeFromSuperlayer() }
-                }
+        // Throttle Vision requests to 8 FPS to prevent thermal throttling
+        let currentTime = CACurrentMediaTime()
+        let allowFrameProcessing = CameraService.shared.shouldProcessAuxiliaryFrame()
+        let shouldRunVision = allowFrameProcessing && (currentTime - lastVisionProcessTime) >= visionThrottleInterval
+        
+        if shouldRunVision {
+            lastVisionProcessTime = currentTime
+            let visionStart = CACurrentMediaTime()
 
-                for face in observation {
-                    guard let faceCaptureQuality = face.faceCaptureQuality else { return }
+            processingQueue.async { [weak self] in
+                guard let self = self else { return }
+                CameraService.shared.gazeDetection(pixelBuffer: frame.capturedImage) { [weak self] observation in
+                    guard let self = self else { return }
+                    let visionDuration = CACurrentMediaTime() - visionStart
+                    PerformanceMonitor.shared.recordVisionLatency(visionDuration)
+
                     DispatchQueue.main.async {
-                        self.highlightFace(face: face)
-                        if faceCaptureQuality < 0.35 {
-                            self.addWarning(with: "blur")
+                        // Hide reusable layers instead of removing them (performance optimization)
+                        self.hideAllFaceLayers()
+                        self.drawings.removeAll()
+                    }
+
+                    for face in observation {
+                        guard let faceCaptureQuality = face.faceCaptureQuality else { return }
+                        DispatchQueue.main.async { [weak self] in
+                            let overlayStart = CACurrentMediaTime()
+                            self?.highlightFace(face: face)
+                            if faceCaptureQuality < 0.35 {
+                                self?.addWarning(with: "blur")
+                            }
+                            let overlayDuration = CACurrentMediaTime() - overlayStart
+                            PerformanceMonitor.shared.recordOverlayLatency(overlayDuration)
                         }
                     }
-                    
                 }
             }
         }
