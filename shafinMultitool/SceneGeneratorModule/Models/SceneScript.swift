@@ -44,6 +44,8 @@ struct MarkedObject: Identifiable, Equatable {
     }
     
     /// Проверяет, соответствует ли объект ключевому слову
+    /// - Parameter keyword: Ключевое слово для проверки
+    /// - Returns: true, если объект соответствует ключевому слову
     func matches(keyword: String) -> Bool {
         let lowercasedKeyword = keyword.lowercased()
         let lowercasedName = name.lowercased()
@@ -61,6 +63,21 @@ struct MarkedObject: Identifiable, Equatable {
         }
         
         return false
+    }
+    
+    /// Проверяет, соответствует ли объект ключевому слову с использованием лемматизации
+    /// - Parameters:
+    ///   - keyword: Ключевое слово для проверки
+    ///   - lemmatizer: Лемматизатор для нормализации слов
+    /// - Returns: true, если объект соответствует ключевому слову
+    func matches(keyword: String, lemmatizer: Lemmatizer) -> Bool {
+        // Используем лемматизацию для более точного сравнения
+        if lemmatizer.matchesKeyword(name, keyword: keyword) {
+            return true
+        }
+        
+        // Fallback на старый метод
+        return matches(keyword: keyword)
     }
     
     /// Цвет маркера
@@ -82,6 +99,39 @@ struct SceneScript: Codable, Equatable {
     var isEmpty: Bool {
         actors.isEmpty && objects.isEmpty && actions.isEmpty
     }
+}
+
+// MARK: - Parsing Diagnostics
+
+/// Метаданные о качестве парсинга текста
+struct ParsingDiagnostics: Equatable {
+    let confidence: Float              // 0.0...1.0 - общая уверенность в результате
+    let coverage: Float                // 0.0...1.0 - покрытие текста (сколько слов распознано)
+    let missingActors: Bool            // Есть действия без актёров
+    let missingObjects: Bool          // Есть ссылки на объекты, которых нет
+    let unresolvedPronouns: Bool       // Есть "он/она/другой" без привязки
+    let unresolvedMarkedObjects: Bool // Есть упоминания markedObjects, но не распознаны
+    let notes: [String]                // Человекочитаемые заметки для пользователя
+    let matchedMarkedObjects: [UUID]  // ID размеченных объектов, которые были распознаны
+    
+    static let empty = ParsingDiagnostics(
+        confidence: 0.0,
+        coverage: 0.0,
+        missingActors: false,
+        missingObjects: false,
+        unresolvedPronouns: false,
+        unresolvedMarkedObjects: false,
+        notes: [],
+        matchedMarkedObjects: []
+    )
+}
+
+// MARK: - Parsing Result
+
+/// Результат парсинга текста с диагностикой
+struct ParsingResult: Equatable {
+    let script: SceneScript
+    let diagnostics: ParsingDiagnostics
 }
 
 // MARK: - Scene Actor

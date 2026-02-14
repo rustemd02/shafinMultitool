@@ -272,7 +272,10 @@ struct SceneGeneratorView: View {
     }
     
     private func sceneInfoButton(script: SceneScript) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // Логируем что показывается в UI
+        let _ = print("🔍 [UI] sceneInfoButton: actors=\(script.actors.count), objects=\(script.objects.count)")
+        
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 12))

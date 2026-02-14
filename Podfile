@@ -6,3 +6,7 @@ target 'shafinMultitool' do
     pod 'ARVideoKit', '~> 1.5.51'
     pod 'SnapKit', '~> 5.6.0'
 end
+
+target 'shafinMultitoolTests' do
+    pod 'SnapKit', '~> 5.6.0'
+end

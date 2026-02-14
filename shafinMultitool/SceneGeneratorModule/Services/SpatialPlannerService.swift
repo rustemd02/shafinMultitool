@@ -50,6 +50,8 @@ final class SpatialPlannerService {
         availablePlanes: [ARPlaneAnchor],
         markedObjects: [MarkedObject] = []
     ) -> PlannedScene {
+        print("🔍 [PLANNER] === НАЧАЛО ПЛАНИРОВАНИЯ ===")
+        print("🔍 [PLANNER] Входные данные: actors=\(script.actors.count), objects=\(script.objects.count), actions=\(script.actions.count), detectedObjects=\(detectedObjects.count), markedObjects=\(markedObjects.count)")
         
         // 1. Определяем доступное пространство
         let sceneSpace = calculateSceneSpace(
@@ -58,14 +60,20 @@ final class SpatialPlannerService {
         )
         
         // 2. Размещаем объекты (приоритет: marked -> detected -> virtual)
+        print("🔍 [PLANNER] Планирование объектов...")
         let placedObjects = planObjects(
             scriptObjects: script.objects,
             detectedObjects: detectedObjects,
             markedObjects: markedObjects,
             sceneSpace: sceneSpace
         )
+        print("🔍 [PLANNER] Размещено объектов: \(placedObjects.count)")
+        for (index, object) in placedObjects.enumerated() {
+            print("🔍 [PLANNER]   PlacedObject[\(index)]: id='\(object.id)', objectId='\(object.objectId)', type=\(object.type.rawValue), isRealWorld=\(object.isRealWorld ? 1 : 0), source=\(object.placementSource.rawValue)")
+        }
         
         // 3. Размещаем актёров
+        print("🔍 [PLANNER] Планирование актёров...")
         let placedActors = planActors(
             scriptActors: script.actors,
             actions: script.actions,
@@ -73,6 +81,12 @@ final class SpatialPlannerService {
             placedObjects: placedObjects,
             sceneSpace: sceneSpace
         )
+        print("🔍 [PLANNER] Размещено актёров: \(placedActors.count)")
+        for (index, actor) in placedActors.enumerated() {
+            print("🔍 [PLANNER]   PlacedActor[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), path.count=\(actor.path.count)")
+        }
+        
+        print("🔍 [PLANNER] === ПЛАНИРОВАНИЕ ЗАВЕРШЕНО ===")
         
         return PlannedScene(
             placedActors: placedActors,
@@ -159,20 +173,24 @@ final class SpatialPlannerService {
         markedObjects: [MarkedObject],
         sceneSpace: SceneSpace
     ) -> [PlannedScene.PlacedObject] {
+        print("🔍 [PLANNER] planObjects: scriptObjects=\(scriptObjects.count), detectedObjects=\(detectedObjects.count), markedObjects=\(markedObjects.count)")
         
         return scriptObjects.enumerated().map { index, scriptObject in
+            print("🔍 [PLANNER] Обработка scriptObject[\(index)]: id='\(scriptObject.id)', type=\(scriptObject.type.rawValue), detectedPosition=\(scriptObject.detectedPosition != nil ? "YES" : "NO")")
             let position: Position3D
             let placementSource: PlannedScene.PlacedObject.PlacementSource
             var isDetected = false
             
             // 1. ВЫСШИЙ ПРИОРИТЕТ: Ручные метки пользователя
             if let markedObject = markedObjects.first(where: { $0.type == scriptObject.type }) {
+                print("🔍 [PLANNER]   Найден markedObject для type=\(scriptObject.type.rawValue): id=\(markedObject.id.uuidString)")
                 position = markedObject.worldPosition
                 placementSource = .marked
                 isDetected = true
             }
             // 2. Используем уже сопоставленную позицию (например, через ViewModel)
             else if let detectedPosition = scriptObject.detectedPosition {
+                print("🔍 [PLANNER]   Используется detectedPosition из scriptObject")
                 position = detectedPosition
                 placementSource = .detected
                 isDetected = true
@@ -180,12 +198,14 @@ final class SpatialPlannerService {
             // 3. Используем автоматическую детекцию
             else if let detection = detectedObjects.first(where: { $0.objectType == scriptObject.type }),
                     let worldPosition = detection.worldPosition {
+                print("🔍 [PLANNER]   Найден detectedObject для type=\(scriptObject.type.rawValue)")
                 position = worldPosition
                 placementSource = .detected
                 isDetected = true
             }
             // 4. Создаём виртуальный объект
             else {
+                print("🔍 [PLANNER]   Создаётся виртуальный объект для type=\(scriptObject.type.rawValue)")
                 position = generateObjectPosition(
                     for: scriptObject,
                     index: index,
@@ -252,6 +272,7 @@ final class SpatialPlannerService {
         placedObjects: [PlannedScene.PlacedObject],
         sceneSpace: SceneSpace
     ) -> [PlannedScene.PlacedActor] {
+        print("🔍 [PLANNER] planActors: scriptActors=\(scriptActors.count), actions=\(actions.count), relations=\(relations.count)")
         
         // Определяем начальные позиции
         var initialPositions = calculateInitialPositions(
@@ -260,9 +281,11 @@ final class SpatialPlannerService {
             placedObjects: placedObjects,
             sceneSpace: sceneSpace
         )
+        print("🔍 [PLANNER] Вычислено начальных позиций: \(initialPositions.count)")
         
         // Строим траектории для каждого актёра
         return scriptActors.enumerated().map { index, actor in
+            print("🔍 [PLANNER] Обработка scriptActor[\(index)]: id='\(actor.id)', type=\(actor.type.rawValue)")
             let initialPosition = initialPositions[index]
             let actorActions = actions.filter { $0.actorId == actor.id }
             
@@ -377,11 +400,32 @@ final class SpatialPlannerService {
     ) -> [Position3D] {
         var positions: [Position3D] = []
         
+        // Группируем актёров по целевому объекту
+        var actorsByTarget: [String: [SceneActor]] = [:]
+        for actor in actors {
+            if let action = approachActions.first(where: { $0.actorId == actor.id }),
+               let targetId = action.target {
+                if actorsByTarget[targetId] == nil {
+                    actorsByTarget[targetId] = []
+                }
+                actorsByTarget[targetId]?.append(actor)
+            }
+        }
+        
+        print("🔍 [PLANNER] calculateApproachPositions: actors=\(actors.count), actorsByTarget=\(actorsByTarget.count) групп")
+        
         for actor in actors {
             // Ищем действие approach для этого актёра
             if let action = approachActions.first(where: { $0.actorId == actor.id }),
                let targetId = action.target,
                let targetObject = placedObjects.first(where: { $0.objectId == targetId }) {
+                
+                // Определяем индекс актёра среди тех, кто идёт к этому же объекту
+                let actorsToSameTarget = actorsByTarget[targetId] ?? []
+                let actorIndexInGroup = actorsToSameTarget.firstIndex(where: { $0.id == actor.id }) ?? 0
+                let totalActorsToTarget = actorsToSameTarget.count
+                
+                print("🔍 [PLANNER]   Актёр '\(actor.id)' идёт к объекту '\(targetId)', индекс в группе: \(actorIndexInGroup)/\(totalActorsToTarget)")
                 
                 // Размещаем в 2 метрах от объекта
                 let direction = simd_normalize(simd_float3(
@@ -390,11 +434,34 @@ final class SpatialPlannerService {
                     sceneSpace.center.z - targetObject.position.z
                 ))
                 
-                positions.append(Position3D(
-                    x: targetObject.position.x + direction.x * 2.0,
+                // Если несколько актёров идут к одному объекту, размещаем их в ряд перпендикулярно направлению
+                let baseDistance: Float = 2.0
+                let basePosition = Position3D(
+                    x: targetObject.position.x + direction.x * baseDistance,
                     y: sceneSpace.floorY,
-                    z: targetObject.position.z + direction.z * 2.0
-                ))
+                    z: targetObject.position.z + direction.z * baseDistance
+                )
+                
+                if totalActorsToTarget > 1 {
+                    // Вычисляем перпендикулярное направление для размещения в ряд
+                    let perpendicular = simd_float3(-direction.z, 0, direction.x)
+                    
+                    // Размещаем актёров в ряд с интервалом actorSpacing
+                    let totalWidth = Float(totalActorsToTarget - 1) * actorSpacing
+                    let startOffset = -totalWidth / 2
+                    let offset = startOffset + Float(actorIndexInGroup) * actorSpacing
+                    
+                    positions.append(Position3D(
+                        x: basePosition.x + perpendicular.x * offset,
+                        y: sceneSpace.floorY,
+                        z: basePosition.z + perpendicular.z * offset
+                    ))
+                    print("🔍 [PLANNER]     Позиция с смещением: x=\(basePosition.x + perpendicular.x * offset), z=\(basePosition.z + perpendicular.z * offset)")
+                } else {
+                    // Один актёр - размещаем в базовой позиции
+                    positions.append(basePosition)
+                    print("🔍 [PLANNER]     Позиция без смещения: x=\(basePosition.x), z=\(basePosition.z)")
+                }
             } else {
                 // Позиция по умолчанию
                 let offsetX = Float(positions.count) * actorSpacing - Float(actors.count - 1) * actorSpacing / 2

@@ -14,9 +14,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "FFD1FD9E62BD74599DC2F15330519CAD"
-               BuildableName = "Pods_shafinMultitool.framework"
-               BlueprintName = "Pods-shafinMultitool"
+               BlueprintIdentifier = "6436363625B6DFC29A1A375B83762DD6"
+               BuildableName = "Pods_shafinMultitoolTests.framework"
+               BlueprintName = "Pods-shafinMultitoolTests"
                ReferencedContainer = "container:Pods.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>

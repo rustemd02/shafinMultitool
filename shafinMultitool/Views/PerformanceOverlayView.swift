@@ -70,7 +70,10 @@ final class PerformanceOverlayView: UIView {
             memoryUsage: 0,
             thermalState: "---",
             gpuUtilization: 0,
-            droppedFrames: 0
+            droppedFrames: 0,
+            visionLatency: 0,
+            speechLatency: 0,
+            overlayLatency: 0
         ))
     }
 

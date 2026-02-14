@@ -325,7 +325,6 @@ class CameraScreenViewController: UIViewController {
             arView.contentScaleFactor = scale
         }
 
-        arView.preferredFramesPerSecond = 48
         arView.renderOptions.insert(.disableMotionBlur)
         arView.renderOptions.insert(.disableDepthOfField)
         arView.renderOptions.insert(.disableCameraGrain)

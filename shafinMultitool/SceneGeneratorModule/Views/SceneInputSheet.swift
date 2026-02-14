@@ -50,6 +50,11 @@ struct SceneInputSheet: View {
                         // Examples
                         examplesSection
                         
+                        // Diagnostics (если есть результат парсинга)
+                        if let result = viewModel.parsingResult {
+                            diagnosticsSection(result: result)
+                        }
+                        
                         Spacer(minLength: 100)
                     }
                     .padding()
@@ -178,6 +183,7 @@ struct SceneInputSheet: View {
                 ForEach(viewModel.markedObjects) { marker in
                     MarkedObjectChip(
                         marker: marker,
+                        isRecognized: viewModel.parsingResult?.diagnostics.matchedMarkedObjects.contains(marker.id) ?? false,
                         onTap: {
                             // Добавляем объект в описание
                             if !viewModel.sceneDescription.isEmpty && !viewModel.sceneDescription.hasSuffix(" ") {
@@ -240,6 +246,83 @@ struct SceneInputSheet: View {
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color.blue.opacity(0.1))
+        )
+    }
+    
+    // MARK: - Diagnostics Section
+    
+    private func diagnosticsSection(result: ParsingResult) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: result.diagnostics.confidence >= 0.6 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundColor(result.diagnostics.confidence >= 0.6 ? .green : .orange)
+                Text("Качество парсинга")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.6))
+                
+                Spacer()
+                
+                Text("\(Int(result.diagnostics.confidence * 100))%")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(result.diagnostics.confidence >= 0.6 ? .green : .orange)
+            }
+            
+            // Покрытие текста
+            if result.diagnostics.coverage > 0 {
+                HStack {
+                    Text("Покрытие текста:")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.5))
+                    Spacer()
+                    Text("\(Int(result.diagnostics.coverage * 100))%")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+            }
+            
+            // Распознанные размеченные объекты
+            if !result.diagnostics.matchedMarkedObjects.isEmpty {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.system(size: 10))
+                    Text("Распознано размеченных объектов: \(result.diagnostics.matchedMarkedObjects.count)")
+                        .font(.system(size: 12))
+                        .foregroundColor(.green.opacity(0.8))
+                }
+            }
+            
+            // Предупреждения
+            if !result.diagnostics.notes.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(result.diagnostics.notes, id: \.self) { note in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.orange)
+                                .font(.system(size: 10))
+                            Text(note)
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(result.diagnostics.confidence >= 0.6 
+                      ? Color.green.opacity(0.1)
+                      : Color.orange.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(
+                            result.diagnostics.confidence >= 0.6 
+                            ? Color.green.opacity(0.3) 
+                            : Color.orange.opacity(0.3),
+                            lineWidth: 1
+                        )
+                )
         )
     }
     
@@ -333,31 +416,34 @@ struct SceneInputSheet: View {
 
 struct MarkedObjectChip: View {
     let marker: MarkedObject
+    let isRecognized: Bool
     let onTap: () -> Void
     
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 6) {
-                Image(systemName: "mappin.circle.fill")
+                Image(systemName: isRecognized ? "checkmark.circle.fill" : "mappin.circle.fill")
                     .font(.system(size: 12))
-                    .foregroundColor(.green)
+                    .foregroundColor(isRecognized ? .blue : .green)
                 
                 Text(marker.name.capitalized)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.6))
+                if !isRecognized {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.6))
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill(Color.green.opacity(0.2))
+                    .fill(isRecognized ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
                     .overlay(
                         Capsule()
-                            .strokeBorder(Color.green.opacity(0.5), lineWidth: 1)
+                            .strokeBorder(isRecognized ? Color.blue.opacity(0.5) : Color.green.opacity(0.5), lineWidth: 1)
                     )
             )
         }

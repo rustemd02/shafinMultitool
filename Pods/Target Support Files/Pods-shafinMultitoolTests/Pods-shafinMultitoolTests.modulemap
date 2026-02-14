@@ -1,0 +1,6 @@
+framework module Pods_shafinMultitoolTests {
+  umbrella header "Pods-shafinMultitoolTests-umbrella.h"
+
+  export *
+  module * { export * }
+}

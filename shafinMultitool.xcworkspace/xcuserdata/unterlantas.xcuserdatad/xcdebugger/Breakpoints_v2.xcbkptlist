@@ -2014,9 +2014,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "713"
-            endingLineNumber = "713"
-            landmarkName = "setSceneData(sceneData:)"
+            startingLineNumber = "712"
+            endingLineNumber = "712"
+            landmarkName = "changeISOButtonPressed()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2030,9 +2030,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "718"
-            endingLineNumber = "718"
-            landmarkName = "reformatScript(from:)"
+            startingLineNumber = "717"
+            endingLineNumber = "717"
+            landmarkName = "changeWBButtonPressed()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2190,9 +2190,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "715"
-            endingLineNumber = "715"
-            landmarkName = "setSceneData(sceneData:)"
+            startingLineNumber = "714"
+            endingLineNumber = "714"
+            landmarkName = "changeISOButtonPressed()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2222,9 +2222,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "727"
-            endingLineNumber = "727"
-            landmarkName = "displayDialogue(names:curNameIndex:phrases:curPhraseIndex:)"
+            startingLineNumber = "726"
+            endingLineNumber = "726"
+            landmarkName = "changeSettingButtonPressed(tag:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2238,9 +2238,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "720"
-            endingLineNumber = "720"
-            landmarkName = "reformatScript(from:)"
+            startingLineNumber = "719"
+            endingLineNumber = "719"
+            landmarkName = "changeWBButtonPressed()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2254,9 +2254,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "719"
-            endingLineNumber = "719"
-            landmarkName = "reformatScript(from:)"
+            startingLineNumber = "718"
+            endingLineNumber = "718"
+            landmarkName = "changeWBButtonPressed()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2286,9 +2286,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "786"
-            endingLineNumber = "786"
-            landmarkName = "changeButtonVisibilityAnimation(button:)"
+            startingLineNumber = "785"
+            endingLineNumber = "785"
+            landmarkName = "focusPointAnimation(coordinates:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2318,9 +2318,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "809"
-            endingLineNumber = "809"
-            landmarkName = "changeButtonVisibility(buttonName:)"
+            startingLineNumber = "808"
+            endingLineNumber = "808"
+            landmarkName = "animateButtonPress(button:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2334,9 +2334,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "903"
-            endingLineNumber = "903"
-            landmarkName = "session(_:didUpdate:)"
+            startingLineNumber = "902"
+            endingLineNumber = "902"
+            landmarkName = "changeButtonVisibilityAnimation(button:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2350,10 +2350,10 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "731"
-            endingLineNumber = "731"
-            landmarkName = "displayDialogue(names:curNameIndex:phrases:curPhraseIndex:)"
-            landmarkType = "7">
+            startingLineNumber = "730"
+            endingLineNumber = "730"
+            landmarkName = "CameraScreenViewController"
+            landmarkType = "3">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -2366,9 +2366,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "471"
-            endingLineNumber = "471"
-            landmarkName = "finishEditingAtOnce()"
+            startingLineNumber = "470"
+            endingLineNumber = "470"
+            landmarkName = "setupSettingsBar()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -2382,9 +2382,9 @@
             filePath = "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "475"
-            endingLineNumber = "475"
-            landmarkName = "finishEditingAtOnce()"
+            startingLineNumber = "474"
+            endingLineNumber = "474"
+            landmarkName = "setupSettingsBar()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

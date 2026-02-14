@@ -3,14 +3,13 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 73;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		965FEAE79C4978DC87D1FBB2 /* Pods_shafinMultitool.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */; };
 		CF10E5F029F8236100D3E39A /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5EF29F8236100D3E39A /* ARKit.framework */; };
 		CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5F129F8238100D3E39A /* RealityKit.framework */; };
-		CF5C60412B84C0E100218148 /* shafinMultitoolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,13 +28,14 @@
 		CF10E5EF29F8236100D3E39A /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 		CF10E5F129F8238100D3E39A /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
 		CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shafinMultitoolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shafinMultitoolTests.swift; sourceTree = "<group>"; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.debug.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.debug.xcconfig"; sourceTree = "<group>"; };
+		DC0EF1BE3939CF7AE32E11A1 /* Pods-shafinMultitoolTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitoolTests.debug.xcconfig"; path = "Target Support Files/Pods-shafinMultitoolTests/Pods-shafinMultitoolTests.debug.xcconfig"; sourceTree = "<group>"; };
+		DC0EF1BF3939CF7AE32E11A2 /* Pods-shafinMultitoolTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitoolTests.release.xcconfig"; path = "Target Support Files/Pods-shafinMultitoolTests/Pods-shafinMultitoolTests.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		CF3740C22EC890C80005765D /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		CF3740C22EC890C80005765D /* Exceptions for "shafinMultitool" folder in "shafinMultitool" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -46,7 +46,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		CF3740C32EC890C80005765D /* PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet */ = {
+		CF3740C32EC890C80005765D /* Exceptions for "shafinMultitool" folder in "Compile Sources" phase from "shafinMultitool" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			buildPhase = CFF7B20029CC876400C3B73E /* Sources */;
 			membershipExceptions = (
@@ -56,7 +56,23 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		CF37407A2EC890C80005765D /* shafinMultitool */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (CF3740C22EC890C80005765D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, CF3740C32EC890C80005765D /* PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (Resources/Circle.rcproject, ); path = shafinMultitool; sourceTree = "<group>"; };
+		CF37407A2EC890C80005765D /* shafinMultitool */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CF3740C22EC890C80005765D /* Exceptions for "shafinMultitool" folder in "shafinMultitool" target */,
+				CF3740C32EC890C80005765D /* Exceptions for "shafinMultitool" folder in "Compile Sources" phase from "shafinMultitool" target */,
+			);
+			explicitFolders = (
+				Resources/Circle.rcproject,
+			);
+			path = shafinMultitool;
+			sourceTree = "<group>";
+		};
+		CF79E4BF2F365C7E009D9CB9 /* shafinMultitoolTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = shafinMultitoolTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +101,8 @@
 			children = (
 				DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */,
 				08C5AE5ADFDF9B02E49CF3EE /* Pods-shafinMultitool.release.xcconfig */,
+				DC0EF1BE3939CF7AE32E11A1 /* Pods-shafinMultitoolTests.debug.xcconfig */,
+				DC0EF1BF3939CF7AE32E11A2 /* Pods-shafinMultitoolTests.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -99,19 +117,11 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		CF5C603F2B84C0E100218148 /* shafinMultitoolTests */ = {
-			isa = PBXGroup;
-			children = (
-				CF5C60402B84C0E100218148 /* shafinMultitoolTests.swift */,
-			);
-			path = shafinMultitoolTests;
-			sourceTree = "<group>";
-		};
 		CFF7B1FB29CC876400C3B73E = {
 			isa = PBXGroup;
 			children = (
 				CF37407A2EC890C80005765D /* shafinMultitool */,
-				CF5C603F2B84C0E100218148 /* shafinMultitoolTests */,
+				CF79E4BF2F365C7E009D9CB9 /* shafinMultitoolTests */,
 				CFF7B20529CC876400C3B73E /* Products */,
 				CF10E5EE29F8236100D3E39A /* Frameworks */,
 				457F7D83A82BD1A3BB0F89BB /* Pods */,
@@ -142,6 +152,9 @@
 			);
 			dependencies = (
 				CF5C60432B84C0E100218148 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CF79E4BF2F365C7E009D9CB9 /* shafinMultitoolTests */,
 			);
 			name = shafinMultitoolTests;
 			productName = shafinMultitoolTests;
@@ -199,7 +212,7 @@
 			mainGroup = CFF7B1FB29CC876400C3B73E;
 			packageReferences = (
 			);
-			preferredProjectObjectVersion = 55;
+			preferredProjectObjectVersion = 77;
 			productRefGroup = CFF7B20529CC876400C3B73E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -278,7 +291,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CF5C60412B84C0E100218148 /* shafinMultitoolTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -302,6 +314,7 @@
 /* Begin XCBuildConfiguration section */
 		CF5C60452B84C0E100218148 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = DC0EF1BE3939CF7AE32E11A1 /* Pods-shafinMultitoolTests.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -326,6 +339,7 @@
 		};
 		CF5C60462B84C0E100218148 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = DC0EF1BF3939CF7AE32E11A2 /* Pods-shafinMultitoolTests.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";

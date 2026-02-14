@@ -23,6 +23,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Распознанный скрипт сцены
     @Published var parsedScript: SceneScript?
     
+    /// Результат парсинга с диагностикой
+    @Published var parsingResult: ParsingResult?
+    
     /// Спланированная сцена с координатами
     @Published var plannedScene: PlannedScene?
     
@@ -158,23 +161,47 @@ final class SceneGeneratorViewModel: ObservableObject {
         errorMessage = nil
         statusMessage = "Анализирую описание..."
         
-        // 1. Парсим описание
-        var script = parserService.parse(sceneDescription)
-        
-        // 1.5 Добавляем объекты из размеченных, которые упомянуты в описании но не распарсились
-        let objectsFromMarkers = addObjectsFromMarkedObjects(description: sceneDescription, existingObjects: script.objects)
-        if !objectsFromMarkers.isEmpty {
-            script = SceneScript(
-                actors: script.actors,
-                objects: script.objects + objectsFromMarkers,
-                actions: script.actions,
-                spatialRelations: script.spatialRelations,
-                originalDescription: script.originalDescription
-            )
+        // Логирование входных данных
+        print("🔍 [VIEWMODEL] === НАЧАЛО ГЕНЕРАЦИИ СЦЕНЫ ===")
+        print("🔍 [VIEWMODEL] Описание: '\(sceneDescription)'")
+        print("🔍 [VIEWMODEL] Размеченных объектов: \(markedObjects.count)")
+        for (index, marker) in markedObjects.enumerated() {
+            print("🔍 [VIEWMODEL]   MarkedObject[\(index)]: name='\(marker.name)', type=\(marker.type.rawValue), id=\(marker.id.uuidString.prefix(8))")
         }
         
-        parsedScript = script
+        // 1. Парсим описание с учётом markedObjects (новый API)
+        print("🔍 [VIEWMODEL] Вызов parserService.parse()...")
+        let result = parserService.parse(sceneDescription, markedObjects: markedObjects)
+        let script = result.script
         
+        print("🔍 [VIEWMODEL] Результат парсинга:")
+        print("🔍 [VIEWMODEL]   Actors: \(script.actors.count)")
+        for (index, actor) in script.actors.enumerated() {
+            print("🔍 [VIEWMODEL]     Actor[\(index)]: id='\(actor.id)', type=\(actor.type.rawValue)")
+        }
+        print("🔍 [VIEWMODEL]   Objects: \(script.objects.count)")
+        for (index, object) in script.objects.enumerated() {
+            print("🔍 [VIEWMODEL]     Object[\(index)]: id='\(object.id)', type=\(object.type.rawValue), detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
+        }
+        print("🔍 [VIEWMODEL]   Actions: \(script.actions.count)")
+        for (index, action) in script.actions.enumerated() {
+            print("🔍 [VIEWMODEL]     Action[\(index)]: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target=\(action.target ?? "nil")")
+        }
+        print("🔍 [VIEWMODEL]   Confidence: \(result.diagnostics.confidence)")
+        print("🔍 [VIEWMODEL]   Matched markedObjects: \(result.diagnostics.matchedMarkedObjects.count)")
+        
+        parsedScript = script
+        parsingResult = result
+        
+        // Отображаем диагностику в статусе
+        if result.diagnostics.confidence < 0.6 {
+            statusMessage = "Низкая уверенность парсинга (\(Int(result.diagnostics.confidence * 100))%)"
+            if !result.diagnostics.notes.isEmpty {
+                errorMessage = result.diagnostics.notes.joined(separator: "; ")
+            }
+        } else {
+            statusMessage = "Парсинг выполнен (\(Int(result.diagnostics.confidence * 100))%)"
+        }
         
         if script.isEmpty {
             errorMessage = "Не удалось распознать описание сцены"
@@ -185,7 +212,15 @@ final class SceneGeneratorViewModel: ObservableObject {
         statusMessage = "Планирую размещение..."
         
         // 2. Сопоставляем объекты с размеченными (приоритет) и детекциями
+        // Объекты из markedObjects уже включены в script.objects с detectedPosition
+        print("🔍 [VIEWMODEL] Сопоставление объектов с markedObjects и детекциями...")
+        print("🔍 [VIEWMODEL]   До сопоставления: objects.count=\(script.objects.count)")
         let matchedObjects = matchObjectsWithMarkedAndDetected(script.objects)
+        print("🔍 [VIEWMODEL]   После сопоставления: objects.count=\(matchedObjects.count)")
+        for (index, object) in matchedObjects.enumerated() {
+            print("🔍 [VIEWMODEL]     MatchedObject[\(index)]: id='\(object.id)', type=\(object.type.rawValue), detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
+        }
+        
         let updatedScript = SceneScript(
             actors: script.actors,
             objects: matchedObjects,
@@ -195,6 +230,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         )
         
         // 3. Планируем размещение с учётом размеченных объектов
+        print("🔍 [VIEWMODEL] Планирование размещения...")
+        print("🔍 [VIEWMODEL]   Script для планирования: actors=\(updatedScript.actors.count), objects=\(updatedScript.objects.count), actions=\(updatedScript.actions.count)")
         let planned = plannerService.planScene(
             script: updatedScript,
             cameraTransform: cameraTransform,
@@ -202,6 +239,17 @@ final class SceneGeneratorViewModel: ObservableObject {
             availablePlanes: detectedPlanes,
             markedObjects: markedObjects
         )
+        
+        print("🔍 [VIEWMODEL] Результат планирования:")
+        print("🔍 [VIEWMODEL]   PlacedActors: \(planned.placedActors.count)")
+        for (index, actor) in planned.placedActors.enumerated() {
+            print("🔍 [VIEWMODEL]     PlacedActor[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), path.count=\(actor.path.count)")
+        }
+        print("🔍 [VIEWMODEL]   PlacedObjects: \(planned.placedObjects.count)")
+        for (index, object) in planned.placedObjects.enumerated() {
+            print("🔍 [VIEWMODEL]     PlacedObject[\(index)]: id='\(object.id)', objectId='\(object.objectId)', type=\(object.type.rawValue), isRealWorld=\(object.isRealWorld), placementSource=\(object.placementSource.rawValue)")
+        }
+        
         plannedScene = planned
         
         statusMessage = "Размещаю объекты..."
@@ -326,23 +374,33 @@ final class SceneGeneratorViewModel: ObservableObject {
     func handleTapForMarker(at screenPoint: CGPoint) {
         guard isMarkingMode, let arView = arView else { return }
         
-        // Пробуем использовать LiDAR depth для точного определения расстояния
+        // Приоритет 1: Используем LiDAR depth для максимально точного определения позиции
         if let worldPosition = getWorldPositionFromLiDAR(screenPoint: screenPoint, arView: arView) {
+            print("🔍 [MARKER] Позиция определена через LiDAR: x=\(worldPosition.x), y=\(worldPosition.y), z=\(worldPosition.z)")
             pendingMarkerPosition = worldPosition
             showMarkerNameInput = true
             return
         }
         
-        // Fallback: используем raycast если LiDAR недоступен
-        let results = arView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
+        // Приоритет 2: Используем raycast с более точными настройками
+        // Пробуем сначала точные плоскости, затем оценённые
+        var results = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
+        if results.isEmpty {
+            results = arView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
+        }
         
         guard let firstResult = results.first else {
             statusMessage = "Не удалось определить позицию. Попробуйте ещё раз."
             return
         }
         
-        let position = firstResult.worldTransform.columns.3
-        pendingMarkerPosition = Position3D(x: position.x, y: position.y, z: position.z)
+        // Используем точную позицию из raycast результата
+        let transform = firstResult.worldTransform
+        let position = transform.columns.3
+        let worldPosition = Position3D(x: position.x, y: position.y, z: position.z)
+        
+        print("🔍 [MARKER] Позиция определена через raycast: x=\(worldPosition.x), y=\(worldPosition.y), z=\(worldPosition.z)")
+        pendingMarkerPosition = worldPosition
         showMarkerNameInput = true
     }
     
@@ -463,7 +521,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         statusMessage = "Все маркеры удалены"
     }
     
-    /// Размещает визуальный маркер в AR
+    /// Размещает визуальный маркер в AR (точно в указанной позиции)
     private func placeMarkerEntity(for marker: MarkedObject) {
         guard let arView = arView else { return }
         
@@ -474,9 +532,13 @@ final class SceneGeneratorViewModel: ObservableObject {
             arView.scene.addAnchor(anchor)
         }
         
-        // Создаём визуальный маркер - маленькая пирамидка с подписью
+        // Создаём визуальный маркер - сфера с подписью (отличается от виртуальных объектов)
         let markerEntity = createMarkerEntity(for: marker)
+        
+        // Используем ТОЧНУЮ позицию из marker.worldPosition (без смещений)
         markerEntity.position = marker.worldPosition.simdVector
+        
+        print("🔍 [MARKER] Размещение маркера '\(marker.name)' в позиции: x=\(marker.worldPosition.x), y=\(marker.worldPosition.y), z=\(marker.worldPosition.z)")
         
         markersAnchor?.addChild(markerEntity)
         markerEntities[marker.id] = markerEntity
@@ -489,43 +551,60 @@ final class SceneGeneratorViewModel: ObservableObject {
         }
     }
     
-    /// Создаёт entity для маркера
+    /// Создаёт entity для маркера (отличается от виртуальных объектов)
     private func createMarkerEntity(for marker: MarkedObject) -> ModelEntity {
-        // Создаём маленькую призму/пирамидку
-        let mesh = MeshResource.generateBox(width: 0.08, height: 0.15, depth: 0.08)
+        // Создаём сферу вместо куба - более отличимый маркер
+        let mesh = MeshResource.generateSphere(radius: 0.06)
+        
+        // Используем яркий цвет с полупрозрачностью для отличия от виртуальных объектов
+        let markerColor = marker.markerColor.withAlphaComponent(0.8)
         let material = SimpleMaterial(
-            color: marker.markerColor,
-            roughness: 0.3,
-            isMetallic: false
+            color: markerColor,
+            roughness: 0.2,
+            isMetallic: true // Металлический блеск для отличия
         )
         
         let entity = ModelEntity(mesh: mesh, materials: [material])
         entity.generateCollisionShapes(recursive: true)
         
-        // Добавляем подпись сверху
+        // Добавляем подпись сверху (меньше и выше)
         let textMesh = MeshResource.generateText(
             marker.name.capitalized,
-            extrusionDepth: 0.005,
-            font: .boldSystemFont(ofSize: 0.05)
+            extrusionDepth: 0.003,
+            font: .boldSystemFont(ofSize: 0.04)
         )
         let textMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
         let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
-        textEntity.position = simd_float3(-0.05, 0.12, 0)
+        textEntity.position = simd_float3(-0.04, 0.10, 0)
         
         entity.addChild(textEntity)
+        
+        // Маркер визуально отличается от виртуальных объектов:
+        // - Сфера вместо куба
+        // - Металлический блеск
+        // - Полупрозрачность
+        // - Яркий цвет
         
         return entity
     }
     
     /// Находит размеченный объект по ключевому слову
     func findMarkedObject(forKeyword keyword: String) -> MarkedObject? {
-        return markedObjects.first { $0.matches(keyword: keyword) }
+        let lemmatizer = Lemmatizer()
+        // Используем улучшенный метод с лемматизацией
+        return markedObjects.first { $0.matches(keyword: keyword, lemmatizer: lemmatizer) }
     }
     
     // MARK: - AR Object Placement
     
     private func placeObjectsInAR(_ planned: PlannedScene) async {
         guard let arView = arView else { return }
+        
+        print("🔍 [VIEWMODEL] === РАЗМЕЩЕНИЕ В AR ===")
+        print("🔍 [VIEWMODEL] PlacedActors для размещения: \(planned.placedActors.count)")
+        print("🔍 [VIEWMODEL] PlacedObjects для размещения: \(planned.placedObjects.count)")
+        print("🔍 [VIEWMODEL]   Виртуальных объектов (isRealWorld=false): \(planned.placedObjects.filter { !$0.isRealWorld }.count)")
+        print("🔍 [VIEWMODEL]   Реальных объектов (isRealWorld=true): \(planned.placedObjects.filter { $0.isRealWorld }.count)")
         
         // Удаляем предыдущую сцену
         sceneAnchor?.removeFromParent()
@@ -536,8 +615,10 @@ final class SceneGeneratorViewModel: ObservableObject {
         sceneAnchor = anchor
         arView.scene.addAnchor(anchor)
         
+        var virtualObjectsPlaced = 0
         // Размещаем только виртуальные объекты (реальные не дублируем)
         for object in planned.placedObjects where !object.isRealWorld {
+            print("🔍 [VIEWMODEL] Размещаю виртуальный объект: id='\(object.id)', type=\(object.type.rawValue)")
             let entity = createPlaceholderEntity(
                 size: object.size,
                 color: object.color,
@@ -549,10 +630,15 @@ final class SceneGeneratorViewModel: ObservableObject {
             
             anchor.addChild(entity)
             placedEntities[object.id] = entity
+            virtualObjectsPlaced += 1
         }
+        print("🔍 [VIEWMODEL] Размещено виртуальных объектов: \(virtualObjectsPlaced)")
         
+        var actorsPlaced = 0
         // Размещаем актёров
-        for actor in planned.placedActors {
+        print("🔍 [VIEWMODEL] Начало размещения актёров, всего в planned.placedActors: \(planned.placedActors.count)")
+        for (index, actor) in planned.placedActors.enumerated() {
+            print("🔍 [VIEWMODEL] Обработка актёра[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), initialPosition=(\(actor.initialPosition.x), \(actor.initialPosition.y), \(actor.initialPosition.z))")
             let entity = createActorEntity(
                 size: actor.size,
                 color: actor.color,
@@ -562,9 +648,16 @@ final class SceneGeneratorViewModel: ObservableObject {
             entity.position = actor.initialPosition.simdVector
             entity.orientation = simd_quatf(angle: actor.initialRotation, axis: [0, 1, 0])
             
+            print("🔍 [VIEWMODEL] Создан entity для актёра[\(index)], добавляю в anchor...")
             anchor.addChild(entity)
             placedEntities[actor.id] = entity
+            print("🔍 [VIEWMODEL] Актёр[\(index)] добавлен в placedEntities с ключом '\(actor.id)', теперь placedEntities.count=\(placedEntities.count)")
+            actorsPlaced += 1
         }
+        print("🔍 [VIEWMODEL] Размещено актёров: \(actorsPlaced) из \(planned.placedActors.count)")
+        print("🔍 [VIEWMODEL] Всего entities в placedEntities: \(placedEntities.count)")
+        print("🔍 [VIEWMODEL] Ключи в placedEntities: \(placedEntities.keys.sorted().joined(separator: ", "))")
+        print("🔍 [VIEWMODEL] === РАЗМЕЩЕНИЕ ЗАВЕРШЕНО ===")
     }
     
     private func createPlaceholderEntity(
@@ -761,35 +854,15 @@ final class SceneGeneratorViewModel: ObservableObject {
         }
     }
     
-    /// Создаёт SceneObjects из размеченных объектов, имена которых упомянуты в описании
-    /// но не были распознаны стандартным парсером
+    /// Устаревший метод - теперь addObjectsFromMarkedObjects выполняется внутри парсера
+    /// Оставлен для обратной совместимости, но больше не используется
+    @available(*, deprecated, message: "Размеченные объекты теперь обрабатываются внутри парсера")
     private func addObjectsFromMarkedObjects(
         description: String,
         existingObjects: [SceneObject]
     ) -> [SceneObject] {
-        let lowercased = description.lowercased()
-        var additionalObjects: [SceneObject] = []
-        var existingTypes = Set(existingObjects.map { $0.type })
-        
-        for marker in markedObjects {
-            // Пропускаем если такой тип уже есть
-            if existingTypes.contains(marker.type) { continue }
-            
-            // Проверяем, упоминается ли имя маркера в описании
-            let markerName = marker.name.lowercased()
-            if lowercased.contains(markerName) {
-                let newObject = SceneObject(
-                    id: "object_marked_\(marker.id)",
-                    type: marker.type,
-                    detectedPosition: marker.worldPosition,
-                    relativePosition: .unknown
-                )
-                additionalObjects.append(newObject)
-                existingTypes.insert(marker.type)
-            }
-        }
-        
-        return additionalObjects
+        // Метод больше не используется - парсер сам обрабатывает markedObjects
+        return []
     }
 }
 
