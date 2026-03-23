@@ -1,0 +1,5 @@
+# llama.cpp source (build only, XCFramework is in Frameworks/)
+llama.cpp/
+
+# Large GGUF model files (should be downloaded separately)
+*.gguf

@@ -17,6 +17,10 @@ final class SceneParserService {
     private let lemmatizer = Lemmatizer()
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
     private let diagnosticsCalculator = DiagnosticsCalculator()
+    private let llmParser = LLMParserService.shared
+    
+    // Порог confidence для использования LLM fallback
+    private let llmFallbackThreshold: Float = 0.85
     
     private init() {}
     
@@ -62,14 +66,95 @@ final class SceneParserService {
         )
         
         // 6. Вычисляем диагностику
-        let diagnostics = diagnosticsCalculator.calculateDiagnostics(
+        var diagnostics = diagnosticsCalculator.calculateDiagnostics(
             script: script,
             originalText: description,
             markedObjects: markedObjects,
             matchedMarkedObjects: matchedMarkedObjectIds
         )
         
+        // 7. Если confidence низкий и LLM доступна - пробуем LLM fallback
+        if diagnostics.confidence < llmFallbackThreshold && llmParser.isAvailable {
+            print("🤖 [PARSER] Низкая confidence (\(String(format: "%.2f", diagnostics.confidence))), пробуем LLM fallback...")
+            
+            if let llmScript = llmParser.parse(description, markedObjects: markedObjects) {
+                print("🤖 [PARSER] LLM успешно распарсила сценарий")
+                
+                // Пересчитываем диагностику для LLM результата
+                let llmMatchedIds = llmScript.objects.compactMap { object -> UUID? in
+                    if object.id.contains("marked_") {
+                        let idString = object.id.replacingOccurrences(of: "object_marked_", with: "")
+                        return markedObjects.first(where: { $0.id.uuidString.prefix(8) == idString })?.id
+                    }
+                    return nil
+                }
+                
+                let llmDiagnostics = diagnosticsCalculator.calculateDiagnostics(
+                    script: llmScript,
+                    originalText: description,
+                    markedObjects: markedObjects,
+                    matchedMarkedObjects: llmMatchedIds
+                )
+                
+                // Используем LLM результат если он лучше
+                if llmDiagnostics.confidence > diagnostics.confidence {
+                    print("🤖 [PARSER] LLM результат лучше (confidence: \(String(format: "%.2f", llmDiagnostics.confidence))), используем его")
+                    return ParsingResult(script: llmScript, diagnostics: llmDiagnostics)
+                } else {
+                    print("🤖 [PARSER] LLM результат не лучше, используем rule-based")
+                }
+            } else {
+                print("🤖 [PARSER] LLM не смогла распарсить, используем rule-based результат")
+            }
+        }
+        
         return ParsingResult(script: script, diagnostics: diagnostics)
+    }
+    
+    /// Асинхронный парсинг с поддержкой LLM fallback
+    /// Используйте этот метод вместо sync parse() для полноценного LLM fallback
+    func parseAsync(_ description: String, markedObjects: [MarkedObject] = []) async -> ParsingResult {
+        // 1. Сначала делаем rule-based парсинг (синхронный, ~1 мс)
+        let ruleBasedResult = parse(description, markedObjects: markedObjects)
+        
+        // 2. Если confidence достаточный — возвращаем без LLM
+        if ruleBasedResult.diagnostics.confidence >= llmFallbackThreshold {
+            print("✅ [PARSER] Rule-based confidence достаточный (\(String(format: "%.2f", ruleBasedResult.diagnostics.confidence))), LLM не нужен")
+            return ruleBasedResult
+        }
+        
+        // 3. Если confidence низший — пробуем LLM
+        print("🤖 [PARSER] Низкая confidence (\(String(format: "%.2f", ruleBasedResult.diagnostics.confidence))), запускаем LLM fallback...")
+        
+        if let llmScript = await llmParser.parseAsync(description, markedObjects: markedObjects) {
+            // Пересчитываем диагностику для LLM результата
+            let llmMatchedIds = llmScript.objects.compactMap { object -> UUID? in
+                if object.id.contains("marked_") {
+                    let idString = object.id.replacingOccurrences(of: "object_marked_", with: "")
+                    return markedObjects.first(where: { $0.id.uuidString.prefix(8) == idString })?.id
+                }
+                return nil
+            }
+            
+            let llmDiagnostics = diagnosticsCalculator.calculateDiagnostics(
+                script: llmScript,
+                originalText: description,
+                markedObjects: markedObjects,
+                matchedMarkedObjects: llmMatchedIds
+            )
+            
+            // Используем LLM результат если он лучше
+            if llmDiagnostics.confidence > ruleBasedResult.diagnostics.confidence {
+                print("🤖 [PARSER] LLM результат лучше (confidence: \(String(format: "%.2f", llmDiagnostics.confidence))), используем его")
+                return ParsingResult(script: llmScript, diagnostics: llmDiagnostics)
+            } else {
+                print("🤖 [PARSER] LLM результат не лучше, используем rule-based")
+            }
+        } else {
+            print("🤖 [PARSER] LLM не смогла распарсить, используем rule-based результат")
+        }
+        
+        return ruleBasedResult
     }
     
     /// Старый метод для обратной совместимости (deprecated)

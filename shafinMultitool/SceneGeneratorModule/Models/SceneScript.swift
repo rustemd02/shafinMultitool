@@ -145,6 +145,7 @@ struct SceneActor: Codable, Equatable, Identifiable {
     enum ActorType: String, Codable, CaseIterable {
         case human = "human"
         case tiger = "tiger"
+        case lion = "lion"
         case dog = "dog"
         case cat = "cat"
         case bird = "bird"
@@ -155,6 +156,7 @@ struct SceneActor: Codable, Equatable, Identifiable {
             switch self {
             case .human: return (0.2, 0.6, 1.0)    // Синий
             case .tiger: return (1.0, 0.5, 0.0)    // Оранжевый
+            case .lion: return (0.9, 0.7, 0.1)     // Золотисто-жёлтый
             case .dog: return (0.6, 0.4, 0.2)      // Коричневый
             case .cat: return (0.8, 0.8, 0.8)      // Серый
             case .bird: return (1.0, 1.0, 0.0)     // Жёлтый
@@ -167,6 +169,7 @@ struct SceneActor: Codable, Equatable, Identifiable {
             switch self {
             case .human: return simd_float3(0.3, 1.7, 0.3)
             case .tiger: return simd_float3(0.8, 0.6, 0.3)
+            case .lion: return simd_float3(0.9, 0.7, 0.4)
             case .dog: return simd_float3(0.5, 0.4, 0.2)
             case .cat: return simd_float3(0.3, 0.25, 0.15)
             case .bird: return simd_float3(0.1, 0.1, 0.1)
@@ -267,7 +270,7 @@ struct SceneAction: Codable, Equatable, Identifiable {
     var direction: Direction?       // Направление движения
     var modifier: ActionModifier?   // Модификатор (быстро, медленно)
     
-    enum ActionType: String, Codable {
+    enum ActionType: String, Codable, CaseIterable {
         case walk = "walk"
         case run = "run"
         case stop = "stop"
@@ -325,7 +328,7 @@ struct SpatialRelation: Codable, Equatable, Identifiable {
     let relation: RelationType  // Тип отношения
     let object: String          // ID объекта (относительно чего)
     
-    enum RelationType: String, Codable {
+    enum RelationType: String, Codable, CaseIterable {
         case near = "near"
         case inFrontOf = "in_front_of"
         case behind = "behind"
@@ -477,7 +480,14 @@ struct KeywordsMapping {
         "коты": .cat,
         "кошки": .cat,
         "птица": .bird,
-        "птицы": .bird
+        "птицы": .bird,
+        // Лев
+        "лев": .lion,
+        "льва": .lion,
+        "льву": .lion,
+        "львом": .lion,
+        "львы": .lion,
+        "львов": .lion
     ]
     
     // MARK: Object Keywords

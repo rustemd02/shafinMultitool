@@ -15,68 +15,108 @@ struct SceneInputSheet: View {
     @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                // Background
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.05, green: 0.05, blue: 0.12),
-                        Color.black
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                
+        GeometryReader { geometry in
+            let isLandscape = geometry.size.width > geometry.size.height
+            
+            NavigationView {
+                ZStack {
+                    // Background
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.05, green: 0.05, blue: 0.12),
+                            Color.black
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .ignoresSafeArea()
+                    
+                    if isLandscape {
+                        landscapeLayout
+                    } else {
+                        portraitLayout
+                    }
+                }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Отмена") {
+                            dismiss()
+                        }
+                        .foregroundColor(.white.opacity(0.8))
+                    }
+                    
+                    // Кнопка скрытия клавиатуры — появляется только когда клавиатура открыта
+                    if isTextFieldFocused {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                isTextFieldFocused = false
+                            } label: {
+                                Image(systemName: "keyboard.chevron.compact.down")
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                        }
+                    }
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+    
+    // MARK: - Portrait Layout
+    
+    private var portraitLayout: some View {
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    headerSection
+                    textInputSection
+                    if !viewModel.markedObjects.isEmpty { markedObjectsSection }
+                    if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
+                    examplesSection
+                    if let result = viewModel.parsingResult { diagnosticsSection(result: result) }
+                    Spacer(minLength: 100)
+                }
+                .padding()
+            }
+            generateButton
+        }
+    }
+    
+    // MARK: - Landscape Layout
+    
+    private var landscapeLayout: some View {
+        HStack(alignment: .top, spacing: 0) {
+            // Левая колонка: ввод + кнопка генерации
+            ZStack(alignment: .bottom) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        
-                        // Header
+                    VStack(alignment: .leading, spacing: 16) {
                         headerSection
-                        
-                        // Text input
                         textInputSection
-                        
-                        // Marked objects (user-defined, highest priority)
-                        if !viewModel.markedObjects.isEmpty {
-                            markedObjectsSection
-                        }
-                        
-                        // Detected objects
-                        if !viewModel.detectedObjects.isEmpty {
-                            detectedObjectsSection
-                        }
-                        
-                        // Examples
-                        examplesSection
-                        
-                        // Diagnostics (если есть результат парсинга)
-                        if let result = viewModel.parsingResult {
-                            diagnosticsSection(result: result)
-                        }
-                        
-                        Spacer(minLength: 100)
+                        Spacer(minLength: 80)
                     }
                     .padding()
                 }
-                
-                // Bottom generate button
-                VStack {
-                    Spacer()
-                    generateButton
-                }
+                generateButton
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                    .foregroundColor(.white.opacity(0.8))
+            .frame(maxWidth: .infinity)
+            
+            Divider()
+                .background(Color.white.opacity(0.1))
+            
+            // Правая колонка: объекты + примеры
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if !viewModel.markedObjects.isEmpty { markedObjectsSection }
+                    if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
+                    examplesSection
+                    if let result = viewModel.parsingResult { diagnosticsSection(result: result) }
+                    Spacer(minLength: 16)
                 }
+                .padding()
             }
+            .frame(maxWidth: .infinity)
         }
-        .preferredColorScheme(.dark)
     }
     
     // MARK: - Header Section
@@ -130,7 +170,44 @@ struct SceneInputSheet: View {
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+                    .padding(.bottom, 36) // место под кнопку Вставить
                     .focused($isTextFieldFocused)
+                
+                // Кнопка «Вставить» — в правом нижнем углу поля
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button {
+                            if let clipboardText = UIPasteboard.general.string, !clipboardText.isEmpty {
+                                if !viewModel.sceneDescription.isEmpty && !viewModel.sceneDescription.hasSuffix(" ") {
+                                    viewModel.sceneDescription += " "
+                                }
+                                viewModel.sceneDescription += clipboardText
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "doc.on.clipboard")
+                                    .font(.system(size: 11))
+                                Text("Вставить")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(.blue.opacity(0.9))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule()
+                                    .fill(Color.blue.opacity(0.15))
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
+                        }
+                        .padding(.trailing, 10)
+                        .padding(.bottom, 8)
+                    }
+                }
             }
             .frame(minHeight: 120, maxHeight: 200)
             .background(

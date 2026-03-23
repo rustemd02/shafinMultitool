@@ -169,9 +169,10 @@ final class SceneGeneratorViewModel: ObservableObject {
             print("🔍 [VIEWMODEL]   MarkedObject[\(index)]: name='\(marker.name)', type=\(marker.type.rawValue), id=\(marker.id.uuidString.prefix(8))")
         }
         
-        // 1. Парсим описание с учётом markedObjects (новый API)
-        print("🔍 [VIEWMODEL] Вызов parserService.parse()...")
-        let result = parserService.parse(sceneDescription, markedObjects: markedObjects)
+        // 1. Парсим описание с учётом markedObjects (async — поддержка LLM fallback)
+        print("🔍 [VIEWMODEL] Вызов parserService.parseAsync()...")
+        statusMessage = "Анализирую текст..."
+        let result = await parserService.parseAsync(sceneDescription, markedObjects: markedObjects)
         let script = result.script
         
         print("🔍 [VIEWMODEL] Результат парсинга:")

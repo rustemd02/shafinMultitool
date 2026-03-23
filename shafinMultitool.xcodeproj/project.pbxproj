@@ -10,6 +10,8 @@
 		965FEAE79C4978DC87D1FBB2 /* Pods_shafinMultitool.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */; };
 		CF10E5F029F8236100D3E39A /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5EF29F8236100D3E39A /* ARKit.framework */; };
 		CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF10E5F129F8238100D3E39A /* RealityKit.framework */; };
+		CF3345CC2F6438AC0017F85F /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF3345CB2F6438AC0017F85F /* llama.xcframework */; };
+		CF3345CD2F6438AC0017F85F /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CF3345CB2F6438AC0017F85F /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -22,11 +24,26 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		CF3345CE2F6438AC0017F85F /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				CF3345CD2F6438AC0017F85F /* llama.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		08C5AE5ADFDF9B02E49CF3EE /* Pods-shafinMultitool.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.release.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.release.xcconfig"; sourceTree = "<group>"; };
 		7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_shafinMultitool.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF10E5EF29F8236100D3E39A /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 		CF10E5F129F8238100D3E39A /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
+		CF3345CB2F6438AC0017F85F /* llama.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = Frameworks/llama.xcframework; sourceTree = "<group>"; };
 		CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shafinMultitoolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.debug.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.debug.xcconfig"; sourceTree = "<group>"; };
@@ -90,6 +107,7 @@
 				CF10E5F229F8238100D3E39A /* RealityKit.framework in Frameworks */,
 				CF10E5F029F8236100D3E39A /* ARKit.framework in Frameworks */,
 				965FEAE79C4978DC87D1FBB2 /* Pods_shafinMultitool.framework in Frameworks */,
+				CF3345CC2F6438AC0017F85F /* llama.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -110,6 +128,7 @@
 		CF10E5EE29F8236100D3E39A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				CF3345CB2F6438AC0017F85F /* llama.xcframework */,
 				CF10E5F129F8238100D3E39A /* RealityKit.framework */,
 				CF10E5EF29F8236100D3E39A /* ARKit.framework */,
 				7733CA8491FCF9159884C4C0 /* Pods_shafinMultitool.framework */,
@@ -170,6 +189,7 @@
 				CFF7B20129CC876400C3B73E /* Frameworks */,
 				CFF7B20229CC876400C3B73E /* Resources */,
 				430CDBAEF84F01F44B60348F /* [CP] Embed Pods Frameworks */,
+				CF3345CE2F6438AC0017F85F /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -211,6 +231,7 @@
 			);
 			mainGroup = CFF7B1FB29CC876400C3B73E;
 			packageReferences = (
+				CFDA31012F40A8EC002114E5 /* XCRemoteSwiftPackageReference "llama-cpp-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CFF7B20529CC876400C3B73E /* Products */;
@@ -578,6 +599,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CFDA31012F40A8EC002114E5 /* XCRemoteSwiftPackageReference "llama-cpp-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/srgtuszy/llama-cpp-swift";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = CFF7B1FC29CC876400C3B73E /* Project object */;
 }
