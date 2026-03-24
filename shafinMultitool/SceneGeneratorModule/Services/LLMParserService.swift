@@ -316,41 +316,45 @@ final class LLMParserService {
     
     /// GBNF-грамматика, описывающая JSON-схему SceneScript.
     /// Constrained decoding: сэмплер физически не может выдать невалидный JSON.
-    static let sceneScriptGrammar = #"""
-    root ::= "{" ws actors-field "," ws objects-field "," ws actions-field "," ws relations-field ws "}"
-
-    ws ::= ([ \t\n])*
-
-    actors-field ::= "\"actors\"" ws ":" ws "[" ws actor-list ws "]"
-    actor-list ::= actor ("," ws actor)* | ""
-
-    objects-field ::= "\"objects\"" ws ":" ws "[" ws object-list ws "]"
-    object-list ::= object ("," ws object)* | ""
-
-    actions-field ::= "\"actions\"" ws ":" ws "[" ws action-list ws "]"
-    action-list ::= action ("," ws action)* | ""
-
-    relations-field ::= "\"spatialRelations\"" ws ":" ws "[" ws relation-list ws "]"
-    relation-list ::= relation ("," ws relation)* | ""
-
-    actor ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws actor-type ws "}"
-    actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"generic\""
-
-    object ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws object-type ws "}"
-    object-type ::= "\"table\"" | "\"chair\"" | "\"cabinet\"" | "\"door\"" | "\"couch\"" | "\"bed\"" | "\"window\"" | "\"shelf\"" | "\"tv\"" | "\"generic\""
-
-    action ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"actorId\"" ws ":" ws string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed ws "}"
-    action-type ::= "\"walk\"" | "\"run\"" | "\"stop\"" | "\"turn\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\""
-    action-target ::= ("," ws "\"target\"" ws ":" ws string) | ""
-    action-direction ::= ("," ws "\"direction\"" ws ":" ws direction-type) | ""
-    direction-type ::= "\"left\"" | "\"right\"" | "\"forward\"" | "\"backward\"" | "\"toward_each_other\"" | "\"away_from_each_other\"" | "\"to_target\""
-    action-speed ::= ("," ws "\"speed\"" ws ":" ws speed-type) | ""
-    speed-type ::= "\"slowly\"" | "\"quickly\"" | "\"carefully\""
-
-    relation ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"subject\"" ws ":" ws string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"object\"" ws ":" ws string ws "}"
-    relation-type ::= "\"near\"" | "\"in_front_of\"" | "\"behind\"" | "\"left_of\"" | "\"right_of\"" | "\"between\"" | "\"pass_by\"" | "\"inside\"" | "\"outside\""
-
-    string ::= "\"" [a-zA-Z0-9_]+ "\""
-    """#
+    static let sceneScriptGrammar: String = {
+        // GBNF grammar — каждая строка без ведущих пробелов (парсер GBNF чувствителен к отступам)
+        let lines = [
+            #"root ::= "{" ws actors-field "," ws objects-field "," ws actions-field "," ws relations-field ws "}""#,
+            "",
+            #"ws ::= ([ \t\n])*"#,
+            "",
+            #"actors-field ::= "\"actors\"" ws ":" ws "[" ws actor-list ws "]""#,
+            #"actor-list ::= actor ("," ws actor)* | """#,
+            "",
+            #"objects-field ::= "\"objects\"" ws ":" ws "[" ws object-list ws "]""#,
+            #"object-list ::= object ("," ws object)* | """#,
+            "",
+            #"actions-field ::= "\"actions\"" ws ":" ws "[" ws action-list ws "]""#,
+            #"action-list ::= action ("," ws action)* | """#,
+            "",
+            #"relations-field ::= "\"spatialRelations\"" ws ":" ws "[" ws relation-list ws "]""#,
+            #"relation-list ::= relation ("," ws relation)* | """#,
+            "",
+            #"actor ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws actor-type ws "}""#,
+            #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"generic\"""#,
+            "",
+            #"object ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws object-type ws "}""#,
+            #"object-type ::= "\"table\"" | "\"chair\"" | "\"cabinet\"" | "\"door\"" | "\"couch\"" | "\"bed\"" | "\"window\"" | "\"shelf\"" | "\"tv\"" | "\"generic\"""#,
+            "",
+            #"action ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"actorId\"" ws ":" ws string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed ws "}""#,
+            #"action-type ::= "\"walk\"" | "\"run\"" | "\"stop\"" | "\"turn\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"""#,
+            #"action-target ::= ("," ws "\"target\"" ws ":" ws string) | """#,
+            #"action-direction ::= ("," ws "\"direction\"" ws ":" ws direction-type) | """#,
+            #"direction-type ::= "\"left\"" | "\"right\"" | "\"forward\"" | "\"backward\"" | "\"toward_each_other\"" | "\"away_from_each_other\"" | "\"to_target\"""#,
+            #"action-speed ::= ("," ws "\"speed\"" ws ":" ws speed-type) | """#,
+            #"speed-type ::= "\"slowly\"" | "\"quickly\"" | "\"carefully\"""#,
+            "",
+            #"relation ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"subject\"" ws ":" ws string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"object\"" ws ":" ws string ws "}""#,
+            #"relation-type ::= "\"near\"" | "\"in_front_of\"" | "\"behind\"" | "\"left_of\"" | "\"right_of\"" | "\"between\"" | "\"pass_by\"" | "\"inside\"" | "\"outside\"""#,
+            "",
+            #"string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
+        ]
+        return lines.joined(separator: "\n")
+    }()
 }
 

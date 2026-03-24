@@ -20,7 +20,7 @@ final class SceneParserService {
     private let llmParser = LLMParserService.shared
     
     // Порог confidence для использования LLM fallback
-    private let llmFallbackThreshold: Float = 0.85
+    private let llmFallbackThreshold: Float = 0.70
     
     private init() {}
     
@@ -552,6 +552,61 @@ final class SceneParserService {
             }
         }
         
+        // Паттерны для остановки около объекта
+        // «останавливается около/у/возле/рядом с X»
+        let stopPatterns: [String] = [
+            #"(?:останавлива(?:ется|ются)|встаёт|встают|стоит|стоят)\s*(?:около|у|возле|рядом\s*с|рядом\s*со)\s+(\w+)"#,
+        ]
+        
+        for pattern in stopPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+                
+                for match in matches {
+                    guard match.numberOfRanges > 1 else { continue }
+                    
+                    let nsRange = match.range(at: 1)
+                    guard nsRange.location != NSNotFound,
+                          nsRange.location + nsRange.length <= (text as NSString).length,
+                          nsRange.length > 0,
+                          let objectRange = Range(nsRange, in: text),
+                          objectRange.lowerBound >= text.startIndex,
+                          objectRange.upperBound <= text.endIndex,
+                          objectRange.lowerBound < objectRange.upperBound else { continue }
+                    
+                    let objectWord = String(text[objectRange])
+                    
+                    // Находим целевой объект
+                    if let targetObject = findMatchingObject(word: objectWord, objects: objects, markedObjects: markedObjects) {
+                        // Определяем форму глагола (множественное число?)
+                        let pluralForms = ["останавливаются", "встают", "стоят"]
+                        let isPlural = pluralForms.contains(where: { text.contains($0) })
+                        
+                        let actorsForStop = (isPlural && actors.count > 1) ? actors : [actors.first].compactMap { $0 }
+                        
+                        for actor in actorsForStop {
+                            // Не дублируем если уже есть stop для этого актёра
+                            let alreadyHasStop = actions.contains { $0.actorId == actor.id && ($0.type == .stop || $0.type == .stand) && $0.target == targetObject.id }
+                            if !alreadyHasStop {
+                                let action = SceneAction(
+                                    id: "action_\(actionCounter)",
+                                    actorId: actor.id,
+                                    type: .stop,
+                                    target: targetObject.id,
+                                    direction: .toTarget,
+                                    modifier: nil
+                                )
+                                actions.append(action)
+                                print("🔍 [EXTRACT_ACTIONS] Создано действие stop: id='\(action.id)', actorId='\(action.actorId)', target='\(action.target ?? "nil")'")
+                                actionCounter += 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        
         // Если не нашли комплексных паттернов, ищем простые действия (с лемматизацией)
         if actions.isEmpty {
             for (keyword, actionType) in KeywordsMapping.actionKeywords {
@@ -577,7 +632,19 @@ final class SceneParserService {
         print("🔍 [EXTRACT_ACTIONS] Обработка конструкций 'один ... другой'...")
         actions = processOneAnotherConstruction(text: text, actors: actors, existingActions: actions, actionCounter: &actionCounter)
         
-        print("🔍 [EXTRACT_ACTIONS] Итого действий: \(actions.count)")
+        // Дедупликация: убираем дублирующиеся действия (одинаковый actorId + type + target + direction)
+        var seen: Set<String> = []
+        actions = actions.filter { action in
+            let key = "\(action.actorId)_\(action.type.rawValue)_\(action.target ?? "")_\(action.direction?.rawValue ?? "")"
+            if seen.contains(key) {
+                print("🔍 [EXTRACT_ACTIONS] Удалён дубликат: \(action.id) (\(key))")
+                return false
+            }
+            seen.insert(key)
+            return true
+        }
+        
+        print("🔍 [EXTRACT_ACTIONS] Итого действий (после дедупликации): \(actions.count)")
         return actions
     }
     

@@ -604,8 +604,19 @@ final class SpatialPlannerService {
             break
             
         case .stop:
-            // Остановка - без движения
-            break
+            // Остановка — если есть target, подходим к объекту и стоим
+            if let targetId = action.target,
+               let targetObject = placedObjects.first(where: { $0.objectId == targetId }) {
+                // Подходим к объекту с оффсетом
+                let (pos, dur) = handleApproach(
+                    to: targetObject.position,
+                    currentPosition: currentPosition,
+                    speed: action.speed
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+            }
+            // Без target — просто стоим на месте
             
         case .stand:
             // Если есть target - позиционируемся рядом с объектом
@@ -642,10 +653,32 @@ final class SpatialPlannerService {
         
         switch direction {
         case .towardEachOther:
-            // Движемся к центру сцены
-            let targetPosition = sceneSpace.center
-            positions.append(targetPosition)
-            durations.append(calculateDuration(from: currentPosition, to: targetPosition, speed: action.speed))
+            // Вычисляем точку встречи между двумя актёрами (с оффсетом, чтобы не наложились)
+            // Находим оппонента по target или используем центр
+            var meetingPoint = sceneSpace.center
+            if let targetActorId = action.target,
+               let targetIndex = allActors.firstIndex(where: { $0.id == targetActorId }),
+               targetIndex < initialPositions.count {
+                let otherPos = initialPositions[targetIndex]
+                // Точка встречи — середина между двумя актёрами
+                let midPoint = Position3D(
+                    x: (currentPosition.x + otherPos.x) / 2,
+                    y: currentPosition.y,
+                    z: (currentPosition.z + otherPos.z) / 2
+                )
+                // Перпендикулярный оффсет чтобы не стоять в одной точке
+                let toOther = simd_normalize(simd_float3(
+                    otherPos.x - currentPosition.x, 0, otherPos.z - currentPosition.z
+                ))
+                // Останавливаемся в 0.5м от середины (1м между актёрами)
+                meetingPoint = Position3D(
+                    x: midPoint.x - toOther.x * 0.5,
+                    y: currentPosition.y,
+                    z: midPoint.z - toOther.z * 0.5
+                )
+            }
+            positions.append(meetingPoint)
+            durations.append(calculateDuration(from: currentPosition, to: meetingPoint, speed: action.speed))
             
         case .awayFromEachOther:
             // Движемся от центра
