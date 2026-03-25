@@ -112,19 +112,14 @@ final class SceneParserService {
     }
     
     /// Асинхронный парсинг с поддержкой LLM fallback
-    /// Используйте этот метод вместо sync parse() для полноценного LLM fallback
+    /// Стратегия: всегда пробуем LLM (дообученная модель точнее rule-based),
+    /// rule-based используем только если LLM не смогла сгенерировать результат.
     func parseAsync(_ description: String, markedObjects: [MarkedObject] = []) async -> ParsingResult {
-        // 1. Сначала делаем rule-based парсинг (синхронный, ~1 мс)
+        // 1. Сначала делаем rule-based парсинг (синхронный, ~1 мс) — он будет fallback
         let ruleBasedResult = parse(description, markedObjects: markedObjects)
         
-        // 2. Если confidence достаточный — возвращаем без LLM
-        if ruleBasedResult.diagnostics.confidence >= llmFallbackThreshold {
-            print("✅ [PARSER] Rule-based confidence достаточный (\(String(format: "%.2f", ruleBasedResult.diagnostics.confidence))), LLM не нужен")
-            return ruleBasedResult
-        }
-        
-        // 3. Если confidence низший — пробуем LLM
-        print("🤖 [PARSER] Низкая confidence (\(String(format: "%.2f", ruleBasedResult.diagnostics.confidence))), запускаем LLM fallback...")
+        // 2. Пробуем LLM (дообученная модель, ~5-8 сек на iPhone)
+        print("🤖 [PARSER] Запускаем LLM парсинг (дообученная модель)...")
         
         if let llmScript = await llmParser.parseAsync(description, markedObjects: markedObjects) {
             // Пересчитываем диагностику для LLM результата
@@ -143,17 +138,20 @@ final class SceneParserService {
                 matchedMarkedObjects: llmMatchedIds
             )
             
-            // Используем LLM результат если он лучше
-            if llmDiagnostics.confidence > ruleBasedResult.diagnostics.confidence {
-                print("🤖 [PARSER] LLM результат лучше (confidence: \(String(format: "%.2f", llmDiagnostics.confidence))), используем его")
+            // Дообученная модель — основной парсер. Используем её результат,
+            // если она сгенерировала хотя бы одно действие.
+            if !llmScript.actions.isEmpty {
+                print("✅ [PARSER] Используем LLM результат (actions: \(llmScript.actions.count), confidence: \(String(format: "%.2f", llmDiagnostics.confidence)))")
                 return ParsingResult(script: llmScript, diagnostics: llmDiagnostics)
             } else {
-                print("🤖 [PARSER] LLM результат не лучше, используем rule-based")
+                print("⚠️ [PARSER] LLM не нашла действий, используем rule-based")
             }
         } else {
-            print("🤖 [PARSER] LLM не смогла распарсить, используем rule-based результат")
+            print("⚠️ [PARSER] LLM не смогла распарсить, используем rule-based результат")
         }
         
+        // 3. Fallback на rule-based
+        print("🤖 [PARSER] Используем rule-based результат (confidence: \(String(format: "%.2f", ruleBasedResult.diagnostics.confidence)))")
         return ruleBasedResult
     }
     

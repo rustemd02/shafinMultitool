@@ -546,14 +546,28 @@ final class SpatialPlannerService {
         var positions: [Position3D] = []
         var durations: [Double] = []
         
+        // Helper: resolve target position from objects OR actors
+        let resolvedTargetPosition: Position3D? = {
+            guard let targetId = action.target else { return nil }
+            // 1. Поиск среди объектов
+            if let obj = placedObjects.first(where: { $0.objectId == targetId }) {
+                return obj.position
+            }
+            // 2. Поиск среди актёров (например, pass_by с target: actor_1)
+            if let actorIndex = allActors.firstIndex(where: { $0.id == targetId }),
+               actorIndex < initialPositions.count {
+                return initialPositions[actorIndex]
+            }
+            return nil
+        }()
+        
         switch action.type {
         case .walk, .run:
-            // Если есть направление к цели и есть target - идём к объекту
+            // Если есть направление к цели и есть target — идём к объекту/актёру
             if action.direction == .toTarget,
-               let targetId = action.target,
-               let targetObject = placedObjects.first(where: { $0.objectId == targetId }) {
+               let targetPos = resolvedTargetPosition {
                 let (pos, dur) = handleApproach(
-                    to: targetObject.position,
+                    to: targetPos,
                     currentPosition: currentPosition,
                     speed: action.speed
                 )
@@ -573,12 +587,21 @@ final class SpatialPlannerService {
                 positions.append(contentsOf: pos)
                 durations.append(contentsOf: dur)
             }
+            // Если нет направления, но есть target — идём к нему
+            else if let targetPos = resolvedTargetPosition {
+                let (pos, dur) = handleApproach(
+                    to: targetPos,
+                    currentPosition: currentPosition,
+                    speed: action.speed
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+            }
             
         case .approach:
-            if let targetId = action.target,
-               let targetObject = placedObjects.first(where: { $0.objectId == targetId }) {
+            if let targetPos = resolvedTargetPosition {
                 let (pos, dur) = handleApproach(
-                    to: targetObject.position,
+                    to: targetPos,
                     currentPosition: currentPosition,
                     speed: action.speed
                 )
@@ -587,10 +610,9 @@ final class SpatialPlannerService {
             }
             
         case .passBy:
-            if let targetId = action.target,
-               let targetObject = placedObjects.first(where: { $0.objectId == targetId }) {
+            if let targetPos = resolvedTargetPosition {
                 let (pos, dur) = handlePassBy(
-                    object: targetObject.position,
+                    object: targetPos,
                     currentPosition: currentPosition,
                     sceneSpace: sceneSpace,
                     speed: action.speed
@@ -600,35 +622,29 @@ final class SpatialPlannerService {
             }
             
         case .turn:
-            // Поворот без перемещения - остаёмся на месте
+            // Поворот без перемещения — остаёмся на месте
             break
             
         case .stop:
-            // Остановка — если есть target, подходим к объекту и стоим
-            if let targetId = action.target,
-               let targetObject = placedObjects.first(where: { $0.objectId == targetId }) {
-                // Подходим к объекту с оффсетом
+            if let targetPos = resolvedTargetPosition {
                 let (pos, dur) = handleApproach(
-                    to: targetObject.position,
+                    to: targetPos,
                     currentPosition: currentPosition,
                     speed: action.speed
                 )
                 positions.append(contentsOf: pos)
                 durations.append(contentsOf: dur)
             }
-            // Без target — просто стоим на месте
             
         case .stand:
-            // Если есть target - позиционируемся рядом с объектом
-            if let targetId = action.target,
-               let targetObject = placedObjects.first(where: { $0.objectId == targetId }) {
+            if let targetPos = resolvedTargetPosition {
                 let (pos, _) = handleApproach(
-                    to: targetObject.position,
+                    to: targetPos,
                     currentPosition: currentPosition,
                     speed: 100 // Мгновенное перемещение
                 )
                 positions.append(contentsOf: pos)
-                durations.append(0.1) // Очень быстро
+                durations.append(0.1)
             }
             
         default:

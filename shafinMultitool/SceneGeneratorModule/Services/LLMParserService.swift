@@ -50,7 +50,7 @@ final class LLMParserService {
         loadingState = .loading
         print("🤖 [LLM] Начинаю загрузку модели...")
         
-        guard let modelPath = Bundle.main.path(forResource: "qwen3.5-0.8b-q4_k_m", ofType: "gguf") else {
+        guard let modelPath = Bundle.main.path(forResource: "qwen2.5-0.5b-instruct.Q4_K_M", ofType: "gguf") else {
             let error = "GGUF модель не найдена в бандле приложения"
             print("❌ [LLM] \(error)")
             loadingState = .failed(error)
@@ -141,54 +141,17 @@ final class LLMParserService {
     
     /// Формирует промпт для LLM
     private func buildPrompt(description: String, markedObjects: [MarkedObject]) -> String {
-        let actorTypes = SceneActor.ActorType.allCases.map { $0.rawValue }.joined(separator: ", ")
-        let objectTypes = SceneObject.ObjectType.allCases.map { $0.rawValue }.joined(separator: ", ")
-        let actionTypes = SceneAction.ActionType.allCases.map { $0.rawValue }.joined(separator: ", ")
-        let relationTypes = SpatialRelation.RelationType.allCases.map { $0.rawValue }.joined(separator: ", ")
-        
         var markedObjectsContext = ""
         if !markedObjects.isEmpty {
             let list = markedObjects.map { "\($0.name) (тип: \($0.type.rawValue))" }.joined(separator: ", ")
-            markedObjectsContext = "\nВ сцене есть размеченные пользователем объекты: \(list)."
+            markedObjectsContext = "В сцене есть размеченные пользователем объекты: \(list).\n"
         }
         
         return """
         <|im_start|>system
-        Ты ассистент для разбора текстовых описаний сцен. Твоя задача — преобразовать описание в структурированный JSON.
-        
-        JSON должен содержать 4 поля:
-        - "actors": массив участников сцены (люди, животные)
-        - "objects": массив предметов в сцене (мебель, двери и т.д.)
-        - "actions": массив действий (кто что делает и с какой целью)
-        - "spatialRelations": массив пространственных отношений (кто/что где находится относительно чего)
-        
-        Допустимые типы актёров: \(actorTypes)
-        Допустимые типы объектов: \(objectTypes)
-        Допустимые типы действий: \(actionTypes)
-        Допустимые типы пространственных отношений: \(relationTypes)
-        
-        Правила:
-        - Выводи ТОЛЬКО валидный JSON, начиная с символа {
-        - Никакого дополнительного текста, объяснений или markdown до и после JSON
-        - IDs давай вида: actor_1, actor_2, object_1, action_1, rel_1 и т.д.
-        - Если в описании несколько актёров — это отдельные записи в "actors"
-        - Пространственные отношения (позади, рядом, впереди) помещай в "spatialRelations"
-        <|im_end|>
+        Ты парсер мизансцен для кинопроизводства. Преобразуй текстовое описание мизансцены на русском языке в JSON (SceneScript). Выводи ТОЛЬКО валидный JSON, без пояснений.<|im_end|>
         <|im_start|>user
-        Человек подходит к столу и садится на стул
-        <|im_end|>
-        <|im_start|>assistant
-        {"actors":[{"id":"actor_1","type":"human"}],"objects":[{"id":"object_1","type":"table"},{"id":"object_2","type":"chair"}],"actions":[{"id":"action_1","actorId":"actor_1","type":"approach","target":"object_1"},{"id":"action_2","actorId":"actor_1","type":"sit","target":"object_2"}],"spatialRelations":[]}
-        <|im_end|>
-        <|im_start|>user
-        2 актёра идут навстречу друг другу, первый проходит мимо двери
-        <|im_end|>
-        <|im_start|>assistant
-        {"actors":[{"id":"actor_1","type":"human"},{"id":"actor_2","type":"human"}],"objects":[{"id":"object_1","type":"door"}],"actions":[{"id":"action_1","actorId":"actor_1","type":"walk","target":"actor_2","direction":"toward_each_other"},{"id":"action_2","actorId":"actor_2","type":"walk","target":"actor_1","direction":"toward_each_other"},{"id":"action_3","actorId":"actor_1","type":"pass_by","target":"object_1"}],"spatialRelations":[]}
-        <|im_end|>
-        <|im_start|>user
-        \(markedObjectsContext.isEmpty ? "" : markedObjectsContext + "\n")\(description)
-        <|im_end|>
+        \(markedObjectsContext)\(description)<|im_end|>
         <|im_start|>assistant
         """
     }
@@ -318,6 +281,7 @@ final class LLMParserService {
     /// Constrained decoding: сэмплер физически не может выдать невалидный JSON.
     static let sceneScriptGrammar: String = {
         // GBNF grammar — каждая строка без ведущих пробелов (парсер GBNF чувствителен к отступам)
+        // ВАЖНО: все типы должны точно совпадать с тем, что знает дообученная модель (dataset_finetune.jsonl)
         let lines = [
             #"root ::= "{" ws actors-field "," ws objects-field "," ws actions-field "," ws relations-field ws "}""#,
             "",
@@ -335,20 +299,24 @@ final class LLMParserService {
             #"relations-field ::= "\"spatialRelations\"" ws ":" ws "[" ws relation-list ws "]""#,
             #"relation-list ::= relation ("," ws relation)* | """#,
             "",
+            // --- Актёры: 7 типов (все из SceneScript.swift + horse из датасета) ---
             #"actor ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws actor-type ws "}""#,
-            #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"generic\"""#,
+            #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"horse\"" | "\"generic\"""#,
             "",
+            // --- Объекты: все 24 типа из датасета ---
             #"object ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws object-type ws "}""#,
-            #"object-type ::= "\"table\"" | "\"chair\"" | "\"cabinet\"" | "\"door\"" | "\"couch\"" | "\"bed\"" | "\"window\"" | "\"shelf\"" | "\"tv\"" | "\"generic\"""#,
+            #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"stairs\"" | "\"car\"" | "\"phone\"" | "\"cup\"" | "\"bottle\"" | "\"gun\"" | "\"book\"" | "\"bag\"" | "\"box\"" | "\"flower\"" | "\"letter\"" | "\"key\"" | "\"lamp\"" | "\"mirror\"" | "\"tv\"" | "\"generic\"""#,
             "",
+            // --- Действия: все 18 типов из датасета ---
             #"action ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"actorId\"" ws ":" ws string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed ws "}""#,
-            #"action-type ::= "\"walk\"" | "\"run\"" | "\"stop\"" | "\"turn\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"""#,
+            #"action-type ::= "\"walk\"" | "\"run\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"" | "\"lie_down\"" | "\"stop\"" | "\"turn\"" | "\"crouch\"" | "\"look_at\"" | "\"pick_up\"" | "\"put_down\"" | "\"open\"" | "\"close\"" | "\"give\"""#,
             #"action-target ::= ("," ws "\"target\"" ws ":" ws string) | """#,
             #"action-direction ::= ("," ws "\"direction\"" ws ":" ws direction-type) | """#,
             #"direction-type ::= "\"left\"" | "\"right\"" | "\"forward\"" | "\"backward\"" | "\"toward_each_other\"" | "\"away_from_each_other\"" | "\"to_target\"""#,
             #"action-speed ::= ("," ws "\"speed\"" ws ":" ws speed-type) | """#,
             #"speed-type ::= "\"slowly\"" | "\"quickly\"" | "\"carefully\"""#,
             "",
+            // --- Пространственные отношения ---
             #"relation ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"subject\"" ws ":" ws string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"object\"" ws ":" ws string ws "}""#,
             #"relation-type ::= "\"near\"" | "\"in_front_of\"" | "\"behind\"" | "\"left_of\"" | "\"right_of\"" | "\"between\"" | "\"pass_by\"" | "\"inside\"" | "\"outside\"""#,
             "",

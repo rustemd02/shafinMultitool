@@ -79,9 +79,12 @@ final class DiagnosticsCalculator {
         }
         
         // 5. Проверяем missingObjects: есть ссылки на объекты в действиях, но объекты не найдены
+        // ВАЖНО: target может ссылаться как на object_X, так и на actor_X (например, pass_by или approach к актёру)
         let actionTargets = script.actions.compactMap { $0.target }
         let objectIds = Set(script.objects.map { $0.id })
-        let missingTargets = actionTargets.filter { !objectIds.contains($0) }
+        let actorIds = Set(script.actors.map { $0.id })
+        let validTargetIds = objectIds.union(actorIds)
+        let missingTargets = actionTargets.filter { !validTargetIds.contains($0) }
         if !missingTargets.isEmpty {
             print("🔍 [DIAGNOSTICS] ⚠️ missingObjects: найдены ссылки на несуществующие объекты: \(missingTargets.joined(separator: ", "))")
             missingObjects = true
