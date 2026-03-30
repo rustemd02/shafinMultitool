@@ -184,9 +184,12 @@ final class SceneGeneratorViewModel: ObservableObject {
         for (index, object) in script.objects.enumerated() {
             print("🔍 [VIEWMODEL]     Object[\(index)]: id='\(object.id)', type=\(object.type.rawValue), detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
         }
-        print("🔍 [VIEWMODEL]   Actions: \(script.actions.count)")
-        for (index, action) in script.actions.enumerated() {
-            print("🔍 [VIEWMODEL]     Action[\(index)]: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target=\(action.target ?? "nil")")
+        print("🔍 [VIEWMODEL]   Beats: \(script.beats.count), Actions: \(script.actions.count)")
+        for (beatIndex, beat) in script.beats.enumerated() {
+            print("🔍 [VIEWMODEL]     Beat[\(beatIndex)]: id='\(beat.id)', actions=\(beat.actions.count)")
+            for (actionIndex, action) in beat.actions.enumerated() {
+                print("🔍 [VIEWMODEL]       Action[\(actionIndex)]: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target=\(action.target ?? "nil")")
+            }
         }
         print("🔍 [VIEWMODEL]   Confidence: \(result.diagnostics.confidence)")
         print("🔍 [VIEWMODEL]   Matched markedObjects: \(result.diagnostics.matchedMarkedObjects.count)")
@@ -225,14 +228,14 @@ final class SceneGeneratorViewModel: ObservableObject {
         let updatedScript = SceneScript(
             actors: script.actors,
             objects: matchedObjects,
-            actions: script.actions,
+            beats: script.beats,
             spatialRelations: script.spatialRelations,
             originalDescription: script.originalDescription
         )
         
         // 3. Планируем размещение с учётом размеченных объектов
         print("🔍 [VIEWMODEL] Планирование размещения...")
-        print("🔍 [VIEWMODEL]   Script для планирования: actors=\(updatedScript.actors.count), objects=\(updatedScript.objects.count), actions=\(updatedScript.actions.count)")
+        print("🔍 [VIEWMODEL]   Script для планирования: actors=\(updatedScript.actors.count), objects=\(updatedScript.objects.count), beats=\(updatedScript.beats.count), actions=\(updatedScript.actions.count)")
         let planned = plannerService.planScene(
             script: updatedScript,
             cameraTransform: cameraTransform,

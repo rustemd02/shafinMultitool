@@ -149,7 +149,7 @@ final class LLMParserService {
         
         return """
         <|im_start|>system
-        Ты парсер мизансцен для кинопроизводства. Преобразуй текстовое описание мизансцены на русском языке в JSON (SceneScript). Выводи ТОЛЬКО валидный JSON, без пояснений.<|im_end|>
+        Ты парсер мизансцен для кинопроизводства. Преобразуй текстовое описание мизансцены на русском языке в JSON (SceneScript). Разбивай действия на хронологические такты (beats). Каждый beat — одновременные действия всех актёров. Выводи ТОЛЬКО валидный JSON, без пояснений.<|im_end|>
         <|im_start|>user
         \(markedObjectsContext)\(description)<|im_end|>
         <|im_start|>assistant
@@ -190,20 +190,56 @@ final class LLMParserService {
         
         print("🔧 [LLM] JSON после починки: \(text.prefix(200))...")
         
-        // 5. Вставляем originalDescription (обязательное поле SceneScript, которое LLM не генерирует)
-        // Сохраняем описание для передачи в parseJSONFromResponse
+        // 5. Вставляем originalDescription и конвертируем legacy-формат (actions → beats)
         guard let data = text.data(using: .utf8) else {
             print("❌ [LLM] Не удалось конвертировать в Data")
             return nil
         }
         
-        // Вставляем originalDescription в JSON перед декодированием
         do {
             if var jsonObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 jsonObj["originalDescription"] = self.lastDescription
+                
+                // Обратная совместимость: если модель выдала старый формат с "actions",
+                // конвертируем в "beats" (один beat со всеми действиями)
+                if jsonObj["beats"] == nil, let actions = jsonObj["actions"] as? [[String: Any]], !actions.isEmpty {
+                    print("🔧 [LLM] Конвертация legacy actions → beats (до переобучения модели)")
+                    jsonObj["beats"] = [
+                        ["id": "beat_1", "actions": actions]
+                    ]
+                    jsonObj.removeValue(forKey: "actions")
+                }
+                
+                // Пост-обработка beats: автогенерация id для action, маппинг speed→modifier
+                if var beats = jsonObj["beats"] as? [[String: Any]] {
+                    var actionCounter = 1
+                    for i in 0..<beats.count {
+                        if var actions = beats[i]["actions"] as? [[String: Any]] {
+                            for j in 0..<actions.count {
+                                // Автогенерация id если отсутствует
+                                if actions[j]["id"] == nil {
+                                    actions[j]["id"] = "action_\(actionCounter)"
+                                }
+                                actionCounter += 1
+                                
+                                // Маппинг "speed" → "modifier" (GBNF/датасет = speed, Swift = modifier)
+                                if let speed = actions[j]["speed"] {
+                                    actions[j]["modifier"] = speed
+                                    actions[j].removeValue(forKey: "speed")
+                                }
+                            }
+                            beats[i]["actions"] = actions
+                        }
+                    }
+                    jsonObj["beats"] = beats
+                }
+                
                 let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
                 let script = try JSONDecoder().decode(SceneScript.self, from: fixedData)
-                print("✅ [LLM] Декодировано: \(script.actors.count) актёров, \(script.objects.count) объектов, \(script.actions.count) действий")
+                print("✅ [LLM] Декодировано: \(script.actors.count) актёров, \(script.objects.count) объектов, \(script.beats.count) тактов, \(script.actions.count) действий")
+                if let camera = script.beats.first?.camera {
+                    print("📷 [LLM] Камера beat_1: \(camera.shotType.rawValue), movement=\(camera.movement?.rawValue ?? "nil")")
+                }
                 return script
             }
         } catch {
@@ -277,50 +313,71 @@ final class LLMParserService {
     
     // MARK: - GBNF Grammar
     
-    /// GBNF-грамматика, описывающая JSON-схему SceneScript.
+    /// GBNF-грамматика, описывающая JSON-схему SceneScript v2 (beat-система + камера + позы).
     /// Constrained decoding: сэмплер физически не может выдать невалидный JSON.
     static let sceneScriptGrammar: String = {
         // GBNF grammar — каждая строка без ведущих пробелов (парсер GBNF чувствителен к отступам)
-        // ВАЖНО: все типы должны точно совпадать с тем, что знает дообученная модель (dataset_finetune.jsonl)
+        // v2: beats вместо actions, camera/minDuration/resultingPose/holdingObject
         let lines = [
-            #"root ::= "{" ws actors-field "," ws objects-field "," ws actions-field "," ws relations-field ws "}""#,
+            // --- Корневой объект: actors, objects, beats, spatialRelations ---
+            #"root ::= "{" ws actors-field "," ws objects-field "," ws beats-field "," ws relations-field ws "}""#,
             "",
             #"ws ::= ([ \t\n])*"#,
             "",
+            // --- Массивы верхнего уровня ---
             #"actors-field ::= "\"actors\"" ws ":" ws "[" ws actor-list ws "]""#,
             #"actor-list ::= actor ("," ws actor)* | """#,
             "",
             #"objects-field ::= "\"objects\"" ws ":" ws "[" ws object-list ws "]""#,
             #"object-list ::= object ("," ws object)* | """#,
             "",
-            #"actions-field ::= "\"actions\"" ws ":" ws "[" ws action-list ws "]""#,
-            #"action-list ::= action ("," ws action)* | """#,
+            #"beats-field ::= "\"beats\"" ws ":" ws "[" ws beat-list ws "]""#,
+            #"beat-list ::= beat ("," ws beat)* | """#,
             "",
             #"relations-field ::= "\"spatialRelations\"" ws ":" ws "[" ws relation-list ws "]""#,
             #"relation-list ::= relation ("," ws relation)* | """#,
             "",
-            // --- Актёры: 7 типов (все из SceneScript.swift + horse из датасета) ---
+            // --- Beat: id + actions + optional camera + optional minDuration ---
+            #"beat ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"actions\"" ws ":" ws "[" ws action-list ws "]" beat-camera beat-duration ws "}""#,
+            #"action-list ::= action ("," ws action)* | """#,
+            #"beat-camera ::= ("," ws "\"camera\"" ws ":" ws camera-obj) | """#,
+            #"beat-duration ::= ("," ws "\"minDuration\"" ws ":" ws number) | """#,
+            "",
+            // --- Camera: shotType + optional movement + optional target ---
+            #"camera-obj ::= "{" ws "\"shotType\"" ws ":" ws shot-type camera-movement camera-target ws "}""#,
+            #"shot-type ::= "\"wide\"" | "\"medium\"" | "\"close_up\"" | "\"extreme_close_up\"" | "\"over_shoulder\"" | "\"two_shot\"""#,
+            #"camera-movement ::= ("," ws "\"movement\"" ws ":" ws movement-type) | """#,
+            #"movement-type ::= "\"static\"" | "\"pan_left\"" | "\"pan_right\"" | "\"tilt_up\"" | "\"tilt_down\"" | "\"dolly_in\"" | "\"dolly_out\"" | "\"tracking\"" | "\"crane_up\"" | "\"crane_down\"""#,
+            #"camera-target ::= ("," ws "\"target\"" ws ":" ws string) | """#,
+            "",
+            // --- Актёры ---
             #"actor ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws actor-type ws "}""#,
             #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"horse\"" | "\"generic\"""#,
             "",
-            // --- Объекты: все 24 типа из датасета ---
+            // --- Объекты ---
             #"object ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws object-type ws "}""#,
             #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"stairs\"" | "\"car\"" | "\"phone\"" | "\"cup\"" | "\"bottle\"" | "\"gun\"" | "\"book\"" | "\"bag\"" | "\"box\"" | "\"flower\"" | "\"letter\"" | "\"key\"" | "\"lamp\"" | "\"mirror\"" | "\"tv\"" | "\"generic\"""#,
             "",
-            // --- Действия: все 18 типов из датасета ---
-            #"action ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"actorId\"" ws ":" ws string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed ws "}""#,
-            #"action-type ::= "\"walk\"" | "\"run\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"" | "\"lie_down\"" | "\"stop\"" | "\"turn\"" | "\"crouch\"" | "\"look_at\"" | "\"pick_up\"" | "\"put_down\"" | "\"open\"" | "\"close\"" | "\"give\"""#,
+            // --- Действия: type + optional target/direction/speed/resultingPose/holdingObject ---
+            #"action ::= "{" ws "\"actorId\"" ws ":" ws string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed action-pose action-holding action-dialogue ws "}""#,
+            #"action-type ::= "\"walk\"" | "\"run\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"" | "\"lie_down\"" | "\"stop\"" | "\"turn\"" | "\"crouch\"" | "\"look_at\"" | "\"pick_up\"" | "\"put_down\"" | "\"open\"" | "\"close\"" | "\"give\"" | "\"talk\"""#,
             #"action-target ::= ("," ws "\"target\"" ws ":" ws string) | """#,
             #"action-direction ::= ("," ws "\"direction\"" ws ":" ws direction-type) | """#,
             #"direction-type ::= "\"left\"" | "\"right\"" | "\"forward\"" | "\"backward\"" | "\"toward_each_other\"" | "\"away_from_each_other\"" | "\"to_target\"""#,
             #"action-speed ::= ("," ws "\"speed\"" ws ":" ws speed-type) | """#,
             #"speed-type ::= "\"slowly\"" | "\"quickly\"" | "\"carefully\"""#,
+            #"action-pose ::= ("," ws "\"resultingPose\"" ws ":" ws pose-type) | """#,
+            #"pose-type ::= "\"standing\"" | "\"sitting\"" | "\"crouching\"" | "\"lying\"" | "\"walking\"" | "\"running\"""#,
+            #"action-holding ::= ("," ws "\"holdingObject\"" ws ":" ws string) | """#,
+            #"action-dialogue ::= ("," ws "\"dialogue\"" ws ":" ws string) | """#,
             "",
             // --- Пространственные отношения ---
             #"relation ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"subject\"" ws ":" ws string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"object\"" ws ":" ws string ws "}""#,
             #"relation-type ::= "\"near\"" | "\"in_front_of\"" | "\"behind\"" | "\"left_of\"" | "\"right_of\"" | "\"between\"" | "\"pass_by\"" | "\"inside\"" | "\"outside\"""#,
             "",
+            // --- Примитивы ---
             #"string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
+            #"number ::= [0-9]+ ("." [0-9]+)?"#,
         ]
         return lines.joined(separator: "\n")
     }()

@@ -57,10 +57,19 @@ final class SceneParserService {
         // 5. Извлекаем пространственные отношения (с учётом markedObjects)
         let spatialRelations = extractSpatialRelations(from: lowercased, actors: actors, objects: objects, markedObjects: markedObjects)
         
+        // Оборачиваем все действия rule-based парсера в один beat
+        // (rule-based пока не умеет разбивать на beats, это задача LLM)
+        let beats: [SceneBeat]
+        if actions.isEmpty {
+            beats = []
+        } else {
+            beats = [SceneBeat(id: "beat_1", actions: actions)]
+        }
+        
         let script = SceneScript(
             actors: actors,
             objects: objects,
-            actions: actions,
+            beats: beats,
             spatialRelations: spatialRelations,
             originalDescription: description
         )
@@ -140,8 +149,8 @@ final class SceneParserService {
             
             // Дообученная модель — основной парсер. Используем её результат,
             // если она сгенерировала хотя бы одно действие.
-            if !llmScript.actions.isEmpty {
-                print("✅ [PARSER] Используем LLM результат (actions: \(llmScript.actions.count), confidence: \(String(format: "%.2f", llmDiagnostics.confidence)))")
+            if !llmScript.beats.isEmpty {
+                print("✅ [PARSER] Используем LLM результат (beats: \(llmScript.beats.count), actions: \(llmScript.actions.count), confidence: \(String(format: "%.2f", llmDiagnostics.confidence)))")
                 return ParsingResult(script: llmScript, diagnostics: llmDiagnostics)
             } else {
                 print("⚠️ [PARSER] LLM не нашла действий, используем rule-based")

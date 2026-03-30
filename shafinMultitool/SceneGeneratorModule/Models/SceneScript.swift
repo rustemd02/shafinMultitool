@@ -86,20 +86,83 @@ struct MarkedObject: Identifiable, Equatable {
     }
 }
 
+// MARK: - Camera Setup
+
+/// Настройка камеры для конкретного beat (кадра раскадровки)
+struct CameraSetup: Codable, Equatable {
+    let shotType: ShotType              // Крупность кадра
+    var movement: CameraMovement?       // Движение камеры (опционально)
+    var target: String?                 // На кого/что направлена камера (actorId или objectId)
+    
+    /// Тип кадра (крупность)
+    enum ShotType: String, Codable, CaseIterable {
+        case wide = "wide"                          // Общий план
+        case medium = "medium"                      // Средний план
+        case closeUp = "close_up"                   // Крупный план
+        case extremeCloseUp = "extreme_close_up"    // Деталь
+        case overShoulder = "over_shoulder"          // Через плечо
+        case twoShot = "two_shot"                    // Двойной план (оба актёра)
+    }
+    
+    /// Движение камеры
+    enum CameraMovement: String, Codable, CaseIterable {
+        case `static` = "static"            // Камера неподвижна
+        case panLeft = "pan_left"            // Панорамирование влево
+        case panRight = "pan_right"          // Панорамирование вправо
+        case tiltUp = "tilt_up"              // Наклон вверх
+        case tiltDown = "tilt_down"          // Наклон вниз
+        case dollyIn = "dolly_in"            // Наезд (камера приближается)
+        case dollyOut = "dolly_out"          // Отъезд (камера отдаляется)
+        case tracking = "tracking"           // Слежение за персонажем
+        case craneUp = "crane_up"            // Кран вверх
+        case craneDown = "crane_down"        // Кран вниз
+    }
+}
+
+// MARK: - Actor Pose
+
+/// Поза актёра (персистентное состояние, меняется только действиями)
+enum ActorPose: String, Codable, CaseIterable {
+    case standing = "standing"      // Стоит (по умолчанию)
+    case sitting = "sitting"        // Сидит
+    case crouching = "crouching"    // Присел
+    case lying = "lying"            // Лежит
+    case walking = "walking"        // Идёт
+    case running = "running"        // Бежит
+}
+
+// MARK: - Scene Beat
+
+/// Такт (beat) — атомарная единица времени сцены.
+/// Все действия внутри одного beat выполняются одновременно.
+/// Следующий beat начинается только после завершения предыдущего.
+struct SceneBeat: Codable, Equatable, Identifiable {
+    let id: String                  // "beat_1", "beat_2", ...
+    let actions: [SceneAction]      // Действия, выполняемые одновременно в этом такте
+    var camera: CameraSetup?        // Камера для данного beat (nil = не меняется)
+    var minDuration: Double?        // Минимальная длительность в секундах (для пауз)
+}
+
 // MARK: - Main Scene Script
 
 /// Главная структура, содержащая все данные распознанной сцены
 struct SceneScript: Codable, Equatable {
     let actors: [SceneActor]
     let objects: [SceneObject]
-    let actions: [SceneAction]
+    let beats: [SceneBeat]
     let spatialRelations: [SpatialRelation]
     let originalDescription: String
     
+    /// Обратная совместимость: плоский список всех действий из всех beats
+    var actions: [SceneAction] {
+        beats.flatMap { $0.actions }
+    }
+    
     var isEmpty: Bool {
-        actors.isEmpty && objects.isEmpty && actions.isEmpty
+        actors.isEmpty && objects.isEmpty && beats.isEmpty
     }
 }
+
 
 // MARK: - Parsing Diagnostics
 
@@ -269,6 +332,9 @@ struct SceneAction: Codable, Equatable, Identifiable {
     var target: String?             // ID цели (другой актёр или объект)
     var direction: Direction?       // Направление движения
     var modifier: ActionModifier?   // Модификатор (быстро, медленно)
+    var resultingPose: ActorPose?   // В какую позу переходит актёр после этого действия
+    var holdingObject: String?      // Какой объект держит (после pick_up)
+    var dialogue: String?           // Текст реплики прямой речи (для type = talk)
     
     enum ActionType: String, Codable, CaseIterable {
         case walk = "walk"
@@ -281,6 +347,15 @@ struct SceneAction: Codable, Equatable, Identifiable {
         case exit = "exit"
         case stand = "stand"
         case sit = "sit"
+        case lieDown = "lie_down"
+        case crouch = "crouch"
+        case lookAt = "look_at"
+        case pickUp = "pick_up"
+        case putDown = "put_down"
+        case open = "open"
+        case close = "close"
+        case give = "give"
+        case talk = "talk"
     }
     
     enum Direction: String, Codable {
@@ -304,7 +379,7 @@ struct SceneAction: Codable, Equatable, Identifiable {
         let baseSpeed: Float = switch type {
         case .walk, .approach, .passBy, .enter, .exit: 0.8
         case .run: 2.5
-        case .stop, .stand, .sit: 0.0
+        case .stop, .stand, .sit, .lieDown, .crouch, .lookAt, .pickUp, .putDown, .open, .close, .give, .talk: 0.0
         case .turn: 0.3
         }
         
@@ -385,9 +460,11 @@ struct PlannedScene {
         let type: SceneActor.ActorType
         var name: String?
         let initialPosition: Position3D
-        var initialRotation: Float  // Угол в радианах вокруг Y
-        let path: [Position3D]      // Траектория движения (включая начальную точку)
-        let pathDurations: [Double] // Время между точками пути
+        var initialRotation: Float      // Угол в радианах вокруг Y
+        let path: [Position3D]          // Траектория движения (включая начальную точку)
+        let pathDurations: [Double]     // Время между точками пути
+        var pathPoses: [ActorPose]      // Поза в каждой точке пути
+        var pathCameras: [CameraSetup?] // Камера для каждого beat (nil = без изменений)
         
         var color: (r: Float, g: Float, b: Float) {
             type.placeholderColor

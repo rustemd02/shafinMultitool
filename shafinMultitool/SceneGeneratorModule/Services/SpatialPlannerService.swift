@@ -51,7 +51,7 @@ final class SpatialPlannerService {
         markedObjects: [MarkedObject] = []
     ) -> PlannedScene {
         print("🔍 [PLANNER] === НАЧАЛО ПЛАНИРОВАНИЯ ===")
-        print("🔍 [PLANNER] Входные данные: actors=\(script.actors.count), objects=\(script.objects.count), actions=\(script.actions.count), detectedObjects=\(detectedObjects.count), markedObjects=\(markedObjects.count)")
+        print("🔍 [PLANNER] Входные данные: actors=\(script.actors.count), objects=\(script.objects.count), beats=\(script.beats.count), actions=\(script.actions.count), detectedObjects=\(detectedObjects.count), markedObjects=\(markedObjects.count)")
         
         // 1. Определяем доступное пространство
         let sceneSpace = calculateSceneSpace(
@@ -316,7 +316,9 @@ final class SpatialPlannerService {
                 initialPosition: initialPosition,
                 initialRotation: initialRotation,
                 path: path,
-                pathDurations: durations
+                pathDurations: durations,
+                pathPoses: Array(repeating: .standing, count: path.count),
+                pathCameras: Array(repeating: nil, count: path.count)
             )
         }
     }
