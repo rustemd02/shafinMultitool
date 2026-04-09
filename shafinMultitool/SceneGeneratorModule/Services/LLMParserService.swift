@@ -13,6 +13,7 @@ import Foundation
 final class LLMParserService {
     
     static let shared = LLMParserService()
+    private static let generationTokenBudgets: [Int32] = [512, 768]
     
     /// LlamaContext (actor) — загружается лениво при первом использовании
     private var llamaContext: LlamaContext?
@@ -50,7 +51,7 @@ final class LLMParserService {
         loadingState = .loading
         print("🤖 [LLM] Начинаю загрузку модели...")
         
-        guard let modelPath = Bundle.main.path(forResource: "qwen2.5-0.5b-instruct.Q4_K_M", ofType: "gguf") else {
+        guard let modelPath = Bundle.main.path(forResource: "qwen2.5-1.5b-instruct.Q4_K_M", ofType: "gguf") else {
             let error = "GGUF модель не найдена в бандле приложения"
             print("❌ [LLM] \(error)")
             loadingState = .failed(error)
@@ -84,7 +85,7 @@ final class LLMParserService {
     ///   - description: Текстовое описание сцены
     ///   - markedObjects: Размеченные объекты для контекста
     /// - Returns: Распарсенный SceneScript или nil если не удалось
-    func parseAsync(_ description: String, markedObjects: [MarkedObject] = []) async -> SceneScript? {
+    func parseAsync(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState? = nil) async -> SceneScript? {
         // Загружаем модель если ещё не загружена
         await loadModelIfNeeded()
         
@@ -95,22 +96,31 @@ final class LLMParserService {
         
         print("🤖 [LLM] Начало LLM парсинга для: '\(description)'")
         self.lastDescription = description
-        let startTime = CFAbsoluteTimeGetCurrent()
+        let prompt = buildPrompt(description: description, markedObjects: markedObjects, state: state)
         
-        // Формируем промпт
-        let prompt = buildPrompt(description: description, markedObjects: markedObjects)
-        
-        // Генерируем ответ через llama.cpp
-        let generatedText = await context.generate(prompt: prompt, maxTokens: 300)
-        
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-        print("🤖 [LLM] Генерация заняла: \(String(format: "%.2f", elapsed)) сек")
-        print("🤖 [LLM] Ответ модели:\n\(generatedText)")
-        
-        // Парсим JSON из ответа
-        if let script = parseJSONFromResponse(generatedText) {
-            print("✅ [LLM] SceneScript успешно извлечён из ответа LLM")
-            return script
+        for (attemptIndex, maxTokens) in Self.generationTokenBudgets.enumerated() {
+            let attemptStart = CFAbsoluteTimeGetCurrent()
+            let attemptSuffix = Self.generationTokenBudgets.count > 1
+                ? " [попытка \(attemptIndex + 1)/\(Self.generationTokenBudgets.count), maxTokens=\(maxTokens)]"
+                : ""
+            
+            // Генерируем ответ через llama.cpp
+            let generatedText = await context.generate(prompt: prompt, maxTokens: maxTokens)
+            
+            let elapsed = CFAbsoluteTimeGetCurrent() - attemptStart
+            print("🤖 [LLM] Генерация\(attemptSuffix) заняла: \(String(format: "%.2f", elapsed)) сек")
+            print("🤖 [LLM] Ответ модели\(attemptSuffix):\n\(generatedText)")
+            
+            // Парсим JSON из ответа
+            if let script = parseJSONFromResponse(generatedText) {
+                print("✅ [LLM] SceneScript успешно извлечён из ответа LLM")
+                return script
+            }
+            
+            if attemptIndex < Self.generationTokenBudgets.count - 1 {
+                let nextBudget = Self.generationTokenBudgets[attemptIndex + 1]
+                print("⚠️ [LLM] Ответ не удалось распарсить, повторяем генерацию с maxTokens=\(nextBudget)")
+            }
         }
         
         print("❌ [LLM] Не удалось извлечь SceneScript из ответа")
@@ -118,7 +128,7 @@ final class LLMParserService {
     }
     
     /// Синхронная обёртка (для обратной совместимости)
-    func parse(_ description: String, markedObjects: [MarkedObject] = []) -> SceneScript? {
+    func parse(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState? = nil) -> SceneScript? {
         guard isAvailable else {
             print("⚠️ [LLM] Модель не загружена, пропускаем LLM парсинг")
             return nil
@@ -129,7 +139,7 @@ final class LLMParserService {
         let semaphore = DispatchSemaphore(value: 0)
         
         Task {
-            result = await parseAsync(description, markedObjects: markedObjects)
+            result = await parseAsync(description, markedObjects: markedObjects, state: state)
             semaphore.signal()
         }
         
@@ -140,18 +150,27 @@ final class LLMParserService {
     // MARK: - Prompt Building
     
     /// Формирует промпт для LLM
-    private func buildPrompt(description: String, markedObjects: [MarkedObject]) -> String {
+    private func buildPrompt(description: String, markedObjects: [MarkedObject], state: SceneChunkState?) -> String {
         var markedObjectsContext = ""
         if !markedObjects.isEmpty {
             let list = markedObjects.map { "\($0.name) (тип: \($0.type.rawValue))" }.joined(separator: ", ")
             markedObjectsContext = "В сцене есть размеченные пользователем объекты: \(list).\n"
         }
         
+        var stateContext = ""
+        if let state = state {
+            let actors = state.knownActors.map { "\($0.key) (id: \($0.value))" }.joined(separator: ", ")
+            stateContext = "Предыдущее состояние сцены:\n"
+            if let loc = state.locationName { stateContext += "Локация: \(loc)\n" }
+            if !actors.isEmpty { stateContext += "Известные персонажи (сохраняй их id): \(actors)\n" }
+            stateContext += "\n"
+        }
+        
         return """
         <|im_start|>system
         Ты парсер мизансцен для кинопроизводства. Преобразуй текстовое описание мизансцены на русском языке в JSON (SceneScript). Разбивай действия на хронологические такты (beats). Каждый beat — одновременные действия всех актёров. Выводи ТОЛЬКО валидный JSON, без пояснений.<|im_end|>
         <|im_start|>user
-        \(markedObjectsContext)\(description)<|im_end|>
+        \(stateContext)\(markedObjectsContext)\(description)<|im_end|>
         <|im_start|>assistant
         """
     }
@@ -161,92 +180,153 @@ final class LLMParserService {
     
     /// Парсит JSON (SceneScript) из ответа LLM с починкой типичных ошибок маленькой модели
     private func parseJSONFromResponse(_ response: String) -> SceneScript? {
+        guard let extractedJSON = extractJSONPayload(from: response) else {
+            print("❌ [LLM] Не найден JSON в ответе")
+            return nil
+        }
+        
+        let candidates = makeJSONCandidates(from: extractedJSON)
+        
+        for (index, candidate) in candidates.enumerated() {
+            print("🔧 [LLM] JSON после починки [вариант \(index + 1)/\(candidates.count)]: \(candidate.prefix(200))...")
+            
+            do {
+                let script = try decodeSceneScript(from: candidate)
+                print("✅ [LLM] Декодировано: \(script.actors.count) актёров, \(script.objects.count) объектов, \(script.beats.count) тактов, \(script.actions.count) действий")
+                if let camera = script.beats.first?.camera {
+                    print("📷 [LLM] Камера beat_1: \(camera.shotType.rawValue), movement=\(camera.movement?.rawValue ?? "nil")")
+                }
+                return script
+            } catch {
+                print("❌ [LLM] Ошибка декодирования [вариант \(index + 1)/\(candidates.count)]: \(error)")
+                print("   JSON: \(candidate.prefix(300))")
+            }
+        }
+        
+        return nil
+    }
+    
+    private func extractJSONPayload(from response: String) -> String? {
         var text = response
         
-        // 1. Убираем служебные токены модели
         text = text.replacingOccurrences(of: "<|im_end|>", with: "")
         text = text.replacingOccurrences(of: "<|im_start|>", with: "")
         text = text.replacingOccurrences(of: "```json", with: "")
         text = text.replacingOccurrences(of: "```", with: "")
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // 2. Извлекаем JSON от { до }
         guard let startIndex = text.firstIndex(of: "{") else {
-            print("❌ [LLM] Не найден JSON в ответе")
             return nil
         }
         
         if let endIndex = text.lastIndex(of: "}") {
-            text = String(text[startIndex...endIndex])
-        } else {
-            text = String(text[startIndex...])
+            return String(text[startIndex...endIndex])
         }
         
-        // 3. Исправляем типичные ошибки маленькой модели
-        text = repairJSON(text)
+        return String(text[startIndex...])
+    }
+    
+    private func makeJSONCandidates(from input: String) -> [String] {
+        let repaired = repairJSON(input)
+        let balanced = balanceBrackets(repaired)
+        let trimmed = trimToLastCompleteBoundary(repaired)
+        let trimmedBalanced = balanceBrackets(trimmed)
         
-        // 4. Балансируем скобки если JSON обрезан
-        text = balanceBrackets(text)
+        var seen = Set<String>()
+        return [balanced, trimmedBalanced].filter { seen.insert($0).inserted }
+    }
+    
+    /// Если модель оборвалась посреди нового поля, отбрасываем хвост до последней
+    /// завершённой структуры/элемента и уже после этого балансируем скобки.
+    private func trimToLastCompleteBoundary(_ input: String) -> String {
+        var isInsideString = false
+        var isEscaping = false
+        var lastSafeEnd: String.Index?
         
-        print("🔧 [LLM] JSON после починки: \(text.prefix(200))...")
-        
-        // 5. Вставляем originalDescription и конвертируем legacy-формат (actions → beats)
-        guard let data = text.data(using: .utf8) else {
-            print("❌ [LLM] Не удалось конвертировать в Data")
-            return nil
-        }
-        
-        do {
-            if var jsonObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                jsonObj["originalDescription"] = self.lastDescription
-                
-                // Обратная совместимость: если модель выдала старый формат с "actions",
-                // конвертируем в "beats" (один beat со всеми действиями)
-                if jsonObj["beats"] == nil, let actions = jsonObj["actions"] as? [[String: Any]], !actions.isEmpty {
-                    print("🔧 [LLM] Конвертация legacy actions → beats (до переобучения модели)")
-                    jsonObj["beats"] = [
-                        ["id": "beat_1", "actions": actions]
-                    ]
-                    jsonObj.removeValue(forKey: "actions")
+        for index in input.indices {
+            let character = input[index]
+            
+            if isInsideString {
+                if isEscaping {
+                    isEscaping = false
+                    continue
                 }
                 
-                // Пост-обработка beats: автогенерация id для action, маппинг speed→modifier
-                if var beats = jsonObj["beats"] as? [[String: Any]] {
-                    var actionCounter = 1
-                    for i in 0..<beats.count {
-                        if var actions = beats[i]["actions"] as? [[String: Any]] {
-                            for j in 0..<actions.count {
-                                // Автогенерация id если отсутствует
-                                if actions[j]["id"] == nil {
-                                    actions[j]["id"] = "action_\(actionCounter)"
-                                }
-                                actionCounter += 1
-                                
-                                // Маппинг "speed" → "modifier" (GBNF/датасет = speed, Swift = modifier)
-                                if let speed = actions[j]["speed"] {
-                                    actions[j]["modifier"] = speed
-                                    actions[j].removeValue(forKey: "speed")
-                                }
-                            }
-                            beats[i]["actions"] = actions
+                if character == "\\" {
+                    isEscaping = true
+                } else if character == "\"" {
+                    isInsideString = false
+                }
+                continue
+            }
+            
+            switch character {
+            case "\"":
+                isInsideString = true
+            case ",":
+                lastSafeEnd = index
+            case "}", "]":
+                lastSafeEnd = input.index(after: index)
+            default:
+                break
+            }
+        }
+        
+        guard let lastSafeEnd else { return input }
+        return String(input[..<lastSafeEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    private func decodeSceneScript(from text: String) throws -> SceneScript {
+        guard let data = text.data(using: .utf8) else {
+            throw NSError(domain: "LLMParserService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Не удалось конвертировать JSON в Data"])
+        }
+        
+        guard var jsonObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "LLMParserService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Корневой JSON не является объектом"])
+        }
+        
+        jsonObj["originalDescription"] = self.lastDescription
+        
+        if jsonObj["spatialRelations"] == nil {
+            jsonObj["spatialRelations"] = []
+        }
+        
+        // Обратная совместимость: если модель выдала старый формат с "actions",
+        // конвертируем в "beats" (один beat со всеми действиями)
+        if jsonObj["beats"] == nil, let actions = jsonObj["actions"] as? [[String: Any]], !actions.isEmpty {
+            print("🔧 [LLM] Конвертация legacy actions → beats (до переобучения модели)")
+            jsonObj["beats"] = [
+                ["id": "beat_1", "actions": actions]
+            ]
+            jsonObj.removeValue(forKey: "actions")
+        }
+        
+        // Пост-обработка beats: автогенерация id для action, маппинг speed→modifier
+        if var beats = jsonObj["beats"] as? [[String: Any]] {
+            var actionCounter = 1
+            for i in 0..<beats.count {
+                if var actions = beats[i]["actions"] as? [[String: Any]] {
+                    for j in 0..<actions.count {
+                        // Автогенерация id если отсутствует
+                        if actions[j]["id"] == nil {
+                            actions[j]["id"] = "action_\(actionCounter)"
+                        }
+                        actionCounter += 1
+                        
+                        // Маппинг "speed" → "modifier" (GBNF/датасет = speed, Swift = modifier)
+                        if let speed = actions[j]["speed"] {
+                            actions[j]["modifier"] = speed
+                            actions[j].removeValue(forKey: "speed")
                         }
                     }
-                    jsonObj["beats"] = beats
+                    beats[i]["actions"] = actions
                 }
-                
-                let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
-                let script = try JSONDecoder().decode(SceneScript.self, from: fixedData)
-                print("✅ [LLM] Декодировано: \(script.actors.count) актёров, \(script.objects.count) объектов, \(script.beats.count) тактов, \(script.actions.count) действий")
-                if let camera = script.beats.first?.camera {
-                    print("📷 [LLM] Камера beat_1: \(camera.shotType.rawValue), movement=\(camera.movement?.rawValue ?? "nil")")
-                }
-                return script
             }
-        } catch {
-            print("❌ [LLM] Ошибка декодирования: \(error)")
-            print("   JSON: \(text.prefix(300))")
+            jsonObj["beats"] = beats
         }
-        return nil
+        
+        let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
+        return try JSONDecoder().decode(SceneScript.self, from: fixedData)
     }
     
     /// Исправляет типичные ошибки JSON от маленькой модели
@@ -319,10 +399,18 @@ final class LLMParserService {
         // GBNF grammar — каждая строка без ведущих пробелов (парсер GBNF чувствителен к отступам)
         // v2: beats вместо actions, camera/minDuration/resultingPose/holdingObject
         let lines = [
-            // --- Корневой объект: actors, objects, beats, spatialRelations ---
-            #"root ::= "{" ws actors-field "," ws objects-field "," ws beats-field "," ws relations-field ws "}""#,
+            // --- Корневой объект ---
+            #"root ::= "{" ws root-scene-heading root-location-name root-interior-exterior root-time-of-day actors-field "," ws objects-field "," ws beats-field root-relations ws "}""#,
             "",
             #"ws ::= ([ \t\n])*"#,
+            "",
+            // --- Опциональные поля сцены ---
+            #"root-scene-heading ::= ("\"sceneHeading\"" ws ":" ws text-string "," ws) | """#,
+            #"root-location-name ::= ("\"locationName\"" ws ":" ws text-string "," ws) | """#,
+            #"root-interior-exterior ::= ("\"interiorExterior\"" ws ":" ws ie-type "," ws) | """#,
+            #"root-time-of-day ::= ("\"timeOfDay\"" ws ":" ws text-string "," ws) | """#,
+            #"root-relations ::= ("," ws relations-field) | """#,
+            #"ie-type ::= "\"int\"" | "\"ext\"" | "\"mixed\"" | "\"unknown\"""#,
             "",
             // --- Массивы верхнего уровня ---
             #"actors-field ::= "\"actors\"" ws ":" ws "[" ws actor-list ws "]""#,
@@ -337,49 +425,54 @@ final class LLMParserService {
             #"relations-field ::= "\"spatialRelations\"" ws ":" ws "[" ws relation-list ws "]""#,
             #"relation-list ::= relation ("," ws relation)* | """#,
             "",
-            // --- Beat: id + actions + optional camera + optional minDuration ---
-            #"beat ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"actions\"" ws ":" ws "[" ws action-list ws "]" beat-camera beat-duration ws "}""#,
+            // --- Beat ---
+            #"beat ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"actions\"" ws ":" ws "[" ws action-list ws "]" beat-camera beat-duration ws "}""#,
             #"action-list ::= action ("," ws action)* | """#,
             #"beat-camera ::= ("," ws "\"camera\"" ws ":" ws camera-obj) | """#,
             #"beat-duration ::= ("," ws "\"minDuration\"" ws ":" ws number) | """#,
             "",
-            // --- Camera: shotType + optional movement + optional target ---
+            // --- Camera ---
             #"camera-obj ::= "{" ws "\"shotType\"" ws ":" ws shot-type camera-movement camera-target ws "}""#,
             #"shot-type ::= "\"wide\"" | "\"medium\"" | "\"close_up\"" | "\"extreme_close_up\"" | "\"over_shoulder\"" | "\"two_shot\"""#,
             #"camera-movement ::= ("," ws "\"movement\"" ws ":" ws movement-type) | """#,
             #"movement-type ::= "\"static\"" | "\"pan_left\"" | "\"pan_right\"" | "\"tilt_up\"" | "\"tilt_down\"" | "\"dolly_in\"" | "\"dolly_out\"" | "\"tracking\"" | "\"crane_up\"" | "\"crane_down\"""#,
-            #"camera-target ::= ("," ws "\"target\"" ws ":" ws string) | """#,
+            #"camera-target ::= ("," ws "\"target\"" ws ":" ws id-string) | """#,
             "",
             // --- Актёры ---
-            #"actor ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws actor-type ws "}""#,
+            #"actor ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws actor-type actor-name ws "}""#,
             #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"horse\"" | "\"generic\"""#,
+            #"actor-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
             "",
             // --- Объекты ---
-            #"object ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"type\"" ws ":" ws object-type ws "}""#,
+            #"object ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws object-type object-name "," ws "\"relativePosition\"" ws ":" ws relative-pos ws "}""#,
             #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"stairs\"" | "\"car\"" | "\"phone\"" | "\"cup\"" | "\"bottle\"" | "\"gun\"" | "\"book\"" | "\"bag\"" | "\"box\"" | "\"flower\"" | "\"letter\"" | "\"key\"" | "\"lamp\"" | "\"mirror\"" | "\"tv\"" | "\"generic\"""#,
+            #"object-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
+            #"relative-pos ::= "\"left\"" | "\"right\"" | "\"center\"" | "\"background\"" | "\"foreground\"" | "\"unknown\"""#,
             "",
-            // --- Действия: type + optional target/direction/speed/resultingPose/holdingObject ---
-            #"action ::= "{" ws "\"actorId\"" ws ":" ws string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed action-pose action-holding action-dialogue ws "}""#,
-            #"action-type ::= "\"walk\"" | "\"run\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"" | "\"lie_down\"" | "\"stop\"" | "\"turn\"" | "\"crouch\"" | "\"look_at\"" | "\"pick_up\"" | "\"put_down\"" | "\"open\"" | "\"close\"" | "\"give\"" | "\"talk\"""#,
-            #"action-target ::= ("," ws "\"target\"" ws ":" ws string) | """#,
+            // --- Действия ---
+            #"action ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"actorId\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed action-pose action-holding action-dialogue action-fallback action-source ws "}""#,
+            #"action-type ::= "\"walk\"" | "\"run\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"" | "\"lie_down\"" | "\"stop\"" | "\"turn\"" | "\"crouch\"" | "\"look_at\"" | "\"pick_up\"" | "\"put_down\"" | "\"open\"" | "\"close\"" | "\"give\"" | "\"talk\"" | "\"described_action\"""#,
+            #"action-target ::= ("," ws "\"target\"" ws ":" ws id-string) | """#,
             #"action-direction ::= ("," ws "\"direction\"" ws ":" ws direction-type) | """#,
             #"direction-type ::= "\"left\"" | "\"right\"" | "\"forward\"" | "\"backward\"" | "\"toward_each_other\"" | "\"away_from_each_other\"" | "\"to_target\"""#,
-            #"action-speed ::= ("," ws "\"speed\"" ws ":" ws speed-type) | """#,
+            #"action-speed ::= ("," ws "\"modifier\"" ws ":" ws speed-type) | """#,
             #"speed-type ::= "\"slowly\"" | "\"quickly\"" | "\"carefully\"""#,
             #"action-pose ::= ("," ws "\"resultingPose\"" ws ":" ws pose-type) | """#,
             #"pose-type ::= "\"standing\"" | "\"sitting\"" | "\"crouching\"" | "\"lying\"" | "\"walking\"" | "\"running\"""#,
-            #"action-holding ::= ("," ws "\"holdingObject\"" ws ":" ws string) | """#,
-            #"action-dialogue ::= ("," ws "\"dialogue\"" ws ":" ws string) | """#,
+            #"action-holding ::= ("," ws "\"holdingObject\"" ws ":" ws id-string) | """#,
+            #"action-dialogue ::= ("," ws "\"dialogue\"" ws ":" ws text-string) | """#,
+            #"action-fallback ::= ("," ws "\"fallbackText\"" ws ":" ws text-string) | """#,
+            #"action-source ::= ("," ws "\"sourceText\"" ws ":" ws text-string) | """#,
             "",
             // --- Пространственные отношения ---
-            #"relation ::= "{" ws "\"id\"" ws ":" ws string "," ws "\"subject\"" ws ":" ws string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"object\"" ws ":" ws string ws "}""#,
+            #"relation ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"subject\"" ws ":" ws id-string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"object\"" ws ":" ws id-string ws "}""#,
             #"relation-type ::= "\"near\"" | "\"in_front_of\"" | "\"behind\"" | "\"left_of\"" | "\"right_of\"" | "\"between\"" | "\"pass_by\"" | "\"inside\"" | "\"outside\"""#,
             "",
             // --- Примитивы ---
-            #"string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
+            #"id-string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
+            #"text-string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]))* "\"""#,
             #"number ::= [0-9]+ ("." [0-9]+)?"#,
         ]
         return lines.joined(separator: "\n")
     }()
 }
-
