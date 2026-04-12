@@ -42,6 +42,9 @@ Done definition:
 - patterns описаны
 - для каждого pattern есть canonical examples
 
+Design artifact:
+- [20-pattern-library.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/20-pattern-library.md)
+
 ## Track 3. Graph Generator
 
 Задачи:

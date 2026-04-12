@@ -17,16 +17,22 @@
 ## Pattern classes
 
 Минимальный обязательный набор:
+- `dialogue_only`
+- `dialogue_then_put_down_object`
+- `dialogue_then_small_action`
+- `enter_then_put_down_object`
+- `open_then_pick_up_object`
+- `pick_up_then_put_down_object`
 - `toward_each_other`
-- `toward_each_other_then_stop_near_object`
-- `toward_each_other_then_pass_by_object`
+- `toward_each_other_then_stop_near_marked_object`
+- `toward_each_other_then_pass_by_marked_object`
 - `toward_each_other_then_pass_by_object_then_second_runs`
 - `stop_near_marked_object_then_first_described_action`
-- `dialogue_only`
-- `dialogue_then_small_action`
 - `ordinal_first_second`
 - `same_type_two_marked_objects`
 - `unsupported_action_described_action`
+
+Полная design-спецификация pattern library и target distributions зафиксирована в [20-pattern-library.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/20-pattern-library.md).
 
 ## Canonical design rules
 
@@ -135,3 +141,7 @@ Hard graphs:
 - как формально задать pattern library
 - как генерировать graph combinations без дублей
 - как отсекать слишком похожие графы
+
+Статус:
+- canonical graph schema закрыта в [19-canonical-intermediate-representation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/19-canonical-intermediate-representation.md)
+- pattern library закрыта в [20-pattern-library.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/20-pattern-library.md)
