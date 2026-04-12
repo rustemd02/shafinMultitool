@@ -1,0 +1,789 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sg-v7.local/contracts/cir_schema_v1.json",
+  "title": "SG v7 CIR Record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cir_version",
+    "contract_version",
+    "sample_id",
+    "source_variant_key",
+    "pattern_name",
+    "difficulty_bucket",
+    "complexity_class",
+    "graph_seed",
+    "scene_graph",
+    "semantic_tags",
+    "determinism",
+    "budgets",
+    "runtime_projection"
+  ],
+  "properties": {
+    "cir_version": {
+      "const": "sg_v7_cir_v1"
+    },
+    "contract_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sample_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+__[a-z0-9_]+__s[0-9]+__[a-f0-9]{8}$"
+    },
+    "source_variant_key": {
+      "type": "string",
+      "enum": [
+        "base",
+        "ordinal_stress",
+        "morphology_stress",
+        "same_type_marker_stress",
+        "dialogue_mix"
+      ]
+    },
+    "pattern_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "difficulty_bucket": {
+      "type": "string",
+      "enum": [
+        "core",
+        "hard"
+      ]
+    },
+    "complexity_class": {
+      "type": "string",
+      "enum": [
+        "S",
+        "M",
+        "L"
+      ]
+    },
+    "graph_seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scene_graph": {
+      "$ref": "#/$defs/scene_graph"
+    },
+    "semantic_tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id_policy",
+        "ordering_policy",
+        "serializer",
+        "phase_policy",
+        "described_action_policy"
+      ],
+      "properties": {
+        "id_policy": {
+          "const": "canonical_v1"
+        },
+        "ordering_policy": {
+          "const": "stable_v1"
+        },
+        "serializer": {
+          "const": "deterministic_scene_script_v1"
+        },
+        "phase_policy": {
+          "const": "phase_enum_v1"
+        },
+        "described_action_policy": {
+          "const": "described_action_v1"
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_count",
+        "object_count",
+        "beat_count",
+        "action_count",
+        "relation_count"
+      ],
+      "properties": {
+        "actor_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "object_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "beat_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "relation_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "runtime_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_schema",
+        "field_casing",
+        "drop_internal_fields",
+        "fill_original_description_from_source_variant",
+        "described_action_source_text_policy",
+        "top_level_optional_policy",
+        "beat_optional_policy"
+      ],
+      "properties": {
+        "target_schema": {
+          "const": "SceneScript"
+        },
+        "field_casing": {
+          "const": "camelCase"
+        },
+        "drop_internal_fields": {
+          "const": true
+        },
+        "fill_original_description_from_source_variant": {
+          "const": true
+        },
+        "described_action_source_text_policy": {
+          "const": "canonical_text_to_sourceText"
+        },
+        "top_level_optional_policy": {
+          "const": "omit_all"
+        },
+        "beat_optional_policy": {
+          "const": "preserve_if_present_else_omit"
+        }
+      }
+    },
+    "internal_metadata": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "actor_id": {
+      "type": "string",
+      "pattern": "^actor_[1-9][0-9]*$"
+    },
+    "object_id": {
+      "type": "string",
+      "pattern": "^(object_[1-9][0-9]*|object_marked_[a-z0-9]{8,})$"
+    },
+    "target_id": {
+      "type": "string",
+      "pattern": "^(actor_[1-9][0-9]*|object_[1-9][0-9]*|object_marked_[a-z0-9]{8,})$"
+    },
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shot_type"
+      ],
+      "properties": {
+        "shot_type": {
+          "type": "string",
+          "enum": [
+            "wide",
+            "medium",
+            "close_up",
+            "extreme_close_up",
+            "over_shoulder",
+            "two_shot"
+          ]
+        },
+        "movement": {
+          "type": "string",
+          "enum": [
+            "static",
+            "pan_left",
+            "pan_right",
+            "tilt_up",
+            "tilt_down",
+            "dolly_in",
+            "dolly_out",
+            "tracking",
+            "crane_up",
+            "crane_down"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/target_id"
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "labels"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/actor_id"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "human",
+            "tiger",
+            "lion",
+            "dog",
+            "cat",
+            "bird",
+            "generic"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ordinal"
+          ],
+          "properties": {
+            "ordinal": {
+              "type": "string",
+              "enum": [
+                "first",
+                "second",
+                "third"
+              ]
+            },
+            "surface_role": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "relative_position",
+        "marker_binding"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/object_id"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "table",
+            "chair",
+            "cabinet",
+            "door",
+            "couch",
+            "bed",
+            "window",
+            "shelf",
+            "tv",
+            "generic"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relative_position": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right",
+            "center",
+            "background",
+            "foreground",
+            "unknown"
+          ]
+        },
+        "marker_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "marked",
+                "unmarked"
+              ]
+            },
+            "marker_short_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9]{8,}$"
+            },
+            "source_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mentioned_aliases": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "marker_binding": {
+                "properties": {
+                  "kind": {
+                    "const": "marked"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^object_marked_[a-z0-9]{8,}$"
+              },
+              "marker_binding": {
+                "required": [
+                  "marker_short_id"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "marker_binding": {
+                "properties": {
+                  "kind": {
+                    "const": "unmarked"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^object_[1-9][0-9]*$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "described_action_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_text",
+        "fallback_text"
+      ],
+      "properties": {
+        "canonical_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fallback_text": {
+          "type": "string",
+          "pattern": "^\\*.+\\*$"
+        },
+        "source_lemma_hint": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "action_semantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chronology_rank"
+      ],
+      "properties": {
+        "chronology_rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "is_unsupported_runtime_action": {
+          "type": "boolean"
+        },
+        "must_preserve_in_source": {
+          "type": "boolean"
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "actor_id",
+        "type",
+        "resulting_pose",
+        "semantics"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^action_[1-9][0-9]*$"
+        },
+        "actor_id": {
+          "$ref": "#/$defs/actor_id"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "walk",
+            "run",
+            "stop",
+            "turn",
+            "approach",
+            "pass_by",
+            "enter",
+            "exit",
+            "stand",
+            "sit",
+            "lie_down",
+            "crouch",
+            "look_at",
+            "pick_up",
+            "put_down",
+            "open",
+            "close",
+            "give",
+            "talk",
+            "described_action"
+          ]
+        },
+        "target_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(actor_[1-9][0-9]*|object_[1-9][0-9]*|object_marked_[a-z0-9]{8,})$"
+        },
+        "direction": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "left",
+            "right",
+            "forward",
+            "backward",
+            "toward_each_other",
+            "away_from_each_other",
+            "to_target",
+            null
+          ]
+        },
+        "modifier": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "slowly",
+            "quickly",
+            "carefully",
+            null
+          ]
+        },
+        "resulting_pose": {
+          "type": "string",
+          "enum": [
+            "standing",
+            "sitting",
+            "crouching",
+            "lying",
+            "walking",
+            "running"
+          ]
+        },
+        "holding_object": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(object_[1-9][0-9]*|object_marked_[a-z0-9]{8,})$"
+        },
+        "dialogue": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "described_action": {
+          "$ref": "#/$defs/described_action_payload"
+        },
+        "semantics": {
+          "$ref": "#/$defs/action_semantics"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "described_action"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "described_action"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "talk"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dialogue"
+            ]
+          }
+        }
+      ]
+    },
+    "beat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "phase",
+        "actions"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^beat_[1-9][0-9]*$"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "single_action",
+            "dialogue_exchange",
+            "toward_each_other",
+            "approach_object",
+            "stop_near_object",
+            "pass_by_object",
+            "turn_to_target",
+            "pickup_object",
+            "putdown_object",
+            "open_object",
+            "close_object",
+            "give_object",
+            "first_described_action",
+            "second_described_action",
+            "third_described_action",
+            "small_followup_action"
+          ]
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "camera": {
+          "$ref": "#/$defs/camera"
+        },
+        "min_duration": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "spatial_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "subject",
+        "relation",
+        "object"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^rel_[1-9][0-9]*$"
+        },
+        "subject": {
+          "$ref": "#/$defs/target_id"
+        },
+        "relation": {
+          "type": "string",
+          "enum": [
+            "near",
+            "in_front_of",
+            "behind",
+            "left_of",
+            "right_of",
+            "between",
+            "pass_by",
+            "inside",
+            "outside"
+          ]
+        },
+        "object": {
+          "$ref": "#/$defs/target_id"
+        }
+      }
+    },
+    "reference_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal_map",
+        "marked_object_ids",
+        "alias_to_object_id"
+      ],
+      "properties": {
+        "ordinal_map": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "first"
+          ],
+          "properties": {
+            "first": {
+              "const": "actor_1"
+            },
+            "second": {
+              "const": "actor_2"
+            }
+          }
+        },
+        "marked_object_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^object_marked_[a-z0-9]{8,}$"
+          }
+        },
+        "alias_to_object_id": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^object_marked_[a-z0-9]{8,}$"
+          }
+        }
+      }
+    },
+    "scene_graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actors",
+        "objects",
+        "beats",
+        "spatial_relations",
+        "reference_bindings",
+        "must_preserve"
+      ],
+      "properties": {
+        "actors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/actor"
+          }
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/object"
+          }
+        },
+        "beats": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/beat"
+          }
+        },
+        "spatial_relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/spatial_relation"
+          }
+        },
+        "reference_bindings": {
+          "$ref": "#/$defs/reference_bindings"
+        },
+        "must_preserve": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "scene_heading_stub": {
+          "type": "string"
+        },
+        "location_stub": {
+          "type": "string"
+        },
+        "interior_exterior_stub": {
+          "type": "string",
+          "enum": [
+            "int",
+            "ext",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "time_of_day_stub": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

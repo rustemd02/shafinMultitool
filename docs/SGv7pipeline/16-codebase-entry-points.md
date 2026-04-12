@@ -10,14 +10,22 @@
 
 ### Dataset Generation
 
+- [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
+
+Это canonical SG v7 entrypoint. Из него агентам важны:
+- deterministic `CIR -> SceneScript` projection path
+- validation boundary для `sg_v7_cir_v1`
+- expected integration point для будущего graph-first dataset assembly
+
 - [generate_dataset_v6.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v6.py)
 
-Это основной текущий генератор датасета. Из него агентам важны:
+Это legacy pre-SG-v7 генератор датасета. Из него агентам важны:
 - train prompts
 - JSON generation prompts
 - validators
 - filtering heuristics
-- current schema assumptions
+- historical schema assumptions
+- legacy repair/autocorrection behavior, который не является canonical для SG v7
 
 ### Runtime LLM Parsing
 
@@ -96,15 +104,17 @@
 2. [00-overview.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/00-overview.md)
 3. [14-fixed-decisions.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/14-fixed-decisions.md)
 4. [18-runtime-train-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/18-runtime-train-contract.md)
-5. [generate_dataset_v6.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v6.py)
+5. [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
+6. [generate_dataset_v6.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v6.py) только если нужен legacy comparison
 
 ### Implementation Agents For Data Pipeline
 
-1. [generate_dataset_v6.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v6.py)
+1. [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
 2. [03-graph-generation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/03-graph-generation.md)
 3. [04-source-generation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/04-source-generation.md)
 4. [05-augmentation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/05-augmentation.md)
 5. [06-validation-and-critics.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/06-validation-and-critics.md)
+6. [generate_dataset_v6.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v6.py) только если нужно понять legacy behavior
 
 ### Runtime Alignment Agents
 

@@ -20,6 +20,8 @@
 - агент по архитектуре пайплайна: [02-pipeline-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/02-pipeline-architecture.md)
 - агент по генерации canonical graph: [03-graph-generation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/03-graph-generation.md)
 - canonical intermediate representation: [19-canonical-intermediate-representation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/19-canonical-intermediate-representation.md)
+- CIR executable artifacts (schema/types/validator/tests): [cir_contract/contracts/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/cir_contract/contracts)
+- SG v7 canonical dataset entrypoint: [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
 - агент по source/paraphrase generation: [04-source-generation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/04-source-generation.md)
 - агент по morphology/noise augmentation: [05-augmentation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/05-augmentation.md)
 - агент по validators/critics: [06-validation-and-critics.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/06-validation-and-critics.md)
@@ -36,6 +38,8 @@
 - инструкция по работе с Codex: [17-how-to-operate-with-codex.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/17-how-to-operate-with-codex.md)
 - source-of-truth для train/runtime alignment: [18-runtime-train-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/18-runtime-train-contract.md)
 - canonical intermediate representation contract: [19-canonical-intermediate-representation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/19-canonical-intermediate-representation.md)
+- CIR validator CLI: [validate_cir_contract.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/cir_contract/scripts/validate_cir_contract.py)
+- CIR -> SceneScript serializer and SG v7 entrypoint: [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
 
 ## Главная идея
 

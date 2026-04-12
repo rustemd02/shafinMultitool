@@ -1,0 +1,118 @@
+{
+  "cir_version": "sg_v7_cir_v1",
+  "contract_version": "sg_v7_contract_v1",
+  "sample_id": "dialogue_then_small_action__dialogue_mix__s77__478ba858",
+  "source_variant_key": "dialogue_mix",
+  "pattern_name": "dialogue_then_small_action",
+  "difficulty_bucket": "core",
+  "complexity_class": "S",
+  "graph_seed": 77,
+  "scene_graph": {
+    "actors": [
+      {
+        "id": "actor_1",
+        "type": "human",
+        "name": "Anna",
+        "labels": {
+          "ordinal": "first"
+        }
+      },
+      {
+        "id": "actor_2",
+        "type": "human",
+        "name": "Boris",
+        "labels": {
+          "ordinal": "second"
+        }
+      }
+    ],
+    "objects": [],
+    "beats": [
+      {
+        "id": "beat_1",
+        "phase": "dialogue_exchange",
+        "actions": [
+          {
+            "id": "action_1",
+            "actor_id": "actor_1",
+            "type": "talk",
+            "target_id": "actor_2",
+            "resulting_pose": "standing",
+            "dialogue": "I already sent the letter.",
+            "semantics": {
+              "chronology_rank": 1
+            }
+          },
+          {
+            "id": "action_2",
+            "actor_id": "actor_2",
+            "type": "talk",
+            "target_id": "actor_1",
+            "resulting_pose": "standing",
+            "dialogue": "Then show me the attachment.",
+            "semantics": {
+              "chronology_rank": 2
+            }
+          }
+        ]
+      },
+      {
+        "id": "beat_2",
+        "phase": "small_followup_action",
+        "actions": [
+          {
+            "id": "action_3",
+            "actor_id": "actor_1",
+            "type": "turn",
+            "target_id": "actor_2",
+            "resulting_pose": "standing",
+            "semantics": {
+              "chronology_rank": 3
+            }
+          }
+        ]
+      }
+    ],
+    "spatial_relations": [],
+    "reference_bindings": {
+      "ordinal_map": {
+        "first": "actor_1",
+        "second": "actor_2"
+      },
+      "marked_object_ids": [],
+      "alias_to_object_id": {}
+    },
+    "must_preserve": [
+      "dialogue_text_exactness",
+      "beat_count=2"
+    ]
+  },
+  "semantic_tags": [
+    "dialogue",
+    "small_action",
+    "ordinal_reference"
+  ],
+  "determinism": {
+    "id_policy": "canonical_v1",
+    "ordering_policy": "stable_v1",
+    "serializer": "deterministic_scene_script_v1",
+    "phase_policy": "phase_enum_v1",
+    "described_action_policy": "described_action_v1"
+  },
+  "budgets": {
+    "actor_count": 2,
+    "object_count": 0,
+    "beat_count": 2,
+    "action_count": 3,
+    "relation_count": 0
+  },
+  "runtime_projection": {
+    "target_schema": "SceneScript",
+    "field_casing": "camelCase",
+    "drop_internal_fields": true,
+    "fill_original_description_from_source_variant": true,
+    "described_action_source_text_policy": "canonical_text_to_sourceText",
+    "top_level_optional_policy": "omit_all",
+    "beat_optional_policy": "preserve_if_present_else_omit"
+  }
+}

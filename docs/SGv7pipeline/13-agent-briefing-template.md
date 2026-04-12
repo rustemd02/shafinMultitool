@@ -37,7 +37,8 @@
 Проект:
 - локальная модель: qwen 1.5B
 - задача: Scene Generator JSON parsing
-- текущий источник данных: generate_dataset_v6.py
+- canonical SG v7 dataset entrypoint: generate_dataset_v7.py
+- legacy reference generator for comparison only: generate_dataset_v6.py
 - целевая система: SG v7 graph-first pipeline
 
 Цель:
@@ -78,6 +79,7 @@ Definition of done:
 ## Что лучше прикладывать дополнительно
 
 Для implementation-агента:
+- [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
 - [generate_dataset_v6.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v6.py)
 - текущие runtime prompts и grammar
 - [18-runtime-train-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/18-runtime-train-contract.md)

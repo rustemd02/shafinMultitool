@@ -58,6 +58,10 @@ Contract не покрывает:
 - `decoding_config`
 - `contract_fixtures.jsonl`
 
+Для `SG v7` executable projection layer тоже должен существовать как код, а не только как prose.
+Текущая canonical точка входа: [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py).
+Serializer source of truth: [cir_serializer.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/cir_contract/contracts/cir_serializer.py).
+
 Если эти артефакты физически лежат в разных файлах, они всё равно считаются одним логическим contract.
 
 ## Non-Negotiable Invariants
@@ -115,6 +119,11 @@ Marked objects должны передаваться как структурны
 Рекомендуемое правило:
 - если optional поле семантически не нужно, оно опускается
 - если поле оставлено, оно должно иметь одно canonical representation
+
+Для `SG v7` canonical path это значит:
+- `sceneHeading`, `locationName`, `interiorExterior`, `timeOfDay` не входят в canonical target JSON
+- `camera` и `minDuration` сериализуются только по policy `emit_if_present_else_omit`
+- runtime может хранить дополнительные scene-state поля отдельно, но они не должны становиться частью canonical train/runtime JSON contract
 
 ## Grammar And Decoding Contract
 

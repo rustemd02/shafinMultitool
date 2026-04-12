@@ -387,7 +387,33 @@ final class LLMParserService {
         repaired = injectMarkedObjectsIfNeeded(in: repaired, mentionedMarkers: mentionedMarkers)
         repaired = repairMotionSemantics(in: repaired, description: lowercasedDescription, mentionedMarkers: mentionedMarkers)
 
-        return repaired
+        return canonicalSGv7SceneScript(
+            actors: repaired.actors,
+            objects: repaired.objects,
+            beats: repaired.beats,
+            spatialRelations: repaired.spatialRelations,
+            originalDescription: repaired.originalDescription
+        )
+    }
+
+    private func canonicalSGv7SceneScript(
+        actors: [SceneActor],
+        objects: [SceneObject],
+        beats: [SceneBeat],
+        spatialRelations: [SpatialRelation],
+        originalDescription: String
+    ) -> SceneScript {
+        SceneScript(
+            sceneHeading: nil,
+            locationName: nil,
+            interiorExterior: nil,
+            timeOfDay: nil,
+            actors: actors,
+            objects: objects,
+            beats: beats,
+            spatialRelations: spatialRelations,
+            originalDescription: originalDescription
+        )
     }
 
     private func normalizeActorNames(in script: SceneScript) -> SceneScript {
@@ -400,11 +426,7 @@ final class LLMParserService {
             return actor
         }
 
-        return SceneScript(
-            sceneHeading: script.sceneHeading,
-            locationName: script.locationName,
-            interiorExterior: script.interiorExterior,
-            timeOfDay: script.timeOfDay,
+        return canonicalSGv7SceneScript(
             actors: actors,
             objects: script.objects,
             beats: script.beats,
@@ -448,11 +470,7 @@ final class LLMParserService {
             return SceneBeat(id: beat.id, actions: actions, camera: beat.camera, minDuration: beat.minDuration)
         }
 
-        return SceneScript(
-            sceneHeading: script.sceneHeading,
-            locationName: script.locationName,
-            interiorExterior: script.interiorExterior,
-            timeOfDay: script.timeOfDay,
+        return canonicalSGv7SceneScript(
             actors: script.actors,
             objects: script.objects,
             beats: beats,
@@ -479,11 +497,7 @@ final class LLMParserService {
             }
         }
 
-        return SceneScript(
-            sceneHeading: script.sceneHeading,
-            locationName: script.locationName,
-            interiorExterior: script.interiorExterior,
-            timeOfDay: script.timeOfDay,
+        return canonicalSGv7SceneScript(
             actors: script.actors,
             objects: objects,
             beats: script.beats,
@@ -554,11 +568,7 @@ final class LLMParserService {
             return SceneBeat(id: beat.id, actions: actions, camera: beat.camera, minDuration: beat.minDuration)
         }
 
-        return SceneScript(
-            sceneHeading: script.sceneHeading,
-            locationName: script.locationName,
-            interiorExterior: script.interiorExterior,
-            timeOfDay: script.timeOfDay,
+        return canonicalSGv7SceneScript(
             actors: script.actors,
             objects: script.objects,
             beats: beats,
@@ -685,17 +695,11 @@ final class LLMParserService {
         // v2: beats вместо actions, camera/minDuration/resultingPose/holdingObject
         let lines = [
             // --- Корневой объект ---
-            #"root ::= "{" ws root-scene-heading root-location-name root-interior-exterior root-time-of-day actors-field "," ws objects-field "," ws beats-field root-relations ws "}""#,
+            #"root ::= "{" ws actors-field "," ws objects-field "," ws beats-field root-relations ws "}""#,
             "",
             #"ws ::= ([ \t\n])*"#,
             "",
-            // --- Опциональные поля сцены ---
-            #"root-scene-heading ::= ("\"sceneHeading\"" ws ":" ws text-string "," ws) | """#,
-            #"root-location-name ::= ("\"locationName\"" ws ":" ws text-string "," ws) | """#,
-            #"root-interior-exterior ::= ("\"interiorExterior\"" ws ":" ws ie-type "," ws) | """#,
-            #"root-time-of-day ::= ("\"timeOfDay\"" ws ":" ws text-string "," ws) | """#,
             #"root-relations ::= ("," ws relations-field) | """#,
-            #"ie-type ::= "\"int\"" | "\"ext\"" | "\"mixed\"" | "\"unknown\"""#,
             "",
             // --- Массивы верхнего уровня ---
             #"actors-field ::= "\"actors\"" ws ":" ws "[" ws actor-list ws "]""#,
@@ -725,12 +729,12 @@ final class LLMParserService {
             "",
             // --- Актёры ---
             #"actor ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws actor-type actor-name ws "}""#,
-            #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"horse\"" | "\"generic\"""#,
+            #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"generic\"""#,
             #"actor-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
             "",
             // --- Объекты ---
             #"object ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws object-type object-name "," ws "\"relativePosition\"" ws ":" ws relative-pos ws "}""#,
-            #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"tv\"" | "\"counter\"" | "\"desk\"" | "\"fridge\"" | "\"sink\"" | "\"stove\"" | "\"mirror\"" | "\"car\"" | "\"generic\"""#,
+            #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"tv\"" | "\"generic\"""#,
             #"object-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
             #"relative-pos ::= "\"left\"" | "\"right\"" | "\"center\"" | "\"background\"" | "\"foreground\"" | "\"unknown\"""#,
             "",

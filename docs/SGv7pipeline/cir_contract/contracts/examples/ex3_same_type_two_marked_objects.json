@@ -1,0 +1,137 @@
+{
+  "cir_version": "sg_v7_cir_v1",
+  "contract_version": "sg_v7_contract_v1",
+  "sample_id": "same_type_two_marked_objects__same_type_marker_stress__s991__fb6aab21",
+  "source_variant_key": "same_type_marker_stress",
+  "pattern_name": "same_type_two_marked_objects",
+  "difficulty_bucket": "hard",
+  "complexity_class": "M",
+  "graph_seed": 991,
+  "scene_graph": {
+    "actors": [
+      {
+        "id": "actor_1",
+        "type": "human",
+        "labels": {
+          "ordinal": "first"
+        }
+      },
+      {
+        "id": "actor_2",
+        "type": "human",
+        "labels": {
+          "ordinal": "second"
+        }
+      }
+    ],
+    "objects": [
+      {
+        "id": "object_marked_1111aaaa",
+        "type": "chair",
+        "name": "left chair",
+        "relative_position": "left",
+        "marker_binding": {
+          "kind": "marked",
+          "marker_short_id": "1111aaaa",
+          "source_name": "chair",
+          "mentioned_aliases": [
+            "left chair"
+          ]
+        }
+      },
+      {
+        "id": "object_marked_2222bbbb",
+        "type": "chair",
+        "name": "right chair",
+        "relative_position": "right",
+        "marker_binding": {
+          "kind": "marked",
+          "marker_short_id": "2222bbbb",
+          "source_name": "chair",
+          "mentioned_aliases": [
+            "right chair",
+            "that chair"
+          ]
+        }
+      }
+    ],
+    "beats": [
+      {
+        "id": "beat_1",
+        "phase": "approach_object",
+        "actions": [
+          {
+            "id": "action_1",
+            "actor_id": "actor_1",
+            "type": "approach",
+            "target_id": "object_marked_2222bbbb",
+            "direction": "to_target",
+            "resulting_pose": "walking",
+            "semantics": {
+              "chronology_rank": 1
+            }
+          },
+          {
+            "id": "action_2",
+            "actor_id": "actor_2",
+            "type": "stand",
+            "resulting_pose": "standing",
+            "semantics": {
+              "chronology_rank": 2
+            }
+          }
+        ]
+      }
+    ],
+    "spatial_relations": [],
+    "reference_bindings": {
+      "ordinal_map": {
+        "first": "actor_1",
+        "second": "actor_2"
+      },
+      "marked_object_ids": [
+        "object_marked_1111aaaa",
+        "object_marked_2222bbbb"
+      ],
+      "alias_to_object_id": {
+        "left chair": "object_marked_1111aaaa",
+        "right chair": "object_marked_2222bbbb",
+        "that chair": "object_marked_2222bbbb"
+      }
+    },
+    "must_preserve": [
+      "must_ground_object:object_marked_2222bbbb",
+      "no_type_only_resolution",
+      "same_type_markers_present"
+    ]
+  },
+  "semantic_tags": [
+    "marked_object",
+    "same_type_markers",
+    "ordinal_reference",
+    "grounding"
+  ],
+  "determinism": {
+    "id_policy": "canonical_v1",
+    "ordering_policy": "stable_v1",
+    "serializer": "deterministic_scene_script_v1",
+    "phase_policy": "phase_enum_v1",
+    "described_action_policy": "described_action_v1"
+  },
+  "budgets": {
+    "actor_count": 2,
+    "object_count": 2,
+    "beat_count": 1,
+    "action_count": 2,
+    "relation_count": 0
+  },
+  "runtime_projection": {
+    "target_schema": "SceneScript",
+    "field_casing": "camelCase",
+    "drop_internal_fields": true,
+    "fill_original_description_from_source_variant": true,
+    "described_action_source_text_policy": "canonical_text_to_sourceText",
+    "top_level_optional_policy": "omit_all",
+    "beat_optional_policy": "preserve_if_present_else_omit"
+  }
+}
