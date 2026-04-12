@@ -258,6 +258,35 @@
   - иначе fallback на `raycast`.
 - **Воспроизведение траектории**: сегментная анимация в RealityKit + отменяемые задачи, чтобы stop/reset не оставляли “хвостов”.
 
+## [2026-04-12 16:01] - [Проектирование пайплайна SG v7 для дообучения локальной LLM]
+
+### Суть изменений
+- Сформирован новый целевой пайплайн `SG v7` для подготовки датасета и дообучения локальной модели `qwen 1.5B` под задачу преобразования русских текстовых описаний сцен в `SceneScript`.
+- Зафиксирован переход от teacher-generated JSON как основного источника истины к `graph-first` подходу, в котором canonical target JSON строится программно и детерминированно.
+- Разделён полный цикл на независимые компоненты: `runtime/train contract`, pattern library, deterministic graph generator, source generation, controlled augmentation, semantic critic, strict validators, dataset assembly, training, eval и runtime feedback loop.
+- Добавлен отдельный source-of-truth документ для `runtime/train contract`, описывающий единый prompt format, serializer policy, grammar/GBNF, decoding constraints и frozen fixtures для предотвращения `train/inference drift`.
+- Введена политика provenance для `corrected_target_json`: `tier_a_human_gold`, `tier_b_deterministic_canonical`, `tier_c_reviewed_merge`, `tier_d_auto_repair_only`, чтобы реальные runtime-исправления не смешивались с безусловным gold-таргетом.
+- Формализован `complexity budget` для модели `1.5B`: ограничения не только на число актёров/объектов/битов/действий, но и на длину source/target в токенах и полную длину сериализованной последовательности.
+- Уточнён eval-контракт: добавлены метрики `exact_marked_object_id_accuracy`, `ordinal_actor_binding_accuracy`, `target_resolution_accuracy`, `chronology_phase_accuracy`, а release gate теперь контролирует не только формальную валидность JSON, но и точность семантического grounding-а.
+- Подготовлен decomposition-пакет для агентной разработки: roadmap, backlog, prompts, briefing template, codebase entry points, runtime failure examples и правила запуска отдельных design / implement / verify чатов.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** При использовании компактной локальной модели `qwen 1.5B` выявлены системные ошибки семантического парсинга: схлопывание сцены в минимально валидный JSON, потеря `marked objects`, деградация multi-beat структуры, ошибки в привязке `первый/второй`, а также исчезновение unsupported actions вроде `начинает курить`. Дополнительной проблемой является `train/inference mismatch`: даже небольшое расхождение между обучающим prompt-ом, runtime prompt-ом, grammar и сериализацией JSON приводит к резкому ухудшению качества на устройстве.
+- **Решение:** Вместо дальнейшего наращивания rule-based логики и teacher-generated синтетики спроектирован новый пайплайн `SG v7`, где канонический смысл сцены задаётся промежуточным детерминированным графом. LLM используется не как источник gold JSON, а как paraphraser и semantic critic. Это уменьшает шум в целевых данных, позволяет программно гарантировать идентификаторы `actor_*` и `object_marked_*`, а также обеспечивает согласованность между dataset generation и runtime parsing.
+- **Детали:** Ключевым решением стало выделение отдельного `runtime/train contract` с фиксированным порядком секций prompt-а, едиными правилами optional fields, стабильной сериализацией JSON и frozen fixtures для regression-проверок. Для предотвращения переусложнения обучающей выборки введён formal `complexity budget`: для `core` и `hard` фаз задаются верхние границы по `actor_count`, `object_count`, `beat_count`, `action_count`, `source_text_token_count`, `target_json_token_count` и `full_sequence_token_count`. В feedback loop добавлена trust-модель происхождения corrected samples, что позволяет отделять ручной gold от автоматического repair и предотвращать попадание недостоверных исправлений в SFT-данные. Архитектурно это переводит задачу из “fine-tune на произвольной синтетике” в воспроизводимую систему controlled data generation с явной семантической валидацией.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/README.md` (общая архитектура SG v7)
+- `docs/SGv7pipeline/18-runtime-train-contract.md` (единый contract train/runtime)
+- `docs/SGv7pipeline/14-fixed-decisions.md` (фиксированные архитектурные решения)
+- `docs/SGv7pipeline/08-training-plan.md` (phased curriculum и complexity budget)
+- `docs/SGv7pipeline/09-eval-and-release.md` (метрики и release gate)
+- `docs/SGv7pipeline/10-runtime-feedback-loop.md` (feedback ingestion и corrected sample provenance)
+- `docs/SGv7pipeline/11-implementation-backlog.md` (треки реализации)
+- `docs/SGv7pipeline/12-agent-prompts.md` (agent-based decomposition design/implement/verify)
+
+---
+
 ### 3. Архитектура
 
 - **Новый модуль**: `shafinMultitool/SceneGeneratorModule/`
