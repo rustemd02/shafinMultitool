@@ -8,6 +8,7 @@
 import SwiftUI
 import ARKit
 import RealityKit
+import CoreVideo
 
 /// UIViewRepresentable обёртка для ARView в Scene Generator
 struct ARSceneContainer: UIViewRepresentable {
@@ -16,29 +17,16 @@ struct ARSceneContainer: UIViewRepresentable {
     
     func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
-        
-        // Конфигурация AR сессии
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.planeDetection = [.horizontal, .vertical]
-        configuration.environmentTexturing = .automatic
-        
-        // Включаем LiDAR depth если доступно (для точного определения расстояния)
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-            configuration.frameSemantics.insert(.sceneDepth)
-        }
-        
-        // Включаем smoothed scene depth для более стабильных измерений
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
-            configuration.frameSemantics.insert(.smoothedSceneDepth)
-        }
-        
-        // Включаем people occlusion если доступно
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.personSegmentationWithDepth) {
-            configuration.frameSemantics.insert(.personSegmentationWithDepth)
-        }
-        
-        arView.session.run(configuration)
+
+        // Избегаем двойной автоконфигурации ARView (она может увеличивать нагрузку)
+        arView.automaticallyConfigureSession = false
         arView.session.delegate = context.coordinator
+        context.coordinator.updateSessionState(
+            for: arView,
+            depthEnabled: viewModel.isMarkingMode,
+            isGenerating: viewModel.isGenerating,
+            force: true
+        )
         
         // Настройки рендеринга
         arView.renderOptions = [.disableMotionBlur]
@@ -71,7 +59,17 @@ struct ARSceneContainer: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
-        // Обновления не требуются - всё управляется через ViewModel
+        // Во время генерации приостанавливаем AR-сессию, чтобы не греть устройство параллельно с LLM.
+        context.coordinator.updateSessionState(
+            for: uiView,
+            depthEnabled: viewModel.isMarkingMode,
+            isGenerating: viewModel.isGenerating
+        )
+    }
+
+    static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {
+        uiView.session.pause()
+        uiView.session.delegate = nil
     }
     
     func makeCoordinator() -> Coordinator {
@@ -83,17 +81,105 @@ struct ARSceneContainer: UIViewRepresentable {
     class Coordinator: NSObject, ARSessionDelegate {
         
         let viewModel: SceneGeneratorViewModel
+        private var isDepthEnabled: Bool?
+        private var isSessionPausedForGeneration = false
+        private var lastProcessedFrameTimestamp: TimeInterval = 0
+        private let frameProcessingInterval: TimeInterval = 1.0 / 15.0
         
         init(viewModel: SceneGeneratorViewModel) {
             self.viewModel = viewModel
+        }
+
+        func updateSessionState(for arView: ARView, depthEnabled: Bool, isGenerating: Bool, force: Bool = false) {
+            if isGenerating {
+                pauseSessionIfNeeded(for: arView)
+                return
+            }
+
+            if isSessionPausedForGeneration {
+                resumeSessionIfNeeded(for: arView, depthEnabled: depthEnabled)
+                return
+            }
+
+            configureSessionIfNeeded(for: arView, depthEnabled: depthEnabled, force: force)
+        }
+
+        func configureSessionIfNeeded(for arView: ARView, depthEnabled: Bool, force: Bool = false) {
+            guard !isSessionPausedForGeneration else { return }
+
+            if !force, isDepthEnabled == depthEnabled {
+                return
+            }
+
+            let configuration = makeConfiguration(depthEnabled: depthEnabled)
+            arView.session.run(configuration)
+            isDepthEnabled = depthEnabled
+        }
+
+        private func pauseSessionIfNeeded(for arView: ARView) {
+            guard !isSessionPausedForGeneration else { return }
+            arView.session.pause()
+            isSessionPausedForGeneration = true
+        }
+
+        private func resumeSessionIfNeeded(for arView: ARView, depthEnabled: Bool) {
+            guard isSessionPausedForGeneration else { return }
+            let configuration = makeConfiguration(depthEnabled: depthEnabled)
+            arView.session.run(configuration)
+            isDepthEnabled = depthEnabled
+            isSessionPausedForGeneration = false
+            lastProcessedFrameTimestamp = 0
+        }
+
+        private func makeConfiguration(depthEnabled: Bool) -> ARWorldTrackingConfiguration {
+            let configuration = ARWorldTrackingConfiguration()
+
+            // Для Scene Generator достаточно горизонтальных плоскостей — это дешевле по CPU/GPU.
+            configuration.planeDetection = [.horizontal]
+            configuration.environmentTexturing = .none
+
+            if depthEnabled {
+                if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
+                    configuration.frameSemantics.insert(.smoothedSceneDepth)
+                } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                    configuration.frameSemantics.insert(.sceneDepth)
+                }
+            }
+
+            return configuration
         }
         
         // MARK: - ARSessionDelegate
         
         func session(_ session: ARSession, didUpdate frame: ARFrame) {
-            // Передаём frame в ViewModel для обработки
+            guard !isSessionPausedForGeneration else { return }
+            guard !viewModel.isGenerating else { return }
+
+            // processARFrame не требует 60 вызовов/сек — ограничиваем до ~15 Гц.
+            let timestamp = frame.timestamp
+            guard timestamp - lastProcessedFrameTimestamp >= frameProcessingInterval else { return }
+            lastProcessedFrameTimestamp = timestamp
+
+            let cameraTransform = frame.camera.transform
+            let cameraIntrinsics = frame.camera.intrinsics
+            let imageResolution = frame.camera.imageResolution
+            let planeAnchors = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
+            let depthMap: CVPixelBuffer?
+            if viewModel.isMarkingMode {
+                depthMap = (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap
+            } else {
+                depthMap = nil
+            }
+
             Task { @MainActor in
-                viewModel.processARFrame(frame)
+                viewModel.processARFrameSnapshot(
+                    cameraTransform: cameraTransform,
+                    depthMap: depthMap,
+                    intrinsics: cameraIntrinsics,
+                    imageResolution: imageResolution,
+                    planeAnchors: planeAnchors,
+                    timestamp: timestamp
+                )
             }
         }
         
@@ -147,4 +233,3 @@ struct ARSceneContainer_Previews: PreviewProvider {
     }
 }
 #endif
-

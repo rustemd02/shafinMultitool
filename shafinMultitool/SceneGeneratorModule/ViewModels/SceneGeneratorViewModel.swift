@@ -14,6 +14,12 @@ import RealityKit
 /// ViewModel для управления генерацией AR сцены из текстового описания
 @MainActor
 final class SceneGeneratorViewModel: ObservableObject {
+    private struct DepthFrameSnapshot {
+        let depthMap: CVPixelBuffer
+        let cameraTransform: simd_float4x4
+        let intrinsics: simd_float3x3
+        let imageResolution: CGSize
+    }
     
     // MARK: - Published Properties
     
@@ -65,8 +71,12 @@ final class SceneGeneratorViewModel: ObservableObject {
     // MARK: - Services
     
     private let parserService = SceneParserService.shared
-    private let detectionBridge = ObjectDetectionBridge.shared
     private let plannerService = SpatialPlannerService.shared
+    private let isObjectDetectionEnabled = false
+    private var detectionBridge: ObjectDetectionBridge? {
+        guard isObjectDetectionEnabled else { return nil }
+        return ObjectDetectionBridge.shared
+    }
     
     // MARK: - AR Properties
     
@@ -76,11 +86,13 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Текущая трансформация камеры
     private var currentCameraTransform: simd_float4x4?
     
-    /// Текущий AR frame (для доступа к depth data)
-    private var currentARFrame: ARFrame?
+    /// Последний snapshot глубины без удержания всего ARFrame
+    private var latestDepthFrameSnapshot: DepthFrameSnapshot?
     
     /// Обнаруженные плоскости
     private var detectedPlanes: [ARPlaneAnchor] = []
+    private var lastPlaneUpdateTimestamp: TimeInterval = 0
+    private let planeRefreshInterval: TimeInterval = 0.35
     
     /// Размещённые entity
     private var placedEntities: [String: ModelEntity] = [:]
@@ -123,13 +135,32 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     // MARK: - Public API
     
-    /// Обрабатывает AR frame
-    func processARFrame(_ frame: ARFrame) {
-        currentCameraTransform = frame.camera.transform
-        currentARFrame = frame
+    /// Обрабатывает snapshot AR-кадра без удержания ARFrame в очереди MainActor.
+    func processARFrameSnapshot(
+        cameraTransform: simd_float4x4,
+        depthMap: CVPixelBuffer?,
+        intrinsics: simd_float3x3,
+        imageResolution: CGSize,
+        planeAnchors: [ARPlaneAnchor],
+        timestamp: TimeInterval
+    ) {
+        currentCameraTransform = cameraTransform
+        if isMarkingMode, let depthMap {
+            latestDepthFrameSnapshot = DepthFrameSnapshot(
+                depthMap: depthMap,
+                cameraTransform: cameraTransform,
+                intrinsics: intrinsics,
+                imageResolution: imageResolution
+            )
+        } else {
+            latestDepthFrameSnapshot = nil
+        }
         
-        // Обновляем плоскости
-        detectedPlanes = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
+        // Обновляем плоскости с ограничением частоты, чтобы не перегружать main thread.
+        if timestamp - lastPlaneUpdateTimestamp >= planeRefreshInterval || detectedPlanes.isEmpty {
+            detectedPlanes = planeAnchors
+            lastPlaneUpdateTimestamp = timestamp
+        }
         
         // Проверяем готовность AR сессии
         if !isARSessionReady && !detectedPlanes.isEmpty {
@@ -138,6 +169,18 @@ final class SceneGeneratorViewModel: ObservableObject {
         }
         
         // DETR детекция отключена - используем только ручную разметку и LiDAR
+    }
+
+    /// Backward-compatible обёртка для существующих call-sites.
+    func processARFrame(_ frame: ARFrame) {
+        processARFrameSnapshot(
+            cameraTransform: frame.camera.transform,
+            depthMap: (isMarkingMode ? (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap : nil),
+            intrinsics: frame.camera.intrinsics,
+            imageResolution: frame.camera.imageResolution,
+            planeAnchors: frame.anchors.compactMap { $0 as? ARPlaneAnchor },
+            timestamp: frame.timestamp
+        )
     }
     
     /// Генерирует сцену из текстового описания
@@ -286,6 +329,12 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Инициализируем счётчики анимаций
         completedActorAnimations = 0
         totalActorAnimations = planned.placedActors.filter { $0.path.count > 1 }.count
+        if totalActorAnimations == 0 {
+            isPlaying = false
+            statusMessage = "Нет анимируемых действий"
+            setActorsToInitialPositionsInstantly()
+            return
+        }
         
         // Мгновенно устанавливаем актёров на начальные позиции (без анимации)
         setActorsToInitialPositionsInstantly()
@@ -370,6 +419,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         if isMarkingMode {
             statusMessage = "Режим разметки: тапните на объект"
         } else {
+            latestDepthFrameSnapshot = nil
             statusMessage = "Режим разметки выключен"
         }
     }
@@ -410,12 +460,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Получает 3D позицию в мировых координатах используя LiDAR depth
     private func getWorldPositionFromLiDAR(screenPoint: CGPoint, arView: ARView) -> Position3D? {
-        guard let frame = currentARFrame else { return nil }
+        guard let frame = latestDepthFrameSnapshot else { return nil }
         
-        // Пробуем smoothedSceneDepth (более стабильный) или sceneDepth
-        guard let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth else { return nil }
-        
-        let depthMap = depthData.depthMap
+        let depthMap = frame.depthMap
         let width = CVPixelBufferGetWidth(depthMap)
         let height = CVPixelBufferGetHeight(depthMap)
         
@@ -445,9 +492,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         guard depthValue > 0 && depthValue < 10.0 else { return nil } // Глубина в разумных пределах
         
         // Конвертируем 2D + depth в 3D мировые координаты
-        let camera = frame.camera
-        let intrinsics = camera.intrinsics
-        let imageResolution = camera.imageResolution
+        let intrinsics = frame.intrinsics
+        let imageResolution = frame.imageResolution
         
         // Конвертируем screen point в image coordinates
         let imageX = Float(normalizedX * imageResolution.width)
@@ -465,7 +511,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         
         // Transform from camera space to world space
         let cameraPoint = simd_float4(cameraX, cameraY, cameraZ, 1)
-        let worldPoint = camera.transform * cameraPoint
+        let worldPoint = frame.cameraTransform * cameraPoint
         
         return Position3D(x: worldPoint.x, y: worldPoint.y, z: worldPoint.z)
     }
@@ -840,14 +886,14 @@ final class SceneGeneratorViewModel: ObservableObject {
             var updatedObject = scriptObject
             
             // 1. Сначала ищем среди размеченных объектов (высший приоритет)
-            if let markerIndex = unusedMarkers.firstIndex(where: { $0.type == scriptObject.type }) {
+            if let markerIndex = indexOfMatchingMarker(for: scriptObject, in: unusedMarkers) {
                 let marker = unusedMarkers.remove(at: markerIndex)
                 updatedObject.detectedPosition = marker.worldPosition
                 return updatedObject
             }
             
             // 2. Затем ищем в детекциях
-            if let detection = detectionBridge.findObject(ofType: scriptObject.type),
+            if let detection = detectionBridge?.findObject(ofType: scriptObject.type),
                let worldPosition = detection.worldPosition {
                 updatedObject.detectedPosition = worldPosition
                 return updatedObject
@@ -856,6 +902,20 @@ final class SceneGeneratorViewModel: ObservableObject {
             // 3. Если не найдено - остаётся виртуальным
             return updatedObject
         }
+    }
+
+    private func indexOfMatchingMarker(for scriptObject: SceneObject, in markers: [MarkedObject]) -> Int? {
+        if let markedShortID = scriptObject.markedObjectShortID,
+           let exactIndex = markers.firstIndex(where: { $0.id.uuidString.prefix(8).lowercased() == markedShortID.lowercased() }) {
+            return exactIndex
+        }
+
+        let sameTypeIndices = markers.indices.filter { markers[$0].type == scriptObject.type }
+        if sameTypeIndices.count == 1 {
+            return sameTypeIndices.first
+        }
+
+        return nil
     }
     
     /// Устаревший метод - теперь addObjectsFromMarkedObjects выполняется внутри парсера
@@ -883,4 +943,3 @@ extension SceneGeneratorViewModel {
         ("Быстрый бег", "Человек быстро бежит вперёд")
     ]
 }
-
