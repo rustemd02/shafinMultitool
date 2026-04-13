@@ -697,6 +697,9 @@
             },
             "second": {
               "const": "actor_2"
+            },
+            "third": {
+              "const": "actor_3"
             }
           }
         },

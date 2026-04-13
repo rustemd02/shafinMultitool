@@ -11,7 +11,7 @@ DOCS_ROOT = ROOT / "docs" / "SGv7pipeline"
 if str(DOCS_ROOT) not in sys.path:
     sys.path.insert(0, str(DOCS_ROOT))
 
-from cir_contract.contracts import expected_sample_id, serialize_to_scenescript, validate_record
+from cir_contract.contracts import serialize_to_scenescript, validate_record
 
 
 def _load_json(path: Path) -> dict:
@@ -20,9 +20,6 @@ def _load_json(path: Path) -> dict:
 
 
 def build_scene_script(cir_record: dict, *, original_description: str) -> dict:
-    if cir_record.get("sample_id") != expected_sample_id(cir_record):
-        cir_record = dict(cir_record)
-        cir_record["sample_id"] = expected_sample_id(cir_record)
     validate_record(cir_record)
     return serialize_to_scenescript(cir_record, original_description=original_description)
 

@@ -38,6 +38,7 @@
 - локальная модель: qwen 1.5B
 - задача: Scene Generator JSON parsing
 - canonical SG v7 dataset entrypoint: generate_dataset_v7.py
+- generate_dataset_v7.py работает как strict contract gate и не переписывает `sample_id` автоматически
 - legacy reference generator for comparison only: generate_dataset_v6.py
 - целевая система: SG v7 graph-first pipeline
 

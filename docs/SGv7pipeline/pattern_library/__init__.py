@@ -1,5 +1,6 @@
 """Executable pattern library artifacts for SG v7."""
 
+from .coverage import CRITICAL_RUNTIME_FAILURES, PATTERN_FAILURE_OWNERSHIP, build_failure_coverage_report
 from .registry import (
     PATTERN_REGISTRY,
     PatternSpec,
@@ -9,8 +10,11 @@ from .registry import (
 )
 
 __all__ = [
+    "CRITICAL_RUNTIME_FAILURES",
+    "PATTERN_FAILURE_OWNERSHIP",
     "PATTERN_REGISTRY",
     "PatternSpec",
+    "build_failure_coverage_report",
     "enumerate_pattern_records",
     "generate_pattern_record",
     "list_pattern_names",

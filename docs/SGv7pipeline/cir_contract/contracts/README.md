@@ -35,3 +35,6 @@ Project a CIR file to canonical runtime `SceneScript` JSON:
 ```bash
 python3 generate_dataset_v7.py --cir docs/SGv7pipeline/cir_contract/contracts/examples/ex1_stop_near_marked_then_first_described.json --original-description "Два актёра подходят к ноутбуку, затем первый закуривает."
 ```
+
+Important:
+- `generate_dataset_v7.py` validates `sample_id` as-is and fails on drift; it does not auto-rewrite canonical ids.

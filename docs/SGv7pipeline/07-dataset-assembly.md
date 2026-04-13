@@ -102,6 +102,9 @@ Admission policy:
 - `graph_hash`
 - `validation_status`
 - `correction_tier`
+
+Правило:
+- `sample_id` считается canonical contract field и не должен переписываться downstream entrypoint-ами; drift должен ловиться validator/CLI как ошибка, а не исправляться постфактум
 - `gold_source`
 - `train_eligibility`
 - `contract_version`

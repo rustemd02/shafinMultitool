@@ -13,7 +13,10 @@ SCHEMA_PATH = ROOT / "cir_contract" / "contracts" / "cir_schema_v1.json"
 
 _MOVEMENT_TYPES = {"walk", "run", "approach", "pass_by"}
 _MODIFIER_ALLOWED_TYPES = {"walk", "run", "approach", "pass_by", "described_action"}
-_TARGET_REQUIRED_TYPES = {"look_at", "pick_up", "open", "close", "approach"}
+_TARGET_REQUIRED_TYPES = {"look_at", "pick_up", "open", "close", "approach", "put_down", "give"}
+_OBJECT_TARGET_ONLY_TYPES = {"pick_up", "open", "close", "put_down"}
+_ACTOR_TARGET_ONLY_TYPES = {"give"}
+_HOLDING_OBJECT_REQUIRED_TYPES = {"pick_up", "put_down", "give"}
 
 
 class CIRValidationError(ValueError):
@@ -65,6 +68,12 @@ def _validate_semantics(record: dict) -> None:
     actor_ids = {a["id"] for a in sg["actors"]}
     object_ids = {o["id"] for o in sg["objects"]}
     valid_targets = actor_ids | object_ids
+    expected_actor_ids = {f"actor_{index}" for index in range(1, len(actor_ids) + 1)}
+
+    if actor_ids != expected_actor_ids:
+        raise CIRValidationError(
+            f"Actor ids must be contiguous and canonical: expected={sorted(expected_actor_ids)} got={sorted(actor_ids)}"
+        )
 
     # Top-level optional policy is strict for v1.
     for forbidden in ("scene_heading_stub", "location_stub", "interior_exterior_stub", "time_of_day_stub"):
@@ -105,6 +114,10 @@ def _validate_semantics(record: dict) -> None:
         if target_id is not None and target_id not in valid_targets:
             raise CIRValidationError(f"{beat_id}:{action_id} target_id not found: {target_id}")
 
+        holding_object = action.get("holding_object")
+        if holding_object is not None and holding_object not in object_ids:
+            raise CIRValidationError(f"{beat_id}:{action_id} holding_object not found: {holding_object}")
+
         if atype == "talk":
             if not action.get("dialogue"):
                 raise CIRValidationError(f"{beat_id}:{action_id} talk requires dialogue")
@@ -121,6 +134,12 @@ def _validate_semantics(record: dict) -> None:
         if atype in _TARGET_REQUIRED_TYPES and not target_id:
             raise CIRValidationError(f"{beat_id}:{action_id} action.type={atype} requires target_id")
 
+        if atype in _OBJECT_TARGET_ONLY_TYPES and target_id is not None and target_id not in object_ids:
+            raise CIRValidationError(f"{beat_id}:{action_id} action.type={atype} requires object target_id")
+
+        if atype in _ACTOR_TARGET_ONLY_TYPES and target_id is not None and target_id not in actor_ids:
+            raise CIRValidationError(f"{beat_id}:{action_id} action.type={atype} requires actor target_id")
+
         direction = action.get("direction")
         if direction is not None and atype not in _MOVEMENT_TYPES:
             raise CIRValidationError(f"{beat_id}:{action_id} direction is not allowed for action.type={atype}")
@@ -129,12 +148,25 @@ def _validate_semantics(record: dict) -> None:
         if modifier is not None and atype not in _MODIFIER_ALLOWED_TYPES:
             raise CIRValidationError(f"{beat_id}:{action_id} modifier is not allowed for action.type={atype}")
 
+        if atype in _HOLDING_OBJECT_REQUIRED_TYPES and not holding_object:
+            raise CIRValidationError(f"{beat_id}:{action_id} action.type={atype} requires holding_object")
+
+        if atype == "pick_up" and target_id is not None and holding_object is not None and holding_object != target_id:
+            raise CIRValidationError(f"{beat_id}:{action_id} pick_up holding_object must equal target_id")
+
     # Ordinal map checks.
     ordinal_map = sg["reference_bindings"]["ordinal_map"]
-    if ordinal_map.get("first") != "actor_1":
-        raise CIRValidationError("reference_bindings.ordinal_map.first must equal actor_1")
-    if "actor_2" in actor_ids and ordinal_map.get("second") != "actor_2":
-        raise CIRValidationError("reference_bindings.ordinal_map.second must equal actor_2 when actor_2 exists")
+    expected_ordinal_map = {"first": "actor_1"}
+    if "actor_2" in actor_ids:
+        expected_ordinal_map["second"] = "actor_2"
+    if "actor_3" in actor_ids:
+        expected_ordinal_map["third"] = "actor_3"
+
+    if dict(ordinal_map) != expected_ordinal_map:
+        raise CIRValidationError(
+            "reference_bindings.ordinal_map mismatch: "
+            f"expected={expected_ordinal_map}, got={dict(ordinal_map)}"
+        )
 
     # Marked object checks.
     marked_from_objects = {o["id"] for o in sg["objects"] if o["marker_binding"]["kind"] == "marked"}

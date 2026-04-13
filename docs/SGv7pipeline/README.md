@@ -59,5 +59,6 @@
 - `nano` не должен быть единственным источником ground-truth JSON
 - synthetic data должна быть каноничной, а не креативной
 - один и тот же смысл должен давать один и тот же target JSON
+- canonical entrypoint должен fail-fast на contract drift, а не чинить `sample_id` молча
 - model capacity 1.5B надо беречь: complexity budget важнее разнообразия ради разнообразия
 - real runtime failures должны замыкаться обратно в dataset pipeline

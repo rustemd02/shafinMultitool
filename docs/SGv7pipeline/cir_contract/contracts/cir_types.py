@@ -180,9 +180,15 @@ class SpatialRelationNode(TypedDict):
 
 
 class ReferenceBindings(TypedDict):
-    ordinal_map: dict[str, str]
+    ordinal_map: "OrdinalMap"
     marked_object_ids: list[str]
     alias_to_object_id: dict[str, str]
+
+
+class OrdinalMap(TypedDict):
+    first: Literal["actor_1"]
+    second: NotRequired[Literal["actor_2"]]
+    third: NotRequired[Literal["actor_3"]]
 
 
 class SceneGraph(TypedDict):

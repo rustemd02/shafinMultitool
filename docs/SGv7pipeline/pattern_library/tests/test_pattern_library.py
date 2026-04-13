@@ -9,7 +9,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from cir_contract.contracts.cir_validator import load_schema, validate_record
-from pattern_library import PATTERN_REGISTRY, enumerate_pattern_records, generate_pattern_record, list_pattern_names
+from pattern_library import (
+    PATTERN_REGISTRY,
+    build_failure_coverage_report,
+    enumerate_pattern_records,
+    generate_pattern_record,
+    list_pattern_names,
+)
 
 
 class TestPatternLibrary(unittest.TestCase):
@@ -21,11 +27,13 @@ class TestPatternLibrary(unittest.TestCase):
             list_pattern_names(),
             [
                 "dialogue_only",
+                "dialogue_then_pick_up_object_then_give_to_third_actor",
                 "dialogue_then_put_down_object",
                 "dialogue_then_small_action",
                 "enter_then_put_down_object",
                 "open_then_pick_up_object",
                 "ordinal_first_second",
+                "ordinal_first_second_third",
                 "pick_up_then_put_down_object",
                 "same_type_two_marked_objects",
                 "stop_near_marked_object_then_first_described_action",
@@ -33,6 +41,7 @@ class TestPatternLibrary(unittest.TestCase):
                 "toward_each_other_then_pass_by_marked_object",
                 "toward_each_other_then_pass_by_object_then_second_runs",
                 "toward_each_other_then_stop_near_marked_object",
+                "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action",
                 "unsupported_action_described_action",
             ],
         )
@@ -143,18 +152,21 @@ class TestPatternLibrary(unittest.TestCase):
             pattern_counts,
             {
                 "dialogue_only": 8,
+                "dialogue_then_pick_up_object_then_give_to_third_actor": 2,
                 "dialogue_then_put_down_object": 5,
                 "dialogue_then_small_action": 8,
                 "enter_then_put_down_object": 4,
                 "open_then_pick_up_object": 5,
                 "ordinal_first_second": 10,
+                "ordinal_first_second_third": 2,
                 "pick_up_then_put_down_object": 6,
-                "same_type_two_marked_objects": 4,
-                "stop_near_marked_object_then_first_described_action": 7,
+                "same_type_two_marked_objects": 2,
+                "stop_near_marked_object_then_first_described_action": 5,
                 "toward_each_other": 9,
                 "toward_each_other_then_pass_by_marked_object": 8,
-                "toward_each_other_then_pass_by_object_then_second_runs": 7,
+                "toward_each_other_then_pass_by_object_then_second_runs": 5,
                 "toward_each_other_then_stop_near_marked_object": 10,
+                "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": 2,
                 "unsupported_action_described_action": 9,
             },
         )
@@ -268,6 +280,49 @@ class TestPatternLibrary(unittest.TestCase):
             beat = record["scene_graph"]["beats"][0]
             signatures.add(tuple(action["dialogue"] for action in beat["actions"]))
         self.assertGreaterEqual(len(signatures), 2)
+
+    def test_three_actor_ordinal_pattern_binds_all_ordinals(self) -> None:
+        record = generate_pattern_record(
+            "ordinal_first_second_third",
+            graph_seed=2401,
+            source_variant_key="base",
+        )
+        self.assertEqual(record["budgets"]["actor_count"], 3)
+        self.assertEqual(
+            record["scene_graph"]["reference_bindings"]["ordinal_map"],
+            {"first": "actor_1", "second": "actor_2", "third": "actor_3"},
+        )
+        actions = record["scene_graph"]["beats"][0]["actions"]
+        self.assertEqual([action["actor_id"] for action in actions], ["actor_1", "actor_2", "actor_3"])
+
+    def test_three_actor_marked_action_ends_with_actor_3_described_action(self) -> None:
+        record = generate_pattern_record(
+            "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action",
+            graph_seed=2402,
+            source_variant_key="base",
+        )
+        self.assertEqual(record["budgets"]["actor_count"], 3)
+        final_action = record["scene_graph"]["beats"][-1]["actions"][0]
+        self.assertEqual(final_action["actor_id"], "actor_3")
+        self.assertEqual(final_action["type"], "described_action")
+
+    def test_three_actor_handoff_gives_object_to_actor_3(self) -> None:
+        record = generate_pattern_record(
+            "dialogue_then_pick_up_object_then_give_to_third_actor",
+            graph_seed=2403,
+            source_variant_key="base",
+        )
+        self.assertEqual(record["budgets"]["actor_count"], 3)
+        final_action = record["scene_graph"]["beats"][-1]["actions"][0]
+        self.assertEqual(final_action["type"], "give")
+        self.assertEqual(final_action["target_id"], "actor_3")
+        self.assertEqual(final_action["holding_object"], "object_1")
+
+    def test_failure_coverage_report_has_no_gaps(self) -> None:
+        report = build_failure_coverage_report()
+        self.assertEqual(report["unknown_patterns"], [])
+        self.assertEqual(report["unknown_failures"], [])
+        self.assertEqual(report["uncovered_failures"], [])
 
 
 if __name__ == "__main__":

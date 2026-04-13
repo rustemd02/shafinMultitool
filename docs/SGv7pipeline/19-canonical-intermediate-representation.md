@@ -100,6 +100,7 @@ Machine-readable contract и проверки для `sg_v7_cir_v1`:
 
 Правило:
 - должен быть детерминированно вычислим из `pattern_name + source_variant_key + graph_seed + structural hash`
+- canonical CLI и validator обязаны проверять его как immutable contract field, а не пересобирать молча при drift
 
 `source_variant_key` — это обязательный deterministic label graph-экземпляра до paraphrase stage.
 
@@ -113,7 +114,7 @@ Machine-readable contract и проверки для `sg_v7_cir_v1`:
 Правила:
 - `source_variant_key` выбирается из фиксированного enum, а не придумывается свободным текстом
 - если record не является специальным stress-variant, используется `base`
-- `sample_id` рекомендуется сериализовать как `<pattern_name>__<source_variant_key>__s<graph_seed>__<short_hash>`
+- `sample_id` обязан сериализоваться как `<pattern_name>__<source_variant_key>__s<graph_seed>__<short_hash>`
 
 ### `source_variant_key: string`
 Явное top-level поле record-а, фиксирующее variant family до source/paraphrase stage.
@@ -460,6 +461,9 @@ Seed, которым был получен graph instance.
 - `type` только из runtime `SceneAction.ActionType`
 - `actor_id` обязан ссылаться на существующего actor
 - `target_id` обязан ссылаться на существующего actor/object, если указан
+- `pick_up`, `put_down`, `give` обязаны нести `holding_object`, который ссылается на существующий object
+- `put_down` обязан иметь `target_id`, указывающий на object/surface
+- `give` обязан иметь `target_id`, указывающий на actor
 - `direction` допустим только для `walk/run/approach/pass_by`
 - `modifier` допустим только для `walk/run/approach/pass_by/described_action`
 - `dialogue` допустим только для `talk`
@@ -496,7 +500,8 @@ Seed, которым был получен graph instance.
 {
   "ordinal_map": {
     "first": "actor_1",
-    "second": "actor_2"
+    "second": "actor_2",
+    "third": "actor_3"
   },
   "marked_object_ids": [
     "object_marked_a1b2c3d4"
@@ -515,7 +520,7 @@ Seed, которым был получен graph instance.
 - `alias_to_object_id`
 
 ### Rules
-- `first -> actor_1`, `second -> actor_2` детерминированы всегда
+- `first -> actor_1`, `second -> actor_2`, `third -> actor_3` детерминированы всегда, когда соответствующий actor существует
 - если marked objects нет, `marked_object_ids = []`
 - `alias_to_object_id` обязателен даже если пустой, чтобы не было implicit rules
 - same-type marked objects обязаны иметь disjoint alias coverage или явный ambiguity flag в `must_preserve`
@@ -571,6 +576,7 @@ Seed, которым был получен graph instance.
 ### 5. Ordinal mapping
 - `first -> actor_1`
 - `second -> actor_2`
+- `third -> actor_3`
 - без эвристик на этапе serializer
 
 ### 6. Marked object identity
@@ -1028,11 +1034,12 @@ Beat-level optional fields policy для `sg_v7_cir_v1`:
 2. Все runtime ids должны быть валидны и существовать до serializer stage.
 3. `reference_bindings.ordinal_map.first` всегда равен `actor_1`.
 4. `reference_bindings.ordinal_map.second` всегда равен `actor_2`, если `actor_2` существует.
-5. Любой marked object обязан иметь exact `object_marked_<SHORTID>` id.
-6. Same-type marked objects не могут различаться только по `type`.
-7. `BeatNode.phase` обязателен во внутреннем graph и обязателен для beat segmentation stability.
-8. `beats` не могут быть пустыми.
-9. `BeatNode.actions` не могут быть пустыми.
+5. `reference_bindings.ordinal_map.third` всегда равен `actor_3`, если `actor_3` существует.
+6. Любой marked object обязан иметь exact `object_marked_<SHORTID>` id.
+7. Same-type marked objects не могут различаться только по `type`.
+8. `BeatNode.phase` обязателен во внутреннем graph и обязателен для beat segmentation stability.
+9. `beats` не могут быть пустыми.
+10. `BeatNode.actions` не могут быть пустыми.
 10. Все `ActionNode.id` уникальны глобально в record, а не только внутри beat.
 11. `described_action` всегда содержит `canonical_text` и `fallback_text`.
 12. `talk` не содержит `described_action`; `described_action` не содержит `dialogue`.
@@ -1112,7 +1119,7 @@ Beat-level optional fields policy для `sg_v7_cir_v1`:
 1. Нужно ли в `CIR` хранить `camera` уже на graph stage, или для `SG v7 core` лучше оставить её почти всегда `null` и добавлять только в отдельных buckets?
 2. Должен ли `described_action.canonical_text` всегда быть инфинитивом/леммой, или лучше хранить surface-canonical form типа `начинает курить`?
 3. Нужен ли отдельный `ambiguity_flags` блок для cases с same-type marked objects, или достаточно `must_preserve`?
-4. Нужно ли разрешать `actor_3` в ordinal-sensitive patterns, или ordinal families лучше жёстко ограничить двумя актёрами?
+4. Какие pattern families должны первыми получить `actor_3`, если мы расширяем library за пределы двухакторного core?
 5. Стоит ли включать `spatial_relations` в `core` как норму, или использовать их только когда они критичны для object grounding?
 6. Нужен ли отдельный deterministic `graph_hash` уже на уровне `CIR`, или достаточно `sample_id` + stable serializer?
 7. Следует ли `mentioned_aliases` сделать обязательным для каждого marked object, даже если alias всего один?

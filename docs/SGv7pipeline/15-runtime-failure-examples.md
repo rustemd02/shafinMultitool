@@ -111,6 +111,42 @@ LLM выдаёт формально валидный, но semantically poor JSO
 - reject or merge poor LLM outputs
 - prioritize semantic completeness over minimal validity
 
+## Example 6. Three-Actor Ordinal Binding Loss
+
+### Source
+
+`Первый подходит к столу, второй смотрит на первого, третий остаётся у двери`
+
+### Failure Pattern
+
+- `actor_3` silently disappears from graph
+- `third` is not preserved as structural binding
+- scene degrades into a 2-actor ordinal pattern
+
+### What Good Output Should Preserve
+
+- 3 actors in final graph
+- explicit `first/second/third -> actor_1/actor_2/actor_3`
+- asymmetric roles without actor collapse
+
+## Example 7. Three-Actor Handoff Collapse
+
+### Source
+
+`Анна просит Бориса передать папку третьему, Борис берёт папку и передаёт её`
+
+### Failure Pattern
+
+- handoff collapses into dialogue-only scene
+- `pick_up -> give` chronology disappears
+- recipient binding to the third actor is lost
+
+### What Good Output Should Preserve
+
+- 3 actors
+- explicit handoff object continuity
+- final `give` target bound to `actor_3`
+
 ## How To Use This File
 
 Агентам можно давать этот файл:

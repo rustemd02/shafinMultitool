@@ -15,6 +15,7 @@
 Это canonical SG v7 entrypoint. Из него агентам важны:
 - deterministic `CIR -> SceneScript` projection path
 - validation boundary для `sg_v7_cir_v1`
+- fail-fast поведение на `sample_id` drift и contract mismatch
 - expected integration point для будущего graph-first dataset assembly
 
 - [generate_dataset_v6.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v6.py)

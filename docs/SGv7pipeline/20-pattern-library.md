@@ -23,6 +23,7 @@ Pattern library для `SG v7` не пытается покрыть "все во
 
 Executable implementation lives in:
 - [pattern_library/registry.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/pattern_library/registry.py)
+- [pattern_library/coverage.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/pattern_library/coverage.py)
 - [pattern_library/tests/test_pattern_library.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/pattern_library/tests/test_pattern_library.py)
 
 ## Design Principles
@@ -50,6 +51,7 @@ Canonical names ниже являются source-of-truth для:
 
 Canonical naming set:
 - `dialogue_only`
+- `dialogue_then_pick_up_object_then_give_to_third_actor`
 - `dialogue_then_put_down_object`
 - `dialogue_then_small_action`
 - `enter_then_put_down_object`
@@ -59,9 +61,11 @@ Canonical naming set:
 - `toward_each_other_then_stop_near_marked_object`
 - `toward_each_other_then_pass_by_marked_object`
 - `ordinal_first_second`
+- `ordinal_first_second_third`
 - `unsupported_action_described_action`
 - `stop_near_marked_object_then_first_described_action`
 - `toward_each_other_then_pass_by_object_then_second_runs`
+- `toward_each_other_then_stop_near_marked_object_then_third_actor_described_action`
 - `same_type_two_marked_objects`
 
 ## Registry Shape
@@ -111,6 +115,8 @@ Canonical naming set:
 - `open_object`
 - `pickup_object`
 - `putdown_object`
+- `give_object`
+- `third_actor_described_action`
 
 Generator обязан детерминированно маппить эти registry-level codes в `CIR`:
 - `dual_stop_near_marked_object` -> `stop_near_object`
@@ -161,8 +167,11 @@ Generator обязан детерминированно маппить эти re
 | Pattern | Family | Default share | Complexity | Beats | Main coverage |
 | --- | --- | ---: | --- | ---: | --- |
 | `stop_near_marked_object_then_first_described_action` | composed_marked_action | 7% | `M` | 3 | stop near object + ordinal binding + unsupported action preservation |
-| `toward_each_other_then_pass_by_object_then_second_runs` | role_shift_motion | 7% | `M` | 3 | role shift in final beat, no collapse to identical walks |
-| `same_type_two_marked_objects` | marker_disambiguation | 4% | `M` | 1-2 | exact id preservation for same-type markers |
+| `toward_each_other_then_pass_by_object_then_second_runs` | role_shift_motion | 5% | `M` | 3 | role shift in final beat, no collapse to identical walks |
+| `same_type_two_marked_objects` | marker_disambiguation | 2% | `M` | 1-2 | exact id preservation for same-type markers |
+| `ordinal_first_second_third` | three_actor_ordinal_binding | 2% | `L` | 1 | deterministic `first/second/third` binding without dropping actor_3 |
+| `toward_each_other_then_stop_near_marked_object_then_third_actor_described_action` | three_actor_marked_action | 2% | `L` | 3 | 3-actor marked-object scene with terminal described action on actor_3 |
+| `dialogue_then_pick_up_object_then_give_to_third_actor` | three_actor_handoff | 2% | `L` | 3 | three-actor object handoff with explicit `pick_up -> give` chronology |
 
 ## Target Distribution By Semantic Family
 
@@ -178,8 +187,11 @@ Generator обязан детерминированно маппить эти re
 | `ordinal_binding` | `ordinal_first_second` | 10% |
 | `unsupported_action` | `unsupported_action_described_action` | 9% |
 | `composed_marked_action` | `stop_near_marked_object_then_first_described_action` | 7% |
-| `role_shift_motion` | `toward_each_other_then_pass_by_object_then_second_runs` | 7% |
-| `marker_disambiguation` | `same_type_two_marked_objects` | 4% |
+| `role_shift_motion` | `toward_each_other_then_pass_by_object_then_second_runs` | 5% |
+| `marker_disambiguation` | `same_type_two_marked_objects` | 2% |
+| `three_actor_ordinal_binding` | `ordinal_first_second_third` | 2% |
+| `three_actor_marked_action` | `toward_each_other_then_stop_near_marked_object_then_third_actor_described_action` | 2% |
+| `three_actor_handoff` | `dialogue_then_pick_up_object_then_give_to_third_actor` | 2% |
 
 ## Variant Overlay Policy
 
@@ -416,11 +428,60 @@ Failure modes covered:
 - Example 4 from runtime failures
 - marker identity collapse for same-type objects
 
+### `ordinal_first_second_third`
+
+Canonical source:
+`Первый подходит к столу, второй смотрит на первого, третий остаётся у двери.`
+
+Required semantics:
+- explicit `first/second/third` binding
+- exactly 3 actors
+- asymmetric roles with no actor collapse
+- actor_3 must stay present in final graph and keep its anchor relation
+
+Failure modes covered:
+- Example 6 from runtime failures
+- actor_3 loss in ordinal-sensitive scenes
+- third-actor collapse into a 2-actor pattern
+
+### `toward_each_other_then_stop_near_marked_object_then_third_actor_described_action`
+
+Canonical source:
+`2 актёра идут навстречу друг другу, останавливаются у ноутбука, третий начинает курить.`
+
+Required semantics:
+- 3 beats: movement -> stop near object -> third actor described action
+- exact marked object grounding
+- explicit `third -> actor_3`
+- actor_3 must survive as a separate terminal-action owner
+
+Failure modes covered:
+- Example 1 from runtime failures in a 3-actor setting
+- Example 2 from runtime failures
+- Example 6 from runtime failures
+
+### `dialogue_then_pick_up_object_then_give_to_third_actor`
+
+Canonical source:
+`АННА: Передай папку третьему. БОРИС: Сейчас передам. Борис берёт папку и передаёт её третьему.`
+
+Required semantics:
+- 3 actors
+- 3 beats: dialogue -> pick_up -> give
+- explicit held-object continuity across beats
+- final recipient must be `actor_3`
+
+Failure modes covered:
+- Example 7 from runtime failures
+- dialogue collapse into talk-only output
+- loss of `pick_up -> give` chronology
+
 ## Coverage Matrix
 
 | Pattern | Covered runtime failures | Difficulty |
 | --- | --- | --- |
 | `dialogue_only` | acceptability drift, invented semantic filler | `core` |
+| `dialogue_then_pick_up_object_then_give_to_third_actor` | Example 7 handoff failure, third-actor recipient loss | `hard` |
 | `dialogue_then_put_down_object` | dialogue-to-object chronology loss, object placement collapse | `core` |
 | `dialogue_then_small_action` | chronology loss after dialogue, beat flattening | `core` |
 | `enter_then_put_down_object` | entry-stage flattening, held-object continuity loss | `core` |
@@ -430,9 +491,11 @@ Failure modes covered:
 | `toward_each_other_then_stop_near_marked_object` | beat collapse, marked object loss, morphology sensitivity | `core` |
 | `toward_each_other_then_pass_by_marked_object` | `pass_by` rewritten as generic motion, object grounding loss | `core` |
 | `ordinal_first_second` | ordinal confusion, actor swap | `core` |
+| `ordinal_first_second_third` | Example 6 third-actor ordinal failure | `hard` |
 | `unsupported_action_described_action` | unsupported action disappearance, fallback-to-talk | `core` |
 | `stop_near_marked_object_then_first_described_action` | Example 1 full stack failure | `hard` |
 | `toward_each_other_then_pass_by_object_then_second_runs` | Example 3 full stack failure | `hard` |
+| `toward_each_other_then_stop_near_marked_object_then_third_actor_described_action` | Example 1/2 in a 3-actor setting, third-actor collapse | `hard` |
 | `same_type_two_marked_objects` | Example 4 marker identity failure | `hard` |
 
 ## Cross-Pattern Anti-Collapse Policy
@@ -460,6 +523,7 @@ Example 5 from runtime failures не считается owning-responsibility о
 | Pattern | Actors | Object mode | Allowed variants | Beat blueprint | Deterministic action skeleton |
 | --- | ---: | --- | --- | --- | --- |
 | `dialogue_only` | 2 | `none` | `base`, `dialogue_mix` | `dialogue_exchange` | `beat_1`: `talk(actor_1->actor_2)` + `talk(actor_2->actor_1)` |
+| `dialogue_then_pick_up_object_then_give_to_third_actor` | 3 | `required_generic` | `base`, `dialogue_mix` | `dialogue_exchange`, `pickup_object`, `give_object` | `beat_1`: dialogue request/acknowledgement; `beat_2`: `pick_up(actor_2->item)`; `beat_3`: `give(actor_2->actor_3, holding_object=item)` |
 | `dialogue_then_put_down_object` | 2 | `required_generic` | `base`, `dialogue_mix` | `dialogue_exchange`, `putdown_object` | `beat_1`: one actor gives spoken instruction; `beat_2`: other actor `put_down(..., holding_object=item)` onto target surface |
 | `dialogue_then_small_action` | 2 | `none` | `base`, `dialogue_mix` | `dialogue_exchange`, `single_small_followup_action` | `beat_1`: dialogue pair; `beat_2`: one runtime action by one actor targeting the other actor |
 | `enter_then_put_down_object` | 1 | `required_generic` | `base` | `single_action`, `putdown_object` | `beat_1`: `enter(actor_1)`; `beat_2`: `put_down(actor_1->surface, holding_object=item)` |
@@ -468,20 +532,25 @@ Example 5 from runtime failures не считается owning-responsibility о
 | `toward_each_other_then_stop_near_marked_object` | 2 | `required_marked` | `base`, `ordinal_stress`, `morphology_stress` | `mutual_walk_toward_each_other`, `dual_stop_near_marked_object` | `beat_1`: symmetric walk; `beat_2`: `stop(actor_1->marked)` + `stop(actor_2->marked)` |
 | `toward_each_other_then_pass_by_marked_object` | 2 | `required_marked` | `base`, `ordinal_stress`, `morphology_stress` | `mutual_walk_toward_each_other`, `dual_pass_by_marked_object` | `beat_1`: symmetric walk; `beat_2`: `pass_by(actor_1->marked)` + `pass_by(actor_2->marked)` |
 | `ordinal_first_second` | 2 | `required_generic` | `base` | `ordinal_focus_action` | `beat_1`: primary action by `actor_1`; secondary reactive action by `actor_2`; `reference_bindings.ordinal_map` required |
+| `ordinal_first_second_third` | 3 | `required_generic` | `base` | `ordinal_focus_action` | `beat_1`: `approach(actor_1->object)`; `look_at(actor_2->actor_1)`; `stand(actor_3)` with explicit third-actor anchor |
 | `pick_up_then_put_down_object` | 1 | `required_generic` | `base` | `pickup_object`, `putdown_object` | `beat_1`: `pick_up(actor_1->item)`; `beat_2`: `put_down(actor_1->surface, holding_object=item)` |
 | `unsupported_action_described_action` | 1 | `required_generic` | `base` | `single_described_action` | `beat_1`: `described_action(actor_1->object_1)` with preserved source/fallback text |
 | `stop_near_marked_object_then_first_described_action` | 2 | `required_marked` | `base`, `morphology_stress` | `mutual_walk_toward_each_other`, `dual_stop_near_marked_object`, `first_actor_described_action` | `beat_1`: symmetric walk; `beat_2`: dual stop near marked object; `beat_3`: `described_action(actor_1)` |
 | `toward_each_other_then_pass_by_object_then_second_runs` | 2 | `required_marked` | `base`, `morphology_stress` | `mutual_walk_toward_each_other`, `dual_pass_by_marked_object`, `second_actor_runs` | `beat_1`: symmetric walk; `beat_2`: dual pass-by marked object; `beat_3`: `run(actor_2)` only |
+| `toward_each_other_then_stop_near_marked_object_then_third_actor_described_action` | 3 | `required_marked` | `base`, `morphology_stress` | `mutual_walk_toward_each_other`, `dual_stop_near_marked_object`, `third_actor_described_action` | `beat_1`: symmetric walk; `beat_2`: dual stop near marked object plus anchored actor_3; `beat_3`: `described_action(actor_3)` |
 | `same_type_two_marked_objects` | 2 | `required_same_type_marked_pair` | `same_type_marker_stress` | `same_type_marker_resolution` | `beat_1`: one actor targets exact marked object A or B; other actor stays/stands; exact marker id is mandatory |
 
 Дополнительные per-pattern invariants:
 - `dialogue_only`: objects array must stay empty in base build.
+- `dialogue_then_pick_up_object_then_give_to_third_actor`: final beat must target `actor_3` and preserve the same held object from beat 2.
 - `dialogue_then_put_down_object`: final beat must target a surface object and carry `holding_object`.
 - `dialogue_then_small_action`: second beat cannot introduce marked objects.
 - `enter_then_put_down_object`: `enter` cannot be merged into `approach`.
 - `open_then_pick_up_object`: picked object must remain linked to the opened container.
 - `ordinal_first_second`: exactly two actors, and both ordinals must be recoverable from source.
+- `ordinal_first_second_third`: all three ordinals must be structurally recoverable and actor_3 must not disappear.
 - `pick_up_then_put_down_object`: beat 2 must reuse the same held object from beat 1.
+- `toward_each_other_then_stop_near_marked_object_then_third_actor_described_action`: final beat owner must be `actor_3`, not actor_1/actor_2.
 - `unsupported_action_described_action`: no `actor_2`, no ordinal tokens, no dialogue.
 - `same_type_two_marked_objects`: exactly two marked objects of one runtime type and two distinct ids.
 
@@ -500,11 +569,12 @@ Example 5 from runtime failures не считается owning-responsibility о
 
 Минимальный handoff для `Track 3`:
 
-1. Завести registry с 14 pattern entries из этого документа.
+1. Завести registry с 17 pattern entries из этого документа.
 2. Для каждого pattern описать seedable enumerator, который возвращает deterministic `CIR-ready` blueprint.
 3. Реализовать overlay application layer для `ordinal_stress`, `morphology_stress` и `dialogue_mix`.
 4. Ввести distribution config, где pattern weights и overlay weights живут отдельно.
 5. Добавить smoke fixtures по одному canonical sample на каждый pattern.
+6. Добавить executable coverage report, который подтверждает ownership всех critical runtime failures.
 
 ## Test Plan For Future Implementation
 

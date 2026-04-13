@@ -61,6 +61,7 @@ Contract не покрывает:
 Для `SG v7` executable projection layer тоже должен существовать как код, а не только как prose.
 Текущая canonical точка входа: [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py).
 Serializer source of truth: [cir_serializer.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/cir_contract/contracts/cir_serializer.py).
+`generate_dataset_v7.py` не является repair-layer: если `sample_id` или contract drift уже произошёл, entrypoint должен завершаться ошибкой.
 
 Если эти артефакты физически лежат в разных файлах, они всё равно считаются одним логическим contract.
 
