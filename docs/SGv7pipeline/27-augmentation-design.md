@@ -132,6 +132,7 @@ Track 4 обязан persist-ить для каждого base variant:
 Следствие:
 - `04_noise_and_morphology.py` работает по одному входному JSONL и не делает дополнительный join с CIR
 - если позже появится richer slot metadata, это будет расширение того же persisted блока, а не новая обязательная интеграция
+- Track 6 later резолвит authoritative `cir_record` отдельно через Track 3 `CIR` JSONL по immutable `sample_id`; augmentation этот join не выполняет и не подменяет
 
 ## Output Contract
 
@@ -183,6 +184,7 @@ Augmentation пишет отдельный JSONL с accepted augmented variants 
 - transform metadata обязана сохранять порядок применения
 - rejected candidates не пишутся в основной JSONL
 - augmented sample не должен скрывать origin через перезапись `parent_variant_id`
+- augmentation не имеет права переписывать `sample_id`, потому что это canonical join key для downstream Track 6 validation against Track 3 CIR
 
 ## Variant Planning Policy
 

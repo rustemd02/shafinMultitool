@@ -177,6 +177,8 @@ CIR graph record
 - `marked_objects` с `id`, `canonical_name`, `allowed_aliases`
 - `must_keep_lemmas`
 - `same_type_marker_conflict`
+- Track 6 обязан валидировать эти variants вместе с authoritative Track 3 `CIR` JSONL, используя immutable join key `sample_id`
+- Track 4 не имеет права переписывать `sample_id` и не должен reconstruct-ить `cir_record` downstream-слоям эвристически
 
 ## Рекомендуемая структура модулей
 

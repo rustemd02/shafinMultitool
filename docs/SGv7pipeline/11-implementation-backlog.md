@@ -102,6 +102,12 @@ Design artifact:
 Done definition:
 - каждый sample получает pass/fail + reasons
 
+Design artifact:
+- [30-validator-stack-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/30-validator-stack-design.md)
+
+Executable artifact:
+- [validators/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/validators)
+
 ## Track 7. Dataset Builder
 
 Задачи:

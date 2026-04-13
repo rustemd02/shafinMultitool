@@ -258,6 +258,34 @@
 
 - **Крупный новый модуль**: `shafinMultitool/Multitool2Module/`
   - **Models**: CoreML-обёртки (`DETRDetector`, `AestheticScorer`) + Vision/Lighting компоненты;
+
+## [2026-04-13 19:56] - Prompt 5 и Prompt 6 в SG v7: controlled augmentation и deterministic validator stack
+
+### Суть изменений
+- Для `Prompt 5` оформлен и интегрирован design-слой morphology/noise augmentation: зафиксированы transform classes, output contract, provenance boundary и жёсткий handoff в downstream validator без подмены canonical `sample_id`.
+- Для `Prompt 6` создан design-документ validator stack и реализован исполнимый пакет `validators/` с CLI `03_semantic_critic.py` и `05_validate_and_pack.py`.
+- В Track 6 реализованы детерминированные слои проверки: contract/schema/runtime projection, graph consistency, anchor preservation, semantic critic, recoverability scoring и packaging в `accepted/review/rejected`.
+- Исправлены найденные на review архитектурные противоречия: authoritative CIR join переведён на immutable `sample_id`, persisted critic artifact закреплён как источник scoring, а OpenAI critic path переведён в strict JSON schema + fail-closed reject policy.
+- Добавлены unit/smoke tests на provenance, accept/reject/review flows, malformed critic payload, taxonomy validation и CLI сценарии; validator suite проходит локально без сетевой зависимости.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для обучения компактной LLM на русскоязычном scene-to-structure mapping недостаточно только генерировать surface variants. Требуется контролируемое внесение шумов и морфологических сдвигов, но без разрушения canonical semantics, а затем воспроизводимый validation stack, который способен отделить recoverable variation от semantic drift. Без такой схемы датасет становится нестабильным: одни и те же примеры могут по-разному попадать в train/reject при повторных прогонах, а augmentation начинает незаметно подменять provenance и graph identity.
+- **Решение:** Архитектура SG v7 расширена двумя согласованными этапами. `Prompt 5` формализует augmentation как отдельный bounded layer с transform metadata, risk flags и запретом на переписывание `sample_id`, чтобы downstream join с authoritative CIR оставался однозначным. `Prompt 6` добавляет многослойный validator stack: deterministic checks отсекают грубые контрактные и graph-level ошибки, semantic critic покрывает сложные случаи surface drift, а recoverability scoring переводит решение в явную политику `accepted / manual_review / rejected` с persisted audit trail.
+- **Детали:** В реализации Track 6 score вычисляется по фиксированным компонентам `anchor_recall + chronology + unsupported_action + target_integrity + compression_budget`, где критические semantic booleans читаются только из persisted critic artifact с frozen execution params (`temperature=0`, `top_p=1`, `max_output_tokens=300`). Для OpenAI critic зафиксирован strict JSON schema contract, а malformed payload не приводит к silent acceptance, а переводится в `contract_invalid_critic_payload`. Это важно для диссертационной главы "Реализация", поскольку показывает не просто использование LLM как black box, а построение воспроизводимого hybrid pipeline с формализованной семантической валидацией, explicit provenance policy и fail-closed гарантиями.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/27-augmentation-design.md` (design-спецификация Prompt 5 и handoff boundary augmentation -> validator stack)
+- `docs/SGv7pipeline/30-validator-stack-design.md` (design-спецификация Prompt 6)
+- `docs/SGv7pipeline/validators/05_validate_and_pack.py` (основной CLI Track 6 для packaging и verdict policy)
+- `docs/SGv7pipeline/validators/03_semantic_critic.py` (CLI semantic critic artifact generation)
+- `docs/SGv7pipeline/validators/packaging.py` (authoritative CIR join, layered validation, accepted/review/rejected routing)
+- `docs/SGv7pipeline/validators/semantic_critic.py` (heuristic/OpenAI critic backend, strict JSON schema, persisted artifact reuse)
+- `docs/SGv7pipeline/validators/recoverability.py` (детерминированный recoverability rubric)
+- `docs/SGv7pipeline/validators/taxonomy.py` (canonical reject/review taxonomy)
+- `docs/SGv7pipeline/validators/tests/test_validate_and_pack_cli.py` (end-to-end validator smoke/reject/review tests)
+- `docs/SGv7pipeline/validators/tests/test_semantic_critic.py` (regression tests для critic payload contract)
+
+---
   - **Services/Pipeline**: `AnalysisPipeline`, `RealtimeScheduler`, `ThermalGovernor`;
   - **Services/Suggestion**: `SuggestionEngine`, `PrioritySelector`;
   - **UI/Overlay**: SwiftUI-оверлеи (сетка/рамки/чип/список/зум/дебаг).
