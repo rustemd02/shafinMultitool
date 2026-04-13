@@ -88,6 +88,9 @@ Done definition:
 - есть отдельный augmenter
 - transformations traceable metadata
 
+Design artifact:
+- [27-augmentation-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/27-augmentation-design.md)
+
 ## Track 6. Validators
 
 Задачи:

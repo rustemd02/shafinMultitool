@@ -145,6 +145,21 @@ CIR graph record
   "acceptance": {
     "lexical_checks_passed": true,
     "needs_semantic_critic": true
+  },
+  "graph_constraints": {
+    "ordinal_bindings": {
+      "first": "actor_1",
+      "second": "actor_2"
+    },
+    "marked_objects": [
+      {
+        "id": "object_marked_ab12",
+        "canonical_name": "комп",
+        "allowed_aliases": ["комп", "компа", "компу"]
+      }
+    ],
+    "must_keep_lemmas": ["курить"],
+    "same_type_marker_conflict": false
   }
 }
 ```
@@ -156,6 +171,12 @@ CIR graph record
 - `source_text` не должен содержать служебные маркеры prompt-а
 - `style_bucket` обязателен и не выводится эвристически downstream-слоями
 - persisted `source_text` хранится уже в train-ready normalized form по policy из раздела `Source Text Normalization Policy`
+- Track 4 обязан persist-ить минимальный `graph_constraints` block для Track 5; augmentation не должен восстанавливать эти поля эвристически из CIR или из свободного текста
+- минимальный `graph_constraints` block обязан включать:
+- `ordinal_bindings`
+- `marked_objects` с `id`, `canonical_name`, `allowed_aliases`
+- `must_keep_lemmas`
+- `same_type_marker_conflict`
 
 ## Рекомендуемая структура модулей
 
