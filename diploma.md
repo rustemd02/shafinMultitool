@@ -101,6 +101,36 @@
 
 ---
 
+## 2026-04-13 18:02 - Завершение Prompt 3 и Prompt 4 в SG v7: от deterministic graph generation к source paraphrase generation
+
+### Суть изменений
+- Для `Prompt 3` зафиксирован и интегрирован исполнимый слой deterministic graph generation: `graph_generator` строит воспроизводимые `CIR`-records из canonical pattern library, применяет seed-driven planning, validation, dedup и формирует JSONL-артефакты, пригодные для следующего этапа пайплайна без ручной донастройки.
+- Для `Prompt 4` спроектирован и реализован отдельный `source_generation` слой, который принимает graph records и генерирует несколько surface-variants (`clean`, `colloquial`, `user_short`) через формализованный prompt contract, style policy, cheap reject filters и traceable metadata.
+- В `Prompt 4` проведён полный цикл `design -> design verify -> implement -> implement verify`: сначала оформлен design-документ, затем найдены и исправлены противоречия по ownership Track 4/Track 5, semantic reject boundary, same-type marked object disambiguation и normalization policy.
+- Реализация `Prompt 4` поддерживает два backend-режима: `openai` для production paraphrasing и `heuristic` для офлайн smoke/unit tests, что позволяет проверять пайплайн локально без сетевой зависимости.
+- После implement verify устранены две критичные логические неточности: ordinal anchors стали условными, а не обязательными всегда, и в smoke suite добавлен morphology-stress case для marked object surface recovery.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для обучения локальной SLM недостаточно просто иметь корректный `CIR`. Нужен двухступенчатый воспроизводимый pipeline, в котором сначала строится детерминированная scene-структура, а затем поверх неё генерируются реалистичные текстовые surface-формы без semantic drift. Без такого разделения модель либо переобучается на слишком канонические графы, либо получает шумный source-text, теряющий ordinal binding, marked object grounding и chronology.
+- **Решение:** Архитектура SG v7 разделена на два независимых, но согласованных слоя. `Prompt 3` отвечает за deterministic graph synthesis и тем самым стабилизирует семантический каркас обучающего примера. `Prompt 4` добавляет controlled paraphrase generation с жёстким prompt payload, cheap lexical validation, explicit handoff к semantic critic и нормализованной записью accepted/rejected variants. Такое разбиение уменьшает связность компонентов и делает ошибки наблюдаемыми на конкретном этапе пайплайна.
+- **Детали:** В `Prompt 4` реализованы `required_aliases`, conditional `required_ordinal_tokens`, `same_type_disambiguation_block`, dedup-normalization и persisted-normalization, а также metadata-поля для audit trail (`prompt_template_version`, `source_policy_version`, `needs_semantic_critic`). Практически это означает, что source generator не пытается сам решать полную semantic validity, а ограничивается дешёвыми fail-fast проверками перед передачей результата в downstream critics. В совокупности с deterministic seed behavior из `Prompt 3` это формирует воспроизводимый training pipeline, пригодный для controlled SFT-подготовки.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/graph_generator/01_build_pattern_graphs.py` (CLI deterministic graph generator для Prompt 3)
+- `docs/SGv7pipeline/graph_generator/planner.py` (seed-driven planning и pattern quotas)
+- `docs/SGv7pipeline/graph_generator/dedup.py` (graph fingerprinting и дедупликация канонических графов)
+- `docs/SGv7pipeline/21-graph-generator-design.md` (design-спецификация Prompt 3)
+- `docs/SGv7pipeline/source_generation/02_generate_source_variants.py` (CLI source paraphrase generator для Prompt 4)
+- `docs/SGv7pipeline/source_generation/prompt_builder.py` (prompt payload, conditional ordinals, disambiguation logic)
+- `docs/SGv7pipeline/source_generation/batcher.py` (batch orchestration, backend abstraction, accept/reject flow)
+- `docs/SGv7pipeline/source_generation/filters.py` (cheap reject checks, normalization, duplicate control)
+- `docs/SGv7pipeline/source_generation/tests/test_source_generator_cli.py` (smoke tests, morphology-stress и named-dialogue coverage)
+- `docs/SGv7pipeline/22-source-generation-design.md` (design-спецификация Prompt 4)
+- `docs/SGv7pipeline/24-source-generation-design-verify.md` (design verify Prompt 4)
+- `docs/SGv7pipeline/26-source-generation-implement-verify-final.md` (финальный implement verify Prompt 4)
+
+---
+
 ### NLU-препроцессор: синтаксический разбор предложений через NLTagger
 
 **Концепция**: Перед извлечением сущностей (актёров, объектов, действий) добавить этап синтаксического и морфологического разбора предложения через Apple NLTagger, чтобы парсер понимал структуру предложения, а не просто искал ключевые слова.
@@ -632,18 +662,18 @@
 
 ---
 
-## 2026-04-13 00:00 — Усиление SG v7: строгий CIR-контракт, 3 актёра и покрытие критических отказов
+## 2026-04-13 00:00 — Итог Prompt 1 и Prompt 2 в SG v7
 
 ### Суть изменений
-- Для `SG v7` формализован канонический `CIR`-контракт с жёсткой проверкой `sample_id`, чтобы entrypoint генерации перестал silently repair-ить структурные ошибки и начал работать как integrity gate.
-- Контракт расширен до трёх актёров, а pattern library получила реальные `3-actor` canonical families вместо только вспомогательной поддержки ordinals на уровне типов.
-- Для pattern library добавлен исполнимый coverage report по критическим runtime-failure классам, чтобы `implement verify` мог проверять не только синтаксис, но и семантическое покрытие ключевых ошибок.
-- Документация пайплайна синхронизирована с кодом, чтобы следующие агенты работали от одного источника правды и не расходились по контракту, библиотеке паттернов и правилам валидации.
+- **Prompt 1 завершён как `CIR`-контрактный слой.** Для генерации датасета введён канонический `CIR` с жёсткой проверкой `sample_id`, поддержкой трёх актёров и fail-fast поведением на структурный drift. Это означает, что entrypoint больше не чинит ошибки скрытно, а действует как integrity gate для canonical artifacts.
+- **Prompt 2 завершён как pattern library слой.** В `registry.py` сформирована рабочая библиотека canonical graph patterns для синтетической генерации: базовые одно- и двухактёрные семейства дополнены реальными `3-actor` сценами, включая ordinal binding, передачу предмета и многошаговые сцены с marked object.
+- Для `Prompt 2` добавлен исполнимый coverage report по критическим runtime-failure классам, чтобы библиотека покрывала не только синтаксис, но и основные семантические провалы рантайма: потерю marked object, collapse of motion semantics, ordinal mismatch и three-actor handoff loss.
+- Документация пайплайна синхронизирована с кодом, чтобы `design`, `implement` и `verify` для этих двух промптов опирались на один и тот же контракт, схему, registry и набор тестов.
 
 ### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** При обучении компактной локальной модели основная сложность заключалась не только в генерации корректного JSON, но и в предотвращении тихого дрейфа структуры данных между этапами генерации, валидации и обучения. Дополнительно обнаружилась нехватка покрытия для многoактёрных и object-centric сцен, из-за чего модель могла усваивать узкий набор шаблонов вместо устойчивого семантического парсинга.
-- **Решение:** Введён строгий canonical intermediate representation с fail-fast policy, а pattern library переведена из набора отдельных эвристик в управляемую библиотеку канонических графов с формальным распределением весов и отчётом о покрытии критических отказов. Это позволило связать подготовку датасета с требованиями runtime-парсера и убрать разрыв между обучающим и рабочим контурами.
-- **Детали:** Добавлены 3-акторные паттерны с явным ordinal binding (`first/second/third`), объектно-ориентированные сцены передачи предмета и отдельный coverage audit, который фиксирует ownership между паттернами и классами runtime-ошибок. Такой подход повышает воспроизводимость датасета и снижает риск обучения модели на semantically false examples.
+- **Проблема:** Для локальной модели малого размера критичны два источника ошибки: неконсистентный структурный контракт между этапами подготовки данных и узкое покрытие канонических сцен. Если contract и pattern library расходятся, модель обучается на шуме: формально корректный JSON не гарантирует правильную семантику scene graph.
+- **Решение:** `Prompt 1` зафиксировал структурную сторону задачи через canonical `CIR`, а `Prompt 2` перевёл смысловую часть в управляемую библиотеку канонических паттернов с весами, версиями и coverage ownership. В совокупности это уменьшает риск тихих ошибок при fine-tuning и создаёт воспроизводимый pipeline для локальной SLM.
+- **Детали:** Отдельно формализованы `actor_3`/`third`-сценарии, object-centric handoff patterns и отчёт о критических отказах. Такой разделённый дизайн позволяет масштабировать dataset generation без смешивания ролей: `Prompt 1` отвечает за корректность структуры, `Prompt 2` за богатство и покрытие семантических классов сцен.
 
 ### Ключевые файлы
 - `generate_dataset_v7.py` (`build_scene_script`, fail-fast validation)

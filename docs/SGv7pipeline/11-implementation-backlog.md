@@ -71,6 +71,12 @@ Executable artifact:
 Done definition:
 - на один graph генерируется несколько source variants
 
+Design artifact:
+- [22-source-generation-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/22-source-generation-design.md)
+
+Executable artifact:
+- [source_generation/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/source_generation)
+
 ## Track 5. Augmentation
 
 Задачи:
