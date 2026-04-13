@@ -15,6 +15,8 @@ from cir_contract.contracts import expected_sample_id
 from cir_contract.contracts.cir_types import CIRRecord, SourceVariantKey
 
 
+PATTERN_REGISTRY_VERSION = "sg_v7_pattern_library_v1"
+
 DifficultyBucket = Literal["core", "hard"]
 ComplexityClass = Literal["S", "M", "L"]
 ObjectMode = Literal["none", "required_generic", "optional_generic", "required_marked", "required_same_type_marked_pair"]
@@ -308,7 +310,8 @@ def _top_level_record(
             "beat_optional_policy": "preserve_if_present_else_omit",
         },
         "internal_metadata": {
-            "generator_name": "sg_v7_pattern_library_v1",
+            "generator_name": PATTERN_REGISTRY_VERSION,
+            "generator_version": PATTERN_REGISTRY_VERSION,
             "pattern_family": pattern_family,
             "registry_beat_blueprint": list(beat_blueprint),
             "canonical_source_template": canonical_source_template,

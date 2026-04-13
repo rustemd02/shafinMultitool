@@ -88,7 +88,7 @@ Core graphs:
 - actors <= 3
 - objects <= 2
 - beats <= 3
-- actions <= 6
+- actions <= 5
 
 Hard graphs:
 - beats = 4 допустимо редко
@@ -97,13 +97,17 @@ Hard graphs:
 ## Что должен выдавать graph generator
 
 Каждая запись:
+- валидный `CIR` record, сериализуемый как одна JSONL-строка
 - `pattern_name`
 - `difficulty_bucket`
 - `complexity_class`
 - `graph_seed`
 - `scene_graph`
 - `semantic_tags`
-- `marked_object_spec`
+
+`marked_object_spec` как отдельное top-level поле больше не нужен:
+- marked object metadata живёт в `scene_graph.objects[*].marker_binding`
+- exact bindings живут в `scene_graph.reference_bindings`
 
 ## Complexity Classes
 
@@ -145,3 +149,6 @@ Hard graphs:
 Статус:
 - canonical graph schema закрыта в [19-canonical-intermediate-representation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/19-canonical-intermediate-representation.md)
 - pattern library закрыта в [20-pattern-library.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/20-pattern-library.md)
+- implementation design для deterministic graph generator закрыт в [21-graph-generator-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/21-graph-generator-design.md)
+- executable implementation lives in [graph_generator/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/graph_generator)
+- CLI entrypoint lives in [01_build_pattern_graphs.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/graph_generator/01_build_pattern_graphs.py)

@@ -55,6 +55,12 @@ Design artifact:
 Done definition:
 - генератор выдаёт валидные graph records
 
+Design artifact:
+- [21-graph-generator-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/21-graph-generator-design.md)
+
+Executable artifact:
+- [graph_generator/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/graph_generator)
+
 ## Track 4. Source Generator
 
 Задачи:
