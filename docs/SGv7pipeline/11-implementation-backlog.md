@@ -122,6 +122,9 @@ Done definition:
 - готовые `train/val/test` JSONL
 - у каждого sample понятен provenance и budget profile
 
+Design artifact:
+- [31-dataset-assembly-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/31-dataset-assembly-design.md)
+
 ## Track 8. Training Harness
 
 Задачи:
