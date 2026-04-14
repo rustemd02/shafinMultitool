@@ -136,6 +136,12 @@ Design artifact:
 Done definition:
 - можно воспроизводимо прогнать `phase1 -> phase2 -> phase3`
 
+Design artifact:
+- [32-training-strategy-playbook.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/32-training-strategy-playbook.md)
+
+Executable artifact:
+- [training/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/training)
+
 ## Track 9. Eval Harness
 
 Задачи:

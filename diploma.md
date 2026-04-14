@@ -101,6 +101,57 @@
 
 ---
 
+## [2026-04-14 16:40] - [Prompt 7: Детерминированная сборка датасета SG v7 с family-level holdout и leakage-контролем]
+
+### Суть изменений
+- Реализован исполнимый модуль `dataset_builder` для сборки `sft_train/val/test` и `preference_train/val/test` из canonical artifacts с единым контрактом версии.
+- Добавлен CLI `06_build_dataset_splits.py` для воспроизводимой сборки сплитов по фиксированному `seed` и параметрам ratio для SFT/preference.
+- Внедрены family-aware split policies: assignment на уровне `split_family_id`, а не отдельной строки, чтобы исключить утечки near-duplicate семейств между train/held-out.
+- Реализована детерминированная сборка preference pairs с canonical join к CIR, карантином ambiguous anchors и блокировкой пересечения с held-out SFT-семействами.
+- Материализуются контрольные артефакты `split_manifest.json`, `preference_manifest.json`, `leakage_report.json` с полными счётчиками, причинами дропов/карантина и проверками целостности.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для SLM-дообучения критичен контроль утечек между сплитами и задачами. При row-level random split без family-ограничений валидация становится завышенной: модель видит почти те же граф-семейства в train и held-out, а полученные метрики перестают отражать реальную обобщающую способность.
+- **Решение:** Построен детерминированный split-builder, который опирается на `split_family_id`, `graph_family_key` и `normalized_source_hash`, а также использует policy-level запреты пересечений между SFT held-out и preference-корпусом. Дополнительно реализован fail-closed leakage report, который останавливает пайплайн при обнаружении пересечений.
+- **Детали:** Для preference-кандидатов используется `deterministic_canonical_family_join_v1` через `sample_id/graph_hash/family_anchor`; неразрешимые или конфликтующие случаи уходят в quarantine вместо silent acceptance. Система отчётности фиксирует распределения по `difficulty_bucket`, `correction_tier`, `critical_eval_tags`, причины ingest/dedup drop и статус покрытия `preference_test`, что делает сборку датасета воспроизводимой и проверяемой в экспериментальном цикле.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/dataset_builder/06_build_dataset_splits.py` (CLI сборки сплитов и manifests)
+- `docs/SGv7pipeline/dataset_builder/__init__.py` (оркестрация полного build flow)
+- `docs/SGv7pipeline/dataset_builder/splitter.py` (family-level deterministic split assignment)
+- `docs/SGv7pipeline/dataset_builder/preference.py` (canonical join и quarantine policy для preference pairs)
+- `docs/SGv7pipeline/dataset_builder/manifest.py` (split/preference/leakage manifests + enforcement)
+- `docs/SGv7pipeline/dataset_builder/tests/test_dataset_cli.py` (e2e smoke для CLI)
+- `docs/SGv7pipeline/dataset_builder/tests/test_dataset_splitter.py` (инварианты split policy)
+
+---
+
+## [2026-04-14 16:41] - [Prompt 8: Реализация training harness SG v7 с фазовыми view, compare-gates и registry]
+
+### Суть изменений
+- Реализован пакет `training` с фазовым materialization для `phase1/phase2/phase3/phase4`, включая mix policies, budget caps и phase-specific manifests.
+- Добавлены CLI-инструменты: `08_build_phase_view.py`, `09_compare_checkpoints.py`, `10_register_experiment.py` для воспроизводимого цикла `phase view -> compare -> registry`.
+- Реализован compare runner с жёсткими gate-правилами: explicit baseline для `phase3/phase4`, sequential two-pass stability для Phase 3, length-collapse proxy (`average_target_length`) и preference gain gate для Phase 4.
+- Введён полный контракт compare-артефактов: `checkpoint_table.json`, `checkpoint_compare.md`, `bucket_deltas.json`, `promotion_decision.md`, а для Phase 4 — `preference_eval.json`.
+- Добавлены phase configs и unit tests, покрывающие positive/negative-path сценарии для gate-логики и воспроизводимости experiment notes.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** На модели класса 1.5B training-loop чувствителен к noisy promotion policy: если baseline плавает, критерии выхода из фазы трактуются неоднозначно или отсутствуют stability guards, то экспериментальная матрица перестаёт быть сопоставимой, а улучшения по quality-метрикам оказываются статистическим шумом.
+- **Решение:** Построен воспроизводимый training harness с формализованными фазами и строгими compare-gates. Ключевые решения: frozen reference checkpoint на фазу, последовательная проверка независимых compare passes, fail-closed отклонение на regressions и machine-readable artifacts для аудита каждого promotion решения.
+- **Детали:** Для Phase 3 реализован детерминированный счётчик `consecutive_positive_passes` только по независимым compare-событиям; duplicate events по одному `global_step` исключаются из streak. Для Phase 4 winner selection дополнительно ограничен `phase4_min_preference_win_rate_gain_pp` на `val/test`, а tie-break включает length growth penalty, чтобы снижать риск minimal-valid collapse при формально стабильной валидации.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/training/08_build_phase_view.py` (CLI materialization phase views)
+- `docs/SGv7pipeline/training/09_compare_checkpoints.py` (CLI compare и promotion artifacts)
+- `docs/SGv7pipeline/training/10_register_experiment.py` (CLI reproducible experiment notes)
+- `docs/SGv7pipeline/training/phase_view.py` (pooling/caps policy и phase manifests)
+- `docs/SGv7pipeline/training/checkpoint_compare.py` (gate logic, stability policy, artifact materialization)
+- `docs/SGv7pipeline/training/experiment_registry.py` (registry contract для experiment matrix)
+- `docs/SGv7pipeline/training/tests/test_checkpoint_compare.py` (negative/positive-path проверки compare gates)
+- `docs/SGv7pipeline/training/tests/test_phase_view.py` (инварианты phase view caps и pool accounting)
+
+---
+
 ## 2026-04-13 18:02 - Завершение Prompt 3 и Prompt 4 в SG v7: от deterministic graph generation к source paraphrase generation
 
 ### Суть изменений

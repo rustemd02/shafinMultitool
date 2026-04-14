@@ -1,0 +1,14 @@
+{
+  "phase": "phase1_core_bootstrap",
+  "task_type": "sft",
+  "pool_ratios": {
+    "core_anchor": 1.0
+  },
+  "pool_multipliers": {
+    "core_anchor": 1.0
+  },
+  "max_l_sample_ratio": 0.0,
+  "max_l_token_ratio": 0.0,
+  "max_full_sequence_tokens": 420
+}
+

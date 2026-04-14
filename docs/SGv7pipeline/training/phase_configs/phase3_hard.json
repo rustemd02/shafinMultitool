@@ -1,0 +1,24 @@
+{
+  "phase": "phase3_hard_consolidation",
+  "task_type": "sft",
+  "pool_ratios": {
+    "core_anchor": 0.45,
+    "hard_synthetic": 0.45,
+    "real_corrected_strict": 0.08,
+    "reviewed_merge_hard": 0.02
+  },
+  "pool_multipliers": {
+    "core_anchor": 1.0,
+    "hard_synthetic": 2.0,
+    "real_corrected_strict": 1.5,
+    "reviewed_merge_hard": 1.0
+  },
+  "max_l_sample_ratio": 0.15,
+  "max_l_token_ratio": 0.15,
+  "max_reviewed_merge_hard_ratio_by_samples": 0.05,
+  "max_reviewed_merge_hard_ratio_by_tokens": 0.05,
+  "max_reviewed_merge_total_ratio_by_samples": 0.02,
+  "phase3_eval_interval_steps": 1000,
+  "phase3_positive_bucket_improvement_pp": 0.3
+}
+

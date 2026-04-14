@@ -1,0 +1,15 @@
+{
+  "phase": "phase4_preference",
+  "task_type": "preference",
+  "pool_ratios": {
+    "preference": 1.0
+  },
+  "pool_multipliers": {
+    "preference": 1.0
+  },
+  "phase4_min_preference_train": 1000,
+  "phase4_min_preference_val": 100,
+  "phase4_min_preference_test": 100,
+  "phase4_min_preference_win_rate_gain_pp": 3.0
+}
+

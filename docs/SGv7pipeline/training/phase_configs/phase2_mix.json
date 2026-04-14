@@ -1,0 +1,18 @@
+{
+  "phase": "phase2_mixed_sft",
+  "task_type": "sft",
+  "pool_ratios": {
+    "core_anchor": 0.7,
+    "hard_synthetic": 0.25,
+    "real_corrected_strict": 0.05
+  },
+  "pool_multipliers": {
+    "core_anchor": 1.0,
+    "hard_synthetic": 1.6,
+    "real_corrected_strict": 1.5
+  },
+  "max_l_sample_ratio": 0.15,
+  "max_l_token_ratio": 0.15,
+  "max_full_sequence_tokens": 560
+}
+
