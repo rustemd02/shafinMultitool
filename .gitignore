@@ -3,5 +3,6 @@ llama.cpp/
 
 # Large GGUF model files (should be downloaded separately)
 *.gguf
+/models
 /.derivedData
 *.pyc
