@@ -101,87 +101,6 @@
 
 ---
 
-## [2026-04-14 16:40] - [Prompt 7: Детерминированная сборка датасета SG v7 с family-level holdout и leakage-контролем]
-
-### Суть изменений
-- Реализован исполнимый модуль `dataset_builder` для сборки `sft_train/val/test` и `preference_train/val/test` из canonical artifacts с единым контрактом версии.
-- Добавлен CLI `06_build_dataset_splits.py` для воспроизводимой сборки сплитов по фиксированному `seed` и параметрам ratio для SFT/preference.
-- Внедрены family-aware split policies: assignment на уровне `split_family_id`, а не отдельной строки, чтобы исключить утечки near-duplicate семейств между train/held-out.
-- Реализована детерминированная сборка preference pairs с canonical join к CIR, карантином ambiguous anchors и блокировкой пересечения с held-out SFT-семействами.
-- Материализуются контрольные артефакты `split_manifest.json`, `preference_manifest.json`, `leakage_report.json` с полными счётчиками, причинами дропов/карантина и проверками целостности.
-
-### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** Для SLM-дообучения критичен контроль утечек между сплитами и задачами. При row-level random split без family-ограничений валидация становится завышенной: модель видит почти те же граф-семейства в train и held-out, а полученные метрики перестают отражать реальную обобщающую способность.
-- **Решение:** Построен детерминированный split-builder, который опирается на `split_family_id`, `graph_family_key` и `normalized_source_hash`, а также использует policy-level запреты пересечений между SFT held-out и preference-корпусом. Дополнительно реализован fail-closed leakage report, который останавливает пайплайн при обнаружении пересечений.
-- **Детали:** Для preference-кандидатов используется `deterministic_canonical_family_join_v1` через `sample_id/graph_hash/family_anchor`; неразрешимые или конфликтующие случаи уходят в quarantine вместо silent acceptance. Система отчётности фиксирует распределения по `difficulty_bucket`, `correction_tier`, `critical_eval_tags`, причины ingest/dedup drop и статус покрытия `preference_test`, что делает сборку датасета воспроизводимой и проверяемой в экспериментальном цикле.
-
-### Ключевые файлы
-- `docs/SGv7pipeline/dataset_builder/06_build_dataset_splits.py` (CLI сборки сплитов и manifests)
-- `docs/SGv7pipeline/dataset_builder/__init__.py` (оркестрация полного build flow)
-- `docs/SGv7pipeline/dataset_builder/splitter.py` (family-level deterministic split assignment)
-- `docs/SGv7pipeline/dataset_builder/preference.py` (canonical join и quarantine policy для preference pairs)
-- `docs/SGv7pipeline/dataset_builder/manifest.py` (split/preference/leakage manifests + enforcement)
-- `docs/SGv7pipeline/dataset_builder/tests/test_dataset_cli.py` (e2e smoke для CLI)
-- `docs/SGv7pipeline/dataset_builder/tests/test_dataset_splitter.py` (инварианты split policy)
-
----
-
-## [2026-04-14 16:41] - [Prompt 8: Реализация training harness SG v7 с фазовыми view, compare-gates и registry]
-
-### Суть изменений
-- Реализован пакет `training` с фазовым materialization для `phase1/phase2/phase3/phase4`, включая mix policies, budget caps и phase-specific manifests.
-- Добавлены CLI-инструменты: `08_build_phase_view.py`, `09_compare_checkpoints.py`, `10_register_experiment.py` для воспроизводимого цикла `phase view -> compare -> registry`.
-- Реализован compare runner с жёсткими gate-правилами: explicit baseline для `phase3/phase4`, sequential two-pass stability для Phase 3, length-collapse proxy (`average_target_length`) и preference gain gate для Phase 4.
-- Введён полный контракт compare-артефактов: `checkpoint_table.json`, `checkpoint_compare.md`, `bucket_deltas.json`, `promotion_decision.md`, а для Phase 4 — `preference_eval.json`.
-- Добавлены phase configs и unit tests, покрывающие positive/negative-path сценарии для gate-логики и воспроизводимости experiment notes.
-
-### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** На модели класса 1.5B training-loop чувствителен к noisy promotion policy: если baseline плавает, критерии выхода из фазы трактуются неоднозначно или отсутствуют stability guards, то экспериментальная матрица перестаёт быть сопоставимой, а улучшения по quality-метрикам оказываются статистическим шумом.
-- **Решение:** Построен воспроизводимый training harness с формализованными фазами и строгими compare-gates. Ключевые решения: frozen reference checkpoint на фазу, последовательная проверка независимых compare passes, fail-closed отклонение на regressions и machine-readable artifacts для аудита каждого promotion решения.
-- **Детали:** Для Phase 3 реализован детерминированный счётчик `consecutive_positive_passes` только по независимым compare-событиям; duplicate events по одному `global_step` исключаются из streak. Для Phase 4 winner selection дополнительно ограничен `phase4_min_preference_win_rate_gain_pp` на `val/test`, а tie-break включает length growth penalty, чтобы снижать риск minimal-valid collapse при формально стабильной валидации.
-
-### Ключевые файлы
-- `docs/SGv7pipeline/training/08_build_phase_view.py` (CLI materialization phase views)
-- `docs/SGv7pipeline/training/09_compare_checkpoints.py` (CLI compare и promotion artifacts)
-- `docs/SGv7pipeline/training/10_register_experiment.py` (CLI reproducible experiment notes)
-- `docs/SGv7pipeline/training/phase_view.py` (pooling/caps policy и phase manifests)
-- `docs/SGv7pipeline/training/checkpoint_compare.py` (gate logic, stability policy, artifact materialization)
-- `docs/SGv7pipeline/training/experiment_registry.py` (registry contract для experiment matrix)
-- `docs/SGv7pipeline/training/tests/test_checkpoint_compare.py` (negative/positive-path проверки compare gates)
-- `docs/SGv7pipeline/training/tests/test_phase_view.py` (инварианты phase view caps и pool accounting)
-
----
-
-## 2026-04-13 18:02 - Завершение Prompt 3 и Prompt 4 в SG v7: от deterministic graph generation к source paraphrase generation
-
-### Суть изменений
-- Для `Prompt 3` зафиксирован и интегрирован исполнимый слой deterministic graph generation: `graph_generator` строит воспроизводимые `CIR`-records из canonical pattern library, применяет seed-driven planning, validation, dedup и формирует JSONL-артефакты, пригодные для следующего этапа пайплайна без ручной донастройки.
-- Для `Prompt 4` спроектирован и реализован отдельный `source_generation` слой, который принимает graph records и генерирует несколько surface-variants (`clean`, `colloquial`, `user_short`) через формализованный prompt contract, style policy, cheap reject filters и traceable metadata.
-- В `Prompt 4` проведён полный цикл `design -> design verify -> implement -> implement verify`: сначала оформлен design-документ, затем найдены и исправлены противоречия по ownership Track 4/Track 5, semantic reject boundary, same-type marked object disambiguation и normalization policy.
-- Реализация `Prompt 4` поддерживает два backend-режима: `openai` для production paraphrasing и `heuristic` для офлайн smoke/unit tests, что позволяет проверять пайплайн локально без сетевой зависимости.
-- После implement verify устранены две критичные логические неточности: ordinal anchors стали условными, а не обязательными всегда, и в smoke suite добавлен morphology-stress case для marked object surface recovery.
-
-### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** Для обучения локальной SLM недостаточно просто иметь корректный `CIR`. Нужен двухступенчатый воспроизводимый pipeline, в котором сначала строится детерминированная scene-структура, а затем поверх неё генерируются реалистичные текстовые surface-формы без semantic drift. Без такого разделения модель либо переобучается на слишком канонические графы, либо получает шумный source-text, теряющий ordinal binding, marked object grounding и chronology.
-- **Решение:** Архитектура SG v7 разделена на два независимых, но согласованных слоя. `Prompt 3` отвечает за deterministic graph synthesis и тем самым стабилизирует семантический каркас обучающего примера. `Prompt 4` добавляет controlled paraphrase generation с жёстким prompt payload, cheap lexical validation, explicit handoff к semantic critic и нормализованной записью accepted/rejected variants. Такое разбиение уменьшает связность компонентов и делает ошибки наблюдаемыми на конкретном этапе пайплайна.
-- **Детали:** В `Prompt 4` реализованы `required_aliases`, conditional `required_ordinal_tokens`, `same_type_disambiguation_block`, dedup-normalization и persisted-normalization, а также metadata-поля для audit trail (`prompt_template_version`, `source_policy_version`, `needs_semantic_critic`). Практически это означает, что source generator не пытается сам решать полную semantic validity, а ограничивается дешёвыми fail-fast проверками перед передачей результата в downstream critics. В совокупности с deterministic seed behavior из `Prompt 3` это формирует воспроизводимый training pipeline, пригодный для controlled SFT-подготовки.
-
-### Ключевые файлы
-- `docs/SGv7pipeline/graph_generator/01_build_pattern_graphs.py` (CLI deterministic graph generator для Prompt 3)
-- `docs/SGv7pipeline/graph_generator/planner.py` (seed-driven planning и pattern quotas)
-- `docs/SGv7pipeline/graph_generator/dedup.py` (graph fingerprinting и дедупликация канонических графов)
-- `docs/SGv7pipeline/21-graph-generator-design.md` (design-спецификация Prompt 3)
-- `docs/SGv7pipeline/source_generation/02_generate_source_variants.py` (CLI source paraphrase generator для Prompt 4)
-- `docs/SGv7pipeline/source_generation/prompt_builder.py` (prompt payload, conditional ordinals, disambiguation logic)
-- `docs/SGv7pipeline/source_generation/batcher.py` (batch orchestration, backend abstraction, accept/reject flow)
-- `docs/SGv7pipeline/source_generation/filters.py` (cheap reject checks, normalization, duplicate control)
-- `docs/SGv7pipeline/source_generation/tests/test_source_generator_cli.py` (smoke tests, morphology-stress и named-dialogue coverage)
-- `docs/SGv7pipeline/22-source-generation-design.md` (design-спецификация Prompt 4)
-- `docs/SGv7pipeline/24-source-generation-design-verify.md` (design verify Prompt 4)
-- `docs/SGv7pipeline/26-source-generation-implement-verify-final.md` (финальный implement verify Prompt 4)
-
----
-
 ### NLU-препроцессор: синтаксический разбор предложений через NLTagger
 
 **Концепция**: Перед извлечением сущностей (актёров, объектов, действий) добавить этап синтаксического и морфологического разбора предложения через Apple NLTagger, чтобы парсер понимал структуру предложения, а не просто искал ключевые слова.
@@ -309,34 +228,6 @@
 
 - **Крупный новый модуль**: `shafinMultitool/Multitool2Module/`
   - **Models**: CoreML-обёртки (`DETRDetector`, `AestheticScorer`) + Vision/Lighting компоненты;
-
-## [2026-04-13 19:56] - Prompt 5 и Prompt 6 в SG v7: controlled augmentation и deterministic validator stack
-
-### Суть изменений
-- Для `Prompt 5` оформлен и интегрирован design-слой morphology/noise augmentation: зафиксированы transform classes, output contract, provenance boundary и жёсткий handoff в downstream validator без подмены canonical `sample_id`.
-- Для `Prompt 6` создан design-документ validator stack и реализован исполнимый пакет `validators/` с CLI `03_semantic_critic.py` и `05_validate_and_pack.py`.
-- В Track 6 реализованы детерминированные слои проверки: contract/schema/runtime projection, graph consistency, anchor preservation, semantic critic, recoverability scoring и packaging в `accepted/review/rejected`.
-- Исправлены найденные на review архитектурные противоречия: authoritative CIR join переведён на immutable `sample_id`, persisted critic artifact закреплён как источник scoring, а OpenAI critic path переведён в strict JSON schema + fail-closed reject policy.
-- Добавлены unit/smoke tests на provenance, accept/reject/review flows, malformed critic payload, taxonomy validation и CLI сценарии; validator suite проходит локально без сетевой зависимости.
-
-### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** Для обучения компактной LLM на русскоязычном scene-to-structure mapping недостаточно только генерировать surface variants. Требуется контролируемое внесение шумов и морфологических сдвигов, но без разрушения canonical semantics, а затем воспроизводимый validation stack, который способен отделить recoverable variation от semantic drift. Без такой схемы датасет становится нестабильным: одни и те же примеры могут по-разному попадать в train/reject при повторных прогонах, а augmentation начинает незаметно подменять provenance и graph identity.
-- **Решение:** Архитектура SG v7 расширена двумя согласованными этапами. `Prompt 5` формализует augmentation как отдельный bounded layer с transform metadata, risk flags и запретом на переписывание `sample_id`, чтобы downstream join с authoritative CIR оставался однозначным. `Prompt 6` добавляет многослойный validator stack: deterministic checks отсекают грубые контрактные и graph-level ошибки, semantic critic покрывает сложные случаи surface drift, а recoverability scoring переводит решение в явную политику `accepted / manual_review / rejected` с persisted audit trail.
-- **Детали:** В реализации Track 6 score вычисляется по фиксированным компонентам `anchor_recall + chronology + unsupported_action + target_integrity + compression_budget`, где критические semantic booleans читаются только из persisted critic artifact с frozen execution params (`temperature=0`, `top_p=1`, `max_output_tokens=300`). Для OpenAI critic зафиксирован strict JSON schema contract, а malformed payload не приводит к silent acceptance, а переводится в `contract_invalid_critic_payload`. Это важно для диссертационной главы "Реализация", поскольку показывает не просто использование LLM как black box, а построение воспроизводимого hybrid pipeline с формализованной семантической валидацией, explicit provenance policy и fail-closed гарантиями.
-
-### Ключевые файлы
-- `docs/SGv7pipeline/27-augmentation-design.md` (design-спецификация Prompt 5 и handoff boundary augmentation -> validator stack)
-- `docs/SGv7pipeline/30-validator-stack-design.md` (design-спецификация Prompt 6)
-- `docs/SGv7pipeline/validators/05_validate_and_pack.py` (основной CLI Track 6 для packaging и verdict policy)
-- `docs/SGv7pipeline/validators/03_semantic_critic.py` (CLI semantic critic artifact generation)
-- `docs/SGv7pipeline/validators/packaging.py` (authoritative CIR join, layered validation, accepted/review/rejected routing)
-- `docs/SGv7pipeline/validators/semantic_critic.py` (heuristic/OpenAI critic backend, strict JSON schema, persisted artifact reuse)
-- `docs/SGv7pipeline/validators/recoverability.py` (детерминированный recoverability rubric)
-- `docs/SGv7pipeline/validators/taxonomy.py` (canonical reject/review taxonomy)
-- `docs/SGv7pipeline/validators/tests/test_validate_and_pack_cli.py` (end-to-end validator smoke/reject/review tests)
-- `docs/SGv7pipeline/validators/tests/test_semantic_critic.py` (regression tests для critic payload contract)
-
----
   - **Services/Pipeline**: `AnalysisPipeline`, `RealtimeScheduler`, `ThermalGovernor`;
   - **Services/Suggestion**: `SuggestionEngine`, `PrioritySelector`;
   - **UI/Overlay**: SwiftUI-оверлеи (сетка/рамки/чип/список/зум/дебаг).
@@ -761,5 +652,114 @@
 - `docs/SGv7pipeline/pattern_library/registry.py` (канонические pattern families)
 - `docs/SGv7pipeline/pattern_library/coverage.py` (coverage report for critical failures)
 - `docs/SGv7pipeline/20-pattern-library.md` (спецификация pattern library)
+
+---
+
+## 2026-04-13 18:02 - Завершение Prompt 3 и Prompt 4 в SG v7: от deterministic graph generation к source paraphrase generation
+
+### Суть изменений
+- Для `Prompt 3` зафиксирован и интегрирован исполнимый слой deterministic graph generation: `graph_generator` строит воспроизводимые `CIR`-records из canonical pattern library, применяет seed-driven planning, validation, dedup и формирует JSONL-артефакты, пригодные для следующего этапа пайплайна без ручной донастройки.
+- Для `Prompt 4` спроектирован и реализован отдельный `source_generation` слой, который принимает graph records и генерирует несколько surface-variants (`clean`, `colloquial`, `user_short`) через формализованный prompt contract, style policy, cheap reject filters и traceable metadata.
+- В `Prompt 4` проведён полный цикл `design -> design verify -> implement -> implement verify`: сначала оформлен design-документ, затем найдены и исправлены противоречия по ownership Track 4/Track 5, semantic reject boundary, same-type marked object disambiguation и normalization policy.
+- Реализация `Prompt 4` поддерживает два backend-режима: `openai` для production paraphrasing и `heuristic` для офлайн smoke/unit tests, что позволяет проверять пайплайн локально без сетевой зависимости.
+- После implement verify устранены две критичные логические неточности: ordinal anchors стали условными, а не обязательными всегда, и в smoke suite добавлен morphology-stress case для marked object surface recovery.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для обучения локальной SLM недостаточно просто иметь корректный `CIR`. Нужен двухступенчатый воспроизводимый pipeline, в котором сначала строится детерминированная scene-структура, а затем поверх неё генерируются реалистичные текстовые surface-формы без semantic drift. Без такого разделения модель либо переобучается на слишком канонические графы, либо получает шумный source-text, теряющий ordinal binding, marked object grounding и chronology.
+- **Решение:** Архитектура SG v7 разделена на два независимых, но согласованных слоя. `Prompt 3` отвечает за deterministic graph synthesis и тем самым стабилизирует семантический каркас обучающего примера. `Prompt 4` добавляет controlled paraphrase generation с жёстким prompt payload, cheap lexical validation, explicit handoff к semantic critic и нормализованной записью accepted/rejected variants. Такое разбиение уменьшает связность компонентов и делает ошибки наблюдаемыми на конкретном этапе пайплайна.
+- **Детали:** В `Prompt 4` реализованы `required_aliases`, conditional `required_ordinal_tokens`, `same_type_disambiguation_block`, dedup-normalization и persisted-normalization, а также metadata-поля для audit trail (`prompt_template_version`, `source_policy_version`, `needs_semantic_critic`). Практически это означает, что source generator не пытается сам решать полную semantic validity, а ограничивается дешёвыми fail-fast проверками перед передачей результата в downstream critics. В совокупности с deterministic seed behavior из `Prompt 3` это формирует воспроизводимый training pipeline, пригодный для controlled SFT-подготовки.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/graph_generator/01_build_pattern_graphs.py` (CLI deterministic graph generator для Prompt 3)
+- `docs/SGv7pipeline/graph_generator/planner.py` (seed-driven planning и pattern quotas)
+- `docs/SGv7pipeline/graph_generator/dedup.py` (graph fingerprinting и дедупликация канонических графов)
+- `docs/SGv7pipeline/21-graph-generator-design.md` (design-спецификация Prompt 3)
+- `docs/SGv7pipeline/source_generation/02_generate_source_variants.py` (CLI source paraphrase generator для Prompt 4)
+- `docs/SGv7pipeline/source_generation/prompt_builder.py` (prompt payload, conditional ordinals, disambiguation logic)
+- `docs/SGv7pipeline/source_generation/batcher.py` (batch orchestration, backend abstraction, accept/reject flow)
+- `docs/SGv7pipeline/source_generation/filters.py` (cheap reject checks, normalization, duplicate control)
+- `docs/SGv7pipeline/source_generation/tests/test_source_generator_cli.py` (smoke tests, morphology-stress и named-dialogue coverage)
+- `docs/SGv7pipeline/22-source-generation-design.md` (design-спецификация Prompt 4)
+- `docs/SGv7pipeline/24-source-generation-design-verify.md` (design verify Prompt 4)
+- `docs/SGv7pipeline/26-source-generation-implement-verify-final.md` (финальный implement verify Prompt 4)
+
+---
+
+## [2026-04-13 19:56] - Prompt 5 и Prompt 6 в SG v7: controlled augmentation и deterministic validator stack
+
+### Суть изменений
+- Для `Prompt 5` оформлен и интегрирован design-слой morphology/noise augmentation: зафиксированы transform classes, output contract, provenance boundary и жёсткий handoff в downstream validator без подмены canonical `sample_id`.
+- Для `Prompt 6` создан design-документ validator stack и реализован исполнимый пакет `validators/` с CLI `03_semantic_critic.py` и `05_validate_and_pack.py`.
+- В Track 6 реализованы детерминированные слои проверки: contract/schema/runtime projection, graph consistency, anchor preservation, semantic critic, recoverability scoring и packaging в `accepted/review/rejected`.
+- Исправлены найденные на review архитектурные противоречия: authoritative CIR join переведён на immutable `sample_id`, persisted critic artifact закреплён как источник scoring, а OpenAI critic path переведён в strict JSON schema + fail-closed reject policy.
+- Добавлены unit/smoke tests на provenance, accept/reject/review flows, malformed critic payload, taxonomy validation и CLI сценарии; validator suite проходит локально без сетевой зависимости.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для обучения компактной LLM на русскоязычном scene-to-structure mapping недостаточно только генерировать surface variants. Требуется контролируемое внесение шумов и морфологических сдвигов, но без разрушения canonical semantics, а затем воспроизводимый validation stack, который способен отделить recoverable variation от semantic drift. Без такой схемы датасет становится нестабильным: одни и те же примеры могут по-разному попадать в train/reject при повторных прогонах, а augmentation начинает незаметно подменять provenance и graph identity.
+- **Решение:** Архитектура SG v7 расширена двумя согласованными этапами. `Prompt 5` формализует augmentation как отдельный bounded layer с transform metadata, risk flags и запретом на переписывание `sample_id`, чтобы downstream join с authoritative CIR оставался однозначным. `Prompt 6` добавляет многослойный validator stack: deterministic checks отсекают грубые контрактные и graph-level ошибки, semantic critic покрывает сложные случаи surface drift, а recoverability scoring переводит решение в явную политику `accepted / manual_review / rejected` с persisted audit trail.
+- **Детали:** В реализации Track 6 score вычисляется по фиксированным компонентам `anchor_recall + chronology + unsupported_action + target_integrity + compression_budget`, где критические semantic booleans читаются только из persisted critic artifact с frozen execution params (`temperature=0`, `top_p=1`, `max_output_tokens=300`). Для OpenAI critic зафиксирован strict JSON schema contract, а malformed payload не приводит к silent acceptance, а переводится в `contract_invalid_critic_payload`. Это важно для диссертационной главы "Реализация", поскольку показывает не просто использование LLM как black box, а построение воспроизводимого hybrid pipeline с формализованной семантической валидацией, explicit provenance policy и fail-closed гарантиями.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/27-augmentation-design.md` (design-спецификация Prompt 5 и handoff boundary augmentation -> validator stack)
+- `docs/SGv7pipeline/30-validator-stack-design.md` (design-спецификация Prompt 6)
+- `docs/SGv7pipeline/validators/05_validate_and_pack.py` (основной CLI Track 6 для packaging и verdict policy)
+- `docs/SGv7pipeline/validators/03_semantic_critic.py` (CLI semantic critic artifact generation)
+- `docs/SGv7pipeline/validators/packaging.py` (authoritative CIR join, layered validation, accepted/review/rejected routing)
+- `docs/SGv7pipeline/validators/semantic_critic.py` (heuristic/OpenAI critic backend, strict JSON schema, persisted artifact reuse)
+- `docs/SGv7pipeline/validators/recoverability.py` (детерминированный recoverability rubric)
+- `docs/SGv7pipeline/validators/taxonomy.py` (canonical reject/review taxonomy)
+- `docs/SGv7pipeline/validators/tests/test_validate_and_pack_cli.py` (end-to-end validator smoke/reject/review tests)
+- `docs/SGv7pipeline/validators/tests/test_semantic_critic.py` (regression tests для critic payload contract)
+
+---
+
+## [2026-04-14 16:40] - [Prompt 7: Детерминированная сборка датасета SG v7 с family-level holdout и leakage-контролем]
+
+### Суть изменений
+- Реализован исполнимый модуль `dataset_builder` для сборки `sft_train/val/test` и `preference_train/val/test` из canonical artifacts с единым контрактом версии.
+- Добавлен CLI `06_build_dataset_splits.py` для воспроизводимой сборки сплитов по фиксированному `seed` и параметрам ratio для SFT/preference.
+- Внедрены family-aware split policies: assignment на уровне `split_family_id`, а не отдельной строки, чтобы исключить утечки near-duplicate семейств между train/held-out.
+- Реализована детерминированная сборка preference pairs с canonical join к CIR, карантином ambiguous anchors и блокировкой пересечения с held-out SFT-семействами.
+- Материализуются контрольные артефакты `split_manifest.json`, `preference_manifest.json`, `leakage_report.json` с полными счётчиками, причинами дропов/карантина и проверками целостности.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для SLM-дообучения критичен контроль утечек между сплитами и задачами. При row-level random split без family-ограничений валидация становится завышенной: модель видит почти те же граф-семейства в train и held-out, а полученные метрики перестают отражать реальную обобщающую способность.
+- **Решение:** Построен детерминированный split-builder, который опирается на `split_family_id`, `graph_family_key` и `normalized_source_hash`, а также использует policy-level запреты пересечений между SFT held-out и preference-корпусом. Дополнительно реализован fail-closed leakage report, который останавливает пайплайн при обнаружении пересечений.
+- **Детали:** Для preference-кандидатов используется `deterministic_canonical_family_join_v1` через `sample_id/graph_hash/family_anchor`; неразрешимые или конфликтующие случаи уходят в quarantine вместо silent acceptance. Система отчётности фиксирует распределения по `difficulty_bucket`, `correction_tier`, `critical_eval_tags`, причины ingest/dedup drop и статус покрытия `preference_test`, что делает сборку датасета воспроизводимой и проверяемой в экспериментальном цикле.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/dataset_builder/06_build_dataset_splits.py` (CLI сборки сплитов и manifests)
+- `docs/SGv7pipeline/dataset_builder/__init__.py` (оркестрация полного build flow)
+- `docs/SGv7pipeline/dataset_builder/splitter.py` (family-level deterministic split assignment)
+- `docs/SGv7pipeline/dataset_builder/preference.py` (canonical join и quarantine policy для preference pairs)
+- `docs/SGv7pipeline/dataset_builder/manifest.py` (split/preference/leakage manifests + enforcement)
+- `docs/SGv7pipeline/dataset_builder/tests/test_dataset_cli.py` (e2e smoke для CLI)
+- `docs/SGv7pipeline/dataset_builder/tests/test_dataset_splitter.py` (инварианты split policy)
+
+---
+
+## [2026-04-14 16:41] - [Prompt 8: Реализация training harness SG v7 с фазовыми view, compare-gates и registry]
+
+### Суть изменений
+- Реализован пакет `training` с фазовым materialization для `phase1/phase2/phase3/phase4`, включая mix policies, budget caps и phase-specific manifests.
+- Добавлены CLI-инструменты: `08_build_phase_view.py`, `09_compare_checkpoints.py`, `10_register_experiment.py` для воспроизводимого цикла `phase view -> compare -> registry`.
+- Реализован compare runner с жёсткими gate-правилами: explicit baseline для `phase3/phase4`, sequential two-pass stability для Phase 3, length-collapse proxy (`average_target_length`) и preference gain gate для Phase 4.
+- Введён полный контракт compare-артефактов: `checkpoint_table.json`, `checkpoint_compare.md`, `bucket_deltas.json`, `promotion_decision.md`, а для Phase 4 — `preference_eval.json`.
+- Добавлены phase configs и unit tests, покрывающие positive/negative-path сценарии для gate-логики и воспроизводимости experiment notes.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** На модели класса 1.5B training-loop чувствителен к noisy promotion policy: если baseline плавает, критерии выхода из фазы трактуются неоднозначно или отсутствуют stability guards, то экспериментальная матрица перестаёт быть сопоставимой, а улучшения по quality-метрикам оказываются статистическим шумом.
+- **Решение:** Построен воспроизводимый training harness с формализованными фазами и строгими compare-gates. Ключевые решения: frozen reference checkpoint на фазу, последовательная проверка независимых compare passes, fail-closed отклонение на regressions и machine-readable artifacts для аудита каждого promotion решения.
+- **Детали:** Для Phase 3 реализован детерминированный счётчик `consecutive_positive_passes` только по независимым compare-событиям; duplicate events по одному `global_step` исключаются из streak. Для Phase 4 winner selection дополнительно ограничен `phase4_min_preference_win_rate_gain_pp` на `val/test`, а tie-break включает length growth penalty, чтобы снижать риск minimal-valid collapse при формально стабильной валидации.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/training/08_build_phase_view.py` (CLI materialization phase views)
+- `docs/SGv7pipeline/training/09_compare_checkpoints.py` (CLI compare и promotion artifacts)
+- `docs/SGv7pipeline/training/10_register_experiment.py` (CLI reproducible experiment notes)
+- `docs/SGv7pipeline/training/phase_view.py` (pooling/caps policy и phase manifests)
+- `docs/SGv7pipeline/training/checkpoint_compare.py` (gate logic, stability policy, artifact materialization)
+- `docs/SGv7pipeline/training/experiment_registry.py` (registry contract для experiment matrix)
+- `docs/SGv7pipeline/training/tests/test_checkpoint_compare.py` (negative/positive-path проверки compare gates)
+- `docs/SGv7pipeline/training/tests/test_phase_view.py` (инварианты phase view caps и pool accounting)
 
 ---
