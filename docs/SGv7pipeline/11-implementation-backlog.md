@@ -153,6 +153,13 @@ Executable artifact:
 Done definition:
 - автоматический eval report
 
+Design artifact:
+- [36-eval-harness-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/36-eval-harness-design.md)
+
+Executable artifact:
+- [eval/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/eval)
+- [07_eval_local_model.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/eval/07_eval_local_model.py)
+
 ## Track 10. Runtime Feedback
 
 Задачи:
