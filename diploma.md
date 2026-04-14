@@ -101,6 +101,34 @@
 
 ---
 
+## [2026-04-14 18:56] - [Prompt 10: Реализация runtime feedback loop SG v7 и bridge в dataset/eval]
+
+### Суть изменений
+- Реализован исполнимый пакет `runtime_feedback` для Track 10: нормализация runtime parse events в `runtime_failures.jsonl`, deterministic taxonomy/clustering, review/promotion corrected samples и экспорт `real_runtime` eval cases.
+- Добавлены CLI-инструменты полного цикла: `normalize_runtime_feedback.py`, `review_and_promote_runtime_feedback.py`, `export_real_runtime_eval_cases.py`, что формирует минимальный end-to-end skeleton `bronze -> silver -> gold`.
+- Внедрены contract-уровни для стабильности admission policy: `runtime_source_expectations_v1` и frozen словарь `unsupported_action_lemmas_v1`, чтобы убрать неоднозначность в `low_quality_accept_v1`.
+- Исправлены implement-риски в verify-процессе: логика `described_action` перенесена на проверку final graph (а не source), ordinal-loss проверяется по actor bindings, exporter научен резолвить anchor через `sample_id/graph_hash` в `family_anchor`.
+- Добавлены unit/integration tests для normalize/review/export и для bridge к `dataset_builder` preference-потоку; тесты пройдены локально.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Без формализованного feedback-loop runtime ошибки остаются «локальными инцидентами» и не превращаются в воспроизводимый сигнал для следующего training cycle. Дополнительно, если `low_quality_accept` не задан детерминированно, разные реализации ingestion дают разные failure-pools, что делает анализ regressions и active-learning нестабильным.
+- **Решение:** Построен отдельный runtime feedback слой с явными контрактами и версионированными policy-блоками. Нормализация событий материализует self-contained `runtime_failures` записи (decision/provenance/anchor/runtime-policy inputs), review-layer присваивает корректные tiers и eligibility, а export-layer детерминированно строит `real_runtime` eval-cases через canonical CIR join.
+- **Детали:** Введены `runtime_source_expectations_v1`, `low_quality_accept_v1`, `failure_signature_normalization_v1`, `runtime_feedback_provenance_state_v1` и `redaction_quality_check_v1` как проверяемые policy-компоненты. Кластеризация основана на `failure_signature + normalized_source_template`, а не на внешних embeddings, что обеспечивает повторяемость результатов между запусками и сопоставимость top-cluster динамики между релизами.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/runtime_feedback/normalize.py` (bronze->silver normalizer, taxonomy/clustering/materialization)
+- `docs/SGv7pipeline/runtime_feedback/review.py` (provenance state machine, promotion eligibility, eval-bridge readiness)
+- `docs/SGv7pipeline/runtime_feedback/export.py` (runtime_failures -> real_runtime eval cases, deterministic CIR join)
+- `docs/SGv7pipeline/runtime_feedback/expectations.py` (source expectations и deterministic predicates для low-quality capture)
+- `docs/SGv7pipeline/runtime_feedback/contracts/runtime_source_expectations_v1.md` (versioned expectation contract)
+- `docs/SGv7pipeline/runtime_feedback/contracts/unsupported_action_lemmas_v1.txt` (frozen unsupported-action lemma set)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_normalize.py` (normalizer + low-quality policy tests)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_review.py` (review/promotion/provenance tests)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_export.py` (real_runtime eval export tests)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_dataset_bridge.py` (bridge test к dataset preference builder)
+
+---
+
 ### NLU-препроцессор: синтаксический разбор предложений через NLTagger
 
 **Концепция**: Перед извлечением сущностей (актёров, объектов, действий) добавить этап синтаксического и морфологического разбора предложения через Apple NLTagger, чтобы парсер понимал структуру предложения, а не просто искал ключевые слова.

@@ -171,6 +171,12 @@ Executable artifact:
 Done definition:
 - ошибки из приложения автоматически попадают обратно в dataset backlog
 
+Design artifact:
+- [39-runtime-feedback-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/39-runtime-feedback-design.md)
+
+Executable artifact:
+- [runtime_feedback/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runtime_feedback)
+
 ## Рекомендуемый порядок реализации
 
 1. Track 0
