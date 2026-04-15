@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from cir_contract.contracts import serialize_to_scenescript
+from runtime_train_contract.marked_ids import resolve_marked_object_rows
 
 
 SYSTEM_PROMPT = (
@@ -16,19 +17,32 @@ def canonical_json_string(payload: dict[str, Any]) -> str:
 
 
 def _format_marked_objects(cir_record: dict[str, Any]) -> str:
-    rows: list[str] = []
+    marked_rows: list[dict[str, Any]] = []
     for obj in cir_record["scene_graph"]["objects"]:
         binding = obj.get("marker_binding", {})
         if binding.get("kind") != "marked":
             continue
-        aliases = binding.get("mentioned_aliases", [])
-        alias_text = ", ".join(str(item) for item in aliases) if aliases else "-"
-        rows.append(
-            f"- id={obj['id']}; name={obj.get('name', '-')}; type={obj.get('type', '-')}; aliases={alias_text}"
+        name = str(obj.get("name") or binding.get("source_name") or "-").strip().lower() or "-"
+        marked_rows.append(
+            {
+                "existing_id": obj.get("id"),
+                "marker_uuid": binding.get("marker_uuid"),
+                "normalized_name": name,
+                "type": str(obj.get("type", "generic")).strip().lower() or "generic",
+                "source_marker_ordinal": binding.get("source_marker_ordinal"),
+                "marker_origin_key": binding.get("marker_origin_key") or str(obj.get("id") or "").strip() or None,
+                "name": name,
+            }
         )
-    if not rows:
-        return "- (none)"
-    return "\n".join(rows)
+    if not marked_rows:
+        return "- none"
+
+    resolved_rows = resolve_marked_object_rows(marked_rows)
+    lines = [
+        f"- id={row['resolved_id']}; name={row['name']}; type={row['type']}; aliases=-"
+        for row in sorted(resolved_rows, key=lambda item: str(item["resolved_id"]))
+    ]
+    return "\n".join(lines)
 
 
 def _format_constraints(cir_record: dict[str, Any]) -> str:
@@ -66,4 +80,3 @@ def render_preference_messages(*, source_text: str, cir_record: dict[str, Any]) 
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": render_user_prompt(source_text=source_text, cir_record=cir_record)},
     ]
-

@@ -41,13 +41,7 @@ final class SceneParserService {
             print("🤖 [PARSER] LLM успешно распарсила сценарий")
 
             // Пересчитываем диагностику для LLM результата
-            let llmMatchedIds = llmScript.objects.compactMap { object -> UUID? in
-                if object.id.contains("marked_") {
-                    let idString = object.id.replacingOccurrences(of: "object_marked_", with: "")
-                    return markedObjects.first(where: { $0.id.uuidString.prefix(8) == idString })?.id
-                }
-                return nil
-            }
+            let llmMatchedIds = matchedMarkedObjectIDs(from: llmScript.objects, markedObjects: markedObjects)
 
             let llmDiagnostics = diagnosticsCalculator.calculateDiagnostics(
                 script: llmScript,
@@ -77,6 +71,25 @@ final class SceneParserService {
         return ruleBasedResult
     }
 
+    private func matchedMarkedObjectIDs(from objects: [SceneObject], markedObjects: [MarkedObject]) -> [UUID] {
+        objects.compactMap { object in
+            matchedMarkedObjectUUID(for: object.id, markedObjects: markedObjects)
+        }
+    }
+
+    private func matchedMarkedObjectUUID(for objectID: String, markedObjects: [MarkedObject]) -> UUID? {
+        guard let shortID = normalizedMarkedShortID(from: objectID) else { return nil }
+        return markedObjects.first(where: { $0.markedShortID == shortID })?.id
+    }
+
+    private func normalizedMarkedShortID(from objectID: String) -> String? {
+        let lowercasedID = objectID.lowercased()
+        guard lowercasedID.hasPrefix("object_marked_") else { return nil }
+        let suffix = String(lowercasedID.dropFirst("object_marked_".count))
+        guard !suffix.isEmpty else { return nil }
+        return String(suffix.prefix(8))
+    }
+
     private func ruleBasedParse(_ description: String, markedObjects: [MarkedObject]) -> ParsingResult {
         let lowercased = description.lowercased()
 
@@ -87,15 +100,7 @@ final class SceneParserService {
         let objects = extractObjects(from: lowercased, markedObjects: markedObjects)
 
         // 3. Определяем какие markedObjects были распознаны
-        let matchedMarkedObjectIds = objects.compactMap { object -> UUID? in
-            if object.id.contains("marked_") {
-                // Извлекаем UUID из ID вида "object_marked_XXXXXXXX"
-                let idString = object.id.replacingOccurrences(of: "object_marked_", with: "")
-                // Ищем соответствующий маркер
-                return markedObjects.first(where: { $0.id.uuidString.prefix(8) == idString })?.id
-            }
-            return nil
-        }
+        let matchedMarkedObjectIds = matchedMarkedObjectIDs(from: objects, markedObjects: markedObjects)
 
         // 4. Извлекаем действия (с учётом markedObjects)
         let actions = extractActions(from: lowercased, actors: actors, objects: objects, markedObjects: markedObjects)
@@ -142,13 +147,7 @@ final class SceneParserService {
 
         if let llmScript = await llmParser.parseAsync(description, markedObjects: markedObjects) {
             // Пересчитываем диагностику для LLM результата
-            let llmMatchedIds = llmScript.objects.compactMap { object -> UUID? in
-                if object.id.contains("marked_") {
-                    let idString = object.id.replacingOccurrences(of: "object_marked_", with: "")
-                    return markedObjects.first(where: { $0.id.uuidString.prefix(8) == idString })?.id
-                }
-                return nil
-            }
+            let llmMatchedIds = matchedMarkedObjectIDs(from: llmScript.objects, markedObjects: markedObjects)
 
             let llmDiagnostics = diagnosticsCalculator.calculateDiagnostics(
                 script: llmScript,
@@ -319,13 +318,7 @@ final class SceneParserService {
             originalDescription: description
         )
 
-        let matchedMarkedObjectIds = mergedObjects.compactMap { object -> UUID? in
-            if object.id.contains("marked_") {
-                let idString = object.id.replacingOccurrences(of: "object_marked_", with: "")
-                return markedObjects.first(where: { $0.id.uuidString.prefix(8) == idString })?.id
-            }
-            return nil
-        }
+        let matchedMarkedObjectIds = matchedMarkedObjectIDs(from: mergedObjects, markedObjects: markedObjects)
 
         let diagnostics = diagnosticsCalculator.calculateDiagnostics(
             script: mergedScript,
@@ -446,7 +439,7 @@ final class SceneParserService {
             }
 
             let groundedTypeMatches = mergedObjects.filter {
-                $0.type == llmObject.type && $0.id.contains("object_marked_")
+                $0.type == llmObject.type && $0.markedObjectShortID != nil
             }
             if groundedTypeMatches.count == 1, let groundedTypeMatch = groundedTypeMatches.first {
                 idMap[llmObject.id] = groundedTypeMatch.id
@@ -537,7 +530,7 @@ final class SceneParserService {
         let lowercasedDescription = description.lowercased()
 
         if let namedGroundedObject = objects.first(where: { object in
-            guard object.id.contains("object_marked_"),
+            guard object.markedObjectShortID != nil,
                   let name = object.name?.lowercased(),
                   !name.isEmpty else { return false }
             return lemmatizer.textContainsKeyword(lowercasedDescription, keyword: name) || lowercasedDescription.contains(name)
@@ -545,7 +538,7 @@ final class SceneParserService {
             return namedGroundedObject.id
         }
 
-        return objects.first(where: { $0.id.contains("object_marked_") })?.id
+        return objects.first(where: { $0.markedObjectShortID != nil })?.id
     }
 
     private func requiresObjectTarget(_ actionType: SceneAction.ActionType) -> Bool {
@@ -683,7 +676,7 @@ final class SceneParserService {
                     let relativePosition = determineRelativePosition(for: reference.matchedText, in: text)
 
                     let newObject = SceneObject(
-                        id: "object_marked_\(marker.id.uuidString.prefix(8))",
+                        id: marker.canonicalMarkedObjectID,
                         type: marker.type,
                         detectedPosition: marker.worldPosition,
                         relativePosition: relativePosition
@@ -1205,7 +1198,7 @@ final class SceneParserService {
             for pattern in patterns {
                 if lemmatizer.textContainsKeyword(text, keyword: pattern) || text.contains(pattern) {
                     // Находим соответствующий объект в списке
-                    if let object = objects.first(where: { $0.id.contains("marked_\(marker.id.uuidString.prefix(8))") || ($0.type == marker.type && $0.detectedPosition == marker.worldPosition) }) {
+                    if let object = objects.first(where: { $0.markedObjectShortID == marker.markedShortID || ($0.type == marker.type && $0.detectedPosition == marker.worldPosition) }) {
                         return object.id
                     }
                 }
@@ -1256,7 +1249,7 @@ final class SceneParserService {
             // Ищем соответствующий SceneObject в списке объектов
             let found = objects.first { object in
                 // Проверяем по ID (если объект был создан из маркера)
-                if object.id.contains("marked_\(marker.id.uuidString.prefix(8))") {
+                if object.markedObjectShortID == marker.markedShortID {
                     return true
                 }
                 // Или по типу и позиции

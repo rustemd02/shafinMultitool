@@ -19,6 +19,9 @@ Done definition:
 - есть versioned fixtures
 - есть проверка на train/runtime drift
 
+Design artifact:
+- [40-runtime-train-contract-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/40-runtime-train-contract-design.md)
+
 ## Track 1. Canonical Data Contract
 
 Задачи:

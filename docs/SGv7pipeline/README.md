@@ -14,7 +14,8 @@
 - [00-overview.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/00-overview.md)
 - [01-roadmap.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/01-roadmap.md)
 - [14-fixed-decisions.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/14-fixed-decisions.md)
-- [18-runtime-train-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/18-runtime-train-contract.md)
+- [18-runtime-train-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/18-runtime-train-contract.md) (active `v1` source of truth)
+- [40-runtime-train-contract-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/40-runtime-train-contract-design.md) (draft `v2`, design/rollout plan)
 
 Если хочется отдавать работу агентам по частям:
 - агент по архитектуре пайплайна: [02-pipeline-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/02-pipeline-architecture.md)
@@ -77,6 +78,7 @@
 - eval harness README: [eval/README.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/eval/README.md)
 - eval harness CLI: [07_eval_local_model.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/eval/07_eval_local_model.py)
 - eval harness tests: [eval/tests/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/eval/tests)
+- runtime/train contract design draft (`v2`): [40-runtime-train-contract-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/40-runtime-train-contract-design.md)
 - training harness package: [training/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/training)
 - phase view builder CLI: [08_build_phase_view.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/training/08_build_phase_view.py)
 - checkpoint compare CLI: [09_compare_checkpoints.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/training/09_compare_checkpoints.py)

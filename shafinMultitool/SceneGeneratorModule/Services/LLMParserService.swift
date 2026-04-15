@@ -203,11 +203,11 @@ final class LLMParserService {
         }
 
         let lines = markedObjects.map { marker in
-            let id = "object_marked_\(marker.id.uuidString.prefix(8))"
+            let id = marker.canonicalMarkedObjectID
             return "- id=\(id), name=\(marker.name.lowercased()), type=\(marker.type.rawValue)"
         }.joined(separator: "\n")
 
-        let exampleId = "object_marked_\(markedObjects[0].id.uuidString.prefix(8))"
+        let exampleId = markedObjects[0].canonicalMarkedObjectID
         let exampleName = markedObjects[0].name.lowercased()
 
         return """
@@ -484,7 +484,7 @@ final class LLMParserService {
 
         var objects = script.objects
         for marker in mentionedMarkers {
-            let objectId = "object_marked_\(marker.id.uuidString.prefix(8))"
+            let objectId = marker.canonicalMarkedObjectID
             if !objects.contains(where: { $0.id == objectId }) {
                 print("🔧 [LLM] Восстанавливаем размеченный объект '\(marker.name)' как \(objectId)")
                 objects.append(SceneObject(
@@ -510,7 +510,7 @@ final class LLMParserService {
         guard !script.beats.isEmpty else { return script }
 
         let actorIds = script.actors.map(\.id)
-        let primaryMarkedObjectId = mentionedMarkers.first.map { "object_marked_\($0.id.uuidString.prefix(8))" }
+        let primaryMarkedObjectId = mentionedMarkers.first.map(\.canonicalMarkedObjectID)
         let hasTowardEachOtherPhrase = description.contains("навстречу") || description.contains("друг к другу") || description.contains("друг на друга")
         let hasPassByPhrase = description.contains("мимо")
         let secondActorRuns = description.contains("второй начинает бежать") || description.contains("вторая начинает бежать")

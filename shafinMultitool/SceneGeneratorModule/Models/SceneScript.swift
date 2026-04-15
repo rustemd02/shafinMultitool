@@ -322,6 +322,30 @@ struct SceneObject: Codable, Equatable, Identifiable {
     }
 }
 
+private let markedObjectPrefix = "object_marked_"
+
+extension MarkedObject {
+    var markedShortID: String {
+        String(id.uuidString.prefix(8)).lowercased()
+    }
+
+    var canonicalMarkedObjectID: String {
+        "\(markedObjectPrefix)\(markedShortID)"
+    }
+}
+
+extension SceneObject {
+    var markedObjectShortID: String? {
+        let lowercasedID = id.lowercased()
+        guard lowercasedID.hasPrefix(markedObjectPrefix) else { return nil }
+        let raw = String(lowercasedID.dropFirst(markedObjectPrefix.count))
+        guard !raw.isEmpty else { return nil }
+        let shortID = String(raw.prefix(8))
+        guard shortID.count == 8 else { return nil }
+        return shortID
+    }
+}
+
 // MARK: - Scene Action
 
 /// Представляет действие актёра
@@ -731,4 +755,3 @@ struct KeywordsMapping {
         "bird": "птица"
     ]
 }
-

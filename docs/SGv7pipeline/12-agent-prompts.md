@@ -542,6 +542,7 @@ Definition of done:
 - docs/SGv7pipeline/16-codebase-entry-points.md
 - docs/SGv7pipeline/15-runtime-failure-examples.md
 - docs/SGv7pipeline/18-runtime-train-contract.md
+- docs/SGv7pipeline/40-runtime-train-contract-design.md (обязательно для `v2` design/design verify; `18` остаётся active source of truth для `v1`)
 
 Контекст:
 Прочитай:
@@ -550,7 +551,8 @@ Definition of done:
 - docs/SGv7pipeline/09-eval-and-release.md
 
 Дополнительно изучи текущий код:
-- generate_dataset_v6.py
+- generate_dataset_v7.py
+- generate_dataset_v6.py (legacy reference only; не использовать как canonical SG v7 entrypoint)
 - LLMParserService.swift
 - SceneParserService.swift
 - SceneScript.swift

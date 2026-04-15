@@ -1,5 +1,11 @@
 # 18. Runtime And Training Contract
 
+## Статус
+
+Этот документ является активным source of truth для `sg_v7_contract_v1`.
+Draft-дизайн следующей версии (`sg_v7_contract_v2`) описан отдельно в:
+- [40-runtime-train-contract-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/40-runtime-train-contract-design.md)
+
 ## Цель
 
 Зафиксировать один точный contract, который одновременно определяет:
@@ -100,7 +106,10 @@ Marked objects должны передаваться как структурны
 - `id`
 - `name`
 - `type`
-- `mentioned_aliases` при необходимости
+
+Дополнительно для `sg_v7_contract_v1`:
+- `mentioned_aliases` может передаваться только как prompt-time helper
+- `mentioned_aliases` не является частью canonical runtime target JSON и не сериализуется в `SceneScript`
 
 Инварианты:
 - если source text упоминает размеченный объект, модель должна переиспользовать его exact `id`
