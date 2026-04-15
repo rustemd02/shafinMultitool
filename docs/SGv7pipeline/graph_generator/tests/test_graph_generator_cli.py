@@ -112,3 +112,23 @@ class TestGraphGeneratorCLI(unittest.TestCase):
                 request_a.output_jsonl.read_text(encoding="utf-8"),
                 request_b.output_jsonl.read_text(encoding="utf-8"),
             )
+
+    def test_large_core_build_refills_across_patterns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            request = GraphBuildRequest(
+                seed=20260415,
+                difficulty_bucket="core",
+                total_records=240,
+                pattern_names=None,
+                include_variants=None,
+                output_jsonl=tmp_path / "core_large.jsonl",
+                output_manifest=tmp_path / "core_large.manifest.json",
+                refill_budget=12,
+                fail_on_duplicates=False,
+            )
+            result = build_graph_records(request)
+            self.assertEqual(len(result.records), 240)
+            manifest = json.loads(request.output_manifest.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["requested_total_records"], 240)
+            self.assertEqual(manifest["emitted_total_records"], 240)
