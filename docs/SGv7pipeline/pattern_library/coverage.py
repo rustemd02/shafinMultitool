@@ -23,19 +23,37 @@ PATTERN_FAILURE_OWNERSHIP: dict[str, tuple[str, ...]] = {
     "dialogue_then_put_down_object": ("example_5_acceptability_drift",),
     "dialogue_then_small_action": ("example_5_acceptability_drift",),
     "enter_then_put_down_object": ("example_5_acceptability_drift",),
+    "first_pick_up_object_then_give_to_third_actor": (
+        "example_6_three_actor_ordinal_binding_loss",
+        "example_7_three_actor_handoff_loss",
+    ),
     "open_then_pick_up_object": ("example_5_acceptability_drift",),
     "ordinal_first_second": ("example_5_acceptability_drift",),
     "ordinal_first_second_third": ("example_6_three_actor_ordinal_binding_loss",),
     "pick_up_then_put_down_object": ("example_5_acceptability_drift",),
     "same_type_two_marked_objects": ("example_4_same_type_marker_identity_loss",),
+    "same_type_two_marked_objects_left_right": ("example_4_same_type_marker_identity_loss",),
+    "same_type_two_marked_objects_near_far": ("example_4_same_type_marker_identity_loss",),
+    "second_pick_up_object_then_give_to_third_actor": (
+        "example_6_three_actor_ordinal_binding_loss",
+        "example_7_three_actor_handoff_loss",
+    ),
     "stop_near_marked_object_then_first_described_action": (
         "example_1_beat_collapse_and_unsupported_action_loss",
         "example_2_marked_object_morphology_loss",
     ),
     "toward_each_other": ("example_5_acceptability_drift",),
     "toward_each_other_then_pass_by_marked_object": ("example_2_marked_object_morphology_loss",),
+    "toward_each_other_then_pass_by_marked_object_then_second_runs": (
+        "example_2_marked_object_morphology_loss",
+        "example_3_multi_beat_role_shift_loss",
+    ),
     "toward_each_other_then_pass_by_object_then_second_runs": ("example_3_multi_beat_role_shift_loss",),
     "toward_each_other_then_stop_near_marked_object": ("example_2_marked_object_morphology_loss",),
+    "toward_each_other_then_stop_near_marked_object_then_second_runs": (
+        "example_2_marked_object_morphology_loss",
+        "example_3_multi_beat_role_shift_loss",
+    ),
     "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": (
         "example_1_beat_collapse_and_unsupported_action_loss",
         "example_2_marked_object_morphology_loss",

@@ -24,6 +24,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--model-name", default="gpt-5.4-nano")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--paraphraser-backend", choices=["openai", "heuristic"], default="openai")
+    parser.add_argument(
+        "--disable-clean-fallback",
+        action="store_true",
+        help="Disable heuristic fallback for required clean variants when paraphraser backend is openai.",
+    )
     return parser.parse_args()
 
 
@@ -40,6 +45,7 @@ def main() -> int:
         max_graphs=args.max_graphs,
         batch_size=args.batch_size,
         paraphraser_backend=args.paraphraser_backend,
+        enable_clean_fallback=not args.disable_clean_fallback,
     )
     result = generate_source_variants(request)
     sys.stdout.write(

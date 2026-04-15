@@ -21,6 +21,7 @@ class DatasetBuildRequest:
     preference_train_ratio: float = 0.85
     preference_val_ratio: float = 0.10
     preference_test_ratio: float = 0.05
+    max_technical_source_share: float = 0.15
 
 
 @dataclass(frozen=True)
@@ -48,4 +49,3 @@ class DatasetBuildResult:
 
 class DatasetBuildError(ValueError):
     """Contract or invariant violation in dataset assembly."""
-

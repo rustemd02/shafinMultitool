@@ -209,6 +209,14 @@ def _pick(rng: random.Random, options: list):
     return options[rng.randrange(len(options))]
 
 
+def _handoff_pronoun(item_name_en: str) -> str:
+    return {
+        "folder": "её",
+        "letter": "его",
+        "key": "его",
+    }.get(item_name_en, "его")
+
+
 def _choose_walk_modifier(rng: random.Random) -> str | None:
     return _pick(rng, [None, "slowly", "carefully"])
 
@@ -1535,6 +1543,275 @@ def _toward_each_other_then_pass_by_object_then_second_runs(graph_seed: int, var
     )
 
 
+def _toward_each_other_then_stop_near_marked_object_then_second_runs(
+    graph_seed: int, variant: SourceVariantKey
+) -> CIRRecord:
+    rng = _pattern_rng("toward_each_other_then_stop_near_marked_object_then_second_runs", graph_seed, variant)
+    base_object_profiles = [
+        ("laptop", ["laptop", "ноутбук", "ноутбука"]),
+        ("notebook", ["notebook", "ноутбук", "ноутбука"]),
+        ("pc", ["pc", "комп", "компа"]),
+    ]
+    chosen_name, chosen_aliases = _pick(rng, base_object_profiles)
+    canonical_source_name = chosen_name
+    if variant == "morphology_stress":
+        chosen_name, chosen_aliases, surface_hint = _morphology_profile(
+            rng,
+            base_name=chosen_name,
+            oblique_forms=["ноутбука", "у ноутбука", "около компа"],
+        )
+    else:
+        surface_hint = chosen_aliases[1] if len(chosen_aliases) > 1 else chosen_aliases[0]
+    marker = _marked_object(
+        pattern_name="toward_each_other_then_stop_near_marked_object_then_second_runs",
+        graph_seed=graph_seed,
+        slot=1,
+        object_type="generic",
+        name=chosen_name,
+        aliases=chosen_aliases,
+        source_name=canonical_source_name,
+        relative_position=_pick(rng, ["left", "right", "center", "unknown"]),
+    )
+    walk_modifier = _choose_walk_modifier(rng)
+    walk_actions = [
+        _action(
+            "action_1",
+            actor_id="actor_1",
+            action_type="walk",
+            target_id="actor_2",
+            direction="toward_each_other",
+            resulting_pose="walking",
+            chronology_rank=1,
+        ),
+        _action(
+            "action_2",
+            actor_id="actor_2",
+            action_type="walk",
+            target_id="actor_1",
+            direction="toward_each_other",
+            resulting_pose="walking",
+            chronology_rank=2,
+        ),
+    ]
+    _apply_modifier_if_any(walk_actions, walk_modifier)
+    scene_graph = {
+        "actors": [
+            _actor("actor_1", ordinal="first"),
+            _actor("actor_2", ordinal="second"),
+        ],
+        "objects": [marker],
+        "beats": [
+            _beat(
+                "beat_1",
+                phase="toward_each_other",
+                actions=walk_actions,
+            ),
+            _beat(
+                "beat_2",
+                phase="stop_near_object",
+                actions=[
+                    _action(
+                        "action_3",
+                        actor_id="actor_1",
+                        action_type="stop",
+                        target_id=marker["id"],
+                        resulting_pose="standing",
+                        chronology_rank=3,
+                    ),
+                    _action(
+                        "action_4",
+                        actor_id="actor_2",
+                        action_type="stop",
+                        target_id=marker["id"],
+                        resulting_pose="standing",
+                        chronology_rank=4,
+                    ),
+                ],
+            ),
+            _beat(
+                "beat_3",
+                phase="single_action",
+                actions=[
+                    _action(
+                        "action_5",
+                        actor_id="actor_2",
+                        action_type="run",
+                        resulting_pose="running",
+                        chronology_rank=5,
+                        modifier=_pick(rng, [None, "quickly"]),
+                    )
+                ],
+            ),
+        ],
+        "spatial_relations": [
+            _relation("rel_1", subject="actor_1", relation="near", object_id=marker["id"]),
+            _relation("rel_2", subject="actor_2", relation="near", object_id=marker["id"]),
+        ],
+        "reference_bindings": {
+            "ordinal_map": _ordinal_map(2),
+            "marked_object_ids": [marker["id"]],
+            "alias_to_object_id": {
+                alias: marker["id"] for alias in marker["marker_binding"]["mentioned_aliases"]
+            },
+        },
+        "must_preserve": [
+            "beat_count=3",
+            f"must_ground_object:{marker['id']}",
+            "actor_2_runs_in_final_beat",
+            "stop_phase_before_run",
+            *([f"morphology_surface:{surface_hint}"] if variant == "morphology_stress" else []),
+        ],
+    }
+    return _top_level_record(
+        pattern_name="toward_each_other_then_stop_near_marked_object_then_second_runs",
+        pattern_family="role_shift_motion",
+        difficulty_bucket="hard",
+        graph_seed=graph_seed,
+        source_variant_key=variant,
+        scene_graph=scene_graph,
+        semantic_tags=("movement", "marked_object", "ordinal_reference", "multi_beat", "role_shift"),
+        required_semantics=("second_actor_runs", "stop_near_then_role_shift", "marked_object_grounding"),
+        forbidden_collapses=("keep_both_stopped", "drop_final_run", "drop_stop_phase"),
+        beat_blueprint=("mutual_walk_toward_each_other", "dual_stop_near_marked_object", "second_actor_runs"),
+        canonical_source_template=(
+            f"2 актёра идут навстречу друг другу, останавливаются у {surface_hint}, второй начинает бежать."
+        ),
+    )
+
+
+def _toward_each_other_then_pass_by_marked_object_then_second_runs(
+    graph_seed: int, variant: SourceVariantKey
+) -> CIRRecord:
+    rng = _pattern_rng("toward_each_other_then_pass_by_marked_object_then_second_runs", graph_seed, variant)
+    base_object_profiles = [
+        ("laptop", ["laptop", "ноутбук", "ноутбука"]),
+        ("notebook", ["notebook", "ноутбук", "ноутбука"]),
+        ("pc", ["pc", "комп", "компа"]),
+    ]
+    chosen_name, chosen_aliases = _pick(rng, base_object_profiles)
+    canonical_source_name = chosen_name
+    if variant == "morphology_stress":
+        chosen_name, chosen_aliases, surface_hint = _morphology_profile(
+            rng,
+            base_name=chosen_name,
+            oblique_forms=["ноутбука", "мимо ноутбука", "мимо компа"],
+        )
+    else:
+        surface_hint = chosen_aliases[1] if len(chosen_aliases) > 1 else chosen_aliases[0]
+    marker = _marked_object(
+        pattern_name="toward_each_other_then_pass_by_marked_object_then_second_runs",
+        graph_seed=graph_seed,
+        slot=1,
+        object_type="generic",
+        name=chosen_name,
+        aliases=chosen_aliases,
+        source_name=canonical_source_name,
+        relative_position=_pick(rng, ["left", "right", "center", "unknown"]),
+    )
+    walk_modifier = _choose_walk_modifier(rng)
+    walk_actions = [
+        _action(
+            "action_1",
+            actor_id="actor_1",
+            action_type="walk",
+            target_id="actor_2",
+            direction="toward_each_other",
+            resulting_pose="walking",
+            chronology_rank=1,
+        ),
+        _action(
+            "action_2",
+            actor_id="actor_2",
+            action_type="walk",
+            target_id="actor_1",
+            direction="toward_each_other",
+            resulting_pose="walking",
+            chronology_rank=2,
+        ),
+    ]
+    _apply_modifier_if_any(walk_actions, walk_modifier)
+    scene_graph = {
+        "actors": [
+            _actor("actor_1", ordinal="first"),
+            _actor("actor_2", ordinal="second"),
+        ],
+        "objects": [marker],
+        "beats": [
+            _beat(
+                "beat_1",
+                phase="toward_each_other",
+                actions=walk_actions,
+            ),
+            _beat(
+                "beat_2",
+                phase="pass_by_object",
+                actions=[
+                    _action(
+                        "action_3",
+                        actor_id="actor_1",
+                        action_type="pass_by",
+                        target_id=marker["id"],
+                        resulting_pose="walking",
+                        chronology_rank=3,
+                    ),
+                    _action(
+                        "action_4",
+                        actor_id="actor_2",
+                        action_type="pass_by",
+                        target_id=marker["id"],
+                        resulting_pose="walking",
+                        chronology_rank=4,
+                    ),
+                ],
+            ),
+            _beat(
+                "beat_3",
+                phase="single_action",
+                actions=[
+                    _action(
+                        "action_5",
+                        actor_id="actor_2",
+                        action_type="run",
+                        resulting_pose="running",
+                        chronology_rank=5,
+                        modifier=_pick(rng, [None, "quickly"]),
+                    )
+                ],
+            ),
+        ],
+        "spatial_relations": [],
+        "reference_bindings": {
+            "ordinal_map": _ordinal_map(2),
+            "marked_object_ids": [marker["id"]],
+            "alias_to_object_id": {
+                alias: marker["id"] for alias in marker["marker_binding"]["mentioned_aliases"]
+            },
+        },
+        "must_preserve": [
+            "beat_count=3",
+            f"must_ground_object:{marker['id']}",
+            "pass_by_semantics",
+            "actor_2_runs_in_final_beat",
+            *([f"morphology_surface:{surface_hint}"] if variant == "morphology_stress" else []),
+        ],
+    }
+    return _top_level_record(
+        pattern_name="toward_each_other_then_pass_by_marked_object_then_second_runs",
+        pattern_family="role_shift_motion",
+        difficulty_bucket="hard",
+        graph_seed=graph_seed,
+        source_variant_key=variant,
+        scene_graph=scene_graph,
+        semantic_tags=("movement", "marked_object", "ordinal_reference", "multi_beat", "role_shift"),
+        required_semantics=("second_actor_runs", "pass_by_then_role_shift", "marked_object_grounding"),
+        forbidden_collapses=("keep_both_walkers", "drop_final_run"),
+        beat_blueprint=("mutual_walk_toward_each_other", "dual_pass_by_marked_object", "second_actor_runs"),
+        canonical_source_template=(
+            f"2 актёра идут навстречу друг другу, проходят мимо {surface_hint}, второй начинает бежать."
+        ),
+    )
+
+
 def _same_type_two_marked_objects(graph_seed: int, variant: SourceVariantKey) -> CIRRecord:
     rng = _pattern_rng("same_type_two_marked_objects", graph_seed, variant)
     marker_type = _pick(rng, ["chair", "table"])
@@ -1646,6 +1923,226 @@ def _same_type_two_marked_objects(graph_seed: int, variant: SourceVariantKey) ->
         canonical_source_template=(
             f"Первый подходит к {target_side} {target_noun_dative}, "
             f"второй остаётся у {opposite_side} {opposite_noun_genitive}."
+        ),
+    )
+
+
+def _same_type_two_marked_objects_left_right(graph_seed: int, variant: SourceVariantKey) -> CIRRecord:
+    rng = _pattern_rng("same_type_two_marked_objects_left_right", graph_seed, variant)
+    marker_type = _pick(rng, ["chair", "table"])
+    marker_source_name = "стул" if marker_type == "chair" else "стол"
+    if marker_type == "chair":
+        left_name = "left chair"
+        right_name = "right chair"
+        left_aliases = ["left chair", "левый стул"]
+        right_aliases = ["right chair", "правый стул"]
+        target_noun_dative = "стулу"
+        opposite_noun_genitive = "стула"
+    else:
+        left_name = "left table"
+        right_name = "right table"
+        left_aliases = ["left table", "левый стол"]
+        right_aliases = ["right table", "правый стол"]
+        target_noun_dative = "столу"
+        opposite_noun_genitive = "стола"
+    left_object = _marked_object(
+        pattern_name="same_type_two_marked_objects_left_right",
+        graph_seed=graph_seed,
+        slot=1,
+        object_type=marker_type,
+        name=left_name,
+        aliases=left_aliases,
+        source_name=marker_source_name,
+        relative_position="left",
+    )
+    right_object = _marked_object(
+        pattern_name="same_type_two_marked_objects_left_right",
+        graph_seed=graph_seed,
+        slot=2,
+        object_type=marker_type,
+        name=right_name,
+        aliases=right_aliases,
+        source_name=marker_source_name,
+        relative_position="right",
+    )
+    target_object = _pick(rng, [left_object, right_object])
+    opposite_object = right_object if target_object["id"] == left_object["id"] else left_object
+    target_side = "левому" if target_object["id"] == left_object["id"] else "правому"
+    opposite_side = "правого" if target_object["id"] == left_object["id"] else "левого"
+    scene_graph = {
+        "actors": [
+            _actor("actor_1", ordinal="first"),
+            _actor("actor_2", ordinal="second"),
+        ],
+        "objects": [left_object, right_object],
+        "beats": [
+            _beat(
+                "beat_1",
+                phase="approach_object",
+                actions=[
+                    _action(
+                        "action_1",
+                        actor_id="actor_1",
+                        action_type="approach",
+                        target_id=target_object["id"],
+                        direction="to_target",
+                        resulting_pose="walking",
+                        chronology_rank=1,
+                    ),
+                    _action(
+                        "action_2",
+                        actor_id="actor_2",
+                        action_type="stand",
+                        resulting_pose="standing",
+                        chronology_rank=2,
+                    ),
+                ],
+            )
+        ],
+        "spatial_relations": [
+            _relation("rel_1", subject="actor_1", relation="near", object_id=target_object["id"]),
+            _relation("rel_2", subject="actor_2", relation="near", object_id=opposite_object["id"]),
+        ],
+        "reference_bindings": {
+            "ordinal_map": _ordinal_map(2),
+            "marked_object_ids": [left_object["id"], right_object["id"]],
+            "alias_to_object_id": {
+                **{alias: left_object["id"] for alias in left_object["marker_binding"]["mentioned_aliases"]},
+                **{alias: right_object["id"] for alias in right_object["marker_binding"]["mentioned_aliases"]},
+            },
+        },
+        "must_preserve": [
+            "same_type_markers_present",
+            f"must_ground_object:{target_object['id']}",
+            f"second_actor_anchor:{opposite_object['id']}",
+            "marker_axis:left_right",
+            "no_type_only_resolution",
+        ],
+    }
+    return _top_level_record(
+        pattern_name="same_type_two_marked_objects_left_right",
+        pattern_family="marker_disambiguation",
+        difficulty_bucket="hard",
+        graph_seed=graph_seed,
+        source_variant_key=variant,
+        scene_graph=scene_graph,
+        semantic_tags=("marked_object", "same_type_markers", "ordinal_reference", "grounding", "left_right"),
+        required_semantics=("two_marked_objects_same_type", "exact_marker_resolution", "left_right_disambiguation"),
+        forbidden_collapses=("type_only_resolution", "merge_markers", "drop_relative_side"),
+        beat_blueprint=("same_type_marker_resolution",),
+        canonical_source_template=(
+            f"Первый подходит к {target_side} {target_noun_dative}, "
+            f"второй остаётся у {opposite_side} {opposite_noun_genitive}."
+        ),
+    )
+
+
+def _same_type_two_marked_objects_near_far(graph_seed: int, variant: SourceVariantKey) -> CIRRecord:
+    rng = _pattern_rng("same_type_two_marked_objects_near_far", graph_seed, variant)
+    marker_type = _pick(rng, ["chair", "table"])
+    marker_source_name = "стул" if marker_type == "chair" else "стол"
+    if marker_type == "chair":
+        near_name = "near chair"
+        far_name = "far chair"
+        near_aliases = ["near chair", "ближний стул"]
+        far_aliases = ["far chair", "дальний стул"]
+        target_noun_dative = "стулу"
+        opposite_noun_genitive = "стула"
+    else:
+        near_name = "near table"
+        far_name = "far table"
+        near_aliases = ["near table", "ближний стол"]
+        far_aliases = ["far table", "дальний стол"]
+        target_noun_dative = "столу"
+        opposite_noun_genitive = "стола"
+    near_object = _marked_object(
+        pattern_name="same_type_two_marked_objects_near_far",
+        graph_seed=graph_seed,
+        slot=1,
+        object_type=marker_type,
+        name=near_name,
+        aliases=near_aliases,
+        source_name=marker_source_name,
+        relative_position="foreground",
+    )
+    far_object = _marked_object(
+        pattern_name="same_type_two_marked_objects_near_far",
+        graph_seed=graph_seed,
+        slot=2,
+        object_type=marker_type,
+        name=far_name,
+        aliases=far_aliases,
+        source_name=marker_source_name,
+        relative_position="background",
+    )
+    target_object = _pick(rng, [near_object, far_object])
+    opposite_object = far_object if target_object["id"] == near_object["id"] else near_object
+    target_depth = "ближнему" if target_object["id"] == near_object["id"] else "дальнему"
+    opposite_depth = "дальнего" if target_object["id"] == near_object["id"] else "ближнего"
+    scene_graph = {
+        "actors": [
+            _actor("actor_1", ordinal="first"),
+            _actor("actor_2", ordinal="second"),
+        ],
+        "objects": [near_object, far_object],
+        "beats": [
+            _beat(
+                "beat_1",
+                phase="approach_object",
+                actions=[
+                    _action(
+                        "action_1",
+                        actor_id="actor_1",
+                        action_type="approach",
+                        target_id=target_object["id"],
+                        direction="to_target",
+                        resulting_pose="walking",
+                        chronology_rank=1,
+                    ),
+                    _action(
+                        "action_2",
+                        actor_id="actor_2",
+                        action_type="stand",
+                        resulting_pose="standing",
+                        chronology_rank=2,
+                    ),
+                ],
+            )
+        ],
+        "spatial_relations": [
+            _relation("rel_1", subject="actor_1", relation="near", object_id=target_object["id"]),
+            _relation("rel_2", subject="actor_2", relation="near", object_id=opposite_object["id"]),
+        ],
+        "reference_bindings": {
+            "ordinal_map": _ordinal_map(2),
+            "marked_object_ids": [near_object["id"], far_object["id"]],
+            "alias_to_object_id": {
+                **{alias: near_object["id"] for alias in near_object["marker_binding"]["mentioned_aliases"]},
+                **{alias: far_object["id"] for alias in far_object["marker_binding"]["mentioned_aliases"]},
+            },
+        },
+        "must_preserve": [
+            "same_type_markers_present",
+            f"must_ground_object:{target_object['id']}",
+            f"second_actor_anchor:{opposite_object['id']}",
+            "marker_axis:near_far",
+            "no_type_only_resolution",
+        ],
+    }
+    return _top_level_record(
+        pattern_name="same_type_two_marked_objects_near_far",
+        pattern_family="marker_disambiguation",
+        difficulty_bucket="hard",
+        graph_seed=graph_seed,
+        source_variant_key=variant,
+        scene_graph=scene_graph,
+        semantic_tags=("marked_object", "same_type_markers", "ordinal_reference", "grounding", "near_far"),
+        required_semantics=("two_marked_objects_same_type", "exact_marker_resolution", "near_far_disambiguation"),
+        forbidden_collapses=("type_only_resolution", "merge_markers", "drop_relative_depth"),
+        beat_blueprint=("same_type_marker_resolution",),
+        canonical_source_template=(
+            f"Первый подходит к {target_depth} {target_noun_dative}, "
+            f"второй остаётся у {opposite_depth} {opposite_noun_genitive}."
         ),
     )
 
@@ -1920,6 +2417,7 @@ def _dialogue_then_pick_up_object_then_give_to_third_actor(graph_seed: int, vari
     (name_1, name_2, name_3), (line_1, line_2), (item_name_en, item_name_ru) = _pick(
         rng, dialogue_mix_pairs if variant == "dialogue_mix" else dialogue_pairs
     )
+    item_pronoun = _handoff_pronoun(item_name_en)
     item = _unmarked_object(object_id="object_1", object_type="generic", name=item_name_en, relative_position="center")
     scene_graph = {
         "actors": [
@@ -2009,8 +2507,179 @@ def _dialogue_then_pick_up_object_then_give_to_third_actor(graph_seed: int, vari
         forbidden_collapses=("drop_give_phase", "rewrite_handoff_as_talk_only", "drop_third_actor"),
         beat_blueprint=("dialogue_exchange", "pickup_object", "give_object"),
         canonical_source_template=(
-            f"{name_1.upper()}: {line_1} {name_2.upper()}: {line_2} {name_2} берёт {item_name_ru} и передаёт её третьему."
+            f"{name_1.upper()}: {line_1} {name_2.upper()}: {line_2} "
+            f"{name_2} берёт {item_name_ru} и передаёт {item_pronoun} третьему."
         ),
+    )
+
+
+def _first_pick_up_object_then_give_to_third_actor(graph_seed: int, variant: SourceVariantKey) -> CIRRecord:
+    rng = _pattern_rng("first_pick_up_object_then_give_to_third_actor", graph_seed, variant)
+    actor_sets = [
+        ("Anna", "Boris", "Oleg"),
+        ("Lena", "Max", "Nina"),
+        ("Ira", "Pavel", "Mila"),
+    ]
+    item_profiles = [
+        ("folder", "папку"),
+        ("letter", "конверт"),
+        ("key", "ключ"),
+    ]
+    name_1, name_2, name_3 = _pick(rng, actor_sets)
+    item_name_en, item_name_ru = _pick(rng, item_profiles)
+    item_pronoun = _handoff_pronoun(item_name_en)
+    item = _unmarked_object(object_id="object_1", object_type="generic", name=item_name_en, relative_position="center")
+    scene_graph = {
+        "actors": [
+            _actor("actor_1", ordinal="first", name=name_1),
+            _actor("actor_2", ordinal="second", name=name_2),
+            _actor("actor_3", ordinal="third", name=name_3),
+        ],
+        "objects": [item],
+        "beats": [
+            _beat(
+                "beat_1",
+                phase="pickup_object",
+                actions=[
+                    _action(
+                        "action_1",
+                        actor_id="actor_1",
+                        action_type="pick_up",
+                        target_id=item["id"],
+                        resulting_pose="standing",
+                        chronology_rank=1,
+                        holding_object=item["id"],
+                    )
+                ],
+            ),
+            _beat(
+                "beat_2",
+                phase="give_object",
+                actions=[
+                    _action(
+                        "action_2",
+                        actor_id="actor_1",
+                        action_type="give",
+                        target_id="actor_3",
+                        resulting_pose="standing",
+                        chronology_rank=2,
+                        holding_object=item["id"],
+                    )
+                ],
+            ),
+        ],
+        "spatial_relations": [],
+        "reference_bindings": {
+            "ordinal_map": _ordinal_map(3),
+            "marked_object_ids": [],
+            "alias_to_object_id": {},
+        },
+        "must_preserve": [
+            "beat_count=2",
+            "pickup_actor:actor_1",
+            "give_actor:actor_1",
+            "ordinal:third->actor_3",
+            f"handoff_object:{item['id']}",
+            "final_target:actor_3",
+        ],
+    }
+    return _top_level_record(
+        pattern_name="first_pick_up_object_then_give_to_third_actor",
+        pattern_family="three_actor_handoff",
+        difficulty_bucket="hard",
+        graph_seed=graph_seed,
+        source_variant_key=variant,
+        scene_graph=scene_graph,
+        semantic_tags=("pick_up", "give", "three_actor", "handoff", "ordinal_reference"),
+        required_semantics=("pickup_precedes_give", "same_actor_completes_handoff", "third_actor_receives_object"),
+        forbidden_collapses=("actor_swap_between_pickup_and_give", "drop_give_phase", "drop_third_actor"),
+        beat_blueprint=("pickup_object", "give_object"),
+        canonical_source_template=f"Первый берёт {item_name_ru} и передаёт {item_pronoun} третьему.",
+    )
+
+
+def _second_pick_up_object_then_give_to_third_actor(graph_seed: int, variant: SourceVariantKey) -> CIRRecord:
+    rng = _pattern_rng("second_pick_up_object_then_give_to_third_actor", graph_seed, variant)
+    actor_sets = [
+        ("Anna", "Boris", "Oleg"),
+        ("Lena", "Max", "Nina"),
+        ("Ira", "Pavel", "Mila"),
+    ]
+    item_profiles = [
+        ("folder", "папку"),
+        ("letter", "конверт"),
+        ("key", "ключ"),
+    ]
+    name_1, name_2, name_3 = _pick(rng, actor_sets)
+    item_name_en, item_name_ru = _pick(rng, item_profiles)
+    item_pronoun = _handoff_pronoun(item_name_en)
+    item = _unmarked_object(object_id="object_1", object_type="generic", name=item_name_en, relative_position="center")
+    scene_graph = {
+        "actors": [
+            _actor("actor_1", ordinal="first", name=name_1),
+            _actor("actor_2", ordinal="second", name=name_2),
+            _actor("actor_3", ordinal="third", name=name_3),
+        ],
+        "objects": [item],
+        "beats": [
+            _beat(
+                "beat_1",
+                phase="pickup_object",
+                actions=[
+                    _action(
+                        "action_1",
+                        actor_id="actor_2",
+                        action_type="pick_up",
+                        target_id=item["id"],
+                        resulting_pose="standing",
+                        chronology_rank=1,
+                        holding_object=item["id"],
+                    )
+                ],
+            ),
+            _beat(
+                "beat_2",
+                phase="give_object",
+                actions=[
+                    _action(
+                        "action_2",
+                        actor_id="actor_2",
+                        action_type="give",
+                        target_id="actor_3",
+                        resulting_pose="standing",
+                        chronology_rank=2,
+                        holding_object=item["id"],
+                    )
+                ],
+            ),
+        ],
+        "spatial_relations": [],
+        "reference_bindings": {
+            "ordinal_map": _ordinal_map(3),
+            "marked_object_ids": [],
+            "alias_to_object_id": {},
+        },
+        "must_preserve": [
+            "beat_count=2",
+            "pickup_actor:actor_2",
+            "give_actor:actor_2",
+            "ordinal:third->actor_3",
+            f"handoff_object:{item['id']}",
+            "final_target:actor_3",
+        ],
+    }
+    return _top_level_record(
+        pattern_name="second_pick_up_object_then_give_to_third_actor",
+        pattern_family="three_actor_handoff",
+        difficulty_bucket="hard",
+        graph_seed=graph_seed,
+        source_variant_key=variant,
+        scene_graph=scene_graph,
+        semantic_tags=("pick_up", "give", "three_actor", "handoff", "ordinal_reference"),
+        required_semantics=("pickup_precedes_give", "same_actor_completes_handoff", "third_actor_receives_object"),
+        forbidden_collapses=("actor_swap_between_pickup_and_give", "drop_give_phase", "drop_third_actor"),
+        beat_blueprint=("pickup_object", "give_object"),
+        canonical_source_template=f"Второй берёт {item_name_ru} и передаёт {item_pronoun} третьему.",
     )
 
 
@@ -2019,7 +2688,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="dialogue_only",
         pattern_family="dialogue",
         difficulty_bucket="core",
-        default_share=8,
+        default_share=7,
         default_complexity_class="S",
         allowed_source_variant_keys=("base", "dialogue_mix"),
         required_actor_count=2,
@@ -2047,6 +2716,22 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         canonical_source_template="АННА: Передай папку третьему. БОРИС: Сейчас передам. Борис берёт папку и передаёт её третьему.",
         builder=_dialogue_then_pick_up_object_then_give_to_third_actor,
     ),
+    "first_pick_up_object_then_give_to_third_actor": PatternSpec(
+        pattern_name="first_pick_up_object_then_give_to_third_actor",
+        pattern_family="three_actor_handoff",
+        difficulty_bucket="hard",
+        default_share=2,
+        default_complexity_class="M",
+        allowed_source_variant_keys=("base",),
+        required_actor_count=3,
+        required_object_mode="required_generic",
+        beat_blueprint=("pickup_object", "give_object"),
+        required_semantics=("pickup_precedes_give", "same_actor_completes_handoff", "third_actor_receives_object"),
+        forbidden_collapses=("actor_swap_between_pickup_and_give", "drop_give_phase", "drop_third_actor"),
+        semantic_tags=("pick_up", "give", "three_actor", "handoff", "ordinal_reference"),
+        canonical_source_template="Первый берёт папку и передаёт её третьему.",
+        builder=_first_pick_up_object_then_give_to_third_actor,
+    ),
     "dialogue_then_put_down_object": PatternSpec(
         pattern_name="dialogue_then_put_down_object",
         pattern_family="dialogue_object_followup",
@@ -2067,7 +2752,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="dialogue_then_small_action",
         pattern_family="dialogue_followup",
         difficulty_bucket="core",
-        default_share=8,
+        default_share=7,
         default_complexity_class="S",
         allowed_source_variant_keys=("base", "dialogue_mix"),
         required_actor_count=2,
@@ -2115,7 +2800,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="ordinal_first_second",
         pattern_family="ordinal_binding",
         difficulty_bucket="core",
-        default_share=10,
+        default_share=9,
         default_complexity_class="S",
         allowed_source_variant_keys=("base",),
         required_actor_count=2,
@@ -2131,7 +2816,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="ordinal_first_second_third",
         pattern_family="three_actor_ordinal_binding",
         difficulty_bucket="hard",
-        default_share=2,
+        default_share=1,
         default_complexity_class="L",
         allowed_source_variant_keys=("base",),
         required_actor_count=3,
@@ -2175,11 +2860,43 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         canonical_source_template="Первый подходит к правому стулу, второй остаётся у левого.",
         builder=_same_type_two_marked_objects,
     ),
+    "same_type_two_marked_objects_left_right": PatternSpec(
+        pattern_name="same_type_two_marked_objects_left_right",
+        pattern_family="marker_disambiguation",
+        difficulty_bucket="hard",
+        default_share=2,
+        default_complexity_class="M",
+        allowed_source_variant_keys=("same_type_marker_stress",),
+        required_actor_count=2,
+        required_object_mode="required_same_type_marked_pair",
+        beat_blueprint=("same_type_marker_resolution",),
+        required_semantics=("two_marked_objects_same_type", "exact_marker_resolution", "left_right_disambiguation"),
+        forbidden_collapses=("type_only_resolution", "merge_markers", "drop_relative_side"),
+        semantic_tags=("marked_object", "same_type_markers", "ordinal_reference", "grounding", "left_right"),
+        canonical_source_template="Первый подходит к правому стулу, второй остаётся у левого.",
+        builder=_same_type_two_marked_objects_left_right,
+    ),
+    "same_type_two_marked_objects_near_far": PatternSpec(
+        pattern_name="same_type_two_marked_objects_near_far",
+        pattern_family="marker_disambiguation",
+        difficulty_bucket="hard",
+        default_share=2,
+        default_complexity_class="M",
+        allowed_source_variant_keys=("same_type_marker_stress",),
+        required_actor_count=2,
+        required_object_mode="required_same_type_marked_pair",
+        beat_blueprint=("same_type_marker_resolution",),
+        required_semantics=("two_marked_objects_same_type", "exact_marker_resolution", "near_far_disambiguation"),
+        forbidden_collapses=("type_only_resolution", "merge_markers", "drop_relative_depth"),
+        semantic_tags=("marked_object", "same_type_markers", "ordinal_reference", "grounding", "near_far"),
+        canonical_source_template="Первый подходит к дальнему стулу, второй остаётся у ближнего.",
+        builder=_same_type_two_marked_objects_near_far,
+    ),
     "stop_near_marked_object_then_first_described_action": PatternSpec(
         pattern_name="stop_near_marked_object_then_first_described_action",
         pattern_family="composed_marked_action",
         difficulty_bucket="hard",
-        default_share=5,
+        default_share=4,
         default_complexity_class="M",
         allowed_source_variant_keys=("base", "morphology_stress"),
         required_actor_count=2,
@@ -2195,7 +2912,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="toward_each_other",
         pattern_family="motion_symmetry",
         difficulty_bucket="core",
-        default_share=9,
+        default_share=8,
         default_complexity_class="S",
         allowed_source_variant_keys=("base", "ordinal_stress"),
         required_actor_count=2,
@@ -2211,7 +2928,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="toward_each_other_then_pass_by_marked_object",
         pattern_family="motion_object_grounding",
         difficulty_bucket="core",
-        default_share=8,
+        default_share=7,
         default_complexity_class="M",
         allowed_source_variant_keys=("base", "ordinal_stress", "morphology_stress"),
         required_actor_count=2,
@@ -2227,7 +2944,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="toward_each_other_then_pass_by_object_then_second_runs",
         pattern_family="role_shift_motion",
         difficulty_bucket="hard",
-        default_share=5,
+        default_share=3,
         default_complexity_class="M",
         allowed_source_variant_keys=("base", "morphology_stress"),
         required_actor_count=2,
@@ -2239,11 +2956,43 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         canonical_source_template="2 актёра идут навстречу друг другу, проходят мимо ноутбука, второй начинает бежать.",
         builder=_toward_each_other_then_pass_by_object_then_second_runs,
     ),
+    "toward_each_other_then_pass_by_marked_object_then_second_runs": PatternSpec(
+        pattern_name="toward_each_other_then_pass_by_marked_object_then_second_runs",
+        pattern_family="role_shift_motion",
+        difficulty_bucket="hard",
+        default_share=2,
+        default_complexity_class="M",
+        allowed_source_variant_keys=("base", "morphology_stress"),
+        required_actor_count=2,
+        required_object_mode="required_marked",
+        beat_blueprint=("mutual_walk_toward_each_other", "dual_pass_by_marked_object", "second_actor_runs"),
+        required_semantics=("second_actor_runs", "pass_by_then_role_shift", "marked_object_grounding"),
+        forbidden_collapses=("keep_both_walkers", "drop_final_run"),
+        semantic_tags=("movement", "marked_object", "ordinal_reference", "multi_beat", "role_shift"),
+        canonical_source_template="2 актёра идут навстречу друг другу, проходят мимо ноутбука, второй начинает бежать.",
+        builder=_toward_each_other_then_pass_by_marked_object_then_second_runs,
+    ),
+    "toward_each_other_then_stop_near_marked_object_then_second_runs": PatternSpec(
+        pattern_name="toward_each_other_then_stop_near_marked_object_then_second_runs",
+        pattern_family="role_shift_motion",
+        difficulty_bucket="hard",
+        default_share=2,
+        default_complexity_class="M",
+        allowed_source_variant_keys=("base", "morphology_stress"),
+        required_actor_count=2,
+        required_object_mode="required_marked",
+        beat_blueprint=("mutual_walk_toward_each_other", "dual_stop_near_marked_object", "second_actor_runs"),
+        required_semantics=("second_actor_runs", "stop_near_then_role_shift", "marked_object_grounding"),
+        forbidden_collapses=("keep_both_stopped", "drop_final_run", "drop_stop_phase"),
+        semantic_tags=("movement", "marked_object", "ordinal_reference", "multi_beat", "role_shift"),
+        canonical_source_template="2 актёра идут навстречу друг другу, останавливаются у ноутбука, второй начинает бежать.",
+        builder=_toward_each_other_then_stop_near_marked_object_then_second_runs,
+    ),
     "toward_each_other_then_stop_near_marked_object": PatternSpec(
         pattern_name="toward_each_other_then_stop_near_marked_object",
         pattern_family="motion_object_grounding",
         difficulty_bucket="core",
-        default_share=10,
+        default_share=9,
         default_complexity_class="M",
         allowed_source_variant_keys=("base", "ordinal_stress", "morphology_stress"),
         required_actor_count=2,
@@ -2259,7 +3008,7 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         pattern_name="toward_each_other_then_stop_near_marked_object_then_third_actor_described_action",
         pattern_family="three_actor_marked_action",
         difficulty_bucket="hard",
-        default_share=2,
+        default_share=1,
         default_complexity_class="L",
         allowed_source_variant_keys=("base", "morphology_stress"),
         required_actor_count=3,
@@ -2271,11 +3020,27 @@ PATTERN_REGISTRY: dict[str, PatternSpec] = {
         canonical_source_template="2 актёра идут навстречу друг другу, останавливаются у ноутбука, третий начинает курить.",
         builder=_toward_each_other_then_stop_near_marked_object_then_third_actor_described_action,
     ),
+    "second_pick_up_object_then_give_to_third_actor": PatternSpec(
+        pattern_name="second_pick_up_object_then_give_to_third_actor",
+        pattern_family="three_actor_handoff",
+        difficulty_bucket="hard",
+        default_share=2,
+        default_complexity_class="M",
+        allowed_source_variant_keys=("base",),
+        required_actor_count=3,
+        required_object_mode="required_generic",
+        beat_blueprint=("pickup_object", "give_object"),
+        required_semantics=("pickup_precedes_give", "same_actor_completes_handoff", "third_actor_receives_object"),
+        forbidden_collapses=("actor_swap_between_pickup_and_give", "drop_give_phase", "drop_third_actor"),
+        semantic_tags=("pick_up", "give", "three_actor", "handoff", "ordinal_reference"),
+        canonical_source_template="Второй берёт папку и передаёт её третьему.",
+        builder=_second_pick_up_object_then_give_to_third_actor,
+    ),
     "unsupported_action_described_action": PatternSpec(
         pattern_name="unsupported_action_described_action",
         pattern_family="unsupported_action",
         difficulty_bucket="core",
-        default_share=9,
+        default_share=8,
         default_complexity_class="S",
         allowed_source_variant_keys=("base",),
         required_actor_count=1,

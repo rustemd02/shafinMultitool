@@ -31,16 +31,22 @@ class TestPatternLibrary(unittest.TestCase):
                 "dialogue_then_put_down_object",
                 "dialogue_then_small_action",
                 "enter_then_put_down_object",
+                "first_pick_up_object_then_give_to_third_actor",
                 "open_then_pick_up_object",
                 "ordinal_first_second",
                 "ordinal_first_second_third",
                 "pick_up_then_put_down_object",
                 "same_type_two_marked_objects",
+                "same_type_two_marked_objects_left_right",
+                "same_type_two_marked_objects_near_far",
+                "second_pick_up_object_then_give_to_third_actor",
                 "stop_near_marked_object_then_first_described_action",
                 "toward_each_other",
                 "toward_each_other_then_pass_by_marked_object",
+                "toward_each_other_then_pass_by_marked_object_then_second_runs",
                 "toward_each_other_then_pass_by_object_then_second_runs",
                 "toward_each_other_then_stop_near_marked_object",
+                "toward_each_other_then_stop_near_marked_object_then_second_runs",
                 "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action",
                 "unsupported_action_described_action",
             ],
@@ -68,7 +74,10 @@ class TestPatternLibrary(unittest.TestCase):
         records = enumerate_pattern_records(seed=42, difficulty_bucket="hard")
         self.assertTrue(records)
         self.assertTrue(all(record["difficulty_bucket"] == "hard" for record in records))
-        self.assertEqual(len(records), 18)
+        self.assertEqual(
+            len(records),
+            sum(spec.default_share for spec in PATTERN_REGISTRY.values() if spec.difficulty_bucket == "hard"),
+        )
 
     def test_same_type_pattern_uses_two_distinct_marked_ids(self) -> None:
         record = generate_pattern_record(
@@ -116,6 +125,61 @@ class TestPatternLibrary(unittest.TestCase):
                 break
         self.assertTrue(found_table_case)
 
+    def test_same_type_left_right_pattern_keeps_exact_side_bindings(self) -> None:
+        record = generate_pattern_record(
+            "same_type_two_marked_objects_left_right",
+            graph_seed=1301,
+            source_variant_key="same_type_marker_stress",
+        )
+        objects_by_position = {
+            obj["relative_position"]: obj for obj in record["scene_graph"]["objects"]
+        }
+        self.assertEqual(set(objects_by_position), {"left", "right"})
+
+        alias_to_object_id = record["scene_graph"]["reference_bindings"]["alias_to_object_id"]
+        self.assertEqual(set(alias_to_object_id.values()), {obj["id"] for obj in objects_by_position.values()})
+
+        left_aliases = {
+            alias for alias in alias_to_object_id if "left" in alias.lower() or "лев" in alias.lower()
+        }
+        right_aliases = {
+            alias for alias in alias_to_object_id if "right" in alias.lower() or "прав" in alias.lower()
+        }
+        self.assertTrue(left_aliases)
+        self.assertTrue(right_aliases)
+        self.assertTrue(all(alias_to_object_id[alias] == objects_by_position["left"]["id"] for alias in left_aliases))
+        self.assertTrue(all(alias_to_object_id[alias] == objects_by_position["right"]["id"] for alias in right_aliases))
+
+    def test_same_type_near_far_pattern_keeps_exact_distance_bindings(self) -> None:
+        record = generate_pattern_record(
+            "same_type_two_marked_objects_near_far",
+            graph_seed=1302,
+            source_variant_key="same_type_marker_stress",
+        )
+        objects_by_position = {
+            obj["relative_position"]: obj for obj in record["scene_graph"]["objects"]
+        }
+        self.assertEqual(set(objects_by_position), {"foreground", "background"})
+
+        alias_to_object_id = record["scene_graph"]["reference_bindings"]["alias_to_object_id"]
+        self.assertEqual(set(alias_to_object_id.values()), {obj["id"] for obj in objects_by_position.values()})
+
+        near_aliases = {
+            alias for alias in alias_to_object_id if "near" in alias.lower() or "ближ" in alias.lower()
+        }
+        far_aliases = {
+            alias for alias in alias_to_object_id if "far" in alias.lower() or "даль" in alias.lower()
+        }
+        self.assertTrue(near_aliases)
+        self.assertTrue(far_aliases)
+        self.assertTrue(
+            all(alias_to_object_id[alias] == objects_by_position["foreground"]["id"] for alias in near_aliases)
+        )
+        self.assertTrue(
+            all(alias_to_object_id[alias] == objects_by_position["background"]["id"] for alias in far_aliases)
+        )
+        self.assertIn("marker_axis:near_far", record["scene_graph"]["must_preserve"])
+
     def test_unsupported_action_pattern_stays_single_actor(self) -> None:
         record = generate_pattern_record(
             "unsupported_action_described_action",
@@ -137,6 +201,31 @@ class TestPatternLibrary(unittest.TestCase):
         self.assertEqual(final_action["actor_id"], "actor_2")
         self.assertEqual(final_action["type"], "run")
 
+    def test_new_second_runs_patterns_keep_actor_2_run_asymmetry(self) -> None:
+        for pattern_name in (
+            "toward_each_other_then_pass_by_marked_object_then_second_runs",
+            "toward_each_other_then_stop_near_marked_object_then_second_runs",
+        ):
+            with self.subTest(pattern_name=pattern_name):
+                record = generate_pattern_record(
+                    pattern_name,
+                    graph_seed=1801,
+                    source_variant_key="base",
+                )
+                actions = [
+                    action
+                    for beat in record["scene_graph"]["beats"]
+                    for action in beat["actions"]
+                ]
+                final_actions = record["scene_graph"]["beats"][-1]["actions"]
+
+                self.assertEqual(len(final_actions), 1)
+                self.assertEqual(final_actions[0]["actor_id"], "actor_2")
+                self.assertEqual(final_actions[0]["type"], "run")
+                self.assertFalse(
+                    any(action["actor_id"] == "actor_1" and action["type"] == "run" for action in actions)
+                )
+
     def test_default_enumeration_matches_weighted_distribution(self) -> None:
         records = enumerate_pattern_records(seed=7)
         self.assertEqual(len(records), 100)
@@ -147,26 +236,72 @@ class TestPatternLibrary(unittest.TestCase):
             bucket_counts[record["difficulty_bucket"]] += 1
             pattern_counts[record["pattern_name"]] = pattern_counts.get(record["pattern_name"], 0) + 1
 
-        self.assertEqual(bucket_counts, {"core": 82, "hard": 18})
+        self.assertEqual(bucket_counts, {"core": 75, "hard": 25})
+        self.assertEqual(
+            pattern_counts,
+            {
+                "dialogue_only": 7,
+                "dialogue_then_pick_up_object_then_give_to_third_actor": 2,
+                "dialogue_then_put_down_object": 5,
+                "dialogue_then_small_action": 7,
+                "enter_then_put_down_object": 4,
+                "first_pick_up_object_then_give_to_third_actor": 2,
+                "open_then_pick_up_object": 5,
+                "ordinal_first_second": 9,
+                "ordinal_first_second_third": 1,
+                "pick_up_then_put_down_object": 6,
+                "same_type_two_marked_objects": 2,
+                "same_type_two_marked_objects_left_right": 2,
+                "same_type_two_marked_objects_near_far": 2,
+                "second_pick_up_object_then_give_to_third_actor": 2,
+                "stop_near_marked_object_then_first_described_action": 4,
+                "toward_each_other": 8,
+                "toward_each_other_then_pass_by_marked_object": 7,
+                "toward_each_other_then_pass_by_marked_object_then_second_runs": 2,
+                "toward_each_other_then_pass_by_object_then_second_runs": 3,
+                "toward_each_other_then_stop_near_marked_object": 9,
+                "toward_each_other_then_stop_near_marked_object_then_second_runs": 2,
+                "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": 1,
+                "unsupported_action_described_action": 8,
+            },
+        )
+
+    def test_non_default_total_records_preserves_remainder_allocation(self) -> None:
+        records = enumerate_pattern_records(seed=7, total_records=113)
+        self.assertEqual(len(records), 113)
+
+        bucket_counts = {"core": 0, "hard": 0}
+        pattern_counts: dict[str, int] = {}
+        for record in records:
+            bucket_counts[record["difficulty_bucket"]] += 1
+            pattern_counts[record["pattern_name"]] = pattern_counts.get(record["pattern_name"], 0) + 1
+
+        self.assertEqual(bucket_counts, {"core": 86, "hard": 27})
         self.assertEqual(
             pattern_counts,
             {
                 "dialogue_only": 8,
                 "dialogue_then_pick_up_object_then_give_to_third_actor": 2,
-                "dialogue_then_put_down_object": 5,
+                "dialogue_then_put_down_object": 6,
                 "dialogue_then_small_action": 8,
-                "enter_then_put_down_object": 4,
-                "open_then_pick_up_object": 5,
+                "enter_then_put_down_object": 5,
+                "first_pick_up_object_then_give_to_third_actor": 2,
+                "open_then_pick_up_object": 6,
                 "ordinal_first_second": 10,
-                "ordinal_first_second_third": 2,
-                "pick_up_then_put_down_object": 6,
+                "ordinal_first_second_third": 1,
+                "pick_up_then_put_down_object": 7,
                 "same_type_two_marked_objects": 2,
+                "same_type_two_marked_objects_left_right": 2,
+                "same_type_two_marked_objects_near_far": 2,
+                "second_pick_up_object_then_give_to_third_actor": 2,
                 "stop_near_marked_object_then_first_described_action": 5,
                 "toward_each_other": 9,
                 "toward_each_other_then_pass_by_marked_object": 8,
-                "toward_each_other_then_pass_by_object_then_second_runs": 5,
+                "toward_each_other_then_pass_by_marked_object_then_second_runs": 2,
+                "toward_each_other_then_pass_by_object_then_second_runs": 4,
                 "toward_each_other_then_stop_near_marked_object": 10,
-                "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": 2,
+                "toward_each_other_then_stop_near_marked_object_then_second_runs": 2,
+                "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": 1,
                 "unsupported_action_described_action": 9,
             },
         )
@@ -318,11 +453,93 @@ class TestPatternLibrary(unittest.TestCase):
         self.assertEqual(final_action["target_id"], "actor_3")
         self.assertEqual(final_action["holding_object"], "object_1")
 
+    def test_new_three_actor_handoff_patterns_preserve_recipient_binding(self) -> None:
+        expected_pickup_actor = {
+            "first_pick_up_object_then_give_to_third_actor": "actor_1",
+            "second_pick_up_object_then_give_to_third_actor": "actor_2",
+        }
+        for pattern_name, actor_id in expected_pickup_actor.items():
+            with self.subTest(pattern_name=pattern_name):
+                record = generate_pattern_record(
+                    pattern_name,
+                    graph_seed=2404,
+                    source_variant_key="base",
+                )
+                self.assertEqual(record["budgets"]["actor_count"], 3)
+
+                pickup_action = record["scene_graph"]["beats"][-2]["actions"][0]
+                give_action = record["scene_graph"]["beats"][-1]["actions"][0]
+
+                self.assertEqual(pickup_action["type"], "pick_up")
+                self.assertEqual(pickup_action["actor_id"], actor_id)
+                self.assertEqual(give_action["type"], "give")
+                self.assertEqual(give_action["actor_id"], actor_id)
+                self.assertEqual(give_action["target_id"], "actor_3")
+                self.assertEqual(give_action["holding_object"], pickup_action["holding_object"])
+
+    def test_handoff_canonical_templates_use_gendered_object_pronoun(self) -> None:
+        target_patterns = (
+            "dialogue_then_pick_up_object_then_give_to_third_actor",
+            "first_pick_up_object_then_give_to_third_actor",
+            "second_pick_up_object_then_give_to_third_actor",
+        )
+        for pattern_name in target_patterns:
+            with self.subTest(pattern_name=pattern_name):
+                seen_letter_or_key = False
+                for seed in range(2400, 2460):
+                    record = generate_pattern_record(
+                        pattern_name,
+                        graph_seed=seed,
+                        source_variant_key=PATTERN_REGISTRY[pattern_name].allowed_source_variant_keys[0],
+                    )
+                    object_name = record["scene_graph"]["objects"][0]["name"]
+                    template = record["internal_metadata"]["canonical_source_template"]
+                    if object_name in {"letter", "key"}:
+                        seen_letter_or_key = True
+                        self.assertIn("передаёт его", template)
+                        self.assertNotIn("передаёт её", template)
+                        break
+                self.assertTrue(seen_letter_or_key)
+
     def test_failure_coverage_report_has_no_gaps(self) -> None:
         report = build_failure_coverage_report()
         self.assertEqual(report["unknown_patterns"], [])
         self.assertEqual(report["unknown_failures"], [])
         self.assertEqual(report["uncovered_failures"], [])
+
+    def test_failure_coverage_report_has_multi_pattern_ownership_for_weak_zones(self) -> None:
+        report = build_failure_coverage_report()
+        failures = {
+            entry["failure_id"]: set(entry["owning_patterns"])
+            for entry in report["failures"]
+        }
+
+        self.assertGreaterEqual(len(failures["example_3_multi_beat_role_shift_loss"]), 3)
+        self.assertTrue(
+            {
+                "toward_each_other_then_pass_by_object_then_second_runs",
+                "toward_each_other_then_pass_by_marked_object_then_second_runs",
+                "toward_each_other_then_stop_near_marked_object_then_second_runs",
+            }.issubset(failures["example_3_multi_beat_role_shift_loss"])
+        )
+
+        self.assertGreaterEqual(len(failures["example_4_same_type_marker_identity_loss"]), 3)
+        self.assertTrue(
+            {
+                "same_type_two_marked_objects",
+                "same_type_two_marked_objects_left_right",
+                "same_type_two_marked_objects_near_far",
+            }.issubset(failures["example_4_same_type_marker_identity_loss"])
+        )
+
+        self.assertGreaterEqual(len(failures["example_7_three_actor_handoff_loss"]), 3)
+        self.assertTrue(
+            {
+                "dialogue_then_pick_up_object_then_give_to_third_actor",
+                "first_pick_up_object_then_give_to_third_actor",
+                "second_pick_up_object_then_give_to_third_actor",
+            }.issubset(failures["example_7_three_actor_handoff_loss"])
+        )
 
 
 if __name__ == "__main__":

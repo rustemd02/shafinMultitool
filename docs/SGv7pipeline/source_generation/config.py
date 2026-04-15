@@ -25,6 +25,7 @@ class SourceGenerationRequest:
     max_graphs: int | None = None
     batch_size: int = 16
     paraphraser_backend: ParaphraserBackendName = "openai"
+    enable_clean_fallback: bool = True
 
 
 @dataclass(frozen=True)

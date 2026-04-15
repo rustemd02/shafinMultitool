@@ -8,7 +8,12 @@ from cir_contract.contracts import validate_record
 from cir_contract.contracts.cir_types import CIRRecord
 
 from .config import Paraphraser, SourceGenerationRequest, SourceGenerationResult, StyleBucket, VariantPlanItem
-from .filters import dedup_normalization_key, evaluate_candidate_text, normalize_persisted_source_text
+from .filters import (
+    dedup_normalization_key,
+    evaluate_candidate_text,
+    normalize_persisted_source_text,
+    scrub_technical_identifier_literals,
+)
 from .metadata import build_accept_record, build_reject_record
 from .prompt_builder import (
     build_source_prompt,
@@ -98,6 +103,7 @@ class HeuristicParaphraser:
             prefix = ", ".join(token.capitalize() for token in plan_item.required_ordinal_tokens)
             text = f"{prefix}: {text[0].lower() + text[1:]}" if text else prefix
 
+        text = scrub_technical_identifier_literals(text)
         return normalize_persisted_source_text(text)
 
 
@@ -172,6 +178,11 @@ def generate_source_variants(
 ) -> SourceGenerationResult:
     plan_items = build_variant_plan(request)
     paraphraser = paraphraser or _default_paraphraser(request)
+    fallback_paraphraser = (
+        HeuristicParaphraser()
+        if request.paraphraser_backend == "openai" and request.enable_clean_fallback
+        else None
+    )
 
     accepted_records: list[dict[str, object]] = []
     reject_records: list[dict[str, object]] = []
@@ -216,6 +227,36 @@ def generate_source_variants(
                     required_clean_seen.add(plan_item.graph_id)
                 accepted = True
                 break
+
+            if not accepted and plan_item.style_bucket == "clean" and fallback_paraphraser is not None:
+                fallback_candidate = fallback_paraphraser.generate(
+                    plan_item=plan_item,
+                    system_prompt="",
+                    user_prompt="",
+                )
+                fallback_reasons = evaluate_candidate_text(
+                    fallback_candidate,
+                    plan_item,
+                    existing_keys=dedup_keys_by_graph[plan_item.graph_id],
+                )
+                if fallback_reasons:
+                    reject_records.append(
+                        build_reject_record(
+                            plan_item,
+                            candidate_text=fallback_candidate,
+                            reject_reason=";".join(fallback_reasons),
+                            attempt_index=STYLE_RETRY_BUDGETS[plan_item.style_bucket],
+                            reject_stage="clean_fallback_reject",
+                        )
+                    )
+                else:
+                    accept_record = build_accept_record(plan_item, fallback_candidate)
+                    accept_record["acceptance"]["clean_fallback_used"] = True
+                    accept_record["acceptance"]["fallback_backend"] = "heuristic"
+                    accepted_records.append(accept_record)
+                    dedup_keys_by_graph[plan_item.graph_id].add(dedup_normalization_key(accept_record["source_text"]))
+                    required_clean_seen.add(plan_item.graph_id)
+                    accepted = True
 
             if not accepted and plan_item.style_bucket == "clean":
                 raise SourceGenerationError(

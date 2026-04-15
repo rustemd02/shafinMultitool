@@ -348,8 +348,20 @@ def run_semantic_critic(
     if not request.enable_critic:
         raise SemanticCriticError("Critic is disabled and no persisted critic artifact is available")
     payload = build_prompt_payload(sample, cir_record)
-    backend = backend or _default_backend(request)
-    result = backend.evaluate(sample=sample, cir_record=cir_record, prompt_payload=payload)
+    selected_backend = backend or _default_backend(request)
+    try:
+        result = selected_backend.evaluate(sample=sample, cir_record=cir_record, prompt_payload=payload)
+    except SemanticCriticError:
+        if request.critic_backend == "openai":
+            # Fail-open to deterministic local critic instead of rejecting the sample
+            # due to backend response formatting/transient API issues.
+            result = HeuristicCritic(request=request).evaluate(
+                sample=sample,
+                cir_record=cir_record,
+                prompt_payload=payload,
+            )
+        else:
+            raise
     if result.execution != _execution_payload(request, recomputed=False):
         raise SemanticCriticError("Critic backend returned mismatched execution payload")
     return result

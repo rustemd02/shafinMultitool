@@ -791,3 +791,31 @@
 - `docs/SGv7pipeline/training/tests/test_phase_view.py` (инварианты phase view caps и pool accounting)
 
 ---
+
+## [2026-04-15 15:53] - [SG v7 как полный пайплайн подготовки данных для дообучения scene-to-JSON модели]
+
+### Суть изменений
+- Зафиксирована целостная интерпретация `SG v7` не как одного генератора датасета, а как многоэтапного конвейера подготовки обучающих данных для компактной LLM класса `1.5B`, решающей задачу преобразования русскоязычного описания сцены в структурированный JSON.
+- Формализована последовательность этапов пайплайна: `pattern library -> deterministic graph/CIR generation -> source paraphrase generation -> augmentation -> validator stack -> dataset assembly -> phase-aware training views`.
+- Уточнено назначение двух разных контуров обучения: `SFT` как основной supervised-корпус `text -> canonical JSON` и `preference` как дополнительный pairwise-корпус `bad_json vs good_json`, предназначенный для устранения типовых ошибок модели на runtime/offline eval.
+- Зафиксировано текущее состояние системы: SFT-контур уже исполним и позволяет собирать тренировочные выборки, тогда как preference-контур реализован архитектурно и в коде, но требует отдельного потока артефактов с реальными ошибками модели (`runtime_failures` / reviewed bad-vs-good pairs).
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для дообучения малой модели недостаточно сгенерировать большое число пар `текст -> JSON`. Основная трудность состоит в том, что маленькая LLM чувствительна к semantic drift, неоднозначным surface-формулировкам, потерям ordinal binding, marked-object grounding и collapse сложных multi-beat сцен в упрощённые JSON-структуры. Если не разделять генерацию смысла сцены и генерацию естественного текста, датасет быстро начинает содержать скрытые ошибки, которые модель затем воспроизводит на inference.
+- **Решение:** В `SG v7` обучение строится вокруг канонического промежуточного представления сцены. Сначала детерминированно создаётся semantic graph / `CIR`, описывающий актёров, объекты, последовательность битов и инварианты сцены. Затем поверх него генерируются допустимые русскоязычные surface-формы, после чего они проходят ступенчатую фильтрацию, semantic validation и packaging в SFT-артефакты. Отдельно строится preference-контур, в котором реальный неудачный JSON модели сопоставляется с корректным JSON-эталоном. Такая декомпозиция превращает подготовку данных из ad-hoc text generation в воспроизводимый экспериментальный pipeline с явными контрольными точками качества.
+- **Детали:** Практически `SG v7` работает как фабрика обучающих примеров. `Pattern library` задаёт классы сцен и failure-oriented coverage; `graph_generator` материализует детерминированные canonical records; `source_generation` создаёт множество пользовательских формулировок одной и той же сцены; `augmentation` вносит морфологические и стилистические вариации; `validators` отделяют semantic-preserving samples от drift и записывают provenance-aware verdict; `dataset_builder` формирует leakage-safe `train/val/test` splits. На текущем этапе уже подтверждена работоспособность SFT-контура, а preference-контур требует наполнения реальными ошибками модели, чтобы после базового supervised fine-tuning выполнять вторичную настройку предпочтений и снижать частоту систематических ошибок, таких как потеря объекта, потеря действия или схлопывание beat-структуры.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/README.md` (сквозное описание этапов SG v7)
+- `docs/SGv7pipeline/pattern_library/registry.py` (канонические pattern families и semantic coverage)
+- `docs/SGv7pipeline/graph_generator/01_build_pattern_graphs.py` (построение deterministic graph/CIR records)
+- `docs/SGv7pipeline/source_generation/02_generate_source_variants.py` (генерация surface text variants)
+- `docs/SGv7pipeline/augmentation/04_noise_and_morphology.py` (морфологические и noise-вариации)
+- `docs/SGv7pipeline/validators/05_validate_and_pack.py` (semantic validation и packaging accepted/review/rejected)
+- `docs/SGv7pipeline/dataset_builder/06_build_dataset_splits.py` (сборка SFT/preference датасетов и split manifests)
+- `docs/SGv7pipeline/runtime_feedback/normalize_runtime_feedback.py` (нормализация runtime ошибок модели)
+- `docs/SGv7pipeline/runtime_feedback/review_and_promote_runtime_feedback.py` (review/promotion corrected runtime failures)
+- `docs/SGv7pipeline/training/08_build_phase_view.py` (phase-aware materialization для обучения)
+- `docs/SGv7pipeline/run_sgv7_pilot.sh` (end-to-end pilot orchestration SG v7)
+
+---

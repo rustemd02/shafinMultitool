@@ -29,6 +29,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--preference-train-ratio", type=float, default=0.85)
     parser.add_argument("--preference-val-ratio", type=float, default=0.10)
     parser.add_argument("--preference-test-ratio", type=float, default=0.05)
+    parser.add_argument(
+        "--max-technical-source-share",
+        type=float,
+        default=0.15,
+        help="Maximum share of SFT samples containing technical ids (actor_*/object_marked_*).",
+    )
     return parser.parse_args()
 
 
@@ -50,6 +56,7 @@ def main() -> int:
         preference_train_ratio=args.preference_train_ratio,
         preference_val_ratio=args.preference_val_ratio,
         preference_test_ratio=args.preference_test_ratio,
+        max_technical_source_share=args.max_technical_source_share,
     )
     try:
         result = build_dataset(request)
@@ -68,4 +75,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

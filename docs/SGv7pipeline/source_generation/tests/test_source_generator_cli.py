@@ -17,6 +17,37 @@ from source_generation import HeuristicParaphraser, SourceGenerationRequest, gen
 
 
 class TestSourceGeneratorCLI(unittest.TestCase):
+    def test_openai_backend_can_fallback_for_required_clean_variant(self) -> None:
+        fixture = DOCS_ROOT / "cir_contract" / "contracts" / "examples" / "ex2_pass_by_object_then_second_runs.json"
+
+        class AlwaysBadParaphraser:
+            def generate(self, *, plan_item, system_prompt: str, user_prompt: str) -> str:
+                return "[]"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "graphs.jsonl"
+            input_jsonl.write_text(
+                json.dumps(json.loads(fixture.read_text(encoding="utf-8")), ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            output_jsonl = tmp_path / "sources.jsonl"
+            reject_jsonl = tmp_path / "rejects.jsonl"
+            request = SourceGenerationRequest(
+                input_jsonl=input_jsonl,
+                output_jsonl=output_jsonl,
+                reject_log_jsonl=reject_jsonl,
+                seed=20260413,
+                max_variants_per_graph=1,
+                paraphraser_backend="openai",
+                enable_clean_fallback=True,
+            )
+            result = generate_source_variants(request, paraphraser=AlwaysBadParaphraser())
+            self.assertEqual(len(result.accepted_records), 1)
+            accepted = result.accepted_records[0]
+            self.assertEqual(accepted["style_bucket"], "clean")
+            self.assertTrue(accepted["acceptance"].get("clean_fallback_used"))
+
     def test_generate_source_variants_smoke_on_real_graph_fixtures(self) -> None:
         fixtures = [
             DOCS_ROOT / "cir_contract" / "contracts" / "examples" / "ex1_stop_near_marked_then_first_described.json",

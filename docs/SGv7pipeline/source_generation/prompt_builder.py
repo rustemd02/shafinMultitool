@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 from typing import Any
 
 from cir_contract.contracts.cir_types import CIRRecord, ObjectNode
@@ -20,6 +21,10 @@ _EXACT_TRANSLATIONS = {
     "chair": "стул",
     "left table": "левый стол",
     "right table": "правый стол",
+    "near table": "ближний стол",
+    "far table": "дальний стол",
+    "near chair": "ближний стул",
+    "far chair": "дальний стул",
     "that table": "тот стол",
     "table": "стол",
     "door": "дверь",
@@ -49,6 +54,10 @@ _COLLOQUIAL_PREFERENCES = ("комп", "ноут", "телик", "компа")
 
 _LEFT_FORMS = ("левый", "левого", "левому", "левом")
 _RIGHT_FORMS = ("правый", "правого", "правому", "правом")
+_NEAR_FORMS = ("ближний", "ближнего", "ближнему", "ближнем")
+_FAR_FORMS = ("дальний", "дальнего", "дальнему", "дальнем")
+_ACTOR_ID_TOKEN_RE = re.compile(r"\bactor_[0-9]+\b", flags=re.IGNORECASE)
+_MARKED_OBJECT_ID_TOKEN_RE = re.compile(r"\bobject_marked_[0-9a-z]+\b", flags=re.IGNORECASE)
 
 _NOUN_CASES = {
     "стул": ("стул", "стула", "стулу", "стулом"),
@@ -98,6 +107,20 @@ def expand_surface_forms(text: str) -> list[str]:
             noun_forms = _NOUN_CASES[noun]
             forms.add(f"тот {noun_forms[0]}")
             forms.add(f"того {noun_forms[1]}")
+    if normalized.startswith("ближний "):
+        noun = normalized.split(" ", 1)[1]
+        if noun in _NOUN_CASES:
+            noun_forms = _NOUN_CASES[noun]
+            forms.add(f"ближний {noun_forms[0]}")
+            forms.add(f"ближнего {noun_forms[1]}")
+            forms.add(f"ближнему {noun_forms[2]}")
+    if normalized.startswith("дальний "):
+        noun = normalized.split(" ", 1)[1]
+        if noun in _NOUN_CASES:
+            noun_forms = _NOUN_CASES[noun]
+            forms.add(f"дальний {noun_forms[0]}")
+            forms.add(f"дальнего {noun_forms[1]}")
+            forms.add(f"дальнему {noun_forms[2]}")
 
     return sorted(forms)
 
@@ -141,29 +164,32 @@ def _beat_summary(beat: dict[str, Any], record: CIRRecord) -> str:
     if phase == "stop_near_object":
         target_id = next((action.get("target_id") for action in actions if action.get("target_id")), None)
         if target_id:
-            return f"actors stop near {target_id} ({object_name_by_id.get(target_id, target_id)})"
+            return f"actors stop near marked object ({object_name_by_id.get(target_id, target_id)})"
         return "actors stop near the marked object"
     if phase == "pass_by_object":
         target_id = next((action.get("target_id") for action in actions if action.get("target_id")), None)
         if target_id:
-            return f"actors pass by {target_id} ({object_name_by_id.get(target_id, target_id)})"
+            return f"actors pass by marked object ({object_name_by_id.get(target_id, target_id)})"
         return "actors pass by the marked object"
     if phase == "approach_object":
         first_action = actions[0] if actions else {}
         target_id = first_action.get("target_id")
         actor_id = first_action.get("actor_id", "actor_1")
         if target_id:
-            return f"{actor_id} approaches {target_id} ({object_name_by_id.get(target_id, target_id)})"
-    for action in actions:
-        if action.get("type") == "described_action":
-            payload = action.get("described_action", {})
-            canonical = localize_described_action(str(payload.get("canonical_text", "described action")))
-            return f"{action['actor_id']} performs described_action: {canonical}"
-        if action.get("type") == "run":
-            return f"{action['actor_id']} starts running"
-        if action.get("type") == "talk":
-            dialogue = action.get("dialogue", "")
-            return f"{action['actor_id']} says: {dialogue}"
+            return f"{_ordinal_ru(actor_id, capitalized=True)} actor approaches {object_name_by_id.get(target_id, target_id)}"
+        for action in actions:
+            if action.get("type") == "described_action":
+                payload = action.get("described_action", {})
+                canonical = localize_described_action(str(payload.get("canonical_text", "described action")))
+                actor_token = _ordinal_ru(str(action.get("actor_id", "actor_1")), capitalized=True)
+                return f"{actor_token} actor performs described_action: {canonical}"
+            if action.get("type") == "run":
+                actor_token = _ordinal_ru(str(action.get("actor_id", "actor_1")), capitalized=True)
+                return f"{actor_token} actor starts running"
+            if action.get("type") == "talk":
+                dialogue = action.get("dialogue", "")
+                actor_token = _ordinal_ru(str(action.get("actor_id", "actor_1")), capitalized=True)
+                return f"{actor_token} actor says: {dialogue}"
     return phase.replace("_", " ")
 
 
@@ -337,6 +363,9 @@ def _same_type_disambiguation_payload(record: CIRRecord) -> dict[str, object] | 
 
     target_id = _target_marked_object_id(record)
     objects = [obj for obj in record["scene_graph"]["objects"] if counts[obj["type"]] >= 2]
+    must_preserve = [item for item in record["scene_graph"].get("must_preserve", []) if isinstance(item, str)]
+    has_near_far_axis = "marker_axis:near_far" in must_preserve
+
     object_entries: list[dict[str, object]] = []
     for obj in objects:
         localized_aliases = localized_object_aliases(obj)
@@ -354,6 +383,15 @@ def _same_type_disambiguation_payload(record: CIRRecord) -> dict[str, object] | 
         elif relative == "right":
             noun = preferred.split(" ", 1)[-1]
             for adjective in _RIGHT_FORMS:
+                if noun in _NOUN_CASES:
+                    noun_forms = _NOUN_CASES[noun]
+                    cues.add(f"{adjective} {noun_forms[0]}")
+                    cues.add(f"{adjective} {noun_forms[1]}")
+                    cues.add(f"{adjective} {noun_forms[2]}")
+        elif has_near_far_axis and relative in {"foreground", "background"}:
+            noun = preferred.split(" ", 1)[-1]
+            adjective_forms = _NEAR_FORMS if relative == "foreground" else _FAR_FORMS
+            for adjective in adjective_forms:
                 if noun in _NOUN_CASES:
                     noun_forms = _NOUN_CASES[noun]
                     cues.add(f"{adjective} {noun_forms[0]}")
@@ -528,12 +566,12 @@ def _render_marked_object_block(block: list[dict[str, object]]) -> str:
     if not block:
         return "- none"
     lines: list[str] = []
-    for entry in block:
+    for idx, entry in enumerate(block, start=1):
         aliases = ", ".join(entry["preferred_aliases"])
         surface_forms = ", ".join(entry["surface_forms"])
         lines.extend(
             [
-                f"- id: {entry['id']}",
+                f"- marker_{idx}:",
                 f"  type: {entry['type']}",
                 f"  preferred_aliases: {aliases}",
                 f"  allowed_surface_forms: {surface_forms}",
@@ -546,9 +584,9 @@ def _render_same_type_disambiguation(block: dict[str, object] | None) -> str:
     if block is None:
         return "- none"
     lines = ["Same-type marker disambiguation:"]
-    for entry in block["objects"]:
+    for idx, entry in enumerate(block["objects"], start=1):
         target_suffix = " [target]" if entry["is_target"] else ""
-        lines.append(f"- {entry['id']}: preferred alias \"{entry['preferred_alias']}\"{target_suffix}")
+        lines.append(f"- marker_{idx}: preferred alias \"{entry['preferred_alias']}\"{target_suffix}")
         lines.append("  fallback cues: " + ", ".join(entry["fallback_cues"][:6]))
     lines.append("- source must preserve one explicit distinguishing cue for the target object")
     return "\n".join(lines)
@@ -558,6 +596,51 @@ def _render_list(values: list[str] | tuple[str, ...]) -> str:
     if not values:
         return "- none"
     return "\n".join(f"- {value}" for value in values)
+
+
+def _humanize_semantic_anchor(item: str) -> str:
+    value = str(item).strip()
+    if value.startswith("must_ground_object:"):
+        return "сохрани упоминание заданного размеченного объекта через его natural alias"
+    if value.startswith("morphology_surface:"):
+        surface = value.split(":", 1)[1].strip()
+        return f"сохрани surface форму: {surface}" if surface else "сохрани morphology surface форму"
+    if value.startswith("ordinal:first->"):
+        return "сохрани ordinal ссылку «первый»"
+    if value.startswith("ordinal:second->"):
+        return "сохрани ordinal ссылку «второй»"
+    if value.startswith("ordinal:third->"):
+        return "сохрани ordinal ссылку «третий»"
+    if value.startswith("second_actor_anchor:"):
+        return "сохрани привязку второго актёра к его якорному объекту"
+    if value.startswith("third_actor_anchor:"):
+        return "сохрани привязку третьего актёра к его якорному объекту"
+    if value == "actor_2_runs_in_final_beat":
+        return "во втором актёре финальный beat должен содержать run"
+
+    value = _ACTOR_ID_TOKEN_RE.sub("соответствующий актёр", value)
+    value = _MARKED_OBJECT_ID_TOKEN_RE.sub("размеченный объект", value)
+    return value or "сохрани обязательный semantic anchor"
+
+
+def _render_semantic_anchors(values: list[str] | tuple[str, ...]) -> str:
+    if not values:
+        return "- none"
+    return "\n".join(f"- {_humanize_semantic_anchor(value)}" for value in values)
+
+
+def _render_ordinal_bindings(bindings: dict[str, str]) -> str:
+    if not bindings:
+        return "- none"
+    human_ordinal = {"first": "первый", "second": "второй", "third": "третий"}
+    human_actor = {"actor_1": "первый актёр", "actor_2": "второй актёр", "actor_3": "третий актёр"}
+    lines: list[str] = []
+    for ordinal in ("first", "second", "third"):
+        actor_id = str(bindings.get(ordinal, "")).strip()
+        if not actor_id:
+            continue
+        lines.append(f"- {human_ordinal.get(ordinal, ordinal)} => {human_actor.get(actor_id, 'соответствующий актёр')}")
+    return "\n".join(lines) if lines else "- none"
 
 
 def build_source_prompt(plan_item: VariantPlanItem, previous_reject_reason: str | None = None) -> tuple[str, str]:
@@ -581,7 +664,7 @@ def build_source_prompt(plan_item: VariantPlanItem, previous_reject_reason: str 
         str(payload["beat_outline"]),
         "",
         "Ordinal bindings:",
-        str(payload["ordinal_bindings"]),
+        _render_ordinal_bindings(dict(payload["ordinal_bindings"])),
         "",
         "Marked objects:",
         _render_marked_object_block(payload["marked_object_block"]),
@@ -590,7 +673,7 @@ def build_source_prompt(plan_item: VariantPlanItem, previous_reject_reason: str 
         _render_same_type_disambiguation(payload["same_type_disambiguation_block"]),
         "",
         "Must keep:",
-        _render_list(payload["must_keep_semantics"]),
+        _render_semantic_anchors(payload["must_keep_semantics"]),
         "",
         "Must not introduce:",
         _render_list(payload["must_not_introduce"]),
@@ -605,6 +688,7 @@ def build_source_prompt(plan_item: VariantPlanItem, previous_reject_reason: str 
         "- не теряй слова первый/второй/третий, если ordinal binding нужен для recoverability",
         "- не схлопывай несколько beats в один расплывчатый факт",
         "- не превращай unsupported action в talk или в другое поддерживаемое действие",
+        "- не используй технические идентификаторы вроде actor_1 или object_marked_ab12 в финальном тексте",
         "- не пиши пояснений, списков и JSON",
         "",
         "Верни только один финальный source text на русском языке.",

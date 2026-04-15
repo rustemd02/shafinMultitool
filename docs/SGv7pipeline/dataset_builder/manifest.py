@@ -99,6 +99,7 @@ def build_split_manifest(
                 "val": request.sft_val_ratio,
                 "test": request.sft_test_ratio,
             },
+            "max_technical_source_share": request.max_technical_source_share,
             "contract_version": request.contract_version,
         },
         "input_artifacts": {

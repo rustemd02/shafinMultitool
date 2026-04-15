@@ -47,6 +47,7 @@
 - deterministic graph generator CLI: [01_build_pattern_graphs.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/graph_generator/01_build_pattern_graphs.py)
 - CIR executable artifacts (schema/types/validator/tests): [cir_contract/contracts/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/cir_contract/contracts)
 - SG v7 canonical dataset entrypoint: [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
+- pilot runner для малого end-to-end прогона: [run_sgv7_pilot.sh](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/run_sgv7_pilot.sh)
 - агент по source/paraphrase generation: [04-source-generation.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/04-source-generation.md)
 - design для source/paraphrase generation: [22-source-generation-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/22-source-generation-design.md)
 - design verify для source/paraphrase generation: [23-source-generation-design-review.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/23-source-generation-design-review.md)

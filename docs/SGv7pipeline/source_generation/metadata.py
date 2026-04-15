@@ -76,11 +76,13 @@ def build_graph_constraints(record: CIRRecord) -> dict[str, object]:
 
 def build_accept_record(plan_item: VariantPlanItem, source_text: str) -> dict[str, object]:
     normalized = normalize_persisted_source_text(source_text)
+    contract_version = str(plan_item.record.get("contract_version", "sg_v7_contract_v1"))
     return {
         "sample_id": plan_item.sample_id,
         "variant_id": f"{plan_item.sample_id}-{plan_item.style_bucket}-{plan_item.variant_ordinal:02d}",
         "graph_id": plan_item.graph_id,
         "pattern_name": plan_item.pattern_name,
+        "contract_version": contract_version,
         "difficulty_bucket": plan_item.difficulty_bucket,
         "style_bucket": plan_item.style_bucket,
         "source_text": normalized,
@@ -106,10 +108,12 @@ def build_reject_record(
     attempt_index: int,
     reject_stage: str = "lexical_or_format_reject",
 ) -> dict[str, object]:
+    contract_version = str(plan_item.record.get("contract_version", "sg_v7_contract_v1"))
     return {
         "sample_id": plan_item.sample_id,
         "graph_id": plan_item.graph_id,
         "pattern_name": plan_item.pattern_name,
+        "contract_version": contract_version,
         "difficulty_bucket": plan_item.difficulty_bucket,
         "style_bucket": plan_item.style_bucket,
         "model_name": plan_item.model_name,

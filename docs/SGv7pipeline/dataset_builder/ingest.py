@@ -9,7 +9,7 @@ from typing import Any
 from cir_contract.contracts import structural_hash
 from graph_generator.dedup import graph_fingerprint
 from pattern_library import PATTERN_REGISTRY
-from source_generation.filters import normalize_persisted_source_text
+from source_generation.filters import has_technical_identifier_literals, normalize_persisted_source_text
 
 from .config import DatasetBuildError, DatasetBuildRequest
 from .renderer import render_sft_messages
@@ -195,11 +195,86 @@ def _admit_sft_row(row: dict[str, Any]) -> bool:
     return str(row.get("train_eligibility", "")) in {"direct_sft", "hard_or_preference_only"}
 
 
+def _allowed_technical_literal_count(*, clean_count: int, technical_count: int, max_share: float) -> int:
+    if clean_count < 0:
+        return 0
+    if max_share <= 0:
+        return 0
+    if max_share >= 1:
+        return max(0, technical_count)
+    # Enforce t / (clean + t) <= max_share  =>  t <= (max_share * clean) / (1 - max_share)
+    allowed = int((max_share * clean_count) / (1 - max_share))
+    return max(0, allowed)
+
+
+def _technical_keep_priority(candidate: dict[str, Any]) -> tuple[int, int, int, int, str]:
+    critical = {str(tag) for tag in candidate.get("critical_eval_tags", [])}
+    critical_weight = 0
+    if "exact_marker_identity_cases" in critical:
+        critical_weight += 3
+    if "same_type_markers" in critical:
+        critical_weight += 2
+    if "ordinal_cases" in critical:
+        critical_weight += 1
+    metadata = candidate.get("packaging_metadata", {})
+    token_count_score = int(metadata.get("source_text_token_count", 0)) if isinstance(metadata, dict) else 0
+    return (
+        1 if bool(candidate.get("promoted_from_manual_review", False)) else 0,
+        critical_weight,
+        int(candidate.get("recoverability_score", 0)),
+        token_count_score,
+        str(candidate.get("sample_id", "")),
+    )
+
+
+def _enforce_technical_source_share(
+    candidates: list[dict[str, Any]],
+    *,
+    max_share: float,
+) -> tuple[list[dict[str, Any]], int]:
+    if not candidates:
+        return [], 0
+
+    technical = [row for row in candidates if bool(row.get("_has_technical_literals", False))]
+    if not technical:
+        return candidates, 0
+
+    clean_count = len(candidates) - len(technical)
+    allowed_technical = _allowed_technical_literal_count(
+        clean_count=clean_count,
+        technical_count=len(technical),
+        max_share=max_share,
+    )
+    if len(technical) <= allowed_technical:
+        return candidates, 0
+
+    keep_technical = set()
+    ranked = sorted(technical, key=_technical_keep_priority, reverse=True)
+    for row in ranked[:allowed_technical]:
+        keep_technical.add(str(row.get("sample_id", "")))
+
+    filtered: list[dict[str, Any]] = []
+    dropped = 0
+    for row in candidates:
+        sample_id = str(row.get("sample_id", ""))
+        has_technical = bool(row.get("_has_technical_literals", False))
+        if has_technical and sample_id not in keep_technical:
+            dropped += 1
+            continue
+        filtered.append(row)
+    return filtered, dropped
+
+
 def load_sft_candidates(
     request: DatasetBuildRequest,
     *,
     cir_index: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    if request.max_technical_source_share < 0 or request.max_technical_source_share > 1:
+        raise DatasetBuildError(
+            f"max_technical_source_share must be within [0,1], got {request.max_technical_source_share!r}"
+        )
+
     accepted_rows = read_jsonl(request.accepted_jsonl)
     promoted_rows = _load_promoted_review_rows(request, contract_version=request.contract_version)
     candidates: list[dict[str, Any]] = []
@@ -222,6 +297,7 @@ def load_sft_candidates(
         if not source_text:
             dropped["not_admitted_by_policy"] += 1
             continue
+        has_technical_literals = has_technical_identifier_literals(source_text)
 
         messages, target_json, assistant_content = render_sft_messages(source_text=source_text, cir_record=cir_record)
         graph_hash = str(cir_record["graph_hash"])
@@ -288,9 +364,18 @@ def load_sft_candidates(
             "review_decision": row.get("review_decision"),
             "reviewed_at": row.get("reviewed_at"),
             "reviewer": row.get("reviewer"),
+            "_has_technical_literals": has_technical_literals,
         }
         candidates.append(candidate)
-    return candidates, dropped
+
+    filtered_candidates, dropped_technical = _enforce_technical_source_share(
+        candidates,
+        max_share=request.max_technical_source_share,
+    )
+    dropped["technical_token_over_budget"] = dropped_technical
+    for candidate in filtered_candidates:
+        candidate.pop("_has_technical_literals", None)
+    return filtered_candidates, dropped
 
 
 def load_raw_preference_candidates(request: DatasetBuildRequest) -> list[dict[str, Any]]:
@@ -313,4 +398,3 @@ def load_raw_preference_candidates(request: DatasetBuildRequest) -> list[dict[st
             row_copy["_preference_origin"] = "offline_eval_bad_vs_corrected"
             rows.append(row_copy)
     return rows
-
