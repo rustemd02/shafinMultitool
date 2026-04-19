@@ -1,0 +1,71 @@
+{
+  "build_request": {
+    "difficulty_bucket": "core",
+    "fail_on_duplicates": false,
+    "include_variants": null,
+    "output_jsonl": "/tmp/sgv7_full_20260417/core/graphs.jsonl",
+    "output_manifest": "/tmp/sgv7_full_20260417/core/graphs.manifest.json",
+    "pattern_names": null,
+    "refill_budget": 12,
+    "seed": 20260417,
+    "total_records": 2500
+  },
+  "build_seed": 20260417,
+  "cir_version": "sg_v7_cir_v1",
+  "complexity_counts": {
+    "M": 1534,
+    "S": 966
+  },
+  "contract_version": "sg_v7_contract_v1",
+  "dedup_group_counts": {
+    "dialogue_only|base|dialogue_exchange|2|marked=0|unmarked=0|talk,talk": 177,
+    "dialogue_only|dialogue_mix|dialogue_exchange|2|marked=0|unmarked=0|talk,talk": 23,
+    "dialogue_then_put_down_object|base|dialogue_exchange,putdown_object|2|marked=0|unmarked=2|talk,put_down": 173,
+    "dialogue_then_put_down_object|dialogue_mix|dialogue_exchange,putdown_object|2|marked=0|unmarked=2|talk,put_down": 27,
+    "dialogue_then_small_action|base|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,look_at": 72,
+    "dialogue_then_small_action|base|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,turn": 79,
+    "dialogue_then_small_action|dialogue_mix|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,look_at": 8,
+    "dialogue_then_small_action|dialogue_mix|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,turn": 8,
+    "enter_then_put_down_object|base|single_action,putdown_object|1|marked=0|unmarked=2|enter,put_down": 167,
+    "open_then_pick_up_object|base|open_object,pickup_object|1|marked=0|unmarked=2|open,pick_up": 267,
+    "ordinal_first_second|base|approach_object|2|marked=0|unmarked=1|approach,look_at": 300,
+    "pick_up_then_put_down_object|base|pickup_object,putdown_object|1|marked=0|unmarked=2|pick_up,put_down": 267,
+    "toward_each_other_then_pass_by_marked_object|base|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 141,
+    "toward_each_other_then_pass_by_marked_object|morphology_stress|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 96,
+    "toward_each_other_then_pass_by_marked_object|ordinal_stress|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 63,
+    "toward_each_other_then_stop_near_marked_object|base|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 159,
+    "toward_each_other_then_stop_near_marked_object|morphology_stress|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 100,
+    "toward_each_other_then_stop_near_marked_object|ordinal_stress|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 74,
+    "toward_each_other|base|toward_each_other|2|marked=0|unmarked=0|walk,walk": 98,
+    "toward_each_other|ordinal_stress|toward_each_other|2|marked=0|unmarked=0|walk,walk": 35,
+    "unsupported_action_described_action|base|single_action|1|marked=0|unmarked=1|described_action": 166
+  },
+  "difficulty_bucket": "core",
+  "duplicate_drop_count": 40,
+  "emitted_total_records": 2500,
+  "generator_name": "sg_v7_graph_generator_v1",
+  "pattern_counts": {
+    "dialogue_only": 200,
+    "dialogue_then_put_down_object": 200,
+    "dialogue_then_small_action": 167,
+    "enter_then_put_down_object": 167,
+    "open_then_pick_up_object": 267,
+    "ordinal_first_second": 300,
+    "pick_up_then_put_down_object": 267,
+    "toward_each_other": 133,
+    "toward_each_other_then_pass_by_marked_object": 300,
+    "toward_each_other_then_stop_near_marked_object": 333,
+    "unsupported_action_described_action": 166
+  },
+  "pattern_registry_version": "sg_v7_pattern_library_v1",
+  "refill_attempt_count": 182,
+  "rejected_by_budget": 142,
+  "rejected_by_duplicate": 40,
+  "requested_total_records": 2500,
+  "variant_counts": {
+    "base": 2066,
+    "dialogue_mix": 66,
+    "morphology_stress": 196,
+    "ordinal_stress": 172
+  }
+}

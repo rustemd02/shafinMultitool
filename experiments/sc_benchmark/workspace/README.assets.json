@@ -1,0 +1,15 @@
+{
+  "warning": "predictions_oracle_v1 are smoke placeholders copied from gold_target_json. Replace with real model outputs before scientific conclusions.",
+  "bundle_dir": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/eval_bundle_v1",
+  "predictions_dir": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1",
+  "real_predictions_dir": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_real_v1",
+  "config_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/benchmark_config.v1.json",
+  "real_config_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/benchmark_config.real.v1.json",
+  "serving_model_map_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/serving_model_map.template.json",
+  "set_counts": {
+    "synthetic_heldout": 109,
+    "hard_heldout": 89,
+    "real_runtime": 64
+  },
+  "total_cases": 262
+}

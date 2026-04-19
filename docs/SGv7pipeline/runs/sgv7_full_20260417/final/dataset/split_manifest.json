@@ -1,0 +1,127 @@
+{
+  "bad_morphology_rows": 0,
+  "build_config": {
+    "contract_version": "sg_v7_contract_v1",
+    "max_comp_family_share": 0.18,
+    "max_notebook_family_share": 0.18,
+    "max_smoke_family_share": 0.06,
+    "max_technical_source_share": 0.1,
+    "seed": 20260417,
+    "sft_ratios": {
+      "test": 0.08,
+      "train": 0.84,
+      "val": 0.08
+    }
+  },
+  "contract_versions_present": [
+    "sg_v7_contract_v1"
+  ],
+  "counts_by_correction_tier": {
+    "tier_b_deterministic_canonical": 2488
+  },
+  "counts_by_critical_eval_tags": {
+    "exact_marker_identity_cases": 1413,
+    "marked_object_morphology": 434,
+    "ordinal_cases": 1270,
+    "reviewed_merge_cases": 0,
+    "same_type_markers": 320,
+    "three_beat_cases": 595,
+    "unsupported_action_cases": 3
+  },
+  "counts_by_difficulty_bucket": {
+    "core": 1369,
+    "hard": 1119
+  },
+  "counts_by_pattern_name": {
+    "dialogue_only": 149,
+    "dialogue_then_pick_up_object_then_give_to_third_actor": 26,
+    "dialogue_then_put_down_object": 84,
+    "dialogue_then_small_action": 68,
+    "enter_then_put_down_object": 1,
+    "first_pick_up_object_then_give_to_third_actor": 9,
+    "open_then_pick_up_object": 181,
+    "ordinal_first_second": 177,
+    "ordinal_first_second_third": 183,
+    "pick_up_then_put_down_object": 97,
+    "same_type_two_marked_objects": 131,
+    "same_type_two_marked_objects_left_right": 119,
+    "same_type_two_marked_objects_near_far": 70,
+    "second_pick_up_object_then_give_to_third_actor": 12,
+    "stop_near_marked_object_then_first_described_action": 3,
+    "toward_each_other": 88,
+    "toward_each_other_then_pass_by_marked_object": 248,
+    "toward_each_other_then_pass_by_marked_object_then_second_runs": 192,
+    "toward_each_other_then_pass_by_object_then_second_runs": 182,
+    "toward_each_other_then_stop_near_marked_object": 276,
+    "toward_each_other_then_stop_near_marked_object_then_second_runs": 192
+  },
+  "counts_by_semantic_family_key": {
+    "composed_marked_action|base|hard|M|described_action,marked_object,movement,multi_beat,ordinal_reference": 2,
+    "composed_marked_action|morphology_stress|hard|M|described_action,marked_object,movement,multi_beat,ordinal_reference": 1,
+    "container_interaction|base|core|M|container,open,pick_up,single_actor": 181,
+    "dialogue_followup|base|core|S|chronology,dialogue,small_action": 62,
+    "dialogue_followup|dialogue_mix|core|S|chronology,dialogue,small_action": 6,
+    "dialogue_object_followup|base|core|M|dialogue,object_placement,two_actor": 73,
+    "dialogue_object_followup|dialogue_mix|core|M|dialogue,object_placement,two_actor": 11,
+    "dialogue|base|core|S|baseline,dialogue,two_actor": 128,
+    "dialogue|dialogue_mix|core|S|baseline,dialogue,two_actor": 21,
+    "marker_disambiguation|same_type_marker_stress|hard|M|grounding,left_right,marked_object,ordinal_reference,same_type_markers": 119,
+    "marker_disambiguation|same_type_marker_stress|hard|M|grounding,marked_object,near_far,ordinal_reference,same_type_markers": 70,
+    "marker_disambiguation|same_type_marker_stress|hard|M|grounding,marked_object,ordinal_reference,same_type_markers": 131,
+    "motion_object_grounding|base|core|M|marked_object,movement,pass_by_object": 113,
+    "motion_object_grounding|base|core|M|marked_object,movement,stop_near_object": 135,
+    "motion_object_grounding|morphology_stress|core|M|marked_object,movement,pass_by_object": 85,
+    "motion_object_grounding|morphology_stress|core|M|marked_object,movement,stop_near_object": 83,
+    "motion_object_grounding|ordinal_stress|core|M|marked_object,movement,pass_by_object": 50,
+    "motion_object_grounding|ordinal_stress|core|M|marked_object,movement,stop_near_object": 58,
+    "motion_symmetry|base|core|S|movement,symmetry,two_actor": 68,
+    "motion_symmetry|ordinal_stress|core|S|movement,symmetry,two_actor": 20,
+    "object_placement|base|core|M|enter,object_placement,single_actor": 1,
+    "object_placement|base|core|M|object_placement,pick_up,put_down,single_actor": 97,
+    "ordinal_binding|base|core|S|object_target,ordinal_reference,two_actor": 177,
+    "role_shift_motion|base|hard|M|marked_object,movement,multi_beat,ordinal_reference,role_shift": 301,
+    "role_shift_motion|morphology_stress|hard|M|marked_object,movement,multi_beat,ordinal_reference,role_shift": 265,
+    "three_actor_handoff|base|hard|L|dialogue,give,handoff,pick_up,three_actor": 19,
+    "three_actor_handoff|base|hard|L|give,handoff,ordinal_reference,pick_up,three_actor": 21,
+    "three_actor_handoff|dialogue_mix|hard|L|dialogue,give,handoff,pick_up,three_actor": 7,
+    "three_actor_ordinal_binding|base|hard|L|asymmetry,object_target,ordinal_reference,three_actor": 183
+  },
+  "counts_by_split": {
+    "test": 198,
+    "train": 2090,
+    "val": 200
+  },
+  "dropped_by_dedup_reason": {
+    "duplicate_sample_id": 0,
+    "family_cap_exceeded": 0,
+    "normalized_source_hash_collision": 542,
+    "same_graph_and_source": 0
+  },
+  "dropped_by_ingest_reason": {
+    "bad_morphology_source": 0,
+    "comp_family_over_budget": 0,
+    "meta_language_source": 0,
+    "missing_cir_join": 0,
+    "not_admitted_by_policy": 49,
+    "notebook_family_over_budget": 0,
+    "smoke_family_over_budget": 0,
+    "surface_noise_source": 10,
+    "technical_literal_source": 0,
+    "technical_token_over_budget": 0
+  },
+  "input_artifacts": {
+    "accepted_jsonl": "/tmp/sgv7_full_20260417/final/accepted_merged.jsonl",
+    "cir_jsonl": "/tmp/sgv7_full_20260417/final/cir_merged.jsonl",
+    "manual_review_jsonl": "/tmp/sgv7_full_20260417/final/review_merged.jsonl",
+    "review_promoted_jsonl": "/tmp/sgv7_full_20260417/final/review_promoted.jsonl"
+  },
+  "lexeme_watch_rows": {
+    "comp_family_rows": 113,
+    "notebook_family_rows": 0,
+    "smoke_family_rows": 0
+  },
+  "meta_language_rows": 0,
+  "promoted_review_rows": 0,
+  "surface_noise_rows": 0,
+  "technical_literal_rows": 0
+}

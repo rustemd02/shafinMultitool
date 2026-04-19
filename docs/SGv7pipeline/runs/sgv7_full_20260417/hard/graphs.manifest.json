@@ -1,0 +1,69 @@
+{
+  "build_request": {
+    "difficulty_bucket": "hard",
+    "fail_on_duplicates": false,
+    "include_variants": null,
+    "output_jsonl": "/tmp/sgv7_full_20260417/hard/graphs.jsonl",
+    "output_manifest": "/tmp/sgv7_full_20260417/hard/graphs.manifest.json",
+    "pattern_names": null,
+    "refill_budget": 12,
+    "seed": 20260417,
+    "total_records": 2500
+  },
+  "build_seed": 20260417,
+  "cir_version": "sg_v7_cir_v1",
+  "complexity_counts": {
+    "L": 900,
+    "M": 1600
+  },
+  "contract_version": "sg_v7_contract_v1",
+  "dedup_group_counts": {
+    "dialogue_then_pick_up_object_then_give_to_third_actor|base|dialogue_exchange,pickup_object,give_object|3|marked=0|unmarked=1|talk,talk,pick_up,give": 174,
+    "dialogue_then_pick_up_object_then_give_to_third_actor|dialogue_mix|dialogue_exchange,pickup_object,give_object|3|marked=0|unmarked=1|talk,talk,pick_up,give": 26,
+    "first_pick_up_object_then_give_to_third_actor|base|pickup_object,give_object|3|marked=0|unmarked=1|pick_up,give": 200,
+    "ordinal_first_second_third|base|approach_object|3|marked=0|unmarked=2|approach,look_at,stand": 200,
+    "same_type_two_marked_objects_left_right|same_type_marker_stress|approach_object|2|marked=2|unmarked=0|approach,stand": 300,
+    "same_type_two_marked_objects_near_far|same_type_marker_stress|approach_object|2|marked=2|unmarked=0|approach,stand": 200,
+    "same_type_two_marked_objects|same_type_marker_stress|approach_object|2|marked=2|unmarked=0|approach,stand": 300,
+    "second_pick_up_object_then_give_to_third_actor|base|pickup_object,give_object|3|marked=0|unmarked=1|pick_up,give": 200,
+    "stop_near_marked_object_then_first_described_action|base|toward_each_other,stop_near_object,first_described_action|2|marked=1|unmarked=0|walk,walk,stop,stop,described_action": 106,
+    "stop_near_marked_object_then_first_described_action|morphology_stress|toward_each_other,stop_near_object,first_described_action|2|marked=1|unmarked=0|walk,walk,stop,stop,described_action": 94,
+    "toward_each_other_then_pass_by_marked_object_then_second_runs|base|toward_each_other,pass_by_object,single_action|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by,run": 103,
+    "toward_each_other_then_pass_by_marked_object_then_second_runs|morphology_stress|toward_each_other,pass_by_object,single_action|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by,run": 97,
+    "toward_each_other_then_pass_by_object_then_second_runs|base|toward_each_other,pass_by_object,single_action|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by,run": 111,
+    "toward_each_other_then_pass_by_object_then_second_runs|morphology_stress|toward_each_other,pass_by_object,single_action|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by,run": 89,
+    "toward_each_other_then_stop_near_marked_object_then_second_runs|base|toward_each_other,stop_near_object,single_action|2|marked=1|unmarked=0|walk,walk,stop,stop,run": 113,
+    "toward_each_other_then_stop_near_marked_object_then_second_runs|morphology_stress|toward_each_other,stop_near_object,single_action|2|marked=1|unmarked=0|walk,walk,stop,stop,run": 87,
+    "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action|base|toward_each_other,stop_near_object,third_described_action|3|marked=1|unmarked=0|walk,walk,stop,stop,stand,described_action": 50,
+    "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action|morphology_stress|toward_each_other,stop_near_object,third_described_action|3|marked=1|unmarked=0|walk,walk,stop,stop,stand,described_action": 50
+  },
+  "difficulty_bucket": "hard",
+  "duplicate_drop_count": 1,
+  "emitted_total_records": 2500,
+  "generator_name": "sg_v7_graph_generator_v1",
+  "pattern_counts": {
+    "dialogue_then_pick_up_object_then_give_to_third_actor": 200,
+    "first_pick_up_object_then_give_to_third_actor": 200,
+    "ordinal_first_second_third": 200,
+    "same_type_two_marked_objects": 300,
+    "same_type_two_marked_objects_left_right": 300,
+    "same_type_two_marked_objects_near_far": 200,
+    "second_pick_up_object_then_give_to_third_actor": 200,
+    "stop_near_marked_object_then_first_described_action": 200,
+    "toward_each_other_then_pass_by_marked_object_then_second_runs": 200,
+    "toward_each_other_then_pass_by_object_then_second_runs": 200,
+    "toward_each_other_then_stop_near_marked_object_then_second_runs": 200,
+    "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": 100
+  },
+  "pattern_registry_version": "sg_v7_pattern_library_v1",
+  "refill_attempt_count": 1,
+  "rejected_by_budget": 0,
+  "rejected_by_duplicate": 1,
+  "requested_total_records": 2500,
+  "variant_counts": {
+    "base": 1257,
+    "dialogue_mix": 26,
+    "morphology_stress": 417,
+    "same_type_marker_stress": 800
+  }
+}

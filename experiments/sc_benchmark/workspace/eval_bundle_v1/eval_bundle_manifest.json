@@ -1,0 +1,47 @@
+{
+  "bundle_id": "sgv7_eval_bundle_v1",
+  "bundle_version": "eval_bundle_v1",
+  "contract_version": "sg_v7_contract_v1",
+  "created_at": "2026-04-19T16:48:33.236131+00:00",
+  "required_contract_snapshots": [
+    "prompt_contract_snapshot.json",
+    "decoding_config_snapshot.json",
+    "grammar_constraint_snapshot.json",
+    "normalization_policy_snapshot.json",
+    "runtime_policy_snapshot.json"
+  ],
+  "expected_snapshot_hashes": {
+    "prompt_contract_snapshot.json": "6b8fbd0d86cbf3ca09d36516a7e8ec22a96c14b9badde3bdae113dc91a7f940b",
+    "decoding_config_snapshot.json": "f9779b62a87f9d0c163c51a41bf61e8c23e2223699acdbbf5f7ebba2bbc5d246",
+    "grammar_constraint_snapshot.json": "a1f2fc00a384faa69e8177cf9077b50b7e0086cba8f35abbf6fde9ad47af4945",
+    "normalization_policy_snapshot.json": "678bdc22303cae685242a0356ccfddcefb3207d99d05909f80199a6670cf9f71",
+    "runtime_policy_snapshot.json": "75374ebdf4fa5bf39a9a21543ad6e96fa4d53318d07e25c6ce68411311c19335"
+  },
+  "set_counts": {
+    "synthetic_heldout": 109,
+    "hard_heldout": 89,
+    "real_runtime": 64
+  },
+  "required_metrics": [
+    "json_valid_rate",
+    "marked_object_recall",
+    "exact_marked_object_id_accuracy",
+    "beat_count_accuracy",
+    "action_recall",
+    "described_action_precision",
+    "dangling_target_rate",
+    "ordinal_actor_binding_accuracy",
+    "target_resolution_accuracy",
+    "chronology_phase_accuracy",
+    "llm_accept_rate",
+    "llm_merge_rate",
+    "llm_reject_rate",
+    "runtime_fallback_rate"
+  ],
+  "provenance": {
+    "dataset_dir": "/private/tmp/sgv7_full_20260417/final/dataset",
+    "synthetic_limit": 120,
+    "hard_limit": 120,
+    "runtime_limit": 64
+  }
+}

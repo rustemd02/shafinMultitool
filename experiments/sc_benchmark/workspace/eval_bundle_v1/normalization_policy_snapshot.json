@@ -1,0 +1,5 @@
+{
+  "snapshot_id": "sgv7_normalization_policy_v1",
+  "source_text_normalization": "strict_whitespace_and_noise_filters",
+  "generated_at": "2026-04-19T16:48:33.234948+00:00"
+}

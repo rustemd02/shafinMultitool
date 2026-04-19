@@ -1,0 +1,58 @@
+{
+  "eval_bundle_dir": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/eval_bundle_v1",
+  "eval_seed": 20260419,
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "checkpoint_id_template": "{model_id}_seed{seed}",
+  "models": [
+    {
+      "id": "base_qwen3_1_7b",
+      "name": "Base Qwen3-1.7B",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_real_v1/base_qwen3_1_7b_seed{seed}.jsonl"
+    },
+    {
+      "id": "dataset_v6",
+      "name": "Fine-tuned on generate_dataset_v6",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_real_v1/dataset_v6_seed{seed}.jsonl"
+    },
+    {
+      "id": "dataset_v7",
+      "name": "Fine-tuned on generate_dataset_v7",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_real_v1/dataset_v7_seed{seed}.jsonl"
+    },
+    {
+      "id": "dataset_v7_orpo",
+      "name": "Fine-tuned on generate_dataset_v7 + ORPO",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_real_v1/dataset_v7_orpo_seed{seed}.jsonl"
+    }
+  ],
+  "pairs": [
+    [
+      "dataset_v6",
+      "base_qwen3_1_7b"
+    ],
+    [
+      "dataset_v7",
+      "base_qwen3_1_7b"
+    ],
+    [
+      "dataset_v7_orpo",
+      "base_qwen3_1_7b"
+    ],
+    [
+      "dataset_v7",
+      "dataset_v6"
+    ],
+    [
+      "dataset_v7_orpo",
+      "dataset_v7"
+    ],
+    [
+      "dataset_v7_orpo",
+      "dataset_v6"
+    ]
+  ]
+}

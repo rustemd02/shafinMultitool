@@ -1,0 +1,30 @@
+{
+  "accepted_count": 1838,
+  "counts_by_correction_tier": {
+    "tier_b_deterministic_canonical": 2208
+  },
+  "counts_by_difficulty_bucket": {
+    "core": 2208
+  },
+  "critic_verdict_distribution": {
+    "hard_fail": 331,
+    "pass": 1296,
+    "soft_fail": 581
+  },
+  "manual_review_count": 47,
+  "recoverability_score_histogram": {
+    "100": 1583,
+    "90": 625
+  },
+  "reject_counts_by_taxonomy_code": {
+    "recoverability_borderline": 8,
+    "semantic_beat_collapse": 84,
+    "semantic_invented_dialogue": 9,
+    "semantic_marked_object_lost": 273,
+    "semantic_ordinal_anchor_lost": 169,
+    "semantic_unsupported_action_lost": 4
+  },
+  "rejected_count": 323,
+  "total_input_count": 2208,
+  "validator_stack_version": "sgv7_validator_stack_v1"
+}

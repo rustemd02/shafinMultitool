@@ -1,0 +1,229 @@
+{
+  "sft": {
+    "sft_train.jsonl": {
+      "total": 2090,
+      "parse_err": 0,
+      "bad_msgs": 0,
+      "bad_target_or_mismatch": 0,
+      "bad_assistant_json": 0,
+      "dup_sample_ids": 0,
+      "noise": {
+        "tech": 0,
+        "meta": 0,
+        "latin_run": 0,
+        "surface": 0,
+        "morph": 0,
+        "replacement_char": 0,
+        "latin_inside_cyr": 0
+      },
+      "top_task_types": [
+        [
+          "sft",
+          2090
+        ]
+      ],
+      "top_patterns": [],
+      "max_pattern_share": 0.0,
+      "top_quality_flags": []
+    },
+    "sft_val.jsonl": {
+      "total": 200,
+      "parse_err": 0,
+      "bad_msgs": 0,
+      "bad_target_or_mismatch": 0,
+      "bad_assistant_json": 0,
+      "dup_sample_ids": 0,
+      "noise": {
+        "tech": 0,
+        "meta": 0,
+        "latin_run": 0,
+        "surface": 0,
+        "morph": 0,
+        "replacement_char": 0,
+        "latin_inside_cyr": 0
+      },
+      "top_task_types": [
+        [
+          "sft",
+          200
+        ]
+      ],
+      "top_patterns": [],
+      "max_pattern_share": 0.0,
+      "top_quality_flags": []
+    },
+    "sft_test.jsonl": {
+      "total": 198,
+      "parse_err": 0,
+      "bad_msgs": 0,
+      "bad_target_or_mismatch": 0,
+      "bad_assistant_json": 0,
+      "dup_sample_ids": 0,
+      "noise": {
+        "tech": 0,
+        "meta": 0,
+        "latin_run": 0,
+        "surface": 0,
+        "morph": 0,
+        "replacement_char": 0,
+        "latin_inside_cyr": 0
+      },
+      "top_task_types": [
+        [
+          "sft",
+          198
+        ]
+      ],
+      "top_patterns": [],
+      "max_pattern_share": 0.0,
+      "top_quality_flags": []
+    }
+  },
+  "sft_overlaps": {
+    "sft_train.jsonl__sft_val.jsonl": 0,
+    "sft_train.jsonl__sft_test.jsonl": 0,
+    "sft_val.jsonl__sft_test.jsonl": 0
+  },
+  "sft_lexeme_watch": {
+    "comp_family_rows": 26
+  },
+  "preference": {
+    "preference_train.jsonl": {
+      "total": 1088,
+      "parse_err": 0,
+      "bad_msgs": 0,
+      "bad_json_fields_or_mismatch": 0,
+      "chosen_eq_rejected": 0,
+      "source_originalDescription_mismatch": 0,
+      "dup_preference_ids_within_file": 0,
+      "noise": {
+        "tech": 0,
+        "meta": 0,
+        "latin_run": 0,
+        "surface": 0,
+        "morph": 0,
+        "replacement_char": 0,
+        "latin_inside_cyr": 0
+      }
+    },
+    "preference_val.jsonl": {
+      "total": 128,
+      "parse_err": 0,
+      "bad_msgs": 0,
+      "bad_json_fields_or_mismatch": 0,
+      "chosen_eq_rejected": 0,
+      "source_originalDescription_mismatch": 0,
+      "dup_preference_ids_within_file": 0,
+      "noise": {
+        "tech": 0,
+        "meta": 0,
+        "latin_run": 0,
+        "surface": 0,
+        "morph": 0,
+        "replacement_char": 0,
+        "latin_inside_cyr": 0
+      }
+    },
+    "preference_test.jsonl": {
+      "total": 64,
+      "parse_err": 0,
+      "bad_msgs": 0,
+      "bad_json_fields_or_mismatch": 0,
+      "chosen_eq_rejected": 0,
+      "source_originalDescription_mismatch": 0,
+      "dup_preference_ids_within_file": 0,
+      "noise": {
+        "tech": 0,
+        "meta": 0,
+        "latin_run": 0,
+        "surface": 0,
+        "morph": 0,
+        "replacement_char": 0,
+        "latin_inside_cyr": 0
+      }
+    }
+  },
+  "pref_dup_global": 0,
+  "top_pref_source_repeats": [
+    [
+      "Первый актёр: «Я уже подготовил заметку». Второй актёр: «Тогда покажи заметку».",
+      1
+    ],
+    [
+      "ЛИЗА: Я уже приложила вложение. ОЛЕГ: Тогда быстро проверь вложение.",
+      1
+    ],
+    [
+      "Первый: «Я уже приложил документ». Второй актёр: «Тогда покажи документ»",
+      1
+    ],
+    [
+      "Первый: «Я уже приложил презентацию». Второй: «Тогда открой презентацию».",
+      1
+    ],
+    [
+      "Света: Я уже отправила заметку. Олег: Тогда посмотри заметку.",
+      1
+    ],
+    [
+      "первый: Я уже приложил вложение. второй: Тогда быстро проверь вложение.",
+      1
+    ],
+    [
+      "первый: «Я уже подготовил документ.» второй: «Тогда быстро проверь документ.»",
+      1
+    ],
+    [
+      "первый: «Я уже приложил черновик». второй: «Тогда быстро проверь черновик».",
+      1
+    ],
+    [
+      "Дарья: Я уже переслала презентацию. Вика: Тогда проверь презентацию.",
+      1
+    ],
+    [
+      "Нина: Я уже переслала презентацию. Егор: Тогда открой презентацию.",
+      1
+    ],
+    [
+      "первый: Я уже переслал заметку. второй: Тогда открой и покажи заметку.",
+      1
+    ],
+    [
+      "Вика: Я уже приложила файл. Тимур: Тогда быстро проверь файл.",
+      1
+    ],
+    [
+      "Света: Я уже приложила документ. Соня: Тогда открой и покажи документ.",
+      1
+    ],
+    [
+      "Первый актёр: «Я уже скинула скриншот». Второй актёр: «Тогда проверь скриншот».",
+      1
+    ],
+    [
+      "Вика: Я уже приложила письмо. Рома: Тогда быстро проверь письмо.",
+      1
+    ],
+    [
+      "Первый актёр: «Я уже скинула архив». Второй актёр: «Тогда покажи архив».",
+      1
+    ],
+    [
+      "первый: Я уже отправил скриншот. второй: Тогда открой скриншот.",
+      1
+    ],
+    [
+      "Первый: «Я уже подготовил письмо». Второй актёр: «Тогда быстро проверь письмо»",
+      1
+    ],
+    [
+      "первый: Я уже загрузила сводку. второй: Тогда покажи сводку.",
+      1
+    ],
+    [
+      "первый: Я уже приложила заметку. второй: Тогда открой и покажи заметку.",
+      1
+    ]
+  ]
+}
