@@ -930,3 +930,26 @@
 - `docs/cameraanalysis/13-agent-briefing-template.md` (шаблон постановки задач для отдельных агентов)
 - `docs/cameraanalysis/camera-analysis-requirements-draft.md` (требования и фиксированные решения по `v1`)
 - `docs/cameraanalysis/camera-analysis-v1-architecture.md` (подробная архитектурная концепция `Camera Analysis v1`)
+
+---
+
+## [2026-04-19 22:37] - [Camera Analysis v1: domain contracts и explainable pipeline foundation]
+
+### Суть изменений
+- Зафиксирован и реализован source-of-truth слой доменных контрактов для `Camera Analysis v1`: `FrameFeatureSnapshot`, `SceneSemanticsReport`, `CritiqueReport`, `RecommendationPlan`.
+- Введены ограниченные таксономии для `scene types`, `issues`, `strengths` и `actions`, чтобы следующий слой критики и планирования можно было строить без домысливания.
+- Добавлены инварианты и `validate()`-проверки для ключевых контрактов, включая нормализацию диапазонных полей, согласованность `verdict` и `issue severity`, а также связи между `RecommendationAction` и `Issue`.
+- Подготовлены contract fixtures и unit tests, подтверждающие round-trip сериализацию и поведение на граничных случаях, включая fallback-сценарии и недостаточность источников сигнала.
+- Обновлены документы `docs/cameraanalysis`, чтобы `PR-002` был связан с конкретным design doc, backlog-артефактами и кодовой реализацией.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для explainable mobile camera analysis недостаточно иметь набор эвристик или неформальный поток подсказок. Без формализованных доменных контрактов невозможно гарантировать согласованность между extraction, semantic interpretation, critique и recommendation слоями, а значит нельзя обеспечить воспроизводимую интерпретацию качества кадра и проверяемость рекомендаций.
+- **Решение:** Система переведена в контрактно-ориентированную архитектуру, где сначала фиксируется каноническая структура данных, а уже затем строятся semantics, critique и planner. Такой подход уменьшает архитектурный дрейф, делает pipeline пригодным для последующей детерминированной реализации и позволяет описывать его как explainable dataflow с явными invariants и quality gates.
+- **Детали:** Введена явная нормализация диапазонов (`clamp` для confidence/severity и композиционных offsets), разделены роли normalized snapshot и semantic layer, а также зафиксирована связь `CritiqueReport -> RecommendationPlan` через `inputVerdict` и `linkedIssueIds`. Это важно для главы о реализации, поскольку показывает переход от ad hoc heuristics к формализованному контракту с проверяемыми условиями корректности.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (доменные модели и `validate()`-инварианты)
+- `shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift` (contract tests и fixtures)
+- `docs/cameraanalysis/03-domain-contracts.md` (source-of-truth спецификация контрактов)
+- `docs/cameraanalysis/11-implementation-backlog.md` (связка PR-002 с кодом и тестами)
+- `docs/cameraanalysis/README.md` (обновлённый индекс пакета camera analysis)
