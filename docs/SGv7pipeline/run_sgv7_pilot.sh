@@ -12,16 +12,24 @@ HARD_RECORDS="12"
 MAX_VARIANTS_PER_GRAPH="2"
 MAX_AUGMENTED_VARIANTS_PER_PARENT="1"
 PARAPHRASER_BACKEND="heuristic"
+PARAPHRASER_WORKERS="15"
 CRITIC_BACKEND="heuristic"
+CRITIC_WORKERS="15"
+CRITIC_DISABLE_RESPONSE_FORMAT="0"
 MODEL_NAME="gpt-5.4-nano"
-BATCH_SIZE="8"
+BATCH_SIZE="32"
 REFILL_BUDGET="12"
 STRICT_DUPLICATES="0"
 AUTO_PROMOTE_SAME_TYPE_REVIEW="1"
+ALLOW_HEURISTIC_PREFERENCE_DEGRADATION="0"
 HEARTBEAT_SECONDS="20"
-MAX_TECHNICAL_SOURCE_SHARE="0.15"
+MAX_TECHNICAL_SOURCE_SHARE=""
+MAX_COMP_FAMILY_SHARE=""
+MAX_NOTEBOOK_FAMILY_SHARE=""
+MAX_SMOKE_FAMILY_SHARE=""
 TOTAL_STEPS="12"
 STEP_INDEX="0"
+START_STEP="1"
 
 usage() {
   cat <<EOF
@@ -37,12 +45,21 @@ Options:
   --max-variants-per-graph INT          Source variants per graph (default: ${MAX_VARIANTS_PER_GRAPH})
   --max-augmented-per-parent INT        Augmented variants per accepted source (default: ${MAX_AUGMENTED_VARIANTS_PER_PARENT})
   --paraphraser-backend MODE            openai|heuristic (default: ${PARAPHRASER_BACKEND})
+  --paraphraser-workers INT             Parallel workers for source-generation OpenAI stage (default: ${PARAPHRASER_WORKERS})
   --critic-backend MODE                 openai|heuristic (default: ${CRITIC_BACKEND})
+  --critic-workers INT                 Parallel workers for validate-and-pack critic stage (default: ${CRITIC_WORKERS})
+  --critic-disable-response-format      Disable json_schema response_format in critic requests (for non-official endpoints)
   --model-name NAME                     Source generation model label (default: ${MODEL_NAME})
   --batch-size INT                      Source generation batch size (default: ${BATCH_SIZE})
   --refill-budget INT                   Graph refill attempts on duplicates/budget rejects (default: ${REFILL_BUDGET})
   --heartbeat-seconds INT               Heartbeat period for long-running commands (default: ${HEARTBEAT_SECONDS})
-  --max-technical-source-share FLOAT    Max SFT share with actor_*/object_marked_* literals (default: ${MAX_TECHNICAL_SOURCE_SHARE})
+  --start-step INT                      Resume from step N (1..${TOTAL_STEPS}); earlier steps are skipped
+  --max-technical-source-share FLOAT    Max SFT share with actor_*/object_marked_* literals (default: off)
+  --max-comp-family-share FLOAT         Max SFT share with comp/computer-family lexemes (default: off)
+  --max-notebook-family-share FLOAT     Max SFT share with notebook-family lexemes (default: off)
+  --max-smoke-family-share FLOAT        Max SFT share with smoke-family lexemes (default: off)
+  --allow-heuristic-preference-degradation
+                                        Allow synthetic fallback degradation for preference negatives (default: off)
   --strict-duplicates                   Fail immediately on first duplicate graph (default: off)
   --no-auto-promote-same-type-review    Disable automatic promotion of same_type review cases
   -h, --help                            Show this help
@@ -82,9 +99,21 @@ while [[ $# -gt 0 ]]; do
       PARAPHRASER_BACKEND="$2"
       shift 2
       ;;
+    --paraphraser-workers)
+      PARAPHRASER_WORKERS="$2"
+      shift 2
+      ;;
     --critic-backend)
       CRITIC_BACKEND="$2"
       shift 2
+      ;;
+    --critic-workers)
+      CRITIC_WORKERS="$2"
+      shift 2
+      ;;
+    --critic-disable-response-format)
+      CRITIC_DISABLE_RESPONSE_FORMAT="1"
+      shift
       ;;
     --model-name)
       MODEL_NAME="$2"
@@ -102,9 +131,29 @@ while [[ $# -gt 0 ]]; do
       HEARTBEAT_SECONDS="$2"
       shift 2
       ;;
+    --start-step)
+      START_STEP="$2"
+      shift 2
+      ;;
     --max-technical-source-share)
       MAX_TECHNICAL_SOURCE_SHARE="$2"
       shift 2
+      ;;
+    --max-comp-family-share)
+      MAX_COMP_FAMILY_SHARE="$2"
+      shift 2
+      ;;
+    --max-notebook-family-share)
+      MAX_NOTEBOOK_FAMILY_SHARE="$2"
+      shift 2
+      ;;
+    --max-smoke-family-share)
+      MAX_SMOKE_FAMILY_SHARE="$2"
+      shift 2
+      ;;
+    --allow-heuristic-preference-degradation)
+      ALLOW_HEURISTIC_PREFERENCE_DEGRADATION="1"
+      shift
       ;;
     --strict-duplicates)
       STRICT_DUPLICATES="1"
@@ -126,9 +175,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if ! [[ "$START_STEP" =~ ^[0-9]+$ ]]; then
+  echo "Invalid --start-step value: $START_STEP" >&2
+  exit 1
+fi
+if (( START_STEP < 1 || START_STEP > TOTAL_STEPS )); then
+  echo "Invalid --start-step=$START_STEP (must be within 1..$TOTAL_STEPS)" >&2
+  exit 1
+fi
+
 run() {
   STEP_INDEX="$((STEP_INDEX + 1))"
   local step_label="[${STEP_INDEX}/${TOTAL_STEPS}]"
+  if (( STEP_INDEX < START_STEP )); then
+    echo
+    echo "==> ${step_label} skipped (resume): $*"
+    return 0
+  fi
   local start_ts
   local now_ts
   local last_heartbeat_ts
@@ -167,6 +230,11 @@ run() {
 run_with_stdin() {
   STEP_INDEX="$((STEP_INDEX + 1))"
   local step_label="[${STEP_INDEX}/${TOTAL_STEPS}]"
+  if (( STEP_INDEX < START_STEP )); then
+    echo
+    echo "==> ${step_label} skipped (resume): $*"
+    return 0
+  fi
   local start_ts
   local now_ts
   local elapsed
@@ -198,12 +266,27 @@ echo "  output_dir=$OUTPUT_DIR"
 echo "  seed=$SEED"
 echo "  core_records=$CORE_RECORDS hard_records=$HARD_RECORDS"
 echo "  paraphraser_backend=$PARAPHRASER_BACKEND critic_backend=$CRITIC_BACKEND"
+echo "  paraphraser_workers=$PARAPHRASER_WORKERS"
+echo "  critic_workers=$CRITIC_WORKERS"
+echo "  critic_disable_response_format=$CRITIC_DISABLE_RESPONSE_FORMAT"
 echo "  refill_budget=$REFILL_BUDGET duplicate_mode=$graph_duplicate_mode_msg"
 echo "  auto_promote_same_type_review=$AUTO_PROMOTE_SAME_TYPE_REVIEW"
 echo "  heartbeat_seconds=$HEARTBEAT_SECONDS total_steps=$TOTAL_STEPS"
-echo "  max_technical_source_share=$MAX_TECHNICAL_SOURCE_SHARE"
+echo "  start_step=$START_STEP"
+if [[ -n "$MAX_TECHNICAL_SOURCE_SHARE" ]]; then
+  echo "  max_technical_source_share=$MAX_TECHNICAL_SOURCE_SHARE"
+else
+  echo "  max_technical_source_share=off"
+fi
+if [[ -n "$MAX_COMP_FAMILY_SHARE" || -n "$MAX_NOTEBOOK_FAMILY_SHARE" || -n "$MAX_SMOKE_FAMILY_SHARE" ]]; then
+  echo "  lexeme_caps(comp/notebook/smoke)=$MAX_COMP_FAMILY_SHARE/$MAX_NOTEBOOK_FAMILY_SHARE/$MAX_SMOKE_FAMILY_SHARE"
+else
+  echo "  lexeme_caps(comp/notebook/smoke)=off"
+fi
+echo "  allow_heuristic_preference_degradation=$ALLOW_HEURISTIC_PREFERENCE_DEGRADATION"
 
 for bucket in core hard; do
+  export SGV7_DISABLE_RESPONSE_FORMAT="$CRITIC_DISABLE_RESPONSE_FORMAT"
   if [[ "$bucket" == "core" ]]; then
     total_records="$CORE_RECORDS"
   else
@@ -233,7 +316,8 @@ for bucket in core hard; do
     --max-variants-per-graph "$MAX_VARIANTS_PER_GRAPH" \
     --model-name "$MODEL_NAME" \
     --batch-size "$BATCH_SIZE" \
-    --paraphraser-backend "$PARAPHRASER_BACKEND"
+    --paraphraser-backend "$PARAPHRASER_BACKEND" \
+    --paraphraser-workers "$PARAPHRASER_WORKERS"
 
   run python3 "docs/SGv7pipeline/validators/05_validate_and_pack.py" \
     --input-jsonl "$OUTPUT_DIR/$bucket/source_candidates.jsonl" \
@@ -244,7 +328,8 @@ for bucket in core hard; do
     --manifest-json "$OUTPUT_DIR/$bucket/source_validation_manifest.json" \
     --seed "$SEED" \
     --difficulty-bucket "$bucket" \
-    --critic-backend "$CRITIC_BACKEND"
+    --critic-backend "$CRITIC_BACKEND" \
+    --critic-workers "$CRITIC_WORKERS"
 
   run python3 "docs/SGv7pipeline/augmentation/04_noise_and_morphology.py" \
     --input-jsonl "$OUTPUT_DIR/$bucket/accepted_source.jsonl" \
@@ -263,11 +348,13 @@ for bucket in core hard; do
     --manifest-json "$OUTPUT_DIR/$bucket/aug_validation_manifest.json" \
     --seed "$SEED" \
     --difficulty-bucket "$bucket" \
-    --critic-backend "$CRITIC_BACKEND"
+    --critic-backend "$CRITIC_BACKEND" \
+    --critic-workers "$CRITIC_WORKERS"
 done
 
 export SGV7_OUTPUT_DIR="$OUTPUT_DIR"
 export SGV7_AUTO_PROMOTE_SAME_TYPE_REVIEW="$AUTO_PROMOTE_SAME_TYPE_REVIEW"
+export SGV7_ALLOW_HEURISTIC_PREFERENCE_DEGRADATION="$ALLOW_HEURISTIC_PREFERENCE_DEGRADATION"
 run_with_stdin python3 - <<'PY'
 from pathlib import Path
 import os
@@ -282,7 +369,7 @@ if str(docs_root) not in sys.path:
     sys.path.insert(0, str(docs_root))
 
 from source_generation.metadata import build_graph_constraints  # type: ignore[import-not-found]
-from cir_contract.contracts import structural_hash  # type: ignore[import-not-found]
+from cir_contract.contracts import serialize_to_scenescript, structural_hash  # type: ignore[import-not-found]
 
 accepted_parts = [
     root / "core" / "accepted_source.jsonl",
@@ -301,6 +388,16 @@ review_parts = [
 review_out = root / "final" / "review_merged.jsonl"
 review_promoted_out = root / "final" / "review_promoted.jsonl"
 auto_promote_same_type = os.environ.get("SGV7_AUTO_PROMOTE_SAME_TYPE_REVIEW", "1") == "1"
+
+rejected_parts = [
+    root / "core" / "rejected_source.jsonl",
+    root / "core" / "rejected_augmented.jsonl",
+    root / "hard" / "rejected_source.jsonl",
+    root / "hard" / "rejected_augmented.jsonl",
+]
+rejected_out = root / "final" / "rejected_merged.jsonl"
+preference_candidates_out = root / "final" / "rejected_preference_candidates.jsonl"
+runtime_preference_candidates_out = root / "final" / "runtime_preference_candidates.jsonl"
 
 cir_parts = [
     root / "core" / "graphs.jsonl",
@@ -466,6 +563,13 @@ review_lines = [
 ]
 review_out.write_text("".join(line + "\n" for line in review_lines), encoding="utf-8")
 
+rejected_by_sample_id, rejected_conflicting_duplicates, rejected_backfilled = merge_part_rows(rejected_parts)
+rejected_lines = [
+    json.dumps(rejected_by_sample_id[sample_id], ensure_ascii=False)
+    for sample_id in sorted(rejected_by_sample_id.keys())
+]
+rejected_out.write_text("".join(line + "\n" for line in rejected_lines), encoding="utf-8")
+
 promoted_rows: list[dict] = []
 if auto_promote_same_type:
     for sample_id in sorted(review_by_sample_id.keys()):
@@ -490,6 +594,197 @@ review_promoted_out.write_text(
     encoding="utf-8",
 )
 
+
+def _reasons_from_row(row: dict) -> set[str]:
+    report = row.get("validation_report", {})
+    reasons: set[str] = set()
+    if isinstance(report, dict):
+        for key in ("reject_reasons", "review_reasons"):
+            raw = report.get(key)
+            if isinstance(raw, list):
+                for item in raw:
+                    if isinstance(item, str) and item.strip():
+                        reasons.add(item.strip())
+    return reasons
+
+
+def _canonical_scene(cir_row: dict, source_text: str) -> dict:
+    return serialize_to_scenescript(cir_row, original_description=source_text)
+
+
+def _degrade_scene(good_scene: dict, reasons: set[str]) -> dict:
+    bad = deepcopy(good_scene)
+    changed = False
+    allow_heuristic_degradation = os.environ.get("SGV7_ALLOW_HEURISTIC_PREFERENCE_DEGRADATION", "0") == "1"
+
+    beats = bad.get("beats", [])
+    objects = bad.get("objects", [])
+    if not isinstance(beats, list):
+        beats = []
+    if not isinstance(objects, list):
+        objects = []
+
+    if any(reason == "semantic_marked_object_lost" for reason in reasons):
+        if objects:
+            bad["objects"] = []
+            changed = True
+        for beat in beats:
+            actions = beat.get("actions", [])
+            if not isinstance(actions, list):
+                continue
+            for action in actions:
+                target = action.get("target")
+                if isinstance(target, str) and target.startswith("object_marked_"):
+                    action.pop("target", None)
+                    changed = True
+
+    if not changed and any(reason == "semantic_beat_collapse" for reason in reasons):
+        if len(beats) > 1:
+            bad["beats"] = [deepcopy(beats[0])]
+            changed = True
+        elif beats and isinstance(beats[0].get("actions"), list) and len(beats[0]["actions"]) > 1:
+            beats[0]["actions"] = [deepcopy(beats[0]["actions"][0])]
+            changed = True
+
+    if (
+        not changed
+        and allow_heuristic_degradation
+        and any(reason in {"semantic_ordinal_anchor_lost", "semantic_same_type_disambiguation_lost"} for reason in reasons)
+    ):
+        for beat in beats:
+            actions = beat.get("actions", [])
+            if not isinstance(actions, list):
+                continue
+            for action in actions:
+                if action.get("actorId") != "actor_1":
+                    action["actorId"] = "actor_1"
+                    changed = True
+
+    if (
+        not changed
+        and allow_heuristic_degradation
+        and any(reason in {"semantic_unsupported_action_lost", "semantic_invented_action"} for reason in reasons)
+    ):
+        for beat in beats:
+            actions = beat.get("actions", [])
+            if not isinstance(actions, list):
+                continue
+            for action in actions:
+                action_type = str(action.get("type", ""))
+                if action_type and action_type not in {"walk", "stop", "talk"}:
+                    action["type"] = "walk"
+                    action.pop("sourceText", None)
+                    action.pop("fallbackText", None)
+                    action.pop("dialogue", None)
+                    action.pop("holdingObject", None)
+                    action.pop("modifier", None)
+                    changed = True
+
+    if (
+        not changed
+        and allow_heuristic_degradation
+        and any(reason in {"semantic_exact_marker_id_conflict", "semantic_same_type_disambiguation_lost"} for reason in reasons)
+    ):
+        marked_ids = [obj.get("id") for obj in objects if isinstance(obj, dict) and str(obj.get("id", "")).startswith("object_marked_")]
+        if len(marked_ids) >= 2:
+            left = str(marked_ids[0])
+            right = str(marked_ids[1])
+            for beat in beats:
+                actions = beat.get("actions", [])
+                if not isinstance(actions, list):
+                    continue
+                for action in actions:
+                    target = action.get("target")
+                    if target == left:
+                        action["target"] = right
+                        changed = True
+                    elif target == right:
+                        action["target"] = left
+                        changed = True
+
+    if not changed:
+        return bad
+
+    return bad
+
+
+def _scene_key(scene: dict) -> str:
+    return json.dumps(scene, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+preference_candidates: list[dict] = []
+runtime_preference_candidates: list[dict] = []
+seen_pref_keys: set[str] = set()
+preference_source_groups = (
+    ("rejected", rejected_by_sample_id),
+    ("review", review_by_sample_id),
+)
+
+for origin, by_sample in preference_source_groups:
+    for sample_id in sorted(by_sample.keys()):
+        row = by_sample[sample_id]
+        cir_row = cir_index.get(sample_id)
+        if cir_row is None:
+            continue
+        source_text = str(row.get("source_text", "")).strip()
+        if not source_text:
+            continue
+
+        good_scene = _canonical_scene(cir_row, source_text)
+        reasons = _reasons_from_row(row)
+        bad_scene = _degrade_scene(good_scene, reasons)
+        good_key = _scene_key(good_scene)
+        bad_key = _scene_key(bad_scene)
+        if bad_key == good_key:
+            continue
+        dedup_key = f"{sample_id}|{bad_key}"
+        if dedup_key in seen_pref_keys:
+            continue
+        seen_pref_keys.add(dedup_key)
+
+        preference_candidates.append(
+            {
+                "eval_case_id": f"{origin}-{sample_id}",
+                "sample_id": sample_id,
+                "source_text": source_text,
+                "good_json": good_scene,
+                "bad_json": bad_scene,
+                "contract_version": str(cir_row.get("contract_version", row.get("contract_version", "sg_v7_contract_v1"))),
+                "correction_tier": str(row.get("correction_tier", "tier_b_deterministic_canonical")),
+                "graph_hash": structural_hash(cir_row),
+                "pattern_name": cir_row.get("pattern_name"),
+                "difficulty_bucket": cir_row.get("difficulty_bucket"),
+                "preference_seed_origin": origin,
+                "preference_seed_reasons": sorted(reasons),
+            }
+        )
+        runtime_preference_candidates.append(
+            {
+                "failure_id": f"rtf-{origin}-{sample_id}",
+                "sample_id": sample_id,
+                "source": source_text,
+                "source_text": source_text,
+                "raw_llm_output": bad_scene,
+                "corrected_target_json": good_scene,
+                "contract_version": str(cir_row.get("contract_version", row.get("contract_version", "sg_v7_contract_v1"))),
+                "correction_tier": str(row.get("correction_tier", "tier_b_deterministic_canonical")),
+                "graph_hash": structural_hash(cir_row),
+                "pattern_name": cir_row.get("pattern_name"),
+                "difficulty_bucket": cir_row.get("difficulty_bucket"),
+                "runtime_seed_origin": origin,
+                "runtime_seed_reasons": sorted(reasons),
+            }
+        )
+
+preference_candidates_out.write_text(
+    "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in preference_candidates),
+    encoding="utf-8",
+)
+runtime_preference_candidates_out.write_text(
+    "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in runtime_preference_candidates),
+    encoding="utf-8",
+)
+
 cir_out = root / "final" / "cir_merged.jsonl"
 cir_out.write_text(
     "".join(path.read_text(encoding="utf-8") for path in cir_parts if path.exists()),
@@ -498,22 +793,43 @@ cir_out.write_text(
 
 print(f"Merged accepted set -> {accepted_out}")
 print(f"Merged review set -> {review_out}")
+print(f"Merged rejected set -> {rejected_out}")
 print(f"Review conflicts resolved by priority -> {review_conflicting_duplicates}")
 print(f"Merged CIR set -> {cir_out}")
 print(f"Accepted conflicts resolved by priority -> {conflicting_duplicates}")
 print(f"Accepted metadata fields backfilled -> {accepted_backfilled}")
 print(f"Review metadata fields backfilled -> {review_backfilled}")
+print(f"Rejected conflicts resolved by priority -> {rejected_conflicting_duplicates}")
+print(f"Rejected metadata fields backfilled -> {rejected_backfilled}")
 print(f"Auto-promoted same_type review rows -> {len(promoted_rows)}")
+print(f"Built offline preference candidates -> {preference_candidates_out} ({len(preference_candidates)})")
+print(f"Built runtime preference candidates -> {runtime_preference_candidates_out} ({len(runtime_preference_candidates)})")
 PY
 
-run python3 "docs/SGv7pipeline/dataset_builder/06_build_dataset_splits.py" \
-  --accepted-jsonl "$OUTPUT_DIR/final/accepted_merged.jsonl" \
-  --cir-jsonl "$OUTPUT_DIR/final/cir_merged.jsonl" \
-  --output-dir "$OUTPUT_DIR/final/dataset" \
-  --seed "$SEED" \
-  --manual-review-jsonl "$OUTPUT_DIR/final/review_merged.jsonl" \
-  --review-promoted-jsonl "$OUTPUT_DIR/final/review_promoted.jsonl" \
-  --max-technical-source-share "$MAX_TECHNICAL_SOURCE_SHARE"
+dataset_cmd=(
+  python3 "docs/SGv7pipeline/dataset_builder/06_build_dataset_splits.py"
+  --accepted-jsonl "$OUTPUT_DIR/final/accepted_merged.jsonl"
+  --cir-jsonl "$OUTPUT_DIR/final/cir_merged.jsonl"
+  --output-dir "$OUTPUT_DIR/final/dataset"
+  --seed "$SEED"
+  --manual-review-jsonl "$OUTPUT_DIR/final/review_merged.jsonl"
+  --review-promoted-jsonl "$OUTPUT_DIR/final/review_promoted.jsonl"
+  --rejected-jsonl "$OUTPUT_DIR/final/rejected_preference_candidates.jsonl"
+  --runtime-failures-jsonl "$OUTPUT_DIR/final/runtime_preference_candidates.jsonl"
+)
+if [[ -n "$MAX_TECHNICAL_SOURCE_SHARE" ]]; then
+  dataset_cmd+=(--max-technical-source-share "$MAX_TECHNICAL_SOURCE_SHARE")
+fi
+if [[ -n "$MAX_COMP_FAMILY_SHARE" ]]; then
+  dataset_cmd+=(--max-comp-family-share "$MAX_COMP_FAMILY_SHARE")
+fi
+if [[ -n "$MAX_NOTEBOOK_FAMILY_SHARE" ]]; then
+  dataset_cmd+=(--max-notebook-family-share "$MAX_NOTEBOOK_FAMILY_SHARE")
+fi
+if [[ -n "$MAX_SMOKE_FAMILY_SHARE" ]]; then
+  dataset_cmd+=(--max-smoke-family-share "$MAX_SMOKE_FAMILY_SHARE")
+fi
+run "${dataset_cmd[@]}"
 
 echo
 echo "Pilot run completed."
@@ -521,5 +837,8 @@ echo "Inspect:"
 echo "  $OUTPUT_DIR/final/accepted_merged.jsonl"
 echo "  $OUTPUT_DIR/final/review_merged.jsonl"
 echo "  $OUTPUT_DIR/final/review_promoted.jsonl"
+echo "  $OUTPUT_DIR/final/rejected_merged.jsonl"
+echo "  $OUTPUT_DIR/final/rejected_preference_candidates.jsonl"
+echo "  $OUTPUT_DIR/final/runtime_preference_candidates.jsonl"
 echo "  $OUTPUT_DIR/final/cir_merged.jsonl"
 echo "  $OUTPUT_DIR/final/dataset"

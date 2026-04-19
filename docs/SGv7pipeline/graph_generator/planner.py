@@ -79,15 +79,24 @@ def _allowed_variants(spec: PatternSpec, request: GraphBuildRequest) -> list[Sou
     return filtered
 
 
-def _variant_weight(variant: SourceVariantKey) -> int:
+def _variant_weight(spec: PatternSpec, variant: SourceVariantKey) -> int:
+    semantic_tags = {str(tag) for tag in spec.semantic_tags}
     if variant == "base":
+        if "marked_object" in semantic_tags and "morphology_stress" in spec.allowed_source_variant_keys:
+            return 45
+        if "ordinal_reference" in semantic_tags and "ordinal_stress" in spec.allowed_source_variant_keys:
+            return 45
         return 60
     if variant == "ordinal_stress":
+        if "ordinal_reference" in semantic_tags:
+            return 30
         return 20
     if variant == "morphology_stress":
-        return 15
+        if "marked_object" in semantic_tags:
+            return 35
+        return 20
     if variant == "dialogue_mix":
-        return 5
+        return 8
     if variant == "same_type_marker_stress":
         return 100
     raise GraphPlannerError(f"Unsupported SourceVariantKey={variant!r}")
@@ -107,7 +116,7 @@ def choose_variant_for_slot(spec: PatternSpec, request: GraphBuildRequest, *, or
     if len(allowed) == 1:
         return allowed[0]
 
-    weights = [_variant_weight(variant) for variant in allowed]
+    weights = [_variant_weight(spec, variant) for variant in allowed]
     total = sum(weights)
     digest = _hash_digest(
         request.seed,

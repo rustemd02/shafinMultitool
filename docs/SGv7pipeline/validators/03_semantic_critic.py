@@ -13,6 +13,11 @@ if str(ROOT) not in sys.path:
 from validators import ValidationRequest, run_semantic_critic
 
 
+def _log(stage: str, message: str) -> None:
+    sys.stdout.write(f"[sgv7:semantic_critic] {stage}: {message}\n")
+    sys.stdout.flush()
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run SG v7 semantic critic for a single candidate JSON.")
     parser.add_argument("--input-json", type=Path, required=True)
@@ -23,7 +28,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    _log("stage 1/4", "parse args")
     args = _parse_args()
+    _log("stage 2/4", f"load sample input={args.input_json}")
     sample = json.loads(args.input_json.read_text(encoding="utf-8"))
     cir_record = sample.get("cir_record")
     if not isinstance(cir_record, dict):
@@ -39,6 +46,7 @@ def main() -> int:
         critic_model=args.model_name,
         critic_backend=args.critic_backend,
     )
+    _log("stage 3/4", f"run semantic critic backend={args.critic_backend}")
     result = run_semantic_critic(sample, request, cir_record=cir_record)
     payload = {
         "artifact_id": result.artifact_id,
@@ -55,6 +63,7 @@ def main() -> int:
         "summary": result.summary,
     }
     args.output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _log("stage 4/4", f"write artifact output={args.output_json}")
     sys.stdout.write(f"Wrote critic artifact -> {args.output_json}\n")
     return 0
 

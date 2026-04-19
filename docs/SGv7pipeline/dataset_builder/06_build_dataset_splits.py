@@ -12,6 +12,11 @@ if str(ROOT) not in sys.path:
 from dataset_builder import DatasetBuildError, DatasetBuildRequest, build_dataset
 
 
+def _log(stage: str, message: str) -> None:
+    sys.stdout.write(f"[sgv7:dataset_builder] {stage}: {message}\n")
+    sys.stdout.flush()
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build SG v7 SFT/preference dataset splits and manifests.")
     parser.add_argument("--accepted-jsonl", type=Path, required=True)
@@ -32,14 +37,42 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-technical-source-share",
         type=float,
-        default=0.15,
+        default=None,
         help="Maximum share of SFT samples containing technical ids (actor_*/object_marked_*).",
+    )
+    parser.add_argument(
+        "--max-comp-family-share",
+        type=float,
+        default=None,
+        help="Maximum share of SFT samples containing comp/computer-family lexemes.",
+    )
+    parser.add_argument(
+        "--max-notebook-family-share",
+        type=float,
+        default=None,
+        help="Maximum share of SFT samples containing notebook-family lexemes.",
+    )
+    parser.add_argument(
+        "--max-smoke-family-share",
+        type=float,
+        default=None,
+        help="Maximum share of SFT samples containing smoke-family lexemes.",
     )
     return parser.parse_args()
 
 
 def main() -> int:
+    _log("stage 1/4", "parse args")
     args = _parse_args()
+    technical_share = "off" if args.max_technical_source_share is None else str(args.max_technical_source_share)
+    _log(
+        "stage 2/4",
+        "build request "
+        f"output_dir={args.output_dir} contract={args.contract_version} "
+        f"max_technical_share={technical_share} "
+        f"lexeme_caps(comp/notebook/smoke)="
+        f"{args.max_comp_family_share}/{args.max_notebook_family_share}/{args.max_smoke_family_share}",
+    )
     request = DatasetBuildRequest(
         accepted_jsonl=args.accepted_jsonl,
         manual_review_jsonl=args.manual_review_jsonl,
@@ -57,8 +90,12 @@ def main() -> int:
         preference_val_ratio=args.preference_val_ratio,
         preference_test_ratio=args.preference_test_ratio,
         max_technical_source_share=args.max_technical_source_share,
+        max_comp_family_share=args.max_comp_family_share,
+        max_notebook_family_share=args.max_notebook_family_share,
+        max_smoke_family_share=args.max_smoke_family_share,
     )
     try:
+        _log("stage 3/4", "run dataset assembly")
         result = build_dataset(request)
     except DatasetBuildError as exc:
         sys.stderr.write(f"Dataset build failed: {exc}\n")
@@ -66,6 +103,7 @@ def main() -> int:
 
     sft_counts = {split: len(rows) for split, rows in result.sft_records.items()}
     pref_counts = {split: len(rows) for split, rows in result.preference_records.items()}
+    _log("stage 4/4", f"write artifacts sft={sft_counts} preference={pref_counts}")
     sys.stdout.write(
         "Built SG v7 dataset artifacts: "
         f"sft={sft_counts} preference={pref_counts} output={args.output_dir}\n"

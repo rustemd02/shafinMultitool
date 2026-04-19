@@ -25,6 +25,7 @@ class SourceGenerationRequest:
     max_graphs: int | None = None
     batch_size: int = 16
     paraphraser_backend: ParaphraserBackendName = "openai"
+    paraphraser_workers: int = 1
     enable_clean_fallback: bool = True
 
 

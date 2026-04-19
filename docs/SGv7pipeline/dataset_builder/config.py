@@ -21,7 +21,10 @@ class DatasetBuildRequest:
     preference_train_ratio: float = 0.85
     preference_val_ratio: float = 0.10
     preference_test_ratio: float = 0.05
-    max_technical_source_share: float = 0.15
+    max_technical_source_share: float | None = None
+    max_comp_family_share: float | None = None
+    max_notebook_family_share: float | None = None
+    max_smoke_family_share: float | None = None
 
 
 @dataclass(frozen=True)

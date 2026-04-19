@@ -5,8 +5,15 @@ import hashlib
 from itertools import combinations
 from typing import Any
 
+from source_generation.filters import (
+    meta_language_reasons,
+    morphology_reasons,
+    surface_noise_reasons,
+    technical_literal_reasons,
+)
+
 from .config import DatasetBuildError, DatasetBuildRequest
-from .ingest import CRITICAL_EVAL_TAGS, normalize_source_key_v1
+from .ingest import CRITICAL_EVAL_TAGS, detect_lexeme_families, normalize_source_key_v1
 
 
 def _meta(row: dict[str, Any]) -> dict[str, Any]:
@@ -16,6 +23,15 @@ def _meta(row: dict[str, Any]) -> dict[str, Any]:
 def _count_by(records: list[dict[str, Any]], key: str) -> dict[str, int]:
     counter = Counter(str(_meta(row).get(key, "")) for row in records)
     return dict(sorted(counter.items()))
+
+
+def _source_text(row: dict[str, Any]) -> str:
+    value = row.get("source_text", "")
+    return str(value) if value is not None else ""
+
+
+def _count_rows(records: list[dict[str, Any]], predicate) -> int:
+    return sum(1 for row in records if predicate(row))
 
 
 def _across_split_overlap(records_by_split: dict[str, list[dict[str, Any]]], key_fn) -> list[dict[str, Any]]:
@@ -81,7 +97,27 @@ def build_split_manifest(
     by_split = {split: len(sft_records.get(split, [])) for split in ("train", "val", "test")}
     by_bucket = _count_by(all_rows, "difficulty_bucket")
     by_tier = _count_by(all_rows, "correction_tier")
+    by_pattern = _count_by(all_rows, "pattern_name")
     by_semantic_family = _count_by(all_rows, "semantic_family_key")
+    technical_literal_rows = _count_rows(all_rows, lambda row: bool(technical_literal_reasons(_source_text(row))))
+    meta_language_rows = _count_rows(all_rows, lambda row: bool(meta_language_reasons(_source_text(row))))
+    surface_noise_rows = _count_rows(all_rows, lambda row: bool(surface_noise_reasons(_source_text(row))))
+    bad_morphology_rows = _count_rows(all_rows, lambda row: bool(morphology_reasons(_source_text(row))))
+    promoted_review_rows = _count_rows(all_rows, lambda row: bool(row.get("promoted_from_manual_review")))
+    lexeme_watch_rows = {
+        "comp_family_rows": _count_rows(
+            all_rows,
+            lambda row: "comp_family" in detect_lexeme_families(_source_text(row)),
+        ),
+        "notebook_family_rows": _count_rows(
+            all_rows,
+            lambda row: "notebook_family" in detect_lexeme_families(_source_text(row)),
+        ),
+        "smoke_family_rows": _count_rows(
+            all_rows,
+            lambda row: "smoke_family" in detect_lexeme_families(_source_text(row)),
+        ),
+    }
 
     critical_counts = Counter()
     for row in all_rows:
@@ -100,6 +136,9 @@ def build_split_manifest(
                 "test": request.sft_test_ratio,
             },
             "max_technical_source_share": request.max_technical_source_share,
+            "max_comp_family_share": request.max_comp_family_share,
+            "max_notebook_family_share": request.max_notebook_family_share,
+            "max_smoke_family_share": request.max_smoke_family_share,
             "contract_version": request.contract_version,
         },
         "input_artifacts": {
@@ -111,8 +150,15 @@ def build_split_manifest(
         "counts_by_split": by_split,
         "counts_by_difficulty_bucket": by_bucket,
         "counts_by_correction_tier": by_tier,
+        "counts_by_pattern_name": by_pattern,
         "counts_by_semantic_family_key": by_semantic_family,
         "counts_by_critical_eval_tags": dict(sorted(critical_counts.items())),
+        "technical_literal_rows": technical_literal_rows,
+        "meta_language_rows": meta_language_rows,
+        "surface_noise_rows": surface_noise_rows,
+        "bad_morphology_rows": bad_morphology_rows,
+        "promoted_review_rows": promoted_review_rows,
+        "lexeme_watch_rows": dict(sorted(lexeme_watch_rows.items())),
         "dropped_by_ingest_reason": dict(sorted(dropped_by_ingest.items())),
         "dropped_by_dedup_reason": dict(sorted(dropped_by_dedup.items())),
         "contract_versions_present": contracts,

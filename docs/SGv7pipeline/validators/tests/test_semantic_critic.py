@@ -11,7 +11,13 @@ if str(DOCS_ROOT) not in sys.path:
 
 from source_generation.metadata import build_graph_constraints
 from validators import ValidationRequest
-from validators.semantic_critic import SemanticCriticError, _from_payload, run_semantic_critic
+from validators.semantic_critic import (
+    SemanticCriticError,
+    _decode_critic_payload,
+    _from_payload,
+    _normalize_compat_payload,
+    run_semantic_critic,
+)
 
 
 def _request() -> ValidationRequest:
@@ -95,3 +101,58 @@ class TestSemanticCriticContracts(unittest.TestCase):
         result = run_semantic_critic(sample, request, cir_record=cir_record, backend=AlwaysFailBackend())
         self.assertIn(result.verdict, {"pass", "soft_fail", "hard_fail"})
         self.assertEqual(result.execution["recomputed"], False)
+
+    def test_decode_payload_with_salvage_from_markdown_fence(self) -> None:
+        content = """Вот результат:
+```json
+{"verdict":"pass","confidence":0.99,"findings":[],"detected_failures":[],"chronology_preserved":true,"object_grounding_preserved":true,"ordinal_binding_preserved":true,"unsupported_action_preserved":true,"invented_content_present":false,"summary":"ok"}
+```"""
+        payload = _decode_critic_payload(content, allow_salvage=True)
+        self.assertEqual(payload["verdict"], "pass")
+
+    def test_decode_payload_without_salvage_rejects_non_json_envelope(self) -> None:
+        content = """```json
+{"verdict":"pass","confidence":0.99}
+```"""
+        with self.assertRaisesRegex(SemanticCriticError, "non-JSON"):
+            _decode_critic_payload(content, allow_salvage=False)
+
+    def test_normalize_compat_payload_maps_unknown_failure_strings(self) -> None:
+        payload = {
+            "verdict": "HARD_FAIL",
+            "confidence": "1.7",
+            "findings": "x",
+            "detected_failures": ["beat_count=1 not preserved", "object_grounding lost around put_down_target"],
+            "chronology_preserved": False,
+            "object_grounding_preserved": False,
+            "ordinal_binding_preserved": True,
+            "unsupported_action_preserved": True,
+            "invented_content_present": False,
+            "summary": 123,
+        }
+        normalized = _normalize_compat_payload(payload)
+        self.assertEqual(normalized["verdict"], "hard_fail")
+        self.assertEqual(normalized["confidence"], 1.0)
+        self.assertIn("semantic_beat_collapse", normalized["detected_failures"])
+        self.assertIn("semantic_marked_object_lost", normalized["detected_failures"])
+
+    def test_normalize_compat_payload_coerces_boolish_fields(self) -> None:
+        payload = {
+            "verdict": "soft-fail",
+            "confidence": 0.62,
+            "findings": ["x"],
+            "detected_failures": [],
+            "chronology_preserved": "partially",
+            "object_grounding_preserved": "likely",
+            "ordinal_binding_preserved": "uncertain",
+            "unsupported_action_preserved": "yes",
+            "invented_content_present": "no",
+            "summary": "ok",
+        }
+        normalized = _normalize_compat_payload(payload)
+        self.assertEqual(normalized["verdict"], "soft_fail")
+        self.assertEqual(normalized["chronology_preserved"], False)
+        self.assertEqual(normalized["object_grounding_preserved"], False)
+        self.assertEqual(normalized["ordinal_binding_preserved"], False)
+        self.assertEqual(normalized["unsupported_action_preserved"], True)
+        self.assertEqual(normalized["invented_content_present"], False)

@@ -60,13 +60,54 @@ def _assign_families(
     return mapping
 
 
+def _assign_sft_families_stratified(
+    families: dict[str, list[dict[str, Any]]],
+    *,
+    ratios: tuple[float, float, float],
+) -> dict[str, str]:
+    by_bucket: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(dict)
+    for family_id, rows in families.items():
+        bucket = str(rows[0]["packaging_metadata"].get("difficulty_bucket", ""))
+        by_bucket[bucket][family_id] = rows
+
+    mapping: dict[str, str] = {}
+    for bucket, bucket_families in sorted(by_bucket.items()):
+        bucket_mapping = _assign_families(bucket_families, ratios=ratios)
+
+        # Ensure held-out representation per bucket when we have enough families.
+        if len(bucket_families) >= 6:
+            bucket_counts = {"train": 0, "val": 0, "test": 0}
+            for family_id, split in bucket_mapping.items():
+                bucket_counts[split] += len(bucket_families[family_id])
+            for target_split in ("val", "test"):
+                if bucket_counts[target_split] > 0:
+                    continue
+                donor_split = "train" if bucket_counts["train"] >= bucket_counts["val"] else "val"
+                donor_candidates = [
+                    family_id
+                    for family_id, split in bucket_mapping.items()
+                    if split == donor_split
+                ]
+                if not donor_candidates:
+                    continue
+                # Move the smallest donor family to minimize distribution drift.
+                donor_family = min(donor_candidates, key=lambda family_id: len(bucket_families[family_id]))
+                donor_size = len(bucket_families[donor_family])
+                bucket_mapping[donor_family] = target_split
+                bucket_counts[donor_split] -= donor_size
+                bucket_counts[target_split] += donor_size
+
+        mapping.update(bucket_mapping)
+    return mapping
+
+
 def split_sft_records(
     records: list[dict[str, Any]],
     *,
     ratios: tuple[float, float, float],
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, str]]:
     families = _group_by_family(records)
-    mapping = _assign_families(families, ratios=ratios)
+    mapping = _assign_sft_families_stratified(families, ratios=ratios)
     output = {"train": [], "val": [], "test": []}
     for family_id, rows in families.items():
         split = mapping[family_id]

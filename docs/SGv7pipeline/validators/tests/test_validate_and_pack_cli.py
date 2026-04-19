@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DOCS_ROOT = Path(__file__).resolve().parents[2]
@@ -14,7 +15,7 @@ if str(DOCS_ROOT) not in sys.path:
 
 from source_generation.metadata import build_graph_constraints
 from source_generation.prompt_builder import summarize_graph_for_source_prompt
-from validators import ValidationRequest, validate_and_pack
+from validators import CriticResult, ValidationRequest, validate_and_pack
 
 
 def _fixture(name: str) -> dict[str, object]:
@@ -217,7 +218,7 @@ class TestValidateAndPackCLI(unittest.TestCase):
             self.assertEqual(len(result.rejected_records), 1)
             self.assertIn("semantic_unsupported_action_lost", result.rejected_records[0]["validation_report"]["reject_reasons"])
 
-    def test_same_type_marker_conflict_goes_to_manual_review(self) -> None:
+    def test_clean_same_type_marker_conflict_can_be_accepted(self) -> None:
         cir_record = _fixture("ex3_same_type_two_marked_objects.json")
         candidate = _candidate_from_cir(
             cir_record,
@@ -246,11 +247,187 @@ class TestValidateAndPackCLI(unittest.TestCase):
                     critic_model="heuristic",
                 )
             )
+            self.assertEqual(len(result.accepted_records), 1)
+            self.assertEqual(result.accepted_records[0]["validation_status"], "accepted")
+
+    def test_same_type_anchor_loss_is_rejected(self) -> None:
+        cir_record = _fixture("ex3_same_type_two_marked_objects.json")
+        candidate = _candidate_from_cir(
+            cir_record,
+            source_text="Первый подходит к стулу, второй остаётся у левого.",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "input.jsonl"
+            cir_jsonl = tmp_path / "cir.jsonl"
+            accepted = tmp_path / "accepted.jsonl"
+            review = tmp_path / "review.jsonl"
+            rejected = tmp_path / "rejected.jsonl"
+            manifest = tmp_path / "manifest.json"
+            input_jsonl.write_text(json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8")
+            cir_jsonl.write_text(json.dumps(cir_record, ensure_ascii=False) + "\n", encoding="utf-8")
+            result = validate_and_pack(
+                ValidationRequest(
+                    input_jsonl=input_jsonl,
+                    cir_jsonl=cir_jsonl,
+                    accepted_jsonl=accepted,
+                    review_jsonl=review,
+                    rejected_jsonl=rejected,
+                    manifest_json=manifest,
+                    seed=20260413,
+                    critic_backend="heuristic",
+                    critic_model="heuristic",
+                )
+            )
+            self.assertEqual(len(result.rejected_records), 1)
+            self.assertIn(
+                "semantic_same_type_disambiguation_lost",
+                result.rejected_records[0]["validation_report"]["reject_reasons"],
+            )
+
+    def test_same_type_exact_marker_conflict_is_rejected(self) -> None:
+        cir_record = _fixture("ex3_same_type_two_marked_objects.json")
+        candidate = _candidate_from_cir(
+            cir_record,
+            source_text="Первый подходит к правый стула, второй остаётся у левого.",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "input.jsonl"
+            cir_jsonl = tmp_path / "cir.jsonl"
+            accepted = tmp_path / "accepted.jsonl"
+            review = tmp_path / "review.jsonl"
+            rejected = tmp_path / "rejected.jsonl"
+            manifest = tmp_path / "manifest.json"
+            input_jsonl.write_text(json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8")
+            cir_jsonl.write_text(json.dumps(cir_record, ensure_ascii=False) + "\n", encoding="utf-8")
+            result = validate_and_pack(
+                ValidationRequest(
+                    input_jsonl=input_jsonl,
+                    cir_jsonl=cir_jsonl,
+                    accepted_jsonl=accepted,
+                    review_jsonl=review,
+                    rejected_jsonl=rejected,
+                    manifest_json=manifest,
+                    seed=20260413,
+                    critic_backend="heuristic",
+                    critic_model="heuristic",
+                )
+            )
+            self.assertEqual(len(result.rejected_records), 1)
+            self.assertIn(
+                "semantic_exact_marker_id_conflict",
+                result.rejected_records[0]["validation_report"]["reject_reasons"],
+            )
+
+    def test_same_type_soft_fail_still_goes_to_manual_review(self) -> None:
+        cir_record = _fixture("ex3_same_type_two_marked_objects.json")
+        candidate = _candidate_from_cir(
+            cir_record,
+            source_text="Первый подходит к правому стулу, второй остаётся у левого.",
+        )
+        candidate["validation_report"] = {
+            "critic_verdict": "soft_fail",
+            "critic_model": "heuristic",
+            "critic_artifact_id": "critic-same-type-soft-fail-v1",
+            "critic_execution": {
+                "temperature": 0.0,
+                "top_p": 1.0,
+                "max_output_tokens": 1200,
+                "recomputed": False,
+            },
+            "critic_confidence": 0.7,
+            "critic_detected_failures": ["semantic_same_type_disambiguation_lost"],
+            "critic_chronology_preserved": True,
+            "critic_object_grounding_preserved": True,
+            "critic_ordinal_binding_preserved": True,
+            "critic_unsupported_action_preserved": True,
+            "critic_invented_content_present": False,
+            "critic_summary": "Same-type distinction is borderline.",
+            "semantic_findings": ["Same-type distinction is borderline."],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "input.jsonl"
+            cir_jsonl = tmp_path / "cir.jsonl"
+            accepted = tmp_path / "accepted.jsonl"
+            review = tmp_path / "review.jsonl"
+            rejected = tmp_path / "rejected.jsonl"
+            manifest = tmp_path / "manifest.json"
+            input_jsonl.write_text(json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8")
+            cir_jsonl.write_text(json.dumps(cir_record, ensure_ascii=False) + "\n", encoding="utf-8")
+            result = validate_and_pack(
+                ValidationRequest(
+                    input_jsonl=input_jsonl,
+                    cir_jsonl=cir_jsonl,
+                    accepted_jsonl=accepted,
+                    review_jsonl=review,
+                    rejected_jsonl=rejected,
+                    manifest_json=manifest,
+                    seed=20260413,
+                    critic_backend="heuristic",
+                    critic_model="heuristic",
+                    enable_critic=False,
+                )
+            )
             self.assertEqual(len(result.review_records), 1)
             self.assertIn(
                 "review_same_type_marker_conflict",
                 result.review_records[0]["validation_report"]["review_reasons"],
             )
+
+    def test_high_recoverability_anchor_only_soft_fail_can_be_accepted(self) -> None:
+        cir_record = _fixture("ex1_stop_near_marked_then_first_described.json")
+        candidate = _candidate_from_cir(
+            cir_record,
+            source_text="2 актёра идут навстречу друг другу, останавливаются у компа, первый курить не бросает и начинает курить.",
+        )
+        candidate["validation_report"] = {
+            "critic_verdict": "soft_fail",
+            "critic_model": "heuristic",
+            "critic_artifact_id": "critic-anchor-soft-fail-v1",
+            "critic_execution": {
+                "temperature": 0.0,
+                "top_p": 1.0,
+                "max_output_tokens": 1200,
+                "recomputed": False,
+            },
+            "critic_confidence": 0.62,
+            "critic_detected_failures": ["semantic_marked_object_lost", "semantic_ordinal_anchor_lost"],
+            "critic_chronology_preserved": True,
+            "critic_object_grounding_preserved": True,
+            "critic_ordinal_binding_preserved": True,
+            "critic_unsupported_action_preserved": True,
+            "critic_invented_content_present": False,
+            "critic_summary": "Anchor-only soft fail disagrees with deterministic checks.",
+            "semantic_findings": ["Anchor-only soft fail disagrees with deterministic checks."],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "input.jsonl"
+            cir_jsonl = tmp_path / "cir.jsonl"
+            accepted = tmp_path / "accepted.jsonl"
+            review = tmp_path / "review.jsonl"
+            rejected = tmp_path / "rejected.jsonl"
+            manifest = tmp_path / "manifest.json"
+            input_jsonl.write_text(json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8")
+            cir_jsonl.write_text(json.dumps(cir_record, ensure_ascii=False) + "\n", encoding="utf-8")
+            result = validate_and_pack(
+                ValidationRequest(
+                    input_jsonl=input_jsonl,
+                    cir_jsonl=cir_jsonl,
+                    accepted_jsonl=accepted,
+                    review_jsonl=review,
+                    rejected_jsonl=rejected,
+                    manifest_json=manifest,
+                    seed=20260413,
+                    critic_backend="heuristic",
+                    critic_model="heuristic",
+                    enable_critic=False,
+                )
+            )
+            self.assertEqual(len(result.accepted_records), 1)
+            self.assertEqual(result.accepted_records[0]["validation_status"], "accepted")
 
     def test_persisted_soft_fail_artifact_goes_to_manual_review(self) -> None:
         cir_record = _fixture("ex4_dialogue_then_small_action.json")
@@ -265,7 +442,7 @@ class TestValidateAndPackCLI(unittest.TestCase):
             "critic_execution": {
                 "temperature": 0.0,
                 "top_p": 1.0,
-                "max_output_tokens": 300,
+                "max_output_tokens": 1200,
                 "recomputed": False,
             },
             "critic_confidence": 0.8,
@@ -317,7 +494,7 @@ class TestValidateAndPackCLI(unittest.TestCase):
             "critic_execution": {
                 "temperature": 0.0,
                 "top_p": 1.0,
-                "max_output_tokens": 300,
+                "max_output_tokens": 1200,
                 "recomputed": False,
             },
             "critic_confidence": 0.8,
@@ -405,3 +582,72 @@ class TestValidateAndPackCLI(unittest.TestCase):
             accepted_rows = [json.loads(line) for line in accepted.read_text(encoding="utf-8").splitlines() if line.strip()]
             self.assertTrue(accepted_rows)
             self.assertEqual(accepted_rows[0]["correction_tier"], "tier_b_deterministic_canonical")
+
+    def test_openai_parallel_workers_process_all_records(self) -> None:
+        cir_record_1 = _fixture("ex1_stop_near_marked_then_first_described.json")
+        cir_record_2 = _fixture("ex4_dialogue_then_small_action.json")
+        candidate_1 = _candidate_from_cir(
+            cir_record_1,
+            source_text="2 актёра идут навстречу друг другу, останавливаются у компа, первый начинает курить.",
+        )
+        candidate_2 = _candidate_from_cir(
+            cir_record_2,
+            source_text="Анна и Борис говорят, потом Борис поднимает папку.",
+        )
+
+        def _fake_critic(sample: dict[str, object], request: ValidationRequest, *, cir_record: dict[str, object]) -> CriticResult:
+            return CriticResult(
+                verdict="pass",
+                confidence=0.99,
+                findings=("ok",),
+                detected_failures=(),
+                chronology_preserved=True,
+                object_grounding_preserved=True,
+                ordinal_binding_preserved=True,
+                unsupported_action_preserved=True,
+                invented_content_present=False,
+                summary="ok",
+                artifact_id=f"critic-{sample['sample_id']}",
+                execution={
+                    "temperature": request.critic_temperature,
+                    "top_p": request.critic_top_p,
+                    "max_output_tokens": request.critic_max_output_tokens,
+                    "recomputed": False,
+                },
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "input.jsonl"
+            cir_jsonl = tmp_path / "cir.jsonl"
+            accepted = tmp_path / "accepted.jsonl"
+            review = tmp_path / "review.jsonl"
+            rejected = tmp_path / "rejected.jsonl"
+            manifest = tmp_path / "manifest.json"
+            input_jsonl.write_text(
+                json.dumps(candidate_1, ensure_ascii=False) + "\n" + json.dumps(candidate_2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            cir_jsonl.write_text(
+                json.dumps(cir_record_1, ensure_ascii=False) + "\n" + json.dumps(cir_record_2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch("validators.packaging.run_semantic_critic", side_effect=_fake_critic) as mocked_critic:
+                result = validate_and_pack(
+                    ValidationRequest(
+                        input_jsonl=input_jsonl,
+                        cir_jsonl=cir_jsonl,
+                        accepted_jsonl=accepted,
+                        review_jsonl=review,
+                        rejected_jsonl=rejected,
+                        manifest_json=manifest,
+                        seed=20260413,
+                        critic_backend="openai",
+                        critic_model="gpt-5.4-nano",
+                        critic_workers=3,
+                    )
+                )
+
+            self.assertEqual(mocked_critic.call_count, 2)
+            self.assertEqual(len(result.accepted_records), 2)

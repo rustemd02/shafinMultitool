@@ -2,11 +2,43 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import re
 from typing import Any
 
 from .config import DatasetBuildRequest, PreferenceBuildResult
-from .ingest import normalized_source_hash_v1, token_count
+from .ingest import normalized_source_hash_v1, sanitize_source_text_for_sft, token_count
 from .renderer import canonical_json_string, render_preference_messages
+
+
+_PREFERENCE_META_TOKEN_RE = re.compile(
+    r"(?:"
+    r"\bbeat_count\s*=\s*\d+\b|"
+    r"\bpass_by_then_role_shift\b|"
+    r"\bstop_near_then_role_shift\b|"
+    r"\bstop_phase_before_run\b|"
+    r"\bmarked_object_grounding\b|"
+    r"\bsecond_actor_runs\b|"
+    r"\bfinal_beat\b|"
+    r"\bmulti_beat\b|"
+    r"\brecoverability\b|"
+    r"\bmust_ground_object\b|"
+    r"\bcanonical\b|"
+    r"\brole_shift\b"
+    r")",
+    flags=re.IGNORECASE,
+)
+
+
+def _sanitize_preference_source_text(text: str) -> str:
+    value = sanitize_source_text_for_sft(text)
+    if not value:
+        return value
+    value = _PREFERENCE_META_TOKEN_RE.sub("", value)
+    value = re.sub(r"\s+([,.;:!?])", r"\1", value)
+    value = re.sub(r"\(\s*\)", "", value)
+    value = re.sub(r"\s{2,}", " ", value, flags=re.UNICODE)
+    value = value.strip(" -—,;:")
+    return value.strip()
 
 
 def _json_payload(value: object) -> dict[str, Any] | None:
@@ -103,12 +135,17 @@ def _runtime_candidate_to_pair(
     rejected_json = _json_payload(row.get("raw_llm_output"))
     if chosen_json is None or rejected_json is None:
         return None
+    source_text = str(row.get("source") or row.get("source_text") or "").strip()
+    source_text = _sanitize_preference_source_text(source_text)
+    if not source_text:
+        return None
+    chosen_json = deepcopy(chosen_json)
+    rejected_json = deepcopy(rejected_json)
+    chosen_json["originalDescription"] = source_text
+    rejected_json["originalDescription"] = source_text
     chosen = canonical_json_string(chosen_json)
     rejected = canonical_json_string(rejected_json)
     if chosen == rejected:
-        return None
-    source_text = str(row.get("source") or row.get("source_text") or "").strip()
-    if not source_text:
         return None
 
     correction_tier = str(row.get("correction_tier", ""))
@@ -166,14 +203,19 @@ def _offline_candidate_to_pair(
     rejected_json = _json_payload(row.get("bad_json") or row.get("raw_llm_output"))
     if chosen_json is None or rejected_json is None:
         return None
-    chosen = canonical_json_string(chosen_json)
-    rejected = canonical_json_string(rejected_json)
-    if chosen == rejected:
-        return None
     source_text = str(row.get("source") or row.get("source_text") or "").strip()
     if not source_text:
         source_text = str(row.get("prompt") or "")
+    source_text = _sanitize_preference_source_text(source_text)
     if not source_text:
+        return None
+    chosen_json = deepcopy(chosen_json)
+    rejected_json = deepcopy(rejected_json)
+    chosen_json["originalDescription"] = source_text
+    rejected_json["originalDescription"] = source_text
+    chosen = canonical_json_string(chosen_json)
+    rejected = canonical_json_string(rejected_json)
+    if chosen == rejected:
         return None
     correction_tier = str(row.get("correction_tier", "tier_b_deterministic_canonical"))
     if correction_tier == "tier_d_auto_repair_only":
@@ -221,10 +263,12 @@ def build_preference_pairs(
     raw_candidates: list[dict[str, Any]],
     cir_index: dict[str, Any],
     heldout_sft_family_ids: set[str],
+    heldout_sft_normalized_source_hashes: set[str] | None = None,
 ) -> PreferenceBuildResult:
     splitable: list[dict[str, Any]] = []
     quarantined: list[dict[str, Any]] = []
     dropped: list[dict[str, Any]] = []
+    heldout_nsh = heldout_sft_normalized_source_hashes or set()
 
     for row in raw_candidates:
         row_copy = deepcopy(row)
@@ -274,31 +318,58 @@ def build_preference_pairs(
                 }
             )
             continue
+        normalized_source_hash = str(pair["packaging_metadata"].get("normalized_source_hash", ""))
+        if normalized_source_hash and normalized_source_hash in heldout_nsh:
+            quarantined.append(
+                {
+                    "candidate_id": row_copy.get("failure_id") or row_copy.get("eval_case_id") or row_copy.get("sample_id"),
+                    "reason": "overlaps_sft_heldout_normalized_source_hash",
+                    "family_resolution_proof": proof,
+                }
+            )
+            continue
         splitable.append(pair)
 
-    # preference-id dedup
-    unique: dict[str, dict[str, Any]] = {}
-    for row in sorted(splitable, key=lambda item: item["preference_id"]):
-        unique.setdefault(row["preference_id"], row)
-    splitable = list(unique.values())
+    def _pair_priority(item: dict[str, Any]) -> tuple[int, int, int, str]:
+        metadata = item["packaging_metadata"]
+        correction_tier = str(metadata.get("correction_tier", ""))
+        origin = str(metadata.get("preference_origin", ""))
+        token_score = int(metadata.get("source_text_token_count", 0))
+        tier_rank = {
+            "tier_a_human_gold": 3,
+            "tier_c_reviewed_merge": 2,
+            "tier_b_deterministic_canonical": 1,
+        }.get(correction_tier, 0)
+        origin_rank = 1 if origin == "runtime_failure_reviewed_merge" else 0
+        return (tier_rank, origin_rank, token_score, str(item.get("preference_id", "")))
 
-    # near-duplicate preference dedup
-    by_dedup_key: dict[str, dict[str, Any]] = {}
+    # preference-id dedup (keep best by quality priority)
+    by_id: dict[str, dict[str, Any]] = {}
     for row in splitable:
-        metadata = row["packaging_metadata"]
-        key = "|".join(
-            [
-                str(metadata["graph_family_key"]),
-                str(metadata["normalized_source_hash"]),
-                row["chosen"],
-                row["rejected"],
-            ]
-        )
-        by_dedup_key.setdefault(key, row)
-    splitable = sorted(by_dedup_key.values(), key=lambda item: item["preference_id"])
+        preference_id = str(row.get("preference_id", ""))
+        existing = by_id.get(preference_id)
+        if existing is None or _pair_priority(row) > _pair_priority(existing):
+            by_id[preference_id] = row
+    splitable = list(by_id.values())
+
+    # normalized-source dedup: keep single pair per normalized source to satisfy
+    # no_shared_normalized_source_hash_across_preference_splits leakage rule.
+    by_nsh: dict[str, dict[str, Any]] = {}
+    for row in splitable:
+        normalized_source_hash = str(row["packaging_metadata"].get("normalized_source_hash", ""))
+        if not normalized_source_hash:
+            continue
+        existing = by_nsh.get(normalized_source_hash)
+        if existing is None or _pair_priority(row) > _pair_priority(existing):
+            by_nsh[normalized_source_hash] = row
+
+    if by_nsh:
+        splitable = sorted(by_nsh.values(), key=lambda item: item["preference_id"])
+    else:
+        splitable = sorted(splitable, key=lambda item: item["preference_id"])
+
     return PreferenceBuildResult(
         splitable_records=splitable,
         quarantined_records=quarantined,
         dropped_records=dropped,
     )
-

@@ -13,6 +13,11 @@ from cir_contract.contracts.cir_types import SourceVariantKey
 from graph_generator import GraphBuildRequest, build_graph_records
 
 
+def _log(stage: str, message: str) -> None:
+    sys.stdout.write(f"[sgv7:graph_generator] {stage}: {message}\n")
+    sys.stdout.flush()
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build deterministic SG v7 CIR graph records as JSONL.")
     parser.add_argument("--seed", type=int, required=True, help="Build seed for deterministic planning.")
@@ -34,11 +39,16 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    _log("stage 1/4", "parse args")
     args = _parse_args()
     include_variants = None
     if args.include_variants is not None:
         include_variants = [variant for variant in args.include_variants]
 
+    _log(
+        "stage 2/4",
+        f"build request bucket={args.difficulty_bucket or 'all'} total_records={args.total_records or 'auto'} refill_budget={args.refill_budget}",
+    )
     request = GraphBuildRequest(
         seed=args.seed,
         difficulty_bucket=args.difficulty_bucket,
@@ -50,7 +60,9 @@ def main() -> int:
         refill_budget=args.refill_budget,
         fail_on_duplicates=args.fail_on_duplicates,
     )
+    _log("stage 3/4", "run deterministic graph builder")
     result = build_graph_records(request)
+    _log("stage 4/4", f"write artifacts records={len(result.records)}")
     sys.stdout.write(
         f"Built {len(result.records)} graph records -> {request.output_jsonl}"
         + (f" and {request.output_manifest}" if request.output_manifest is not None else "")
@@ -61,4 +73,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

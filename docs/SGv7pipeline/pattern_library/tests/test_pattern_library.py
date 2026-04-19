@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 import sys
@@ -16,6 +17,7 @@ from pattern_library import (
     generate_pattern_record,
     list_pattern_names,
 )
+from pattern_library.registry import _inflect_person_name
 
 
 class TestPatternLibrary(unittest.TestCase):
@@ -240,29 +242,29 @@ class TestPatternLibrary(unittest.TestCase):
         self.assertEqual(
             pattern_counts,
             {
-                "dialogue_only": 7,
+                "dialogue_only": 6,
                 "dialogue_then_pick_up_object_then_give_to_third_actor": 2,
-                "dialogue_then_put_down_object": 5,
-                "dialogue_then_small_action": 7,
-                "enter_then_put_down_object": 4,
+                "dialogue_then_put_down_object": 6,
+                "dialogue_then_small_action": 5,
+                "enter_then_put_down_object": 5,
                 "first_pick_up_object_then_give_to_third_actor": 2,
-                "open_then_pick_up_object": 5,
+                "open_then_pick_up_object": 8,
                 "ordinal_first_second": 9,
-                "ordinal_first_second_third": 1,
-                "pick_up_then_put_down_object": 6,
-                "same_type_two_marked_objects": 2,
-                "same_type_two_marked_objects_left_right": 2,
+                "ordinal_first_second_third": 2,
+                "pick_up_then_put_down_object": 8,
+                "same_type_two_marked_objects": 3,
+                "same_type_two_marked_objects_left_right": 3,
                 "same_type_two_marked_objects_near_far": 2,
                 "second_pick_up_object_then_give_to_third_actor": 2,
-                "stop_near_marked_object_then_first_described_action": 4,
-                "toward_each_other": 8,
-                "toward_each_other_then_pass_by_marked_object": 7,
+                "stop_near_marked_object_then_first_described_action": 2,
+                "toward_each_other": 4,
+                "toward_each_other_then_pass_by_marked_object": 9,
                 "toward_each_other_then_pass_by_marked_object_then_second_runs": 2,
-                "toward_each_other_then_pass_by_object_then_second_runs": 3,
-                "toward_each_other_then_stop_near_marked_object": 9,
+                "toward_each_other_then_pass_by_object_then_second_runs": 2,
+                "toward_each_other_then_stop_near_marked_object": 10,
                 "toward_each_other_then_stop_near_marked_object_then_second_runs": 2,
                 "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": 1,
-                "unsupported_action_described_action": 8,
+                "unsupported_action_described_action": 5,
             },
         )
 
@@ -280,29 +282,29 @@ class TestPatternLibrary(unittest.TestCase):
         self.assertEqual(
             pattern_counts,
             {
-                "dialogue_only": 8,
+                "dialogue_only": 7,
                 "dialogue_then_pick_up_object_then_give_to_third_actor": 2,
-                "dialogue_then_put_down_object": 6,
-                "dialogue_then_small_action": 8,
-                "enter_then_put_down_object": 5,
+                "dialogue_then_put_down_object": 7,
+                "dialogue_then_small_action": 6,
+                "enter_then_put_down_object": 6,
                 "first_pick_up_object_then_give_to_third_actor": 2,
-                "open_then_pick_up_object": 6,
+                "open_then_pick_up_object": 9,
                 "ordinal_first_second": 10,
-                "ordinal_first_second_third": 1,
-                "pick_up_then_put_down_object": 7,
-                "same_type_two_marked_objects": 2,
-                "same_type_two_marked_objects_left_right": 2,
+                "ordinal_first_second_third": 2,
+                "pick_up_then_put_down_object": 9,
+                "same_type_two_marked_objects": 4,
+                "same_type_two_marked_objects_left_right": 4,
                 "same_type_two_marked_objects_near_far": 2,
                 "second_pick_up_object_then_give_to_third_actor": 2,
-                "stop_near_marked_object_then_first_described_action": 5,
-                "toward_each_other": 9,
-                "toward_each_other_then_pass_by_marked_object": 8,
+                "stop_near_marked_object_then_first_described_action": 2,
+                "toward_each_other": 5,
+                "toward_each_other_then_pass_by_marked_object": 10,
                 "toward_each_other_then_pass_by_marked_object_then_second_runs": 2,
-                "toward_each_other_then_pass_by_object_then_second_runs": 4,
-                "toward_each_other_then_stop_near_marked_object": 10,
+                "toward_each_other_then_pass_by_object_then_second_runs": 2,
+                "toward_each_other_then_stop_near_marked_object": 11,
                 "toward_each_other_then_stop_near_marked_object_then_second_runs": 2,
                 "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action": 1,
-                "unsupported_action_described_action": 9,
+                "unsupported_action_described_action": 6,
             },
         )
 
@@ -359,6 +361,22 @@ class TestPatternLibrary(unittest.TestCase):
             self.assertEqual(actions[0]["type"], "approach")
             self.assertEqual(actions[1]["type"], "look_at")
 
+    def test_dialogue_templates_match_speaker_gender(self) -> None:
+        female_names = {"Анна", "Лена", "Нина", "Ира", "Мила", "Света", "Катя", "Юля", "Вика", "Алина", "Таня", "Марина", "Дарья", "Лиза", "Яна", "Соня"}
+        for pattern_name in ("dialogue_only", "dialogue_then_small_action"):
+            with self.subTest(pattern_name=pattern_name):
+                for seed in range(100, 180):
+                    record = generate_pattern_record(
+                        pattern_name,
+                        graph_seed=seed,
+                        source_variant_key="base",
+                    )
+                    first_actor = record["scene_graph"]["actors"][0]
+                    first_name = first_actor.get("name")
+                    first_line = record["scene_graph"]["beats"][0]["actions"][0]["dialogue"]
+                    if first_name in female_names:
+                        self.assertNotRegex(first_line, r"\b(?:отправил|переслал|загрузил|подготовил|скинул|приложил)\b")
+
     def test_unsupported_action_text_matches_object(self) -> None:
         expected_by_token = {
             "двер": "дверь",
@@ -385,7 +403,30 @@ class TestPatternLibrary(unittest.TestCase):
             source_variant_key="morphology_stress",
         )
         source_name = record["scene_graph"]["objects"][0]["marker_binding"]["source_name"]
-        self.assertIn(source_name, {"laptop", "notebook", "pc"})
+        self.assertIn(
+            source_name,
+            {
+                "pc",
+                "workstation",
+                "monitor",
+                "terminal",
+                "screen",
+                "panel",
+                "rack",
+                "cabinet",
+                "counter",
+                "bench",
+                "kiosk",
+                "lamp",
+                "poster",
+                "sign",
+                "cart",
+                "door",
+                "window",
+                "wall",
+                "pillar",
+            },
+        )
 
     def test_stress_variant_changes_scene_graph_payload(self) -> None:
         base = generate_pattern_record(
@@ -404,6 +445,93 @@ class TestPatternLibrary(unittest.TestCase):
         )
         self.assertNotEqual(base["scene_graph"]["must_preserve"], stress["scene_graph"]["must_preserve"])
 
+    def test_motion_templates_localize_walk_modifiers(self) -> None:
+        found_localized = False
+        for seed in range(100, 160):
+            record = generate_pattern_record(
+                "toward_each_other",
+                graph_seed=seed,
+                source_variant_key="base",
+            )
+            template = record["internal_metadata"]["canonical_source_template"]
+            self.assertNotRegex(template, r"\b(?:quickly|slowly|carefully)\b")
+            if any(token in template for token in ("не спеша", "быстро", "осторожно")):
+                found_localized = True
+        self.assertTrue(found_localized)
+
+    def test_marked_object_morphology_stress_uses_multiple_surface_families(self) -> None:
+        seen_source_names = set()
+        for seed in range(600, 680):
+            record = generate_pattern_record(
+                "toward_each_other_then_stop_near_marked_object",
+                graph_seed=seed,
+                source_variant_key="morphology_stress",
+            )
+            seen_source_names.add(record["scene_graph"]["objects"][0]["marker_binding"]["source_name"])
+        self.assertGreaterEqual(len(seen_source_names), 8)
+
+    def test_three_beat_motion_templates_include_explicit_sequence_markers(self) -> None:
+        target_patterns = (
+            "stop_near_marked_object_then_first_described_action",
+            "toward_each_other_then_pass_by_object_then_second_runs",
+            "toward_each_other_then_stop_near_marked_object_then_second_runs",
+            "toward_each_other_then_pass_by_marked_object_then_second_runs",
+            "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action",
+        )
+        for pattern_name in target_patterns:
+            with self.subTest(pattern_name=pattern_name):
+                record = generate_pattern_record(
+                    pattern_name,
+                    graph_seed=2408,
+                    source_variant_key="base",
+                )
+                template = record["internal_metadata"]["canonical_source_template"].lower()
+                self.assertTrue(
+                    any(marker in template for marker in ("сначала", "затем", "после этого", "в конце")),
+                    msg=template,
+                )
+
+    def test_marked_object_motion_templates_avoid_double_prepositions_and_bad_cases(self) -> None:
+        pattern_names = (
+            "stop_near_marked_object_then_first_described_action",
+            "toward_each_other_then_stop_near_marked_object",
+            "toward_each_other_then_pass_by_marked_object",
+            "toward_each_other_then_pass_by_object_then_second_runs",
+            "toward_each_other_then_stop_near_marked_object_then_second_runs",
+            "toward_each_other_then_pass_by_marked_object_then_second_runs",
+            "toward_each_other_then_stop_near_marked_object_then_third_actor_described_action",
+        )
+        banned_patterns = (
+            r"\bоколо\s+рядом\s+с\b",
+            r"\bу\s+рядом\s+со\b",
+            r"\bмимо\s+монитор\b",
+            r"\bмимо\s+терминал\b",
+            r"\bу\s+рядом\s+с\b",
+            r"\bу\s+около\b",
+        )
+        for pattern_name in pattern_names:
+            for variant in PATTERN_REGISTRY[pattern_name].allowed_source_variant_keys:
+                with self.subTest(pattern_name=pattern_name, variant=variant):
+                    for seed in range(410, 430):
+                        record = generate_pattern_record(
+                            pattern_name,
+                            graph_seed=seed,
+                            source_variant_key=variant,
+                        )
+                        template = record["internal_metadata"]["canonical_source_template"].lower()
+                        for banned in banned_patterns:
+                            self.assertIsNone(re.search(banned, template))
+
+    def test_open_then_pick_up_registry_template_is_not_mixed_script(self) -> None:
+        record = generate_pattern_record(
+            "open_then_pick_up_object",
+            graph_seed=576329,
+            source_variant_key="base",
+        )
+        template = record["internal_metadata"]["canonical_source_template"]
+        self.assertNotIn("кейc", template.lower())
+        self.assertNotRegex(template, r"(?=\w*[A-Za-z])(?=\w*[А-Яа-яЁё])")
+
     def test_graph_seed_changes_non_id_content(self) -> None:
         signatures = set()
         for seed in (101, 202, 303, 404):
@@ -415,6 +543,10 @@ class TestPatternLibrary(unittest.TestCase):
             beat = record["scene_graph"]["beats"][0]
             signatures.add(tuple(action["dialogue"] for action in beat["actions"]))
         self.assertGreaterEqual(len(signatures), 2)
+
+    def test_irregular_person_name_inflection_keeps_pavel_grammatical(self) -> None:
+        self.assertEqual(_inflect_person_name("Павел", "accusative"), "Павла")
+        self.assertEqual(_inflect_person_name("Павел", "dative"), "Павлу")
 
     def test_three_actor_ordinal_pattern_binds_all_ordinals(self) -> None:
         record = generate_pattern_record(

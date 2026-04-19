@@ -22,7 +22,7 @@ def plan_splits(request: DatasetBuildRequest) -> SplitPlan:
     cir_index = build_cir_indices(request.cir_jsonl, contract_version=request.contract_version)
     sft_candidates, _ = load_sft_candidates(request, cir_index=cir_index)
     sft_deduped, _ = dedup_sft_candidates(sft_candidates)
-    _, sft_family_to_split = split_sft_records(
+    sft_split, sft_family_to_split = split_sft_records(
         sft_deduped,
         ratios=(request.sft_train_ratio, request.sft_val_ratio, request.sft_test_ratio),
     )
@@ -32,12 +32,19 @@ def plan_splits(request: DatasetBuildRequest) -> SplitPlan:
         for family_id, split in sft_family_to_split.items()
         if split in {"val", "test"}
     }
+    heldout_hashes = {
+        str(row["packaging_metadata"].get("normalized_source_hash", ""))
+        for split in ("val", "test")
+        for row in sft_split.get(split, [])
+        if str(row["packaging_metadata"].get("normalized_source_hash", ""))
+    }
     raw_pref = load_raw_preference_candidates(request)
     preference_build = _build_preference_pairs(
         request,
         raw_candidates=raw_pref,
         cir_index=cir_index,
         heldout_sft_family_ids=heldout_families,
+        heldout_sft_normalized_source_hashes=heldout_hashes,
     )
     _, preference_family_to_split, preference_test_coverage_status = split_preference_records(
         preference_build.splitable_records,
@@ -63,19 +70,32 @@ def build_preference_pairs(request: DatasetBuildRequest) -> PreferenceBuildResul
         for split in ("val", "test")
         for row in sft_split[split]
     }
+    heldout_hashes = {
+        str(row["packaging_metadata"].get("normalized_source_hash", ""))
+        for split in ("val", "test")
+        for row in sft_split.get(split, [])
+        if str(row["packaging_metadata"].get("normalized_source_hash", ""))
+    }
     raw_pref = load_raw_preference_candidates(request)
     return _build_preference_pairs(
         request,
         raw_candidates=raw_pref,
         cir_index=cir_index,
         heldout_sft_family_ids=set(heldout_families),
+        heldout_sft_normalized_source_hashes=heldout_hashes,
     )
 
 
 def build_dataset(request: DatasetBuildRequest) -> DatasetBuildResult:
+    print(
+        f"[dataset_builder] stage 1/6: build CIR indices from {request.cir_jsonl}",
+        flush=True,
+    )
     cir_index = build_cir_indices(request.cir_jsonl, contract_version=request.contract_version)
+    print("[dataset_builder] stage 2/6: load and filter SFT candidates", flush=True)
     sft_candidates, dropped_by_ingest = load_sft_candidates(request, cir_index=cir_index)
     sft_deduped, dropped_by_dedup = dedup_sft_candidates(sft_candidates)
+    print("[dataset_builder] stage 3/6: split SFT dataset", flush=True)
     sft_splits, _ = split_sft_records(
         sft_deduped,
         ratios=(request.sft_train_ratio, request.sft_val_ratio, request.sft_test_ratio),
@@ -86,18 +106,27 @@ def build_dataset(request: DatasetBuildRequest) -> DatasetBuildResult:
         for split in ("val", "test")
         for row in sft_splits[split]
     }
+    heldout_sft_hashes = {
+        str(row["packaging_metadata"].get("normalized_source_hash", ""))
+        for split in ("val", "test")
+        for row in sft_splits.get(split, [])
+        if str(row["packaging_metadata"].get("normalized_source_hash", ""))
+    }
     raw_preference_candidates = load_raw_preference_candidates(request)
+    print("[dataset_builder] stage 4/6: build/split preference dataset", flush=True)
     preference_build = _build_preference_pairs(
         request,
         raw_candidates=raw_preference_candidates,
         cir_index=cir_index,
         heldout_sft_family_ids=set(heldout_sft_families),
+        heldout_sft_normalized_source_hashes=heldout_sft_hashes,
     )
     preference_splits, _, preference_test_coverage_status = split_preference_records(
         preference_build.splitable_records,
         ratios=(request.preference_train_ratio, request.preference_val_ratio, request.preference_test_ratio),
     )
 
+    print("[dataset_builder] stage 5/6: build manifests and leakage report", flush=True)
     split_manifest = build_split_manifest(
         request,
         sft_records=sft_splits,
@@ -118,6 +147,7 @@ def build_dataset(request: DatasetBuildRequest) -> DatasetBuildResult:
     enforce_leakage_report(leakage_report)
 
     output_dir = request.output_dir
+    print(f"[dataset_builder] stage 6/6: write artifacts to {output_dir}", flush=True)
     write_jsonl(sft_splits["train"], output_dir / "sft_train.jsonl")
     write_jsonl(sft_splits["val"], output_dir / "sft_val.jsonl")
     write_jsonl(sft_splits["test"], output_dir / "sft_test.jsonl")
@@ -127,6 +157,12 @@ def build_dataset(request: DatasetBuildRequest) -> DatasetBuildResult:
     write_json(split_manifest, output_dir / "split_manifest.json")
     write_json(preference_manifest, output_dir / "preference_manifest.json")
     write_json(leakage_report, output_dir / "leakage_report.json")
+    print(
+        "[dataset_builder] done: "
+        f"sft_train={len(sft_splits['train'])} sft_val={len(sft_splits['val'])} sft_test={len(sft_splits['test'])} "
+        f"pref_train={len(preference_splits['train'])} pref_val={len(preference_splits['val'])} pref_test={len(preference_splits['test'])}",
+        flush=True,
+    )
 
     return DatasetBuildResult(
         sft_records=sft_splits,
@@ -147,4 +183,3 @@ __all__ = [
     "build_preference_pairs",
     "plan_splits",
 ]
-

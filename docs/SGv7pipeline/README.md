@@ -106,6 +106,55 @@
 - pattern library contract: [20-pattern-library.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/20-pattern-library.md)
 - CIR validator CLI: [validate_cir_contract.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/cir_contract/scripts/validate_cir_contract.py)
 - CIR -> SceneScript serializer and SG v7 entrypoint: [generate_dataset_v7.py](/Users/unterlantas/Documents/XCode/shafinMultitool/generate_dataset_v7.py)
+- full one-command orchestrator (tests + pipeline + audit): [run_sgv7_full.sh](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/run_sgv7_full.sh)
+- post-run output auditor: [audit_sgv7_outputs.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/audit_sgv7_outputs.py)
+
+## One-Command Automation
+
+Полностью автоматический прогон (preflight tests -> pipeline -> audit):
+
+```bash
+/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/run_sgv7_full.sh \
+  --output-dir /tmp/sgv7_build_auto \
+  --seed 20260415 \
+  --core-records 240 \
+  --hard-records 240 \
+  --paraphraser-backend openai \
+  --critic-backend openai \
+  --critic-disable-response-format \
+  --paraphraser-workers 15 \
+  --critic-workers 4 \
+  --min-same-type-markers 1
+```
+
+Если хочешь, чтобы запуск падал при пустых `preference_*`:
+
+```bash
+/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/run_sgv7_full.sh \
+  --output-dir /tmp/sgv7_build_auto \
+  --seed 20260415 \
+  --core-records 240 \
+  --hard-records 240 \
+  --paraphraser-backend openai \
+  --critic-backend openai \
+  --critic-disable-response-format \
+  --require-preference \
+  --require-runtime-preference-origin
+```
+
+Если нужен неофициальный endpoint:
+
+```bash
+/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/run_sgv7_full.sh \
+  --openai-base-url "https://your-endpoint/v1" \
+  --output-dir /tmp/sgv7_build_auto \
+  --seed 20260415 \
+  --core-records 240 \
+  --hard-records 240 \
+  --paraphraser-backend openai \
+  --critic-backend openai \
+  --critic-disable-response-format
+```
 
 ## Главная идея
 

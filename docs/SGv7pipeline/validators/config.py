@@ -25,11 +25,12 @@ class ValidationRequest:
     critic_model: str = "gpt-5.4-nano"
     critic_temperature: float = 0.0
     critic_top_p: float = 1.0
-    critic_max_output_tokens: int = 300
+    critic_max_output_tokens: int = 1200
     validator_stack_version: str = "sgv7_validator_stack_v1"
     enable_critic: bool = True
     difficulty_bucket: DifficultyBucket | None = None
     critic_backend: CriticBackendName = "heuristic"
+    critic_workers: int = 1
 
 
 @dataclass(frozen=True)

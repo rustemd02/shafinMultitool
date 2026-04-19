@@ -159,11 +159,19 @@ def _apply_transform_chain(plan_item: TransformPlanItem) -> tuple[str, list[dict
 
 def generate_augmented_variants(request: AugmentationRequest) -> AugmentationResult:
     raw_records = read_jsonl(request.input_jsonl)
+    print(
+        "[augmentation] start: "
+        f"raw_records={len(raw_records)} bucket={request.difficulty_bucket or 'all'} "
+        f"max_augmented={request.max_augmented_variants_per_parent or 'auto'} risky={request.enable_risky}",
+        flush=True,
+    )
     accepted_records: list[dict[str, object]] = []
     reject_records: list[dict[str, object]] = []
     dedup_keys_by_parent: dict[str, set[str]] = defaultdict(set)
+    total_rows = len(raw_records)
+    progress_stride = max(1, total_rows // 20) if total_rows else 1
 
-    for record in raw_records:
+    for row_index, record in enumerate(raw_records, start=1):
         if request.difficulty_bucket is not None and record.get("difficulty_bucket") != request.difficulty_bucket:
             continue
         if record.get("generation_pass") != "base_paraphrase":
@@ -234,10 +242,19 @@ def generate_augmented_variants(request: AugmentationRequest) -> AugmentationRes
                 continue
             accepted_records.append(accept_record)
             dedup_keys_by_parent[plan_item.parent_variant_id].add(dedup_normalization_key(accept_record["source_text"]))
+        if row_index == total_rows or row_index % progress_stride == 0:
+            print(
+                f"[augmentation] progress: {row_index}/{total_rows} parent rows processed",
+                flush=True,
+            )
 
     accepted_records.sort(key=lambda row: (row["difficulty_bucket"], row["sample_id"], row["variant_id"]))
     reject_records.sort(key=lambda row: (str(row.get("sample_id")), str(row.get("reject_stage")), str(row.get("reject_reason"))))
     write_jsonl(accepted_records, request.output_jsonl)
     if request.reject_log_jsonl is not None:
         write_jsonl(reject_records, request.reject_log_jsonl)
+    print(
+        f"[augmentation] done: accepted={len(accepted_records)} rejected={len(reject_records)}",
+        flush=True,
+    )
     return AugmentationResult(accepted_records=accepted_records, reject_records=reject_records)

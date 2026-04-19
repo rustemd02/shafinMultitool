@@ -12,6 +12,11 @@ if str(ROOT) not in sys.path:
 from augmentation import AugmentationRequest, generate_augmented_variants
 
 
+def _log(stage: str, message: str) -> None:
+    sys.stdout.write(f"[sgv7:augmentation] {stage}: {message}\n")
+    sys.stdout.flush()
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate SG v7 augmentation variants from accepted source JSONL.")
     parser.add_argument("--input-jsonl", type=Path, required=True)
@@ -25,7 +30,12 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    _log("stage 1/4", "parse args")
     args = _parse_args()
+    _log(
+        "stage 2/4",
+        f"build request bucket={args.difficulty_bucket or 'all'} max_augmented={args.max_augmented_variants_per_parent or 'auto'} risky={bool(args.enable_risky)}",
+    )
     request = AugmentationRequest(
         input_jsonl=args.input_jsonl,
         output_jsonl=args.output_jsonl,
@@ -35,7 +45,9 @@ def main() -> int:
         max_augmented_variants_per_parent=args.max_augmented_variants_per_parent,
         enable_risky=args.enable_risky,
     )
+    _log("stage 3/4", "run augmentation generator")
     result = generate_augmented_variants(request)
+    _log("stage 4/4", f"write artifacts accepted={len(result.accepted_records)} rejected={len(result.reject_records)}")
     sys.stdout.write(
         f"Built {len(result.accepted_records)} augmentation variants -> {request.output_jsonl}"
         + (f" and {request.reject_log_jsonl}" if request.reject_log_jsonl is not None else "")

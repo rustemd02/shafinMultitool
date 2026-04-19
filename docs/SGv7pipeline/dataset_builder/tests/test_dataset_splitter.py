@@ -11,7 +11,7 @@ if str(DOCS_ROOT) not in sys.path:
 from dataset_builder.splitter import split_preference_records, split_sft_records
 
 
-def _sft_row(sample_id: str, family_id: str) -> dict[str, object]:
+def _sft_row(sample_id: str, family_id: str, *, difficulty_bucket: str = "hard") -> dict[str, object]:
     return {
         "sample_id": sample_id,
         "task_type": "sft",
@@ -27,7 +27,7 @@ def _sft_row(sample_id: str, family_id: str) -> dict[str, object]:
             "graph_hash": sample_id,
             "graph_family_key": family_id,
             "normalized_source_hash": f"nsh_{sample_id}",
-            "difficulty_bucket": "hard",
+            "difficulty_bucket": difficulty_bucket,
             "split_family_id": family_id,
             "correction_tier": "tier_b_deterministic_canonical",
             "source_text_token_count": 1,
@@ -99,3 +99,18 @@ class TestDatasetSplitter(unittest.TestCase):
         self.assertEqual(coverage, "undersized_preference_corpus")
         self.assertIn("test", splits)
         self.assertGreaterEqual(len(splits["test"]), 1)
+
+    def test_sft_split_keeps_core_and_hard_in_heldout_when_coverage_allows(self) -> None:
+        records: list[dict[str, object]] = []
+        for idx in range(1, 13):
+            records.append(_sft_row(f"core_{idx}", f"core_family_{idx}", difficulty_bucket="core"))
+            records.append(_sft_row(f"hard_{idx}", f"hard_family_{idx}", difficulty_bucket="hard"))
+
+        splits, _ = split_sft_records(records, ratios=(0.84, 0.08, 0.08))
+        for heldout_split in ("val", "test"):
+            buckets = {
+                str(row["packaging_metadata"].get("difficulty_bucket", ""))
+                for row in splits[heldout_split]
+            }
+            self.assertIn("core", buckets)
+            self.assertIn("hard", buckets)

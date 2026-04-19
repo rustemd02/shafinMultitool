@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DOCS_ROOT = Path(__file__).resolve().parents[2]
@@ -14,6 +15,7 @@ if str(DOCS_ROOT) not in sys.path:
 
 from pattern_library import generate_pattern_record
 from source_generation import HeuristicParaphraser, SourceGenerationRequest, generate_source_variants
+from source_generation.batcher import build_variant_plan
 
 
 class TestSourceGeneratorCLI(unittest.TestCase):
@@ -165,3 +167,108 @@ class TestSourceGeneratorCLI(unittest.TestCase):
             self.assertTrue(result.accepted_records)
             clean = next(row for row in result.accepted_records if row["style_bucket"] == "clean")
             self.assertIn(expected_surface, clean["source_text"].lower())
+            self.assertNotIn("у рядом с", clean["source_text"].lower())
+            self.assertNotIn("quickly", clean["source_text"].lower())
+
+    def test_openai_parallel_workers_generate_variants(self) -> None:
+        fixtures = [
+            DOCS_ROOT / "cir_contract" / "contracts" / "examples" / "ex1_stop_near_marked_then_first_described.json",
+            DOCS_ROOT / "cir_contract" / "contracts" / "examples" / "ex2_pass_by_object_then_second_runs.json",
+        ]
+
+        class StyleAwareParaphraser:
+            def generate(self, *, plan_item, system_prompt: str, user_prompt: str) -> str:
+                return f"{plan_item.canonical_source_template} ({plan_item.style_bucket})"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "graphs.jsonl"
+            input_jsonl.write_text(
+                "".join(json.dumps(json.loads(f.read_text(encoding="utf-8")), ensure_ascii=False) + "\n" for f in fixtures),
+                encoding="utf-8",
+            )
+            output_jsonl = tmp_path / "sources.jsonl"
+            reject_jsonl = tmp_path / "rejects.jsonl"
+            request = SourceGenerationRequest(
+                input_jsonl=input_jsonl,
+                output_jsonl=output_jsonl,
+                reject_log_jsonl=reject_jsonl,
+                seed=20260413,
+                paraphraser_backend="openai",
+                paraphraser_workers=3,
+            )
+            result = generate_source_variants(request, paraphraser=StyleAwareParaphraser())
+
+            self.assertEqual(len(result.accepted_records), 6)
+            self.assertEqual(len([row for row in result.accepted_records if row["style_bucket"] == "clean"]), 2)
+
+    def test_missing_required_clean_variant_drops_graph_instead_of_crashing(self) -> None:
+        fixture = DOCS_ROOT / "cir_contract" / "contracts" / "examples" / "ex2_pass_by_object_then_second_runs.json"
+
+        class CleanAlwaysBadParaphraser:
+            def generate(self, *, plan_item, system_prompt: str, user_prompt: str) -> str:
+                if plan_item.style_bucket == "clean":
+                    return "[]"
+                return plan_item.canonical_source_template
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "graphs.jsonl"
+            input_jsonl.write_text(
+                json.dumps(json.loads(fixture.read_text(encoding="utf-8")), ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            output_jsonl = tmp_path / "sources.jsonl"
+            reject_jsonl = tmp_path / "rejects.jsonl"
+            request = SourceGenerationRequest(
+                input_jsonl=input_jsonl,
+                output_jsonl=output_jsonl,
+                reject_log_jsonl=reject_jsonl,
+                seed=20260413,
+                max_variants_per_graph=2,
+                paraphraser_backend="heuristic",
+                enable_clean_fallback=False,
+            )
+            result = generate_source_variants(request, paraphraser=CleanAlwaysBadParaphraser())
+
+            self.assertEqual(result.accepted_records, [])
+            self.assertTrue(any("required_clean_variant_generation_failed" in row["reject_reason"] for row in result.reject_records))
+
+    def test_simple_patterns_use_reduced_variant_budget(self) -> None:
+        record = generate_pattern_record(
+            "dialogue_only",
+            graph_seed=20260416,
+            source_variant_key="base",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_jsonl = tmp_path / "graphs.jsonl"
+            input_jsonl.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+            request = SourceGenerationRequest(
+                input_jsonl=input_jsonl,
+                output_jsonl=tmp_path / "sources.jsonl",
+                reject_log_jsonl=tmp_path / "rejects.jsonl",
+                seed=20260416,
+                max_variants_per_graph=3,
+                paraphraser_backend="heuristic",
+            )
+            plan = build_variant_plan(request)
+
+        self.assertEqual([item.style_bucket for item in plan], ["clean"])
+
+    def test_user_short_heuristic_keeps_sentence_connectors_intact(self) -> None:
+        plan_item = SimpleNamespace(
+            style_bucket="user_short",
+            canonical_source_template="2 актёра идут навстречу друг другу и проходят мимо терминала, и второй начинает бежать.",
+            prompt_payload={"graph_summary": "unused"},
+            required_aliases=(),
+            required_disambiguation_cues=(),
+            required_ordinal_tokens=(),
+        )
+        text = HeuristicParaphraser().generate(
+            plan_item=plan_item,
+            system_prompt="",
+            user_prompt="",
+        )
+        self.assertIn("и проходят мимо терминала", text)
+        self.assertIn("и второй начинает бежать", text)
