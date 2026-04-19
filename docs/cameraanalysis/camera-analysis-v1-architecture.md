@@ -78,10 +78,15 @@ flowchart TD
     D --> E
     E --> F["Critique Engine"]
     F --> G["Recommendation Planner"]
+    K["Explainability Trace Assembler"]
+    C --> K
+    E --> K
+    L["ReasoningProvider (optional)"] --> K
+    G --> K
+    F --> K
     G --> H["Explanation Generator"]
     H --> I["Live Hint"]
     H --> J["Expanded Critique Card"]
-    F --> K["Explainability Trace"]
     K --> H
 ```
 
@@ -258,8 +263,13 @@ FrameIssue:
 - `scene_has_no_clear_focus`
 - `frame_visually_overloaded`
 - `horizon_distracts`
+
+Примеры strength types для `v1`:
 - `good_subject_isolation`
 - `good_light_emphasis`
+- `clear_focus_hierarchy`
+- `stable_horizon_supports_scene`
+- `balanced_composition_for_scene`
 
 Важно:
 - положительные факторы должны быть симметричны негативным;
@@ -292,7 +302,8 @@ RecommendationAction:
 - actionType
 - targetRegion
 - expectedOutcome
-- linkedIssues
+- linkedIssueIds
+- guardrail
 - overlayHint
 ```
 
@@ -378,18 +389,25 @@ SceneSemanticsReport
 - cinematicIntentHints
 
 CritiqueReport
+- frameId
+- mode
 - verdict
-- overallConfidence
+- verdictConfidence
 - strengths[]
 - issues[]
-- summaryReason
-- explainabilityTrace[]
+- summary
+- traceRefs[]
+- fallbackUsed
 
 RecommendationPlan
+- frameId
+- mode
+- inputVerdict
 - primaryAction
 - secondaryActions[]
-- overlayAnnotations[]
-- expectedImprovementSummary
+- deferredActions[]
+- noChangeRationale
+- planConfidence
 
 PresentationPayload
 - liveHint
@@ -423,15 +441,24 @@ Recommendation:
 - "turn subject toward front light"
 ```
 
-На уровне данных это может выглядеть как:
+На уровне данных это может выглядеть так (синхронизировано с `04-explainability-contract.md`):
 
 ```text
 ExplainabilityTraceItem
-- observationSource
-- rawEvidence
-- interpretedMeaning
-- contributionWeight
-- linkedIssueId
+- id
+- frameId
+- mode
+- stage                    // observation | interpretation | recommendation
+- sourceKind               // snapshot_signal | semantics_signal | deterministic_rule | planner_policy | optional_reasoning
+- certainty
+- confidence
+- timestampMs
+- statement
+- evidenceKeys[]
+- dependsOn[]
+- links[]                  // issue | strength | action | overlay | summary
+- audiences[]              // core | debug | eval | ui
+- metadata                 // optional debug/model context
 ```
 
 Преимущество:

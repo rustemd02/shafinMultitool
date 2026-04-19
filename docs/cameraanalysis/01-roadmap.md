@@ -34,7 +34,7 @@ PR wave:
 
 Артефакты:
 - domain contract spec: [03-domain-contracts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/03-domain-contracts.md)
-- explainability contract spec
+- explainability contract spec: [04-explainability-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/04-explainability-contract.md)
 - issue taxonomy
 - integration contract для presentation layer
 

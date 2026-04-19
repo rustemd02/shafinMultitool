@@ -128,6 +128,7 @@ SemanticsAssumption
 - confidence: Double (required, 0...1)
 
 CritiqueSummary
+- id: String (required, stable summary id within frame)
 - shortVerdict: String (required)
 - whyGood: String? (optional)
 - whyProblematic: String? (optional)
@@ -156,6 +157,7 @@ ActionGuardrail
 - suppressWhenMoving: Bool (required)
 
 OverlayHint
+- id: String (required, stable overlay id within frame)
 - kind: OverlayKind (required)
 - targetRegion: NormalizedRect? (optional)
 - direction: OverlayDirection? (optional)
@@ -366,6 +368,7 @@ Strength taxonomy (`v1`):
 - Любой issue обязан иметь минимум один `evidence` элемент.
 - `fallbackUsed == true` только если semantics/critique часть деградировала и использованы технические эвристики.
 - Текст `rationale` не содержит домыслов вне evidence.
+- `summary.id` обязателен и стабилен в рамках `frameId` (используется как trace target `TraceLinkKind.summary`).
 
 ## Contract 4. RecommendationPlan
 
@@ -416,6 +419,7 @@ Action catalog (`v1`):
 - Каждый action (кроме `leave_frame_as_is`) связан минимум с одной issue через `linkedIssueIds`.
 - `priority` уникален внутри `primary + secondary`.
 - План не должен содержать противоречащих действий (`move_frame_left` и `move_frame_right` одновременно).
+- Если у action есть `overlayHint`, то `overlayHint.id` обязателен и уникален в рамках `frameId` (используется как trace target `TraceLinkKind.overlay`).
 
 ## Примеры (JSON-like)
 
@@ -447,6 +451,7 @@ Action catalog (`v1`):
   "critiqueReport": {
     "frameId": "f-1021",
     "verdict": "needs_fix",
+    "summary": { "id": "summary_f1021_main", "shortVerdict": "кадру не хватает читаемости главного объекта" },
     "strengths": [{ "id": "s1", "type": "clear_focus_hierarchy", "confidence": 0.74 }],
     "issues": [
       { "id": "i1", "type": "subject_too_close_to_edge", "severity": 0.83, "confidence": 0.81 },
@@ -462,7 +467,8 @@ Action catalog (`v1`):
       "actionType": "move_frame_left",
       "priority": 1,
       "linkedIssueIds": ["i1"],
-      "expectedOutcome": "добавить воздух слева и снизить краевое давление"
+      "expectedOutcome": "добавить воздух слева и снизить краевое давление",
+      "overlayHint": { "id": "ov_a1_left_arrow", "kind": "arrow", "direction": "left" }
     },
     "secondaryActions": [
       {
@@ -487,6 +493,7 @@ Action catalog (`v1`):
   "critiqueReport": {
     "verdict": "good",
     "verdictConfidence": 0.78,
+    "summary": { "id": "summary_f2033_main", "shortVerdict": "кадр стабильный и визуально читаемый" },
     "strengths": [
       { "type": "balanced_composition_for_scene", "confidence": 0.82 },
       { "type": "good_light_emphasis", "confidence": 0.75 }

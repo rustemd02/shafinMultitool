@@ -129,9 +129,17 @@ struct SemanticsAssumption: Codable, Equatable, Sendable {
 }
 
 struct CritiqueSummary: Codable, Equatable, Sendable {
+    let id: String
     let shortVerdict: String
     let whyGood: String?
     let whyProblematic: String?
+
+    init(id: String, shortVerdict: String, whyGood: String? = nil, whyProblematic: String? = nil) {
+        self.id = id
+        self.shortVerdict = shortVerdict
+        self.whyGood = whyGood
+        self.whyProblematic = whyProblematic
+    }
 }
 
 enum EvidenceSource: String, Codable, Sendable {
@@ -196,9 +204,17 @@ enum OverlayDirection: String, Codable, Sendable {
 }
 
 struct OverlayHint: Codable, Equatable, Sendable {
+    let id: String
     let kind: OverlayKind
     let targetRegion: NormalizedRect?
     let direction: OverlayDirection?
+
+    init(id: String, kind: OverlayKind, targetRegion: NormalizedRect? = nil, direction: OverlayDirection? = nil) {
+        self.id = id
+        self.kind = kind
+        self.targetRegion = targetRegion
+        self.direction = direction
+    }
 }
 
 // MARK: - Contract 1: FrameFeatureSnapshot
@@ -603,6 +619,10 @@ struct CritiqueReport: Codable, Equatable, Sendable {
             errors.append("critique.frameId must match snapshot.frameId")
         }
 
+        if summary.id.isEmpty {
+            errors.append("summary.id must be non-empty")
+        }
+
         let hasCriticalIssue = issues.contains(where: { $0.severity >= Self.criticalIssueThreshold })
         if verdict == .good && hasCriticalIssue {
             errors.append("good verdict cannot have critical issues")
@@ -709,6 +729,10 @@ struct RecommendationPlan: Codable, Equatable, Sendable {
             }
         }
 
+        if allActions.contains(where: { $0.overlayHint?.id.isEmpty == true }) {
+            errors.append("overlayHint.id must be non-empty when overlayHint is present")
+        }
+
         if !availableIssueIds.isEmpty {
             let unknownLinks = allActions
                 .flatMap(\.linkedIssueIds)
@@ -729,5 +753,391 @@ struct RecommendationPlan: Codable, Equatable, Sendable {
 
     private static func clamp01(_ value: Double) -> Double {
         min(1.0, max(0.0, value))
+    }
+}
+
+// MARK: - Contract 5: ExplainabilityTrace
+
+enum TraceStage: String, Codable, Sendable {
+    case observation
+    case interpretation
+    case recommendation
+}
+
+enum TraceSourceKind: String, Codable, Sendable {
+    case snapshotSignal = "snapshot_signal"
+    case semanticsSignal = "semantics_signal"
+    case deterministicRule = "deterministic_rule"
+    case plannerPolicy = "planner_policy"
+    case optionalReasoning = "optional_reasoning"
+}
+
+enum TraceCertainty: String, Codable, Sendable {
+    case deterministic
+    case probabilistic
+    case speculative
+}
+
+enum TraceAudience: String, Codable, Sendable {
+    case core
+    case debug
+    case eval
+    case ui
+}
+
+enum TraceLinkKind: String, Codable, Sendable {
+    case issue
+    case strength
+    case action
+    case overlay
+    case summary
+}
+
+struct TraceLink: Codable, Equatable, Sendable {
+    let kind: TraceLinkKind
+    let refId: String
+}
+
+struct ExplainabilityTraceItem: Codable, Equatable, Sendable {
+    let id: String
+    let frameId: String
+    let mode: AnalysisMode
+    let stage: TraceStage
+    let sourceKind: TraceSourceKind
+    let certainty: TraceCertainty
+    let confidence: Double
+    let timestampMs: Int
+    let statement: String
+    let evidenceKeys: [String]
+    let dependsOn: [String]
+    let links: [TraceLink]
+    let audiences: [TraceAudience]
+    let metadata: [String: String]
+
+    init(id: String,
+         frameId: String,
+         mode: AnalysisMode,
+         stage: TraceStage,
+         sourceKind: TraceSourceKind,
+         certainty: TraceCertainty,
+         confidence: Double,
+         timestampMs: Int,
+         statement: String,
+         evidenceKeys: [String],
+         dependsOn: [String],
+         links: [TraceLink],
+         audiences: [TraceAudience],
+         metadata: [String: String] = [:]) {
+        self.id = id
+        self.frameId = frameId
+        self.mode = mode
+        self.stage = stage
+        self.sourceKind = sourceKind
+        self.certainty = certainty
+        self.confidence = Self.clamp01(confidence)
+        self.timestampMs = timestampMs
+        self.statement = statement
+        self.evidenceKeys = evidenceKeys
+        self.dependsOn = dependsOn
+        self.links = links
+        self.audiences = audiences
+        self.metadata = metadata
+    }
+
+    private static func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
+struct ExplainabilityTraceBundle: Codable, Equatable, Sendable {
+    let frameId: String
+    let mode: AnalysisMode
+    let items: [ExplainabilityTraceItem]
+    let rootSummaryIds: [String]
+
+    func validate(critiqueReport: CritiqueReport? = nil, recommendationPlan: RecommendationPlan? = nil) -> [String] {
+        var errors: [String] = []
+
+        if frameId.isEmpty {
+            errors.append("traceBundle.frameId must be non-empty")
+        }
+
+        if let critiqueReport {
+            if critiqueReport.frameId != frameId || critiqueReport.mode != mode {
+                errors.append("traceBundle must match critiqueReport.frameId+mode")
+            }
+        }
+
+        if let recommendationPlan {
+            if recommendationPlan.frameId != frameId || recommendationPlan.mode != mode {
+                errors.append("traceBundle must match recommendationPlan.frameId+mode")
+            }
+        }
+
+        let grouped = Dictionary(grouping: items, by: \.id)
+        let duplicateIds = grouped.filter { $0.key.isEmpty || $0.value.count > 1 }.keys.sorted()
+        if !duplicateIds.isEmpty {
+            errors.append("trace item IDs must be non-empty and unique: \(duplicateIds)")
+        }
+
+        var itemById: [String: ExplainabilityTraceItem] = [:]
+        for item in items where !item.id.isEmpty {
+            if itemById[item.id] == nil {
+                itemById[item.id] = item
+            }
+        }
+
+        for item in items {
+            if item.frameId != frameId || item.mode != mode {
+                errors.append("trace item \(item.id) must match bundle frameId+mode")
+            }
+
+            if !isAllowed(stage: item.stage, sourceKind: item.sourceKind) {
+                errors.append("trace item \(item.id) has invalid stage/sourceKind pair")
+            }
+
+            if item.certainty == .speculative && item.sourceKind == .deterministicRule {
+                errors.append("trace item \(item.id) cannot use speculative certainty with deterministic_rule")
+            }
+
+            if item.sourceKind == .optionalReasoning && item.links.contains(where: { $0.kind == .action }) {
+                errors.append("optional_reasoning item \(item.id) cannot link actions")
+            }
+
+            if !item.audiences.contains(.core) {
+                errors.append("trace item \(item.id) must include core audience")
+            }
+
+            if item.dependsOn.contains(item.id) {
+                errors.append("trace item \(item.id) cannot depend on itself")
+            }
+
+            for depId in item.dependsOn {
+                guard let dep = itemById[depId] else {
+                    errors.append("trace item \(item.id) depends on unknown item \(depId)")
+                    continue
+                }
+
+                if dep.timestampMs >= item.timestampMs {
+                    errors.append("trace dependency \(dep.id) must have timestamp < \(item.id)")
+                }
+            }
+
+            switch item.stage {
+            case .observation:
+                if item.dependsOn.contains(where: { itemById[$0]?.stage != .observation }) {
+                    errors.append("observation item \(item.id) can only depend on observation items")
+                }
+            case .interpretation:
+                if item.dependsOn.isEmpty {
+                    errors.append("interpretation item \(item.id) must depend on at least one observation item")
+                }
+                if item.dependsOn.contains(where: { itemById[$0]?.stage != .observation }) {
+                    errors.append("interpretation item \(item.id) can only depend on observation items")
+                }
+            case .recommendation:
+                if item.dependsOn.isEmpty {
+                    errors.append("recommendation item \(item.id) must depend on deterministic interpretation items")
+                }
+                for depId in item.dependsOn {
+                    guard let dep = itemById[depId] else { continue }
+                    if dep.stage != .interpretation || dep.sourceKind != .deterministicRule {
+                        errors.append("recommendation item \(item.id) must depend on deterministic interpretation items")
+                        break
+                    }
+                }
+            }
+
+            if !item.dependsOn.isEmpty {
+                let maxDependencyConfidence = item.dependsOn
+                    .compactMap { itemById[$0]?.confidence }
+                    .max()
+                if let maxDependencyConfidence, item.confidence > maxDependencyConfidence + 0.1 {
+                    errors.append("trace item \(item.id) confidence must not exceed max dependency confidence + 0.1")
+                }
+            }
+        }
+
+        if hasCycle(in: itemById) {
+            errors.append("trace dependency graph must be acyclic")
+        }
+
+        if mode == .live && items.count > 12 {
+            errors.append("live mode trace bundle should not exceed 12 items")
+        }
+
+        for rootId in rootSummaryIds {
+            guard let root = itemById[rootId] else {
+                errors.append("rootSummaryId \(rootId) must reference an existing trace item")
+                continue
+            }
+            if root.stage != .interpretation && root.stage != .recommendation {
+                errors.append("rootSummaryId \(rootId) must reference interpretation or recommendation item")
+            }
+            if !root.links.contains(where: { $0.kind == .summary }) {
+                errors.append("rootSummaryId \(rootId) must include a summary link")
+            }
+            if let critiqueReport,
+               !root.links.contains(where: { $0.kind == .summary && $0.refId == critiqueReport.summary.id }) {
+                errors.append("rootSummaryId \(rootId) must link critique summary id \(critiqueReport.summary.id)")
+            }
+        }
+
+        if let critiqueReport {
+            errors.append(contentsOf: validateIssueAndStrengthCoverage(critiqueReport: critiqueReport))
+        }
+
+        if let recommendationPlan {
+            errors.append(contentsOf: validateActionCoverage(recommendationPlan: recommendationPlan))
+        }
+
+        if let critiqueReport, let recommendationPlan {
+            let hasCorrectiveAction = recommendationPlan.allActions.contains(where: { $0.actionType != .leaveFrameAsIs })
+            if critiqueReport.verdict == .good && !hasCorrectiveAction {
+                let hasSummaryLink = items.contains {
+                    $0.links.contains(where: { $0.kind == .summary && $0.refId == critiqueReport.summary.id })
+                }
+                if !hasSummaryLink {
+                    errors.append("good verdict without corrective actions must include summary trace link")
+                }
+            }
+        }
+
+        errors.append(contentsOf: validateTraceLinkResolution(critiqueReport: critiqueReport, recommendationPlan: recommendationPlan))
+
+        return errors
+    }
+
+    private func validateIssueAndStrengthCoverage(critiqueReport: CritiqueReport) -> [String] {
+        var errors: [String] = []
+
+        for issueId in critiqueReport.issues.map(\.id) {
+            let covered = items.contains { item in
+                item.stage == .interpretation
+                    && item.links.contains(where: { $0.kind == .issue && $0.refId == issueId })
+            }
+            if !covered {
+                errors.append("issue \(issueId) must be linked from interpretation trace item")
+            }
+        }
+
+        for strengthId in critiqueReport.strengths.map(\.id) {
+            let covered = items.contains { item in
+                item.stage == .interpretation
+                    && item.links.contains(where: { $0.kind == .strength && $0.refId == strengthId })
+            }
+            if !covered {
+                errors.append("strength \(strengthId) must be linked from interpretation trace item")
+            }
+        }
+
+        return errors
+    }
+
+    private func validateActionCoverage(recommendationPlan: RecommendationPlan) -> [String] {
+        var errors: [String] = []
+
+        for actionId in recommendationPlan.allActions.map(\.id) {
+            let covered = items.contains { item in
+                item.stage == .recommendation
+                    && item.links.contains(where: { $0.kind == .action && $0.refId == actionId })
+            }
+            if !covered {
+                errors.append("action \(actionId) must be linked from recommendation trace item")
+            }
+        }
+
+        return errors
+    }
+
+    private func validateTraceLinkResolution(critiqueReport: CritiqueReport?, recommendationPlan: RecommendationPlan?) -> [String] {
+        var errors: [String] = []
+        let issueIds = critiqueReport.map { Set($0.issues.map(\.id)) }
+        let strengthIds = critiqueReport.map { Set($0.strengths.map(\.id)) }
+        let actionIds = recommendationPlan.map { Set($0.allActions.map(\.id)) }
+        let overlayIds = recommendationPlan.map { Set($0.allActions.compactMap(\.overlayHint?.id)) }
+        let summaryId = critiqueReport?.summary.id
+
+        for item in items {
+            for link in item.links {
+                switch link.kind {
+                case .issue:
+                    if let issueIds, !issueIds.contains(link.refId) {
+                        errors.append("trace item \(item.id) links unknown issue id \(link.refId)")
+                    }
+                case .strength:
+                    if let strengthIds, !strengthIds.contains(link.refId) {
+                        errors.append("trace item \(item.id) links unknown strength id \(link.refId)")
+                    }
+                case .action:
+                    if let actionIds, !actionIds.contains(link.refId) {
+                        errors.append("trace item \(item.id) links unknown action id \(link.refId)")
+                    }
+                case .overlay:
+                    if let overlayIds, !overlayIds.contains(link.refId) {
+                        errors.append("trace item \(item.id) links unknown overlay id \(link.refId)")
+                    }
+                case .summary:
+                    if let summaryId, link.refId != summaryId {
+                        errors.append("trace item \(item.id) links unknown summary id \(link.refId)")
+                    }
+                default:
+                    break
+                }
+            }
+        }
+
+        return errors
+    }
+
+    private func hasCycle(in itemById: [String: ExplainabilityTraceItem]) -> Bool {
+        enum VisitState {
+            case visiting
+            case visited
+        }
+
+        var state: [String: VisitState] = [:]
+
+        func dfs(_ id: String) -> Bool {
+            if let current = state[id] {
+                return current == .visiting
+            }
+
+            state[id] = .visiting
+            for depId in itemById[id]?.dependsOn ?? [] {
+                if itemById[depId] != nil && dfs(depId) {
+                    return true
+                }
+            }
+            state[id] = .visited
+            return false
+        }
+
+        for id in itemById.keys where state[id] == nil {
+            if dfs(id) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func isAllowed(stage: TraceStage, sourceKind: TraceSourceKind) -> Bool {
+        switch (stage, sourceKind) {
+        case (.observation, .snapshotSignal),
+            (.observation, .semanticsSignal),
+            (.interpretation, .deterministicRule),
+            (.interpretation, .optionalReasoning),
+            (.recommendation, .plannerPolicy):
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+private extension RecommendationPlan {
+    var allActions: [RecommendationAction] {
+        [primaryAction].compactMap { $0 } + secondaryActions + deferredActions
     }
 }

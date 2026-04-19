@@ -22,11 +22,15 @@ flowchart TD
     E --> F
     F --> G["Frame Critique Engine"]
     G --> H["Recommendation Planner"]
-    G --> I["Explainability Trace Builder"]
+    C --> I["Explainability Trace Assembler"]
+    F --> I
+    G --> I
+    H --> I
+    L["ReasoningProvider (optional)"] --> I
     H --> J["Live Hint Adapter"]
     H --> K["Pause Critique Builder"]
+    I --> J
     I --> K
-    L["ReasoningProvider (optional)"] --> K
     J --> M["OverlayView / Live Chip"]
     K --> N["Pause Card / Expanded Verdict"]
 ```
@@ -62,8 +66,12 @@ flowchart TD
 - выбирает primary и secondary fixes;
 - знает, что показывать в `live`, а что только в `pause`.
 
-### 7. Explainability Trace Builder
-- хранит цепочку `observation -> interpretation -> recommendation`;
+### 7. Explainability Trace Assembler
+- собирает `observation` из snapshot/semantics сигналов;
+- собирает `interpretation` из deterministic critique/rules;
+- опционально добавляет `interpretation` из `ReasoningProvider` как append-only ветку `optional_reasoning` (без влияния на planner decisions);
+- собирает `recommendation` из output `RecommendationPlanner`;
+- валидирует ссылочную целостность (`issue/strength/action/overlay/summary`) и stage/source constraints;
 - используется для debug, eval и research narrative.
 
 ### 8. Live Hint Adapter
@@ -78,6 +86,7 @@ flowchart TD
 ### 10. ReasoningProvider
 - optional слой для LLM/deep reasoning;
 - не источник истины для сырых issues;
+- не переопределяет deterministic actions planner-а;
 - в `v1` в первую очередь pause-only.
 
 ## Recommended source-of-truth contracts

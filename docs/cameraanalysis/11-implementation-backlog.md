@@ -199,6 +199,7 @@ Done definition:
 Артефакт:
 - explainability trace spec;
 - examples;
+- зафиксированный source-of-truth doc: [04-explainability-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/04-explainability-contract.md).
 - test ideas.
 
 Зависимости:
@@ -221,6 +222,7 @@ Done definition:
 Артефакт:
 - builder/adapter для `FrameFeatureSnapshot`;
 - unit tests.
+- зафиксированный source-of-truth doc: [05-feature-snapshot-aggregator.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/05-feature-snapshot-aggregator.md).
 
 Зависимости:
 - `PR-002`.
