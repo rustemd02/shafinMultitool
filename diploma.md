@@ -953,3 +953,21 @@
 - `docs/cameraanalysis/03-domain-contracts.md` (source-of-truth спецификация контрактов)
 - `docs/cameraanalysis/11-implementation-backlog.md` (связка PR-002 с кодом и тестами)
 - `docs/cameraanalysis/README.md` (обновлённый индекс пакета camera analysis)
+
+## [2026-04-19 23:35] - Формализация explainability contract для camera analysis
+
+### Суть изменений
+- Спроектирован и реализован сериализуемый `ExplainabilityTraceBundle` с типами `ExplainabilityTraceItem`, `TraceLink`, `TraceStage`, `TraceSourceKind`, `TraceCertainty` и `TraceAudience`.
+- Зафиксирована цепочка `observation -> interpretation -> recommendation` с проверками DAG, временного порядка, допустимых пар `stage/sourceKind`, confidence-ограничений и ссылочной целостности.
+- Усилены доменные контракты: `CritiqueSummary` и `OverlayHint` получили стабильные `id`, а `RecommendationPlan` и `CritiqueReport` начали валидировать новые инварианты.
+- Добавлены unit-тесты на валидные и невалидные трассировки, включая partial validation, циклы, неизвестные ссылки, live-cap и кейсы optional reasoning.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** В explainable pipeline недостаточно просто выдавать финальную рекомендацию; требуется формально связать наблюдения, интерпретации и действия так, чтобы каждое решение можно было воспроизвести и проверить на полноту причинной цепочки.
+- **Решение:** Введён детерминированный trace-контракт с явными стадиями, типами источников и правилами резолва ссылок. Это позволяет проверять, что выводы строятся только из разрешённых upstream-сигналов, а optional reasoning не нарушает deterministic core.
+- **Детали:** Валидация использует граф зависимостей `dependsOn` с проверкой ацикличности и монотонности `timestampMs`, ограничение confidence относительно upstream-узлов, а также контроль покрытия `issue/strength/action/summary` ссылок. Такой подход делает причинно-следственную структуру пригодной для debug, eval и UI-объяснений.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (Trace-контракты и валидация)
+- `shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift` (negative/round-trip tests для trace-инвариантов)
+- `docs/cameraanalysis/04-explainability-contract.md` (design spec contract для PR-003)
