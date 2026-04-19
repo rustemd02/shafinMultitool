@@ -902,3 +902,31 @@
 С точки зрения инженерной сложности проект также выходит за рамки типового fine-tuning сценария. Реализованы и согласованы: детерминированный graph generator, parametrized pattern library, paraphrase generation с surface constraints, augmentation с bounded-noise policy, многоступенчатая semantic validation, dataset assembly с leakage-safe split policy, runtime feedback ingestion, preference candidate construction, quality audit с coverage gates, phase-aware training views и автоматизированный scientific benchmark orchestrator. Таким образом, техническая сложность проекта определяется не столько размером модели, сколько полнотой исследовательской инфраструктуры вокруг неё.
 
 Практическая значимость работы состоит в том, что полученная система может использоваться как промежуточный программный слой между текстовым описанием режиссёрского замысла и системами раскадровки/превизуализации. Это особенно важно для этапа предпродакшена, где исходный материал существует прежде всего в форме неполностью формализованных текстовых описаний. Предлагаемый подход позволяет перейти от такого описания к структурированной scene-модели, пригодной для последующей визуализации, планирования кадра и AR-представления. Следовательно, исследование имеет одновременно теоретическую значимость как работа по controlled data generation для малых локальных LLM и прикладную значимость как инструмент автоматизации задач предпродакшена художественного видеопродакшена.
+
+---
+
+## [2026-04-19 22:35] - [Camera Analysis v1: roadmap, explainable pipeline и PR-декомпозиция]
+
+### Суть изменений
+- Зафиксирован отдельный пакет документов `docs/cameraanalysis`, который описывает новый функционал анализа кадра с семантическими подсказками как самостоятельный исследовательский pipeline, а не как набор разрозненных UI-идей.
+- Сформулированы требования к `v1`: поддержка `live` и `pause`, explainable-вердикт для хорошего и плохого кадра, scene-aware критика cinematic-сцены, mobile-first исполнение и controlled usage `LLM`/hybrid reasoning.
+- Спроектирована каскадная архитектура: `feature extraction -> scene semantics -> critique engine -> recommendation planner -> explanation generator -> live/pause presentation`, где дорогие стадии преимущественно работают в `pause`, а быстрые детерминированные сигналы обслуживают `live`.
+- Выделен formal explainability contract, в котором любой совет должен восстанавливаться по цепочке `observation -> interpretation -> recommendation`; это создает основу для верифицируемого AI-поведения и пригодно для текста диссертации.
+- Подготовлен roadmap по фазам и implementation backlog с детерминированным PR pipeline (`PR-001 ... PR-015`), включая зависимости, границы write scope, критерии готовности и допустимый параллелизм между задачами.
+- Составлен набор agent prompts и briefing template, чтобы отдельные части системы можно было безопасно отдавать внешним AI-агентам без потери архитектурной целостности и без необходимости каждый раз пересобирать контекст вручную.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** На мобильном устройстве нельзя одновременно требовать глубокого AI-анализа художественного кадра, низкой задержки в `live`, устойчивого UX и объяснимости, если вся логика строится либо только на эвристиках, либо только на одном тяжёлом black-box model inference. Такой подход либо не даёт убедительного semantic critique, либо становится слишком дорогим, нестабильным и плохо объяснимым для исследовательской защиты.
+- **Решение:** Новый функционал переведён в режим *cascade-by-cost explainable pipeline*. Дешёвые и воспроизводимые Vision/CoreML-сигналы используются как fast-path и работают часто; более дорогой semantic reasoning поднимается отдельным слоем и в первую очередь активируется в `pause`; `LLM` не объявляется source-of-truth для raw critique, а ограничивается ролью controlled reasoning/text refinement поверх структурированного критического отчёта. Это позволяет совместить мобильную исполнимость, объяснимость и демонстративную технологическую сложность.
+- **Детали:** Для системы зафиксированы отдельные contracts и этапы поставки. Во-первых, архитектура разбита на явно типизированные сущности `FrameFeatureSnapshot`, `SceneSemanticsReport`, `CritiqueReport`, `RecommendationPlan` и `ExplainabilityTrace`, что превращает анализ кадра из неформального набора эвристик в формализованный dataflow. Во-вторых, `live` и `pause` рассматриваются как разные execution budgets: `live` получает только краткую подсказку и overlay, а `pause` — расширенный критический разбор с сильными и слабыми сторонами кадра. В-третьих, implementation backlog декомпозирован в детерминированные PR-единицы с явными зависимостями (`domain contracts`, `explainability contract`, `feature aggregation`, `scene semantics`, `critique core`, `recommendation planner`, `UI integration`, `LLM/hybrid reasoning`, `eval`, `runtime feedback`). Такая декомпозиция сама по себе является инженерным вкладом: она делает сложный AI-функционал пригодным для параллельной реализации агентами, сохраняя общий research contract и снижая риск архитектурного дрейфа.
+
+### Ключевые файлы
+- `docs/cameraanalysis/README.md` (индекс нового camera-analysis pipeline)
+- `docs/cameraanalysis/00-overview.md` (обоснование перехода от эвристик к explainable pipeline)
+- `docs/cameraanalysis/01-roadmap.md` (фазы реализации и зависимостей)
+- `docs/cameraanalysis/02-pipeline-architecture.md` (сжатая схема модулей и потоков данных)
+- `docs/cameraanalysis/11-implementation-backlog.md` (детерминированный PR pipeline для AI-агентов)
+- `docs/cameraanalysis/12-agent-prompts.md` (готовые промпты для design/implement/verify режимов)
+- `docs/cameraanalysis/13-agent-briefing-template.md` (шаблон постановки задач для отдельных агентов)
+- `docs/cameraanalysis/camera-analysis-requirements-draft.md` (требования и фиксированные решения по `v1`)
+- `docs/cameraanalysis/camera-analysis-v1-architecture.md` (подробная архитектурная концепция `Camera Analysis v1`)
