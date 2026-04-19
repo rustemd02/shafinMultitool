@@ -37,6 +37,7 @@ struct NormalizedRect: Codable, Equatable, Sendable {
     }
 
     private static func clamp01(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.0 }
         min(1.0, max(0.0, value))
     }
 }

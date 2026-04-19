@@ -562,6 +562,558 @@ struct FeatureSnapshotAggregator {
     }
 }
 
+// MARK: - Scene Semantics (PR-005 + PR-006)
+
+struct SceneSemanticsAnalyzer {
+    private let primarySubjectResolver = PrimarySubjectResolver()
+    private let visualDominanceAnalyzer = VisualDominanceAnalyzer()
+    private let sceneTypeClassifier = SceneTypeClassifier()
+    private let semanticReadabilityAnalyzer = SemanticReadabilityAnalyzer()
+
+    func analyze(snapshot: FrameFeatureSnapshot) -> SceneSemanticsReport {
+        if snapshot.frameId.isEmpty {
+            return makeWeakSignalFallback(
+                snapshot: snapshot,
+                frameId: "unknown-frame",
+                note: "Weak scene evidence: frameId is empty."
+            )
+        }
+
+        if hasContractVersionMismatch(snapshot) {
+            return makeWeakSignalFallback(
+                snapshot: snapshot,
+                note: "Weak scene evidence: snapshot contract version mismatch.",
+                assumptions: [
+                    .init(
+                        id: "contract_version_mismatch",
+                        text: "Snapshot payload does not satisfy expected contract invariants.",
+                        confidence: 1.0
+                    )
+                ]
+            )
+        }
+
+        if hasNoVisionAndDetrSources(snapshot.sources) {
+            return makeWeakSignalFallback(snapshot: snapshot)
+        }
+
+        let subjectResult = primarySubjectResolver.resolve(snapshot: snapshot)
+        let dominance = visualDominanceAnalyzer.analyze(snapshot: snapshot, primarySubject: subjectResult.primarySubject)
+        let sceneClassification = sceneTypeClassifier.classify(
+            snapshot: snapshot,
+            primarySubject: subjectResult.primarySubject,
+            dominance: dominance
+        )
+        let readability = semanticReadabilityAnalyzer.analyze(
+            snapshot: snapshot,
+            sceneType: sceneClassification.sceneType,
+            primarySubject: subjectResult.primarySubject,
+            dominance: dominance
+        )
+
+        var ambiguities = subjectResult.ambiguities + sceneClassification.ambiguities
+        var sceneTypeConfidence = sceneClassification.sceneTypeConfidence
+        if snapshot.technicalFlags.contains(.lowSceneConfidence) {
+            sceneTypeConfidence = clamp01(sceneTypeConfidence * 0.85)
+            ambiguities.append(
+                SemanticsAmbiguity(
+                    type: .weakSignal,
+                    note: "Weak scene evidence: low_scene_confidence is active.",
+                    candidateIds: []
+                )
+            )
+        }
+
+        if sceneTypeConfidence < 0.35 {
+            sceneTypeConfidence = 0
+        }
+        let finalSceneType: SceneTypeV1 = (sceneClassification.bestScore < 0.40 || sceneTypeConfidence < 0.35)
+            ? .unknown
+            : sceneClassification.sceneType
+        if finalSceneType == .unknown {
+            sceneTypeConfidence = 0
+        }
+
+        let primarySubject: SceneSemanticsReport.PrimarySubject
+        if subjectResult.primarySubject.confidence < 0.2 {
+            primarySubject = SceneSemanticsReport.PrimarySubject(
+                kind: .unknown,
+                label: nil,
+                region: nil,
+                confidence: 0,
+                competingCandidates: []
+            )
+        } else {
+            primarySubject = subjectResult.primarySubject
+        }
+
+        return SceneSemanticsReport(
+            frameId: snapshot.frameId.isEmpty ? "unknown-frame" : snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: finalSceneType,
+            sceneTypeConfidence: sceneTypeConfidence,
+            primarySubject: primarySubject,
+            dominance: dominance,
+            readability: readability,
+            ambiguities: sortAmbiguities(ambiguities),
+            assumptions: sortAssumptions([])
+        )
+    }
+
+    private func hasNoVisionAndDetrSources(_ sources: FeatureSourceStatus) -> Bool {
+        !sources.vision.available && !sources.detr.available
+    }
+
+    private func hasContractVersionMismatch(_ snapshot: FrameFeatureSnapshot) -> Bool {
+        !snapshot.validate().isEmpty
+    }
+
+    private func makeWeakSignalFallback(snapshot: FrameFeatureSnapshot,
+                                        frameId: String? = nil,
+                                        note: String = "Weak scene evidence: vision and DETR sources are unavailable.",
+                                        assumptions: [SemanticsAssumption] = []) -> SceneSemanticsReport {
+        SceneSemanticsReport(
+            frameId: frameId ?? snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .unknown,
+            sceneTypeConfidence: 0,
+            primarySubject: .init(kind: .unknown, label: nil, region: nil, confidence: 0, competingCandidates: []),
+            dominance: .init(hasClearFocus: false, focusCompetitionScore: 0.75, backgroundClutterScore: 0.65),
+            readability: .init(subjectReadable: false, lookSpaceAdequate: nil, edgePressureScore: 0.50, separationScore: 0.20),
+            ambiguities: [
+                .init(type: .weakSignal, note: note, candidateIds: [])
+            ],
+            assumptions: sortAssumptions(assumptions)
+        )
+    }
+
+    private func sortAmbiguities(_ ambiguities: [SemanticsAmbiguity]) -> [SemanticsAmbiguity] {
+        ambiguities.stableSorted {
+            if $0.type.rawValue != $1.type.rawValue {
+                return $0.type.rawValue < $1.type.rawValue
+            }
+            return $0.note < $1.note
+        }
+    }
+
+    private func sortAssumptions(_ assumptions: [SemanticsAssumption]) -> [SemanticsAssumption] {
+        assumptions.stableSorted { lhs, rhs in
+            lhs.id < rhs.id
+        }
+    }
+
+    private func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
+struct PrimarySubjectResolver {
+    private struct Candidate {
+        let id: String
+        let kind: SubjectKind
+        let label: String?
+        let region: NormalizedRect?
+        let baseConfidence: Double
+        let sourceReliability: Double
+        let score: Double
+    }
+
+    struct Result {
+        let primarySubject: SceneSemanticsReport.PrimarySubject
+        let ambiguities: [SemanticsAmbiguity]
+    }
+
+    func resolve(snapshot: FrameFeatureSnapshot) -> Result {
+        let hadMalformedPrimaryRegion = snapshot.subjectSignals.primaryCandidateRegion.map { !isValidRegion($0) } ?? false
+        let coreCandidates = buildCoreCandidates(snapshot: snapshot)
+        let eligible = coreCandidates.filter { $0.score >= 0.20 }
+        guard let winner = selectWinner(eligible) else {
+            var ambiguities: [SemanticsAmbiguity] = [
+                .init(type: .weakSignal, note: "Weak subject evidence: no candidate reached minimum score.", candidateIds: [])
+            ]
+            if hadMalformedPrimaryRegion {
+                ambiguities.append(
+                    .init(
+                        type: .weakSignal,
+                        note: "Weak subject evidence: primary candidate region is malformed.",
+                        candidateIds: ["snapshot-primary"]
+                    )
+                )
+            }
+            return Result(
+                primarySubject: .init(kind: .unknown, confidence: 0, competingCandidates: []),
+                ambiguities: ambiguities
+            )
+        }
+
+        let competitors = eligible
+            .filter { $0.id != winner.id }
+            .stableSorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                return lhs.id < rhs.id
+            }
+        var ambiguities: [SemanticsAmbiguity] = []
+        if let second = competitors.first, abs(winner.score - second.score) < 0.07 {
+            ambiguities.append(
+                .init(
+                    type: .multipleSubjectsSimilarConfidence,
+                    note: "Top subject candidates have similar confidence.",
+                    candidateIds: [winner.id, second.id]
+                )
+            )
+        }
+        if hadMalformedPrimaryRegion {
+            ambiguities.append(
+                .init(
+                    type: .weakSignal,
+                    note: "Weak subject evidence: primary candidate region is malformed.",
+                    candidateIds: ["snapshot-primary"]
+                )
+            )
+        }
+
+        let competingCandidates = Array(competitors.prefix(2)).map {
+            SubjectCandidate(id: $0.id, kind: $0.kind, label: $0.label, region: $0.region, confidence: $0.score)
+        }
+        let primary = SceneSemanticsReport.PrimarySubject(
+            kind: winner.kind,
+            label: winner.kind == .object ? winner.label : nil,
+            region: winner.region,
+            confidence: winner.score,
+            competingCandidates: competingCandidates
+        )
+        return Result(primarySubject: primary, ambiguities: ambiguities)
+    }
+
+    private func buildCoreCandidates(snapshot: FrameFeatureSnapshot) -> [Candidate] {
+        var candidates: [Candidate] = []
+
+        if let region = snapshot.subjectSignals.primaryCandidateRegion, isValidRegion(region) {
+            let kind: SubjectKind
+            if snapshot.subjectSignals.faceDetected {
+                kind = .face
+            } else if snapshot.subjectSignals.personDetected {
+                kind = .person
+            } else {
+                kind = .unknown
+            }
+            let base = clamp01(snapshot.subjectSignals.primaryCandidateConfidence ?? 0)
+            let reliability = max(base, 0.25)
+            candidates.append(
+                makeCandidate(
+                    id: "snapshot-primary",
+                    kind: kind,
+                    label: nil,
+                    region: region,
+                    baseConfidence: base,
+                    sourceReliability: reliability
+                )
+            )
+        }
+
+        if let objectLabel = snapshot.subjectSignals.topObjectLabel {
+            let base = clamp01(snapshot.subjectSignals.topObjectConfidence ?? 0)
+            let reliability = snapshot.sources.detr.confidence ?? 0.50
+            candidates.append(
+                makeCandidate(
+                    id: "snapshot-object",
+                    kind: .object,
+                    label: objectLabel,
+                    region: nil,
+                    baseConfidence: base,
+                    sourceReliability: reliability
+                )
+            )
+        }
+
+        let hasValidPrimaryRegion = snapshot.subjectSignals.primaryCandidateRegion.map(isValidRegion) ?? false
+        if snapshot.subjectSignals.personCount >= 2 && !hasValidPrimaryRegion {
+            let base = clamp01(0.35 + (0.15 * Double(min(3, snapshot.subjectSignals.personCount - 1))))
+            let reliability = snapshot.sources.vision.confidence ?? 0.55
+            candidates.append(
+                makeCandidate(
+                    id: "snapshot-group",
+                    kind: .group,
+                    label: nil,
+                    region: nil,
+                    baseConfidence: base,
+                    sourceReliability: reliability
+                )
+            )
+        }
+
+        return candidates
+    }
+
+    private func isValidRegion(_ region: NormalizedRect) -> Bool {
+        region.x.isFinite &&
+        region.y.isFinite &&
+        region.width.isFinite &&
+        region.height.isFinite &&
+        !region.isDegenerate
+    }
+
+    private func makeCandidate(id: String,
+                               kind: SubjectKind,
+                               label: String?,
+                               region: NormalizedRect?,
+                               baseConfidence: Double,
+                               sourceReliability: Double) -> Candidate {
+        let area = region.map { $0.width * $0.height } ?? 0
+        let regionWeight: Double
+        if region == nil {
+            regionWeight = 0.85
+        } else if area < 0.02 {
+            regionWeight = 0.75
+        } else {
+            regionWeight = 1.0
+        }
+
+        let kindWeight: Double
+        switch kind {
+        case .face:
+            kindWeight = 1.0
+        case .person:
+            kindWeight = 0.92
+        case .group:
+            kindWeight = 0.90
+        case .object:
+            kindWeight = 0.88
+        case .unknown:
+            kindWeight = 0.70
+        }
+
+        let score = clamp01(baseConfidence * clamp01(sourceReliability) * kindWeight * regionWeight)
+        return Candidate(
+            id: id,
+            kind: kind,
+            label: label,
+            region: region,
+            baseConfidence: baseConfidence,
+            sourceReliability: sourceReliability,
+            score: score
+        )
+    }
+
+    private func selectWinner(_ candidates: [Candidate]) -> Candidate? {
+        candidates.max { lhs, rhs in
+            let delta = lhs.score - rhs.score
+            if abs(delta) >= 0.03 {
+                return delta < 0
+            }
+
+            let lhsPriority = kindPriority(lhs.kind)
+            let rhsPriority = kindPriority(rhs.kind)
+            if lhsPriority != rhsPriority {
+                return lhsPriority > rhsPriority
+            }
+
+            let lhsArea = lhs.region.map { $0.width * $0.height } ?? 0
+            let rhsArea = rhs.region.map { $0.width * $0.height } ?? 0
+            if lhsArea != rhsArea {
+                return lhsArea < rhsArea
+            }
+
+            return lhs.id > rhs.id
+        }
+    }
+
+    private func kindPriority(_ kind: SubjectKind) -> Int {
+        switch kind {
+        case .face:
+            return 0
+        case .person:
+            return 1
+        case .group:
+            return 2
+        case .object:
+            return 3
+        case .unknown:
+            return 4
+        }
+    }
+
+    private func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
+struct VisualDominanceAnalyzer {
+    func analyze(snapshot: FrameFeatureSnapshot,
+                 primarySubject: SceneSemanticsReport.PrimarySubject) -> SceneSemanticsReport.VisualDominanceState {
+        let objectDensity = clamp01(Double(snapshot.objects.totalCount) / 6.0)
+        let saliencyConflict = abs(snapshot.composition.horizontalOffset - snapshot.composition.saliencyLeftRightBalance)
+        let saliencySpread = abs(snapshot.composition.saliencyLeftRightBalance) * 0.5 + abs(snapshot.composition.saliencyTopBottomBalance) * 0.5
+
+        let focusCompetitionScore = clamp01((0.50 * (1 - primarySubject.confidence)) + (0.30 * objectDensity) + (0.20 * saliencyConflict))
+        let backgroundClutterScore = clamp01((0.65 * objectDensity) + (0.35 * saliencySpread))
+        let hasClearFocus =
+            primarySubject.confidence >= 0.55 &&
+            focusCompetitionScore <= 0.45 &&
+            backgroundClutterScore <= 0.55
+
+        return .init(
+            hasClearFocus: hasClearFocus,
+            focusCompetitionScore: focusCompetitionScore,
+            backgroundClutterScore: backgroundClutterScore
+        )
+    }
+
+    private func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
+struct SceneTypeClassifier {
+    struct Result {
+        let sceneType: SceneTypeV1
+        let sceneTypeConfidence: Double
+        let bestScore: Double
+        let ambiguities: [SemanticsAmbiguity]
+    }
+
+    func classify(snapshot: FrameFeatureSnapshot,
+                  primarySubject: SceneSemanticsReport.PrimarySubject,
+                  dominance: SceneSemanticsReport.VisualDominanceState) -> Result {
+        let subjectPresence = primarySubject.kind == .unknown ? 0.0 : primarySubject.confidence
+        let areaScore = clamp01((snapshot.composition.subjectAreaRatio - 0.08) / 0.22)
+        let lowClutterScore = clamp01(1 - (Double(snapshot.objects.totalCount) / 5.0))
+        let personSignal = snapshot.subjectSignals.personDetected ? 1.0 : 0.0
+        let mediumAreaScore = max(0.0, 1.0 - (abs(snapshot.composition.subjectAreaRatio - 0.18) / 0.10))
+        let focusScore = dominance.hasClearFocus ? 1.0 : clamp01(1 - dominance.focusCompetitionScore)
+        let multiPersonScore = clamp01(Double(snapshot.subjectSignals.personCount) / 2.0)
+        let balanceScore = clamp01(1.0 - abs(snapshot.composition.horizontalOffset))
+        let objectConfidenceScore = clamp01(snapshot.subjectSignals.topObjectConfidence ?? 0.0)
+        let isolationScore = clamp01(1.0 - Double(snapshot.subjectSignals.personCount > 0 ? 1 : 0) - Double(snapshot.objects.totalCount > 4 ? 0.3 : 0.0))
+        let lowPersonScore = snapshot.subjectSignals.personDetected ? 0.0 : 1.0
+        let wideCompositionScore = clamp01(1.0 - (snapshot.composition.subjectAreaRatio / 0.10))
+        let multiObjectScore = clamp01(Double(snapshot.objects.totalCount) / 6.0)
+        let lowPrimaryDominance = clamp01(1.0 - primarySubject.confidence)
+        let backlightScore = clamp01((snapshot.lighting.backlightIndex - 0.45) / 0.35)
+        let separationProxy = clamp01((0.50 * subjectPresence) + (0.30 * (1 - dominance.backgroundClutterScore)) + (0.20 * (1 - snapshot.lighting.backlightIndex)))
+        let readabilityPenaltyInversion = clamp01(1.0 - separationProxy)
+
+        let dialogueGate = (primarySubject.kind == .face || primarySubject.kind == .person) &&
+            snapshot.composition.subjectAreaRatio >= 0.22 &&
+            snapshot.objects.totalCount <= 3
+        let singleMediumGate = snapshot.subjectSignals.personDetected &&
+            snapshot.composition.subjectAreaRatio >= 0.08 &&
+            snapshot.composition.subjectAreaRatio <= 0.28
+        let twoCharacterGate = snapshot.subjectSignals.personCount >= 2
+        let objectInsertGate = primarySubject.kind == .object &&
+            (snapshot.subjectSignals.topObjectConfidence ?? 0) >= 0.45 &&
+            !snapshot.subjectSignals.personDetected
+        let establishingGate = snapshot.composition.subjectAreaRatio <= 0.08 &&
+            (snapshot.objects.totalCount >= 3 || !snapshot.subjectSignals.personDetected)
+        let moodyGate = snapshot.subjectSignals.personDetected &&
+            snapshot.lighting.backlightIndex >= 0.62 &&
+            snapshot.lighting.exposureBiasHint <= 0.05
+
+        let scores: [(SceneTypeV1, Double)] = [
+            (.dialogueCloseup, dialogueGate ? clamp01((0.45 * subjectPresence) + (0.35 * areaScore) + (0.20 * lowClutterScore)) : 0),
+            (.singleCharacterMedium, singleMediumGate ? clamp01((0.50 * personSignal) + (0.30 * mediumAreaScore) + (0.20 * focusScore)) : 0),
+            (.twoCharacterFrame, twoCharacterGate ? clamp01((0.60 * multiPersonScore) + (0.20 * balanceScore) + (0.20 * focusScore)) : 0),
+            (.objectInsert, objectInsertGate ? clamp01((0.60 * objectConfidenceScore) + (0.25 * isolationScore) + (0.15 * lowPersonScore)) : 0),
+            (.establishingLikeFrame, establishingGate ? clamp01((0.45 * wideCompositionScore) + (0.35 * multiObjectScore) + (0.20 * lowPrimaryDominance)) : 0),
+            (.moodyBacklitSubject, moodyGate ? clamp01((0.45 * backlightScore) + (0.35 * subjectPresence) + (0.20 * readabilityPenaltyInversion)) : 0)
+        ]
+
+        let sorted = scores.stableSorted { lhs, rhs in
+            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+            return lhs.0.rawValue < rhs.0.rawValue
+        }
+        guard let best = sorted.first else {
+            return Result(sceneType: .unknown, sceneTypeConfidence: 0, bestScore: 0, ambiguities: [])
+        }
+
+        let bestScore = best.1
+        let runnerUpScore = sorted.dropFirst().first?.1 ?? 0
+        let margin = bestScore - runnerUpScore
+        let sourceHealth = clamp01((0.5 * (snapshot.sources.vision.confidence ?? 0)) + (0.5 * (snapshot.sources.detr.confidence ?? 0)))
+        let confidence = clamp01(bestScore * (0.65 + (0.35 * sourceHealth)) * (margin >= 0.10 ? 1.0 : 0.85))
+
+        var ambiguities: [SemanticsAmbiguity] = []
+        if margin < 0.08 && bestScore >= 0.45 && runnerUpScore >= 0.45 {
+            ambiguities.append(
+                .init(
+                    type: .sceneTypeTie,
+                    note: "Top scene type rules are too close to separate confidently.",
+                    candidateIds: [best.0.rawValue, sorted.dropFirst().first?.0.rawValue ?? "unknown"]
+                )
+            )
+        }
+
+        return Result(
+            sceneType: best.0,
+            sceneTypeConfidence: confidence,
+            bestScore: bestScore,
+            ambiguities: ambiguities
+        )
+    }
+
+    private func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
+struct SemanticReadabilityAnalyzer {
+    func analyze(snapshot: FrameFeatureSnapshot,
+                 sceneType: SceneTypeV1,
+                 primarySubject: SceneSemanticsReport.PrimarySubject,
+                 dominance: SceneSemanticsReport.VisualDominanceState) -> SceneSemanticsReport.SemanticReadabilityState {
+        let edgePressureScore: Double
+        if let region = primarySubject.region {
+            let minEdgeDistance = min(
+                region.x,
+                region.y,
+                1 - (region.x + region.width),
+                1 - (region.y + region.height)
+            )
+            edgePressureScore = clamp01(1 - (minEdgeDistance / 0.10))
+        } else {
+            edgePressureScore = 0.50
+        }
+
+        let separationScore = clamp01(
+            (0.45 * primarySubject.confidence) +
+            (0.35 * (1 - dominance.backgroundClutterScore)) +
+            (0.20 * (1 - snapshot.lighting.backlightIndex))
+        )
+
+        let lookSpaceAdequate: Bool?
+        if sceneType == .objectInsert || sceneType == .establishingLikeFrame {
+            lookSpaceAdequate = nil
+        } else if edgePressureScore >= 0.75 && abs(snapshot.composition.horizontalOffset) >= 0.65 {
+            lookSpaceAdequate = false
+        } else {
+            lookSpaceAdequate = true
+        }
+
+        let baseSubjectReadable =
+            primarySubject.kind != .unknown &&
+            separationScore >= 0.45 &&
+            edgePressureScore <= 0.80
+        let subjectReadable: Bool
+        if snapshot.technicalFlags.contains(.highMotion) {
+            // In high motion, avoid aggressive false negatives: only fail when separation is clearly low.
+            subjectReadable = primarySubject.kind != .unknown && separationScore >= 0.40
+        } else {
+            subjectReadable = baseSubjectReadable
+        }
+
+        return .init(
+            subjectReadable: subjectReadable,
+            lookSpaceAdequate: lookSpaceAdequate,
+            edgePressureScore: edgePressureScore,
+            separationScore: separationScore
+        )
+    }
+
+    private func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
 private extension MotionState {
     var cameraAnalysisMotionState: CameraAnalysisMotionState {
         switch self {

@@ -26,6 +26,15 @@ final class CameraAnalysisDomainContractsTests: XCTestCase {
         XCTAssertEqual(snapshot.motion.shakeLevel, 0.0)
     }
 
+    func testNormalizedRectSanitizesNonFiniteValues() {
+        let rect = NormalizedRect(x: .nan, y: .infinity, width: .infinity, height: -.infinity)
+        XCTAssertEqual(rect.x, 0.0)
+        XCTAssertEqual(rect.y, 0.0)
+        XCTAssertEqual(rect.width, 0.0)
+        XCTAssertEqual(rect.height, 0.0)
+        XCTAssertTrue(rect.isDegenerate)
+    }
+
     func testFrameFeatureSnapshotInvariantsFaceImpliesPerson() {
         let snapshot = makeSnapshot(
             subjectSignals: .init(
@@ -1303,6 +1312,483 @@ final class PipelineFeatureSnapshotAdapterTests: XCTestCase {
         XCTAssertNil(input.lighting)
         XCTAssertNil(input.detr)
         XCTAssertNil(input.aesthetic)
+    }
+}
+
+final class SceneSemanticsAnalyzerTests: XCTestCase {
+    func testDialogueCloseupGoldenCase() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-dialogue",
+            composition: .init(
+                horizontalOffset: 0.05,
+                verticalOffset: 0.0,
+                subjectAreaRatio: 0.30,
+                saliencyLeftRightBalance: 0.08,
+                saliencyTopBottomBalance: 0.02
+            ),
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                topObjectLabel: "chair",
+                topObjectConfidence: 0.31,
+                primaryCandidateRegion: .init(x: 0.30, y: 0.15, width: 0.35, height: 0.55),
+                primaryCandidateConfidence: 0.92
+            ),
+            objects: .init(totalCount: 2, topKLabels: ["chair", "lamp"])
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+
+        XCTAssertEqual(report.sceneType, .dialogueCloseup)
+        XCTAssertEqual(report.primarySubject.kind, .face)
+        XCTAssertTrue(report.dominance.hasClearFocus)
+    }
+
+    func testSingleCharacterMediumGoldenCase() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-single",
+            composition: .init(
+                horizontalOffset: 0.10,
+                verticalOffset: 0.02,
+                subjectAreaRatio: 0.18,
+                saliencyLeftRightBalance: 0.06,
+                saliencyTopBottomBalance: 0.01
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: true,
+                personCount: 1,
+                topObjectLabel: "table",
+                topObjectConfidence: 0.22,
+                primaryCandidateRegion: .init(x: 0.36, y: 0.2, width: 0.26, height: 0.48),
+                primaryCandidateConfidence: 0.88
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .singleCharacterMedium)
+        XCTAssertEqual(report.readability.lookSpaceAdequate, true)
+    }
+
+    func testTwoCharacterFrameAndAmbiguityGoldenCase() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-two",
+            composition: .init(
+                horizontalOffset: 0.18,
+                verticalOffset: 0.0,
+                subjectAreaRatio: 0.17,
+                saliencyLeftRightBalance: 0.20,
+                saliencyTopBottomBalance: 0.0
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: true,
+                personCount: 2,
+                topObjectLabel: "cup",
+                topObjectConfidence: 0.95,
+                primaryCandidateRegion: .init(x: 0.1, y: 0.2, width: 0.22, height: 0.38),
+                primaryCandidateConfidence: 0.83
+            ),
+            objects: .init(totalCount: 3, topKLabels: ["cup", "book", "bottle"])
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .twoCharacterFrame)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .multipleSubjectsSimilarConfidence })
+    }
+
+    func testObjectInsertGoldenCase() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-object",
+            composition: .init(
+                horizontalOffset: 0.04,
+                verticalOffset: 0.0,
+                subjectAreaRatio: 0.14,
+                saliencyLeftRightBalance: 0.05,
+                saliencyTopBottomBalance: 0.0
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "watch",
+                topObjectConfidence: 0.92,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["watch"])
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .objectInsert)
+        XCTAssertEqual(report.primarySubject.kind, .object)
+        XCTAssertNil(report.readability.lookSpaceAdequate)
+    }
+
+    func testEstablishingLikeFrameGoldenCase() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-establishing",
+            composition: .init(
+                horizontalOffset: 0.0,
+                verticalOffset: 0.0,
+                subjectAreaRatio: 0.03,
+                saliencyLeftRightBalance: 0.0,
+                saliencyTopBottomBalance: 0.0
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "tree",
+                topObjectConfidence: 0.35,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            ),
+            objects: .init(totalCount: 6, topKLabels: ["tree", "house", "road"])
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .establishingLikeFrame)
+    }
+
+    func testMoodyBacklitSubjectGoldenCase() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-moody",
+            composition: .init(
+                horizontalOffset: -0.1,
+                verticalOffset: 0.0,
+                subjectAreaRatio: 0.30,
+                saliencyLeftRightBalance: -0.08,
+                saliencyTopBottomBalance: 0.05
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: true,
+                personCount: 1,
+                topObjectLabel: "window",
+                topObjectConfidence: 0.40,
+                primaryCandidateRegion: .init(x: 0.35, y: 0.18, width: 0.22, height: 0.44),
+                primaryCandidateConfidence: 0.72
+            ),
+            lighting: .init(exposureBiasHint: -0.03, backlightIndex: 0.82, keyToFillRatio: 1.6)
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .moodyBacklitSubject)
+        XCTAssertLessThan(report.readability.separationScore, 0.60)
+    }
+
+    func testSceneTypeTieCreatesAmbiguity() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-tie",
+            composition: .init(
+                horizontalOffset: 1.0,
+                verticalOffset: 0.0,
+                subjectAreaRatio: 0.30,
+                saliencyLeftRightBalance: -1.0,
+                saliencyTopBottomBalance: 0.0
+            ),
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 2,
+                topObjectLabel: "book",
+                topObjectConfidence: 0.42,
+                primaryCandidateRegion: .init(x: 0.28, y: 0.18, width: 0.28, height: 0.48),
+                primaryCandidateConfidence: 0.74
+            ),
+            objects: .init(totalCount: 3, topKLabels: ["book", "cup", "chair"])
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .sceneTypeTie })
+    }
+
+    func testWeakSignalFallbackWithNoSources() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-weak",
+            sources: .init(
+                vision: .init(available: false),
+                horizon: .init(available: false),
+                lighting: .init(available: false),
+                detr: .init(available: false),
+                aesthetic: .init(available: false)
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: nil,
+                topObjectConfidence: nil,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .unknown)
+        XCTAssertEqual(report.sceneTypeConfidence, 0)
+        XCTAssertEqual(report.primarySubject.kind, .unknown)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .weakSignal })
+    }
+
+    func testWeakSignalFallbackWhenVisionAndDetrAreUnavailableOnly() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-weak-vd",
+            sources: .init(
+                vision: .init(available: false),
+                horizon: .init(available: true, freshnessMs: 10, confidence: 0.9),
+                lighting: .init(available: true, freshnessMs: 10, confidence: 0.8),
+                detr: .init(available: false),
+                aesthetic: .init(available: true, freshnessMs: 20, confidence: 0.7)
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: nil,
+                topObjectConfidence: nil,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .unknown)
+        XCTAssertEqual(report.sceneTypeConfidence, 0)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .weakSignal })
+    }
+
+    func testEmptyFrameIdTriggersWeakSignalFallback() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(frameId: "")
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.frameId, "unknown-frame")
+        XCTAssertEqual(report.sceneType, .unknown)
+        XCTAssertEqual(report.sceneTypeConfidence, 0)
+        XCTAssertEqual(report.primarySubject.kind, .unknown)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .weakSignal })
+    }
+
+    func testDegeneratePrimaryRegionAddsWeakSignalAmbiguity() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-degenerate",
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "watch",
+                topObjectConfidence: 0.95,
+                primaryCandidateRegion: .init(x: 0.5, y: 0.5, width: 0, height: 0.2),
+                primaryCandidateConfidence: 0.9
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.primarySubject.kind, .object)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .weakSignal })
+    }
+
+    func testNonFinitePrimaryRegionAddsWeakSignalAmbiguity() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-nonfinite",
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "watch",
+                topObjectConfidence: 0.95,
+                primaryCandidateRegion: .init(x: .nan, y: 0.1, width: .infinity, height: 0.2),
+                primaryCandidateConfidence: 0.9
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.primarySubject.kind, .object)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .weakSignal })
+    }
+
+    func testContractVersionMismatchFallbackAddsAssumption() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-contract-mismatch",
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: false,
+                personCount: 1,
+                topObjectLabel: nil,
+                topObjectConfidence: nil,
+                primaryCandidateRegion: .init(x: 0.2, y: 0.2, width: 0.3, height: 0.3),
+                primaryCandidateConfidence: 0.9
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.sceneType, .unknown)
+        XCTAssertEqual(report.sceneTypeConfidence, 0.0)
+        XCTAssertTrue(report.assumptions.contains { $0.id == "contract_version_mismatch" })
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .weakSignal })
+    }
+
+    func testHighMotionGuardKeepsReadableWhenSeparationIsNotLow() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-high-motion",
+            technicalFlags: [.highMotion],
+            composition: .init(
+                horizontalOffset: 0.9,
+                verticalOffset: 0.0,
+                subjectAreaRatio: 0.22,
+                saliencyLeftRightBalance: 0.1,
+                saliencyTopBottomBalance: 0.0
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: true,
+                personCount: 1,
+                topObjectLabel: "chair",
+                topObjectConfidence: 0.4,
+                primaryCandidateRegion: .init(x: 0.95, y: 0.2, width: 0.04, height: 0.4),
+                primaryCandidateConfidence: 0.85
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertGreaterThanOrEqual(report.readability.separationScore, 0.40)
+        XCTAssertTrue(report.readability.subjectReadable)
+    }
+
+    func testGroupCandidatePolicyWhenMultiplePeopleAndNoPrimaryRegion() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-group",
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: true,
+                personCount: 3,
+                topObjectLabel: nil,
+                topObjectConfidence: nil,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.primarySubject.kind, .group)
+        XCTAssertGreaterThan(report.primarySubject.confidence, 0.2)
+    }
+
+    func testGroupCandidatePolicyWhenMultiplePeopleAndMalformedPrimaryRegion() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-group-malformed",
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: true,
+                personCount: 3,
+                topObjectLabel: nil,
+                topObjectConfidence: nil,
+                primaryCandidateRegion: .init(x: .nan, y: 0.2, width: .infinity, height: 0.3),
+                primaryCandidateConfidence: 0.8
+            )
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.primarySubject.kind, .group)
+        XCTAssertTrue(report.ambiguities.contains { $0.type == .weakSignal })
+    }
+
+    func testDeterministicReplayForSameSnapshot() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(frameId: "sem-determinism")
+
+        let first = analyzer.analyze(snapshot: snapshot)
+        let second = analyzer.analyze(snapshot: snapshot)
+
+        XCTAssertEqual(first, second)
+    }
+
+    func testLowSubjectConfidenceInvariantsProduceUnknownPrimarySubject() {
+        let analyzer = SceneSemanticsAnalyzer()
+        let snapshot = makeSnapshot(
+            frameId: "sem-invariant",
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "cup",
+                topObjectConfidence: 0.05,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            ),
+            technicalFlags: [.lowSubjectConfidence, .lowSceneConfidence]
+        )
+
+        let report = analyzer.analyze(snapshot: snapshot)
+        XCTAssertEqual(report.primarySubject.kind, .unknown)
+        XCTAssertLessThan(report.primarySubject.confidence, 0.2)
+        XCTAssertTrue(report.validate(expectedFrameId: snapshot.frameId).isEmpty)
+    }
+}
+
+private extension SceneSemanticsAnalyzerTests {
+    func makeSnapshot(frameId: String,
+                      sources: FeatureSourceStatus = .init(
+                        vision: .init(available: true, freshnessMs: 20, confidence: 0.9),
+                        horizon: .init(available: true, freshnessMs: 22, confidence: 0.8),
+                        lighting: .init(available: true, freshnessMs: 40, confidence: 0.7),
+                        detr: .init(available: true, freshnessMs: 60, confidence: 0.85),
+                        aesthetic: .init(available: true, freshnessMs: 120, confidence: 0.65)
+                      ),
+                      composition: FrameFeatureSnapshot.CompositionFeatures = .init(
+                        horizontalOffset: 0,
+                        verticalOffset: 0,
+                        subjectAreaRatio: 0.15,
+                        saliencyLeftRightBalance: 0,
+                        saliencyTopBottomBalance: 0
+                      ),
+                      subjectSignals: FrameFeatureSnapshot.SubjectSignals = .init(
+                        faceDetected: false,
+                        personDetected: true,
+                        personCount: 1,
+                        topObjectLabel: "chair",
+                        topObjectConfidence: 0.3,
+                        primaryCandidateRegion: .init(x: 0.34, y: 0.18, width: 0.26, height: 0.5),
+                        primaryCandidateConfidence: 0.85
+                      ),
+                      horizon: FrameFeatureSnapshot.HorizonFeatures = .init(angleDegrees: 0.5, confidence: 0.8),
+                      lighting: FrameFeatureSnapshot.LightingFeatures = .init(exposureBiasHint: 0, backlightIndex: 0.2, keyToFillRatio: 1.1),
+                      motion: FrameFeatureSnapshot.MotionFeatures = .init(state: .still, shakeLevel: 0.08),
+                      aesthetics: FrameFeatureSnapshot.AestheticFeatures = .init(score: 0.62, scoreConfidence: 0.7),
+                      objects: FrameFeatureSnapshot.ObjectDetectionsSummary = .init(totalCount: 2, topKLabels: ["chair", "table"]),
+                      technicalFlags: [TechnicalFlag] = []) -> FrameFeatureSnapshot {
+        FrameFeatureSnapshot(
+            frameId: frameId,
+            mode: .pause,
+            capturedAt: Date(timeIntervalSince1970: 1_776_010_000),
+            sources: sources,
+            composition: composition,
+            subjectSignals: subjectSignals,
+            horizon: horizon,
+            lighting: lighting,
+            motion: motion,
+            aesthetics: aesthetics,
+            objects: objects,
+            technicalFlags: technicalFlags
+        )
     }
 }
 

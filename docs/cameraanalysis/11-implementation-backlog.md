@@ -239,6 +239,9 @@ Done definition:
 
 Артефакт:
 - deterministic `PrimarySubjectResolver`.
+- deterministic `VisualDominanceAnalyzer`.
+- deterministic `SemanticReadabilityAnalyzer`.
+- зафиксированный source-of-truth doc: [06-scene-semantics-layer.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/06-scene-semantics-layer.md).
 
 Зависимости:
 - `PR-004`.
@@ -255,6 +258,8 @@ Done definition:
 
 Артефакт:
 - `SceneTypeClassifier` с ограниченным `v1` scene catalog.
+- сборка итогового `SceneSemanticsReport` (`SceneSemanticsAnalyzer` facade).
+- зафиксированный source-of-truth doc: [06-scene-semantics-layer.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/06-scene-semantics-layer.md).
 
 Зависимости:
 - `PR-004`.
