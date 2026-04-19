@@ -101,33 +101,6 @@
 
 ---
 
-## [2026-04-19 18:05] - [SG v7: quality-first санация пайплайна, строгий аудит и train-ready датасет]
-
-### Суть изменений
-- Усилен ранний reject-контур в `source_generation`: добавлены жёсткие фильтры на технические литералы, meta-язык, дефекты surface-форм и частые морфологические ошибки, чтобы отсекать шум до дорогого semantic critic.
-- Пересобран prompt-layer для генерации source-текста: снижено копирование внутренних semantic anchors в пользовательский текст, ограничен prompt-эхо эффект и уменьшена лексическая монотонность.
-- Ужесточён `dataset_builder`: основной SFT ограничен `direct_sft`, review-promoted строки выведены из базового train, а sanitizer переведён в fail-closed режим по критичным шумам.
-- В preference-сборке устранён дрейф `originalDescription`: `chosen_json/rejected_json` теперь детерминированно синхронизируются с финальным `source_text`.
-- Расширен quality-audit: добавлены явные coverage-гейты (`same_type`, `three_beat`, `ordinal`, `exact_marker_identity`, `marked_object_morphology`), лимиты финального шума и контроль перекоса по паттернам в итоговом SFT.
-- Проверена end-to-end готовность пайплайна на полном прогоне: получены leakage-safe SFT/preference артефакты, подтверждена пригодность для следующего цикла дообучения.
-
-### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** В исходной конфигурации часть semantic-шумов (meta-язык, артефакты морфологии и prompt leakage) доходила до дорогих стадий и приводила к неэффективному расходу бюджета, снижая полезную плотность обучающих примеров для SLM 1.5B.
-- **Решение:** Пайплайн переведён в режим *quality-first with fail-closed gates*: шум отбрасывается максимально рано, а финальный датасет проходит многоуровневый audit с количественными и структурными инвариантами.
-- **Детали:** Принципиально важным стало разделение ролей: ранние дешёвые фильтры отвечают за гигиену surface-уровня, semantic critic — за recoverability-инварианты, dataset builder — за контракт и split-safe упаковку. Для preference-контура закреплена строгая согласованность `source_text ↔ originalDescription`, что уменьшает риск обучения на внутренне конфликтных парах. Финальная валидация выполняется через расширенный audit с порогами coverage и noise-share, что делает сборку воспроизводимой и пригодной для экспериментального сравнения.
-
-### Ключевые файлы
-- `docs/SGv7pipeline/source_generation/filters.py` (ранние hard-reject фильтры для технического и surface-шумов)
-- `docs/SGv7pipeline/source_generation/prompt_builder.py` (снижение leakage внутреннего semantic-языка в source surface)
-- `docs/SGv7pipeline/source_generation/batcher.py` (устойчивость генерации и fail-safe поведение при невозможности clean-варианта)
-- `docs/SGv7pipeline/dataset_builder/ingest.py` (строгая admission policy для SFT и sanitizer fail-closed)
-- `docs/SGv7pipeline/dataset_builder/preference.py` (детерминированная синхронизация `originalDescription` в preference-парах)
-- `docs/SGv7pipeline/audit_sgv7_outputs.py` (расширенные quality/coverage gates и skew/noise контроль)
-- `docs/SGv7pipeline/run_sgv7_full.sh` (оркестрация полного quality-gated прогона)
-- `docs/SGv7pipeline/run_sgv7_pilot.sh` (быстрый verify/перезапуск с сохранением gate-инвариантов)
-
----
-
 ## [2026-04-14 18:56] - [Prompt 10: Реализация runtime feedback loop SG v7 и bridge в dataset/eval]
 
 ### Суть изменений
@@ -872,5 +845,32 @@
 - Достичь **реально заметного прироста качества JSON-парсинга**: минимум `SFT train >= 1500` и `Preference train >= 3000` при `leakage_status=pass`.
 - Обеспечить coverage в train: `same_type_markers >= 300`, `three_beat_cases >= 200`, `ordinal_cases >= 800`.
 - Принять модель как готовую к продакшен-итерации только при приросте на fixed eval set: `+15 п.п.` по exact-valid JSON и `+20 п.п.` по failure-oriented сценариям (`same_type_markers` / `three_beat_cases` / `ordinal binding`).
+
+---
+
+## [2026-04-19 18:05] - [SG v7: quality-first санация пайплайна, строгий аудит и train-ready датасет]
+
+### Суть изменений
+- Усилен ранний reject-контур в `source_generation`: добавлены жёсткие фильтры на технические литералы, meta-язык, дефекты surface-форм и частые морфологические ошибки, чтобы отсекать шум до дорогого semantic critic.
+- Пересобран prompt-layer для генерации source-текста: снижено копирование внутренних semantic anchors в пользовательский текст, ограничен prompt-эхо эффект и уменьшена лексическая монотонность.
+- Ужесточён `dataset_builder`: основной SFT ограничен `direct_sft`, review-promoted строки выведены из базового train, а sanitizer переведён в fail-closed режим по критичным шумам.
+- В preference-сборке устранён дрейф `originalDescription`: `chosen_json/rejected_json` теперь детерминированно синхронизируются с финальным `source_text`.
+- Расширен quality-audit: добавлены явные coverage-гейты (`same_type`, `three_beat`, `ordinal`, `exact_marker_identity`, `marked_object_morphology`), лимиты финального шума и контроль перекоса по паттернам в итоговом SFT.
+- Проверена end-to-end готовность пайплайна на полном прогоне: получены leakage-safe SFT/preference артефакты, подтверждена пригодность для следующего цикла дообучения.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** В исходной конфигурации часть semantic-шумов (meta-язык, артефакты морфологии и prompt leakage) доходила до дорогих стадий и приводила к неэффективному расходу бюджета, снижая полезную плотность обучающих примеров для SLM 1.5B.
+- **Решение:** Пайплайн переведён в режим *quality-first with fail-closed gates*: шум отбрасывается максимально рано, а финальный датасет проходит многоуровневый audit с количественными и структурными инвариантами.
+- **Детали:** Принципиально важным стало разделение ролей: ранние дешёвые фильтры отвечают за гигиену surface-уровня, semantic critic — за recoverability-инварианты, dataset builder — за контракт и split-safe упаковку. Для preference-контура закреплена строгая согласованность `source_text ↔ originalDescription`, что уменьшает риск обучения на внутренне конфликтных парах. Финальная валидация выполняется через расширенный audit с порогами coverage и noise-share, что делает сборку воспроизводимой и пригодной для экспериментального сравнения.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/source_generation/filters.py` (ранние hard-reject фильтры для технического и surface-шумов)
+- `docs/SGv7pipeline/source_generation/prompt_builder.py` (снижение leakage внутреннего semantic-языка в source surface)
+- `docs/SGv7pipeline/source_generation/batcher.py` (устойчивость генерации и fail-safe поведение при невозможности clean-варианта)
+- `docs/SGv7pipeline/dataset_builder/ingest.py` (строгая admission policy для SFT и sanitizer fail-closed)
+- `docs/SGv7pipeline/dataset_builder/preference.py` (детерминированная синхронизация `originalDescription` в preference-парах)
+- `docs/SGv7pipeline/audit_sgv7_outputs.py` (расширенные quality/coverage gates и skew/noise контроль)
+- `docs/SGv7pipeline/run_sgv7_full.sh` (оркестрация полного quality-gated прогона)
+- `docs/SGv7pipeline/run_sgv7_pilot.sh` (быстрый verify/перезапуск с сохранением gate-инвариантов)
 
 ---
