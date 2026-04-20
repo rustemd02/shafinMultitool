@@ -41,6 +41,14 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     let targetRegion: NormalizedRect?
     let overlayHint: OverlayHint?
     let isFallback: Bool
+    let expandedVerdict: LiveExpandedVerdictPresentation?
+}
+
+struct LiveExpandedVerdictPresentation: Equatable, Sendable {
+    let shortVerdict: String
+    let supportingText: String?
+    let actionText: String?
+    let fallbackUsed: Bool
 }
 
 struct PauseStrengthRow: Equatable, Sendable {
@@ -1467,10 +1475,8 @@ final class AnalysisPipeline: ObservableObject {
         featureQueue.sync { debugData }
     }
 
-    func makeFeatureSnapshot(mode: AnalysisMode = .live,
-                             frameId: String = UUID().uuidString,
-                             capturedAt: Date = Date()) -> FrameFeatureSnapshot {
-        let adapterState = featureQueue.sync {
+    private func currentAdapterState() -> PipelineFeatureSnapshotAdapterState {
+        featureQueue.sync {
             PipelineFeatureSnapshotAdapterState(
                 features: features,
                 debugData: debugData,
@@ -1484,6 +1490,24 @@ final class AnalysisPipeline: ObservableObject {
                 aesthetic: latestAestheticSample
             )
         }
+    }
+
+    func makeFeatureSnapshot(mode: AnalysisMode = .live,
+                             frameId: String = UUID().uuidString,
+                             capturedAt: Date = Date()) -> FrameFeatureSnapshot {
+        let adapterState = currentAdapterState()
+        return makeFeatureSnapshot(
+            mode: mode,
+            frameId: frameId,
+            capturedAt: capturedAt,
+            adapterState: adapterState
+        )
+    }
+
+    private func makeFeatureSnapshot(mode: AnalysisMode,
+                                     frameId: String,
+                                     capturedAt: Date,
+                                     adapterState: PipelineFeatureSnapshotAdapterState) -> FrameFeatureSnapshot {
         let input = featureSnapshotAdapter.makeInput(
             frameId: frameId,
             mode: mode,
@@ -1491,6 +1515,34 @@ final class AnalysisPipeline: ObservableObject {
             state: adapterState
         )
         return featureSnapshotAggregator.makeSnapshot(from: input)
+    }
+
+    private func makeDetrFeatureSample(from detections: [DETRDetection],
+                                       measuredAt: Date) -> FeatureSample<FeatureSnapshotDetrPayload> {
+        let sortedDetections = sortedDetectionsForPriority(detections)
+        let payload = FeatureSnapshotDetrPayload(
+            detections: sortedDetections.map {
+                FeatureSnapshotDetectedObject(
+                    boundingBox: $0.boundingBox,
+                    label: $0.label,
+                    confidence: Double($0.confidence)
+                )
+            }
+        )
+        return FeatureSample(
+            value: payload,
+            measuredAt: measuredAt,
+            baseConfidence: sortedDetections.first.map { Double($0.confidence) } ?? 0
+        )
+    }
+
+    private func makeAestheticFeatureSample(score10: Double,
+                                            measuredAt: Date) -> FeatureSample<FeatureSnapshotAestheticPayload> {
+        FeatureSample(
+            value: FeatureSnapshotAestheticPayload(score10: score10),
+            measuredAt: measuredAt,
+            baseConfidence: nil
+        )
     }
 
     private lazy var highConsumer = HighStream(pipeline: self)
@@ -1718,20 +1770,12 @@ final class AnalysisPipeline: ObservableObject {
                         features.subject.isFace = (top.label.lowercased() == "person")
                         features.subject.isPerson = (top.label.lowercased() == "person")
                         features.subject.count = detections.count
+                        let measurementTime = Date()
                         self.debugData.detrDetections = detections
-                        self.debugData.detrMeasuredAt = Date()
-                        self.latestDetrSample = FeatureSample(
-                            value: FeatureSnapshotDetrPayload(
-                                detections: sortedDetections.map {
-                                    FeatureSnapshotDetectedObject(
-                                        boundingBox: $0.boundingBox,
-                                        label: $0.label,
-                                        confidence: Double($0.confidence)
-                                    )
-                                }
-                            ),
-                            measuredAt: Date(),
-                            baseConfidence: sortedDetections.first.map { Double($0.confidence) } ?? 0
+                        self.debugData.detrMeasuredAt = measurementTime
+                        self.latestDetrSample = self.makeDetrFeatureSample(
+                            from: detections,
+                            measuredAt: measurementTime
                         )
                     }
                     Task { @MainActor in
@@ -1740,12 +1784,12 @@ final class AnalysisPipeline: ObservableObject {
                     }
                 } else {
                     self.updateFeatures { _ in
+                        let measurementTime = Date()
                         self.debugData.detrDetections = detections
-                        self.debugData.detrMeasuredAt = Date()
-                        self.latestDetrSample = FeatureSample(
-                            value: FeatureSnapshotDetrPayload(detections: []),
-                            measuredAt: Date(),
-                            baseConfidence: 0
+                        self.debugData.detrMeasuredAt = measurementTime
+                        self.latestDetrSample = self.makeDetrFeatureSample(
+                            from: detections,
+                            measuredAt: measurementTime
                         )
                     }
                 }
@@ -1773,12 +1817,12 @@ final class AnalysisPipeline: ObservableObject {
 
                 self.updateFeatures { features in
                     features.aestheticScore = CGFloat(score)
-                    self.latestAestheticSample = FeatureSample(
-                        value: FeatureSnapshotAestheticPayload(score10: score),
-                        measuredAt: Date(),
-                        baseConfidence: nil
+                    let measurementTime = Date()
+                    self.latestAestheticSample = self.makeAestheticFeatureSample(
+                        score10: score,
+                        measuredAt: measurementTime
                     )
-                    self.latestAestheticMeasuredAt = Date()
+                    self.latestAestheticMeasuredAt = measurementTime
                 }
             }
         }
@@ -1827,14 +1871,14 @@ final class AnalysisPipeline: ObservableObject {
             plan: plan,
             motionState: snapshot.motion.state
         )
-        let hintCandidate = makeLiveHintPresentation(
+        publishLivePresentation(
             frameId: snapshot.frameId,
             critique: critique,
             plan: plan,
             legacySuggestion: currentSuggestion,
-            forceLegacyFallback: !structuredDecision.isAvailable
+            structuredAvailable: structuredDecision.isAvailable,
+            now: now
         )
-        applyLiveHint(candidate: hintCandidate, now: now)
         let annotations = makeOverlayAnnotations(
             frameId: snapshot.frameId,
             critique: critique,
@@ -1845,6 +1889,23 @@ final class AnalysisPipeline: ObservableObject {
             forceLegacyOnly: !structuredDecision.isAvailable
         )
         publishOverlayAnnotations(annotations, now: now)
+    }
+
+    @MainActor
+    private func publishLivePresentation(frameId: String,
+                                         critique: CritiqueReport,
+                                         plan: RecommendationPlan,
+                                         legacySuggestion: Suggestion?,
+                                         structuredAvailable: Bool,
+                                         now: Date) {
+        let hintCandidate = makeLiveHintPresentation(
+            frameId: frameId,
+            critique: critique,
+            plan: plan,
+            legacySuggestion: legacySuggestion,
+            forceLegacyFallback: !structuredAvailable
+        )
+        applyLiveHint(candidate: hintCandidate, now: now)
     }
 
     func clearPausePresentationState() {
@@ -1868,6 +1929,12 @@ final class AnalysisPipeline: ObservableObject {
         }
     }
 
+    func clearLivePresentationState() {
+        DispatchQueue.main.async {
+            self.currentLiveHint = nil
+        }
+    }
+
     // Полный прогон heavy‑модулей на последнем кадре; возвращает legacy suggestions + structured pause critique.
     func runPauseAnalysis(completion: @escaping ([Suggestion], PauseCritiquePresentation?) -> Void) {
         guard let pixelBuffer = lastPixelBuffer else {
@@ -1882,23 +1949,47 @@ final class AnalysisPipeline: ObservableObject {
             pauseAnalysisRevision += 1
             return pauseAnalysisRevision
         }
-        let pauseSourceFrameId = currentSourceFrameId(fallbackDate: Date())
+        let analysisCapturedAt = Date()
+        let pauseSourceFrameId = currentSourceFrameId(fallbackDate: analysisCapturedAt)
         let orientation = lastOrientation
+        let baseAdapterState = currentAdapterState()
         lowQueue.async { [weak self] in
             guard let self else { return }
-            var localFeatures = self.featureQueue.sync { self.features }
+            let pauseStateQueue = DispatchQueue(label: "AnalysisPipeline.pauseState")
+            var localFeatures = baseAdapterState.features
+            var localDebugData = baseAdapterState.debugData
+            var pauseDetectionsOverride: [DETRDetection]?
+            var pauseDetectionsMeasuredAt: Date?
+            var pauseAestheticScoreOverride: Double?
+            var pauseAestheticMeasuredAt: Date?
+            let shouldUpdateLegacySubjectFromDetr = localFeatures.composition.subjectAreaRatio == 0
 
             let group = DispatchGroup()
 
-            // Если нет bbox, попробуем DETR
-            if localFeatures.composition.subjectAreaRatio == 0,
-               let detector = self.detrDetector {
+            // Для pause structured path всегда считаем свежий local DETR, но не мутируем shared live-state.
+            if let detector = self.detrDetector {
                 group.enter()
                 detector.detect(pixelBuffer: pixelBuffer, orientation: orientation) { detections in
-                    if let top = self.sortedDetectionsForPriority(detections).first {
-                        localFeatures.composition = self.compositionFeatures(from: top.boundingBox)
-                        localFeatures.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
-                        localFeatures.subject.objectName = top.label
+                    pauseStateQueue.sync {
+                        let measuredAt = Date()
+                        pauseDetectionsOverride = detections
+                        pauseDetectionsMeasuredAt = measuredAt
+                        localDebugData.detrDetections = detections
+                        localDebugData.detrMeasuredAt = measuredAt
+                        if shouldUpdateLegacySubjectFromDetr,
+                           let top = self.sortedDetectionsForPriority(detections).first {
+                            localFeatures.composition = self.compositionFeatures(from: top.boundingBox)
+                            localFeatures.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
+                            localFeatures.subject.objectName = top.label
+                            localFeatures.subject.isFace = (top.label.lowercased() == "person")
+                            localFeatures.subject.isPerson = (top.label.lowercased() == "person")
+                            localFeatures.subject.count = detections.count
+                        } else if shouldUpdateLegacySubjectFromDetr {
+                            localFeatures.subject.objectName = nil
+                            localFeatures.subject.isFace = false
+                            localFeatures.subject.isPerson = false
+                            localFeatures.subject.count = 0
+                        }
                     }
                     group.leave()
                 }
@@ -1907,8 +1998,13 @@ final class AnalysisPipeline: ObservableObject {
             // Эстетика (off‑by‑default в live, но в preview считаем)
             group.enter()
             self.aestheticScorer.score(pixelBuffer: pixelBuffer, orientation: orientation) { score in
-                if let score {
-                    localFeatures.composition.saliencyTopBottomBalance = CGFloat(score / 10.0)
+                pauseStateQueue.sync {
+                    if let score {
+                        let measuredAt = Date()
+                        pauseAestheticScoreOverride = score
+                        pauseAestheticMeasuredAt = measuredAt
+                        localFeatures.aestheticScore = CGFloat(score)
+                    }
                 }
                 group.leave()
             }
@@ -1917,11 +2013,35 @@ final class AnalysisPipeline: ObservableObject {
                 let isCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
                 guard isCurrentRevision else { return }
 
-                let list = self.suggestionEngine.rankedSuggestions(from: localFeatures, topN: 6)
+                let pauseFeatures = pauseStateQueue.sync { localFeatures }
+                let pauseDebugData = pauseStateQueue.sync { localDebugData }
+                let pauseDetections = pauseStateQueue.sync { pauseDetectionsOverride }
+                let pauseDetectionsMeasuredAt = pauseStateQueue.sync { pauseDetectionsMeasuredAt }
+                let pauseAestheticScore = pauseStateQueue.sync { pauseAestheticScoreOverride }
+                let pauseAestheticMeasuredAt = pauseStateQueue.sync { pauseAestheticMeasuredAt }
+
+                let list = self.suggestionEngine.rankedSuggestions(from: pauseFeatures, topN: 6)
+                let pauseAdapterState = PipelineFeatureSnapshotAdapterState(
+                    features: pauseFeatures,
+                    debugData: pauseDebugData,
+                    vision: baseAdapterState.vision,
+                    horizonMeasuredAt: baseAdapterState.horizonMeasuredAt,
+                    horizon: baseAdapterState.horizon,
+                    lightingMeasuredAt: baseAdapterState.lightingMeasuredAt,
+                    lighting: baseAdapterState.lighting,
+                    detr: pauseDetections.map {
+                        self.makeDetrFeatureSample(from: $0, measuredAt: pauseDetectionsMeasuredAt ?? analysisCapturedAt)
+                    } ?? baseAdapterState.detr,
+                    aestheticMeasuredAt: pauseAestheticScore.map { _ in pauseAestheticMeasuredAt ?? analysisCapturedAt } ?? baseAdapterState.aestheticMeasuredAt,
+                    aesthetic: pauseAestheticScore.map {
+                        self.makeAestheticFeatureSample(score10: $0, measuredAt: pauseAestheticMeasuredAt ?? analysisCapturedAt)
+                    } ?? baseAdapterState.aesthetic
+                )
                 let snapshot = self.makeFeatureSnapshot(
                     mode: .pause,
                     frameId: pauseSourceFrameId,
-                    capturedAt: Date()
+                    capturedAt: analysisCapturedAt,
+                    adapterState: pauseAdapterState
                 )
                 let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
                 let critique = self.frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
@@ -1938,7 +2058,7 @@ final class AnalysisPipeline: ObservableObject {
                         frameId: snapshot.frameId,
                         critique: critique,
                         plan: plan,
-                        features: localFeatures,
+                        features: pauseFeatures,
                         mode: .pause,
                         legacySuggestions: list,
                         forceLegacyOnly: true
@@ -1958,7 +2078,7 @@ final class AnalysisPipeline: ObservableObject {
                     frameId: snapshot.frameId,
                     critique: critique,
                     plan: plan,
-                    features: localFeatures,
+                    features: pauseFeatures,
                     mode: .pause,
                     legacySuggestions: list
                 )
@@ -1990,7 +2110,12 @@ final class AnalysisPipeline: ObservableObject {
                                           legacySuggestion: Suggestion?,
                                           forceLegacyFallback: Bool) -> LiveHintPresentation? {
         if forceLegacyFallback {
-            return makeLegacyLiveHint(frameId: frameId, critique: critique, legacySuggestion: legacySuggestion)
+            return makeLegacyLiveHint(
+                frameId: frameId,
+                critique: critique,
+                plan: plan,
+                legacySuggestion: legacySuggestion
+            )
         }
 
         if let primaryAction = plan.primaryAction {
@@ -2015,7 +2140,12 @@ final class AnalysisPipeline: ObservableObject {
                 traceRootIds: critique.traceRefs,
                 targetRegion: targetRegion,
                 overlayHint: primaryAction.overlayHint,
-                isFallback: critique.fallbackUsed
+                isFallback: critique.fallbackUsed,
+                expandedVerdict: makeLiveExpandedVerdictPresentation(
+                    critique: critique,
+                    plan: plan,
+                    primaryText: text
+                )
             )
         }
 
@@ -2036,15 +2166,26 @@ final class AnalysisPipeline: ObservableObject {
                 traceRootIds: critique.traceRefs,
                 targetRegion: nil,
                 overlayHint: nil,
-                isFallback: critique.fallbackUsed
+                isFallback: critique.fallbackUsed,
+                expandedVerdict: makeLiveExpandedVerdictPresentation(
+                    critique: critique,
+                    plan: plan,
+                    primaryText: noChangeText
+                )
             )
         }
 
-        return makeLegacyLiveHint(frameId: frameId, critique: critique, legacySuggestion: legacySuggestion)
+        return makeLegacyLiveHint(
+            frameId: frameId,
+            critique: critique,
+            plan: plan,
+            legacySuggestion: legacySuggestion
+        )
     }
 
     private func makeLegacyLiveHint(frameId: String,
                                     critique: CritiqueReport,
+                                    plan: RecommendationPlan,
                                     legacySuggestion: Suggestion?) -> LiveHintPresentation? {
         guard let legacySuggestion else { return nil }
         return LiveHintPresentation(
@@ -2059,7 +2200,49 @@ final class AnalysisPipeline: ObservableObject {
             traceRootIds: critique.traceRefs,
             targetRegion: nil,
             overlayHint: nil,
-            isFallback: true
+            isFallback: true,
+            expandedVerdict: makeLiveExpandedVerdictPresentation(
+                critique: critique,
+                plan: plan,
+                primaryText: legacySuggestion.text
+            )
+        )
+    }
+
+    private func makeLiveExpandedVerdictPresentation(critique: CritiqueReport,
+                                                     plan: RecommendationPlan,
+                                                     primaryText: String?) -> LiveExpandedVerdictPresentation? {
+        guard let shortVerdict = nonEmpty(critique.summary.shortVerdict) else { return nil }
+        let primaryText = nonEmpty(primaryText)
+        let supportingText: String?
+        if critique.verdict == .good {
+            supportingText = nonEmpty(critique.summary.whyGood)
+                ?? critique.strengths.first.flatMap { nonEmpty($0.rationale) }
+        } else {
+            supportingText = nonEmpty(critique.summary.whyProblematic)
+                ?? critique.issues.first.flatMap { nonEmpty($0.rationale) }
+        }
+
+        let actionCandidate: String?
+        if critique.verdict == .good {
+            actionCandidate = nonEmpty(plan.noChangeRationale)
+        } else {
+            actionCandidate = plan.primaryAction.flatMap { action in
+                guard action.actionType != .leaveFrameAsIs else { return nil }
+                return nonEmpty(action.expectedOutcome)
+            }
+        }
+
+        let actionText = actionCandidate.flatMap { candidate in
+            guard candidate != primaryText else { return nil }
+            return candidate
+        }
+
+        return LiveExpandedVerdictPresentation(
+            shortVerdict: shortVerdict,
+            supportingText: supportingText,
+            actionText: actionText,
+            fallbackUsed: critique.fallbackUsed
         )
     }
 
@@ -2098,7 +2281,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceRootIds: candidate.traceRootIds.isEmpty ? current.traceRootIds : candidate.traceRootIds,
                 targetRegion: current.targetRegion,
                 overlayHint: current.overlayHint,
-                isFallback: candidate.isFallback
+                isFallback: candidate.isFallback,
+                expandedVerdict: candidate.expandedVerdict
             )
             return
         }
@@ -3085,6 +3269,35 @@ final class AnalysisPipeline: ObservableObject {
 
 #if DEBUG
 extension AnalysisPipeline {
+    func testingMakeFeatureSnapshot(mode: AnalysisMode,
+                                    frameId: String,
+                                    capturedAt: Date,
+                                    adapterState: PipelineFeatureSnapshotAdapterState) -> FrameFeatureSnapshot {
+        makeFeatureSnapshot(
+            mode: mode,
+            frameId: frameId,
+            capturedAt: capturedAt,
+            adapterState: adapterState
+        )
+    }
+
+    @MainActor
+    func testingPublishLivePresentation(frameId: String,
+                                        critique: CritiqueReport,
+                                        plan: RecommendationPlan,
+                                        legacySuggestion: Suggestion?,
+                                        structuredAvailable: Bool,
+                                        now: Date = Date()) {
+        publishLivePresentation(
+            frameId: frameId,
+            critique: critique,
+            plan: plan,
+            legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            now: now
+        )
+    }
+
     @MainActor
     func testingPreparePauseState(critique: PauseCritiquePresentation,
                                   traceBundle: ExplainabilityTraceBundle,
@@ -3104,6 +3317,10 @@ extension AnalysisPipeline {
     @MainActor
     var testingPauseTraceBundle: ExplainabilityTraceBundle? {
         currentPauseTraceBundle
+    }
+
+    var testingHasPauseReasoningTask: Bool {
+        pauseReasoningTask != nil
     }
 }
 #endif

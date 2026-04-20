@@ -89,7 +89,10 @@ struct OverlayView: View {
                     if !viewModel.isPaused {
                         LiveHintChipView(liveHint: viewModel.liveHint,
                                          fallbackSuggestion: viewModel.legacySuggestion,
-                                         boundingBox: overlay.primaryBoundingBox,
+                                         boundingBox: liveHintBoundingBox(
+                                            for: viewModel.liveHint,
+                                            fallback: overlay.primaryBoundingBox
+                                         ),
                                          canvasSize: size)
                     }
                     
@@ -141,6 +144,14 @@ struct OverlayView: View {
         Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
             Telemetry.shared.recordUIFrame()
         }
+    }
+
+    private func liveHintBoundingBox(for liveHint: LiveHintPresentation?,
+                                     fallback: CGRect?) -> CGRect? {
+        if let region = liveHint?.targetRegion {
+            return CGRect(x: region.x, y: region.y, width: region.width, height: region.height)
+        }
+        return fallback
     }
 }
 

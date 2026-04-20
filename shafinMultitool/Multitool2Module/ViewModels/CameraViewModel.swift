@@ -106,6 +106,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func togglePause() {
+        analysisPipeline.clearLivePresentationState()
         if isPaused {
             isPaused = false
             pauseRequestToken = nil

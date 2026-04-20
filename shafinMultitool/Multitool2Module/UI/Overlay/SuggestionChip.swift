@@ -57,9 +57,18 @@ struct LiveHintChipView: View {
     let fallbackSuggestion: Suggestion?
     let boundingBox: CGRect?
     let canvasSize: CGSize
+    @State private var isExpanded: Bool = false
 
     private var displayText: String? {
         liveHint?.text ?? fallbackSuggestion?.text
+    }
+
+    private var expandedVerdict: LiveExpandedVerdictPresentation? {
+        liveHint?.expandedVerdict
+    }
+
+    private var canExpand: Bool {
+        expandedVerdict != nil
     }
 
     private var hintIdentity: String {
@@ -75,28 +84,64 @@ struct LiveHintChipView: View {
     var body: some View {
         VStack {
             if let displayText {
-                Text(displayText)
-                    .font(.headline.weight(.semibold))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(alignment: .topTrailing) {
-                        if liveHint?.isFallback == true {
-                            Text("fallback")
-                                .font(.caption2.weight(.bold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color.yellow.opacity(0.9), in: Capsule())
-                                .offset(x: 6, y: -10)
-                        }
-                    }
-                    .shadow(radius: 6)
-                    .padding(placementInsets)
-                    .frame(maxWidth: .infinity, alignment: chipAlignment)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                hintBody(text: displayText)
             }
         }
+        .id(hintIdentity)
         .animation(.easeInOut(duration: 0.2), value: hintIdentity)
+        .animation(.easeInOut(duration: 0.2), value: isExpanded)
+    }
+
+    @ViewBuilder
+    private func hintBody(text: String) -> some View {
+        let content = VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Text(text)
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if canExpand {
+                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .padding(.top, 1)
+                }
+            }
+
+            if isExpanded, let expandedVerdict {
+                LiveExpandedVerdictContent(expandedVerdict: expandedVerdict)
+            }
+        }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                .ultraThinMaterial,
+                in: RoundedRectangle(cornerRadius: isExpanded ? 18 : 28, style: .continuous)
+            )
+            .overlay(alignment: .topTrailing) {
+                if liveHint?.isFallback == true {
+                    Text("fallback")
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.yellow.opacity(0.9), in: Capsule())
+                        .offset(x: 6, y: -10)
+                }
+            }
+            .shadow(radius: 6)
+            .contentShape(Rectangle())
+            .padding(placementInsets)
+            .frame(maxWidth: .infinity, alignment: chipAlignment)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+
+        if canExpand {
+            Button(action: { isExpanded.toggle() }) {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
     }
 
     private var chipAlignment: Alignment {
@@ -122,4 +167,35 @@ struct LiveHintChipView: View {
     }
 }
 
+private struct LiveExpandedVerdictContent: View {
+    let expandedVerdict: LiveExpandedVerdictPresentation
 
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(expandedVerdict.shortVerdict)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let supportingText = expandedVerdict.supportingText {
+                Text(supportingText)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.92))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let actionText = expandedVerdict.actionText {
+                Text(actionText)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if expandedVerdict.fallbackUsed {
+                Text("Структурный разбор ограничен")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.yellow.opacity(0.95))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

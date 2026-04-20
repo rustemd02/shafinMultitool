@@ -230,9 +230,6 @@
 				Base,
 			);
 			mainGroup = CFF7B1FB29CC876400C3B73E;
-			packageReferences = (
-				CFDA31012F40A8EC002114E5 /* XCRemoteSwiftPackageReference "llama-cpp-swift" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CFF7B20529CC876400C3B73E /* Products */;
 			projectDirPath = "";
@@ -599,17 +596,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		CFDA31012F40A8EC002114E5 /* XCRemoteSwiftPackageReference "llama-cpp-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/srgtuszy/llama-cpp-swift";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = CFF7B1FC29CC876400C3B73E /* Project object */;
 }
