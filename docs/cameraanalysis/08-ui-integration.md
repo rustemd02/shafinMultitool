@@ -254,6 +254,8 @@ Deterministic rule-set для `liveActionUsable` (обязательный):
 
 Для pause:
 - expanded card не должен пересобираться чаще одного раза на кадр (`frameId` как ключ состояния);
+- исключение для `PR-013` reasoning refine: допускается ровно одно `in-place` обновление текстовых полей на том же `frameId` без full re-mount card;
+- reasoning refine не должен сбрасывать layout/scroll/анимационный baseline card и не должен перезапускать pause-entry animation;
 - при повторном заходе в pause на том же frameId не дергать анимации "с нуля".
 
 Owner и конкурентный доступ:
@@ -310,13 +312,15 @@ UI-ограничения:
 - `liveActive`: `isPaused = false`, показываются `liveHint + annotations` или legacy fallback.
 - `pauseLoading`: `isPaused = true`, идет вычисление expanded critique, показывается loader skeleton.
 - `pauseReady`: есть `pauseCritique`; card доступна сразу, overlay закреплен на freeze-frame (при `fallbackUsed == true` показывается degraded banner).
+- `pauseReadyRefined`: применен валидный reasoning text patch к текущему `pauseCritique` без structural changes и без re-mount card.
 - `pauseFallback`: structured output недоступен (hard fallback), показываются legacy preview suggestions.
 
 Переходы:
 - `liveActive -> pauseLoading`: пользователь нажал pause, камера остановлена, фиксируется последний кадр.
 - `pauseLoading -> pauseReady`: построены `critique + plan + presentation`.
+- `pauseReady -> pauseReadyRefined`: пришел валидный reasoning patch для того же `frameId`, обновлены только текстовые поля.
 - `pauseLoading -> pauseFallback`: сработал hard fallback policy.
-- `pauseReady|pauseFallback -> liveActive`: пользователь возобновил камеру, временные pause-state очищены.
+- `pauseReady|pauseReadyRefined|pauseFallback -> liveActive`: пользователь возобновил камеру, временные pause-state очищены.
 
 Инварианты:
 - `togglePause()` не меняет логику старта/остановки камеры;

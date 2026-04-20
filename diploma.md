@@ -992,3 +992,27 @@
 - `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (contract invariants и `CritiqueReport`)
 - `docs/cameraanalysis/07-critique-engine.md` (source-of-truth design spec для PR-007)
 - `docs/cameraanalysis/11-implementation-backlog.md` (связка PR-007 с PR-003/PR-005/PR-006)
+
+---
+
+## [2026-04-20 16:04] - [SG v7 Eval: baseline Qwen3 vs SFT LoRA и подготовка к сравнению с v6/ORPO]
+
+### Суть изменений
+- Проведён и зафиксирован парный eval `baseline_qwen3` против `sft_qwen3_lora` на общем фиксированном наборе `n=198`.
+- Сформированы и сохранены артефакты сравнения: агрегированные метрики (`compare_metrics.csv`, `summary.json`) и построчные логи (`rows_baseline_qwen3.jsonl`, `rows_sft_qwen3_lora.jsonl`).
+- Подтверждён крупный прирост по структурной корректности JSON после SFT: `schema_strict_rate` вырос с `7.58%` до `57.58%` (+50 п.п.), `exact_match_rate` — с `0%` до `12.12%`.
+- Выявлены оставшиеся failure-кластеры для таргетированного preference/ORPO-этапа: прежде всего семейства `ordinal_first_second_third` и `dialogue_then_pick_up_object_then_give_to_third_actor`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Валидный JSON-синтаксис сам по себе не гарантирует полезный результат для scene parsing; baseline демонстрировал `json_valid_rate=100%`, но при этом почти всегда проваливал строгий контракт структуры/содержания (`schema_strict_rate=7.58%`).
+- **Решение:** Выполнен контролируемый A/B-eval на одном и том же тестовом наборе с едиными правилами метрик, что позволило отделить чисто синтаксическую валидность от реальной semantic-contract корректности. SFT LoRA дал устойчивый выигрыш по всем ключевым структурным метрикам без регрессий по strict/exact flip-анализу.
+- **Детали:** На `n=198` получено: `schema_strict` 15→114 кейсов, `exact_match` 0→24, `beat_count_match` 7→114, `action_count_match` 0→114. При этом средняя задержка inference выросла (`~16.99s` → `~27.54s`), что фиксирует инженерный trade-off между качеством и latency. Анализ post-row ошибок показал, что remaining strict-fail в SFT концентрируется в ограниченном подмножестве паттернов, что методологически оправдывает следующий этап ORPO как targeted preference-optimization, а не масштабирование SFT “вслепую”.
+
+### Ключевые файлы
+- `experiments/sc_benchmark/sgv7_eval_logs/compare_metrics.csv` (агрегированные метрики baseline vs SFT)
+- `experiments/sc_benchmark/sgv7_eval_logs/summary.json` (машиночитаемая сводка результатов eval)
+- `experiments/sc_benchmark/sgv7_eval_logs/rows_baseline_qwen3.jsonl` (построчный baseline протокол)
+- `experiments/sc_benchmark/sgv7_eval_logs/rows_sft_qwen3_lora.jsonl` (построчный SFT протокол)
+- `experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v6_seed42.jsonl` (готовый v6 prediction set, seed 42)
+- `experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v6_seed43.jsonl` (готовый v6 prediction set, seed 43)
+- `experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v6_seed44.jsonl` (готовый v6 prediction set, seed 44)

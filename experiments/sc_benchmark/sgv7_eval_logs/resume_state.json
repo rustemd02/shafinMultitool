@@ -1,0 +1,8 @@
+{
+  "label": "sft_qwen3_lora",
+  "done": 198,
+  "target": 198,
+  "pending": 0,
+  "elapsed_sec_this_session": 5454.55,
+  "rows_file": "/content/drive/MyDrive/sgv7_eval_runs/qwen3_eval_v1/logs/rows_sft_qwen3_lora.jsonl"
+}

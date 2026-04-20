@@ -278,6 +278,7 @@ Done definition:
 - `FrameCritiqueEngine`;
 - `CritiqueReport`;
 - issue taxonomy implementation.
+- зафиксированный source-of-truth doc: [07-critique-engine.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/07-critique-engine.md).
 
 Зависимости:
 - `PR-003`, `PR-005`, `PR-006`.
@@ -314,6 +315,7 @@ Done definition:
 - новый `LiveHint` flow;
 - anti-flicker behavior;
 - integration tests или smoke checks.
+- зафиксированный source-of-truth doc: [08-ui-integration.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/08-ui-integration.md).
 
 Зависимости:
 - `PR-008`.
@@ -331,6 +333,7 @@ Done definition:
 Артефакт:
 - pause card / sheet;
 - strengths/issues/actions presentation.
+- зафиксированный source-of-truth doc: [08-ui-integration.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/08-ui-integration.md).
 
 Зависимости:
 - `PR-007`, `PR-008`.
@@ -347,6 +350,7 @@ Done definition:
 
 Артефакт:
 - arrows/highlight/regions tied to actions and issues.
+- зафиксированный source-of-truth doc: [08-ui-integration.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/08-ui-integration.md).
 
 Зависимости:
 - `PR-008`.
@@ -363,6 +367,7 @@ Done definition:
 Артефакт:
 - `ReasoningProvider`;
 - pause coordinator integration points.
+- зафиксированный source-of-truth doc: [09-reasoning-provider.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/09-reasoning-provider.md).
 
 Зависимости:
 - `PR-007`, `PR-008`.
@@ -383,6 +388,7 @@ Done definition:
 
 Артефакт:
 - optional text refinement/arbitration for pause.
+- зафиксированный source-of-truth doc: [09-reasoning-provider.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/09-reasoning-provider.md).
 
 Зависимости:
 - `PR-012`, `PR-010`.

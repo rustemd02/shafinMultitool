@@ -1,0 +1,104 @@
+{
+  "compare_id": "camera_analysis_eval_compare_2026_04_20_demo",
+  "bundle_id": "camera_analysis_eval_v1_demo",
+  "baseline_id": "legacy_suggestion_engine",
+  "candidate_id": "camera_analysis_v1_core",
+  "overall": {
+    "verdict_accuracy": {
+      "baseline": 0.33,
+      "candidate": 1.0,
+      "delta": 0.67
+    },
+    "issue_f1": {
+      "baseline": 0.4,
+      "candidate": 1.0,
+      "delta": 0.6
+    },
+    "strength_f1": {
+      "baseline": 0.0,
+      "candidate": 1.0,
+      "delta": 1.0
+    },
+    "primary_action_match_rate": {
+      "baseline": 0.0,
+      "candidate": 0.67,
+      "delta": 0.67
+    },
+    "good_frame_confirmation_rate": {
+      "baseline": 0.0,
+      "candidate": 1.0,
+      "delta": 1.0
+    },
+    "fallback_policy_accuracy": {
+      "baseline": 0.33,
+      "candidate": 1.0,
+      "delta": 0.67
+    },
+    "explanation_faithfulness_score": {
+      "baseline": 0.21,
+      "candidate": 0.87,
+      "delta": 0.66
+    },
+    "summary_consistency_rate": {
+      "baseline": 0.33,
+      "candidate": 1.0,
+      "delta": 0.67
+    }
+  },
+  "bucket_wins": {
+    "candidate": 3,
+    "baseline": 0,
+    "tie": 0
+  },
+  "critical_bucket_delta": {
+    "edge_pressure_portrait": {
+      "issue_f1_delta": 1.0,
+      "primary_action_match_rate_delta": 1.0
+    },
+    "good_frame_do_not_overcoach": {
+      "good_frame_confirmation_rate_delta": 1.0,
+      "issue_f1_delta": 1.0
+    },
+    "weak_signal_fallback": {
+      "fallback_policy_accuracy_delta": 1.0,
+      "hint_visibility_policy_accuracy_delta": 1.0
+    }
+  },
+  "case_deltas": [
+    {
+      "eval_case_id": "pause-edge-backlight-001",
+      "winner": "candidate",
+      "why": [
+        "candidate_detected both required issues",
+        "candidate primary action matched allowed set",
+        "candidate summary was trace-supported"
+      ]
+    },
+    {
+      "eval_case_id": "pause-good-clean-portrait-001",
+      "winner": "candidate",
+      "why": [
+        "baseline produced false corrective coaching on a good frame",
+        "candidate confirmed leave_frame_as_is",
+        "candidate kept summary consistent with strengths"
+      ]
+    },
+    {
+      "eval_case_id": "live-weak-signal-001",
+      "winner": "candidate",
+      "why": [
+        "baseline showed unstable action despite weak signal",
+        "candidate correctly switched to fallback",
+        "candidate suppressed live hint during motion"
+      ]
+    }
+  ],
+  "release_recommendation": {
+    "status": "pass",
+    "reasons": [
+      "no regression on issue/action core metrics",
+      "critical buckets improved",
+      "explanation faithfulness increased without unsupported claims"
+    ]
+  }
+}

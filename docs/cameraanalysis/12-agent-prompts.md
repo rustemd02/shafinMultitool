@@ -234,11 +234,26 @@ Definition of done:
 Прочитай:
 - docs/cameraanalysis/camera-analysis-v1-architecture.md
 - docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/05-feature-snapshot-aggregator.md
+- docs/cameraanalysis/03-domain-contracts.md
+- docs/cameraanalysis/04-explainability-contract.md
+- docs/cameraanalysis/06-scene-semantics-layer.md
+- docs/cameraanalysis/07-critique-engine.md
 
-Дополнительно изучи:
-- domain contracts
-- explainability contract
-- semantics layer artifacts
+PR-контекст (обязательно):
+- PR: `PR-007. Critique Engine`
+- зависимости: `PR-003`, `PR-005`, `PR-006`
+- source-of-truth для `PR-007`: `docs/cameraanalysis/07-critique-engine.md`
+- если есть конфликт трактовок, приоритет по зонам ответственности:
+  - critique rules, thresholds, degraded policy, test matrix: `07-critique-engine.md`
+  - domain поля и типы `CritiqueReport/FrameIssue/FrameStrength/FixTypeV1`: `03-domain-contracts.md`
+  - trace/link semantics (`TraceLink.refId`, stage/source invariants): `04-explainability-contract.md`
+  - semantics assumptions и upstream fallback behavior: `06-scene-semantics-layer.md`
+
+Дополнительно изучи текущий код:
+- shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift
+- shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift
+- shafinMultitool/Multitool2Module/Services/Suggestion/SuggestionEngine.swift
 
 Задача:
 Спроектируй и/или реализуй deterministic `FrameCritiqueEngine`.
@@ -247,21 +262,56 @@ Definition of done:
 - определить issue detection rules
 - определить strength detection rules
 - ввести severity/confidence
-- связывать issues с explainability trace
-- покрыть logic golden tests
+- зафиксировать verdict aggregation (`good/mixed/needs_fix`) и `verdictConfidence`
+- зафиксировать summary templates (`shortVerdict`, `whyGood`, `whyProblematic`)
+- зафиксировать `affectedRegion`, `suggestedFixTypes`, `fallbackUsed/degraded mode`
+- зафиксировать deterministic sorting/id policy (`issues`, `strengths`, trace seeds)
+- зафиксировать deterministic catalog:
+  - `rationaleTemplateKey` для каждого issue/strength
+  - обязательные `evidence keys` для каждого issue/strength
+- связать findings с explainability trace:
+  - обязательно:
+    - для каждого существующего `issue` должен быть trace-link `issue`
+    - для каждого существующего `strength` должен быть trace-link `strength`
+    - `summary` trace-link обязателен всегда
+  - совместимость с downstream links: `action`/`summary` и `refId` resolution rules
+- зафиксировать degraded mode contract:
+  - trigger rules
+  - allowed issue subset
+  - non-good verdict floor
+  - confidence cap
+- покрыть tests:
+  - logic golden tests
+  - contract tests
+  - determinism tests
+  - calibration tests (включая ambiguity boost behavior)
 
 Ограничения:
 - LLM не источник истины для issues
 - issue taxonomy должна оставаться ограниченной и объяснимой
+- не выходить за текущие contracts `IssueTypeV1`, `StrengthTypeV1`, `FixTypeV1`
+- без UI wiring
 
 Ожидаемый результат:
 - design doc или code patch
 - test suite
 - invariants and edge cases
+- explicit mapping `rule -> rationaleTemplateKey -> required evidence keys`
+
+Write scope (для implement):
+- `shafinMultitool/Multitool2Module/Services/Critique/*` (или эквивалентный новый critique-модуль)
+- `shafinMultitool/Multitool2Module/Models/CameraAnalysis/*` только при contract-safe изменениях
+- `shafinMultitoolTests/*Critique*` и/или `shafinMultitoolTests/CameraAnalysis*`
+- без правок UI слоев
 
 Definition of done:
-- для golden cases critique engine выдает воспроизводимый `CritiqueReport`
-- все issues и strengths имеют traceable rationale
+- `design`: спецификация implement-ready для `PR-007` с явными rules, thresholds, fallback, trace-seeds и тест-матрицей
+- `design verify`: проверены противоречия с `03/04/05/06/07`, перечислены residual risks и readiness verdict
+- `implement`: для golden cases engine выдает воспроизводимый `CritiqueReport` c валидными `affectedRegion/suggestedFixTypes/fallbackUsed`
+- `implement`: verdict aggregation и summary templates детерминированы и соответствуют source-of-truth
+- `implement`: deterministic id/sort и trace-seeds соблюдаются, `refId`-линки валидны
+- `implement verify`: все issues и strengths имеют traceable rationale, summary trace присутствует, и контракты не конфликтуют с planner/explainability слоями
+- `implement verify`: degraded mode trigger/restrictions валидированы, а contract/determinism/calibration tests покрывают invariants и edge cases
 ```
 
 ## Prompt 6. UI Integration Agent
@@ -321,10 +371,19 @@ Definition of done:
 Прочитай:
 - docs/cameraanalysis/camera-analysis-v1-architecture.md
 - docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/09-reasoning-provider.md
 
 Дополнительно изучи:
 - critique and recommendation contracts
 - pause UI contract
+
+PR-контекст (обязательно):
+- PR: `PR-012/PR-013`
+- source-of-truth для reasoning boundary: `docs/cameraanalysis/09-reasoning-provider.md`
+- обязательные policy points:
+  - `ReasoningProvider` только для `pause` (live-path без provider)
+  - optional reasoning trace append-only и без `action` links
+  - сбой provider не равен hard legacy fallback (работает deterministic baseline)
 
 Задача:
 Спроектируй и/или реализуй `ReasoningProvider` и pause-only LLM explanation layer.

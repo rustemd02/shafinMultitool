@@ -55,6 +55,9 @@
 - [04-explainability-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/04-explainability-contract.md): source-of-truth traceability contract `PR-003`
 - [05-feature-snapshot-aggregator.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/05-feature-snapshot-aggregator.md): source-of-truth дизайн `Feature Snapshot Aggregator` `PR-004`
 - [06-scene-semantics-layer.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/06-scene-semantics-layer.md): source-of-truth дизайн `Scene Semantics Layer` (`PrimarySubjectResolver` + `SceneTypeClassifier`) `PR-005/PR-006`
+- [07-critique-engine.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/07-critique-engine.md): source-of-truth дизайн `FrameCritiqueEngine` `PR-007`
+- [08-ui-integration.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/08-ui-integration.md): source-of-truth дизайн UI интеграции (`Live Hint Adapter`, `Pause Critique Card`, `Overlay Annotations`) `PR-009/PR-010/PR-011`
+- [09-reasoning-provider.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/09-reasoning-provider.md): source-of-truth дизайн `ReasoningProvider` и pause-only LLM слоя `PR-012/PR-013`
 - [camera-analysis-requirements-draft.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-requirements-draft.md): требования и продуктовые решения
 - [camera-analysis-v1-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-v1-architecture.md): подробная архитектура
 - [11-implementation-backlog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/11-implementation-backlog.md): tracks и PR-пайплайн
