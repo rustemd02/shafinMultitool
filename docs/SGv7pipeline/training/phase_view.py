@@ -334,17 +334,124 @@ def _build_preference_view(request: PhaseViewRequest, *, config: TrainingPhaseCo
     if request.preference_train_jsonl is None:
         raise PhaseViewBuildError("phase4_preference requires preference_train_jsonl")
     rows = read_jsonl(request.preference_train_jsonl)
+    rows_sorted = sorted(rows, key=lambda item: str(item.get("preference_id", "")))
+
+    def _pattern_name(row: dict[str, Any]) -> str:
+        meta = _meta(row)
+        return str(meta.get("pattern_name") or "")
+
+    def _semantic_tags(row: dict[str, Any]) -> set[str]:
+        meta = _meta(row)
+        tags = meta.get("semantic_tags")
+        if not isinstance(tags, list):
+            return set()
+        return {str(tag) for tag in tags if str(tag)}
+
+    def _families(row: dict[str, Any]) -> set[str]:
+        pattern = _pattern_name(row)
+        tags = _semantic_tags(row)
+        families: set[str] = set()
+        if "ordinal_reference" in tags or pattern.startswith("ordinal_"):
+            families.add("ordinal")
+        if "multi_beat" in tags:
+            families.add("three_beat")
+        if "same_type_markers" in tags or pattern.startswith("same_type_two_marked_objects"):
+            families.add("exact_marker_identity")
+        return families
+
+    dropped_by_pattern_cap: dict[str, int] = {}
+    capped_rows = rows_sorted
+    if config.phase4_max_pattern_share is not None:
+        max_share = float(config.phase4_max_pattern_share)
+        if not 0 < max_share <= 1:
+            raise PhaseViewBuildError(f"phase4_max_pattern_share must be in (0,1], got {max_share!r}")
+        by_pattern: dict[str, list[dict[str, Any]]] = {}
+        for row in rows_sorted:
+            by_pattern.setdefault(_pattern_name(row), []).append(row)
+        ordered_by_pattern: dict[str, list[dict[str, Any]]] = {}
+        kept_counts: dict[str, int] = {}
+        for pattern, pattern_rows in sorted(by_pattern.items(), key=lambda item: item[0]):
+            ordered = _stable_order(pattern_rows, seed=request.seed, tag=f"phase4_pattern_cap::{pattern}")
+            ordered_by_pattern[pattern] = ordered
+            kept_counts[pattern] = len(ordered)
+
+        # Enforce share against the evolving retained total to guarantee the final cap.
+        while True:
+            retained_total = sum(kept_counts.values())
+            if retained_total <= 0:
+                break
+            max_allowed = int(retained_total * max_share)
+            if max_allowed <= 0:
+                raise PhaseViewBuildError(
+                    "phase4_max_pattern_share is too strict for current preference pool: "
+                    f"retained_total={retained_total}, max_share={max_share}"
+                )
+            over_limit = [pattern for pattern, count in kept_counts.items() if count > max_allowed]
+            if not over_limit:
+                break
+            over_limit.sort(
+                key=lambda pattern: (
+                    -(kept_counts[pattern] - max_allowed),
+                    -kept_counts[pattern],
+                    pattern,
+                )
+            )
+            pattern = over_limit[0]
+            kept_counts[pattern] -= 1
+            dropped_key = pattern or "unknown"
+            dropped_by_pattern_cap[dropped_key] = dropped_by_pattern_cap.get(dropped_key, 0) + 1
+
+        capped_rows = []
+        for pattern in sorted(ordered_by_pattern.keys()):
+            kept = ordered_by_pattern[pattern][: kept_counts[pattern]]
+            capped_rows.extend(kept)
+        capped_rows = sorted(capped_rows, key=lambda item: str(item.get("preference_id", "")))
+
+    min_family_counts: dict[str, int] = {str(k): int(v) for k, v in config.phase4_min_family_counts.items()}
+    family_counts: dict[str, int] = {name: 0 for name in min_family_counts.keys()}
+    if min_family_counts:
+        for row in capped_rows:
+            for family in _families(row):
+                if family in family_counts:
+                    family_counts[family] = family_counts.get(family, 0) + 1
+        missing = {
+            family: (family_counts.get(family, 0), min_count)
+            for family, min_count in min_family_counts.items()
+            if family_counts.get(family, 0) < min_count
+        }
+        if missing:
+            details = ", ".join(
+                f"{family}={current}<{required}"
+                for family, (current, required) in sorted(missing.items(), key=lambda item: item[0])
+            )
+            raise PhaseViewBuildError(f"phase4 preference family coverage below minimum: {details}")
+
+    pattern_weight_overrides = {str(k): float(v) for k, v in config.phase4_pattern_weight_overrides.items()}
+    family_weight_overrides = {str(k): float(v) for k, v in config.phase4_family_weight_overrides.items()}
+
     output = []
-    for row in sorted(rows, key=lambda item: str(item.get("preference_id", ""))):
+    base_weight = float(config.pool_multipliers.get("preference", 1.0))
+    for row in capped_rows:
         row_copy = dict(row)
         row_copy["phase_pool"] = "preference"
-        row_copy["training_weight"] = float(config.pool_multipliers.get("preference", 1.0))
+        pattern = _pattern_name(row)
+        weight = base_weight
+        pattern_weight = pattern_weight_overrides.get(pattern)
+        if pattern_weight is not None:
+            weight = max(weight, pattern_weight)
+        for family in _families(row):
+            family_weight = family_weight_overrides.get(family)
+            if family_weight is not None:
+                weight = max(weight, family_weight)
+        row_copy["training_weight"] = float(weight)
         output.append(row_copy)
     meta = {
         "selected_by_pool": {"preference": len(output)},
-        "selected_by_pool_pre_cap": {"preference": len(output)},
+        "selected_by_pool_pre_cap": {"preference": len(rows_sorted)},
         "dropped_l_complexity": 0,
         "dropped_reviewed_merge": 0,
+        "dropped_by_pattern_cap": dropped_by_pattern_cap,
+        "family_counts": family_counts,
     }
     return output, meta
 
@@ -408,6 +515,10 @@ def build_phase_view(request: PhaseViewRequest) -> dict[str, Any]:
             "phase4_min_preference_val": config.phase4_min_preference_val,
             "phase4_min_preference_test": config.phase4_min_preference_test,
             "phase4_min_preference_win_rate_gain_pp": config.phase4_min_preference_win_rate_gain_pp,
+            "phase4_max_pattern_share": config.phase4_max_pattern_share,
+            "phase4_pattern_weight_overrides": config.phase4_pattern_weight_overrides,
+            "phase4_min_family_counts": config.phase4_min_family_counts,
+            "phase4_family_weight_overrides": config.phase4_family_weight_overrides,
         },
     }
     write_json(result, output_manifest)

@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -12,6 +14,23 @@ from urllib import error, request
 
 
 SYSTEM_PROMPT = "Ты SceneScript parser. Верни только валидный JSON SceneScript без пояснений и без markdown."
+_THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?</think>", flags=re.IGNORECASE | re.DOTALL)
+_THINK_OPEN_RE = re.compile(r"<think\b[^>]*>", flags=re.IGNORECASE)
+_THINK_CLOSE_RE = re.compile(r"</think>", flags=re.IGNORECASE)
+_TARGET_REQUIRED_ACTIONS = {"approach", "stop", "stand", "passby", "pass_by", "pass-by"}
+_LEGACY_BEAT_FIELDS = {
+    "type",
+    "action",
+    "actorId",
+    "actor_id",
+    "actorIds",
+    "target",
+    "targetId",
+    "dialogue",
+    "resultingText",
+    "resultingDialogue",
+    "resultingPose",
+}
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -92,8 +111,22 @@ def _strip_markdown_fence(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _first_json_object(text: str) -> dict[str, Any] | None:
-    candidate = _strip_markdown_fence(text)
+def _strip_think_tags(text: str) -> str:
+    value = _THINK_BLOCK_RE.sub("", text)
+    value = _THINK_OPEN_RE.sub("", value)
+    value = _THINK_CLOSE_RE.sub("", value)
+    return value
+
+
+def _normalize_raw_output_text(text: str, *, strip_think_tags: bool) -> str:
+    value = text
+    if strip_think_tags:
+        value = _strip_think_tags(value)
+    return _strip_markdown_fence(value).strip()
+
+
+def _first_json_object(text: str, *, strip_think_tags: bool) -> dict[str, Any] | None:
+    candidate = _normalize_raw_output_text(text, strip_think_tags=strip_think_tags)
     try:
         parsed = json.loads(candidate)
         if isinstance(parsed, dict):
@@ -140,6 +173,250 @@ def _first_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _normalize_action_type(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.replace("-", "_").replace(" ", "_")
+    if lowered.lower() == "passby":
+        return "passby"
+    return lowered.lower()
+
+
+def _collect_actions(script: dict[str, Any]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    top_level = script.get("actions")
+    if isinstance(top_level, list):
+        for payload in top_level:
+            if isinstance(payload, dict):
+                actions.append(payload)
+    beats = script.get("beats")
+    if isinstance(beats, list):
+        for beat in beats:
+            if not isinstance(beat, dict):
+                continue
+            beat_actions = beat.get("actions")
+            if not isinstance(beat_actions, list):
+                continue
+            for payload in beat_actions:
+                if isinstance(payload, dict):
+                    actions.append(payload)
+    return actions
+
+
+def _action_refs(action: dict[str, Any]) -> tuple[str, str] | None:
+    actor_camel = str(action.get("actorId") or "").strip()
+    actor_snake = str(action.get("actor_id") or "").strip()
+    if actor_camel and actor_snake and actor_camel != actor_snake:
+        return None
+    actor_id = actor_camel or actor_snake
+
+    target_camel = str(action.get("targetId") or "").strip()
+    target_plain = str(action.get("target") or "").strip()
+    if target_camel and target_plain and target_camel != target_plain:
+        return None
+    target_id = target_plain or target_camel
+    return actor_id, target_id
+
+
+def _schema_valid(script: dict[str, Any]) -> bool:
+    actors = script.get("actors")
+    if not isinstance(actors, list):
+        return False
+    objects = script.get("objects")
+    if not isinstance(objects, list):
+        return False
+
+    actor_ids: set[str] = set()
+    object_ids: set[str] = set()
+    for actor in actors:
+        if not isinstance(actor, dict):
+            return False
+        actor_id = str(actor.get("id", "")).strip()
+        if not actor_id or actor_id in actor_ids:
+            return False
+        actor_ids.add(actor_id)
+    for obj in objects:
+        if not isinstance(obj, dict):
+            return False
+        object_id = str(obj.get("id", "")).strip()
+        if not object_id or object_id in object_ids:
+            return False
+        object_ids.add(object_id)
+
+    valid_target_ids = actor_ids.union(object_ids)
+
+    def _action_ok(action: dict[str, Any]) -> bool:
+        refs = _action_refs(action)
+        if refs is None:
+            return False
+        actor_id, target_id = refs
+        if not actor_id or actor_id not in actor_ids:
+            return False
+        action_type = _normalize_action_type(action.get("type"))
+        if not action_type:
+            return False
+        if target_id and target_id not in valid_target_ids:
+            return False
+        if action_type in _TARGET_REQUIRED_ACTIONS and not target_id:
+            return False
+        return True
+
+    top_actions = script.get("actions")
+    if top_actions is not None and not isinstance(top_actions, list):
+        return False
+    if isinstance(top_actions, list):
+        for action in top_actions:
+            if not isinstance(action, dict) or not _action_ok(action):
+                return False
+
+    beats = script.get("beats")
+    if beats is not None and not isinstance(beats, list):
+        return False
+    if isinstance(beats, list):
+        for beat in beats:
+            if not isinstance(beat, dict):
+                return False
+            beat_actions = beat.get("actions")
+            if beat_actions is not None and not isinstance(beat_actions, list):
+                return False
+            if isinstance(beat_actions, list):
+                for action in beat_actions:
+                    if not isinstance(action, dict) or not _action_ok(action):
+                        return False
+    return True
+
+
+def _has_pred_actions_empty(script: dict[str, Any]) -> bool:
+    return len(_collect_actions(script)) == 0
+
+
+def _has_legacy_beat_level_actions(script: dict[str, Any]) -> bool:
+    beats = script.get("beats")
+    if not isinstance(beats, list):
+        return False
+    for beat in beats:
+        if not isinstance(beat, dict):
+            continue
+        beat_actions = beat.get("actions")
+        if isinstance(beat_actions, list) and beat_actions:
+            continue
+        if any(field in beat for field in _LEGACY_BEAT_FIELDS):
+            return True
+    return False
+
+
+def _canonicalize_legacy_beats(script: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    candidate = copy.deepcopy(script)
+    beats = candidate.get("beats")
+    if not isinstance(beats, list):
+        return candidate, False
+    changed = False
+    for beat_index, beat in enumerate(beats, start=1):
+        if not isinstance(beat, dict):
+            continue
+        beat_actions = beat.get("actions")
+        if isinstance(beat_actions, list) and beat_actions:
+            continue
+
+        action_type = str(beat.get("type") or beat.get("action") or "").strip()
+        actor_id = str(beat.get("actorId") or beat.get("actor_id") or "").strip()
+        actor_ids = beat.get("actorIds")
+        if not actor_id and isinstance(actor_ids, list) and len(actor_ids) == 1:
+            actor_id = str(actor_ids[0] or "").strip()
+        if not actor_id:
+            continue
+        if not action_type:
+            continue
+
+        target_id = str(beat.get("target") or beat.get("targetId") or "").strip()
+        dialogue = str(beat.get("dialogue") or beat.get("resultingDialogue") or beat.get("resultingText") or "").strip()
+        resulting_pose = str(beat.get("resultingPose") or "").strip()
+
+        action: dict[str, Any] = {
+            "id": f"action_{beat_index}_1",
+            "actorId": actor_id,
+            "type": action_type,
+        }
+        if target_id:
+            action["target"] = target_id
+        if dialogue:
+            action["dialogue"] = dialogue
+        if resulting_pose:
+            action["resultingPose"] = resulting_pose
+        beat["actions"] = [action]
+        for key in _LEGACY_BEAT_FIELDS:
+            if key == "resultingPose":
+                # keep resultingPose on action only
+                beat.pop(key, None)
+                continue
+            if key in {"type", "action", "actorId", "actor_id", "actorIds", "target", "targetId", "dialogue", "resultingText", "resultingDialogue"}:
+                beat.pop(key, None)
+        changed = True
+    return candidate, changed
+
+
+def _build_repair_prompt(*, source_text: str, malformed_output: str) -> str:
+    clipped_output = malformed_output.strip()
+    if len(clipped_output) > 4000:
+        clipped_output = clipped_output[:4000]
+    return "\n".join(
+        [
+            "Task instruction:",
+            "Исправь ответ модели в строгий SceneScript JSON.",
+            "",
+            "Critical constraints:",
+            "- Верни только валидный JSON без markdown и без комментариев.",
+            "- Top-level поля: actors, objects, beats, spatialRelations, originalDescription.",
+            "- Каждое действие должно быть в beats[i].actions[j], а не в полях beat-level type/target/dialogue.",
+            "- Не добавляй лишних сущностей и не меняй смысл source text.",
+            "",
+            "Source text:",
+            source_text.strip(),
+            "",
+            "Malformed model output:",
+            clipped_output,
+        ]
+    )
+
+
+def _repair_with_llm(
+    *,
+    case: dict[str, Any],
+    malformed_output: str,
+    endpoint_url: str,
+    api_key: str,
+    model_name: str,
+    seed: int,
+    temperature: float,
+    top_p: float,
+    max_output_tokens: int,
+    timeout_sec: int,
+    strip_think_tags: bool,
+) -> dict[str, Any] | None:
+    source_text = str(case.get("source_text") or "").strip()
+    if not source_text:
+        return None
+    repair_prompt = _build_repair_prompt(source_text=source_text, malformed_output=malformed_output)
+    repaired_text = _api_chat_completion(
+        endpoint_url=endpoint_url,
+        api_key=api_key,
+        model_name=model_name,
+        seed=seed + 100003,
+        user_prompt=repair_prompt,
+        temperature=temperature,
+        top_p=top_p,
+        max_output_tokens=max_output_tokens,
+        timeout_sec=timeout_sec,
+    )
+    parsed = _first_json_object(repaired_text, strip_think_tags=strip_think_tags)
+    if not isinstance(parsed, dict):
+        return None
+    if not _schema_valid(parsed):
+        return None
+    return parsed
+
+
 def _render_user_prompt(case: dict[str, Any], *, include_marked_objects: bool) -> str:
     source_text = str(case.get("source_text") or "").strip()
     lines = [
@@ -148,6 +425,12 @@ def _render_user_prompt(case: dict[str, Any], *, include_marked_objects: bool) -
         "",
         "Output contract:",
         "Верни только JSON c top-level полями actors, objects, beats, spatialRelations, originalDescription.",
+        "",
+        "Strict structural rules:",
+        "- Каждый beat обязан иметь массив actions.",
+        "- Все действия должны быть только внутри beats[].actions[].",
+        "- Нельзя использовать beat-level поля type/action/target/dialogue как единственный носитель действия.",
+        "- Никакого markdown, объяснений и chain-of-thought.",
     ]
     if include_marked_objects:
         marked = case.get("marked_objects")
@@ -218,6 +501,10 @@ def _predict_single_case(
     max_retries: int,
     retry_backoff_sec: float,
     include_marked_objects: bool,
+    strip_think_tags: bool,
+    canonical_repair: bool,
+    fail_on_actions_empty: bool,
+    report_slice: str,
 ) -> dict[str, Any]:
     eval_case_id = str(case.get("eval_case_id") or "").strip()
     if not eval_case_id:
@@ -225,6 +512,7 @@ def _predict_single_case(
     user_prompt = _render_user_prompt(case, include_marked_objects=include_marked_objects)
     last_error = ""
     raw_text = ""
+    raw_text_clean = ""
     for attempt in range(1, max_retries + 1):
         try:
             raw_text = _api_chat_completion(
@@ -238,6 +526,7 @@ def _predict_single_case(
                 max_output_tokens=max_output_tokens,
                 timeout_sec=timeout_sec,
             )
+            raw_text_clean = _normalize_raw_output_text(raw_text, strip_think_tags=strip_think_tags)
             break
         except (error.HTTPError, error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
             last_error = str(exc)
@@ -245,11 +534,107 @@ def _predict_single_case(
                 time.sleep(retry_backoff_sec * attempt)
             else:
                 raw_text = ""
-    parsed = _first_json_object(raw_text)
-    row: dict[str, Any] = {"eval_case_id": eval_case_id, "raw_output_text": raw_text}
-    if isinstance(parsed, dict):
-        row["predicted_script"] = parsed
-        row["raw_output_json"] = parsed
+                raw_text_clean = ""
+
+    reason_codes: list[str] = []
+    model_only = _first_json_object(raw_text_clean, strip_think_tags=False) if raw_text_clean else None
+    if model_only is None and raw_text_clean:
+        reason_codes.append("json_parse_fail")
+
+    end_to_end = copy.deepcopy(model_only) if isinstance(model_only, dict) else None
+    repair_applied = False
+    legacy_repaired = False
+    repair_mode = "none"
+
+    if canonical_repair:
+        if end_to_end is None and raw_text_clean:
+            repaired = _repair_with_llm(
+                case=case,
+                malformed_output=raw_text_clean,
+                endpoint_url=endpoint_url,
+                api_key=api_key,
+                model_name=model_name,
+                seed=seed,
+                temperature=temperature,
+                top_p=top_p,
+                max_output_tokens=max_output_tokens,
+                timeout_sec=timeout_sec,
+                strip_think_tags=strip_think_tags,
+            )
+            if isinstance(repaired, dict):
+                end_to_end = repaired
+                repair_applied = True
+                repair_mode = "llm_parse_repair"
+
+        if isinstance(end_to_end, dict):
+            if _has_legacy_beat_level_actions(end_to_end):
+                repaired, changed = _canonicalize_legacy_beats(end_to_end)
+                if changed:
+                    end_to_end = repaired
+                    legacy_repaired = True
+                    repair_applied = True
+                    repair_mode = "deterministic_legacy_repair"
+                    reason_codes.append("legacy_beat_repaired")
+            if _has_pred_actions_empty(end_to_end) and fail_on_actions_empty:
+                reason_codes.append("pred_actions_empty")
+                repaired = _repair_with_llm(
+                    case=case,
+                    malformed_output=raw_text_clean,
+                    endpoint_url=endpoint_url,
+                    api_key=api_key,
+                    model_name=model_name,
+                    seed=seed,
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_output_tokens=max_output_tokens,
+                    timeout_sec=timeout_sec,
+                    strip_think_tags=strip_think_tags,
+                )
+                if isinstance(repaired, dict) and not _has_pred_actions_empty(repaired):
+                    end_to_end = repaired
+                    repair_applied = True
+                    repair_mode = "llm_actions_repair"
+                    reason_codes = [code for code in reason_codes if code != "pred_actions_empty"]
+
+            if not _schema_valid(end_to_end):
+                reason_codes.append("schema_fail")
+                end_to_end = None
+            elif fail_on_actions_empty and _has_pred_actions_empty(end_to_end):
+                reason_codes.append("pred_actions_empty")
+                end_to_end = None
+
+    if report_slice == "model_only":
+        selected = model_only
+    else:
+        selected = end_to_end if isinstance(end_to_end, dict) else None
+
+    if selected is None and report_slice == "end_to_end" and isinstance(model_only, dict) and not canonical_repair:
+        selected = model_only
+
+    row: dict[str, Any] = {
+        "eval_case_id": eval_case_id,
+        "raw_output_text": raw_text,
+        "raw_output_text_clean": raw_text_clean,
+        "slice_reason_codes": sorted(set(reason_codes)),
+        "repair_applied": repair_applied,
+        "repair_mode": repair_mode,
+        "legacy_beat_repaired": legacy_repaired,
+        "selected_slice": report_slice,
+    }
+    if report_slice == "both":
+        row["model_only_predicted_script"] = model_only
+        row["end_to_end_predicted_script"] = end_to_end
+
+    # Keep raw_output_json aligned with "raw model parse" semantics.
+    if isinstance(model_only, dict):
+        row["raw_output_json"] = model_only
+        row["model_only_output_json"] = model_only
+
+    if isinstance(selected, dict):
+        row["predicted_script"] = selected
+        row["selected_predicted_script"] = selected
+        row["model_only_schema_valid"] = _schema_valid(model_only) if isinstance(model_only, dict) else False
+        row["end_to_end_schema_valid"] = _schema_valid(end_to_end) if isinstance(end_to_end, dict) else False
     elif last_error:
         row["error"] = last_error
     return row
@@ -272,7 +657,7 @@ def main() -> int:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_real_v1"),
+        default=Path("/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export"),
     )
     parser.add_argument("--models", default="base_qwen3_1_7b,dataset_v6,dataset_v7,dataset_v7_orpo")
     parser.add_argument("--seeds", default="42,43,44")
@@ -287,6 +672,20 @@ def main() -> int:
     parser.add_argument("--retry-backoff-sec", type=float, default=2.0)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--include-marked-objects", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--strip-think-tags", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--canonical-repair", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--report-slice",
+        choices=("model_only", "end_to_end", "both"),
+        default="both",
+        help="Which inference slice should be materialized into predicted_script.",
+    )
+    parser.add_argument(
+        "--fail-on-actions-empty",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Treat outputs with empty actions as unusable for benchmark predicted_script.",
+    )
     parser.add_argument("--resume", action="store_true", help="Skip already existing model/seed files.")
     parser.add_argument("--request-log-every", type=int, default=25)
     parser.add_argument("--dry-run", action="store_true")
@@ -352,6 +751,10 @@ def main() -> int:
                         max_retries=args.max_retries,
                         retry_backoff_sec=args.retry_backoff_sec,
                         include_marked_objects=bool(args.include_marked_objects),
+                        strip_think_tags=bool(args.strip_think_tags),
+                        canonical_repair=bool(args.canonical_repair),
+                        fail_on_actions_empty=bool(args.fail_on_actions_empty),
+                        report_slice=str(args.report_slice),
                     ): idx
                     for idx, case in enumerate(cases)
                 }
@@ -369,6 +772,28 @@ def main() -> int:
             final_rows = [row for row in rows if isinstance(row, dict)]
             _write_jsonl(out_path, final_rows)
             parseable = sum(1 for row in final_rows if isinstance(row.get("predicted_script"), dict))
+            reason_counts: dict[str, int] = {}
+            for row in final_rows:
+                for code in row.get("slice_reason_codes", []):
+                    key = str(code)
+                    reason_counts[key] = reason_counts.get(key, 0) + 1
+            slice_summary = {
+                "model_id": model_id,
+                "seed": seed,
+                "total_rows": len(final_rows),
+                "predicted_script_rows": parseable,
+                "model_only_rows": sum(1 for row in final_rows if isinstance(row.get("model_only_predicted_script"), dict)),
+                "end_to_end_rows": sum(1 for row in final_rows if isinstance(row.get("end_to_end_predicted_script"), dict)),
+                "reason_counts": reason_counts,
+                "report_slice": str(args.report_slice),
+                "canonical_repair": bool(args.canonical_repair),
+                "strip_think_tags": bool(args.strip_think_tags),
+                "fail_on_actions_empty": bool(args.fail_on_actions_empty),
+            }
+            out_path.with_suffix(".slice_summary.json").write_text(
+                json.dumps(slice_summary, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
             print(
                 "[predict] done model={model} seed={seed} parseable={ok}/{total} file={path}".format(
                     model=model_id,

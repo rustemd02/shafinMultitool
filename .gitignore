@@ -6,3 +6,10 @@ llama.cpp/
 /models
 /.derivedData
 *.pyc
+
+# Local generated evaluation/data artifacts
+/dataset_finetune_v6.jsonl
+/dataset_finetune_v6_strict.jsonl
+/experiments/sc_benchmark/benchmark_config.real.seed42.json
+/experiments/sc_benchmark/predictions_real_v1_export/
+/docs/SGv7pipeline/runs/*/sgv7_qwen3_sft_lora/

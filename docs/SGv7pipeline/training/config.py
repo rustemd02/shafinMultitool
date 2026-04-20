@@ -24,6 +24,10 @@ class TrainingPhaseConfig:
     phase4_min_preference_val: int | None = None
     phase4_min_preference_test: int | None = None
     phase4_min_preference_win_rate_gain_pp: float | None = None
+    phase4_max_pattern_share: float | None = None
+    phase4_pattern_weight_overrides: dict[str, float] = field(default_factory=dict)
+    phase4_min_family_counts: dict[str, int] = field(default_factory=dict)
+    phase4_family_weight_overrides: dict[str, float] = field(default_factory=dict)
 
 
 def default_phase_config(phase: str) -> TrainingPhaseConfig:
@@ -90,6 +94,17 @@ def default_phase_config(phase: str) -> TrainingPhaseConfig:
             phase4_min_preference_val=100,
             phase4_min_preference_test=100,
             phase4_min_preference_win_rate_gain_pp=3.0,
+            phase4_max_pattern_share=0.22,
+            phase4_pattern_weight_overrides={},
+            phase4_min_family_counts={
+                "ordinal": 120,
+                "three_beat": 80,
+                "exact_marker_identity": 80,
+            },
+            phase4_family_weight_overrides={
+                "ordinal": 1.10,
+                "three_beat": 1.15,
+                "exact_marker_identity": 1.15,
+            },
         )
     raise ValueError(f"unsupported phase={phase!r}")
-

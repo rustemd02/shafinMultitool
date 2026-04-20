@@ -14,6 +14,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+DOCS_ROOT = Path(__file__).resolve().parents[2] / "docs" / "SGv7pipeline"
+if str(DOCS_ROOT) not in sys.path:
+    sys.path.insert(0, str(DOCS_ROOT))
+
+from eval.scorer import ScoreCasesRequest, score_cases
+
 
 PRIMARY_SET_METRICS = [
     "json_valid_rate",
@@ -34,6 +40,16 @@ PRIMARY_BUCKETS = [
 ]
 
 SET_NAMES = ["overall", "synthetic_heldout", "hard_heldout", "real_runtime"]
+SLICE_METRICS = [
+    "json_valid_rate",
+    "schema_valid_rate",
+    "ordinal_actor_binding_accuracy",
+    "target_resolution_accuracy",
+    "chronology_phase_accuracy",
+    "action_recall",
+    "runtime_fallback_rate",
+    "case_strict_success_rate",
+]
 
 
 class BenchmarkConfigError(ValueError):
@@ -63,6 +79,19 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise BenchmarkConfigError(f"JSON object expected in {path}")
     return payload
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            raw = line.strip()
+            if not raw:
+                continue
+            payload = json.loads(raw)
+            if isinstance(payload, dict):
+                rows.append(payload)
+    return rows
 
 
 def _fmt(value: Any, mapping: dict[str, Any]) -> str:
@@ -238,6 +267,140 @@ def _collect_compare_metrics(compare_dir: Path) -> dict[str, Any]:
     return result
 
 
+def _script_runtime_safe(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    for key in ("actors", "objects", "beats", "actions"):
+        value = payload.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, list):
+            return False
+        if key in {"actors", "objects", "actions"}:
+            if any(not isinstance(item, dict) for item in value):
+                return False
+        if key == "beats":
+            for beat in value:
+                if not isinstance(beat, dict):
+                    return False
+                beat_actions = beat.get("actions")
+                if beat_actions is not None:
+                    if not isinstance(beat_actions, list):
+                        return False
+                    if any(not isinstance(action, dict) for action in beat_actions):
+                        return False
+    return True
+
+
+def _sanitize_predictions_for_eval(*, input_path: Path, output_path: Path) -> Path:
+    rows = _read_jsonl(input_path)
+    sanitized: list[dict[str, Any]] = []
+    for row in rows:
+        row_copy = dict(row)
+        pred = row_copy.get("predicted_script")
+        raw_json = row_copy.get("raw_output_json")
+        pred_ok = _script_runtime_safe(pred) if isinstance(pred, dict) else False
+        raw_ok = _script_runtime_safe(raw_json) if isinstance(raw_json, dict) else False
+        if isinstance(pred, dict) and not pred_ok:
+            row_copy["predicted_script"] = None
+            row_copy.setdefault("sanitization_notes", []).append("invalid_predicted_script_shape")
+        if isinstance(raw_json, dict) and not raw_ok:
+            row_copy["raw_output_json"] = None
+            row_copy.setdefault("sanitization_notes", []).append("invalid_raw_output_json_shape")
+        sanitized.append(row_copy)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as fh:
+        for row in sanitized:
+            fh.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
+    return output_path
+
+
+def _slice_predicted_script(row: dict[str, Any], *, slice_name: str) -> dict[str, Any] | None:
+    if slice_name == "model_only":
+        payload = row.get("model_only_predicted_script")
+    elif slice_name == "end_to_end":
+        payload = row.get("end_to_end_predicted_script")
+    else:
+        payload = None
+    if isinstance(payload, dict) and _script_runtime_safe(payload):
+        return payload
+    return None
+
+
+def _collect_slice_metrics(
+    *,
+    predictions_jsonl: Path,
+    checkpoint_id: str,
+    cases: list[dict[str, Any]],
+    runtime_policy_snapshot: dict[str, Any],
+    require_both_slices: bool,
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, int], list[str]]:
+    rows = _read_jsonl(predictions_jsonl)
+    by_case: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        case_id = str(row.get("eval_case_id", "")).strip()
+        if not case_id or case_id in by_case:
+            continue
+        by_case[case_id] = row
+
+    reason_counts: dict[str, int] = {}
+    for row in rows:
+        codes = row.get("slice_reason_codes")
+        if not isinstance(codes, list):
+            continue
+        for code in codes:
+            key = str(code).strip()
+            if not key:
+                continue
+            reason_counts[key] = reason_counts.get(key, 0) + 1
+
+    available_slices: list[str] = []
+    if rows:
+        has_model_only = all("model_only_predicted_script" in row for row in rows)
+        has_end_to_end = all("end_to_end_predicted_script" in row for row in rows)
+        if has_model_only:
+            available_slices.append("model_only")
+        if has_end_to_end:
+            available_slices.append("end_to_end")
+
+    if require_both_slices and set(available_slices) != {"model_only", "end_to_end"}:
+        raise BenchmarkConfigError(
+            "Slice metrics require prediction files exported with --report-slice both "
+            f"(missing in {predictions_jsonl})"
+        )
+
+    out_flat: dict[str, Any] = {}
+    out_rows: list[dict[str, Any]] = []
+    for slice_name in available_slices:
+        predicted_by_case: dict[str, dict[str, Any] | None] = {}
+        for case in cases:
+            case_id = str(case.get("eval_case_id", "")).strip()
+            row = by_case.get(case_id, {})
+            predicted_by_case[case_id] = _slice_predicted_script(row, slice_name=slice_name)
+        scored = score_cases(
+            ScoreCasesRequest(
+                checkpoint_id=f"{checkpoint_id}::{slice_name}",
+                cases=cases,
+                predicted_by_case=predicted_by_case,
+                runtime_policy_snapshot=runtime_policy_snapshot,
+            )
+        )
+        metrics = scored.get("set_metrics", {}).get("overall", {}).get("metrics", {})
+        if not isinstance(metrics, dict):
+            metrics = {}
+        row_payload: dict[str, Any] = {
+            "checkpoint_id": checkpoint_id,
+            "slice": slice_name,
+            "predictions_jsonl": str(predictions_jsonl),
+        }
+        for metric_name in SLICE_METRICS:
+            value = float(metrics.get(metric_name, 0.0))
+            out_flat[f"slice.{slice_name}.{metric_name}"] = value
+            row_payload[metric_name] = value
+        out_rows.append(row_payload)
+    return out_flat, out_rows, reason_counts, available_slices
+
+
 def _write_csv(rows: list[dict[str, Any]], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames: list[str] = []
@@ -260,6 +423,8 @@ def _build_markdown_report(
     run_rows: list[dict[str, Any]],
     model_summary_rows: list[dict[str, Any]],
     pair_rows: list[dict[str, Any]],
+    slice_summary_rows: list[dict[str, Any]],
+    slice_reason_rows: list[dict[str, Any]],
 ) -> None:
     lines: list[str] = []
     lines.append("# Scientific Benchmark Report")
@@ -312,10 +477,56 @@ def _build_markdown_report(
             )
         )
     lines.append("")
+    lines.append("## Slice Summary")
+    lines.append("")
+    if not slice_summary_rows:
+        lines.append("- none")
+    else:
+        lines.append("| model_id | seed | slice | json_valid_rate | schema_valid_rate | ordinal_actor_binding_accuracy | target_resolution_accuracy | chronology_phase_accuracy | action_recall | runtime_fallback_rate | case_strict_success_rate |")
+        lines.append("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for row in slice_summary_rows:
+            lines.append(
+                "| {model_id} | {seed} | {slice} | {json:.4f} | {schema:.4f} | {ordinal:.4f} | {target:.4f} | {chronology:.4f} | {action:.4f} | {fallback:.4f} | {strict:.4f} |".format(
+                    model_id=row.get("model_id", ""),
+                    seed=row.get("seed", ""),
+                    slice=row.get("slice", ""),
+                    json=float(row.get("json_valid_rate", 0.0)),
+                    schema=float(row.get("schema_valid_rate", 0.0)),
+                    ordinal=float(row.get("ordinal_actor_binding_accuracy", 0.0)),
+                    target=float(row.get("target_resolution_accuracy", 0.0)),
+                    chronology=float(row.get("chronology_phase_accuracy", 0.0)),
+                    action=float(row.get("action_recall", 0.0)),
+                    fallback=float(row.get("runtime_fallback_rate", 0.0)),
+                    strict=float(row.get("case_strict_success_rate", 0.0)),
+                )
+            )
+    lines.append("")
+    lines.append("## Slice Reason Codes")
+    lines.append("")
+    if not slice_reason_rows:
+        lines.append("- none")
+    else:
+        lines.append("| model_id | seed | reason_code | count |")
+        lines.append("| --- | ---: | --- | ---: |")
+        for row in slice_reason_rows:
+            lines.append(
+                "| {model_id} | {seed} | {reason_code} | {count} |".format(
+                    model_id=row.get("model_id", ""),
+                    seed=row.get("seed", ""),
+                    reason_code=row.get("reason_code", ""),
+                    count=int(row.get("count", 0) or 0),
+                )
+            )
+    lines.append("")
     lines.append("## Artifacts")
     lines.append("- `runs_scored.csv`")
     lines.append("- `model_summary.csv`")
     lines.append("- `pairwise_compare.csv`")
+    lines.append("- `model_slice_summary.csv`")
+    lines.append("- `model_slice_summary_by_model.csv`")
+    lines.append("- `slice_reason_codes.csv`")
+    lines.append("- `slice_gate_results.csv`")
+    lines.append("- `slice_gate_winner.json` (when at least one candidate passes)")
     lines.append("- `reports/` (raw eval harness outputs)")
     lines.append("- `compares/` (A/B per-seed outputs)")
 
@@ -345,6 +556,190 @@ def _build_model_summary(run_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
             summary[f"{metric}.std"] = std
         summary_rows.append(summary)
     return summary_rows
+
+
+def _build_slice_model_summary(slice_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in slice_rows:
+        model_id = str(row.get("model_id", ""))
+        slice_name = str(row.get("slice", ""))
+        grouped.setdefault((model_id, slice_name), []).append(row)
+
+    summary_rows: list[dict[str, Any]] = []
+    for (model_id, slice_name) in sorted(grouped.keys()):
+        rows = grouped[(model_id, slice_name)]
+        summary: dict[str, Any] = {
+            "model_id": model_id,
+            "slice": slice_name,
+            "seed_count": len(rows),
+        }
+        for metric in SLICE_METRICS:
+            values = [float(item.get(metric, 0.0)) for item in rows]
+            mean, std = _mean_std(values)
+            summary[f"{metric}.mean"] = mean
+            summary[f"{metric}.std"] = std
+        summary_rows.append(summary)
+    return summary_rows
+
+
+def _evaluate_slice_gate(
+    *,
+    run_rows: list[dict[str, Any]],
+    baseline_model_id: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    by_model_seed: dict[tuple[str, int], dict[str, Any]] = {}
+    for row in run_rows:
+        by_model_seed[(str(row.get("model_id", "")), int(row.get("seed", 0) or 0))] = row
+
+    gate_rows: list[dict[str, Any]] = []
+    for row in run_rows:
+        model_id = str(row.get("model_id", ""))
+        seed = int(row.get("seed", 0) or 0)
+        if model_id == baseline_model_id:
+            continue
+        baseline = by_model_seed.get((baseline_model_id, seed))
+        if baseline is None:
+            continue
+
+        blockers: list[str] = []
+        required_raw_keys = [
+            "slice.model_only.json_valid_rate",
+            "slice.model_only.schema_valid_rate",
+            "slice.model_only.ordinal_actor_binding_accuracy",
+            "slice.model_only.target_resolution_accuracy",
+            "slice.model_only.chronology_phase_accuracy",
+            "slice.model_only.action_recall",
+            "slice.model_only.runtime_fallback_rate",
+            "slice.model_only.case_strict_success_rate",
+        ]
+        required_end_to_end_keys = [
+            "slice.end_to_end.json_valid_rate",
+            "slice.end_to_end.schema_valid_rate",
+            "slice.end_to_end.target_resolution_accuracy",
+            "slice.end_to_end.chronology_phase_accuracy",
+            "slice.end_to_end.action_recall",
+            "slice.end_to_end.runtime_fallback_rate",
+        ]
+        has_all_keys = all(key in row for key in required_raw_keys + required_end_to_end_keys) and all(
+            key in baseline for key in required_raw_keys
+        )
+        if not has_all_keys:
+            gate_rows.append(
+                {
+                    "model_id": model_id,
+                    "seed": seed,
+                    "baseline_model_id": baseline_model_id,
+                    "gate_pass": False,
+                    "blocking_reasons": "missing_slice_metrics",
+                    "balanced_score": float("-inf"),
+                }
+            )
+            continue
+
+        def _val(payload: dict[str, Any], key: str) -> float:
+            return float(payload.get(key, 0.0) or 0.0)
+
+        raw_checks = {
+            "json_non_regression": _val(row, "slice.model_only.json_valid_rate") >= _val(baseline, "slice.model_only.json_valid_rate"),
+            "schema_non_regression": _val(row, "slice.model_only.schema_valid_rate") >= _val(baseline, "slice.model_only.schema_valid_rate"),
+            "ordinal_non_regression": _val(row, "slice.model_only.ordinal_actor_binding_accuracy") >= _val(
+                baseline, "slice.model_only.ordinal_actor_binding_accuracy"
+            ),
+            "target_improved": _val(row, "slice.model_only.target_resolution_accuracy") > _val(
+                baseline, "slice.model_only.target_resolution_accuracy"
+            ),
+            "chronology_improved": _val(row, "slice.model_only.chronology_phase_accuracy") > _val(
+                baseline, "slice.model_only.chronology_phase_accuracy"
+            ),
+            "action_improved": _val(row, "slice.model_only.action_recall") > _val(
+                baseline, "slice.model_only.action_recall"
+            ),
+            "strict_improved": _val(row, "slice.model_only.case_strict_success_rate") > _val(
+                baseline, "slice.model_only.case_strict_success_rate"
+            ),
+            "fallback_reduced": _val(row, "slice.model_only.runtime_fallback_rate") < _val(
+                baseline, "slice.model_only.runtime_fallback_rate"
+            ),
+        }
+        for name, ok in raw_checks.items():
+            if not ok:
+                blockers.append(f"raw::{name}")
+
+        end_to_end_checks = {
+            "parse_non_regression_vs_raw": _val(row, "slice.end_to_end.json_valid_rate") >= _val(
+                row, "slice.model_only.json_valid_rate"
+            )
+            and _val(row, "slice.end_to_end.schema_valid_rate") >= _val(row, "slice.model_only.schema_valid_rate"),
+            "target_improved_vs_raw": _val(row, "slice.end_to_end.target_resolution_accuracy")
+            > _val(row, "slice.model_only.target_resolution_accuracy"),
+            "chronology_improved_vs_raw": _val(row, "slice.end_to_end.chronology_phase_accuracy")
+            > _val(row, "slice.model_only.chronology_phase_accuracy"),
+            "action_improved_vs_raw": _val(row, "slice.end_to_end.action_recall") > _val(row, "slice.model_only.action_recall"),
+            "fallback_reduced_vs_raw": _val(row, "slice.end_to_end.runtime_fallback_rate")
+            < _val(row, "slice.model_only.runtime_fallback_rate"),
+        }
+        for name, ok in end_to_end_checks.items():
+            if not ok:
+                blockers.append(f"end_to_end::{name}")
+
+        delta_target = _val(row, "slice.model_only.target_resolution_accuracy") - _val(
+            baseline, "slice.model_only.target_resolution_accuracy"
+        )
+        delta_chron = _val(row, "slice.model_only.chronology_phase_accuracy") - _val(
+            baseline, "slice.model_only.chronology_phase_accuracy"
+        )
+        delta_action = _val(row, "slice.model_only.action_recall") - _val(
+            baseline, "slice.model_only.action_recall"
+        )
+        delta_strict = _val(row, "slice.model_only.case_strict_success_rate") - _val(
+            baseline, "slice.model_only.case_strict_success_rate"
+        )
+        parse_penalty = max(0.0, _val(baseline, "slice.model_only.json_valid_rate") - _val(row, "slice.model_only.json_valid_rate"))
+        schema_penalty = max(
+            0.0,
+            _val(baseline, "slice.model_only.schema_valid_rate") - _val(row, "slice.model_only.schema_valid_rate"),
+        )
+        ordinal_penalty = max(
+            0.0,
+            _val(baseline, "slice.model_only.ordinal_actor_binding_accuracy")
+            - _val(row, "slice.model_only.ordinal_actor_binding_accuracy"),
+        )
+        fallback_penalty = max(
+            0.0,
+            _val(row, "slice.model_only.runtime_fallback_rate")
+            - _val(baseline, "slice.model_only.runtime_fallback_rate"),
+        )
+        balanced_score = (
+            (delta_target + delta_chron + delta_action + delta_strict) * 100.0
+            - parse_penalty * 150.0
+            - schema_penalty * 150.0
+            - ordinal_penalty * 80.0
+            - fallback_penalty * 100.0
+        )
+
+        gate_rows.append(
+            {
+                "model_id": model_id,
+                "seed": seed,
+                "baseline_model_id": baseline_model_id,
+                "gate_pass": len(blockers) == 0,
+                "blocking_reasons": ";".join(blockers),
+                "balanced_score": balanced_score,
+            }
+        )
+
+    passed = [row for row in gate_rows if bool(row.get("gate_pass", False))]
+    winner: dict[str, Any] | None = None
+    if passed:
+        winner = max(
+            passed,
+            key=lambda item: (
+                float(item.get("balanced_score", 0.0)),
+                str(item.get("model_id", "")),
+                int(item.get("seed", 0) or 0),
+            ),
+        )
+    return gate_rows, winner
 
 
 def _prepare_specs(
@@ -505,6 +900,12 @@ def main() -> int:
         action="store_true",
         help="If predictions file is missing, execute per-model generate_predictions_cmd from config",
     )
+    parser.add_argument(
+        "--sanitize-predictions-before-score",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Drop structurally invalid predicted_script/raw_output_json payloads before score mode.",
+    )
     args = parser.parse_args()
 
     config_path = args.config.expanduser().resolve()
@@ -547,12 +948,28 @@ def main() -> int:
                 "--checkpoint-id",
                 spec.checkpoint_id,
                 "--predictions-jsonl",
-                str(spec.predictions_jsonl),
+                "",
                 "--output-dir",
                 str(spec.report_dir),
                 "--seed",
                 str(eval_seed),
             ]
+            score_predictions_path = spec.predictions_jsonl
+            if bool(args.sanitize_predictions_before_score):
+                sanitized_path = (
+                    output_dir
+                    / "predictions_sanitized"
+                    / _safe_key(spec.model_id)
+                    / f"seed_{spec.seed}.jsonl"
+                )
+                if args.dry_run:
+                    score_predictions_path = sanitized_path
+                else:
+                    score_predictions_path = _sanitize_predictions_for_eval(
+                        input_path=spec.predictions_jsonl,
+                        output_path=sanitized_path,
+                    )
+            score_cmd[9] = str(score_predictions_path)
             print(f"[benchmark] score model={spec.model_id} seed={spec.seed}")
             if args.dry_run:
                 print("  " + " ".join(shlex.quote(x) for x in score_cmd))
@@ -589,6 +1006,27 @@ def main() -> int:
 
     # 3) AGGREGATION
     run_rows: list[dict[str, Any]] = []
+    slice_rows: list[dict[str, Any]] = []
+    reason_rows: list[dict[str, Any]] = []
+    eval_cases_path = eval_bundle_dir / "eval_cases.jsonl"
+    runtime_policy_path = eval_bundle_dir / "runtime_policy_snapshot.json"
+    can_recompute_slices = eval_cases_path.exists() and runtime_policy_path.exists()
+    eval_cases: list[dict[str, Any]] = []
+    runtime_policy_snapshot: dict[str, Any] = {}
+    if can_recompute_slices:
+        eval_cases = _read_jsonl(eval_cases_path)
+        runtime_policy_snapshot = _read_json(runtime_policy_path)
+    elif args.mode != "aggregate-only":
+        raise SystemExit(
+            "Slice recompute requires eval bundle files: "
+            f"{eval_cases_path} and {runtime_policy_path}"
+        )
+    else:
+        print(
+            "[benchmark] aggregate-only: missing eval bundle inputs for slice recompute; "
+            "slice summaries will be skipped."
+        )
+
     for spec in run_specs:
         if not spec.report_dir.exists():
             if args.mode == "aggregate-only":
@@ -603,6 +1041,36 @@ def main() -> int:
             "predictions_jsonl": str(spec.predictions_jsonl),
         }
         row.update(_collect_score_metrics(spec.report_dir))
+        if can_recompute_slices and spec.predictions_jsonl.exists():
+            slice_flat, per_slice_rows, reason_counts, available_slices = _collect_slice_metrics(
+                predictions_jsonl=spec.predictions_jsonl,
+                checkpoint_id=spec.checkpoint_id,
+                cases=eval_cases,
+                runtime_policy_snapshot=runtime_policy_snapshot,
+                require_both_slices=(args.mode != "aggregate-only"),
+            )
+            row.update(slice_flat)
+            row["slice_available"] = ",".join(available_slices)
+            for item in per_slice_rows:
+                slice_rows.append(
+                    {
+                        "model_id": spec.model_id,
+                        "seed": spec.seed,
+                        **item,
+                    }
+                )
+            for reason_code in sorted(reason_counts.keys()):
+                reason_rows.append(
+                    {
+                        "model_id": spec.model_id,
+                        "seed": spec.seed,
+                        "reason_code": reason_code,
+                        "count": int(reason_counts[reason_code]),
+                        "predictions_jsonl": str(spec.predictions_jsonl),
+                    }
+                )
+        elif args.mode == "aggregate-only":
+            row["slice_available"] = "unavailable"
         run_rows.append(row)
 
     pair_rows: list[dict[str, Any]] = []
@@ -619,11 +1087,31 @@ def main() -> int:
         pair_rows.append(row)
 
     model_summary_rows = _build_model_summary(run_rows)
+    slice_model_summary_rows = _build_slice_model_summary(slice_rows)
+    baseline_model_id = str(cfg.get("slice_gate_baseline_model_id", "")).strip()
+    if not baseline_model_id and any(str(row.get("model_id", "")) == "dataset_v7_orpo" for row in run_rows):
+        baseline_model_id = "dataset_v7_orpo"
+    slice_gate_rows: list[dict[str, Any]] = []
+    slice_gate_winner: dict[str, Any] | None = None
+    if baseline_model_id:
+        slice_gate_rows, slice_gate_winner = _evaluate_slice_gate(
+            run_rows=run_rows,
+            baseline_model_id=baseline_model_id,
+        )
 
     aggregate_dir = output_dir / "aggregate"
     _write_csv(run_rows, aggregate_dir / "runs_scored.csv")
     _write_csv(model_summary_rows, aggregate_dir / "model_summary.csv")
     _write_csv(pair_rows, aggregate_dir / "pairwise_compare.csv")
+    _write_csv(slice_rows, aggregate_dir / "model_slice_summary.csv")
+    _write_csv(slice_model_summary_rows, aggregate_dir / "model_slice_summary_by_model.csv")
+    _write_csv(reason_rows, aggregate_dir / "slice_reason_codes.csv")
+    _write_csv(slice_gate_rows, aggregate_dir / "slice_gate_results.csv")
+    if slice_gate_winner is not None:
+        (aggregate_dir / "slice_gate_winner.json").write_text(
+            json.dumps(slice_gate_winner, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     metadata = {
         "config_path": str(config_path),
@@ -633,8 +1121,14 @@ def main() -> int:
         "eval_seed": eval_seed,
         "total_runs": len(run_rows),
         "total_pairwise_rows": len(pair_rows),
+        "total_slice_rows": len(slice_rows),
+        "total_slice_reason_rows": len(reason_rows),
+        "slice_recompute_enabled": can_recompute_slices,
+        "slice_gate_baseline_model_id": baseline_model_id or None,
+        "slice_gate_rows": len(slice_gate_rows),
         "primary_set_metrics": PRIMARY_SET_METRICS,
         "primary_buckets": PRIMARY_BUCKETS,
+        "slice_metrics": SLICE_METRICS,
     }
     (aggregate_dir / "benchmark_manifest.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
@@ -648,6 +1142,8 @@ def main() -> int:
         run_rows=run_rows,
         model_summary_rows=model_summary_rows,
         pair_rows=pair_rows,
+        slice_summary_rows=slice_rows,
+        slice_reason_rows=reason_rows,
     )
 
     print(f"[benchmark] done. aggregate artifacts: {aggregate_dir}")

@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from .config import DatasetBuildRequest, PreferenceBuildResult
-from .ingest import normalized_source_hash_v1, sanitize_source_text_for_sft, token_count
+from .ingest import disallowed_source_text_reasons, normalized_source_hash_v1, sanitize_source_text_for_sft, token_count
 from .renderer import canonical_json_string, render_preference_messages
 
 
@@ -27,12 +27,31 @@ _PREFERENCE_META_TOKEN_RE = re.compile(
     r")",
     flags=re.IGNORECASE,
 )
+_THIRD_LABEL_PREFIX_RE = re.compile(
+    r"\bтретий\s*:\s*([А-ЯЁа-яё][^:\n]{0,40})\s*:",
+    flags=re.IGNORECASE,
+)
+_CYRILLIC_WORD_RE = re.compile(r"\b[А-Яа-яЁё]{2,}\b")
 
 
 def _sanitize_preference_source_text(text: str) -> str:
+    def _normalize_mixed_case(match: re.Match[str]) -> str:
+        token = match.group(0)
+        has_lower = any(ch.islower() for ch in token)
+        has_upper = any(ch.isupper() for ch in token)
+        if token.isupper():
+            return token[:1].upper() + token[1:].lower()
+        if not (has_lower and has_upper):
+            return token
+        if len(token) > 32:
+            return token
+        return token[:1].upper() + token[1:].lower()
+
     value = sanitize_source_text_for_sft(text)
     if not value:
         return value
+    value = _THIRD_LABEL_PREFIX_RE.sub(r"\1:", value)
+    value = _CYRILLIC_WORD_RE.sub(_normalize_mixed_case, value)
     value = _PREFERENCE_META_TOKEN_RE.sub("", value)
     value = re.sub(r"\s+([,.;:!?])", r"\1", value)
     value = re.sub(r"\(\s*\)", "", value)
@@ -139,6 +158,8 @@ def _runtime_candidate_to_pair(
     source_text = _sanitize_preference_source_text(source_text)
     if not source_text:
         return None
+    if disallowed_source_text_reasons(source_text):
+        return None
     chosen_json = deepcopy(chosen_json)
     rejected_json = deepcopy(rejected_json)
     chosen_json["originalDescription"] = source_text
@@ -208,6 +229,8 @@ def _offline_candidate_to_pair(
         source_text = str(row.get("prompt") or "")
     source_text = _sanitize_preference_source_text(source_text)
     if not source_text:
+        return None
+    if disallowed_source_text_reasons(source_text):
         return None
     chosen_json = deepcopy(chosen_json)
     rejected_json = deepcopy(rejected_json)

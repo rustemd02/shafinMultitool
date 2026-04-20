@@ -43,6 +43,21 @@ def _sft_row(
     }
 
 
+def _preference_row(
+    preference_id: str,
+    *,
+    pattern_name: str,
+    semantic_tags: list[str],
+) -> dict[str, object]:
+    return {
+        "preference_id": preference_id,
+        "packaging_metadata": {
+            "pattern_name": pattern_name,
+            "semantic_tags": semantic_tags,
+        },
+    }
+
+
 class TestPhaseView(unittest.TestCase):
     def test_phase2_enforces_l_caps(self) -> None:
         rows: list[dict[str, object]] = []
@@ -147,6 +162,115 @@ class TestPhaseView(unittest.TestCase):
                 result["counts"]["selected_by_pool_pre_cap"].get("reviewed_merge_hard", 0),
                 result["counts"]["selected_by_pool"].get("reviewed_merge_hard", 0),
             )
+
+    def test_phase4_enforces_pattern_caps_and_family_weights(self) -> None:
+        rows: list[dict[str, object]] = []
+        for idx in range(8):
+            rows.append(
+                _preference_row(
+                    f"pref-same-{idx}",
+                    pattern_name="same_type_two_marked_objects",
+                    semantic_tags=["same_type_markers", "ordinal_reference"],
+                )
+            )
+        for idx in range(4):
+            rows.append(
+                _preference_row(
+                    f"pref-multi-{idx}",
+                    pattern_name="toward_each_other_then_pass_by_marked_object_then_second_runs",
+                    semantic_tags=["multi_beat", "ordinal_reference"],
+                )
+            )
+        for idx in range(4):
+            rows.append(
+                _preference_row(
+                    f"pref-ord-{idx}",
+                    pattern_name="ordinal_first_second_third",
+                    semantic_tags=["ordinal_reference"],
+                )
+            )
+
+        config = TrainingPhaseConfig(
+            **{
+                **default_phase_config("phase4").__dict__,
+                "phase4_max_pattern_share": 0.40,
+                "phase4_min_family_counts": {"ordinal": 6, "three_beat": 4, "exact_marker_identity": 4},
+                "phase4_family_weight_overrides": {
+                    "ordinal": 1.10,
+                    "three_beat": 1.20,
+                    "exact_marker_identity": 1.25,
+                },
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sft = tmp / "sft_train.jsonl"
+            pref = tmp / "preference_train.jsonl"
+            out = tmp / "out"
+            _write_jsonl(sft, [_sft_row("sft-1", bucket="core", complexity="M", tokens=120)])
+            _write_jsonl(pref, rows)
+            result = build_phase_view(
+                PhaseViewRequest(
+                    phase="phase4",
+                    sft_train_jsonl=sft,
+                    preference_train_jsonl=pref,
+                    output_dir=out,
+                    seed=20260414,
+                    phase_config=config,
+                )
+            )
+            parsed = [
+                json.loads(line)
+                for line in (out / "phase4_preference_preference_train.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            pattern_counts: dict[str, int] = {}
+            for row in parsed:
+                pattern = str(row["packaging_metadata"]["pattern_name"])
+                pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
+                self.assertGreaterEqual(float(row["training_weight"]), 1.0)
+            self.assertLessEqual(
+                pattern_counts.get("same_type_two_marked_objects", 0),
+                int(len(rows) * 0.40),
+            )
+            self.assertGreaterEqual(result["counts"]["family_counts"]["ordinal"], 6)
+            self.assertGreaterEqual(result["counts"]["family_counts"]["three_beat"], 4)
+            self.assertGreaterEqual(result["counts"]["family_counts"]["exact_marker_identity"], 4)
+
+    def test_phase4_fails_when_family_coverage_is_below_minimum(self) -> None:
+        rows = [
+            _preference_row(
+                "pref-only-1",
+                pattern_name="dialogue_only",
+                semantic_tags=["dialogue"],
+            )
+        ]
+        config = TrainingPhaseConfig(
+            **{
+                **default_phase_config("phase4").__dict__,
+                "phase4_min_family_counts": {"ordinal": 1},
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sft = tmp / "sft_train.jsonl"
+            pref = tmp / "preference_train.jsonl"
+            out = tmp / "out"
+            _write_jsonl(sft, [_sft_row("sft-1", bucket="core", complexity="M", tokens=120)])
+            _write_jsonl(pref, rows)
+            with self.assertRaises(ValueError):
+                build_phase_view(
+                    PhaseViewRequest(
+                        phase="phase4",
+                        sft_train_jsonl=sft,
+                        preference_train_jsonl=pref,
+                        output_dir=out,
+                        seed=20260414,
+                        phase_config=config,
+                    )
+                )
 
 
 if __name__ == "__main__":

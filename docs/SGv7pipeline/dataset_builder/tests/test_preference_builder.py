@@ -126,6 +126,69 @@ class TestPreferenceBuilder(unittest.TestCase):
             self.assertNotIn("pass_by_then_role_shift", source_text)
             self.assertNotIn("beat_count", source_text)
 
+    def test_preference_source_text_repairs_third_label_and_mixed_case_names(self) -> None:
+        cir = generate_pattern_record("dialogue_then_pick_up_object_then_give_to_third_actor", graph_seed=16, source_variant_key="base")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            _write_jsonl(tmp_path / "cir.jsonl", [cir])
+            request = _request(tmp_path)
+            cir_index = build_cir_indices(request.cir_jsonl, contract_version=request.contract_version)
+            raw_candidates = [
+                {
+                    "failure_id": "rtf-005",
+                    "sample_id": cir["sample_id"],
+                    "source": "Третий: гЛЕБ: Передай ключ третьему сейчас. СТАС: Хорошо, передам.",
+                    "raw_llm_output": {"actors": []},
+                    "corrected_target_json": {"actors": [{"id": "actor_1"}]},
+                    "correction_tier": "tier_c_reviewed_merge",
+                    "contract_version": "sg_v7_contract_v1",
+                }
+            ]
+            result = build_preference_pairs(
+                request,
+                raw_candidates=raw_candidates,
+                cir_index=cir_index,
+                heldout_sft_family_ids=set(),
+            )
+            self.assertEqual(len(result.splitable_records), 1)
+            source_text = str(result.splitable_records[0]["source_text"])
+            self.assertNotIn("Третий:", source_text)
+            self.assertNotIn("гЛЕБ", source_text)
+            self.assertNotIn("СТАС", source_text)
+            self.assertIn("Глеб:", source_text)
+            self.assertIn("Стас:", source_text)
+
+    def test_preference_source_text_with_surface_noise_is_dropped(self) -> None:
+        cir = generate_pattern_record("dialogue_only", graph_seed=17, source_variant_key="base")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            _write_jsonl(tmp_path / "cir.jsonl", [cir])
+            request = _request(tmp_path)
+            cir_index = build_cir_indices(request.cir_jsonl, contract_version=request.contract_version)
+            raw_candidates = [
+                {
+                    "eval_case_id": "off-002",
+                    "sample_id": cir["sample_id"],
+                    "source_text": "Первый актёр: ИЛЬЯ: Я уже всё отправил. Второй актёр: МАРАТ: Тогда проверь.",
+                    "bad_json": {"actors": []},
+                    "good_json": {"actors": [{"id": "actor_1"}]},
+                    "correction_tier": "tier_b_deterministic_canonical",
+                    "contract_version": "sg_v7_contract_v1",
+                }
+            ]
+            result = build_preference_pairs(
+                request,
+                raw_candidates=raw_candidates,
+                cir_index=cir_index,
+                heldout_sft_family_ids=set(),
+            )
+            self.assertFalse(result.splitable_records)
+            self.assertEqual(len(result.dropped_records), 1)
+            self.assertEqual(
+                result.dropped_records[0]["reason"],
+                "invalid_pair_or_formatting_only_difference",
+            )
+
     def test_preference_json_original_description_is_aligned_with_sanitized_source(self) -> None:
         cir = generate_pattern_record("pick_up_then_put_down_object", graph_seed=15, source_variant_key="base")
         with tempfile.TemporaryDirectory() as tmpdir:

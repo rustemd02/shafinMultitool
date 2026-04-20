@@ -1050,3 +1050,27 @@
 - `docs/cameraanalysis/eval/compare.py` (winner selection и release recommendation)
 - `docs/cameraanalysis/eval/tests/test_scorer.py` (sequence/jitter/fix-type coverage tests)
 - `docs/cameraanalysis/11-implementation-backlog.md` (PR-001..PR-015 dependency graph, включая PR-015 foundation)
+
+---
+
+## [2026-04-20 20:36] - [SG v7 Benchmark Hardening: закрытие критичных findings по slice integrity и phase4 cap]
+
+### Суть изменений
+- Устранены критичные замечания по `phase4`-балансировке preference view: `phase4_max_pattern_share` теперь enforced относительно текущего retained-пула с итеративным пересчётом, а при неразрешимом ограничении включён fail-closed.
+- Исправлен benchmark orchestrator: `--dry-run` больше не выполняет sanitize с файловыми side effects; в `aggregate-only` добавлен graceful режим при отсутствии bundle-артефактов для slice recompute.
+- Устранена контаминация slice-метрик: `model_only`/`end_to_end` считаются только из соответствующих полей (`model_only_predicted_script`, `end_to_end_predicted_script`) без fallback в `predicted_script/raw_output_json`.
+- В prediction exporter восстановлена корректная семантика полей: `raw_output_json` снова хранит raw/model-only parse, а выбранный срез пишется отдельно.
+- Синхронизирован default output path генератора предиктов с экспортным benchmark-контуром (`predictions_real_v1_export`), чтобы убрать path drift в типовом запуске.
+- Пройдены локальные unit/smoke проверки и независимый peer-review через subagent; новых P0/P1/P2 findings после фиксов не выявлено.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Для научно корректного сравнения моделей недопустимы “тихие” деградации eval-контура: fallback-подмена slice-артефактов, нестрогий cap по паттернам и непредсказуемое поведение dry-run/aggregate-only искажают экспериментальные выводы.
+- **Решение:** В контур валидации и бенчмарка добавлены строгие fail-closed инварианты и детерминированные правила admission/recompute. Это гарантирует, что reported метрики отражают именно целевой inference slice и заданные ограничения покрытия.
+- **Детали:** Для `phase4` реализована итеративная проверка `count(pattern) <= floor(retained_total * max_share)` на каждом шаге редукции, что исключает ложное соблюдение cap при уменьшении denominator. В benchmark runner введён strict slice admission (без fallback contamination), а также разграничены режимы `full/score-only` и `aggregate-only` по источникам истины (`eval_bundle` vs cached reports), что повышает воспроизводимость и интерпретируемость метрик в runtime-oriented экспериментах ORPO.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/training/phase_view.py` (strict phase4 cap enforcement, fail-closed semantics)
+- `experiments/sc_benchmark/run_scientific_benchmark.py` (dry-run side-effect fix, aggregate-only graceful mode, strict slice metric collection)
+- `experiments/sc_benchmark/generate_predictions_from_endpoint.py` (raw/output semantics fix, export default path alignment)
+- `docs/SGv7pipeline/training/tests/test_phase_view.py` (phase4 cap/family coverage regression coverage)
+- `docs/SGv7pipeline/eval/tests/test_prediction_export.py` (prediction export parsing/repair/slice tests)
