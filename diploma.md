@@ -971,3 +971,24 @@
 - `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (Trace-контракты и валидация)
 - `shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift` (negative/round-trip tests для trace-инвариантов)
 - `docs/cameraanalysis/04-explainability-contract.md` (design spec contract для PR-003)
+
+## [2026-04-20 14:22] - [PR-007: deterministic Critique Engine для Camera Analysis v1]
+
+### Суть изменений
+- Реализован детерминированный `FrameCritiqueEngine`, который принимает `FrameFeatureSnapshot` и `SceneSemanticsReport` и формирует `CritiqueReport` без участия LLM в качестве source-of-truth.
+- Формализованы правила детекции issues и strengths, включая пороги `rawScore/confidence`, вычисление `severity`, шаблоны `shortVerdict/whyGood/whyProblematic`, а также ограниченный каталог `FixTypeV1`.
+- Введён degraded path для слабой семантической опоры: активируется по `low_scene_confidence`, ограничивает допустимые issues, отключает strengths и понижает итоговую уверенность отчёта.
+- Зафиксирована трассируемость findings через детерминированные `traceRefs`, stable `id`-схему и привязку evidence к snapshot/semantics полям.
+- Добавлены unit tests на golden cases, calibration, determinism, degraded mode, sorting и contract invariants; дополнительно усилена проверка конфликтов между issue и strength по одному фактору.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** На этапе критики кадра недостаточно просто вычислить набор эвристических замечаний. Требуется одновременно обеспечить воспроизводимость, объяснимость, ограниченную таксономию findings и устойчивую деградацию при слабом входном сигнале. Без этого любая AI-критика становится трудно проверяемой и плохо пригодной для научного описания.
+- **Решение:** Критический слой переведён в детерминированный rule-based pipeline с явными thresholds, priority rules, semantic penalties и fallback policy. Это позволяет отделить raw critique от downstream reasoning, сохранив прозрачную цепочку от входных сигналов к verdict и summary. Дополнительно введены trace seeds и evidence refs, чтобы каждый finding можно было связать с объясняемой причинной цепочкой.
+- **Детали:** Важной частью реализации стала calibration-логика: `scene_has_no_clear_focus` усиливается на `+0.15` при ambiguity `multiple_subjects_similar_confidence`, а `low_scene_confidence` активирует restricted technical mode с cap на confidence. Для диссертации это демонстрирует не только алгоритмическую, но и методологическую ценность: система показывает, как formal contracts, explainability и degraded policies можно объединить в проверяемый mobile pipeline.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Critique/FrameCritiqueEngine.swift` (`analyze`, issue/strength rules, degraded policy, trace seeds)
+- `shafinMultitoolTests/FrameCritiqueEngineTests.swift` (golden cases, calibration, determinism, ordering and conflict tests)
+- `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (contract invariants и `CritiqueReport`)
+- `docs/cameraanalysis/07-critique-engine.md` (source-of-truth design spec для PR-007)
+- `docs/cameraanalysis/11-implementation-backlog.md` (связка PR-007 с PR-003/PR-005/PR-006)
