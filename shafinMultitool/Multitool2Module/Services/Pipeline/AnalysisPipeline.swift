@@ -28,6 +28,276 @@ struct DebugData {
     var saliencyCenter: CGPoint?
 }
 
+struct LiveHintPresentation: Identifiable, Equatable {
+    let id: String
+    let frameId: String
+    let text: String
+    let confidence: Double
+    let actionType: ActionTypeV1?
+    let actionId: String?
+    let linkedIssueIds: [String]
+    let summaryId: String?
+    let traceRootIds: [String]
+    let targetRegion: NormalizedRect?
+    let overlayHint: OverlayHint?
+    let isFallback: Bool
+}
+
+struct PauseStrengthRow: Equatable {
+    let strengthId: String
+    let type: StrengthTypeV1
+    let rationale: String
+    let confidence: Double
+    let supportingRegion: NormalizedRect?
+    let traceRefId: String?
+}
+
+struct PauseIssueRow: Equatable {
+    let issueId: String
+    let type: IssueTypeV1
+    let severity: Double
+    let confidence: Double
+    let rationale: String
+    let affectedRegion: NormalizedRect?
+    let suggestedFixTypes: [FixTypeV1]
+    let traceRefId: String?
+}
+
+struct PauseActionRow: Equatable {
+    let actionId: String
+    let actionType: ActionTypeV1
+    let priority: Int
+    let linkedIssueIds: [String]
+    let expectedOutcome: String
+    let targetRegion: NormalizedRect?
+    let overlayHintId: String?
+    let traceRefId: String?
+}
+
+struct PauseCritiquePresentation: Equatable {
+    let frameId: String
+    let verdict: FrameVerdict
+    let summaryId: String
+    let shortVerdict: String
+    let whyGood: String?
+    let whyProblematic: String?
+    let strengths: [PauseStrengthRow]
+    let issues: [PauseIssueRow]
+    let actions: [PauseActionRow]
+    let noChangeRationale: String?
+    let assumptions: [String]
+    let traceRootIds: [String]
+    let fallbackUsed: Bool
+}
+
+struct OverlayAnnotationPresentation: Identifiable, Equatable {
+    let id: String
+    let kind: OverlayKind
+    let direction: OverlayDirection?
+    let targetRegion: NormalizedRect?
+    let emphasis: Double
+}
+
+struct RecommendationPlanner {
+    func makePlan(snapshot: FrameFeatureSnapshot, critique: CritiqueReport) -> RecommendationPlan {
+        let rankedIssues = critique.issues.sorted { lhs, rhs in
+            if lhs.severity != rhs.severity {
+                return lhs.severity > rhs.severity
+            }
+            if lhs.confidence != rhs.confidence {
+                return lhs.confidence > rhs.confidence
+            }
+            return lhs.type.rawValue < rhs.type.rawValue
+        }
+
+        if critique.verdict == .good {
+            let rationale = nonEmpty(critique.summary.whyGood)
+                ?? nonEmpty(critique.summary.shortVerdict)
+                ?? "Кадр можно оставить как есть."
+            return RecommendationPlan(
+                frameId: snapshot.frameId,
+                mode: snapshot.mode,
+                inputVerdict: critique.verdict,
+                primaryAction: nil,
+                secondaryActions: [],
+                deferredActions: [],
+                noChangeRationale: rationale,
+                planConfidence: critique.verdictConfidence
+            )
+        }
+
+        let actions = rankedIssues.enumerated().compactMap { index, issue in
+            makeAction(
+                issue: issue,
+                rank: index + 1,
+                snapshot: snapshot,
+                verdictConfidence: critique.verdictConfidence
+            )
+        }
+
+        let primaryAction = actions.first
+        let secondaryActions: [RecommendationAction]
+        let deferredActions: [RecommendationAction]
+        if snapshot.mode == .live {
+            secondaryActions = []
+            deferredActions = []
+        } else {
+            secondaryActions = Array(actions.dropFirst().prefix(2))
+            deferredActions = Array(actions.dropFirst(3))
+        }
+
+        return RecommendationPlan(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            inputVerdict: critique.verdict,
+            primaryAction: primaryAction,
+            secondaryActions: secondaryActions,
+            deferredActions: deferredActions,
+            noChangeRationale: nil,
+            planConfidence: critique.verdictConfidence
+        )
+    }
+
+    private func makeAction(issue: FrameIssue,
+                            rank: Int,
+                            snapshot: FrameFeatureSnapshot,
+                            verdictConfidence: Double) -> RecommendationAction? {
+        let actionType = actionType(for: issue.type, composition: snapshot.composition)
+        if actionType == .leaveFrameAsIs {
+            return nil
+        }
+
+        let expectedOutcome = expectedOutcome(for: actionType)
+        let targetRegion = issue.affectedRegion
+        let overlayHint = overlayHint(actionType: actionType, actionRank: rank, targetRegion: targetRegion)
+        let actionId = "act_\(snapshot.mode.rawValue)_\(rank)_\(actionType.rawValue)_\(issue.type.rawValue)"
+        let guardrail = ActionGuardrail(
+            requiresStillCamera: requiresStillCamera(actionType),
+            minConfidence: clamp01(max(0.30, min(issue.confidence, verdictConfidence))),
+            suppressWhenMoving: suppressWhenMoving(actionType)
+        )
+
+        return RecommendationAction(
+            id: actionId,
+            actionType: actionType,
+            priority: rank,
+            targetRegion: targetRegion,
+            linkedIssueIds: [issue.id],
+            expectedOutcome: expectedOutcome,
+            guardrail: guardrail,
+            overlayHint: overlayHint
+        )
+    }
+
+    private func actionType(for issueType: IssueTypeV1,
+                            composition: FrameFeatureSnapshot.CompositionFeatures) -> ActionTypeV1 {
+        switch issueType {
+        case .horizonDistracts:
+            return .levelHorizon
+        case .backlightHidesSubject:
+            return .improveFrontLight
+        case .subjectNotProminentEnough:
+            return .increaseSubjectSize
+        case .subjectTooCloseToEdge, .insufficientLookSpace:
+            if composition.horizontalOffset > 0.15 { return .moveFrameLeft }
+            if composition.horizontalOffset < -0.15 { return .moveFrameRight }
+            if composition.verticalOffset > 0.15 { return .moveFrameDown }
+            if composition.verticalOffset < -0.15 { return .moveFrameUp }
+            return .changeAngle
+        case .backgroundCompetesWithSubject:
+            return .reduceBackgroundDistractions
+        case .sceneHasNoClearFocus, .frameVisuallyOverloaded:
+            return .changeAngle
+        }
+    }
+
+    private func expectedOutcome(for actionType: ActionTypeV1) -> String {
+        switch actionType {
+        case .moveFrameLeft:
+            return "Сместите кадр немного влево, чтобы вернуть баланс."
+        case .moveFrameRight:
+            return "Сместите кадр немного вправо, чтобы вернуть баланс."
+        case .moveFrameUp:
+            return "Поднимите кадр чуть выше для лучшей композиции."
+        case .moveFrameDown:
+            return "Опустите кадр чуть ниже для лучшей композиции."
+        case .increaseSubjectSize:
+            return "Сделайте главный объект крупнее, чтобы усилить фокус."
+        case .reduceBackgroundDistractions:
+            return "Упростите фон или смените ракурс, чтобы убрать отвлекающие детали."
+        case .changeAngle:
+            return "Смените угол съемки, чтобы кадр стал более выразительным."
+        case .improveFrontLight:
+            return "Добавьте фронтальный свет, чтобы отделить объект от фона."
+        case .levelHorizon:
+            return "Выравняйте горизонт для более устойчивой композиции."
+        case .leaveFrameAsIs:
+            return "Оставьте кадр как есть."
+        }
+    }
+
+    private func overlayHint(actionType: ActionTypeV1,
+                             actionRank: Int,
+                             targetRegion: NormalizedRect?) -> OverlayHint? {
+        if actionType == .leaveFrameAsIs {
+            return nil
+        }
+        let regionKey = quantizedRegionKey(targetRegion)
+        let id = "ovh_\(actionRank)_\(actionType.rawValue)_\(regionKey)"
+        switch actionType {
+        case .moveFrameLeft:
+            return OverlayHint(id: id, kind: .arrow, targetRegion: targetRegion, direction: .left)
+        case .moveFrameRight:
+            return OverlayHint(id: id, kind: .arrow, targetRegion: targetRegion, direction: .right)
+        case .moveFrameUp:
+            return OverlayHint(id: id, kind: .arrow, targetRegion: targetRegion, direction: .up)
+        case .moveFrameDown:
+            return OverlayHint(id: id, kind: .arrow, targetRegion: targetRegion, direction: .down)
+        case .levelHorizon:
+            return OverlayHint(id: id, kind: .horizonLine, targetRegion: nil, direction: nil)
+        default:
+            return OverlayHint(id: id, kind: .regionHighlight, targetRegion: targetRegion, direction: nil)
+        }
+    }
+
+    private func quantizedRegionKey(_ region: NormalizedRect?) -> String {
+        guard let region else { return "screen" }
+        func q(_ value: Double) -> String {
+            let rounded = (value / 0.02).rounded() * 0.02
+            return String(format: "%.2f", rounded)
+        }
+        return "\(q(region.x))_\(q(region.y))_\(q(region.width))_\(q(region.height))"
+    }
+
+    private func requiresStillCamera(_ actionType: ActionTypeV1) -> Bool {
+        switch actionType {
+        case .moveFrameLeft, .moveFrameRight, .moveFrameUp, .moveFrameDown, .levelHorizon:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func suppressWhenMoving(_ actionType: ActionTypeV1) -> Bool {
+        switch actionType {
+        case .leaveFrameAsIs:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
 struct FeatureSample<Value> {
     let value: Value
     let measuredAt: Date
@@ -1133,6 +1403,9 @@ final class AnalysisPipeline: ObservableObject {
                                                             horizonConfidence: 0,
                                                             saliencyBalance: 0)
     @Published private(set) var currentSuggestion: Suggestion?
+    @Published private(set) var currentLiveHint: LiveHintPresentation?
+    @Published private(set) var currentPauseCritique: PauseCritiquePresentation?
+    @Published private(set) var currentOverlayAnnotations: [OverlayAnnotationPresentation] = []
 
     private let visionTracking = VisionTracking()
     private let horizonEstimator = HorizonEstimator()
@@ -1142,6 +1415,9 @@ final class AnalysisPipeline: ObservableObject {
     private let suggestionEngine = SuggestionEngine()
     private let featureSnapshotAggregator = FeatureSnapshotAggregator()
     private let featureSnapshotAdapter = PipelineFeatureSnapshotAdapter()
+    private let sceneSemanticsAnalyzer = SceneSemanticsAnalyzer()
+    private let frameCritiqueEngine = FrameCritiqueEngine()
+    private let recommendationPlanner = RecommendationPlanner()
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -1160,12 +1436,20 @@ final class AnalysisPipeline: ObservableObject {
     private let featureQueue = DispatchQueue(label: "AnalysisPipeline.features")
     private var lastPixelBuffer: CVPixelBuffer?
     private var lastOrientation: CGImagePropertyOrientation = .right
+    private var lastSourceFrameId: String = ""
     private var suggestionExpiry: Date = .distantPast
     private var lastAestheticRequest: Date = .distantPast
     private var lastDETRRequest: Date = .distantPast
     private var lowFrameCount: Int = 0
+    private var liveHintShownAt: Date = .distantPast
+    private var lastOverlayPublishAt: Date = .distantPast
+    private var pauseAnalysisRevision: Int = 0
 
     private var suggestionCancellable: AnyCancellable?
+    private let minLiveHintHold: TimeInterval = 1.2
+    private let liveHintConfidenceDelta: Double = 0.12
+    private let liveHintTextOnlyConfidenceDelta: Double = 0.08
+    private let maxOverlayHz: Double = 8.0
     
     var currentFeatures: CoachingFeatures {
         featureQueue.sync { features }
@@ -1240,6 +1524,10 @@ final class AnalysisPipeline: ObservableObject {
         // Запомним последний кадр для режима предпросмотра
         self.lastPixelBuffer = context.pixelBuffer
         self.lastOrientation = context.orientation
+        let sourceFrameId = makeSourceFrameId(from: context.timestamp)
+        featureQueue.sync {
+            self.lastSourceFrameId = sourceFrameId
+        }
         let startTime = CACurrentMediaTime()
         
         Telemetry.shared.setActiveModule("Vision", active: true)
@@ -1501,6 +1789,8 @@ final class AnalysisPipeline: ObservableObject {
                        type: .info, String(describing: localFeatures.motion.state))
                 currentSuggestion = nil
             }
+            currentLiveHint = nil
+            publishOverlayAnnotations([], now: now)
             return
         }
         
@@ -1514,14 +1804,62 @@ final class AnalysisPipeline: ObservableObject {
                 currentSuggestion = nil
             }
         }
+
+        let snapshot = makeFeatureSnapshot(
+            mode: .live,
+            frameId: currentSourceFrameId(fallbackDate: now),
+            capturedAt: now
+        )
+        let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+        let critique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+        let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+        let structuredDecision = structuredPathDecision(
+            mode: .live,
+            critique: critique,
+            plan: plan,
+            motionState: snapshot.motion.state
+        )
+        let hintCandidate = makeLiveHintPresentation(
+            frameId: snapshot.frameId,
+            critique: critique,
+            plan: plan,
+            legacySuggestion: currentSuggestion,
+            forceLegacyFallback: !structuredDecision.isAvailable
+        )
+        applyLiveHint(candidate: hintCandidate, now: now)
+        let annotations = makeOverlayAnnotations(
+            frameId: snapshot.frameId,
+            critique: critique,
+            plan: plan,
+            features: localFeatures,
+            mode: .live,
+            legacySuggestions: currentSuggestion.map { [$0] } ?? [],
+            forceLegacyOnly: !structuredDecision.isAvailable
+        )
+        publishOverlayAnnotations(annotations, now: now)
     }
 
-    // Полный прогон heavy‑модулей на последнем кадре; возвращает список подсказок.
-    func runPreviewAnalysis(completion: @escaping ([Suggestion]) -> Void) {
+    func clearPausePresentationState() {
+        featureQueue.sync {
+            pauseAnalysisRevision += 1
+        }
+        DispatchQueue.main.async {
+            self.currentPauseCritique = nil
+            self.currentOverlayAnnotations = []
+        }
+    }
+
+    // Полный прогон heavy‑модулей на последнем кадре; возвращает legacy suggestions + structured pause critique.
+    func runPauseAnalysis(completion: @escaping ([Suggestion], PauseCritiquePresentation?) -> Void) {
         guard let pixelBuffer = lastPixelBuffer else {
-            completion([])
+            completion([], nil)
             return
         }
+        let revision = featureQueue.sync { () -> Int in
+            pauseAnalysisRevision += 1
+            return pauseAnalysisRevision
+        }
+        let pauseSourceFrameId = currentSourceFrameId(fallbackDate: Date())
         let orientation = lastOrientation
         lowQueue.async { [weak self] in
             guard let self else { return }
@@ -1530,9 +1868,10 @@ final class AnalysisPipeline: ObservableObject {
             let group = DispatchGroup()
 
             // Если нет bbox, попробуем DETR
-            if localFeatures.composition.subjectAreaRatio == 0 {
+            if localFeatures.composition.subjectAreaRatio == 0,
+               let detector = self.detrDetector {
                 group.enter()
-                self.detrDetector?.detect(pixelBuffer: pixelBuffer, orientation: orientation) { detections in
+                detector.detect(pixelBuffer: pixelBuffer, orientation: orientation) { detections in
                     if let top = self.sortedDetectionsForPriority(detections).first {
                         localFeatures.composition = self.compositionFeatures(from: top.boundingBox)
                         localFeatures.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
@@ -1552,9 +1891,741 @@ final class AnalysisPipeline: ObservableObject {
             }
 
             group.notify(queue: .main) {
+                let isCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
+                guard isCurrentRevision else { return }
+
                 let list = self.suggestionEngine.rankedSuggestions(from: localFeatures, topN: 6)
-                completion(list)
+                let snapshot = self.makeFeatureSnapshot(
+                    mode: .pause,
+                    frameId: pauseSourceFrameId,
+                    capturedAt: Date()
+                )
+                let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+                let critique = self.frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+                let plan = self.recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+                let structuredDecision = self.structuredPathDecision(
+                    mode: .pause,
+                    critique: critique,
+                    plan: plan,
+                    motionState: snapshot.motion.state
+                )
+
+                guard structuredDecision.isAvailable else {
+                    let fallbackAnnotations = self.makeOverlayAnnotations(
+                        frameId: snapshot.frameId,
+                        critique: critique,
+                        plan: plan,
+                        features: localFeatures,
+                        mode: .pause,
+                        legacySuggestions: list,
+                        forceLegacyOnly: true
+                    )
+                    self.currentPauseCritique = nil
+                    self.currentOverlayAnnotations = fallbackAnnotations
+                    completion(list, nil)
+                    return
+                }
+
+                let pauseCritique = self.makePauseCritiquePresentation(critique: critique, plan: plan)
+                self.currentPauseCritique = pauseCritique
+                let pauseAnnotations = self.makeOverlayAnnotations(
+                    frameId: snapshot.frameId,
+                    critique: critique,
+                    plan: plan,
+                    features: localFeatures,
+                    mode: .pause,
+                    legacySuggestions: list
+                )
+                self.currentOverlayAnnotations = pauseAnnotations
+                completion(list, pauseCritique)
             }
+        }
+    }
+
+    // Совместимость с legacy API.
+    func runPreviewAnalysis(completion: @escaping ([Suggestion]) -> Void) {
+        runPauseAnalysis { suggestions, _ in
+            completion(suggestions)
+        }
+    }
+
+    private func makeLiveHintPresentation(frameId: String,
+                                          critique: CritiqueReport,
+                                          plan: RecommendationPlan,
+                                          legacySuggestion: Suggestion?,
+                                          forceLegacyFallback: Bool) -> LiveHintPresentation? {
+        if forceLegacyFallback {
+            return makeLegacyLiveHint(frameId: frameId, critique: critique, legacySuggestion: legacySuggestion)
+        }
+
+        if let primaryAction = plan.primaryAction {
+            let linkedIssueTypes = critique.issues
+                .filter { primaryAction.linkedIssueIds.contains($0.id) }
+                .map(\.type.rawValue)
+                .sorted()
+                .joined(separator: "+")
+            let issueSignature = linkedIssueTypes.isEmpty ? "none" : linkedIssueTypes
+            let targetRegion = primaryAction.targetRegion ?? firstIssueRegion(linkedIssueIds: primaryAction.linkedIssueIds, critique: critique)
+            let id = "lh_live_action_\(primaryAction.actionType.rawValue)_\(issueSignature)_\(quantizedRegionKey(for: targetRegion))"
+            let text = nonEmpty(primaryAction.expectedOutcome) ?? critique.summary.shortVerdict
+            return LiveHintPresentation(
+                id: id,
+                frameId: frameId,
+                text: text,
+                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                actionType: primaryAction.actionType,
+                actionId: primaryAction.id,
+                linkedIssueIds: primaryAction.linkedIssueIds,
+                summaryId: critique.summary.id,
+                traceRootIds: critique.traceRefs,
+                targetRegion: targetRegion,
+                overlayHint: primaryAction.overlayHint,
+                isFallback: critique.fallbackUsed
+            )
+        }
+
+        if critique.verdict == .good {
+            let strengthTypes = critique.strengths.prefix(3).map(\.type.rawValue).sorted().joined(separator: "+")
+            let normalizedSummary = normalizeSummaryKey(critique.summary.shortVerdict)
+            let id = "lh_live_summary_\(normalizedSummary)_\(strengthTypes.isEmpty ? "none" : strengthTypes)"
+            let noChangeText = nonEmpty(plan.noChangeRationale) ?? critique.summary.shortVerdict
+            return LiveHintPresentation(
+                id: id,
+                frameId: frameId,
+                text: noChangeText,
+                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                actionType: .leaveFrameAsIs,
+                actionId: nil,
+                linkedIssueIds: [],
+                summaryId: critique.summary.id,
+                traceRootIds: critique.traceRefs,
+                targetRegion: nil,
+                overlayHint: nil,
+                isFallback: critique.fallbackUsed
+            )
+        }
+
+        return makeLegacyLiveHint(frameId: frameId, critique: critique, legacySuggestion: legacySuggestion)
+    }
+
+    private func makeLegacyLiveHint(frameId: String,
+                                    critique: CritiqueReport,
+                                    legacySuggestion: Suggestion?) -> LiveHintPresentation? {
+        guard let legacySuggestion else { return nil }
+        return LiveHintPresentation(
+            id: "lh_live_legacy_\(legacySuggestion.type.rawValue)",
+            frameId: frameId,
+            text: legacySuggestion.text,
+            confidence: confidenceForSuggestion(legacySuggestion),
+            actionType: nil,
+            actionId: nil,
+            linkedIssueIds: [],
+            summaryId: critique.summary.id,
+            traceRootIds: critique.traceRefs,
+            targetRegion: nil,
+            overlayHint: nil,
+            isFallback: true
+        )
+    }
+
+    @MainActor
+    private func applyLiveHint(candidate: LiveHintPresentation?, now: Date) {
+        guard let candidate else {
+            if let current = currentLiveHint,
+               now.timeIntervalSince(liveHintShownAt) >= minLiveHintHold {
+                currentLiveHint = nil
+                liveHintShownAt = now
+            } else if currentLiveHint == nil {
+                liveHintShownAt = now
+            }
+            return
+        }
+
+        guard let current = currentLiveHint else {
+            currentLiveHint = candidate
+            liveHintShownAt = now
+            return
+        }
+
+        let sameActionType = current.actionType == candidate.actionType
+        let smallConfidenceDelta = abs(candidate.confidence - current.confidence) < liveHintTextOnlyConfidenceDelta
+        if sameActionType, current.actionType != nil, smallConfidenceDelta {
+            // Text-only refresh branch: keep stable identity to avoid remount/flash.
+            currentLiveHint = LiveHintPresentation(
+                id: current.id,
+                frameId: candidate.frameId,
+                text: candidate.text,
+                confidence: candidate.confidence,
+                actionType: current.actionType,
+                actionId: current.actionId ?? candidate.actionId,
+                linkedIssueIds: current.linkedIssueIds.isEmpty ? candidate.linkedIssueIds : current.linkedIssueIds,
+                summaryId: candidate.summaryId ?? current.summaryId,
+                traceRootIds: candidate.traceRootIds.isEmpty ? current.traceRootIds : candidate.traceRootIds,
+                targetRegion: current.targetRegion,
+                overlayHint: current.overlayHint,
+                isFallback: candidate.isFallback
+            )
+            return
+        }
+
+        if current.id == candidate.id {
+            currentLiveHint = candidate
+            return
+        }
+
+        let holdExpired = now.timeIntervalSince(liveHintShownAt) >= minLiveHintHold
+        let confidenceBoost = candidate.confidence - current.confidence
+        if holdExpired || confidenceBoost >= liveHintConfidenceDelta {
+            currentLiveHint = candidate
+            liveHintShownAt = now
+        }
+    }
+
+    private func makePauseCritiquePresentation(critique: CritiqueReport,
+                                               plan: RecommendationPlan) -> PauseCritiquePresentation {
+        let strengths = critique.strengths.prefix(2).map { strength in
+            PauseStrengthRow(
+                strengthId: strength.id,
+                type: strength.type,
+                rationale: strength.rationale,
+                confidence: strength.confidence,
+                supportingRegion: strength.supportingRegion,
+                traceRefId: traceRefIdForStrength(strengthId: strength.id, critique: critique)
+            )
+        }
+        let issues = critique.issues.prefix(3).map { issue in
+            PauseIssueRow(
+                issueId: issue.id,
+                type: issue.type,
+                severity: issue.severity,
+                confidence: issue.confidence,
+                rationale: issue.rationale,
+                affectedRegion: issue.affectedRegion,
+                suggestedFixTypes: issue.suggestedFixTypes,
+                traceRefId: traceRefIdForIssue(issueId: issue.id, critique: critique)
+            )
+        }
+
+        let plannedActions = [plan.primaryAction]
+            .compactMap { $0 }
+            + Array(plan.secondaryActions.prefix(2))
+        let actions = plannedActions.prefix(3).map { action in
+            PauseActionRow(
+                actionId: action.id,
+                actionType: action.actionType,
+                priority: action.priority,
+                linkedIssueIds: action.linkedIssueIds,
+                expectedOutcome: action.expectedOutcome,
+                targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: action.linkedIssueIds, critique: critique),
+                overlayHintId: action.overlayHint?.id,
+                traceRefId: traceRefIdForAction(action: action, critique: critique)
+            )
+        }
+
+        let noChangeRationale: String?
+        if critique.verdict == .good && actions.isEmpty {
+            noChangeRationale = nonEmpty(plan.noChangeRationale) ?? critique.summary.whyGood ?? critique.summary.shortVerdict
+        } else {
+            noChangeRationale = nil
+        }
+
+        let assumptions: [String] = {
+            var values: [String] = []
+            if critique.fallbackUsed {
+                values.append("Structured analysis degraded: using reduced-coverage critique output.")
+            }
+            return values
+        }()
+
+        return PauseCritiquePresentation(
+            frameId: critique.frameId,
+            verdict: critique.verdict,
+            summaryId: critique.summary.id,
+            shortVerdict: critique.summary.shortVerdict,
+            whyGood: critique.summary.whyGood,
+            whyProblematic: critique.summary.whyProblematic,
+            strengths: Array(strengths),
+            issues: Array(issues),
+            actions: actions,
+            noChangeRationale: noChangeRationale,
+            assumptions: assumptions,
+            traceRootIds: critique.traceRefs,
+            fallbackUsed: critique.fallbackUsed
+        )
+    }
+
+    private func makeOverlayAnnotations(frameId: String,
+                                        critique: CritiqueReport,
+                                        plan: RecommendationPlan,
+                                        features: CoachingFeatures,
+                                        mode: AnalysisMode,
+                                        legacySuggestions: [Suggestion],
+                                        forceLegacyOnly: Bool = false) -> [OverlayAnnotationPresentation] {
+        var annotations: [OverlayAnnotationPresentation] = []
+
+        if !forceLegacyOnly {
+            let actions = [plan.primaryAction].compactMap { $0 } + Array(plan.secondaryActions.prefix(2))
+            annotations = actions.compactMap { action in
+                makeActionAnnotation(frameId: frameId, action: action, critique: critique, mode: mode)
+            }
+        }
+
+        if annotations.isEmpty && !forceLegacyOnly {
+            annotations = critique.issues.prefix(3).compactMap { issue in
+                makeStructuredAnnotation(frameId: frameId, issue: issue, features: features, mode: mode)
+            }
+        }
+
+        if annotations.isEmpty {
+            annotations = legacySuggestions.prefix(2).enumerated().compactMap { index, suggestion in
+                makeLegacyAnnotation(
+                    frameId: frameId,
+                    suggestion: suggestion,
+                    index: index,
+                    features: features,
+                    mode: mode,
+                    safeDirectionArrowsOnly: forceLegacyOnly
+                )
+            }
+        }
+
+        let coalesced = Dictionary(grouping: annotations, by: \.id).compactMap { _, grouped -> OverlayAnnotationPresentation? in
+            grouped.max(by: { $0.emphasis < $1.emphasis })
+        }
+        return coalesced.sorted { lhs, rhs in lhs.id < rhs.id }
+    }
+
+    private func makeActionAnnotation(frameId: String,
+                                      action: RecommendationAction,
+                                      critique: CritiqueReport,
+                                      mode: AnalysisMode) -> OverlayAnnotationPresentation? {
+        if action.actionType == .leaveFrameAsIs {
+            return nil
+        }
+
+        let fallbackRegion = action.targetRegion ?? firstIssueRegion(linkedIssueIds: action.linkedIssueIds, critique: critique)
+        let kind: OverlayKind
+        let direction: OverlayDirection?
+        let targetRegion: NormalizedRect?
+
+        if let overlayHint = action.overlayHint {
+            kind = overlayHint.kind
+            direction = overlayHint.direction
+            targetRegion = action.targetRegion ?? overlayHint.targetRegion ?? fallbackRegion
+
+            if mode == .pause, let overlayId = nonEmpty(overlayHint.id) {
+                return OverlayAnnotationPresentation(
+                    id: overlayId,
+                    kind: kind,
+                    direction: direction,
+                    targetRegion: targetRegion,
+                    emphasis: 0.85
+                )
+            }
+        } else {
+            switch action.actionType {
+            case .moveFrameLeft:
+                kind = .arrow
+                direction = .left
+            case .moveFrameRight:
+                kind = .arrow
+                direction = .right
+            case .moveFrameUp:
+                kind = .arrow
+                direction = .up
+            case .moveFrameDown:
+                kind = .arrow
+                direction = .down
+            case .levelHorizon:
+                kind = .horizonLine
+                direction = nil
+            default:
+                kind = .regionHighlight
+                direction = nil
+            }
+            targetRegion = fallbackRegion
+        }
+
+        return OverlayAnnotationPresentation(
+            id: annotationId(
+                mode: mode,
+                frameId: frameId,
+                isLegacy: false,
+                kind: kind,
+                direction: direction,
+                targetRegion: targetRegion,
+                actionKey: action.id
+            ),
+            kind: kind,
+            direction: direction,
+            targetRegion: targetRegion,
+            emphasis: 0.85
+        )
+    }
+
+    private func makeStructuredAnnotation(frameId: String,
+                                          issue: FrameIssue,
+                                          features: CoachingFeatures,
+                                          mode: AnalysisMode) -> OverlayAnnotationPresentation? {
+        let actionKey = "issue_\(issue.type.rawValue)"
+        switch issue.type {
+        case .horizonDistracts:
+            return OverlayAnnotationPresentation(
+                id: annotationId(
+                    mode: mode,
+                    frameId: frameId,
+                    isLegacy: false,
+                    kind: .horizonLine,
+                    direction: nil,
+                    targetRegion: nil,
+                    actionKey: actionKey
+                ),
+                kind: .horizonLine,
+                direction: nil,
+                targetRegion: nil,
+                emphasis: max(issue.severity, issue.confidence)
+            )
+        case .subjectTooCloseToEdge, .insufficientLookSpace:
+            let direction = overlayDirectionForComposition(features.composition)
+            return OverlayAnnotationPresentation(
+                id: annotationId(
+                    mode: mode,
+                    frameId: frameId,
+                    isLegacy: false,
+                    kind: .arrow,
+                    direction: direction,
+                    targetRegion: issue.affectedRegion,
+                    actionKey: actionKey
+                ),
+                kind: .arrow,
+                direction: direction,
+                targetRegion: issue.affectedRegion,
+                emphasis: max(issue.severity, issue.confidence)
+            )
+        default:
+            guard let region = issue.affectedRegion else { return nil }
+            return OverlayAnnotationPresentation(
+                id: annotationId(
+                    mode: mode,
+                    frameId: frameId,
+                    isLegacy: false,
+                    kind: .regionHighlight,
+                    direction: nil,
+                    targetRegion: region,
+                    actionKey: actionKey
+                ),
+                kind: .regionHighlight,
+                direction: nil,
+                targetRegion: region,
+                emphasis: max(issue.severity, issue.confidence)
+            )
+        }
+    }
+
+    private func makeLegacyAnnotation(frameId: String,
+                                      suggestion: Suggestion,
+                                      index: Int,
+                                      features: CoachingFeatures,
+                                      mode: AnalysisMode,
+                                      safeDirectionArrowsOnly: Bool = false) -> OverlayAnnotationPresentation? {
+        let actionType = actionTypeForSuggestion(suggestion, features: features)
+        if actionType == .leaveFrameAsIs {
+            return nil
+        }
+        let kind: OverlayKind
+        let direction: OverlayDirection?
+        if safeDirectionArrowsOnly {
+            switch actionType {
+            case .moveFrameLeft:
+                kind = .arrow
+                direction = .left
+            case .moveFrameRight:
+                kind = .arrow
+                direction = .right
+            case .moveFrameUp:
+                kind = .arrow
+                direction = .up
+            case .moveFrameDown:
+                kind = .arrow
+                direction = .down
+            default:
+                return nil
+            }
+        } else {
+            switch actionType {
+            case .levelHorizon:
+                kind = .horizonLine
+                direction = nil
+            case .moveFrameLeft:
+                kind = .arrow
+                direction = .left
+            case .moveFrameRight:
+                kind = .arrow
+                direction = .right
+            case .moveFrameUp:
+                kind = .arrow
+                direction = .up
+            case .moveFrameDown:
+                kind = .arrow
+                direction = .down
+            default:
+                kind = .regionHighlight
+                direction = nil
+            }
+        }
+
+        return OverlayAnnotationPresentation(
+            id: annotationId(
+                mode: mode,
+                frameId: frameId,
+                isLegacy: true,
+                kind: kind,
+                direction: direction,
+                targetRegion: nil,
+                actionKey: "legacy_\(suggestion.type.rawValue)_\(index)"
+            ),
+            kind: kind,
+            direction: direction,
+            targetRegion: nil,
+            emphasis: confidenceForSuggestion(suggestion)
+        )
+    }
+
+    private func annotationId(mode: AnalysisMode,
+                              frameId: String,
+                              isLegacy: Bool,
+                              kind: OverlayKind,
+                              direction: OverlayDirection?,
+                              targetRegion: NormalizedRect?,
+                              actionKey: String) -> String {
+        let directionKey = direction?.rawValue ?? "none"
+        let regionKey = quantizedRegionKey(for: targetRegion)
+        let prefix = isLegacy ? "legacy" : "structured"
+        switch mode {
+        case .live:
+            return "ov_live_\(prefix)_\(kind.rawValue)_\(directionKey)_\(regionKey)_\(actionKey)"
+        case .pause:
+            return "ov_pause_\(prefix)_\(frameId)_\(actionKey)_\(kind.rawValue)_\(directionKey)_\(regionKey)"
+        }
+    }
+
+    private struct StructuredPathDecision {
+        let isAvailable: Bool
+        let liveActionUsable: Bool
+    }
+
+    private func structuredPathDecision(mode: AnalysisMode,
+                                        critique: CritiqueReport,
+                                        plan: RecommendationPlan,
+                                        motionState: CameraAnalysisMotionState) -> StructuredPathDecision {
+        guard plan.frameId == critique.frameId else {
+            return StructuredPathDecision(isAvailable: false, liveActionUsable: false)
+        }
+        guard plan.planConfidence >= 0.45, critique.verdictConfidence >= 0.40 else {
+            return StructuredPathDecision(isAvailable: false, liveActionUsable: false)
+        }
+        guard nonEmpty(critique.summary.shortVerdict) != nil else {
+            return StructuredPathDecision(isAvailable: false, liveActionUsable: false)
+        }
+        if let primaryAction = plan.primaryAction, nonEmpty(primaryAction.expectedOutcome) == nil {
+            return StructuredPathDecision(isAvailable: false, liveActionUsable: false)
+        }
+        if mode == .pause,
+           critique.verdict == .good,
+           plan.primaryAction == nil,
+           nonEmpty(plan.noChangeRationale) == nil {
+            return StructuredPathDecision(isAvailable: false, liveActionUsable: false)
+        }
+
+        let liveUsable = mode == .live ? liveActionUsable(for: plan, motionState: motionState) : true
+        if mode == .live, !liveUsable {
+            return StructuredPathDecision(isAvailable: false, liveActionUsable: false)
+        }
+        return StructuredPathDecision(isAvailable: true, liveActionUsable: liveUsable)
+    }
+
+    private func liveActionUsable(for plan: RecommendationPlan,
+                                  motionState: CameraAnalysisMotionState) -> Bool {
+        guard plan.mode == .live else { return true }
+
+        guard let primaryAction = plan.primaryAction else {
+            return plan.inputVerdict == .good && nonEmpty(plan.noChangeRationale) != nil
+        }
+
+        if primaryAction.actionType == .leaveFrameAsIs {
+            guard plan.inputVerdict == .good else { return false }
+            return nonEmpty(plan.noChangeRationale) != nil || nonEmpty(primaryAction.expectedOutcome) != nil
+        }
+
+        if primaryAction.linkedIssueIds.isEmpty {
+            return false
+        }
+        if primaryAction.guardrail.minConfidence > plan.planConfidence {
+            return false
+        }
+        if primaryAction.guardrail.requiresStillCamera && motionState != .still {
+            return false
+        }
+        if primaryAction.guardrail.suppressWhenMoving && motionState != .still {
+            return false
+        }
+        return true
+    }
+
+    private func firstIssueRegion(linkedIssueIds: [String],
+                                  critique: CritiqueReport) -> NormalizedRect? {
+        guard !linkedIssueIds.isEmpty else { return nil }
+        for issueId in linkedIssueIds {
+            if let region = critique.issues.first(where: { $0.id == issueId })?.affectedRegion {
+                return region
+            }
+        }
+        return nil
+    }
+
+    private func traceRefIdForIssue(issueId: String,
+                                    critique: CritiqueReport) -> String? {
+        guard let issueIndex = critique.issues.firstIndex(where: { $0.id == issueId }) else { return nil }
+        let issueTraceRefs = critique.traceRefs.filter { $0.contains("_crit_i") }
+        guard issueIndex < issueTraceRefs.count else { return nil }
+        return issueTraceRefs[issueIndex]
+    }
+
+    private func traceRefIdForStrength(strengthId: String,
+                                       critique: CritiqueReport) -> String? {
+        guard let strengthIndex = critique.strengths.firstIndex(where: { $0.id == strengthId }) else { return nil }
+        let strengthTraceRefs = critique.traceRefs.filter { $0.contains("_crit_s") }
+        guard strengthIndex < strengthTraceRefs.count else { return nil }
+        return strengthTraceRefs[strengthIndex]
+    }
+
+    private func traceRefIdForAction(action: RecommendationAction,
+                                     critique: CritiqueReport) -> String? {
+        for issueId in action.linkedIssueIds {
+            if let issueTrace = traceRefIdForIssue(issueId: issueId, critique: critique) {
+                return issueTrace
+            }
+        }
+        return critique.traceRefs.first(where: { $0.contains("_crit_summary_") })
+    }
+
+    @MainActor
+    private func publishOverlayAnnotations(_ annotations: [OverlayAnnotationPresentation], now: Date) {
+        if annotations.isEmpty {
+            currentOverlayAnnotations = []
+            lastOverlayPublishAt = now
+            return
+        }
+        let minInterval = 1.0 / maxOverlayHz
+        if now.timeIntervalSince(lastOverlayPublishAt) < minInterval {
+            return
+        }
+        currentOverlayAnnotations = annotations
+        lastOverlayPublishAt = now
+    }
+
+    private func quantizedRegionKey(for region: NormalizedRect?) -> String {
+        guard let region else { return "screen" }
+        func q(_ value: Double) -> String {
+            let rounded = (value / 0.02).rounded() * 0.02
+            return String(format: "%.2f", rounded)
+        }
+        return "\(q(region.x))_\(q(region.y))_\(q(region.width))_\(q(region.height))"
+    }
+
+    private func normalizeSummaryKey(_ value: String) -> String {
+        value
+            .lowercased()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+    }
+
+    private func makeSourceFrameId(from timestamp: CMTime) -> String {
+        guard timestamp.isValid, timestamp.timescale != 0 else {
+            return "frame_\(Int(Date().timeIntervalSince1970 * 1000))"
+        }
+        let ms = Int((Double(timestamp.value) / Double(timestamp.timescale)) * 1000.0)
+        return "frame_\(ms)"
+    }
+
+    private func currentSourceFrameId(fallbackDate: Date) -> String {
+        let fallback = "frame_\(Int(fallbackDate.timeIntervalSince1970 * 1000))"
+        return featureQueue.sync {
+            let trimmed = lastSourceFrameId.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? fallback : trimmed
+        }
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func confidenceForSuggestion(_ suggestion: Suggestion) -> Double {
+        switch suggestion.priority {
+        case .critical: return 0.85
+        case .important: return 0.70
+        case .optional: return 0.55
+        }
+    }
+
+    private func actionTypeForIssue(_ issueType: IssueTypeV1, features: CoachingFeatures) -> ActionTypeV1 {
+        switch issueType {
+        case .horizonDistracts:
+            return .levelHorizon
+        case .backlightHidesSubject:
+            return .improveFrontLight
+        case .subjectNotProminentEnough:
+            return .increaseSubjectSize
+        case .subjectTooCloseToEdge, .insufficientLookSpace:
+            return actionTypeForComposition(features.composition)
+        case .backgroundCompetesWithSubject:
+            return .reduceBackgroundDistractions
+        case .sceneHasNoClearFocus, .frameVisuallyOverloaded:
+            return .changeAngle
+        }
+    }
+
+    private func actionTypeForSuggestion(_ suggestion: Suggestion, features: CoachingFeatures) -> ActionTypeV1 {
+        switch suggestion.type {
+        case .horizon:
+            return .levelHorizon
+        case .exposure, .lighting:
+            return .improveFrontLight
+        case .composition:
+            return actionTypeForComposition(features.composition)
+        case .lens:
+            return .increaseSubjectSize
+        case .other:
+            return .changeAngle
+        }
+    }
+
+    private func actionTypeForComposition(_ composition: CoachingFeatures.Composition) -> ActionTypeV1 {
+        if composition.horizontalOffset > 0.15 {
+            return .moveFrameLeft
+        }
+        if composition.horizontalOffset < -0.15 {
+            return .moveFrameRight
+        }
+        if composition.verticalOffset > 0.15 {
+            return .moveFrameDown
+        }
+        if composition.verticalOffset < -0.15 {
+            return .moveFrameUp
+        }
+        return .changeAngle
+    }
+
+    private func overlayDirectionForComposition(_ composition: CoachingFeatures.Composition) -> OverlayDirection? {
+        let action = actionTypeForComposition(composition)
+        switch action {
+        case .moveFrameLeft: return .left
+        case .moveFrameRight: return .right
+        case .moveFrameUp: return .up
+        case .moveFrameDown: return .down
+        default: return nil
         }
     }
 

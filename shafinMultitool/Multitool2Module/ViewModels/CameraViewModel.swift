@@ -18,6 +18,10 @@ final class CameraViewModel: ObservableObject {
     @Published var debugMode: Bool = false
     @Published var isPaused: Bool = false
     @Published var previewSuggestions: [Suggestion] = []
+    @Published var liveHint: LiveHintPresentation?
+    @Published var pauseCritique: PauseCritiquePresentation?
+    @Published var overlayAnnotations: [OverlayAnnotationPresentation] = []
+    @Published var legacySuggestion: Suggestion?
     
     // Debug данные
     @Published var detrDetections: [DETRDetection] = []
@@ -32,6 +36,7 @@ final class CameraViewModel: ObservableObject {
     private let analysisPipeline: AnalysisPipeline
     private var cancellables = Set<AnyCancellable>()
     private var hasRegistered = false
+    private var pauseRequestToken: UUID?
 
     init(cameraManager: CameraManager,
          analysisPipeline: AnalysisPipeline) {
@@ -45,6 +50,22 @@ final class CameraViewModel: ObservableObject {
         analysisPipeline.$currentSuggestion
             .receive(on: DispatchQueue.main)
             .assign(to: &$suggestion)
+
+        analysisPipeline.$currentSuggestion
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$legacySuggestion)
+
+        analysisPipeline.$currentLiveHint
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$liveHint)
+
+        analysisPipeline.$currentPauseCritique
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$pauseCritique)
+
+        analysisPipeline.$currentOverlayAnnotations
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$overlayAnnotations)
         
         // Подписка на features и debug данные из pipeline через таймер
         Timer.publish(every: 0.3, on: .main, in: .common)
@@ -87,13 +108,21 @@ final class CameraViewModel: ObservableObject {
     func togglePause() {
         if isPaused {
             isPaused = false
+            pauseRequestToken = nil
             cameraManager.start()
             previewSuggestions = []
+            pauseCritique = nil
+            analysisPipeline.clearPausePresentationState()
         } else {
             isPaused = true
+            let token = UUID()
+            pauseRequestToken = token
             cameraManager.stop()
-            analysisPipeline.runPreviewAnalysis { [weak self] list in
-                self?.previewSuggestions = list
+            analysisPipeline.runPauseAnalysis { [weak self] list, critique in
+                guard let self else { return }
+                guard self.isPaused, self.pauseRequestToken == token else { return }
+                self.previewSuggestions = list
+                self.pauseCritique = critique
             }
         }
     }
@@ -103,5 +132,3 @@ final class CameraViewModel: ObservableObject {
         cameraManager.switchLens(to: lens)
     }
 }
-
-

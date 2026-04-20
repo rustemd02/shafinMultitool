@@ -64,26 +64,46 @@ struct OverlayView: View {
                             canvasSize: size
                         )
                     }
+
+                    StructuredOverlayAnnotationsView(
+                        annotations: viewModel.overlayAnnotations,
+                        overlayState: overlay,
+                        canvasSize: size
+                    )
                     
                     // Стрелки-помощники
-                    let (directions, magnitude) = DirectionArrows.directions(
-                        for: viewModel.suggestion,
-                        features: viewModel.features
-                    )
-                    if !directions.isEmpty {
-                        DirectionArrows(directions: directions, magnitude: magnitude)
+                    if !viewModel.isPaused {
+                        let hasStructuredArrow = viewModel.overlayAnnotations.contains(where: { $0.kind == .arrow })
+                        if !hasStructuredArrow {
+                            let (directions, magnitude) = DirectionArrows.directions(
+                                for: viewModel.legacySuggestion,
+                                features: viewModel.features
+                            )
+                            if !directions.isEmpty {
+                                DirectionArrows(directions: directions, magnitude: magnitude)
+                            }
+                        }
                     }
                     
-                    // Подсказка (чип)
-                    SuggestionChipView(suggestion: viewModel.suggestion,
-                                       boundingBox: overlay.primaryBoundingBox,
-                                       canvasSize: size)
+                    // Live hint: новый structured path с fallback на legacy suggestion.
+                    if !viewModel.isPaused {
+                        LiveHintChipView(liveHint: viewModel.liveHint,
+                                         fallbackSuggestion: viewModel.legacySuggestion,
+                                         boundingBox: overlay.primaryBoundingBox,
+                                         canvasSize: size)
+                    }
                     
                     // Режим предпросмотра: список всех советов
                     if viewModel.isPaused {
-                        SuggestionListView(suggestions: viewModel.previewSuggestions)
-                            .padding(.bottom, 40)
-                            .frame(maxHeight: .infinity, alignment: .bottom)
+                        if let pauseCritique = viewModel.pauseCritique {
+                            PauseCritiqueCardView(critique: pauseCritique)
+                                .padding(.bottom, 24)
+                                .frame(maxHeight: .infinity, alignment: .bottom)
+                        } else {
+                            SuggestionListView(suggestions: viewModel.previewSuggestions)
+                                .padding(.bottom, 40)
+                                .frame(maxHeight: .infinity, alignment: .bottom)
+                        }
                     }
 
                     // Debug overlay
@@ -120,6 +140,55 @@ struct OverlayView: View {
     private func startUIFPSMonitoring() {
         Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
             Telemetry.shared.recordUIFrame()
+        }
+    }
+}
+
+private struct StructuredOverlayAnnotationsView: View {
+    let annotations: [OverlayAnnotationPresentation]
+    let overlayState: OverlayState
+    let canvasSize: CGSize
+
+    var body: some View {
+        ZStack {
+            ForEach(annotations) { annotation in
+                switch annotation.kind {
+                case .arrow:
+                    if let direction = annotation.direction,
+                       let arrowDirection = arrowDirection(for: direction) {
+                        DirectionArrows(
+                            directions: [arrowDirection],
+                            magnitude: CGFloat(annotation.emphasis)
+                        )
+                    }
+                case .regionHighlight:
+                    if let targetRegion = annotation.targetRegion {
+                        BBoxOverlay(
+                            boundingBox: rect(from: targetRegion),
+                            canvasSize: canvasSize
+                        )
+                        .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [10, 4]))
+                        .foregroundColor(.orange)
+                    }
+                case .horizonLine:
+                    HorizonOverlay(angle: overlayState.horizonAngle, confidence: overlayState.horizonConfidence)
+                        .stroke(style: StrokeStyle(lineWidth: 2.0, dash: [6, 4]))
+                        .foregroundColor(.cyan.opacity(0.9))
+                }
+            }
+        }
+    }
+
+    private func rect(from region: NormalizedRect) -> CGRect {
+        CGRect(x: region.x, y: region.y, width: region.width, height: region.height)
+    }
+
+    private func arrowDirection(for direction: OverlayDirection) -> ArrowDirection? {
+        switch direction {
+        case .left: return .left
+        case .right: return .right
+        case .up: return .up
+        case .down: return .down
         }
     }
 }
@@ -219,5 +288,3 @@ private extension AVCaptureVideoOrientation {
         }
     }
 }
-
-

@@ -38,7 +38,7 @@ struct NormalizedRect: Codable, Equatable, Sendable {
 
     private static func clamp01(_ value: Double) -> Double {
         guard value.isFinite else { return 0.0 }
-        min(1.0, max(0.0, value))
+        return min(1.0, max(0.0, value))
     }
 }
 
@@ -172,7 +172,7 @@ enum FixTypeV1: String, Codable, Sendable {
     case lightingAdjustment = "lighting_adjustment"
     case angleAdjustment = "angle_adjustment"
     case horizonCorrection = "horizon_correction"
-    case keepAsIs = "keep_as_is"
+    case leaveFrameAsIs = "leave_frame_as_is"
 }
 
 struct ActionGuardrail: Codable, Equatable, Sendable {

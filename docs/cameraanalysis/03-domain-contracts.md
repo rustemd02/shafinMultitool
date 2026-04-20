@@ -149,7 +149,7 @@ FixTypeV1
 - lighting_adjustment
 - angle_adjustment
 - horizon_correction
-- keep_as_is
+- leave_frame_as_is
 
 ActionGuardrail
 - requiresStillCamera: Bool (required)
