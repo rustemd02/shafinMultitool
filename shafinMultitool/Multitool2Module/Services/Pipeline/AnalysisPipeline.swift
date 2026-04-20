@@ -28,7 +28,7 @@ struct DebugData {
     var saliencyCenter: CGPoint?
 }
 
-struct LiveHintPresentation: Identifiable, Equatable {
+struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     let id: String
     let frameId: String
     let text: String
@@ -43,7 +43,7 @@ struct LiveHintPresentation: Identifiable, Equatable {
     let isFallback: Bool
 }
 
-struct PauseStrengthRow: Equatable {
+struct PauseStrengthRow: Equatable, Sendable {
     let strengthId: String
     let type: StrengthTypeV1
     let rationale: String
@@ -52,7 +52,7 @@ struct PauseStrengthRow: Equatable {
     let traceRefId: String?
 }
 
-struct PauseIssueRow: Equatable {
+struct PauseIssueRow: Equatable, Sendable {
     let issueId: String
     let type: IssueTypeV1
     let severity: Double
@@ -63,7 +63,7 @@ struct PauseIssueRow: Equatable {
     let traceRefId: String?
 }
 
-struct PauseActionRow: Equatable {
+struct PauseActionRow: Equatable, Sendable {
     let actionId: String
     let actionType: ActionTypeV1
     let priority: Int
@@ -74,7 +74,7 @@ struct PauseActionRow: Equatable {
     let traceRefId: String?
 }
 
-struct PauseCritiquePresentation: Equatable {
+struct PauseCritiquePresentation: Equatable, Sendable {
     let frameId: String
     let verdict: FrameVerdict
     let summaryId: String
@@ -90,7 +90,7 @@ struct PauseCritiquePresentation: Equatable {
     let fallbackUsed: Bool
 }
 
-struct OverlayAnnotationPresentation: Identifiable, Equatable {
+struct OverlayAnnotationPresentation: Identifiable, Equatable, Sendable {
     let id: String
     let kind: OverlayKind
     let direction: OverlayDirection?
@@ -1418,6 +1418,7 @@ final class AnalysisPipeline: ObservableObject {
     private let sceneSemanticsAnalyzer = SceneSemanticsAnalyzer()
     private let frameCritiqueEngine = FrameCritiqueEngine()
     private let recommendationPlanner = RecommendationPlanner()
+    private let pauseReasoningCoordinator: PauseReasoningCoordinator
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -1444,12 +1445,19 @@ final class AnalysisPipeline: ObservableObject {
     private var liveHintShownAt: Date = .distantPast
     private var lastOverlayPublishAt: Date = .distantPast
     private var pauseAnalysisRevision: Int = 0
+    private var pauseReasoningTask: Task<Void, Never>?
+    private var lastRefinedPauseFrameId: String?
+    private var currentPauseTraceBundle: ExplainabilityTraceBundle?
 
     private var suggestionCancellable: AnyCancellable?
     private let minLiveHintHold: TimeInterval = 1.2
     private let liveHintConfidenceDelta: Double = 0.12
     private let liveHintTextOnlyConfidenceDelta: Double = 0.08
     private let maxOverlayHz: Double = 8.0
+
+    init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider()) {
+        self.pauseReasoningCoordinator = PauseReasoningCoordinator(provider: reasoningProvider)
+    }
     
     var currentFeatures: CoachingFeatures {
         featureQueue.sync { features }
@@ -1843,6 +1851,17 @@ final class AnalysisPipeline: ObservableObject {
         featureQueue.sync {
             pauseAnalysisRevision += 1
         }
+        if pauseReasoningTask != nil {
+            os_log(
+                "reasoning.cancel.pause_exit",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .debug
+            )
+        }
+        pauseReasoningTask?.cancel()
+        pauseReasoningTask = nil
+        lastRefinedPauseFrameId = nil
+        currentPauseTraceBundle = nil
         DispatchQueue.main.async {
             self.currentPauseCritique = nil
             self.currentOverlayAnnotations = []
@@ -1855,6 +1874,10 @@ final class AnalysisPipeline: ObservableObject {
             completion([], nil)
             return
         }
+        pauseReasoningTask?.cancel()
+        pauseReasoningTask = nil
+        lastRefinedPauseFrameId = nil
+        currentPauseTraceBundle = nil
         let revision = featureQueue.sync { () -> Int in
             pauseAnalysisRevision += 1
             return pauseAnalysisRevision
@@ -1922,11 +1945,14 @@ final class AnalysisPipeline: ObservableObject {
                     )
                     self.currentPauseCritique = nil
                     self.currentOverlayAnnotations = fallbackAnnotations
+                    self.currentPauseTraceBundle = nil
                     completion(list, nil)
                     return
                 }
 
                 let pauseCritique = self.makePauseCritiquePresentation(critique: critique, plan: plan)
+                let deterministicTrace = self.makeDeterministicPauseTraceBundle(critique: critique, plan: plan)
+                self.currentPauseTraceBundle = deterministicTrace
                 self.currentPauseCritique = pauseCritique
                 let pauseAnnotations = self.makeOverlayAnnotations(
                     frameId: snapshot.frameId,
@@ -1938,6 +1964,15 @@ final class AnalysisPipeline: ObservableObject {
                 )
                 self.currentOverlayAnnotations = pauseAnnotations
                 completion(list, pauseCritique)
+
+                let reasoningRequest = self.makePauseReasoningRequest(
+                    frameId: snapshot.frameId,
+                    critique: critique,
+                    plan: plan,
+                    pauseDraft: pauseCritique,
+                    trace: deterministicTrace
+                )
+                self.schedulePauseReasoningRefinement(request: reasoningRequest, revision: revision)
             }
         }
     }
@@ -2152,6 +2187,360 @@ final class AnalysisPipeline: ObservableObject {
             traceRootIds: critique.traceRefs,
             fallbackUsed: critique.fallbackUsed
         )
+    }
+
+    private func makePauseReasoningRequest(frameId: String,
+                                           critique: CritiqueReport,
+                                           plan: RecommendationPlan,
+                                           pauseDraft: PauseCritiquePresentation,
+                                           trace: ExplainabilityTraceBundle?) -> ReasoningRequest {
+        let requestId = "reasoning_\(frameId)_\(Int(Date().timeIntervalSince1970 * 1000))"
+        let providerConfigVersion = ProcessInfo.processInfo.environment["CAMERA_REASONING_PROVIDER"] ?? "disabled"
+        return ReasoningRequest(
+            requestId: requestId,
+            frameId: frameId,
+            mode: .pause,
+            locale: Locale.current.identifier,
+            critique: critique,
+            plan: plan,
+            trace: trace,
+            pausePresentationDraft: pauseDraft,
+            constraints: .pauseDefault,
+            correlation: ReasoningCorrelation(
+                pipelineVersion: "camera_analysis_v1",
+                contractVersion: "camera_analysis_contracts_v1",
+                providerConfigVersion: providerConfigVersion
+            )
+        )
+    }
+
+    private func schedulePauseReasoningRefinement(request: ReasoningRequest, revision: Int) {
+        pauseReasoningTask?.cancel()
+        pauseReasoningTask = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let result = await self.pauseReasoningCoordinator.refine(request: request)
+            guard !Task.isCancelled else { return }
+
+            switch result {
+            case let .skipped(reason, diagnostics):
+                let event = reason == "provider_unavailable" ? "reasoning.skipped.unavailable" : "reasoning.skipped"
+                os_log(
+                    "%{public}@ (%{public}@)",
+                    log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                    type: .debug,
+                    event,
+                    diagnostics.fallbackReason ?? reason
+                )
+                return
+            case let .failed(reason, diagnostics):
+                let event: String
+                let logType: OSLogType
+                if reason == "timeout" {
+                    event = "reasoning.fail.timeout"
+                    logType = .error
+                } else if reason == "canceled_due_to_state_change" {
+                    event = "reasoning.cancel.pause_exit"
+                    logType = .debug
+                } else {
+                    event = "reasoning.fail.runtime"
+                    logType = .error
+                }
+                os_log(
+                    "%{public}@ (%{public}@)",
+                    log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                    type: logType,
+                    event,
+                    diagnostics.fallbackReason ?? reason
+                )
+                return
+            case let .rejected(violations, diagnostics):
+                let event = violations.contains(.modeNotPause)
+                    ? "reasoning.policy_violation.mode_not_pause"
+                    : "reasoning.fail.validation"
+                os_log(
+                    "%{public}@ (%{public}@), reason=%{public}@",
+                    log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                    type: .debug,
+                    event,
+                    violations.map(\.rawValue).joined(separator: ","),
+                    diagnostics.fallbackReason ?? "validation_failed"
+                )
+                return
+            case let .refined(presentation, optionalTraceItems, diagnostics):
+                let isCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
+                guard isCurrentRevision else { return }
+
+                await MainActor.run {
+                    guard self.lastRefinedPauseFrameId != request.frameId else { return }
+                    guard let current = self.currentPauseCritique, current.frameId == request.frameId else { return }
+                    let merged = self.mergePauseCritiqueRefinement(current: current, refined: presentation)
+                    guard merged != current else { return }
+                    self.currentPauseCritique = merged
+                    if let baseTrace = self.currentPauseTraceBundle ?? request.trace,
+                       baseTrace.frameId == request.frameId {
+                        self.currentPauseTraceBundle = self.mergeOptionalReasoningTrace(
+                            optionalTraceItems,
+                            into: baseTrace
+                        )
+                    }
+                    self.lastRefinedPauseFrameId = request.frameId
+                    os_log(
+                        "Applied pause reasoning refinement for frame=%{public}@ (%{public}@)",
+                        log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                        type: .debug,
+                        request.frameId,
+                        diagnostics.fallbackReason ?? "ok"
+                    )
+                }
+            }
+        }
+    }
+
+    private func mergePauseCritiqueRefinement(current: PauseCritiquePresentation,
+                                              refined: PauseCritiquePresentation) -> PauseCritiquePresentation {
+        let refinedStrengthRationales = Dictionary(uniqueKeysWithValues: refined.strengths.map { ($0.strengthId, $0.rationale) })
+        let refinedIssueRationales = Dictionary(uniqueKeysWithValues: refined.issues.map { ($0.issueId, $0.rationale) })
+        let refinedActionOutcomes = Dictionary(uniqueKeysWithValues: refined.actions.map { ($0.actionId, $0.expectedOutcome) })
+
+        let mergedStrengths = current.strengths.map { row in
+            PauseStrengthRow(
+                strengthId: row.strengthId,
+                type: row.type,
+                rationale: refinedStrengthRationales[row.strengthId] ?? row.rationale,
+                confidence: row.confidence,
+                supportingRegion: row.supportingRegion,
+                traceRefId: row.traceRefId
+            )
+        }
+        let mergedIssues = current.issues.map { row in
+            PauseIssueRow(
+                issueId: row.issueId,
+                type: row.type,
+                severity: row.severity,
+                confidence: row.confidence,
+                rationale: refinedIssueRationales[row.issueId] ?? row.rationale,
+                affectedRegion: row.affectedRegion,
+                suggestedFixTypes: row.suggestedFixTypes,
+                traceRefId: row.traceRefId
+            )
+        }
+        let mergedActions = current.actions.map { row in
+            PauseActionRow(
+                actionId: row.actionId,
+                actionType: row.actionType,
+                priority: row.priority,
+                linkedIssueIds: row.linkedIssueIds,
+                expectedOutcome: refinedActionOutcomes[row.actionId] ?? row.expectedOutcome,
+                targetRegion: row.targetRegion,
+                overlayHintId: row.overlayHintId,
+                traceRefId: row.traceRefId
+            )
+        }
+
+        return PauseCritiquePresentation(
+            frameId: current.frameId,
+            verdict: current.verdict,
+            summaryId: current.summaryId,
+            shortVerdict: refined.shortVerdict,
+            whyGood: refined.whyGood ?? current.whyGood,
+            whyProblematic: refined.whyProblematic ?? current.whyProblematic,
+            strengths: mergedStrengths,
+            issues: mergedIssues,
+            actions: mergedActions,
+            noChangeRationale: refined.noChangeRationale ?? current.noChangeRationale,
+            assumptions: current.assumptions,
+            traceRootIds: current.traceRootIds,
+            fallbackUsed: current.fallbackUsed
+        )
+    }
+
+    private func makeDeterministicPauseTraceBundle(critique: CritiqueReport,
+                                                   plan: RecommendationPlan) -> ExplainabilityTraceBundle {
+        let baseTimestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let frameId = critique.frameId
+        let observationId = "trc_\(frameId)_obs_semantics"
+
+        var items: [ExplainabilityTraceItem] = [
+            ExplainabilityTraceItem(
+                id: observationId,
+                frameId: frameId,
+                mode: critique.mode,
+                stage: .observation,
+                sourceKind: .semanticsSignal,
+                certainty: .probabilistic,
+                confidence: 0.95,
+                timestampMs: baseTimestamp,
+                statement: "Собраны базовые сигналы композиции и читаемости сцены.",
+                evidenceKeys: [],
+                dependsOn: [],
+                links: [],
+                audiences: [.core, .debug]
+            )
+        ]
+
+        var nextTimestamp = baseTimestamp + 10
+        var deterministicInterpretationByIssueId: [String: String] = [:]
+
+        let issueTraceRefs = critique.traceRefs.filter { $0.contains("_crit_i") }
+        for (index, issue) in critique.issues.enumerated() {
+            let traceId: String
+            if index < issueTraceRefs.count {
+                traceId = issueTraceRefs[index]
+            } else {
+                traceId = "trc_\(frameId)_crit_i\(index + 1)"
+            }
+            deterministicInterpretationByIssueId[issue.id] = traceId
+            items.append(
+                ExplainabilityTraceItem(
+                    id: traceId,
+                    frameId: frameId,
+                    mode: critique.mode,
+                    stage: .interpretation,
+                    sourceKind: .deterministicRule,
+                    certainty: .deterministic,
+                    confidence: issue.confidence,
+                    timestampMs: nextTimestamp,
+                    statement: issue.rationale,
+                    evidenceKeys: issue.evidence.map(\.key),
+                    dependsOn: [observationId],
+                    links: [TraceLink(kind: .issue, refId: issue.id)],
+                    audiences: [.core, .debug]
+                )
+            )
+            nextTimestamp += 10
+        }
+
+        let strengthTraceRefs = critique.traceRefs.filter { $0.contains("_crit_s") }
+        for (index, strength) in critique.strengths.enumerated() {
+            let traceId: String
+            if index < strengthTraceRefs.count {
+                traceId = strengthTraceRefs[index]
+            } else {
+                traceId = "trc_\(frameId)_crit_s\(index + 1)"
+            }
+            items.append(
+                ExplainabilityTraceItem(
+                    id: traceId,
+                    frameId: frameId,
+                    mode: critique.mode,
+                    stage: .interpretation,
+                    sourceKind: .deterministicRule,
+                    certainty: .deterministic,
+                    confidence: strength.confidence,
+                    timestampMs: nextTimestamp,
+                    statement: strength.rationale,
+                    evidenceKeys: strength.evidence.map(\.key),
+                    dependsOn: [observationId],
+                    links: [TraceLink(kind: .strength, refId: strength.id)],
+                    audiences: [.core, .debug]
+                )
+            )
+            nextTimestamp += 10
+        }
+
+        let summaryTraceId = critique.traceRefs.first(where: { $0.contains("_crit_summary_") })
+            ?? "trc_\(frameId)_crit_summary_main"
+        items.append(
+            ExplainabilityTraceItem(
+                id: summaryTraceId,
+                frameId: frameId,
+                mode: critique.mode,
+                stage: .interpretation,
+                sourceKind: .deterministicRule,
+                certainty: .deterministic,
+                confidence: critique.verdictConfidence,
+                timestampMs: nextTimestamp,
+                statement: critique.summary.shortVerdict,
+                evidenceKeys: [],
+                dependsOn: [observationId],
+                links: [TraceLink(kind: .summary, refId: critique.summary.id)],
+                audiences: [.core, .debug]
+            )
+        )
+        nextTimestamp += 10
+
+        for (index, action) in allPlanActions(plan).enumerated() {
+            let depId = action.linkedIssueIds
+                .lazy
+                .compactMap { deterministicInterpretationByIssueId[$0] }
+                .first ?? summaryTraceId
+            let depConfidence = items.first(where: { $0.id == depId })?.confidence ?? critique.verdictConfidence
+            let actionConfidence = min(plan.planConfidence, depConfidence + 0.1)
+
+            var links = [TraceLink(kind: .action, refId: action.id)]
+            if let overlayId = action.overlayHint?.id {
+                links.append(TraceLink(kind: .overlay, refId: overlayId))
+            }
+
+            items.append(
+                ExplainabilityTraceItem(
+                    id: "trc_\(frameId)_rec_a\(index + 1)",
+                    frameId: frameId,
+                    mode: critique.mode,
+                    stage: .recommendation,
+                    sourceKind: .plannerPolicy,
+                    certainty: .deterministic,
+                    confidence: actionConfidence,
+                    timestampMs: nextTimestamp,
+                    statement: action.expectedOutcome,
+                    evidenceKeys: [],
+                    dependsOn: [depId],
+                    links: links,
+                    audiences: [.core, .debug]
+                )
+            )
+            nextTimestamp += 10
+        }
+
+        let bundle = ExplainabilityTraceBundle(
+            frameId: frameId,
+            mode: critique.mode,
+            items: items,
+            rootSummaryIds: [summaryTraceId]
+        )
+        if !bundle.validate(critiqueReport: critique, recommendationPlan: plan).isEmpty {
+            os_log(
+                "deterministic pause trace validation failed for frame=%{public}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .error,
+                frameId
+            )
+        }
+        return bundle
+    }
+
+    private func mergeOptionalReasoningTrace(_ optionalItems: [ExplainabilityTraceItem],
+                                             into base: ExplainabilityTraceBundle) -> ExplainabilityTraceBundle {
+        guard !optionalItems.isEmpty else { return base }
+
+        let existingIds = Set(base.items.map(\.id))
+        var seenIds: Set<String> = []
+        let appendableItems = optionalItems.filter { item in
+            guard !existingIds.contains(item.id), !seenIds.contains(item.id) else { return false }
+            seenIds.insert(item.id)
+            return true
+        }
+        guard !appendableItems.isEmpty else { return base }
+
+        var rootSummaryIds = base.rootSummaryIds
+        var knownRootIds = Set(rootSummaryIds)
+        for item in appendableItems where item.links.contains(where: { $0.kind == .summary }) {
+            if !knownRootIds.contains(item.id) {
+                knownRootIds.insert(item.id)
+                rootSummaryIds.append(item.id)
+            }
+        }
+
+        return ExplainabilityTraceBundle(
+            frameId: base.frameId,
+            mode: base.mode,
+            items: base.items + appendableItems,
+            rootSummaryIds: rootSummaryIds
+        )
+    }
+
+    private func allPlanActions(_ plan: RecommendationPlan) -> [RecommendationAction] {
+        [plan.primaryAction].compactMap { $0 } + plan.secondaryActions + plan.deferredActions
     }
 
     private func makeOverlayAnnotations(frameId: String,
@@ -2693,6 +3082,31 @@ final class AnalysisPipeline: ObservableObject {
         }
     }
 }
+
+#if DEBUG
+extension AnalysisPipeline {
+    @MainActor
+    func testingPreparePauseState(critique: PauseCritiquePresentation,
+                                  traceBundle: ExplainabilityTraceBundle,
+                                  revision: Int) {
+        featureQueue.sync {
+            pauseAnalysisRevision = revision
+        }
+        currentPauseCritique = critique
+        currentPauseTraceBundle = traceBundle
+        lastRefinedPauseFrameId = nil
+    }
+
+    func testingSchedulePauseReasoningRefinement(request: ReasoningRequest, revision: Int) {
+        schedulePauseReasoningRefinement(request: request, revision: revision)
+    }
+
+    @MainActor
+    var testingPauseTraceBundle: ExplainabilityTraceBundle? {
+        currentPauseTraceBundle
+    }
+}
+#endif
 
 private final class HighStream: FrameConsumer {
     weak var pipeline: AnalysisPipeline?
