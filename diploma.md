@@ -1016,3 +1016,37 @@
 - `experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v6_seed42.jsonl` (готовый v6 prediction set, seed 42)
 - `experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v6_seed43.jsonl` (готовый v6 prediction set, seed 43)
 - `experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v6_seed44.jsonl` (готовый v6 prediction set, seed 44)
+
+---
+
+## [2026-04-20 20:28] - [Camera Analysis v1: сводка неописанных PR (PR-001, PR-004..PR-015)]
+
+### Суть изменений
+- Выполнена ретроспективная фиксация в дневнике всех PR из `cameraanalysis`-пайплайна, которые ранее не имели отдельной записи в `diploma.md` (исключая уже описанные `PR-002`, `PR-003`, `PR-007`).
+- `PR-001`: формализован baseline freeze на уровне roadmap/архитектурных документов, включая фиксацию текущего legacy flow, ограничений `live/pause` и failure modes как точки сравнения для следующих этапов.
+- `PR-004`: зафиксирован implement-ready контракт `Feature Snapshot Aggregator` с source-priority, freshness/confidence поведением и deterministic нормализацией входных сигналов в `FrameFeatureSnapshot`.
+- `PR-005/PR-006`: зафиксирован design verify для scene semantics слоя (`PrimarySubjectResolver`, `SceneTypeClassifier`, dominance/readability analyzers), включая bounded scene catalog и fallback-политику при слабом сигнале.
+- `PR-008`: описан детерминированный recommendation слой (`issue -> action`, guardrails, primary/secondary action semantics) как bridge между critique и presentation.
+- `PR-009/PR-010/PR-011`: формализована UI-интеграция нового контракта для live/pause/overlay, включая anti-flicker, stable presentation IDs, fallback path на legacy suggestions и write-scope границы интеграции.
+- `PR-012/PR-013`: оформлен reasoning boundary — `ReasoningProvider` как optional pause-only слой, append-only trace policy и запрет LLM на роль source-of-truth для raw issues/actions.
+- `PR-014`: реализован и верифицирован eval harness (`run_eval.py`, scorer/compare/adapters/tests) с paired baseline-vs-candidate прогоном, deterministic sequence-metadata валидацией и materialized report artifacts.
+- `PR-015`: зафиксирован foundation runtime feedback loop на уровне backlog-контракта (формат hard-case записей и hooks), подготовленный для параллельного запуска после стабилизации eval контура.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Без целостного описания всего PR-контура исследовательская ценность системы фрагментируется: часть изменений остаётся в коде/доках без связного объяснения причинно-следственных связей между baseline, semantic critique, UI presentation, optional reasoning и eval/release gates.
+- **Решение:** Введена единая ретроспективная сводка по неописанным PR, связывающая дизайн-контракты и реализованные компоненты в один воспроизводимый lifecycle: `baseline -> contracts -> deterministic core -> UI bridge -> optional reasoning -> eval -> runtime feedback`.
+- **Детали:** Для `PR-014` закрыты две критические implement-неопределённости: (1) baseline normalize path через явные `LegacyFeatureAdapter + LegacyEvalAdapter`, что делает `issue_f1` и `explanation_faithfulness` воспроизводимыми для legacy; (2) deterministic scoring для `live_sequence` через `sequenceMeta`, `jitterExempt`, `countsTowardStability` и contract-invalid fail при отсутствии required metadata. В совокупности это переводит сравнение quality-regressions из ad hoc интерпретации в формальный, повторяемый experimental protocol.
+
+### Ключевые файлы
+- `docs/cameraanalysis/00-overview.md` (baseline constraints и мотивация PR-001)
+- `docs/cameraanalysis/05-feature-snapshot-aggregator.md` (source-of-truth для PR-004)
+- `docs/cameraanalysis/06-scene-semantics-layer.md` (source-of-truth для PR-005/PR-006)
+- `docs/cameraanalysis/08-ui-integration.md` (source-of-truth для PR-009/PR-010/PR-011)
+- `docs/cameraanalysis/09-reasoning-provider.md` (source-of-truth для PR-012/PR-013)
+- `docs/cameraanalysis/10-eval-harness.md` (source-of-truth + reference implementation для PR-014)
+- `docs/cameraanalysis/eval/run_eval.py` (paired eval runner baseline vs candidate)
+- `docs/cameraanalysis/eval/adapters.py` (legacy baseline normalization contract)
+- `docs/cameraanalysis/eval/scorer.py` (deterministic metrics + sequence contract validation)
+- `docs/cameraanalysis/eval/compare.py` (winner selection и release recommendation)
+- `docs/cameraanalysis/eval/tests/test_scorer.py` (sequence/jitter/fix-type coverage tests)
+- `docs/cameraanalysis/11-implementation-backlog.md` (PR-001..PR-015 dependency graph, включая PR-015 foundation)

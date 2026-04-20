@@ -1,6 +1,6 @@
 # 10. Eval Harness (PR-014)
 
-Статус: design spec (source-of-truth)
+Статус: design spec (source-of-truth) + reference implementation
 
 Дата: 2026-04-20
 
@@ -145,6 +145,111 @@ python3 docs/cameraanalysis/eval/run_eval.py \
 - одинаковая scoring policy;
 - deterministic seed/write order;
 - все report files materialize-ятся в один output dir.
+- baseline путь обязан идти через `LegacyFeatureAdapter + LegacyEvalAdapter` (см. `Baseline Adapter Contract` ниже), без ad-hoc scorer shortcuts.
+- для `live_sequence` scorer обязан использовать deterministic metadata из `sequenceMeta` и frame-level flags (`jitterExempt`, `countsTowardStability`) из `Sequence Case Extension` ниже.
+
+## Baseline Adapter Contract
+
+Чтобы paired compare был исполним для `legacy_suggestion_engine`, eval harness обязан иметь явный deterministic adapter, а не ad-hoc логику внутри scorer.
+
+Минимальный baseline replay path:
+
+```text
+FrameFeatureSnapshot
+  -> LegacyFeatureAdapter
+  -> CoachingFeatures
+  -> fresh SuggestionEngine instance
+  -> legacy suggestions
+  -> LegacyEvalAdapter
+  -> LegacyEvalProjection
+  -> shared scorer
+```
+
+Обязательные правила:
+- для каждого eval case создается новый `SuggestionEngine` instance;
+- history/cooldown counters не переносятся между кейсами;
+- `live` single-frame cases используют `nextSuggestion(from:)`;
+- `pause` single-frame cases используют `rankedSuggestions(from:topN:)`;
+- `live_sequence` использует один свежий engine instance на sequence, чтобы anti-flicker/cooldown поведение было воспроизводимо внутри sequence.
+
+### `LegacyFeatureAdapter`
+
+`LegacyFeatureAdapter` детерминированно преобразует `FrameFeatureSnapshot` в `CoachingFeatures`:
+- `composition.horizontalOffset` <- `snapshot.composition.horizontalOffset`
+- `composition.verticalOffset` <- `snapshot.composition.verticalOffset`
+- `composition.saliencyLeftRightBalance` <- `snapshot.composition.saliencyLeftRightBalance`
+- `composition.saliencyTopBottomBalance` <- `snapshot.composition.saliencyTopBottomBalance`
+- `composition.subjectAreaRatio` <- `snapshot.composition.subjectAreaRatio`
+- `horizon.angle` <- `snapshot.horizon.angleDegrees`
+- `horizon.confidence` <- `snapshot.horizon.confidence`
+- `lighting.backlightIndex` <- `snapshot.lighting.backlightIndex`
+- `lighting.keyToFillRatio` <- `snapshot.lighting.keyToFillRatio ?? 1.0`
+- `lighting.exposureBiasHint` <- `snapshot.lighting.exposureBiasHint`
+- `motion.shakeLevel` <- `snapshot.motion.shakeLevel`
+- `motion.state` <- `snapshot.motion.state`
+- `subject.isFace` <- `snapshot.subjectSignals.faceDetected`
+- `subject.isPerson` <- `snapshot.subjectSignals.personDetected`
+- `subject.count` <- `snapshot.subjectSignals.personCount`
+- `subject.objectName` <- `snapshot.subjectSignals.topObjectLabel`
+- `aestheticScore` <- `snapshot.aesthetics.score`
+
+### `LegacyEvalProjection`
+
+Legacy path не обязан притворяться полным новым pipeline. Вместо этого он обязан materialize-ить deterministic normalized projection:
+
+```text
+LegacyEvalProjection
+- evalCaseId: String
+- mode: AnalysisMode
+- suggestionTypes: [SuggestionType]
+- primarySuggestionType: SuggestionType?
+- primaryActionType: ActionTypeV1?
+- proxyVerdict: FrameVerdict
+- proxyIssueTypes: [IssueTypeV1]
+- fallbackState: LegacyFallbackState
+- proxyTraceAvailable: Bool
+- proxyTraceStageCoverage: LegacyTraceCoverage
+```
+
+```text
+LegacyFallbackState
+- visible_suggestion
+- hidden_due_to_motion
+- no_suggestion
+
+LegacyTraceCoverage
+- hasObservation: Bool
+- hasInterpretation: Bool
+- hasRecommendation: Bool
+```
+
+### Proxy mapping rules
+
+`primaryActionType` обязан использовать тот же deterministic mapping, что и legacy bridge path в runtime UI.
+
+`proxyIssueTypes` задаются только по фиксированной таблице:
+- `horizon` -> `horizon_distracts`
+- `composition` -> `insufficient_look_space`, если `sceneSemantics.readability.lookSpaceAdequate == false` и `primarySubject.kind` входит в `{face, person, group}`; иначе `subject_too_close_to_edge`
+- `lighting` -> `backlight_hides_subject`, если `snapshot.lighting.backlightIndex >= 0.35`; иначе `subject_not_prominent_enough`
+- `exposure` -> `backlight_hides_subject`, если `snapshot.lighting.backlightIndex >= 0.35`; иначе `subject_not_prominent_enough`
+- `lens` -> `subject_not_prominent_enough`
+- `other` -> `scene_has_no_clear_focus`
+
+`proxyVerdict` задается только по этим правилам:
+- `hidden_due_to_motion` -> `mixed`
+- `primarySuggestionType == nil` и `mode == pause` -> `good`
+- `primarySuggestionType == nil` и `mode == live` -> `good`
+- `primarySuggestionType` входит в `{horizon, composition, lighting, exposure}` -> `needs_fix`
+- `primarySuggestionType` входит в `{lens, other}` -> `mixed`
+
+`proxyTraceAvailable` и `proxyTraceStageCoverage` считаются по deterministic proxy trace:
+- если suggestion есть, adapter обязан materialize-ить:
+  - observation item из threshold-crossing feature keys;
+  - interpretation item вида `legacy heuristic raised <suggestionType>`;
+  - recommendation item из `primaryActionType`;
+- если suggestion нет, proxy trace отсутствует.
+
+Это делает baseline explanation metrics воспроизводимыми и избавляет implement-этап от скрытых adapter-решений.
 
 ## Eval Bundle Contract
 
@@ -158,6 +263,7 @@ python3 docs/cameraanalysis/eval/run_eval.py \
   "bundle_version": "camera_analysis_eval_v1",
   "contract_version": "camera_analysis_contract_v1",
   "created_at": "2026-04-20T12:00:00Z",
+  "baseline_adapter_version": "legacy_eval_adapter_v1",
   "required_inputs": [
     "feature_snapshot",
     "scene_semantics"
@@ -247,12 +353,19 @@ python3 docs/cameraanalysis/eval/run_eval.py \
 Для `live_sequence` вместо одного frozen input используется:
 
 ```text
+sequenceMeta:
+- stabilityAnchorFrame: Int?          // с какого кадра начинаем мерить time-to-stable
+- stablePrimaryAction: ActionTypeV1?  // целевое action после стабилизации
+- maxFramesToStable: Int?             // допустимое окно до правильного stable hint
+
 sequence:
 - frameOrdinal: Int
 - featureSnapshot
 - sceneSemantics
 - expectedHintState
 - expectedPrimaryAction?
+- jitterExempt: Bool                  // переходы с/на этот кадр не считаются jitter
+- countsTowardStability: Bool         // этот кадр участвует в поиске first stable correct hint
 ```
 
 `expectedHintState`:
@@ -261,7 +374,15 @@ sequence:
 - `hidden_due_to_low_confidence`
 - `confirm_good_frame`
 
-Это позволяет детерминированно измерять stability без ручного видео-review.
+Правила scoring:
+- `hint_jitter_rate` считает только смены между соседними кадрами, где оба кадра имеют `jitterExempt == false`;
+- если хотя бы один из двух соседних кадров `jitterExempt == true`, такой переход не штрафуется;
+- `frames_to_stable_correct_hint` считается только от `sequenceMeta.stabilityAnchorFrame`;
+- correct stable hint найден, когда кадр имеет `countsTowardStability == true`, `expectedHintState == visible_action` и candidate `primaryAction == stablePrimaryAction`;
+- если correct stable hint не найден до `maxFramesToStable`, sequence получает hard fail по stability metric.
+- если `sequenceMeta` или любой required frame-level flag отсутствует, harness обязан считать такой sequence contract-invalid и завершать run ошибкой валидации (а не пытаться угадывать transition policy).
+
+Это делает stability scoring детерминированным и не оставляет implement-этапу свободы интерпретации.
 
 ## Quality Metrics
 
@@ -298,6 +419,9 @@ sequence:
 
 ### `fix_type_coverage_rate`
 - объединение `suggestedFixTypes` из candidate issues покрывает `required_fix_types`.
+- применяется только к corrective-кейсам, где `required_fix_types` не пустой.
+- `required_fix_types` не должен содержать `leave_frame_as_is`; этот action относится к no-change ветке и проверяется через `good_frame_confirmation_rate` + `allowed_primary_actions`.
+- если в eval set нет corrective-кейсов с непустым `required_fix_types`, метрика помечается как `not_applicable` и не участвует в gate.
 
 ### `issue_to_action_link_rate`
 - доля кейсов, где primary action ссылается хотя бы на один issue из `required_issues`.
@@ -363,10 +487,10 @@ Composite metric для dashboard:
 
 ### `hint_jitter_rate`
 - число изменений primary live hint на sequence / длину sequence.
-- changes, допустимые по gold transition map, не штрафуются.
+- changes, затрагивающие кадры с `jitterExempt == true`, не штрафуются.
 
 ### `frames_to_stable_correct_hint`
-- через сколько кадров после прекращения motion live hint выходит на правильное действие.
+- через сколько кадров после `sequenceMeta.stabilityAnchorFrame` live hint выходит на `sequenceMeta.stablePrimaryAction`.
 
 Для `v1` эти метрики применяются только к `live_sequence` bucket'ам.
 
@@ -518,6 +642,24 @@ docs/cameraanalysis/eval/
   compare.py
   io.py
   fixtures/
+```
+
+Реализовано в текущем репозитории:
+- [run_eval.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/run_eval.py)
+- [scorer.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/scorer.py)
+- [compare.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/compare.py)
+- [adapters.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/adapters.py)
+- [eval_io.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/eval_io.py)
+- tests: [docs/cameraanalysis/eval/tests](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/tests)
+
+Smoke run:
+
+```text
+python3 docs/cameraanalysis/eval/run_eval.py \
+  --bundle docs/cameraanalysis/eval \
+  --candidate camera_analysis_v1_core \
+  --baseline legacy_suggestion_engine \
+  --output /tmp/camera_eval_demo_out
 ```
 
 Минимальные unit tests:
