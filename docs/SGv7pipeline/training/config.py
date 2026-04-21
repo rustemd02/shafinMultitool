@@ -25,6 +25,7 @@ class TrainingPhaseConfig:
     phase4_min_preference_test: int | None = None
     phase4_min_preference_win_rate_gain_pp: float | None = None
     phase4_max_pattern_share: float | None = None
+    phase4_max_family_share: float | None = None
     phase4_pattern_weight_overrides: dict[str, float] = field(default_factory=dict)
     phase4_min_family_counts: dict[str, int] = field(default_factory=dict)
     phase4_family_weight_overrides: dict[str, float] = field(default_factory=dict)
@@ -95,6 +96,7 @@ def default_phase_config(phase: str) -> TrainingPhaseConfig:
             phase4_min_preference_test=100,
             phase4_min_preference_win_rate_gain_pp=3.0,
             phase4_max_pattern_share=0.22,
+            phase4_max_family_share=None,
             phase4_pattern_weight_overrides={},
             phase4_min_family_counts={
                 "ordinal": 120,

@@ -357,9 +357,14 @@ def _build_preference_view(request: PhaseViewRequest, *, config: TrainingPhaseCo
             families.add("three_beat")
         if "same_type_markers" in tags or pattern.startswith("same_type_two_marked_objects"):
             families.add("exact_marker_identity")
+        if pattern == "open_then_pick_up_object":
+            families.add("open_then_pick_up")
+        if "give_to_third_actor" in pattern:
+            families.add("give_to_third_actor")
         return families
 
     dropped_by_pattern_cap: dict[str, int] = {}
+    dropped_by_family_cap: dict[str, int] = {}
     capped_rows = rows_sorted
     if config.phase4_max_pattern_share is not None:
         max_share = float(config.phase4_max_pattern_share)
@@ -407,6 +412,81 @@ def _build_preference_view(request: PhaseViewRequest, *, config: TrainingPhaseCo
             capped_rows.extend(kept)
         capped_rows = sorted(capped_rows, key=lambda item: str(item.get("preference_id", "")))
 
+    if config.phase4_max_family_share is not None:
+        max_share = float(config.phase4_max_family_share)
+        if not 0 < max_share <= 1:
+            raise PhaseViewBuildError(f"phase4_max_family_share must be in (0,1], got {max_share!r}")
+        ordered_rows = _stable_order(capped_rows, seed=request.seed, tag="phase4_family_cap")
+        row_by_id = {str(row.get("preference_id", "")): row for row in ordered_rows}
+        family_by_id = {
+            preference_id: _families(row)
+            for preference_id, row in row_by_id.items()
+        }
+        stable_rank = {
+            str(row.get("preference_id", "")): index
+            for index, row in enumerate(ordered_rows)
+        }
+        kept_ids = {str(row.get("preference_id", "")) for row in ordered_rows}
+
+        while True:
+            retained_ids = [preference_id for preference_id in kept_ids if preference_id in row_by_id]
+            retained_total = len(retained_ids)
+            if retained_total <= 0:
+                break
+            max_allowed = int(retained_total * max_share)
+            if max_allowed <= 0:
+                raise PhaseViewBuildError(
+                    "phase4_max_family_share is too strict for current preference pool: "
+                    f"retained_total={retained_total}, max_share={max_share}"
+                )
+
+            current_family_counts: dict[str, int] = {}
+            for preference_id in retained_ids:
+                for family in family_by_id.get(preference_id, set()):
+                    current_family_counts[family] = current_family_counts.get(family, 0) + 1
+            over_limit = [
+                family
+                for family, count in current_family_counts.items()
+                if count > max_allowed
+            ]
+            if not over_limit:
+                break
+            over_limit.sort(
+                key=lambda family: (
+                    -(current_family_counts[family] - max_allowed),
+                    -current_family_counts[family],
+                    family,
+                )
+            )
+            target_family = over_limit[0]
+            over_limit_set = set(over_limit)
+            candidates = [
+                preference_id
+                for preference_id in retained_ids
+                if target_family in family_by_id.get(preference_id, set())
+            ]
+            if not candidates:
+                raise PhaseViewBuildError(
+                    f"phase4_max_family_share could not identify a removable row for family={target_family!r}"
+                )
+            candidates.sort(
+                key=lambda preference_id: (
+                    len(family_by_id.get(preference_id, set()) & over_limit_set),
+                    len(family_by_id.get(preference_id, set())),
+                    stable_rank.get(preference_id, -1),
+                    preference_id,
+                ),
+                reverse=True,
+            )
+            victim_id = candidates[0]
+            kept_ids.remove(victim_id)
+            dropped_by_family_cap[target_family] = dropped_by_family_cap.get(target_family, 0) + 1
+
+        capped_rows = sorted(
+            (row_by_id[preference_id] for preference_id in kept_ids),
+            key=lambda item: str(item.get("preference_id", "")),
+        )
+
     min_family_counts: dict[str, int] = {str(k): int(v) for k, v in config.phase4_min_family_counts.items()}
     family_counts: dict[str, int] = {name: 0 for name in min_family_counts.keys()}
     if min_family_counts:
@@ -451,6 +531,7 @@ def _build_preference_view(request: PhaseViewRequest, *, config: TrainingPhaseCo
         "dropped_l_complexity": 0,
         "dropped_reviewed_merge": 0,
         "dropped_by_pattern_cap": dropped_by_pattern_cap,
+        "dropped_by_family_cap": dropped_by_family_cap,
         "family_counts": family_counts,
     }
     return output, meta
@@ -516,6 +597,7 @@ def build_phase_view(request: PhaseViewRequest) -> dict[str, Any]:
             "phase4_min_preference_test": config.phase4_min_preference_test,
             "phase4_min_preference_win_rate_gain_pp": config.phase4_min_preference_win_rate_gain_pp,
             "phase4_max_pattern_share": config.phase4_max_pattern_share,
+            "phase4_max_family_share": config.phase4_max_family_share,
             "phase4_pattern_weight_overrides": config.phase4_pattern_weight_overrides,
             "phase4_min_family_counts": config.phase4_min_family_counts,
             "phase4_family_weight_overrides": config.phase4_family_weight_overrides,

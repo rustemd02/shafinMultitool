@@ -334,7 +334,7 @@ def _collect_slice_metrics(
     cases: list[dict[str, Any]],
     runtime_policy_snapshot: dict[str, Any],
     require_both_slices: bool,
-) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, int], list[str]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, int], list[str], dict[str, list[dict[str, Any]]]]:
     rows = _read_jsonl(predictions_jsonl)
     by_case: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -371,6 +371,7 @@ def _collect_slice_metrics(
 
     out_flat: dict[str, Any] = {}
     out_rows: list[dict[str, Any]] = []
+    case_results_by_slice: dict[str, list[dict[str, Any]]] = {}
     for slice_name in available_slices:
         predicted_by_case: dict[str, dict[str, Any] | None] = {}
         for case in cases:
@@ -388,6 +389,10 @@ def _collect_slice_metrics(
         metrics = scored.get("set_metrics", {}).get("overall", {}).get("metrics", {})
         if not isinstance(metrics, dict):
             metrics = {}
+        case_results = scored.get("case_results", [])
+        if not isinstance(case_results, list):
+            case_results = []
+        case_results_by_slice[slice_name] = [row for row in case_results if isinstance(row, dict)]
         row_payload: dict[str, Any] = {
             "checkpoint_id": checkpoint_id,
             "slice": slice_name,
@@ -398,7 +403,7 @@ def _collect_slice_metrics(
             out_flat[f"slice.{slice_name}.{metric_name}"] = value
             row_payload[metric_name] = value
         out_rows.append(row_payload)
-    return out_flat, out_rows, reason_counts, available_slices
+    return out_flat, out_rows, reason_counts, available_slices, case_results_by_slice
 
 
 def _write_csv(rows: list[dict[str, Any]], output_path: Path) -> None:
@@ -413,6 +418,13 @@ def _write_csv(rows: list[dict[str, Any]], output_path: Path) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
+
+
+def _write_jsonl(rows: list[dict[str, Any]], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
 
 
 def _build_markdown_report(
@@ -1005,9 +1017,11 @@ def main() -> int:
                 _run(compare_cmd)
 
     # 3) AGGREGATION
+    aggregate_dir = output_dir / "aggregate"
     run_rows: list[dict[str, Any]] = []
     slice_rows: list[dict[str, Any]] = []
     reason_rows: list[dict[str, Any]] = []
+    slice_case_result_payloads: list[tuple[Path, list[dict[str, Any]]]] = []
     eval_cases_path = eval_bundle_dir / "eval_cases.jsonl"
     runtime_policy_path = eval_bundle_dir / "runtime_policy_snapshot.json"
     can_recompute_slices = eval_cases_path.exists() and runtime_policy_path.exists()
@@ -1042,7 +1056,7 @@ def main() -> int:
         }
         row.update(_collect_score_metrics(spec.report_dir))
         if can_recompute_slices and spec.predictions_jsonl.exists():
-            slice_flat, per_slice_rows, reason_counts, available_slices = _collect_slice_metrics(
+            slice_flat, per_slice_rows, reason_counts, available_slices, case_results_by_slice = _collect_slice_metrics(
                 predictions_jsonl=spec.predictions_jsonl,
                 checkpoint_id=spec.checkpoint_id,
                 cases=eval_cases,
@@ -1052,10 +1066,21 @@ def main() -> int:
             row.update(slice_flat)
             row["slice_available"] = ",".join(available_slices)
             for item in per_slice_rows:
+                slice_name = str(item.get("slice", "")).strip()
+                case_results_jsonl = (
+                    aggregate_dir
+                    / "slice_case_results"
+                    / _safe_key(spec.model_id)
+                    / f"seed_{spec.seed}"
+                    / f"{slice_name}_case_results.jsonl"
+                )
+                if slice_name:
+                    slice_case_result_payloads.append((case_results_jsonl, case_results_by_slice.get(slice_name, [])))
                 slice_rows.append(
                     {
                         "model_id": spec.model_id,
                         "seed": spec.seed,
+                        "case_results_jsonl": str(case_results_jsonl),
                         **item,
                     }
                 )
@@ -1099,13 +1124,14 @@ def main() -> int:
             baseline_model_id=baseline_model_id,
         )
 
-    aggregate_dir = output_dir / "aggregate"
     _write_csv(run_rows, aggregate_dir / "runs_scored.csv")
     _write_csv(model_summary_rows, aggregate_dir / "model_summary.csv")
     _write_csv(pair_rows, aggregate_dir / "pairwise_compare.csv")
     _write_csv(slice_rows, aggregate_dir / "model_slice_summary.csv")
     _write_csv(slice_model_summary_rows, aggregate_dir / "model_slice_summary_by_model.csv")
     _write_csv(reason_rows, aggregate_dir / "slice_reason_codes.csv")
+    for path, rows in slice_case_result_payloads:
+        _write_jsonl(rows, path)
     _write_csv(slice_gate_rows, aggregate_dir / "slice_gate_results.csv")
     if slice_gate_winner is not None:
         (aggregate_dir / "slice_gate_winner.json").write_text(
@@ -1123,6 +1149,7 @@ def main() -> int:
         "total_pairwise_rows": len(pair_rows),
         "total_slice_rows": len(slice_rows),
         "total_slice_reason_rows": len(reason_rows),
+        "total_slice_case_result_files": len(slice_case_result_payloads),
         "slice_recompute_enabled": can_recompute_slices,
         "slice_gate_baseline_model_id": baseline_model_id or None,
         "slice_gate_rows": len(slice_gate_rows),

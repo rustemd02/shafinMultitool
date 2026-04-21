@@ -272,6 +272,122 @@ class TestPhaseView(unittest.TestCase):
                     )
                 )
 
+    def test_phase4_supports_iter3_open_and_handoff_families(self) -> None:
+        rows = [
+            _preference_row(
+                "pref-open-1",
+                pattern_name="open_then_pick_up_object",
+                semantic_tags=["container_interaction"],
+            ),
+            _preference_row(
+                "pref-open-2",
+                pattern_name="open_then_pick_up_object",
+                semantic_tags=["container_interaction"],
+            ),
+            _preference_row(
+                "pref-give-1",
+                pattern_name="dialogue_then_pick_up_object_then_give_to_third_actor",
+                semantic_tags=["multi_beat", "ordinal_reference"],
+            ),
+            _preference_row(
+                "pref-give-2",
+                pattern_name="first_pick_up_object_then_give_to_third_actor",
+                semantic_tags=["ordinal_reference"],
+            ),
+        ]
+        config = TrainingPhaseConfig(
+            **{
+                **default_phase_config("phase4").__dict__,
+                "phase4_max_pattern_share": 1.0,
+                "phase4_min_family_counts": {
+                    "open_then_pick_up": 2,
+                    "give_to_third_actor": 2,
+                },
+                "phase4_family_weight_overrides": {
+                    "open_then_pick_up": 1.2,
+                    "give_to_third_actor": 1.25,
+                },
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sft = tmp / "sft_train.jsonl"
+            pref = tmp / "preference_train.jsonl"
+            out = tmp / "out"
+            _write_jsonl(sft, [_sft_row("sft-1", bucket="core", complexity="M", tokens=120)])
+            _write_jsonl(pref, rows)
+            result = build_phase_view(
+                PhaseViewRequest(
+                    phase="phase4",
+                    sft_train_jsonl=sft,
+                    preference_train_jsonl=pref,
+                    output_dir=out,
+                    seed=20260414,
+                    phase_config=config,
+                )
+            )
+            self.assertEqual(result["counts"]["family_counts"]["open_then_pick_up"], 2)
+            self.assertEqual(result["counts"]["family_counts"]["give_to_third_actor"], 2)
+
+    def test_phase4_family_cap_limits_cross_pattern_ordinal_skew(self) -> None:
+        rows = []
+        for idx in range(4):
+            rows.append(
+                _preference_row(
+                    f"pref-ord-{idx}",
+                    pattern_name="ordinal_first_second_third",
+                    semantic_tags=["ordinal_reference"],
+                )
+            )
+        for idx in range(4):
+            rows.append(
+                _preference_row(
+                    f"pref-same-{idx}",
+                    pattern_name="same_type_two_marked_objects",
+                    semantic_tags=["same_type_markers", "ordinal_reference"],
+                )
+            )
+        for idx in range(4):
+            rows.append(
+                _preference_row(
+                    f"pref-open-{idx}",
+                    pattern_name="open_then_pick_up_object",
+                    semantic_tags=["container_interaction"],
+                )
+            )
+
+        config = TrainingPhaseConfig(
+            **{
+                **default_phase_config("phase4").__dict__,
+                "phase4_max_pattern_share": 1.0,
+                "phase4_max_family_share": 0.50,
+                "phase4_min_family_counts": {},
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sft = tmp / "sft_train.jsonl"
+            pref = tmp / "preference_train.jsonl"
+            out = tmp / "out"
+            _write_jsonl(sft, [_sft_row("sft-1", bucket="core", complexity="M", tokens=120)])
+            _write_jsonl(pref, rows)
+            result = build_phase_view(
+                PhaseViewRequest(
+                    phase="phase4",
+                    sft_train_jsonl=sft,
+                    preference_train_jsonl=pref,
+                    output_dir=out,
+                    seed=20260414,
+                    phase_config=config,
+                )
+            )
+            selected = int(result["counts"]["selected_records"])
+            ordinal_count = int(result["counts"]["family_counts"].get("ordinal", 0))
+            self.assertLessEqual(ordinal_count, int(selected * 0.50))
+            self.assertGreater(result["counts"]["dropped_by_family_cap"].get("ordinal", 0), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
