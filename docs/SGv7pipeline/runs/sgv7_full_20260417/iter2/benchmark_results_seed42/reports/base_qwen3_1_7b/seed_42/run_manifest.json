@@ -1,0 +1,122 @@
+{
+  "bucket_case_counts": {
+    "exact_marker_identity_cases": 54,
+    "marked_object_morphology": 54,
+    "ordinal_cases": 137,
+    "reviewed_merge_cases": 0,
+    "same_type_markers": 30,
+    "three_beat_cases": 40,
+    "unsupported_action_cases": 0
+  },
+  "contract_summary": {
+    "contract_version": "sg_v7_contract_v1",
+    "snapshot_hashes": {
+      "decoding_config_snapshot.json": "f9779b62a87f9d0c163c51a41bf61e8c23e2223699acdbbf5f7ebba2bbc5d246",
+      "grammar_constraint_snapshot.json": "a1f2fc00a384faa69e8177cf9077b50b7e0086cba8f35abbf6fde9ad47af4945",
+      "normalization_policy_snapshot.json": "678bdc22303cae685242a0356ccfddcefb3207d99d05909f80199a6670cf9f71",
+      "prompt_contract_snapshot.json": "6b8fbd0d86cbf3ca09d36516a7e8ec22a96c14b9badde3bdae113dc91a7f940b",
+      "runtime_policy_snapshot.json": "75374ebdf4fa5bf39a9a21543ad6e96fa4d53318d07e25c6ce68411311c19335"
+    },
+    "snapshot_meta": {
+      "decoding_config_snapshot.json": {
+        "generated_at": "2026-04-19T16:48:33.234948+00:00",
+        "max_output_tokens": 4096,
+        "snapshot_id": "sgv7_decoding_v1",
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "grammar_constraint_snapshot.json": {
+        "generated_at": "2026-04-19T16:48:33.234948+00:00",
+        "grammar_family": "SceneScript JSON schema",
+        "snapshot_id": "sgv7_grammar_constraint_v1"
+      },
+      "normalization_policy_snapshot.json": {
+        "generated_at": "2026-04-19T16:48:33.234948+00:00",
+        "snapshot_id": "sgv7_normalization_policy_v1",
+        "source_text_normalization": "strict_whitespace_and_noise_filters"
+      },
+      "prompt_contract_snapshot.json": {
+        "contract_version": "sg_v7_contract_v1",
+        "generated_at": "2026-04-19T16:48:33.234948+00:00",
+        "note": "Frozen prompt contract snapshot for scientific benchmark eval_bundle_v1.",
+        "snapshot_id": "sgv7_prompt_contract_v1"
+      },
+      "runtime_policy_snapshot.json": {
+        "confidence_model": {
+          "action_weight": 0.05,
+          "actor_weight": 0.1,
+          "base": 0.5,
+          "max_action_bonus": 5,
+          "max_actor_bonus": 3,
+          "max_object_bonus": 5,
+          "missing_action_penalty": 0.1,
+          "object_weight": 0.05
+        },
+        "generated_at": "2026-04-19T16:48:33.234948+00:00",
+        "snapshot_id": "sgv7_runtime_policy_mirror_v1"
+      }
+    }
+  },
+  "overall_metrics": {
+    "case_count": 262,
+    "metrics": {
+      "action_recall": 0.0,
+      "average_target_length": 179.14503816793894,
+      "beat_count_accuracy": 0.1717557251908397,
+      "canonical_parse_rate": 0.42748091603053434,
+      "case_strict_success_rate": 0.0,
+      "chronology_phase_accuracy": 0.0,
+      "dangling_target_rate": 0.0,
+      "described_action_precision": 1.0,
+      "exact_marked_object_id_accuracy": 0.0,
+      "json_valid_rate": 0.42748091603053434,
+      "llm_accept_rate": 0.0,
+      "llm_merge_rate": 0.0,
+      "llm_reject_rate": 1.0,
+      "marked_object_recall": 0.0,
+      "ordinal_actor_binding_accuracy": 0.0,
+      "prediction_action_count_mean": 0.0,
+      "prediction_beat_count_mean": 0.5534351145038168,
+      "runtime_fallback_rate": 1.0,
+      "schema_valid_rate": 0.003816793893129771,
+      "target_resolution_accuracy": 0.0
+    },
+    "supports": {
+      "actions_expected": 713,
+      "beat_cases": 262,
+      "cases": 262,
+      "chronology_cases": 262,
+      "marked_refs": 84,
+      "ordinal_refs": 576,
+      "policy_cases": 262,
+      "required_target_actions": 0,
+      "target_actions": 585
+    },
+    "top_failure_clusters": [
+      {
+        "cluster_id": "synthetic_heldout::schema_invalid::none",
+        "count": 85
+      },
+      {
+        "cluster_id": "hard_heldout::json_invalid::ordinal_cases",
+        "count": 56
+      },
+      {
+        "cluster_id": "real_runtime::json_invalid::exact_marker_identity_cases",
+        "count": 54
+      }
+    ]
+  },
+  "run_metadata": {
+    "bundle_id": "sgv7_eval_bundle_v1",
+    "bundle_version": "eval_bundle_v1",
+    "checkpoint_id": "base_qwen3_1_7b_seed42",
+    "contract_version": "sg_v7_contract_v1",
+    "decoding_snapshot_hash": "f9779b62a87f9d0c163c51a41bf61e8c23e2223699acdbbf5f7ebba2bbc5d246",
+    "grammar_snapshot_hash": "a1f2fc00a384faa69e8177cf9077b50b7e0086cba8f35abbf6fde9ad47af4945",
+    "normalization_snapshot_hash": "678bdc22303cae685242a0356ccfddcefb3207d99d05909f80199a6670cf9f71",
+    "prompt_snapshot_hash": "6b8fbd0d86cbf3ca09d36516a7e8ec22a96c14b9badde3bdae113dc91a7f940b",
+    "runtime_policy_snapshot_hash": "75374ebdf4fa5bf39a9a21543ad6e96fa4d53318d07e25c6ce68411311c19335",
+    "seed": 20260419
+  }
+}

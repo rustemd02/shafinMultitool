@@ -1,0 +1,10 @@
+{
+  "total": 209,
+  "json_parse_rate": 1.0,
+  "schema_valid_rate": 0.5502392344497608,
+  "exact_match_rate": 0.0,
+  "actor_count_match_rate": 0.8133971291866029,
+  "object_count_match_rate": 0.2583732057416268,
+  "beat_count_match_rate": 0.3492822966507177,
+  "action_count_match_rate": 0.35406698564593303
+}

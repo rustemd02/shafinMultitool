@@ -1,0 +1,85 @@
+{
+  "critical_bucket_deltas_pp": {
+    "exact_marker_identity_cases": {
+      "chronology_phase_accuracy": 1.8518518518518516,
+      "exact_marked_object_id_accuracy": 0.0,
+      "ordinal_actor_binding_accuracy": 0.0,
+      "runtime_fallback_rate": -1.851851851851849,
+      "target_resolution_accuracy": 3.1746031746031744
+    },
+    "marked_object_morphology": {
+      "chronology_phase_accuracy": 1.8518518518518516,
+      "exact_marked_object_id_accuracy": 0.0,
+      "ordinal_actor_binding_accuracy": 0.0,
+      "runtime_fallback_rate": -1.851851851851849,
+      "target_resolution_accuracy": 3.1746031746031744
+    },
+    "ordinal_cases": {
+      "chronology_phase_accuracy": 0.7299270072992698,
+      "exact_marked_object_id_accuracy": 0.0,
+      "ordinal_actor_binding_accuracy": -0.2801120448179262,
+      "runtime_fallback_rate": -0.7299270072992803,
+      "target_resolution_accuracy": 1.36986301369863
+    },
+    "reviewed_merge_cases": {
+      "chronology_phase_accuracy": 0.0,
+      "exact_marked_object_id_accuracy": 0.0,
+      "ordinal_actor_binding_accuracy": 0.0,
+      "runtime_fallback_rate": 0.0,
+      "target_resolution_accuracy": 0.0
+    },
+    "same_type_markers": {
+      "chronology_phase_accuracy": 0.0,
+      "exact_marked_object_id_accuracy": 0.0,
+      "ordinal_actor_binding_accuracy": 0.0,
+      "runtime_fallback_rate": 0.0,
+      "target_resolution_accuracy": 0.0
+    },
+    "three_beat_cases": {
+      "chronology_phase_accuracy": 2.4999999999999996,
+      "exact_marked_object_id_accuracy": 0.0,
+      "ordinal_actor_binding_accuracy": -23.958333333333336,
+      "runtime_fallback_rate": -4.999999999999993,
+      "target_resolution_accuracy": 3.125
+    },
+    "unsupported_action_cases": {
+      "chronology_phase_accuracy": 0.0,
+      "exact_marked_object_id_accuracy": 0.0,
+      "ordinal_actor_binding_accuracy": 0.0,
+      "runtime_fallback_rate": 0.0,
+      "target_resolution_accuracy": 0.0
+    }
+  },
+  "critical_metric_deltas_pp": {
+    "chronology_phase_accuracy": 3.053435114503817,
+    "exact_marked_object_id_accuracy": 0.0,
+    "json_valid_rate": -3.053435114503822,
+    "ordinal_actor_binding_accuracy": -4.1666666666666625,
+    "runtime_fallback_rate": -0.7633587786259555,
+    "target_resolution_accuracy": 3.2478632478632488
+  },
+  "promotion_check": {
+    "candidate_non_negative_hard_net_wins": false,
+    "candidate_not_losing_real_runtime": true
+  },
+  "ties": 242,
+  "wins_baseline": 10,
+  "wins_by_set": {
+    "hard_heldout": {
+      "baseline": 8,
+      "candidate": 1,
+      "tie": 80
+    },
+    "real_runtime": {
+      "baseline": 1,
+      "candidate": 1,
+      "tie": 62
+    },
+    "synthetic_heldout": {
+      "baseline": 1,
+      "candidate": 8,
+      "tie": 100
+    }
+  },
+  "wins_candidate": 10
+}
