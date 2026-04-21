@@ -131,6 +131,79 @@ PR wave:
 - `PR-014 eval harness`
 - `PR-015 runtime feedback loop foundation`
 
+## Phase 6. Hybrid Neural Augmentation
+
+Цель:
+- усилить deterministic critique core нейросетевым evidence layer-ом без потери explainability.
+
+Задачи:
+- зафиксировать hybrid thesis и layer boundaries;
+- определить evidence taxonomy и scoring axes;
+- определить dataset schema и labeling protocol;
+- определить AVA usage policy;
+- определить compact on-device model и runtime contract.
+
+Артефакты:
+- hybrid architecture section inside [02-pipeline-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/02-pipeline-architecture.md)
+- hybrid backlog and DoD inside [11-implementation-backlog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/11-implementation-backlog.md)
+- hybrid prompts inside [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md)
+
+PR wave:
+- `PR-H01 thesis and hybrid scope freeze`
+- `PR-H02 evidence taxonomy contract`
+- `PR-H03 dataset schema and labeling guide`
+- `PR-H04 AVA usage policy and pretraining design`
+- `PR-H05 hybrid model architecture spec`
+- `PR-H06 neural evidence domain contract`
+
+## Phase 7. On-Device Hybrid Runtime
+
+Цель:
+- встроить compact neural evidence path в runtime сначала безопасно, потом полезно.
+
+Задачи:
+- подключить on-device inference wrapper;
+- сначала ввести pause-only neural evidence path;
+- затем fusion and reranking;
+- затем optional live gating.
+
+Артефакты:
+- on-device inference wrapper
+- hybrid fusion layer
+- reranking / confidence calibration policy
+
+PR wave:
+- `PR-H07 on-device inference wrapper`
+- `PR-H08 pause-only neural evidence path`
+- `PR-H09 hybrid fusion layer`
+- `PR-H10 neural reranker`
+- `PR-H11 live neural gating`
+
+## Phase 8. Gated Offloading and Thesis Demo
+
+Цель:
+- добавить deep-analysis path без потери offline-first архитектуры и подготовить демонстрацию для защиты.
+
+Задачи:
+- ввести offloading contract;
+- при необходимости подключить teacher/richer critic;
+- расширить eval для hybrid stage;
+- логировать hybrid hard cases;
+- собрать thesis demo bundle.
+
+Артефакты:
+- offloading contract
+- hybrid eval outputs
+- runtime telemetry for hybrid disagreements
+- demo scenarios
+
+PR wave:
+- `PR-H12 offloading contract`
+- `PR-H13 server / teacher critic prototype`
+- `PR-H14 hybrid eval harness`
+- `PR-H15 hybrid runtime telemetry`
+- `PR-H16 thesis demo bundle`
+
 ## Рекомендуемый порядок реализации
 
 1. `PR-001`
@@ -148,6 +221,22 @@ PR wave:
 13. `PR-013`
 14. `PR-014`
 15. `PR-015`
+16. `PR-H01`
+17. `PR-H02`
+18. `PR-H03`
+19. `PR-H04`
+20. `PR-H05`
+21. `PR-H06`
+22. `PR-H07`
+23. `PR-H08`
+24. `PR-H09`
+25. `PR-H10`
+26. `PR-H11`
+27. `PR-H12`
+28. `PR-H13`
+29. `PR-H14`
+30. `PR-H15`
+31. `PR-H16`
 
 ## Что можно запускать параллельно
 
@@ -155,6 +244,9 @@ PR wave:
 - `PR-005` + `PR-006` после `PR-004`
 - `PR-010` + `PR-011` после `PR-007` и `PR-008`
 - `PR-014` + `PR-015` после стабилизации core contracts
+- `PR-H03` + частично `PR-H04`
+- `PR-H10` + `PR-H12` после стабилизации fusion contract
+- `PR-H15` + `PR-H16` после появления первых hybrid eval outputs
 
 ## Что нельзя делать раньше времени
 
@@ -163,3 +255,7 @@ PR wave:
 - не запускать глубокий pause reasoning, пока нет fallback path;
 - не строить eval метрики до фиксации issue taxonomy;
 - не распараллеливать PR с пересекающимся write scope без явного ownership.
+- не обучать hybrid model до фиксации evidence taxonomy и rubric;
+- не пускать neural signal в `live` раньше pause-only validation;
+- не использовать `AVA` как итоговый source-of-truth для cinematic quality;
+- не строить offloading как обязательный путь для базового UX.

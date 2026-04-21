@@ -445,3 +445,375 @@ Definition of done:
 - можно воспроизводимо прогнать eval
 - есть понятный report по strengths/issues/actions/explanation faithfulness
 ```
+
+## Hybrid Stage Prompts
+
+Этот раздел нужен для следующего этапа: `deterministic + neural evidence + optional gated offloading`.
+
+Главный принцип для всех hybrid prompts:
+- не проектировать black-box judge;
+- не просить модель напрямую генерировать source-of-truth critique;
+- использовать нейросеть для structured evidence, scoring и reranking.
+
+## Prompt 9. Hybrid Research Framing Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/README.md
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/01-roadmap.md
+- docs/cameraanalysis/11-implementation-backlog.md
+- docs/cameraanalysis/13-agent-briefing-template.md
+
+PR-контекст:
+- PR: `PR-H01`
+- название: `Thesis and Hybrid Scope Freeze`
+
+Задача:
+Сформулируй research framing hybrid stage.
+
+Что нужно сделать:
+- зафиксировать hybrid thesis
+- разделить responsibilities deterministic vs neural
+- перечислить 4-6 проверяемых hypotheses
+- перечислить 5-8 главных risks
+- связать это с mobile-first и explainability
+
+Ограничения:
+- не предлагать end-to-end black-box judge как целевую архитектуру
+
+Ожидаемый результат:
+- design doc
+- thesis-ready summary
+- explicit scope boundaries
+
+Definition of done:
+- по документу понятно, зачем нужен hybrid stage и что именно будет проверяться
+```
+
+## Prompt 10. Evidence Taxonomy Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/03-domain-contracts.md
+- docs/cameraanalysis/07-critique-engine.md
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/11-implementation-backlog.md
+
+PR-контекст:
+- PR: `PR-H02`
+- название: `Evidence Taxonomy Contract`
+
+Задача:
+Спроектируй evidence taxonomy для hybrid stage.
+
+Что нужно сделать:
+- перечислить evidence heads
+- определить scoring axes
+- связать evidence с issue/action taxonomy
+- определить confidence semantics
+- разделить heads для `live` и `pause`
+
+Ограничения:
+- evidence heads должны быть интерпретируемыми
+- не подменять evidence свободным текстом
+
+Ожидаемый результат:
+- markdown contract
+- mapping examples
+- invariants
+
+Definition of done:
+- taxonomy можно использовать для dataset schema, runtime contract и fusion layer
+```
+
+## Prompt 11. Dataset and Labeling Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/01-roadmap.md
+- docs/cameraanalysis/11-implementation-backlog.md
+- docs/cameraanalysis/10-eval-harness.md
+
+PR-контекст:
+- PR: `PR-H03`
+- название: `Dataset Schema and Labeling Guide`
+
+Задача:
+Спроектируй dataset schema и labeling protocol для hybrid camera analysis.
+
+Что нужно сделать:
+- описать dataset entity schema
+- описать source buckets: public / curated / runtime hard cases
+- определить annotator guide
+- определить disagreement resolution
+- предложить minimal starter dataset
+
+Ограничения:
+- учитывать cinematic framing и shot intent
+- labels должны быть совместимы с explainable critique system
+
+Ожидаемый результат:
+- schema doc
+- labeling guide
+- example records
+- QA checklist
+
+Definition of done:
+- другой человек может начать разметку без домысливания
+```
+
+## Prompt 12. AVA Policy Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/11-implementation-backlog.md
+
+PR-контекст:
+- PR: `PR-H04`
+- название: `AVA Usage Policy and Pretraining Design`
+
+Задача:
+Определи безопасную и научно честную роль `AVA`.
+
+Что нужно сделать:
+- описать где AVA полезен
+- описать где AVA вреден
+- предложить pretraining strategy
+- предложить domain adaptation strategy
+- перечислить safeguards against misuse
+
+Ограничения:
+- не использовать AVA как финальную истину о cinematic quality
+
+Ожидаемый результат:
+- policy doc
+- pretraining note
+- risk list
+
+Definition of done:
+- по документу понятно, как использовать AVA без архитектурной ошибки
+```
+
+## Prompt 13. Hybrid Model Architecture Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/01-roadmap.md
+- docs/cameraanalysis/11-implementation-backlog.md
+
+PR-контекст:
+- PR: `PR-H05`
+- название: `Hybrid Model Architecture Spec`
+
+Задача:
+Спроектируй compact neural evidence model для iPhone.
+
+Что нужно сделать:
+- выбрать realistic backbone
+- определить input strategy
+- определить output heads
+- определить training objectives
+- определить latency/size targets
+- определить Core ML assumptions
+
+Ограничения:
+- mobile-first
+- no giant multimodal model
+- outputs are structured evidence only
+
+Ожидаемый результат:
+- architecture spec
+- deployment assumptions
+- ablation plan
+
+Definition of done:
+- можно переходить к runtime contract и inference wrapper без домысливания
+```
+
+## Prompt 14. Neural Evidence Contract Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/03-domain-contracts.md
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/11-implementation-backlog.md
+
+PR-контекст:
+- PR: `PR-H06`
+- название: `Neural Evidence Domain Contract`
+
+Задача:
+Спроектируй и/или реализуй runtime contract для neural evidence outputs.
+
+Что нужно сделать:
+- описать или реализовать `NeuralEvidenceSnapshot`
+- задать fields, ranges и confidence semantics
+- зафиксировать serialization requirements
+- покрыть invariants tests
+
+Ограничения:
+- контракт не должен зависеть от конкретного backbone
+- контракт должен быть пригоден и для on-device, и для offloaded critic
+
+Ожидаемый результат:
+- markdown contract и/или code patch
+- examples
+- tests
+
+Definition of done:
+- contract пригоден для fusion and eval without guesswork
+```
+
+## Prompt 15. On-Device Inference Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/11-implementation-backlog.md
+- docs/cameraanalysis/13-agent-briefing-template.md
+- relevant pipeline files
+
+PR-контекст:
+- PR: `PR-H07`
+- название: `On-Device Inference Wrapper`
+
+Задача:
+Реализуй on-device neural evidence path без fusion logic.
+
+Что нужно сделать:
+- подключить mockable inference provider
+- реализовать cadence policy для `live` и `pause`
+- описать fallback behavior
+- покрыть wrapper tests
+
+Ограничения:
+- не менять final critique logic
+- не внедрять server path
+- не делать neural layer обязательной для base UX
+
+Ожидаемый результат:
+- code patch
+- tests
+- integration note
+
+Definition of done:
+- runtime может получать neural evidence безопасно и отключаемо
+```
+
+## Prompt 16. Hybrid Fusion Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/07-critique-engine.md
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/11-implementation-backlog.md
+- relevant model and pipeline files
+
+PR-контекст:
+- PR: `PR-H09`
+- название: `Hybrid Fusion Layer`
+
+Задача:
+Спроектируй и/или реализуй explainable fusion between deterministic critique core and neural evidence.
+
+Что нужно сделать:
+- определить weighting policy
+- определить when neural evidence changes confidence/ranking
+- сохранить explainability trace
+- покрыть golden и degraded cases
+
+Ограничения:
+- preserve deterministic fallback
+- не превращать fusion в black box
+
+Ожидаемый результат:
+- fusion design or code patch
+- tests
+- before/after examples
+
+Definition of done:
+- влияние neural evidence можно объяснить и повторить на тестах
+```
+
+## Prompt 17. Offloading Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/11-implementation-backlog.md
+- docs/cameraanalysis/13-agent-briefing-template.md
+
+PR-контекст:
+- PR: `PR-H12`
+- название: `Offloading Contract`
+
+Задача:
+Спроектируй gated offloading для deep critique path.
+
+Что нужно сделать:
+- определить trigger policy
+- определить payload schema
+- определить privacy boundaries
+- определить role of remote critic
+- определить fallback path
+
+Ограничения:
+- offline-first behavior обязателен
+- server не source-of-truth для base UX
+
+Ожидаемый результат:
+- contract doc
+- payload examples
+- safety/fallback section
+
+Definition of done:
+- offloading можно внедрять без риска для baseline UX
+```
+
+## Prompt 18. Hybrid Eval Agent
+
+```text
+Обязательный префикс:
+Прочитай:
+- docs/cameraanalysis/10-eval-harness.md
+- docs/cameraanalysis/02-pipeline-architecture.md
+- docs/cameraanalysis/11-implementation-backlog.md
+
+PR-контекст:
+- PR: `PR-H14`
+- название: `Hybrid Eval Harness`
+
+Задача:
+Расширь eval pipeline для hybrid stage.
+
+Что нужно сделать:
+- ввести hybrid metrics
+- ввести ablation comparisons
+- ввести explainability agreement metrics
+- описать mobile system metrics
+- подготовить report template
+
+Ограничения:
+- не сводить успех системы к одному aesthetic score
+
+Ожидаемый результат:
+- eval design or code patch
+- metric definitions
+- report examples
+
+Definition of done:
+- можно сравнить deterministic-only и hybrid repeatable способом
+```

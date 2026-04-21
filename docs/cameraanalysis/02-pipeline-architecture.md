@@ -109,3 +109,112 @@ flowchart TD
 3. Сначала внедрить новый pause flow.
 4. Затем перевести live на `LiveHintAdapter`.
 5. Старый `SuggestionEngine` держать как fallback, пока новый pipeline не стабилизирован.
+
+## Hybrid Augmentation Track
+
+Следующий этап должен развивать этот же pipeline, а не создавать вторую параллельную систему.
+
+Рекомендуемый принцип:
+
+`deterministic cinematic grammar + neural evidence heads + optional gated offloading`
+
+Это означает:
+- deterministic core остается source-of-truth для issues, actions и explainable critique;
+- neural layer усиливает систему интерпретируемыми evidence factors;
+- offloading остается optional deep-analysis path, а не обязательным runtime dependency.
+
+### Что должно остаться deterministic
+
+- horizon / headroom / lead room / edge pressure;
+- subject placement and subject readability;
+- gross clutter / background competition;
+- motion / shake / obvious technical failure;
+- scene-type-aware recommendation logic;
+- final action planning and base fallback behavior.
+
+### Что стоит отдать neural layer
+
+- holistic aesthetic prior;
+- lighting quality as soft evidence;
+- depth / tonal separation cues;
+- visual harmony and production-value-like residual patterns;
+- reranking / confidence calibration в спорных случаях.
+
+### Recommended neural roles
+
+1. `Aesthetic / composition scorer`
+2. `Evidence heads`
+3. `Reranker / confidence calibrator`
+
+Главный принцип:
+- neural layer должен предсказывать structured evidence, а не source-of-truth текст совета.
+
+### Recommended evidence heads
+
+- `subject_prominence`
+- `background_clutter`
+- `balance_confidence`
+- `depth_separation`
+- `lighting_quality`
+- `face_saliency`
+- `cinematic_expressiveness`
+- `shot_type_confidence`
+
+### Как использовать AVA
+
+`AVA` уместен как `pretraining / auxiliary signal`, но не как финальный источник истины для cinematic critique, потому что:
+- это mostly photo aesthetics;
+- там нет полноценного shot intent;
+- there is strong domain shift относительно mobile live/pause coaching;
+- он слаб для actionable critique.
+
+Практический вывод:
+- `AVA` использовать для initialization;
+- собственную rubric-driven cinematic разметку использовать как task-specific слой.
+
+### Recommended hybrid data strategy
+
+1. `Public pretraining layer`
+   - `AVA`
+   - auxiliary public datasets where helpful
+2. `Curated cinematic rubric layer`
+   - собственные кадры с axes/issues/actions labels
+3. `Runtime hard-case layer`
+   - false positives / false negatives / ambiguous frames from real usage
+
+### On-device policy
+
+- `live`: только cheap and throttled neural path;
+- `pause`: richer local neural pass is allowed;
+- при деградации thermal/latency budget neural path должен деградировать мягко.
+
+### Offloading policy
+
+Offloading разрешен только если:
+- confidence низкая;
+- кадр сложный;
+- пользователь запросил deeper pause analysis;
+- local fusion дал ambiguous case.
+
+Server path не должен:
+- быть обязательным для baseline UX;
+- заменять deterministic critique core;
+- ломать offline-first mode.
+
+### Recommended fused flow
+
+```mermaid
+flowchart TD
+    A["Frame"] --> B["Deterministic Feature Pipeline"]
+    A --> C["Compact Neural Evidence Model"]
+    B --> D["Scene Semantics"]
+    C --> E["Evidence Heads"]
+    D --> F["Fusion Layer"]
+    E --> F
+    F --> G["Frame Critique Engine"]
+    G --> H["Recommendation Planner"]
+    H --> I["Live Hint / Pause Critique"]
+    F --> J["Confidence Gate"]
+    J --> K["Optional Offloaded Deep Critic"]
+    K --> I
+```

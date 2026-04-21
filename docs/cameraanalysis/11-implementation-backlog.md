@@ -457,3 +457,418 @@ Done definition:
 - `PR-007` и `PR-008`, если они меняют один и тот же critique contract;
 - `PR-009`, `PR-010`, `PR-011`, если у них общий write scope на одни и те же UI state files;
 - `PR-012` и `PR-013`, если protocol и implementation проектируются одновременно без frozen abstraction.
+
+## Hybrid Tracks
+
+## Track 11. Hybrid Thesis and Scope Freeze
+
+Задачи:
+- зафиксировать research framing hybrid stage;
+- разделить deterministic и neural responsibilities;
+- определить target hypotheses и risks.
+
+Done definition:
+- есть explicit hybrid thesis;
+- boundaries rules vs neural зафиксированы;
+- есть список проверяемых гипотез.
+
+## Track 12. Evidence Taxonomy and Rubric
+
+Задачи:
+- определить evidence heads;
+- определить scoring axes;
+- определить rubric-driven labeling basis;
+- связать axes с issues/actions.
+
+Done definition:
+- taxonomy пригодна для data labeling, runtime outputs и eval;
+- evidence heads интерпретируемы;
+- mapping к issues/actions зафиксирован.
+
+## Track 13. Dataset and Labeling Protocol
+
+Задачи:
+- определить dataset schema;
+- определить annotator guide;
+- определить disagreement/adjudication rules;
+- определить minimal starter set and hard-case policy.
+
+Done definition:
+- по документу можно начинать разметку без домысливания;
+- есть example records;
+- есть QA rules для labels.
+
+## Track 14. Neural Model Design
+
+Задачи:
+- определить compact mobile-capable backbone;
+- определить input/output policy;
+- определить AVA usage policy;
+- определить losses and deployment constraints.
+
+Done definition:
+- архитектура модели пригодна для Core ML;
+- outputs ограничены structured evidence;
+- роль `AVA` ограничена и не вводит в заблуждение.
+
+## Track 15. On-Device Hybrid Runtime
+
+Задачи:
+- подключить inference wrapper;
+- сначала ввести pause-only neural evidence path;
+- затем fusion and reranking;
+- затем optional live gating.
+
+Done definition:
+- neural path отключаем и безопасен;
+- pause hybrid path работает без мутации core contracts;
+- live gating контролируется cadence/thermal policy.
+
+## Track 16. Gated Offloading
+
+Задачи:
+- определить remote critic contract;
+- определить trigger rules;
+- определить payload schema;
+- определить privacy/fallback policy.
+
+Done definition:
+- offloading не ломает offline-first mode;
+- remote critic bounded and optional;
+- payload и failure policy формализованы.
+
+## Track 17. Hybrid Evaluation and Demo
+
+Задачи:
+- расширить eval для hybrid stage;
+- собрать ablations;
+- логировать hybrid runtime disagreements;
+- подготовить defense demo.
+
+Done definition:
+- есть hybrid vs deterministic comparison;
+- есть thesis-ready report;
+- есть demo scenarios и explainable before/after cases.
+
+## Hybrid PR Pipeline
+
+### PR-H01. Thesis and Hybrid Scope Freeze
+
+Цель:
+- зафиксировать hybrid research framing.
+
+Скоуп:
+- только `docs/cameraanalysis/*`
+
+Артефакт:
+- thesis note
+- layer boundary note
+- hypothesis list
+
+Зависимости:
+- completed deterministic `v1` doc package
+
+### PR-H02. Evidence Taxonomy Contract
+
+Цель:
+- зафиксировать neural evidence heads и scoring axes.
+
+Скоуп:
+- docs
+
+Артефакт:
+- evidence taxonomy
+- mapping to issue/action taxonomy
+- confidence semantics
+
+Зависимости:
+- `PR-H01`
+
+### PR-H03. Dataset Schema and Labeling Guide
+
+Цель:
+- подготовить data foundation для hybrid stage.
+
+Скоуп:
+- docs
+- optional eval schema artifacts
+
+Артефакт:
+- dataset schema
+- labeling guide
+- adjudication rules
+
+Зависимости:
+- `PR-H02`
+
+### PR-H04. AVA Usage Policy and Pretraining Design
+
+Цель:
+- формально определить безопасную роль `AVA`.
+
+Скоуп:
+- docs only
+
+Артефакт:
+- AVA policy
+- pretraining strategy
+- risk register
+
+Зависимости:
+- `PR-H03`
+
+### PR-H05. Hybrid Model Architecture Spec
+
+Цель:
+- определить compact mobile model и outputs.
+
+Скоуп:
+- docs
+- optional interface stubs
+
+Артефакт:
+- backbone choice
+- output heads
+- latency/size assumptions
+- loss design
+
+Зависимости:
+- `PR-H02`, `PR-H04`
+
+### PR-H06. Neural Evidence Domain Contract
+
+Цель:
+- ввести runtime contract для neural outputs.
+
+Скоуп:
+- `Models/CameraAnalysis/*`
+- tests
+- docs
+
+Артефакт:
+- `NeuralEvidenceSnapshot`
+- invariants
+- serialization/tests
+
+Зависимости:
+- `PR-H05`
+
+### PR-H07. On-Device Inference Wrapper
+
+Цель:
+- подключить on-device neural evidence provider без fusion logic.
+
+Скоуп:
+- inference service files
+- pipeline hooks
+- tests
+
+Артефакт:
+- wrapper
+- mock path
+- cadence policy
+
+Зависимости:
+- `PR-H06`
+
+### PR-H08. Pause-Only Neural Evidence Path
+
+Цель:
+- сначала безопасно ввести neural evidence в `pause`.
+
+Скоуп:
+- `AnalysisPipeline`
+- tests
+
+Артефакт:
+- pause-local neural evidence path
+- merged hybrid snapshot
+- fallback behavior
+
+Зависимости:
+- `PR-H07`
+
+### PR-H09. Hybrid Fusion Layer
+
+Цель:
+- слить deterministic critique core и neural evidence.
+
+Скоуп:
+- fusion service
+- critique/ranking adaptation
+- tests
+
+Артефакт:
+- fusion policy
+- weighting rules
+- calibration policy
+
+Зависимости:
+- `PR-H08`
+
+### PR-H10. Neural Reranker
+
+Цель:
+- улучшить приоритетность рекомендаций.
+
+Скоуп:
+- planner integration
+- tests
+
+Артефакт:
+- reranking policy
+- reprioritization logic
+
+Зависимости:
+- `PR-H09`
+
+### PR-H11. Live Neural Gating
+
+Цель:
+- аккуратно использовать neural evidence в `live`.
+
+Скоуп:
+- `AnalysisPipeline`
+- `CameraViewModel`
+- optional UI state hooks
+
+Артефакт:
+- low-frequency live neural path
+- thermal/latency guardrails
+
+Зависимости:
+- `PR-H09`
+
+### PR-H12. Offloading Contract
+
+Цель:
+- описать optional deep critic path.
+
+Скоуп:
+- docs
+- provider abstraction
+- payload types
+
+Артефакт:
+- `DeepCriticProvider`
+- payload schema
+- gate policy
+
+Зависимости:
+- `PR-H09`
+
+### PR-H13. Server / Teacher Critic Prototype
+
+Цель:
+- получить richer deep-analysis path.
+
+Скоуп:
+- optional server-facing abstraction or mock
+
+Артефакт:
+- teacher/richer critic prototype
+- degradation policy
+
+Зависимости:
+- `PR-H12`
+
+### PR-H14. Hybrid Eval Harness
+
+Цель:
+- мерить hybrid stage отдельно от deterministic baseline.
+
+Скоуп:
+- `docs/cameraanalysis/eval/*`
+- reports
+
+Артефакт:
+- hybrid metrics
+- ablations
+- comparison reports
+
+Зависимости:
+- `PR-H09`
+
+### PR-H15. Hybrid Runtime Telemetry
+
+Цель:
+- собирать hard cases и hybrid disagreements.
+
+Скоуп:
+- telemetry/logging schema
+- optional export hooks
+
+Артефакт:
+- runtime logging format
+- disagreement logging
+
+Зависимости:
+- `PR-H11`, `PR-H14`
+
+### PR-H16. Thesis Demo Bundle
+
+Цель:
+- подготовить защиту и demo narrative.
+
+Скоуп:
+- docs
+- demo assets or scripts
+
+Артефакт:
+- before/after cases
+- ablation summary
+- committee-ready demo script
+
+Зависимости:
+- `PR-H14`, `PR-H15`
+
+## Hybrid Detailed DoD
+
+### Global hybrid DoD
+
+Работа считается завершенной только если:
+- deterministic и neural responsibilities явно разделены;
+- offline-first path не ломается;
+- outputs нейросети интерпретируемы;
+- есть eval-ready metrics and fixtures;
+- вклад PR можно объяснить комиссии за 30-60 секунд.
+
+### Data / rubric DoD
+
+- dataset schema формализована;
+- labels совместимы с issue/action taxonomy;
+- AVA policy не маскирует domain gap;
+- есть adjudication rules and quality checks.
+
+### Model design DoD
+
+- backbone mobile-capable;
+- outputs are structured evidence only;
+- есть latency/size target;
+- есть deployment assumptions for Core ML.
+
+### Runtime DoD
+
+- neural path можно отключить без поломки UX;
+- pause hybrid path не мутирует unexpectedly shared core state;
+- live neural path throttled and guarded;
+- fallback logic явно задана.
+
+### Fusion DoD
+
+- fusion policy explainable;
+- neural layer не становится black-box source-of-truth;
+- есть tests на conflict, low-confidence и degraded cases.
+
+### Offloading DoD
+
+- offloading optional;
+- payload schema и privacy boundaries заданы;
+- remote unavailability не ломает base experience.
+
+### Eval / thesis DoD
+
+- есть comparison `deterministic only` vs `hybrid`;
+- есть system metrics for mobile;
+- есть ablation story;
+- есть demo-ready before/after explanation.

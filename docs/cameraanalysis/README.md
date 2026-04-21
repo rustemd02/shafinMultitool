@@ -25,6 +25,12 @@
 - готовые промпты для агентов: [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md)
 - шаблон briefing-а: [13-agent-briefing-template.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/13-agent-briefing-template.md)
 
+Если хочется перейти к следующему этапу `hybrid deterministic + neural`:
+- архитектурное направление встроено в [02-pipeline-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/02-pipeline-architecture.md)
+- roadmap расширен в [01-roadmap.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/01-roadmap.md)
+- backlog, PR и подробный DoD добавлены в [11-implementation-backlog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/11-implementation-backlog.md)
+- agent prompts для hybrid stage добавлены в [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md)
+
 ## Главная идея
 
 Для `camera analysis v1` нельзя делать ставку только на:
