@@ -27,6 +27,20 @@
    - `aggregate/scientific_report.md`
    - `aggregate/benchmark_manifest.json`
 
+## Граница ответственности папок
+
+`experiments/sc_benchmark/` хранит:
+- benchmark code
+- reusable configs
+- frozen workspace assets (`eval_bundle`, template predictions, serving maps)
+
+Конкретные run-артефакты и исследовательские прогоны лучше хранить в:
+- [`docs/SGv7pipeline/runs/...`](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs)
+
+Практическое правило:
+- если файл нужен как reusable benchmark infrastructure, его место в `experiments/sc_benchmark`
+- если это результат конкретного прогона модели, Colab export, benchmark result, manual review pack или corpus attempt, его место в `docs/SGv7pipeline/runs/...`
+
 ## Базовый запуск
 
 ```bash

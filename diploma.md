@@ -1074,3 +1074,29 @@
 - `experiments/sc_benchmark/generate_predictions_from_endpoint.py` (raw/output semantics fix, export default path alignment)
 - `docs/SGv7pipeline/training/tests/test_phase_view.py` (phase4 cap/family coverage regression coverage)
 - `docs/SGv7pipeline/eval/tests/test_prediction_export.py` (prediction export parsing/repair/slice tests)
+
+---
+
+## [2026-04-21 19:01] - [SG v7 Iter3.1: честный prep-eval, фиксация transfer-failure и нормализация run-артефактов]
+
+### Суть изменений
+- Выполнен полный честный prep-eval для `dataset_v7`, `dataset_v7_orpo_iter1`, `dataset_v7_orpo_iter2` на свежем dual-slice export, после чего benchmark-артефакты были пересобраны в каноническую папку run-а под `docs/SGv7pipeline/runs/...`.
+- Зафиксирована человекочитаемая интерпретация метрик в документации: `dataset_v7` сохранён как structural baseline, а `iter2` — как strongest semantic candidate.
+- Проверен honest `iter3.1` corpus build attempt; подтверждено, что текущий transfer-first контур пока непригоден для обучения из-за почти полного доминирования `gold_target_json`.
+- Нормализована структура файлов проекта: Colab prep-export и результаты конкретного прогона перенесены в `docs/SGv7pipeline/runs/...`, а `experiments/sc_benchmark` оставлен как слой benchmark-кода и reusable assets.
+- Добавлены README-навигация и правила раскладки артефактов, чтобы исключить дальнейшую путаницу между infrastructure и результатами прогонов.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** На ORPO-этапе проявился классический конфликт между semantic quality и structural fidelity. `iter1/iter2` улучшали смысловые метрики (`target resolution`, `chronology`, `strict success`), но одновременно ухудшали raw-структурную устойчивость (`json_valid`, `schema_valid`, `ordinal binding`, `exact marker identity`). Дополнительно смешение benchmark-инфраструктуры и run-артефактов в разных каталогах снижало воспроизводимость эксперимента.
+- **Решение:** Проведён честный dual-slice prep-eval с раздельным анализом `model_only` и `end_to_end`, а затем выполнен transfer-first corpus build без fallback на repaired `predicted_script`. Параллельно введено архитектурное разделение: код и frozen assets остаются в `experiments/sc_benchmark`, а результаты конкретных запусков и Colab exports хранятся только в `docs/SGv7pipeline/runs/...`.
+- **Детали:** По `model_only` slice получено: для `dataset_v7` `json_valid_rate=0.9809`, `target_resolution_accuracy=0.0564`, `chronology_phase_accuracy=0.0420`; для `iter1` — `0.9656 / 0.0940 / 0.0725`; для `iter2` — `0.9504 / 0.1128 / 0.0840`. Pairwise сравнение показало, что `iter2` выигрывает у `v7` по смысловым метрикам (`31` победа против `14`, `p≈0.016`), но делает это ценой регрессий по structural metrics. Honest `iter3.1` corpus build завершился fail-closed: `gold_chosen_share_overall=0.948`, `model_chosen_share_overall=0.052`. Это важно методологически: проблема локализуется не в eval-контуре, а в самих raw model outputs, значит следующий шаг должен менять generation contract / supervision design, а не просто добавлять ещё один preference cycle.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/09-eval-and-release.md` (человекочитаемая сводка текущего состояния `v7 / iter1 / iter2`)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/README.md` (каноническая сводка prep-run и его итогов)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/aggregate/scientific_report.md` (агрегированный benchmark report)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/aggregate/runs_scored.csv` (численные метрики по моделям)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv` (pairwise A/B сравнение)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/iter3_corpus_seed42/iter3_manifest.json` (gate report по honest `iter3.1` corpus)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3/README.md` (маркировка legacy scratch-папки)
+- `experiments/sc_benchmark/README.md` (правила разделения benchmark infrastructure и run-артефактов)

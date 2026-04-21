@@ -1,0 +1,13 @@
+{
+  "model_id": "dataset_v7",
+  "seed": 42,
+  "total_rows": 262,
+  "predicted_script_rows": 0,
+  "model_only_rows": 0,
+  "end_to_end_rows": 0,
+  "reason_counts": {},
+  "report_slice": "both",
+  "canonical_repair": true,
+  "strip_think_tags": true,
+  "fail_on_actions_empty": true
+}

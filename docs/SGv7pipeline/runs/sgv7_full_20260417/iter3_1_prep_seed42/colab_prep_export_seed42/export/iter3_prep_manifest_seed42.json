@@ -1,0 +1,26 @@
+{
+  "dataset_v7": {
+    "rows": 262,
+    "selected_parseable": 163,
+    "model_only_rows": 257,
+    "end_to_end_rows": 163,
+    "raw_output_json_rows": 257,
+    "path": "/content/drive/MyDrive/sgv7_iter3_prep_seed42/predictions_dualslice_seed42/dataset_v7_seed42.jsonl"
+  },
+  "dataset_v7_orpo_iter1": {
+    "rows": 262,
+    "selected_parseable": 161,
+    "model_only_rows": 253,
+    "end_to_end_rows": 161,
+    "raw_output_json_rows": 253,
+    "path": "/content/drive/MyDrive/sgv7_iter3_prep_seed42/predictions_dualslice_seed42/dataset_v7_orpo_iter1_seed42.jsonl"
+  },
+  "dataset_v7_orpo_iter2": {
+    "rows": 262,
+    "selected_parseable": 155,
+    "model_only_rows": 249,
+    "end_to_end_rows": 155,
+    "raw_output_json_rows": 249,
+    "path": "/content/drive/MyDrive/sgv7_iter3_prep_seed42/predictions_dualslice_seed42/dataset_v7_orpo_iter2_seed42.jsonl"
+  }
+}

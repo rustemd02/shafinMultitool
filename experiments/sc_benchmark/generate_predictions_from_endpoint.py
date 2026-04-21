@@ -10,7 +10,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
-from urllib import error, request
 
 
 SYSTEM_PROMPT = "Ты SceneScript parser. Верни только валидный JSON SceneScript без пояснений и без markdown."
@@ -62,39 +61,29 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def _norm_base_url(base_url: str) -> str:
     normalized = base_url.strip().rstrip("/")
+    return normalized
+
+
+def _base_url_for_openai_client(base_url: str) -> str:
+    normalized = base_url.strip().rstrip("/")
     if normalized.endswith("/chat/completions"):
-        return normalized
-    if normalized.endswith("/v1"):
-        return normalized + "/chat/completions"
-    if normalized.endswith("/v1/"):
-        return normalized + "chat/completions"
-    return normalized + "/v1/chat/completions"
+        return normalized[: -len("/chat/completions")]
+    return normalized
 
 
-def _extract_choice_text(payload: dict[str, Any]) -> str:
-    choices = payload.get("choices")
-    if not isinstance(choices, list) or not choices:
-        return ""
-    first = choices[0]
-    if not isinstance(first, dict):
-        return ""
-    message = first.get("message")
-    if isinstance(message, dict):
-        content = message.get("content")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            chunks: list[str] = []
-            for item in content:
-                if isinstance(item, dict):
-                    text = item.get("text")
-                    if isinstance(text, str):
-                        chunks.append(text)
-            return "\n".join(chunks)
-    text = first.get("text")
-    if isinstance(text, str):
-        return text
-    return ""
+def _build_openai_client(*, api_base_url: str, api_key: str, timeout_sec: int) -> Any:
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("openai package is required to run endpoint predictions") from exc
+
+    kwargs: dict[str, Any] = {
+        "base_url": _base_url_for_openai_client(api_base_url),
+        "timeout": float(timeout_sec),
+    }
+    if api_key.strip():
+        kwargs["api_key"] = api_key.strip()
+    return OpenAI(**kwargs)
 
 
 def _strip_markdown_fence(text: str) -> str:
@@ -384,14 +373,12 @@ def _repair_with_llm(
     *,
     case: dict[str, Any],
     malformed_output: str,
-    endpoint_url: str,
-    api_key: str,
+    client: Any,
     model_name: str,
     seed: int,
     temperature: float,
     top_p: float,
     max_output_tokens: int,
-    timeout_sec: int,
     strip_think_tags: bool,
 ) -> dict[str, Any] | None:
     source_text = str(case.get("source_text") or "").strip()
@@ -399,15 +386,13 @@ def _repair_with_llm(
         return None
     repair_prompt = _build_repair_prompt(source_text=source_text, malformed_output=malformed_output)
     repaired_text = _api_chat_completion(
-        endpoint_url=endpoint_url,
-        api_key=api_key,
+        client=client,
         model_name=model_name,
         seed=seed + 100003,
         user_prompt=repair_prompt,
         temperature=temperature,
         top_p=top_p,
         max_output_tokens=max_output_tokens,
-        timeout_sec=timeout_sec,
     )
     parsed = _first_json_object(repaired_text, strip_think_tags=strip_think_tags)
     if not isinstance(parsed, dict):
@@ -449,49 +434,50 @@ def _render_user_prompt(case: dict[str, Any], *, include_marked_objects: bool) -
 
 def _api_chat_completion(
     *,
-    endpoint_url: str,
-    api_key: str,
+    client: Any,
     model_name: str,
     seed: int,
     user_prompt: str,
     temperature: float,
     top_p: float,
     max_output_tokens: int,
-    timeout_sec: int,
 ) -> str:
-    payload = {
-        "model": model_name,
-        "messages": [
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": temperature,
-        "top_p": top_p,
-        "max_tokens": max_output_tokens,
-        "seed": seed,
-    }
-    headers = {"Content-Type": "application/json"}
-    if api_key.strip():
-        headers["Authorization"] = f"Bearer {api_key.strip()}"
-    req = request.Request(
-        endpoint_url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers=headers,
-        method="POST",
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_output_tokens,
+        seed=seed,
     )
-    with request.urlopen(req, timeout=timeout_sec) as resp:
-        body = resp.read().decode("utf-8")
-    parsed = json.loads(body)
-    if not isinstance(parsed, dict):
+    message = response.choices[0].message if response.choices else None
+    if message is None:
         return ""
-    return _extract_choice_text(parsed)
+    content = message.content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        chunks: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    chunks.append(text)
+            else:
+                text = getattr(item, "text", None)
+                if isinstance(text, str):
+                    chunks.append(text)
+        return "\n".join(chunks)
+    return str(content or "")
 
 
 def _predict_single_case(
     *,
     case: dict[str, Any],
-    endpoint_url: str,
-    api_key: str,
+    client: Any,
     model_name: str,
     seed: int,
     temperature: float,
@@ -516,19 +502,17 @@ def _predict_single_case(
     for attempt in range(1, max_retries + 1):
         try:
             raw_text = _api_chat_completion(
-                endpoint_url=endpoint_url,
-                api_key=api_key,
+                client=client,
                 model_name=model_name,
                 seed=seed,
                 user_prompt=user_prompt,
                 temperature=temperature,
                 top_p=top_p,
                 max_output_tokens=max_output_tokens,
-                timeout_sec=timeout_sec,
             )
             raw_text_clean = _normalize_raw_output_text(raw_text, strip_think_tags=strip_think_tags)
             break
-        except (error.HTTPError, error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        except Exception as exc:
             last_error = str(exc)
             if attempt < max_retries:
                 time.sleep(retry_backoff_sec * attempt)
@@ -551,14 +535,12 @@ def _predict_single_case(
             repaired = _repair_with_llm(
                 case=case,
                 malformed_output=raw_text_clean,
-                endpoint_url=endpoint_url,
-                api_key=api_key,
+                client=client,
                 model_name=model_name,
                 seed=seed,
                 temperature=temperature,
                 top_p=top_p,
                 max_output_tokens=max_output_tokens,
-                timeout_sec=timeout_sec,
                 strip_think_tags=strip_think_tags,
             )
             if isinstance(repaired, dict):
@@ -580,14 +562,12 @@ def _predict_single_case(
                 repaired = _repair_with_llm(
                     case=case,
                     malformed_output=raw_text_clean,
-                    endpoint_url=endpoint_url,
-                    api_key=api_key,
+                    client=client,
                     model_name=model_name,
                     seed=seed,
                     temperature=temperature,
                     top_p=top_p,
                     max_output_tokens=max_output_tokens,
-                    timeout_sec=timeout_sec,
                     strip_think_tags=strip_think_tags,
                 )
                 if isinstance(repaired, dict) and not _has_pred_actions_empty(repaired):
@@ -693,7 +673,7 @@ def main() -> int:
 
     eval_bundle_dir = args.eval_bundle_dir.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
-    endpoint_url = _norm_base_url(args.api_base_url)
+    api_base_url = _norm_base_url(args.api_base_url)
     model_ids = [item.strip() for item in args.models.split(",") if item.strip()]
     seeds = [int(item.strip()) for item in args.seeds.split(",") if item.strip()]
     if not model_ids:
@@ -719,7 +699,7 @@ def main() -> int:
 
     output_dir.mkdir(parents=True, exist_ok=True)
     total_jobs = len(model_ids) * len(seeds)
-    print(f"[predict] cases={len(cases)} jobs={total_jobs} endpoint={endpoint_url}")
+    print(f"[predict] cases={len(cases)} jobs={total_jobs} endpoint={api_base_url}")
 
     for model_id in model_ids:
         serving_model = _model_name_for(model_id, model_map)
@@ -733,6 +713,11 @@ def main() -> int:
             if args.dry_run:
                 continue
 
+            client = _build_openai_client(
+                api_base_url=str(api_base_url),
+                api_key=api_key,
+                timeout_sec=int(args.timeout_sec),
+            )
             rows: list[dict[str, Any] | None] = [None] * len(cases)
             completed = 0
             with ThreadPoolExecutor(max_workers=max(1, args.workers)) as executor:
@@ -740,8 +725,7 @@ def main() -> int:
                     executor.submit(
                         _predict_single_case,
                         case=case,
-                        endpoint_url=endpoint_url,
-                        api_key=api_key,
+                        client=client,
                         model_name=serving_model,
                         seed=seed,
                         temperature=args.temperature,

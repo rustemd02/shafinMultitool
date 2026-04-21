@@ -109,3 +109,4 @@ If manual review is already complete, add:
 - iter3 release gate is also raw-first for targeted families: use the exported `aggregate/slice_case_results/.../model_only_case_results.jsonl` files, not repaired `end_to_end` case summaries.
 - For final benchmark export, always use prediction generation with `--report-slice both`; otherwise slice reports stay incomplete and the run should not be treated as final.
 - Optional phase-view balancing for iter3 preference data can use [`phase4_preference_iter3.json`](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/training/phase_configs/phase4_preference_iter3.json).
+- Colab-specific practical workflow for `iter3 / iter3.1` is documented separately in [`42-colab-iter3-agent-workflow.md`](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/training/42-colab-iter3-agent-workflow.md).

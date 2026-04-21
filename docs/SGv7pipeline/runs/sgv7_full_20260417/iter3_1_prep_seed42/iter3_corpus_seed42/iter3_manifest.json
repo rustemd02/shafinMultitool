@@ -1,0 +1,138 @@
+{
+  "chosen_source_counts": {
+    "dataset_v7_orpo_iter1": 1,
+    "dataset_v7_orpo_iter2": 9,
+    "gold_target_json": 183
+  },
+  "configured_family_floors": {
+    "exact_marker_identity": 4,
+    "give_to_third_actor": 4,
+    "open_then_pick_up": 4,
+    "ordinal": 4,
+    "three_beat": 8
+  },
+  "counts": {
+    "delta_sft_total": 116,
+    "delta_sft_total_before_family_cap": 193,
+    "delta_sft_train": 104,
+    "delta_sft_val": 12,
+    "dropped_missing_cir": 0,
+    "dropped_missing_preference": 9,
+    "dropped_simple_dialogue": 0,
+    "preference_total": 184,
+    "preference_train": 166,
+    "preference_val": 18,
+    "selected_cases": 193
+  },
+  "delta_dropped_by_family_cap": {
+    "ordinal": 77
+  },
+  "delta_family_counts": {
+    "exact_marker_identity": 4,
+    "give_to_third_actor": 16,
+    "open_then_pick_up": 37,
+    "ordinal": 58,
+    "simple_dialogue": 4,
+    "three_beat": 16
+  },
+  "delta_sft_max_family_share": 0.5,
+  "dropped_missing_cir_case_ids": [],
+  "force_include_patterns": [
+    "dialogue_then_pick_up_object_then_give_to_third_actor",
+    "first_pick_up_object_then_give_to_third_actor",
+    "open_then_pick_up_object",
+    "ordinal_first_second_third",
+    "same_type_two_marked_objects",
+    "toward_each_other_then_pass_by_marked_object_then_second_runs",
+    "toward_each_other_then_pass_by_object_then_second_runs",
+    "toward_each_other_then_stop_near_marked_object_then_second_runs"
+  ],
+  "gate_blockers": [
+    "gold_chosen_share_overall=0.948>0.550",
+    "model_chosen_share_overall=0.052<0.250",
+    "gold_chosen_share_by_family.exact_marker_identity=0.815>0.600",
+    "gold_chosen_share_by_family.give_to_third_actor=1.000>0.600",
+    "model_chosen_count_by_family.give_to_third_actor=0<2",
+    "gold_chosen_share_by_family.open_then_pick_up=1.000>0.600",
+    "model_chosen_count_by_family.open_then_pick_up=0<2",
+    "gold_chosen_share_by_family.ordinal=0.926>0.600",
+    "gold_chosen_share_by_family.three_beat=0.750>0.600"
+  ],
+  "gate_status": "fail",
+  "gold_chosen_share_by_family": {
+    "exact_marker_identity": 0.8148148148148148,
+    "give_to_third_actor": 1.0,
+    "open_then_pick_up": 1.0,
+    "ordinal": 0.9259259259259259,
+    "three_beat": 0.75
+  },
+  "gold_chosen_share_overall": 0.9481865284974094,
+  "inputs": {
+    "cir_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/final/cir_merged.jsonl",
+    "eval_cases_jsonl": "experiments/sc_benchmark/workspace/eval_bundle_v1/eval_cases.jsonl",
+    "iter1_case_results_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/reports/dataset_v7_orpo_iter1/seed_42/case_results.jsonl",
+    "iter1_predictions_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/colab_prep_export_seed42/predictions_dualslice_seed42/dataset_v7_orpo_iter1_seed42.jsonl",
+    "iter2_case_results_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/reports/dataset_v7_orpo_iter2/seed_42/case_results.jsonl",
+    "iter2_predictions_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/colab_prep_export_seed42/predictions_dualslice_seed42/dataset_v7_orpo_iter2_seed42.jsonl",
+    "iter2_vs_iter1_paired_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/compares/dataset_v7_orpo_iter2_vs_dataset_v7_orpo_iter1/seed_42/paired_case_results.jsonl",
+    "iter2_vs_v7_paired_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/compares/dataset_v7_orpo_iter2_vs_dataset_v7/seed_42/paired_case_results.jsonl",
+    "v7_case_results_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/benchmark_results_seed42/reports/dataset_v7/seed_42/case_results.jsonl",
+    "v7_predictions_jsonl": "docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/colab_prep_export_seed42/predictions_dualslice_seed42/dataset_v7_seed42.jsonl"
+  },
+  "manual_review_patterns": [
+    "open_then_pick_up_object",
+    "ordinal_first_second_third",
+    "dialogue_then_pick_up_object_then_give_to_third_actor"
+  ],
+  "model_chosen_count_by_family": {
+    "exact_marker_identity": 10,
+    "give_to_third_actor": 0,
+    "open_then_pick_up": 0,
+    "ordinal": 10,
+    "three_beat": 10
+  },
+  "model_chosen_share_overall": 0.05181347150259067,
+  "pairwise_cases_total": 193,
+  "pairwise_iter2_confirmed_wins": 6,
+  "pairwise_iter2_rejected_due_to_integrity": 0,
+  "prediction_source_policy": {
+    "analysis_slice": "end_to_end_predicted_script",
+    "legacy_predicted_script_allowed": false,
+    "requires_dual_slice": true,
+    "selection_slice": "model_only_predicted_script"
+  },
+  "preference_family_counts": {
+    "exact_marker_identity": 49,
+    "give_to_third_actor": 20,
+    "open_then_pick_up": 37,
+    "ordinal": 130,
+    "simple_dialogue": 4,
+    "three_beat": 31
+  },
+  "raw_vs_end_to_end_divergence_counts": {
+    "dataset_v7": 183,
+    "dataset_v7_orpo_iter1": 177,
+    "dataset_v7_orpo_iter2": 170
+  },
+  "rejected_source_counts": {
+    "dataset_v7": 178,
+    "dataset_v7_orpo_iter1": 4,
+    "dataset_v7_orpo_iter2": 7
+  },
+  "seed": 20260421,
+  "selection_family_counts": {
+    "exact_marker_identity": 54,
+    "give_to_third_actor": 24,
+    "open_then_pick_up": 37,
+    "ordinal": 135,
+    "simple_dialogue": 4,
+    "three_beat": 40
+  },
+  "selection_reason_counts": {
+    "dataset_v7_orpo_iter1_integrity_preserved": 1,
+    "dataset_v7_orpo_iter2_integrity_preserved": 6,
+    "fallback_to_gold_no_eligible_model": 180,
+    "iter2_semantic_gain_canonical": 3,
+    "iter2_semantic_gain_noncanonical_fallback_to_gold": 3
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "dialogue_then_pick_up_object_then_give_to_third_actor": [
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "rt-0004::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s714428__f336cc0d",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "dialogue_then_pick_up_object_then_give_to_third_actor__base__s714428__f336cc0d",
+      "source_text": "Третий: яНА: Передай папку третьему. ДАРЬЯ: Принял, передам. Дарья берёт папку и передаёт её третьему."
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0007::dialogue_then_pick_up_object_then_give_to_third_actor__base__s918561__ba00e8a2",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": null,
+      "sample_id": "dialogue_then_pick_up_object_then_give_to_third_actor__base__s918561__ba00e8a2",
+      "source_text": "Стас: «Отдай блокнот третьему». Мила: «Хорошо, передам». Потом второй актер берёт блокнот и передаёт его Марине, блокнот в итоге получает именно третий"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0005::dialogue_then_pick_up_object_then_give_to_third_actor__base__s606141__c8f04a4e",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": null,
+      "sample_id": "dialogue_then_pick_up_object_then_give_to_third_actor__base__s606141__c8f04a4e",
+      "source_text": "АЛИНА говорит: «Отдай конверт третьему», Вика отвечает: «Хорошо, передам»; потом второй берёт письмо и передаёт его Свете, чтобы его получил третий."
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0009::dialogue_then_pick_up_object_then_give_to_third_actor__dialogue_mix__s687698__ba3f7dab",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "dialogue_then_pick_up_object_then_give_to_third_actor__dialogue_mix__s687698__ba3f7dab",
+      "source_text": "Ира говорит: «Перекинь бейдж третьему, ладно?», Нина отвечает: «Окей, передаю». Затем второй актер берёт бейдж. Второй передаёт бейдж Глебу, который в итоге получает его первым делом как третий"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0010::dialogue_then_pick_up_object_then_give_to_third_actor__dialogue_mix__s878080__c7809bab",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "dialogue_then_pick_up_object_then_give_to_third_actor__dialogue_mix__s878080__c7809bab",
+      "source_text": "Первый актёр говорит: «Перекинь бейдж третьему, ладно?», затем второй актёр отвечает: «Уже передаю», после этого второй берёт бейдж и передаёт его Павлу, который получает бейдж как третий."
+    }
+  ],
+  "open_then_pick_up_object": [
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "syn-0062::open_then_pick_up_object__base__s5557__e55529a3",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "open_then_pick_up_object__base__s5557__e55529a3",
+      "source_text": "Первый сначала открывает шкафчик, а потом берёт оттуда флешку"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "syn-0046::open_then_pick_up_object__base__s124198__e6607a05",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "open_then_pick_up_object__base__s124198__e6607a05",
+      "source_text": "Первый сначала открывает кейс, затем берёт планшет"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "syn-0050::open_then_pick_up_object__base__s317456__e2c7477c",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "open_then_pick_up_object__base__s317456__e2c7477c",
+      "source_text": "Первый сначала открывает шкаф, а затем берёт ключ"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "syn-0072::open_then_pick_up_object__base__s752858__de187edf",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "open_then_pick_up_object__base__s752858__de187edf",
+      "source_text": "Первый актёр открывает полку, а затем первый актер берёт флешку"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "syn-0058::open_then_pick_up_object__base__s475075__e7d448d4",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "open_then_pick_up_object__base__s475075__e7d448d4",
+      "source_text": "Первый сначала открывает ящик, затем берёт бейдж"
+    }
+  ],
+  "ordinal_first_second_third": [
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0039::ordinal_first_second_third__base__s432755__bdefbf8d",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "ordinal_first_second_third__base__s432755__bdefbf8d",
+      "source_text": "Сначала первый актер подходит к терминалу, второй смотрит на него, а третий держится у колонны"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0065::ordinal_first_second_third__base__s720754__d5a760e4",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "ordinal_first_second_third__base__s720754__d5a760e4",
+      "source_text": "Сначала первый подходит к стулу, второй актёр и третий актёр остаются на своих местах возле двери"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0023::ordinal_first_second_third__base__s210365__aaf2522b",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "ordinal_first_second_third__base__s210365__aaf2522b",
+      "source_text": "Сначала первый актер подходит к монитору, второй смотрит на первого, а третий остаётся у колонны"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0028::ordinal_first_second_third__base__s266205__a850998e",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "ordinal_first_second_third__base__s266205__a850998e",
+      "source_text": "Первый актёр подходит к стулу, второй актер смотрит на первого, а третий остаётся у колонны"
+    },
+    {
+      "chosen_source": "gold_target_json",
+      "eval_case_id": "hard-0022::ordinal_first_second_third__base__s189846__cfa68c38",
+      "reason": "fallback_to_gold_no_eligible_model",
+      "rejected_source": "dataset_v7",
+      "sample_id": "ordinal_first_second_third__base__s189846__cfa68c38",
+      "source_text": "Первый актер подходит к стеллажу, второй смотрит на первого, а третий остаётся у полки"
+    }
+  ]
+}
