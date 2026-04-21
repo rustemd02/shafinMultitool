@@ -564,6 +564,7 @@ Done definition:
 - thesis note
 - layer boundary note
 - hypothesis list
+- зафиксированный source-of-truth doc: [14-hybrid-research-framing.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/14-hybrid-research-framing.md)
 
 Зависимости:
 - completed deterministic `v1` doc package
