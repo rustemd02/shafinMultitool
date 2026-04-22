@@ -142,9 +142,9 @@ flowchart TD
 
 ### Recommended neural roles
 
-1. `Aesthetic / composition scorer`
-2. `Evidence heads`
-3. `Reranker / confidence calibrator`
+1. `Structured evidence heads`
+2. `Bounded confidence calibrator`
+3. `Reranker for ambiguous deterministic cases`
 
 Главный принцип:
 - neural layer должен предсказывать structured evidence, а не source-of-truth текст совета.
@@ -173,6 +173,7 @@ flowchart TD
 - собственную rubric-driven cinematic разметку использовать как task-specific слой.
 
 Подробная policy для `PR-H04` зафиксирована в [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md).
+Подробная architecture spec для `PR-H05` зафиксирована в [18-hybrid-model-architecture-spec.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/18-hybrid-model-architecture-spec.md).
 
 ### Recommended hybrid data strategy
 

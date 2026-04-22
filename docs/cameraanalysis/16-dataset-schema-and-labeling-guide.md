@@ -294,6 +294,9 @@ AssetDescriptor
 - previewRef: String?                   // optional thumbnail or low-res preview
 - assetSha256: String
 - crossDatasetLinkKey: String?          // required for public; stable upstream identity hook across PR-H04/H03
+- subjectProposalVersion: String?       // required when subject crop is materialized for PR-H05-style dual-view training
+- cropRecipeVersion: String?            // required when subject crop is materialized for PR-H05-style dual-view training
+- canonicalSubjectRoi: CanonicalSubjectRoi? // optional if no usable deterministic subject proposal exists
 - width: Int
 - height: Int
 - frameCount: Int?                      // required for live_sequence video
@@ -319,6 +322,14 @@ PrivacyClass
 - internal_private_do_not_share
 ```
 
+```text
+CanonicalSubjectRoi
+- centerXNorm: Double                   // 0.0 ... 1.0
+- centerYNorm: Double                   // 0.0 ... 1.0
+- widthNorm: Double                     // 0.0 ... 1.0
+- heightNorm: Double                    // 0.0 ... 1.0
+```
+
 Нормативные правила:
 - `sourceBucket = public` требует `asset.crossDatasetLinkKey`;
 - если record происходит из raw public pretraining corpus по [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md), `asset.crossDatasetLinkKey` обязан точно совпадать со значением `PublicAestheticPretrainingRecord.crossDatasetLinkKey`;
@@ -326,6 +337,11 @@ PrivacyClass
   - `assetSha256` идентифицирует конкретный файл/экспорт;
   - `crossDatasetLinkKey` идентифицирует один и тот же upstream public asset across manifests;
 - crop/resize/frame-export variants одного и того же public asset могут иметь разные `assetSha256`, но обязаны сохранять общий `crossDatasetLinkKey`.
+- если record используется в `PR-H05` dual-view training/eval, то `subjectProposalVersion` и `cropRecipeVersion` обязательны;
+- если `canonicalSubjectRoi` присутствует, training/eval/runtime обязаны трактовать его как source-of-truth ROI before square expansion from `PR-H05`;
+- если `canonicalSubjectRoi == nil`, это означает only one allowed interpretation:
+  - deterministic proposal pipeline указанной `subjectProposalVersion` не нашла usable ROI;
+  - downstream обязан использовать zero-crop fallback rather than inventing manual ROI.
 
 ```text
 GroupingDescriptor
@@ -437,7 +453,18 @@ DisagreementSeverity
 - none
 - soft
 - hard
+ 
+CanonicalDisagreementAgreementScore
+- none -> 1.00
+- soft -> 0.65
+- hard -> 0.25
+```
 
+Нормативное правило:
+- `CanonicalDisagreementAgreementScore` обязателен для всех downstream consumers, которые обучают или оценивают confidence/reliability targets in `PR-H05` and later;
+- локальные альтернативные remap tables для `DisagreementSeverity` запрещены.
+
+```text
 DisagreementReason
 - scene_type_mismatch
 - applicability_mismatch

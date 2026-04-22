@@ -635,9 +635,10 @@ Done definition:
 - output heads
 - latency/size assumptions
 - loss design
+- source-of-truth doc: [18-hybrid-model-architecture-spec.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/18-hybrid-model-architecture-spec.md)
 
 Зависимости:
-- `PR-H02`, `PR-H04`
+- `PR-H02`, `PR-H03`, `PR-H04`
 
 ### PR-H06. Neural Evidence Domain Contract
 
