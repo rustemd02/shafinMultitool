@@ -87,6 +87,51 @@ final class SceneV8PipelineTests: XCTestCase {
         XCTAssertEqual(script.beats.first?.actions.first?.target, "object_marked_deadbeef")
     }
 
+    func testCompilerDowngradesTargetlessRequiredActionAndEmitsNote() throws {
+        let compiler = ScenePlanCompiler()
+        let plan = ScenePlanIR(
+            actors: [.init(ref: "first", type: .human)],
+            objects: [],
+            beats: [
+                .init(
+                    ref: "beat_1",
+                    actions: [
+                        .init(actorRef: "first", type: .approach),
+                    ]
+                ),
+            ],
+            spatialRelations: [],
+            referenceBindings: .init(actorBindings: ["first": "actor_1"])
+        )
+
+        let compiled = try compiler.compileWithNotes(plan: plan, originalDescription: "demo")
+        XCTAssertEqual(compiled.script.beats.first?.actions.first?.type, .stand)
+        XCTAssertNil(compiled.script.beats.first?.actions.first?.target)
+        XCTAssertTrue(compiled.notes.contains("v8.targetless_action_downgraded"))
+    }
+
+    func testCompilerSkipsInvalidSpatialRelationAndEmitsNote() throws {
+        let compiler = ScenePlanCompiler()
+        let plan = ScenePlanIR(
+            actors: [.init(ref: "first", type: .human)],
+            objects: [.init(ref: "object_slot_1", type: .table, relativePosition: .center)],
+            beats: [
+                .init(
+                    ref: "beat_1",
+                    actions: [.init(actorRef: "first", type: .stand)]
+                ),
+            ],
+            spatialRelations: [
+                .init(ref: "rel_1", subjectRef: "object_slot_1", relation: .inside, objectRef: "holding_object_1"),
+            ],
+            referenceBindings: .init(actorBindings: ["first": "actor_1"])
+        )
+
+        let compiled = try compiler.compileWithNotes(plan: plan, originalDescription: "demo")
+        XCTAssertEqual(compiled.script.spatialRelations.count, 0)
+        XCTAssertTrue(compiled.notes.contains("v8.invalid_spatial_relation_skipped"))
+    }
+
     func testQualityGateRejectsUnresolvedMarkedObject() {
         let gate = SceneQualityGate()
         let anchors = SourceAnchorBundle(
@@ -158,6 +203,47 @@ final class SceneV8PipelineTests: XCTestCase {
         let trace = gate.decide(anchors: anchors, providerResult: providerResult, compiledScript: nil, remoteEnabled: false)
         XCTAssertEqual(trace.route, .needsClarification)
         XCTAssertNotNil(trace.clarificationMessage)
+    }
+
+    func testQualityGateKeepsAcceptLocalWhenOnlyCompileNotesPresent() {
+        let gate = SceneQualityGate()
+        let anchors = SourceAnchorBundle(
+            actorCountHint: 1,
+            ordinalMentions: ["first"],
+            mentionedMarkedObjects: [],
+            objectSurfaceMentions: [],
+            phaseCues: [],
+            unsupportedActionFlags: [],
+            sameTypeMarkerConflict: false,
+            lowConfidenceFlags: []
+        )
+        let providerResult = ScenePlanProviderResult(
+            plan: ScenePlanIR(
+                actors: [.init(ref: "first", type: .human)],
+                objects: [],
+                beats: [.init(ref: "beat_1", actions: [.init(actorRef: "first", type: .stand)])],
+                spatialRelations: [],
+                referenceBindings: .init(actorBindings: ["first": "actor_1"])
+            ),
+            usedLegacySceneScriptBridge: false
+        )
+        let script = SceneScript(
+            actors: [.init(id: "actor_1", type: .human)],
+            objects: [],
+            beats: [.init(id: "beat_1", actions: [.init(id: "action_1", actorId: "actor_1", type: .stand)])],
+            spatialRelations: [],
+            originalDescription: "demo"
+        )
+        let trace = gate.decide(
+            anchors: anchors,
+            providerResult: providerResult,
+            compiledScript: script,
+            compileNotes: ["v8.targetless_action_downgraded"],
+            remoteEnabled: false
+        )
+
+        XCTAssertEqual(trace.route, .acceptLocal)
+        XCTAssertTrue(trace.reasons.contains("v8.targetless_action_downgraded"))
     }
 
     func testCoordinatorPropagatesClarificationTraceIntoDiagnostics() {

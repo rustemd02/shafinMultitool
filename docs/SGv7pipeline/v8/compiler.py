@@ -8,6 +8,8 @@ except ImportError:  # pragma: no cover - direct script execution
     from contracts import ScenePlanIRRecord
 
 _TARGET_REQUIRED_TYPES = {"look_at", "pick_up", "open", "close", "approach", "put_down", "give", "pass_by", "stop"}
+TARGETLESS_ACTION_DOWNGRADED_NOTE = "v8.targetless_action_downgraded"
+INVALID_SPATIAL_RELATION_SKIPPED_NOTE = "v8.invalid_spatial_relation_skipped"
 
 
 class ScenePlanCompileError(ValueError):
@@ -28,7 +30,11 @@ def _default_pose(action_type: str) -> str:
     return "standing"
 
 
-def compile_scene_plan_ir(plan: ScenePlanIRRecord, *, original_description: str) -> dict[str, Any]:
+def compile_scene_plan_ir_with_notes(
+    plan: ScenePlanIRRecord,
+    *,
+    original_description: str,
+) -> tuple[dict[str, Any], list[str]]:
     actor_bindings = dict(plan.get("referenceBindings", {}).get("actorBindings", {}))
     if not actor_bindings:
         actor_bindings = {
@@ -66,28 +72,35 @@ def compile_scene_plan_ir(plan: ScenePlanIRRecord, *, original_description: str)
             row["name"] = obj["name"]
         objects.append(row)
 
+    compile_notes: list[str] = []
     beats = []
     for beat_index, beat in enumerate(plan["beats"], start=1):
         if not beat.get("actions"):
             raise ScenePlanCompileError(f"Beat {beat.get('ref', beat_index)} has no actions")
         actions = []
         for action_index, action in enumerate(beat["actions"], start=1):
-            actor_ref = action["actorRef"]
+            actor_ref = str(action.get("actorRef") or "").strip()
+            if not actor_ref:
+                raise ScenePlanCompileError("Missing actorRef in action")
             if actor_ref not in actor_bindings:
                 raise ScenePlanCompileError(f"Unknown actorRef: {actor_ref}")
+            action_type = str(action.get("type") or "").strip()
+            if not action_type:
+                raise ScenePlanCompileError("Missing action type")
             target_ref = action.get("targetRef")
             target_id = None
             if target_ref:
                 target_id = actor_bindings.get(target_ref) or object_bindings.get(target_ref)
-            if action["type"] in _TARGET_REQUIRED_TYPES and not target_id:
-                raise ScenePlanCompileError(f"Missing targetRef for required action type: {action['type']}")
+            if action_type in _TARGET_REQUIRED_TYPES and not target_id:
+                action_type = "stand"
+                compile_notes.append(TARGETLESS_ACTION_DOWNGRADED_NOTE)
             holding_object_ref = action.get("holdingObjectRef")
             holding_object_id = object_bindings.get(holding_object_ref) if holding_object_ref else None
             action_row: dict[str, Any] = {
                 "id": f"action_{beat_index}_{action_index}",
                 "actorId": actor_bindings[actor_ref],
-                "type": action["type"],
-                "resultingPose": action.get("resultingPose", _default_pose(action["type"])),
+                "type": action_type,
+                "resultingPose": action.get("resultingPose", _default_pose(action_type)),
             }
             if target_id:
                 action_row["target"] = target_id
@@ -117,7 +130,8 @@ def compile_scene_plan_ir(plan: ScenePlanIRRecord, *, original_description: str)
         subject_id = actor_bindings.get(relation["subjectRef"]) or object_bindings.get(relation["subjectRef"])
         object_id = actor_bindings.get(relation["objectRef"]) or object_bindings.get(relation["objectRef"])
         if not subject_id or not object_id:
-            raise ScenePlanCompileError(f"Unknown spatial relation refs: {relation}")
+            compile_notes.append(INVALID_SPATIAL_RELATION_SKIPPED_NOTE)
+            continue
         relations.append(
             {
                 "id": relation.get("ref", f"rel_{index}"),
@@ -127,10 +141,20 @@ def compile_scene_plan_ir(plan: ScenePlanIRRecord, *, original_description: str)
             }
         )
 
-    return {
+    compiled = {
         "actors": actors,
         "objects": objects,
         "beats": beats,
         "spatialRelations": relations,
         "originalDescription": original_description,
     }
+    unique_notes: list[str] = []
+    for note in compile_notes:
+        if note not in unique_notes:
+            unique_notes.append(note)
+    return compiled, unique_notes
+
+
+def compile_scene_plan_ir(plan: ScenePlanIRRecord, *, original_description: str) -> dict[str, Any]:
+    compiled, _ = compile_scene_plan_ir_with_notes(plan, original_description=original_description)
+    return compiled

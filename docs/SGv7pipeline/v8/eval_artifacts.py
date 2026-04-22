@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 try:
-    from .datasets import compile_scene_plan_ir
+    from .compiler import compile_scene_plan_ir_with_notes
 except ImportError:  # pragma: no cover - direct script execution
-    from datasets import compile_scene_plan_ir
+    from compiler import compile_scene_plan_ir_with_notes
 
 
 def extract_plan_payload(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -84,13 +84,14 @@ def build_v8_eval_artifacts(
         beat_pass = False
         compile_ok = False
         compile_error = None
+        compile_notes: list[str] = []
         compiled_script = None
 
         if parsed_ok and isinstance(predicted_plan, dict):
             ref_pass = reference_binding_pass(predicted_plan, eval_case)
             beat_pass = beat_integrity_pass(predicted_plan, eval_case)
             try:
-                compiled_script = compile_scene_plan_ir(
+                compiled_script, compile_notes = compile_scene_plan_ir_with_notes(
                     predicted_plan,
                     original_description=str(eval_case.get("source_text") or ""),
                 )
@@ -108,19 +109,31 @@ def build_v8_eval_artifacts(
                 "plan_beat_integrity_pass": beat_pass,
                 "plan_compile_ok": compile_ok,
                 "compile_error": compile_error,
+                "compile_notes": compile_notes,
                 "predicted_plan_ir": predicted_plan,
             }
         )
+        reason_codes: list[str] = []
+        input_reason_codes = prediction_row.get("slice_reason_codes")
+        if isinstance(input_reason_codes, list):
+            for code in input_reason_codes:
+                code_value = str(code).strip()
+                if code_value:
+                    reason_codes.append(code_value)
+        for note in compile_notes:
+            if note not in reason_codes:
+                reason_codes.append(note)
         compiled_prediction_rows.append(
             {
                 "eval_case_id": eval_case_id,
-                "slice_reason_codes": [],
+                "slice_reason_codes": reason_codes,
                 "selected_slice": "both",
                 "model_only_predicted_script": compiled_script if isinstance(compiled_script, dict) else None,
                 "end_to_end_predicted_script": compiled_script if isinstance(compiled_script, dict) else None,
                 "raw_output_json": compiled_script if isinstance(compiled_script, dict) else None,
                 "predicted_script": compiled_script if isinstance(compiled_script, dict) else None,
                 "selected_predicted_script": compiled_script if isinstance(compiled_script, dict) else None,
+                "compile_notes": compile_notes,
             }
         )
 

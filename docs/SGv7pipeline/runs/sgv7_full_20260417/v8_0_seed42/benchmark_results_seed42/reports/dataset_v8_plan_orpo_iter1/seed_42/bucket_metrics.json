@@ -75,26 +75,26 @@
     "ordinal_cases": {
       "case_count": 137,
       "metrics": {
-        "action_recall": 0.3747016706443914,
-        "average_target_length": 651.7299270072992,
+        "action_recall": 0.5083532219570406,
+        "average_target_length": 1022.2846715328467,
         "beat_count_accuracy": 0.12408759124087591,
-        "canonical_parse_rate": 0.5620437956204379,
+        "canonical_parse_rate": 0.9781021897810219,
         "case_strict_success_rate": 0.19708029197080293,
         "chronology_phase_accuracy": 0.19708029197080293,
-        "dangling_target_rate": 0.39603960396039606,
+        "dangling_target_rate": 0.6711590296495957,
         "described_action_precision": 1.0,
         "exact_marked_object_id_accuracy": 0.9880952380952381,
-        "json_valid_rate": 0.5620437956204379,
+        "json_valid_rate": 0.9781021897810219,
         "llm_accept_rate": 0.4744525547445255,
-        "llm_merge_rate": 0.08759124087591241,
-        "llm_reject_rate": 0.43795620437956206,
+        "llm_merge_rate": 0.5036496350364964,
+        "llm_reject_rate": 0.021897810218978103,
         "marked_object_recall": 0.9880952380952381,
-        "ordinal_actor_binding_accuracy": 0.4789915966386555,
-        "prediction_action_count_mean": 2.291970802919708,
-        "prediction_beat_count_mean": 1.562043795620438,
+        "ordinal_actor_binding_accuracy": 0.9411764705882353,
+        "prediction_action_count_mean": 4.0583941605839415,
+        "prediction_beat_count_mean": 2.7445255474452557,
         "runtime_fallback_rate": 0.5255474452554745,
         "schema_valid_rate": 0.24817518248175183,
-        "target_resolution_accuracy": 0.4143835616438356
+        "target_resolution_accuracy": 0.5342465753424658
       },
       "supports": {
         "actions_expected": 419,
@@ -104,7 +104,7 @@
         "marked_refs": 84,
         "ordinal_refs": 357,
         "policy_cases": 137,
-        "required_target_actions": 202,
+        "required_target_actions": 371,
         "target_actions": 292
       }
     },

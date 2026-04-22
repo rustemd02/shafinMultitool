@@ -109,6 +109,38 @@ class V8EvalArtifactsTests(unittest.TestCase):
         self.assertIsInstance(compiled_rows[0]["model_only_predicted_script"], dict)
         self.assertIsInstance(compiled_rows[0]["end_to_end_predicted_script"], dict)
 
+    def test_build_v8_eval_artifacts_propagates_compile_notes_to_reason_codes(self) -> None:
+        eval_cases = [
+            {
+                "eval_case_id": "case-2",
+                "sample_id": "s2",
+                "eval_set": "synthetic_heldout",
+                "source_text": "Человек подходит.",
+                "gold_target_json": _gold_script(),
+                "marked_objects": [],
+                "eval_expectations": {"expected_ordinal_bindings": {"first": "actor_1"}},
+            }
+        ]
+        predictions = [
+            {
+                "eval_case_id": "case-2",
+                "predicted_plan_ir": {
+                    "actors": [{"ref": "first", "type": "human"}],
+                    "objects": [],
+                    "beats": [{"ref": "beat_1", "actions": [{"actorRef": "first", "type": "approach"}]}],
+                    "spatialRelations": [],
+                    "referenceBindings": {"actorBindings": {"first": "actor_1"}, "markedObjectIDs": []},
+                },
+                "slice_reason_codes": ["legacy_input_reason"],
+            }
+        ]
+        plan_rows, compiled_rows = build_v8_eval_artifacts(eval_case_rows=eval_cases, prediction_rows=predictions)
+        self.assertEqual(len(plan_rows), 1)
+        self.assertTrue(plan_rows[0]["plan_compile_ok"])
+        self.assertIn("v8.targetless_action_downgraded", plan_rows[0]["compile_notes"])
+        self.assertIn("legacy_input_reason", compiled_rows[0]["slice_reason_codes"])
+        self.assertIn("v8.targetless_action_downgraded", compiled_rows[0]["slice_reason_codes"])
+
 
 if __name__ == "__main__":
     unittest.main()

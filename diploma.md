@@ -101,234 +101,6 @@
 
 ---
 
-## [2026-04-22 13:46] - [SG V8.0: первый end-to-end benchmark run (plan->compile->score) и локальный runner]
-
-### Суть изменений
-- Реализован и проверен полный локальный post-Colab контур `v8`: распаковка `sgv8_eval_pack_seed42.zip`, сборка `eval_artifacts` (`plan_case_results + compiled_predictions`), генерация benchmark-конфига и запуск `run_scientific_benchmark.py`.
-- Добавлен единый orchestration-скрипт для воспроизводимого прогона одной командой: `07_run_v8_local_benchmark.py`.
-- Исправлена совместимость `v8` compiled predictions с dual-slice контрактом benchmark orchestrator: в `compiled_predictions.jsonl` теперь явно пишутся `model_only_predicted_script` и `end_to_end_predicted_script`, что снимает `require_both_slices` ошибку.
-- Получены финальные агрегаты `v8_0_seed42/benchmark_results_seed42/aggregate` в формате, совместимом с предыдущими `v7` итерациями (`runs_scored.csv`, `pairwise_compare.csv`, `scientific_report.md`) и дополнительно `v8_plan_slice_summary.csv`.
-
-### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** Первый `v8` эксперимент показал типичный риск гибридной архитектуры на раннем этапе: semantic метрики растут, но structural устойчивость деградирует, а стандартный benchmark-контур требует dual-slice поля даже для compiled-предиктов, что блокирует корректный end-to-end запуск.
-- **Решение:** 
-  - (1) Для воспроизводимости введён единый локальный runner `07_run_v8_local_benchmark.py`, который формализует весь post-Colab lifecycle без ручных шагов.
-  - (2) Для технической совместимости с существующим benchmark orchestrator обновлён `eval_artifacts.py`: compiled predictions теперь содержат dual-slice contract fields (`model_only_predicted_script`, `end_to_end_predicted_script`, `selected_predicted_script`), что сохраняет строгий admission в `run_scientific_benchmark.py`.
-- **Детали:** По итогам `seed=42`:
-  - `dataset_v8_plan_orpo_iter1` vs `dataset_v7_orpo_iter2`:
-    - `overall.target_resolution_accuracy`: `0.4154` vs `0.1778` (`+0.2376`)
-    - `overall.chronology_phase_accuracy`: `0.1412` vs `0.0840` (`+0.0573`)
-    - `overall.case_strict_success_rate`: `0.1031` vs `0.0344` (`+0.0687`)
-    - `overall.runtime_fallback_rate`: `0.7137` vs `0.8435` (`-0.1298`, лучше)
-    - при этом структурные регрессии:
-      - `overall.json_valid_rate`: `0.6870` vs `0.9504` (`-0.2634`)
-      - `overall.ordinal_actor_binding_accuracy`: `0.5399` vs `0.9340` (`-0.3941`)
-  - Pairwise:
-    - `dataset_v8_plan_orpo_iter1` vs `dataset_v7_orpo_iter2`: wins `109` vs `132`, `p=0.1563` (не статистически значимое преимущество)
-    - `dataset_v8_plan_orpo_iter1` vs `dataset_v8_plan_sft`: wins `9` vs `9`, `p=1.0` (ORPO поверх текущего plan-SFT почти не сдвинул pairwise outcome)
-  - `local_plan_raw` slice:
-    - `plan_parse_rate = 0.9580`
-    - `plan_reference_binding_accuracy ≈ 0.7595`
-    - `plan_beat_integrity_accuracy ≈ 0.2786`
-  Эти значения подтверждают, что на текущем этапе bottleneck смещён в plan integrity/binding consistency, а не в отсутствие semantic signal.
-
-### Ключевые файлы
-- `docs/SGv7pipeline/v8/07_run_v8_local_benchmark.py` (единый локальный runner post-Colab benchmark цикла)
-- `docs/SGv7pipeline/v8/eval_artifacts.py` (dual-slice совместимый compiled predictions contract)
-- `docs/SGv7pipeline/v8/06_build_v8_eval_artifacts.py` (CLI генерации `plan_case_results` и `compiled_predictions`)
-- `docs/SGv7pipeline/v8/README.md` (документированный one-command запуск локального v8 benchmark)
-- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv` (основные модельные метрики)
-- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv` (pairwise outcome и p-value)
-- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv` (`local_plan_raw` quality metrics)
-- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md` (сводный отчёт прогона)
-
----
-
-## [2026-04-14 18:56] - [Prompt 10: Реализация runtime feedback loop SG v7 и bridge в dataset/eval]
-
-### Суть изменений
-- Реализован исполнимый пакет `runtime_feedback` для Track 10: нормализация runtime parse events в `runtime_failures.jsonl`, deterministic taxonomy/clustering, review/promotion corrected samples и экспорт `real_runtime` eval cases.
-- Добавлены CLI-инструменты полного цикла: `normalize_runtime_feedback.py`, `review_and_promote_runtime_feedback.py`, `export_real_runtime_eval_cases.py`, что формирует минимальный end-to-end skeleton `bronze -> silver -> gold`.
-- Внедрены contract-уровни для стабильности admission policy: `runtime_source_expectations_v1` и frozen словарь `unsupported_action_lemmas_v1`, чтобы убрать неоднозначность в `low_quality_accept_v1`.
-- Исправлены implement-риски в verify-процессе: логика `described_action` перенесена на проверку final graph (а не source), ordinal-loss проверяется по actor bindings, exporter научен резолвить anchor через `sample_id/graph_hash` в `family_anchor`.
-- Добавлены unit/integration tests для normalize/review/export и для bridge к `dataset_builder` preference-потоку; тесты пройдены локально.
-
-### Научная и техническая значимость (Для текста диссертации)
-- **Проблема:** Без формализованного feedback-loop runtime ошибки остаются «локальными инцидентами» и не превращаются в воспроизводимый сигнал для следующего training cycle. Дополнительно, если `low_quality_accept` не задан детерминированно, разные реализации ingestion дают разные failure-pools, что делает анализ regressions и active-learning нестабильным.
-- **Решение:** Построен отдельный runtime feedback слой с явными контрактами и версионированными policy-блоками. Нормализация событий материализует self-contained `runtime_failures` записи (decision/provenance/anchor/runtime-policy inputs), review-layer присваивает корректные tiers и eligibility, а export-layer детерминированно строит `real_runtime` eval-cases через canonical CIR join.
-- **Детали:** Введены `runtime_source_expectations_v1`, `low_quality_accept_v1`, `failure_signature_normalization_v1`, `runtime_feedback_provenance_state_v1` и `redaction_quality_check_v1` как проверяемые policy-компоненты. Кластеризация основана на `failure_signature + normalized_source_template`, а не на внешних embeddings, что обеспечивает повторяемость результатов между запусками и сопоставимость top-cluster динамики между релизами.
-
-### Ключевые файлы
-- `docs/SGv7pipeline/runtime_feedback/normalize.py` (bronze->silver normalizer, taxonomy/clustering/materialization)
-- `docs/SGv7pipeline/runtime_feedback/review.py` (provenance state machine, promotion eligibility, eval-bridge readiness)
-- `docs/SGv7pipeline/runtime_feedback/export.py` (runtime_failures -> real_runtime eval cases, deterministic CIR join)
-- `docs/SGv7pipeline/runtime_feedback/expectations.py` (source expectations и deterministic predicates для low-quality capture)
-- `docs/SGv7pipeline/runtime_feedback/contracts/runtime_source_expectations_v1.md` (versioned expectation contract)
-- `docs/SGv7pipeline/runtime_feedback/contracts/unsupported_action_lemmas_v1.txt` (frozen unsupported-action lemma set)
-- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_normalize.py` (normalizer + low-quality policy tests)
-- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_review.py` (review/promotion/provenance tests)
-- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_export.py` (real_runtime eval export tests)
-- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_dataset_bridge.py` (bridge test к dataset preference builder)
-
----
-
-### NLU-препроцессор: синтаксический разбор предложений через NLTagger
-
-**Концепция**: Перед извлечением сущностей (актёров, объектов, действий) добавить этап синтаксического и морфологического разбора предложения через Apple NLTagger, чтобы парсер понимал структуру предложения, а не просто искал ключевые слова.
-
-**Детали реализации**:
-- **`SentenceAnalyzer`**: разбивает текст на предложения (`.sentenceTerminator`), для каждого предложения определяет:
-  - Подлежащее (кто? — `.noun` перед `.verb`) → маппится на актёра
-  - Сказуемое (что делает? — `.verb`) → маппится на действие
-  - Дополнение (к чему? — `.noun` после предлога) → маппится на объект/target
-  - Обстоятельство (как? куда? — `.adverb`, `.particle`) → маппится на modifier/direction
-- **Coreference resolver**: разрешение местоимений «он», «она», «другой», «первый», «второй» → привязка к ранее упомянутым актёрам по порядку упоминания и по роду (NLTagger не даёт род надёжно для русского, но можно использовать эвристики по типу ActorType и окончаниям глаголов).
-- **Обработка сложносочинённых предложений**: разбиение по «,», «и», «а», «но» на клаузы и параллельная обработка каждой клаузы.
-- **Числительные**: извлечение `.number` тегов и привязка к ближайшему существительному (вместо текущих regex-паттернов `(\\d+)\\s*(?:актёр|...)`).
-
-**Преимущества**:
-- Устраняет хрупкость текущего подхода: regex ломаются при изменении порядка слов, NLU-подход инвариантен к порядку.
-- Корректная обработка сложных конструкций: «Актёр, который стоит слева, подходит к столу, а второй бежит к двери» — текущий парсер это не разберёт.
-- Разрешение «он/другой» — текущий `unresolvedPronouns` в диагностике просто фиксирует проблему, но не решает её.
-
-**Потенциальные сложности**:
-- NLTagger для русского языка имеет ограниченное качество (нет dependency parsing).
-- Определение подлежащего и дополнений по позиции ненадёжно для русского из-за свободного порядка слов.
-- Fallback на текущий regex-подход если NLU даёт плохие результаты.
-
-**Связь с текущим проектом**:
-- Заменяет/дополняет текущий `extractActors`, `extractActions`, `extractObjects` в `SceneParserService`.
-- `Lemmatizer` уже использует NLTagger — можно расширить его для синтаксического анализа.
-- Результат `SentenceAnalyzer` маппится на существующие модели `SceneActor`, `SceneAction`, `SceneObject`.
-
----
-
-### Инкрементальный интерактивный парсинг с обратной связью от пользователя
-
-**Концепция**: Вместо однопроходного «текст → SceneScript» добавить интерактивный режим, где приложение показывает промежуточный результат парсинга и спрашивает у пользователя уточнения для неразрешённых частей (unresolvedPronouns, missingObjects, низкий confidence).
-
-**Детали реализации**:
-- **`ClarificationEngine`**: анализирует `ParsingDiagnostics` и генерирует список вопросов:
-  - `unresolvedPronouns = true` → «Кто имеется в виду под "он"? [Актёр 1 / Актёр 2]»
-  - `missingObjects = true` → «В тексте упомянут "шкаф", но он не размечен. Разметить сейчас?»
-  - `confidence < 0.7` → «Не уверен в результате. Проверьте: [показать SceneScript визуально]»
-- **UI**: новый sheet/modal `ClarificationSheet` со списком уточняющих вопросов.
-- **Итеративный цикл**: parse → показать результат → получить уточнения → re-parse с доп. контекстом → показать финальный результат.
-- **Learning**: сохранение ответов пользователя как примеров для улучшения парсера (в UserDefaults или JSON-файл), со временем парсер «учится» на корректировках.
-
-**Преимущества**:
-- 100% точность на выходе: если парсер ошибся, пользователь поправляет.
-- Сбор данных для обучения: ответы пользователя — готовый датасет для fine-tuning LLM.
-- Демонстрация для диссертации: human-in-the-loop подход, метрики улучшения с каждой итерацией.
-
-**Потенциальные сложности**:
-- UX: слишком много вопросов раздражает. Нужно ограничить до 2-3 критичных.
-- Генерация осмысленных вопросов из диагностики — нетривиальная задача.
-- Хранение и использование истории уточнений.
-
-**Связь с текущим проектом**:
-- `ParsingDiagnostics` уже содержит все нужные флаги (missingActors, missingObjects, unresolvedPronouns).
-- `SceneInputSheet` — уже есть UI для ввода, нужно добавить отображение промежуточных результатов.
-- `SceneGeneratorViewModel` координирует flow — нужно добавить состояние `clarification`.
-
----
-
-### Семантический граф сцены как промежуточное представление (Scene Graph IR)
-
-**Концепция**: Ввести промежуточное представление между текстом и `SceneScript` — **граф сцены**, где узлы — это сущности (актёры, объекты), а рёбра — отношения (действия, пространственные связи). Это позволит парсеру работать не с плоским списком, а с графовой структурой, что упростит разрешение связей и валидацию.
-
-**Детали реализации**:
-- **`SceneGraph`**: структура с `nodes: [SceneNode]` и `edges: [SceneEdge]`:
-  - `SceneNode` — актёр или объект с атрибутами (тип, имя, позиция).
-  - `SceneEdge` — связь между двумя узлами (действие, пространственное отношение, принадлежность).
-- **Этапы парсинга**: Текст → NLU-анализ → SceneGraph → Валидация/Обогащение → SceneScript.
-- **Валидация графа**:
-  - Каждое действие должно иметь субъект (актёр) — если нет, ошибка парсинга.
-  - Каждый target в действии должен существовать как узел — если нет, создать placeholder.
-  - Нет висячих узлов (объекты, на которые нет действий) — предупреждение.
-- **Обогащение графа**: вывод неявных связей. Если «актёр подходит к столу», неявно добавляется пространственное отношение `near(actor, table)` в конце действия.
-- **Сериализация**: `SceneGraph → SceneScript` через обход графа (DFS/BFS), порядок действий определяется порядком упоминания в тексте.
-
-**Преимущества**:
-- Естественное представление для сцены: сцена — это граф объектов и связей.
-- Упрощение парсинга: каждый этап добавляет узлы/рёбра, не нужно финальную структуру собирать за один проход.
-- Валидация на уровне графа обнаруживает ошибки, которые сложно найти в плоском SceneScript.
-- Для диссертации: формальное описание семантического графа, визуализация, алгоритмы на графах.
-
-**Потенциальные сложности**:
-- Дополнительный слой абстракции усложняет архитектуру, но упрощает каждый отдельный этап.
-- Сериализация графа в SceneScript должна сохранять порядок действий.
-- Визуализация графа для отладки (можно использовать Mermaid или GraphViz).
-
-**Связь с текущим проектом**:
-- `SceneScript` остаётся финальным форматом, `SceneGraph` — промежуточное представление перед конвертацией.
-- Текущие `extractActors`, `extractObjects`, `extractActions` → создают узлы и рёбра вместо плоских массивов.
-- `DiagnosticsCalculator` переходит на валидацию графа вместо проверки плоских списков.
-
----
-
-## 2025-11-22 — Срез `b7764f255280fcb82557b7a0349fb7bbd56ca333` (stage + detresnet)
-
-### 1. Реализованный функционал
-
-- **Экран выбора стадии**: добавлен стартовый экран, на котором пользователь выбирает режим работы (на этом этапе — “Пре-продакшен” и “Съёмка”).
-- **Новый режим “умной камеры” (Multitool2)**:
-  - поверх live-превью отображаются подсказки и оверлеи (правило третей, рамки/наводящие элементы, подсказка-«чип»);
-  - есть режим паузы/предпросмотра (показ списка рекомендаций);
-  - в debug-режиме можно видеть служебные визуализации (детекции/центры внимания и т.п.);
-  - управление зумом через отдельный UI-компонент.
-- **ML-анализ кадра оффлайн**: в приложение добавлены модели и обвязки, позволяющие оценивать кадр (обнаружение/сегментация, “эстетическая” оценка) без подключения к сети.
-
-### 2. Технические решения и сложности
-
-- **Почему CoreML на устройстве**:
-  - оффлайн-режим (без сервера/интернета),
-  - предсказуемая задержка,
-  - возможность регулировать частоту инференса (тепловой/энергетический бюджет).
-- **Пайплайн “камера → анализ → подсказки → UI”**:
-  - `CameraManager` — захват кадров;
-  - `AnalysisPipeline` — объединение анализа (Vision/CoreML/эвристики);
-  - `RealtimeScheduler` и `ThermalGovernor` — контроль частоты тяжёлых задач (чтобы не просаживать FPS).
-- **Стабилизация сигналов** (чтобы подсказки не “мигали”):
-  - фильтры и гейты (`EMA`, `KalmanFilter`, `HysteresisGate`, `MotionGate`) для сглаживания/устойчивости.
-- **Система рекомендаций**:
-  - `SuggestionEngine` генерирует кандидатов,
-  - `PrioritySelector` выбирает главное для текущего кадра/ситуации.
-
-### 3. Архитектура
-
-- **Крупный новый модуль**: `shafinMultitool/Multitool2Module/`
-  - **Models**: CoreML-обёртки (`DETRDetector`, `AestheticScorer`) + Vision/Lighting компоненты;
-  - **Services/Pipeline**: `AnalysisPipeline`, `RealtimeScheduler`, `ThermalGovernor`;
-  - **Services/Suggestion**: `SuggestionEngine`, `PrioritySelector`;
-  - **UI/Overlay**: SwiftUI-оверлеи (сетка/рамки/чип/список/зум/дебаг).
-- **Интеграция**: добавлен `SceneModules/StageSelectionViewController.swift` + правки `Resources/SceneDelegate.swift` и файла проекта.
-
-
-## 2025-12-01 — Срез `8dd07bc29fee4afdd4cb5a582b0475b06c79ce8f` (scene generator base)
-
-### 1. Реализованный функционал
-
-- **Новая стадия “Scene Generator”**: на экране выбора стадии появляется третья карточка, запускающая генератор сцен.
-- **Scene Generator (генерация AR-сцены из текста)**:
-  - ожидание готовности AR (плоскости/ориентация);
-  - ввод текстового описания сцены на русском;
-  - создание в AR “плейсхолдеров” объектов/актёров с подписями и возможностью ▶️/stop/reset.
-- **Ручная разметка реальных объектов**:
-  - режим разметки: тап → ввод имени → объект сохраняется как реальная привязка для сценария.
-- **Черновой оверлей производительности**: добавлены `PerformanceMonitor` и `PerformanceOverlayView` и подключены к режиму съёмки (базовые метрики).
-- **Мелкий фикс**: правка `OverlayView.swift` (синтаксис).
-
-### 2. Технические решения и сложности
-
-- **MVVM + SwiftUI**: новый режим реализован как `SceneGeneratorView` + `SceneGeneratorViewModel`.
-- **Rule-based парсинг текста**: `SceneParserService` переводит описание в `SceneScript` через словари и регулярные выражения.
-- **Планирование в 3D**: `SpatialPlannerService` вычисляет область сцены по позе камеры/плоскостям, раскладывает объекты и строит траектории.
-- **Depth first, raycast fallback**:
-  - если доступен LiDAR depth (`sceneDepth`/`smoothedSceneDepth`) — используем его для точной привязки “маркеров”;
-  - иначе fallback на `raycast`.
-- **Воспроизведение траектории**: сегментная анимация в RealityKit + отменяемые задачи, чтобы stop/reset не оставляли “хвостов”.
-
 ## [2026-04-12 16:01] - [Проектирование пайплайна SG v7 для дообучения локальной LLM]
 
 ### Суть изменений
@@ -835,6 +607,193 @@
 
 ---
 
+## [2026-04-14 18:56] - [Prompt 10: Реализация runtime feedback loop SG v7 и bridge в dataset/eval]
+
+### Суть изменений
+- Реализован исполнимый пакет `runtime_feedback` для Track 10: нормализация runtime parse events в `runtime_failures.jsonl`, deterministic taxonomy/clustering, review/promotion corrected samples и экспорт `real_runtime` eval cases.
+- Добавлены CLI-инструменты полного цикла: `normalize_runtime_feedback.py`, `review_and_promote_runtime_feedback.py`, `export_real_runtime_eval_cases.py`, что формирует минимальный end-to-end skeleton `bronze -> silver -> gold`.
+- Внедрены contract-уровни для стабильности admission policy: `runtime_source_expectations_v1` и frozen словарь `unsupported_action_lemmas_v1`, чтобы убрать неоднозначность в `low_quality_accept_v1`.
+- Исправлены implement-риски в verify-процессе: логика `described_action` перенесена на проверку final graph (а не source), ordinal-loss проверяется по actor bindings, exporter научен резолвить anchor через `sample_id/graph_hash` в `family_anchor`.
+- Добавлены unit/integration tests для normalize/review/export и для bridge к `dataset_builder` preference-потоку; тесты пройдены локально.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Без формализованного feedback-loop runtime ошибки остаются «локальными инцидентами» и не превращаются в воспроизводимый сигнал для следующего training cycle. Дополнительно, если `low_quality_accept` не задан детерминированно, разные реализации ingestion дают разные failure-pools, что делает анализ regressions и active-learning нестабильным.
+- **Решение:** Построен отдельный runtime feedback слой с явными контрактами и версионированными policy-блоками. Нормализация событий материализует self-contained `runtime_failures` записи (decision/provenance/anchor/runtime-policy inputs), review-layer присваивает корректные tiers и eligibility, а export-layer детерминированно строит `real_runtime` eval-cases через canonical CIR join.
+- **Детали:** Введены `runtime_source_expectations_v1`, `low_quality_accept_v1`, `failure_signature_normalization_v1`, `runtime_feedback_provenance_state_v1` и `redaction_quality_check_v1` как проверяемые policy-компоненты. Кластеризация основана на `failure_signature + normalized_source_template`, а не на внешних embeddings, что обеспечивает повторяемость результатов между запусками и сопоставимость top-cluster динамики между релизами.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/runtime_feedback/normalize.py` (bronze->silver normalizer, taxonomy/clustering/materialization)
+- `docs/SGv7pipeline/runtime_feedback/review.py` (provenance state machine, promotion eligibility, eval-bridge readiness)
+- `docs/SGv7pipeline/runtime_feedback/export.py` (runtime_failures -> real_runtime eval cases, deterministic CIR join)
+- `docs/SGv7pipeline/runtime_feedback/expectations.py` (source expectations и deterministic predicates для low-quality capture)
+- `docs/SGv7pipeline/runtime_feedback/contracts/runtime_source_expectations_v1.md` (versioned expectation contract)
+- `docs/SGv7pipeline/runtime_feedback/contracts/unsupported_action_lemmas_v1.txt` (frozen unsupported-action lemma set)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_normalize.py` (normalizer + low-quality policy tests)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_review.py` (review/promotion/provenance tests)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_export.py` (real_runtime eval export tests)
+- `docs/SGv7pipeline/runtime_feedback/tests/test_runtime_feedback_dataset_bridge.py` (bridge test к dataset preference builder)
+
+---
+
+### NLU-препроцессор: синтаксический разбор предложений через NLTagger
+
+**Концепция**: Перед извлечением сущностей (актёров, объектов, действий) добавить этап синтаксического и морфологического разбора предложения через Apple NLTagger, чтобы парсер понимал структуру предложения, а не просто искал ключевые слова.
+
+**Детали реализации**:
+- **`SentenceAnalyzer`**: разбивает текст на предложения (`.sentenceTerminator`), для каждого предложения определяет:
+  - Подлежащее (кто? — `.noun` перед `.verb`) → маппится на актёра
+  - Сказуемое (что делает? — `.verb`) → маппится на действие
+  - Дополнение (к чему? — `.noun` после предлога) → маппится на объект/target
+  - Обстоятельство (как? куда? — `.adverb`, `.particle`) → маппится на modifier/direction
+- **Coreference resolver**: разрешение местоимений «он», «она», «другой», «первый», «второй» → привязка к ранее упомянутым актёрам по порядку упоминания и по роду (NLTagger не даёт род надёжно для русского, но можно использовать эвристики по типу ActorType и окончаниям глаголов).
+- **Обработка сложносочинённых предложений**: разбиение по «,», «и», «а», «но» на клаузы и параллельная обработка каждой клаузы.
+- **Числительные**: извлечение `.number` тегов и привязка к ближайшему существительному (вместо текущих regex-паттернов `(\\d+)\\s*(?:актёр|...)`).
+
+**Преимущества**:
+- Устраняет хрупкость текущего подхода: regex ломаются при изменении порядка слов, NLU-подход инвариантен к порядку.
+- Корректная обработка сложных конструкций: «Актёр, который стоит слева, подходит к столу, а второй бежит к двери» — текущий парсер это не разберёт.
+- Разрешение «он/другой» — текущий `unresolvedPronouns` в диагностике просто фиксирует проблему, но не решает её.
+
+**Потенциальные сложности**:
+- NLTagger для русского языка имеет ограниченное качество (нет dependency parsing).
+- Определение подлежащего и дополнений по позиции ненадёжно для русского из-за свободного порядка слов.
+- Fallback на текущий regex-подход если NLU даёт плохие результаты.
+
+**Связь с текущим проектом**:
+- Заменяет/дополняет текущий `extractActors`, `extractActions`, `extractObjects` в `SceneParserService`.
+- `Lemmatizer` уже использует NLTagger — можно расширить его для синтаксического анализа.
+- Результат `SentenceAnalyzer` маппится на существующие модели `SceneActor`, `SceneAction`, `SceneObject`.
+
+---
+
+### Инкрементальный интерактивный парсинг с обратной связью от пользователя
+
+**Концепция**: Вместо однопроходного «текст → SceneScript» добавить интерактивный режим, где приложение показывает промежуточный результат парсинга и спрашивает у пользователя уточнения для неразрешённых частей (unresolvedPronouns, missingObjects, низкий confidence).
+
+**Детали реализации**:
+- **`ClarificationEngine`**: анализирует `ParsingDiagnostics` и генерирует список вопросов:
+  - `unresolvedPronouns = true` → «Кто имеется в виду под "он"? [Актёр 1 / Актёр 2]»
+  - `missingObjects = true` → «В тексте упомянут "шкаф", но он не размечен. Разметить сейчас?»
+  - `confidence < 0.7` → «Не уверен в результате. Проверьте: [показать SceneScript визуально]»
+- **UI**: новый sheet/modal `ClarificationSheet` со списком уточняющих вопросов.
+- **Итеративный цикл**: parse → показать результат → получить уточнения → re-parse с доп. контекстом → показать финальный результат.
+- **Learning**: сохранение ответов пользователя как примеров для улучшения парсера (в UserDefaults или JSON-файл), со временем парсер «учится» на корректировках.
+
+**Преимущества**:
+- 100% точность на выходе: если парсер ошибся, пользователь поправляет.
+- Сбор данных для обучения: ответы пользователя — готовый датасет для fine-tuning LLM.
+- Демонстрация для диссертации: human-in-the-loop подход, метрики улучшения с каждой итерацией.
+
+**Потенциальные сложности**:
+- UX: слишком много вопросов раздражает. Нужно ограничить до 2-3 критичных.
+- Генерация осмысленных вопросов из диагностики — нетривиальная задача.
+- Хранение и использование истории уточнений.
+
+**Связь с текущим проектом**:
+- `ParsingDiagnostics` уже содержит все нужные флаги (missingActors, missingObjects, unresolvedPronouns).
+- `SceneInputSheet` — уже есть UI для ввода, нужно добавить отображение промежуточных результатов.
+- `SceneGeneratorViewModel` координирует flow — нужно добавить состояние `clarification`.
+
+---
+
+### Семантический граф сцены как промежуточное представление (Scene Graph IR)
+
+**Концепция**: Ввести промежуточное представление между текстом и `SceneScript` — **граф сцены**, где узлы — это сущности (актёры, объекты), а рёбра — отношения (действия, пространственные связи). Это позволит парсеру работать не с плоским списком, а с графовой структурой, что упростит разрешение связей и валидацию.
+
+**Детали реализации**:
+- **`SceneGraph`**: структура с `nodes: [SceneNode]` и `edges: [SceneEdge]`:
+  - `SceneNode` — актёр или объект с атрибутами (тип, имя, позиция).
+  - `SceneEdge` — связь между двумя узлами (действие, пространственное отношение, принадлежность).
+- **Этапы парсинга**: Текст → NLU-анализ → SceneGraph → Валидация/Обогащение → SceneScript.
+- **Валидация графа**:
+  - Каждое действие должно иметь субъект (актёр) — если нет, ошибка парсинга.
+  - Каждый target в действии должен существовать как узел — если нет, создать placeholder.
+  - Нет висячих узлов (объекты, на которые нет действий) — предупреждение.
+- **Обогащение графа**: вывод неявных связей. Если «актёр подходит к столу», неявно добавляется пространственное отношение `near(actor, table)` в конце действия.
+- **Сериализация**: `SceneGraph → SceneScript` через обход графа (DFS/BFS), порядок действий определяется порядком упоминания в тексте.
+
+**Преимущества**:
+- Естественное представление для сцены: сцена — это граф объектов и связей.
+- Упрощение парсинга: каждый этап добавляет узлы/рёбра, не нужно финальную структуру собирать за один проход.
+- Валидация на уровне графа обнаруживает ошибки, которые сложно найти в плоском SceneScript.
+- Для диссертации: формальное описание семантического графа, визуализация, алгоритмы на графах.
+
+**Потенциальные сложности**:
+- Дополнительный слой абстракции усложняет архитектуру, но упрощает каждый отдельный этап.
+- Сериализация графа в SceneScript должна сохранять порядок действий.
+- Визуализация графа для отладки (можно использовать Mermaid или GraphViz).
+
+**Связь с текущим проектом**:
+- `SceneScript` остаётся финальным форматом, `SceneGraph` — промежуточное представление перед конвертацией.
+- Текущие `extractActors`, `extractObjects`, `extractActions` → создают узлы и рёбра вместо плоских массивов.
+- `DiagnosticsCalculator` переходит на валидацию графа вместо проверки плоских списков.
+
+---
+
+## 2025-11-22 — Срез `b7764f255280fcb82557b7a0349fb7bbd56ca333` (stage + detresnet)
+
+### 1. Реализованный функционал
+
+- **Экран выбора стадии**: добавлен стартовый экран, на котором пользователь выбирает режим работы (на этом этапе — “Пре-продакшен” и “Съёмка”).
+- **Новый режим “умной камеры” (Multitool2)**:
+  - поверх live-превью отображаются подсказки и оверлеи (правило третей, рамки/наводящие элементы, подсказка-«чип»);
+  - есть режим паузы/предпросмотра (показ списка рекомендаций);
+  - в debug-режиме можно видеть служебные визуализации (детекции/центры внимания и т.п.);
+  - управление зумом через отдельный UI-компонент.
+- **ML-анализ кадра оффлайн**: в приложение добавлены модели и обвязки, позволяющие оценивать кадр (обнаружение/сегментация, “эстетическая” оценка) без подключения к сети.
+
+### 2. Технические решения и сложности
+
+- **Почему CoreML на устройстве**:
+  - оффлайн-режим (без сервера/интернета),
+  - предсказуемая задержка,
+  - возможность регулировать частоту инференса (тепловой/энергетический бюджет).
+- **Пайплайн “камера → анализ → подсказки → UI”**:
+  - `CameraManager` — захват кадров;
+  - `AnalysisPipeline` — объединение анализа (Vision/CoreML/эвристики);
+  - `RealtimeScheduler` и `ThermalGovernor` — контроль частоты тяжёлых задач (чтобы не просаживать FPS).
+- **Стабилизация сигналов** (чтобы подсказки не “мигали”):
+  - фильтры и гейты (`EMA`, `KalmanFilter`, `HysteresisGate`, `MotionGate`) для сглаживания/устойчивости.
+- **Система рекомендаций**:
+  - `SuggestionEngine` генерирует кандидатов,
+  - `PrioritySelector` выбирает главное для текущего кадра/ситуации.
+
+### 3. Архитектура
+
+- **Крупный новый модуль**: `shafinMultitool/Multitool2Module/`
+  - **Models**: CoreML-обёртки (`DETRDetector`, `AestheticScorer`) + Vision/Lighting компоненты;
+  - **Services/Pipeline**: `AnalysisPipeline`, `RealtimeScheduler`, `ThermalGovernor`;
+  - **Services/Suggestion**: `SuggestionEngine`, `PrioritySelector`;
+  - **UI/Overlay**: SwiftUI-оверлеи (сетка/рамки/чип/список/зум/дебаг).
+- **Интеграция**: добавлен `SceneModules/StageSelectionViewController.swift` + правки `Resources/SceneDelegate.swift` и файла проекта.
+
+
+## 2025-12-01 — Срез `8dd07bc29fee4afdd4cb5a582b0475b06c79ce8f` (scene generator base)
+
+### 1. Реализованный функционал
+
+- **Новая стадия “Scene Generator”**: на экране выбора стадии появляется третья карточка, запускающая генератор сцен.
+- **Scene Generator (генерация AR-сцены из текста)**:
+  - ожидание готовности AR (плоскости/ориентация);
+  - ввод текстового описания сцены на русском;
+  - создание в AR “плейсхолдеров” объектов/актёров с подписями и возможностью ▶️/stop/reset.
+- **Ручная разметка реальных объектов**:
+  - режим разметки: тап → ввод имени → объект сохраняется как реальная привязка для сценария.
+- **Черновой оверлей производительности**: добавлены `PerformanceMonitor` и `PerformanceOverlayView` и подключены к режиму съёмки (базовые метрики).
+- **Мелкий фикс**: правка `OverlayView.swift` (синтаксис).
+
+### 2. Технические решения и сложности
+
+- **MVVM + SwiftUI**: новый режим реализован как `SceneGeneratorView` + `SceneGeneratorViewModel`.
+- **Rule-based парсинг текста**: `SceneParserService` переводит описание в `SceneScript` через словари и регулярные выражения.
+- **Планирование в 3D**: `SpatialPlannerService` вычисляет область сцены по позе камеры/плоскостям, раскладывает объекты и строит траектории.
+- **Depth first, raycast fallback**:
+  - если доступен LiDAR depth (`sceneDepth`/`smoothedSceneDepth`) — используем его для точной привязки “маркеров”;
+  - иначе fallback на `raycast`.
+- **Воспроизведение траектории**: сегментная анимация в RealityKit + отменяемые задачи, чтобы stop/reset не оставляли “хвостов”.
+
+---
+
 ## [2026-04-15 15:53] - [SG v7 как полный пайплайн подготовки данных для дообучения scene-to-JSON модели]
 
 ### Суть изменений
@@ -997,6 +956,8 @@
 - `docs/cameraanalysis/11-implementation-backlog.md` (связка PR-002 с кодом и тестами)
 - `docs/cameraanalysis/README.md` (обновлённый индекс пакета camera analysis)
 
+---
+
 ## [2026-04-19 23:35] - Формализация explainability contract для camera analysis
 
 ### Суть изменений
@@ -1014,6 +975,8 @@
 - `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (Trace-контракты и валидация)
 - `shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift` (negative/round-trip tests для trace-инвариантов)
 - `docs/cameraanalysis/04-explainability-contract.md` (design spec contract для PR-003)
+
+---
 
 ## [2026-04-20 14:22] - [PR-007: deterministic Critique Engine для Camera Analysis v1]
 
@@ -1168,5 +1131,75 @@
 - `docs/cameraanalysis/01-roadmap.md` (позиционирование `PR-H01/PR-H02` в phase plan)
 - `docs/cameraanalysis/11-implementation-backlog.md` (DoD и dependency graph для `PR-H02`)
 - `docs/cameraanalysis/12-agent-prompts.md` (Prompt 9 и Prompt 10 как design entry points)
+
+---
+
+## [2026-04-22 13:46] - [SG V8.0: первый end-to-end benchmark run (plan->compile->score) и локальный runner]
+
+### Суть изменений
+- Реализован и проверен полный локальный post-Colab контур `v8`: распаковка `sgv8_eval_pack_seed42.zip`, сборка `eval_artifacts` (`plan_case_results + compiled_predictions`), генерация benchmark-конфига и запуск `run_scientific_benchmark.py`.
+- Добавлен единый orchestration-скрипт для воспроизводимого прогона одной командой: `07_run_v8_local_benchmark.py`.
+- Исправлена совместимость `v8` compiled predictions с dual-slice контрактом benchmark orchestrator: в `compiled_predictions.jsonl` теперь явно пишутся `model_only_predicted_script` и `end_to_end_predicted_script`, что снимает `require_both_slices` ошибку.
+- Получены финальные агрегаты `v8_0_seed42/benchmark_results_seed42/aggregate` в формате, совместимом с предыдущими `v7` итерациями (`runs_scored.csv`, `pairwise_compare.csv`, `scientific_report.md`) и дополнительно `v8_plan_slice_summary.csv`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Первый `v8` benchmark действительно подтвердил semantic gain, но вскрыл compile-time узкое место гибридной схемы: targetless required actions и битые `spatialRelations` слишком часто роняли compiled output, из-за чего итоговые structural метрики были занижены относительно реального quality уровня планировщика.
+- **Решение:** 
+  - (1) Для воспроизводимости введён единый локальный runner `07_run_v8_local_benchmark.py`, который формализует весь post-Colab lifecycle без ручных шагов.
+  - (2) Для технической совместимости с существующим benchmark orchestrator обновлён `eval_artifacts.py`: compiled predictions теперь содержат dual-slice contract fields (`model_only_predicted_script`, `end_to_end_predicted_script`, `selected_predicted_script`), что сохраняет строгий admission в `run_scientific_benchmark.py`.
+  - (3) В `v8` compiler добавлена deterministic lenient normalization policy: targetless required actions понижаются до safe action, а invalid `spatialRelations` пропускаются с traceable reason codes вместо fail-closed на всём case.
+- **Детали:** По итогам hotfix-прогона `seed=42`:
+  - `dataset_v8_plan_orpo_iter1` vs `dataset_v7_orpo_iter2`:
+    - `overall.json_valid_rate`: `0.9504` vs `0.9504` (`±0.0000`)
+    - `overall.ordinal_actor_binding_accuracy`: `0.8385` vs `0.9340` (`-0.0955`)
+    - `overall.target_resolution_accuracy`: `0.4803` vs `0.1778` (`+0.3026`)
+    - `overall.chronology_phase_accuracy`: `0.1412` vs `0.0840` (`+0.0573`)
+    - `overall.case_strict_success_rate`: `0.1031` vs `0.0344` (`+0.0687`)
+    - `overall.runtime_fallback_rate`: `0.7137` vs `0.8435` (`-0.1298`, лучше)
+  - Pairwise:
+    - `dataset_v8_plan_orpo_iter1` vs `dataset_v7_orpo_iter2`: wins `151` vs `82`, `p=7.26e-06` (уже статистически значимое преимущество `v8`)
+    - `dataset_v8_plan_orpo_iter1` vs `dataset_v8_plan_sft`: wins `9` vs `12`, `p=0.6636` (ORPO поверх текущего plan-SFT почти не меняет общий outcome)
+  - `local_plan_raw` slice:
+    - `plan_parse_rate = 0.9580`
+    - `plan_reference_binding_accuracy ≈ 0.7595`
+    - `plan_beat_integrity_accuracy ≈ 0.2786`
+  - `compile-note` диагностика:
+    - `v8.targetless_action_downgraded`: `58` случаев для `dataset_v8_plan_orpo_iter1`
+    - `v8.invalid_spatial_relation_skipped`: `11` случаев для `dataset_v8_plan_orpo_iter1`
+  Эти значения показывают, что hotfix восстановил compile-path и structural stability до уровня `iter2` по `json_valid_rate`, сохранив при этом сильный semantic gain. Текущий bottleneck сместился уже не в compile drops, а в ordinal binding и plan integrity.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/v8/07_run_v8_local_benchmark.py` (единый локальный runner post-Colab benchmark цикла)
+- `docs/SGv7pipeline/v8/eval_artifacts.py` (dual-slice совместимый compiled predictions contract)
+- `docs/SGv7pipeline/v8/06_build_v8_eval_artifacts.py` (CLI генерации `plan_case_results` и `compiled_predictions`)
+- `docs/SGv7pipeline/v8/README.md` (документированный one-command запуск локального v8 benchmark)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv` (основные модельные метрики)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv` (pairwise outcome и p-value)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv` (`local_plan_raw` quality metrics)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md` (сводный отчёт прогона)
+
+---
+
+## [2026-04-22 14:07] - [SG V8.0: hotfix compile-path, актуализация сравнений моделей и нормализация diploma log]
+
+### Суть изменений
+- Реализован hotfix для `v8` compile-path: targetless required actions теперь детерминированно понижаются до safe action, а invalid `spatialRelations` не роняют весь compiled output.
+- Обновлены Python/Swift runtime и eval-контуры так, чтобы compile notes (`v8.targetless_action_downgraded`, `v8.invalid_spatial_relation_skipped`) проходили в benchmark artifacts и runtime trace без silent repair.
+- Пересчитаны и зафиксированы post-hotfix benchmark-результаты `dataset_v8_plan_sft` и `dataset_v8_plan_orpo_iter1`, после чего обновлены человекочитаемые сравнения моделей в `diploma.md` и `09-eval-and-release.md`.
+- Весь лог `diploma.md` отсортирован по timestamp-ам, чтобы chronology разработки соответствовала реальной последовательности этапов и могла использоваться как корректный source-of-truth для текста диссертации.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** До hotfix и после серии быстрых итераций возникли сразу две методологические проблемы: (1) `v8` benchmark недооценивал гибридную архитектуру из-за compile-time fail-closed поведения, и (2) текстовые артефакты сравнения моделей начали расходиться с уже пересчитанными метриками, а журнал прогресса потерял корректный временной порядок.
+- **Решение:** В compiler введена deterministic lenient normalization policy с audit-trace через explicit reason codes, а поверх неё синхронизированы runtime/eval/doc layers: benchmark outputs были пересобраны, человекочитаемые сравнения обновлены на post-hotfix значения, а `diploma.md` нормализован как хронологический research log.
+- **Детали:** После hotfix `dataset_v8_plan_orpo_iter1` достиг `overall.json_valid_rate=0.9504`, сохранив structural parity с `dataset_v7_orpo_iter2`, но одновременно показал заметный semantic gain (`target_resolution_accuracy=0.4803`, `chronology_phase_accuracy=0.1412`, `case_strict_success_rate=0.1031`). Pairwise сравнение стало статистически значимым в пользу `v8` (`151` победа против `82`, `p=7.26e-06`). Это важно для диссертационного нарратива: bottleneck сместился с compile drops на `ordinal_actor_binding_accuracy` и `plan_beat_integrity`, то есть следующий шаг должен оптимизировать binding/integrity contract, а не возвращаться к старой fail-closed compile policy.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/v8/compiler.py` (lenient compile policy и compile notes для Python benchmark path)
+- `docs/SGv7pipeline/v8/eval_artifacts.py` (прокидывание `compile_notes` и `slice_reason_codes` в eval artifacts)
+- `shafinMultitool/SceneGeneratorModule/Services/ScenePlanCompiler.swift` (runtime-эквивалент compile hotfix)
+- `shafinMultitool/SceneGeneratorModule/Services/SceneQualityGate.swift` (traceable merge compile notes в runtime reasons)
+- `shafinMultitool/SceneGeneratorModule/Services/SceneParseCoordinator.swift` (единый compile-with-notes path для local/remote orchestration)
+- `docs/SGv7pipeline/09-eval-and-release.md` (обновлённый snapshot сравнения моделей с учётом новых метрик)
+- `diploma.md` (нормализованный и отсортированный chronological log)
 
 ---

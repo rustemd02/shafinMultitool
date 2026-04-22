@@ -12,12 +12,14 @@ final class SceneQualityGate {
         anchors: SourceAnchorBundle,
         providerResult: ScenePlanProviderResult?,
         compiledScript: SceneScript?,
+        compileNotes: [String] = [],
         remoteEnabled: Bool
     ) -> SceneRuntimeTrace {
         guard let providerResult else {
+            let reasons = mergeReasons(["planner_unavailable"], compileNotes: compileNotes)
             return SceneRuntimeTrace(
                 route: .fallbackRuleOnly,
-                reasons: ["planner_unavailable"],
+                reasons: reasons,
                 anchors: anchors,
                 usedLegacyPlanBridge: false,
                 clarificationMessage: nil
@@ -25,62 +27,64 @@ final class SceneQualityGate {
         }
 
         let plan = providerResult.plan
-        var reasons: [String] = []
+        var blockingReasons: [String] = []
 
         if plan.beats.isEmpty || plan.beats.contains(where: { $0.actions.isEmpty }) {
-            reasons.append("beat_collapse_or_empty")
+            blockingReasons.append("beat_collapse_or_empty")
         }
 
         let boundMarkedObjects = Set(plan.referenceBindings.markedObjectIDs)
         let mentionedMarkedObjects = Set(anchors.mentionedMarkedObjects)
         if !mentionedMarkedObjects.isSubset(of: boundMarkedObjects) {
-            reasons.append("unresolved_marked_object")
+            blockingReasons.append("unresolved_marked_object")
         }
         if boundMarkedObjects.contains(where: { !$0.hasPrefix("object_marked_") }) {
-            reasons.append("invalid_marked_object_binding")
+            blockingReasons.append("invalid_marked_object_binding")
         }
         let hallucinatedMarkedObjects = boundMarkedObjects.subtracting(mentionedMarkedObjects)
         if !mentionedMarkedObjects.isEmpty && !hallucinatedMarkedObjects.isEmpty {
-            reasons.append("hallucinated_marked_object_binding")
+            blockingReasons.append("hallucinated_marked_object_binding")
         }
 
         let actorRefs = Set(plan.actors.map(\.ref))
         if anchors.ordinalMentions.contains("second") && !actorRefs.contains("second") {
-            reasons.append("ordinal_ambiguity")
+            blockingReasons.append("ordinal_ambiguity")
         }
         if anchors.ordinalMentions.contains("third") && !actorRefs.contains("third") {
-            reasons.append("ordinal_ambiguity")
+            blockingReasons.append("ordinal_ambiguity")
         }
 
         if !anchors.unsupportedActionFlags.isEmpty {
             let hasDescribedAction = plan.beats.flatMap(\.actions).contains(where: { $0.type == .describedAction })
             if !hasDescribedAction {
-                reasons.append("unsupported_action_not_preserved")
+                blockingReasons.append("unsupported_action_not_preserved")
             }
         }
 
         if compiledScript == nil {
-            reasons.append("compiler_failed")
+            blockingReasons.append("compiler_failed")
         }
 
         if anchors.sameTypeMarkerConflict {
-            reasons.append("same_type_marker_conflict")
+            blockingReasons.append("same_type_marker_conflict")
         }
         if !anchors.lowConfidenceFlags.isEmpty {
-            reasons.append(contentsOf: anchors.lowConfidenceFlags.map { "low_confidence:\($0)" })
+            blockingReasons.append(contentsOf: anchors.lowConfidenceFlags.map { "low_confidence:\($0)" })
         }
 
-        if reasons.isEmpty {
+        if blockingReasons.isEmpty {
+            let baseReasons = providerResult.usedLegacySceneScriptBridge ? ["legacy_scene_script_bridge"] : ["local_plan_valid"]
+            let reasons = mergeReasons(baseReasons, compileNotes: compileNotes)
             return SceneRuntimeTrace(
                 route: .acceptLocal,
-                reasons: providerResult.usedLegacySceneScriptBridge ? ["legacy_scene_script_bridge"] : ["local_plan_valid"],
+                reasons: reasons,
                 anchors: anchors,
                 usedLegacyPlanBridge: providerResult.usedLegacySceneScriptBridge,
                 clarificationMessage: nil
             )
         }
 
-        let clarificationReasons = reasons.filter {
+        let clarificationReasons = blockingReasons.filter {
             $0 == "ordinal_ambiguity"
                 || $0 == "same_type_marker_conflict"
                 || $0.hasPrefix("low_confidence:")
@@ -97,6 +101,7 @@ final class SceneQualityGate {
             route = .fallbackRuleOnly
             clarificationMessage = nil
         }
+        let reasons = mergeReasons(blockingReasons, compileNotes: compileNotes)
         return SceneRuntimeTrace(
             route: route,
             reasons: reasons,
@@ -104,6 +109,17 @@ final class SceneQualityGate {
             usedLegacyPlanBridge: providerResult.usedLegacySceneScriptBridge,
             clarificationMessage: clarificationMessage
         )
+    }
+
+    private func mergeReasons(_ reasons: [String], compileNotes: [String]) -> [String] {
+        var merged: [String] = []
+        for reason in reasons where !merged.contains(reason) {
+            merged.append(reason)
+        }
+        for note in compileNotes where !merged.contains(note) {
+            merged.append(note)
+        }
+        return merged
     }
 
     private func clarificationMessage(for reasons: [String]) -> String {

@@ -223,6 +223,147 @@
 
 Иначе мы просто ещё раз обучим модель на gold-heavy surrogate вместо реального transfer signal.
 
+## Current Snapshot: V8 Hotfix Benchmark (`seed42`, 2026-04-22)
+
+Ниже зафиксирован человекочитаемый вывод по post-hotfix benchmark для:
+- `dataset_v8_plan_sft`
+- `dataset_v8_plan_orpo_iter1`
+
+Источник артефактов:
+- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
+- [runs_scored.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv)
+- [pairwise_compare.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv)
+- [v8_plan_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv)
+- [slice_reason_codes.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/slice_reason_codes.csv)
+
+### Короткий вывод
+
+- `dataset_v8_plan_sft` и `dataset_v8_plan_orpo_iter1` после hotfix больше не выглядят как структурно сломанный эксперимент.
+- `dataset_v8_plan_orpo_iter1` удерживает `json_valid_rate` на уровне `dataset_v7_orpo_iter2`, но при этом сильно выигрывает по semantic метрикам.
+- Главная недожатая зона `v8` теперь уже не compile-path, а `ordinal_actor_binding_accuracy` и общая plan integrity.
+
+### Что показал `model_only` slice
+
+#### `dataset_v8_plan_sft`
+
+Сильные стороны:
+- `json_valid_rate`: `0.9466`
+- `target_resolution_accuracy`: `0.4684`
+- `chronology_phase_accuracy`: `0.1412`
+- `case_strict_success_rate`: `0.0954`
+- `runtime_fallback_rate`: `0.7099`
+
+Слабые стороны:
+- `ordinal_actor_binding_accuracy`: `0.8403`
+- structural binding всё ещё слабее `dataset_v7`/`dataset_v7_orpo_iter2`
+
+Интерпретация:
+- уже базовый `plan_sft` приносит большой semantic gain,
+- но symbolic actor binding и integrity между beats/actions всё ещё требуют отдельного дожима.
+
+#### `dataset_v8_plan_orpo_iter1`
+
+Относительно `dataset_v7_orpo_iter2`:
+- `json_valid_rate` удержан на том же уровне: `0.9504` против `0.9504`
+- `target_resolution_accuracy` вырос до `0.4803` против `0.1778`
+- `chronology_phase_accuracy` вырос до `0.1412` против `0.0840`
+- `case_strict_success_rate` вырос до `0.1031` против `0.0344`
+- `runtime_fallback_rate` снизился до `0.7137` против `0.8435`
+
+Оставшаяся цена улучшения:
+- `ordinal_actor_binding_accuracy` всё ещё ниже: `0.8385` против `0.9340`
+
+Интерпретация:
+- после hotfix `v8_plan_orpo_iter1` уже выглядит как реальный общий winner относительно `dataset_v7_orpo_iter2`,
+- но это пока не `best of both worlds`, потому что ordinal-binding discipline ещё не дотянута до `v7`-уровня.
+
+### Pairwise comparison по-человечески
+
+#### `v8_plan_sft` vs `v7`
+
+- побед у `v8_plan_sft`: `163`
+- побед у `v7`: `72`
+- improvement выглядит уверенным (`p ≈ 2.77e-09`)
+
+Итог:
+- даже без ORPO `v8` уже превосходит чистый structural baseline на общем benchmark score.
+
+#### `v8_plan_sft` vs `v7_orpo_iter2`
+
+- побед у `v8_plan_sft`: `150`
+- побед у `v7_orpo_iter2`: `83`
+- improvement выглядит уверенным (`p ≈ 1.35e-05`)
+
+Итог:
+- `v8_plan_sft` уже обходит лучший `v7` semantic candidate, хотя binding discipline ещё не идеальна.
+
+#### `v8_plan_orpo_iter1` vs `v7_orpo_iter2`
+
+- побед у `v8_plan_orpo_iter1`: `151`
+- побед у `v7_orpo_iter2`: `82`
+- improvement выглядит уверенным (`p ≈ 7.26e-06`)
+
+Что улучшилось:
+- target resolution
+- chronology
+- strict success
+- fallback rate
+
+Что всё ещё хуже:
+- `ordinal_actor_binding_accuracy`
+
+Итог:
+- после hotfix `v8_plan_orpo_iter1` становится лучшим общим кандидатом в benchmark-сравнении с `v7_orpo_iter2`.
+
+#### `v8_plan_orpo_iter1` vs `v8_plan_sft`
+
+- побед у `v8_plan_orpo_iter1`: `9`
+- побед у `v8_plan_sft`: `12`
+- статистически разницы нет (`p ≈ 0.664`)
+
+Итог:
+- первый ORPO pass почти не меняет итоговую картину поверх `plan_sft`,
+- значит следующий шаг должен идти не в ещё один preference-cycle, а в точечный fix `ordinal` и plan integrity.
+
+### Что показал `local_plan_raw` slice
+
+Для `dataset_v8_plan_orpo_iter1`:
+- `plan_parse_rate = 0.9580`
+- `plan_reference_binding_accuracy = 0.7595`
+- `plan_beat_integrity_accuracy = 0.2786`
+
+Интерпретация:
+- planner уже почти всегда выдаёт parseable IR,
+- но reference binding и целостность multi-beat плана пока остаются главным bottleneck.
+
+### Compile-note diagnostics
+
+Для `dataset_v8_plan_orpo_iter1`:
+- `v8.targetless_action_downgraded`: `58`
+- `v8.invalid_spatial_relation_skipped`: `11`
+
+Для `dataset_v8_plan_sft`:
+- `v8.targetless_action_downgraded`: `57`
+- `v8.invalid_spatial_relation_skipped`: `10`
+
+Практический смысл:
+- hotfix убрал лишние compile-null провалы,
+- но сами note counts показывают, где именно нужно улучшать planner и training contract в `v8.1`.
+
+### Практический вывод
+
+На текущем шаге честный вывод уже другой, чем в pre-hotfix snapshot:
+- `dataset_v7` — всё ещё лучший structural baseline по entity binding discipline
+- `dataset_v7_orpo_iter2` — лучший `v7` semantic candidate
+- `dataset_v8_plan_orpo_iter1` — лучший общий candidate после hotfix, потому что держит structure на уровне `iter2`, но заметно сильнее по semantics
+
+Следующий шаг должен улучшать:
+- `ordinal_actor_binding_accuracy`
+- `plan_reference_binding_accuracy`
+- `plan_beat_integrity_accuracy`
+
+То есть `v8.1` должен дожимать уже не compile-path, а binding/integrity слой самого `ScenePlanIR`.
+
 ## Что вынести отдельному агенту
 
 - metric definitions

@@ -8,7 +8,7 @@
   "total_pairwise_rows": 9,
   "total_slice_rows": 10,
   "total_v8_plan_slice_rows": 2,
-  "total_slice_reason_rows": 9,
+  "total_slice_reason_rows": 13,
   "total_slice_case_result_files": 10,
   "slice_recompute_enabled": true,
   "slice_gate_baseline_model_id": "dataset_v7_orpo_iter2",

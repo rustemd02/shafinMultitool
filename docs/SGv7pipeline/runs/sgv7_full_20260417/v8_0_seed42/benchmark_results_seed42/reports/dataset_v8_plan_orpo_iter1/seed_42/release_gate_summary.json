@@ -3,7 +3,6 @@
     "gate1:floor_not_met:action_recall",
     "gate1:floor_not_met:beat_count_accuracy",
     "gate1:floor_not_met:chronology_phase_accuracy",
-    "gate1:floor_not_met:json_valid_rate",
     "gate1:floor_not_met:ordinal_actor_binding_accuracy",
     "gate1:floor_not_met:runtime_fallback_rate",
     "gate1:floor_not_met:target_resolution_accuracy"

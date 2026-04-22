@@ -1,4 +1,4 @@
-from .compiler import compile_scene_plan_ir
+from .compiler import compile_scene_plan_ir, compile_scene_plan_ir_with_notes
 from .datasets import (
     build_critic_rank_rows,
     build_plan_preference_rows,
@@ -18,6 +18,7 @@ __all__ = [
     "build_critic_rank_rows",
     "cir_to_scene_plan_ir",
     "compile_scene_plan_ir",
+    "compile_scene_plan_ir_with_notes",
     "scene_script_to_plan_ir",
     "source_anchor_bundle_from_cir",
     "source_anchor_bundle_from_eval_case",

@@ -12,14 +12,14 @@
 ## Set Metrics
 | Set | json_valid_rate | exact_marked_object_id_accuracy | ordinal_actor_binding_accuracy | target_resolution_accuracy | chronology_phase_accuracy | runtime_fallback_rate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| synthetic_heldout | 0.8532 | 0.0000 | 0.6374 | 0.4760 | 0.1009 | 1.0000 |
-| hard_heldout | 0.2809 | 0.0000 | 0.2697 | 0.1150 | 0.0562 | 0.8539 |
+| synthetic_heldout | 0.9541 | 0.0000 | 0.6842 | 0.4978 | 0.1101 | 1.0000 |
+| hard_heldout | 0.9101 | 0.0000 | 0.8876 | 0.2850 | 0.0562 | 0.8539 |
 | real_runtime | 0.9844 | 0.9881 | 0.9420 | 0.6603 | 0.3125 | 0.0156 |
 
 ## Critical Buckets
 | Bucket | cases | exact_marked_object_id_accuracy | ordinal_actor_binding_accuracy | chronology_phase_accuracy | runtime_fallback_rate | delta_vs_baseline |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| ordinal_cases | 137 | 0.9881 | 0.4734 | 0.1752 | 0.5255 | 0.000 |
+| ordinal_cases | 137 | 0.9881 | 0.9356 | 0.1752 | 0.5255 | 0.000 |
 | marked_object_morphology | 54 | 0.9881 | 0.9259 | 0.3333 | 0.0185 | 0.000 |
 | same_type_markers | 30 | 1.0000 | 1.0000 | 0.4667 | 0.0000 | 0.000 |
 | unsupported_action_cases | 0 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.000 |
@@ -34,5 +34,5 @@
 - recommended_action: do_not_promote
 
 ## Top Failure Clusters
-- hard_heldout: hard_heldout::json_invalid::ordinal_cases (59), hard_heldout::schema_invalid::ordinal_cases (13), hard_heldout::json_invalid::three_beat_cases (5)
+- hard_heldout: hard_heldout::schema_invalid::ordinal_cases (69), hard_heldout::json_invalid::three_beat_cases (5), hard_heldout::target_resolution_fail::three_beat_cases (5)
 - real_runtime: real_runtime::schema_invalid::exact_marker_identity_cases (30), real_runtime::chronology_phase_fail::exact_marker_identity_cases (14), real_runtime::target_resolution_fail::three_beat_cases (5)

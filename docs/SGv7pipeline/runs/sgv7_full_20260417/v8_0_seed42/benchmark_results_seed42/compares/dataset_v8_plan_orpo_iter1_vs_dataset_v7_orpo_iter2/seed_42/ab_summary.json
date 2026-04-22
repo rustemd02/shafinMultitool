@@ -17,9 +17,9 @@
     "ordinal_cases": {
       "chronology_phase_accuracy": 13.138686131386862,
       "exact_marked_object_id_accuracy": 0.0,
-      "ordinal_actor_binding_accuracy": -50.700280112044815,
+      "ordinal_actor_binding_accuracy": -4.481792717086841,
       "runtime_fallback_rate": -21.167883211678827,
-      "target_resolution_accuracy": 20.89041095890411
+      "target_resolution_accuracy": 32.87671232876713
     },
     "reviewed_merge_cases": {
       "chronology_phase_accuracy": 0.0,
@@ -53,22 +53,22 @@
   "critical_metric_deltas_pp": {
     "chronology_phase_accuracy": 5.725190839694657,
     "exact_marked_object_id_accuracy": 0.0,
-    "json_valid_rate": -26.335877862595414,
-    "ordinal_actor_binding_accuracy": -39.40972222222222,
+    "json_valid_rate": 0.0,
+    "ordinal_actor_binding_accuracy": -9.548611111111116,
     "runtime_fallback_rate": -12.977099236641221,
-    "target_resolution_accuracy": 23.76068376068376
+    "target_resolution_accuracy": 30.25641025641026
   },
   "promotion_check": {
-    "candidate_non_negative_hard_net_wins": false,
+    "candidate_non_negative_hard_net_wins": true,
     "candidate_not_losing_real_runtime": true
   },
-  "ties": 21,
-  "wins_baseline": 132,
+  "ties": 29,
+  "wins_baseline": 82,
   "wins_by_set": {
     "hard_heldout": {
-      "baseline": 63,
-      "candidate": 20,
-      "tie": 6
+      "baseline": 17,
+      "candidate": 59,
+      "tie": 13
     },
     "real_runtime": {
       "baseline": 11,
@@ -76,10 +76,10 @@
       "tie": 9
     },
     "synthetic_heldout": {
-      "baseline": 58,
-      "candidate": 45,
-      "tie": 6
+      "baseline": 54,
+      "candidate": 48,
+      "tie": 7
     }
   },
-  "wins_candidate": 109
+  "wins_candidate": 151
 }

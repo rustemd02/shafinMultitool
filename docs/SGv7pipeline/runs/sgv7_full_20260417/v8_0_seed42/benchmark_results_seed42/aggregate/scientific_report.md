@@ -13,8 +13,8 @@
 | dataset_v7 | 1 | 0.9809 ± 0.0000 | 0.0000 ± 0.0000 | 0.6719 ± 0.0000 | 0.0191 ± 0.0000 |
 | dataset_v7_orpo_iter1 | 1 | 0.9656 ± 0.0000 | 0.0000 ± 0.0000 | 0.6406 ± 0.0000 | 0.0267 ± 0.0000 |
 | dataset_v7_orpo_iter2 | 1 | 0.9504 ± 0.0000 | 0.0000 ± 0.0000 | 0.6094 ± 0.0000 | 0.0344 ± 0.0000 |
-| dataset_v8_plan_orpo_iter1 | 1 | 0.6870 ± 0.0000 | 0.0449 ± 0.0000 | 0.0312 ± 0.0000 | 0.1031 ± 0.0000 |
-| dataset_v8_plan_sft | 1 | 0.6908 ± 0.0000 | 0.0562 ± 0.0000 | 0.0156 ± 0.0000 | 0.0954 ± 0.0000 |
+| dataset_v8_plan_orpo_iter1 | 1 | 0.9504 ± 0.0000 | 0.0449 ± 0.0000 | 0.0312 ± 0.0000 | 0.1031 ± 0.0000 |
+| dataset_v8_plan_sft | 1 | 0.9466 ± 0.0000 | 0.0562 ± 0.0000 | 0.0156 ± 0.0000 | 0.0954 ± 0.0000 |
 
 ## Pairwise Results
 
@@ -23,12 +23,12 @@
 | dataset_v7_orpo_iter1 | dataset_v7 | 42 | 19 | 7 | 236 | 0.028959 | -1.527 | 0.000 | 2.672 |
 | dataset_v7_orpo_iter2 | dataset_v7 | 42 | 31 | 14 | 217 | 0.016094 | -3.053 | -1.190 | 3.817 |
 | dataset_v7_orpo_iter2 | dataset_v7_orpo_iter1 | 42 | 18 | 13 | 231 | 0.473130 | -1.527 | -1.190 | 1.145 |
-| dataset_v8_plan_sft | dataset_v7 | 42 | 113 | 126 | 23 | 0.437686 | -29.008 | -1.190 | 9.160 |
-| dataset_v8_plan_sft | dataset_v7_orpo_iter2 | 42 | 109 | 132 | 21 | 0.156297 | -25.954 | 0.000 | 5.344 |
-| dataset_v8_plan_orpo_iter1 | dataset_v7 | 42 | 115 | 127 | 20 | 0.479577 | -29.389 | -1.190 | 9.542 |
-| dataset_v8_plan_orpo_iter1 | dataset_v7_orpo_iter1 | 42 | 113 | 130 | 19 | 0.304695 | -27.863 | -1.190 | 6.870 |
-| dataset_v8_plan_orpo_iter1 | dataset_v7_orpo_iter2 | 42 | 109 | 132 | 21 | 0.156297 | -26.336 | 0.000 | 5.725 |
-| dataset_v8_plan_orpo_iter1 | dataset_v8_plan_sft | 42 | 9 | 9 | 244 | 1.000000 | -0.382 | 0.000 | 0.382 |
+| dataset_v8_plan_sft | dataset_v7 | 42 | 163 | 72 | 27 | 0.000000 | -3.435 | -1.190 | 9.542 |
+| dataset_v8_plan_sft | dataset_v7_orpo_iter2 | 42 | 150 | 83 | 29 | 0.000013 | -0.382 | 0.000 | 5.725 |
+| dataset_v8_plan_orpo_iter1 | dataset_v7 | 42 | 163 | 74 | 25 | 0.000000 | -3.053 | -1.190 | 9.542 |
+| dataset_v8_plan_orpo_iter1 | dataset_v7_orpo_iter1 | 42 | 155 | 82 | 25 | 0.000002 | -1.527 | -1.190 | 6.870 |
+| dataset_v8_plan_orpo_iter1 | dataset_v7_orpo_iter2 | 42 | 151 | 82 | 29 | 0.000007 | 0.000 | 0.000 | 5.725 |
+| dataset_v8_plan_orpo_iter1 | dataset_v8_plan_sft | 42 | 9 | 12 | 241 | 0.663624 | 0.382 | 0.000 | 0.000 |
 
 ## Slice Summary
 
@@ -40,10 +40,10 @@
 | dataset_v7_orpo_iter1 | 42 | end_to_end | 0.6145 | 0.6145 | 0.5503 | 0.1350 | 0.0267 | 0.1220 | 0.8511 | 0.0267 |
 | dataset_v7_orpo_iter2 | 42 | model_only | 0.9504 | 0.9466 | 0.9340 | 0.1128 | 0.0840 | 0.1066 | 0.9504 | 0.0344 |
 | dataset_v7_orpo_iter2 | 42 | end_to_end | 0.5916 | 0.5916 | 0.5260 | 0.1282 | 0.0344 | 0.1206 | 0.8550 | 0.0344 |
-| dataset_v8_plan_orpo_iter1 | 42 | model_only | 0.6870 | 0.5229 | 0.5399 | 0.4154 | 0.1412 | 0.3913 | 0.7137 | 0.1031 |
-| dataset_v8_plan_orpo_iter1 | 42 | end_to_end | 0.6870 | 0.5229 | 0.5399 | 0.4154 | 0.1412 | 0.3913 | 0.7137 | 0.1031 |
-| dataset_v8_plan_sft | 42 | model_only | 0.6908 | 0.5267 | 0.5399 | 0.4017 | 0.1374 | 0.3773 | 0.7099 | 0.0954 |
-| dataset_v8_plan_sft | 42 | end_to_end | 0.6908 | 0.5267 | 0.5399 | 0.4017 | 0.1374 | 0.3773 | 0.7099 | 0.0954 |
+| dataset_v8_plan_orpo_iter1 | 42 | model_only | 0.9504 | 0.5649 | 0.8385 | 0.4803 | 0.1412 | 0.4741 | 0.7137 | 0.1031 |
+| dataset_v8_plan_orpo_iter1 | 42 | end_to_end | 0.9504 | 0.5649 | 0.8385 | 0.4803 | 0.1412 | 0.4741 | 0.7137 | 0.1031 |
+| dataset_v8_plan_sft | 42 | model_only | 0.9466 | 0.5649 | 0.8403 | 0.4684 | 0.1412 | 0.4572 | 0.7099 | 0.0954 |
+| dataset_v8_plan_sft | 42 | end_to_end | 0.9466 | 0.5649 | 0.8403 | 0.4684 | 0.1412 | 0.4572 | 0.7099 | 0.0954 |
 
 ## V8 Local Plan Slice Summary
 
@@ -65,6 +65,10 @@
 | dataset_v7_orpo_iter2 | 42 | json_parse_fail | 13 |
 | dataset_v7_orpo_iter2 | 42 | legacy_beat_repaired | 223 |
 | dataset_v7_orpo_iter2 | 42 | schema_fail | 94 |
+| dataset_v8_plan_orpo_iter1 | 42 | v8.invalid_spatial_relation_skipped | 11 |
+| dataset_v8_plan_orpo_iter1 | 42 | v8.targetless_action_downgraded | 58 |
+| dataset_v8_plan_sft | 42 | v8.invalid_spatial_relation_skipped | 10 |
+| dataset_v8_plan_sft | 42 | v8.targetless_action_downgraded | 57 |
 
 ## Artifacts
 - `runs_scored.csv`

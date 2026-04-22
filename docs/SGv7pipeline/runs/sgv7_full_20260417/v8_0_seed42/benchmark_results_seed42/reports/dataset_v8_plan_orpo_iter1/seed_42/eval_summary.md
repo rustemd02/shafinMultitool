@@ -12,14 +12,14 @@
 ## Set Metrics
 | Set | json_valid_rate | exact_marked_object_id_accuracy | ordinal_actor_binding_accuracy | target_resolution_accuracy | chronology_phase_accuracy | runtime_fallback_rate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| synthetic_heldout | 0.8532 | 0.0000 | 0.6433 | 0.4803 | 0.0917 | 1.0000 |
-| hard_heldout | 0.2809 | 0.0000 | 0.2697 | 0.1100 | 0.0449 | 0.8539 |
+| synthetic_heldout | 0.9633 | 0.0000 | 0.6842 | 0.4934 | 0.0917 | 1.0000 |
+| hard_heldout | 0.9213 | 0.0000 | 0.8876 | 0.2850 | 0.0449 | 0.8539 |
 | real_runtime | 0.9688 | 0.9881 | 0.9348 | 0.7115 | 0.3594 | 0.0312 |
 
 ## Critical Buckets
 | Bucket | cases | exact_marked_object_id_accuracy | ordinal_actor_binding_accuracy | chronology_phase_accuracy | runtime_fallback_rate | delta_vs_baseline |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| ordinal_cases | 137 | 0.9881 | 0.4790 | 0.1971 | 0.5255 | 0.000 |
+| ordinal_cases | 137 | 0.9881 | 0.9412 | 0.1971 | 0.5255 | 0.000 |
 | marked_object_morphology | 54 | 0.9881 | 0.9444 | 0.3704 | 0.0185 | 0.000 |
 | same_type_markers | 30 | 1.0000 | 0.9667 | 0.4667 | 0.0000 | 0.000 |
 | unsupported_action_cases | 0 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.000 |
@@ -29,10 +29,10 @@
 
 ## Release Gate
 - status: fail
-- blockers: gate1:floor_not_met:action_recall, gate1:floor_not_met:beat_count_accuracy, gate1:floor_not_met:chronology_phase_accuracy, gate1:floor_not_met:json_valid_rate, gate1:floor_not_met:ordinal_actor_binding_accuracy, gate1:floor_not_met:runtime_fallback_rate, gate1:floor_not_met:target_resolution_accuracy
+- blockers: gate1:floor_not_met:action_recall, gate1:floor_not_met:beat_count_accuracy, gate1:floor_not_met:chronology_phase_accuracy, gate1:floor_not_met:ordinal_actor_binding_accuracy, gate1:floor_not_met:runtime_fallback_rate, gate1:floor_not_met:target_resolution_accuracy
 - improvements: 
 - recommended_action: do_not_promote
 
 ## Top Failure Clusters
-- hard_heldout: hard_heldout::json_invalid::ordinal_cases (59), hard_heldout::schema_invalid::ordinal_cases (13), hard_heldout::target_resolution_fail::three_beat_cases (6)
+- hard_heldout: hard_heldout::schema_invalid::ordinal_cases (70), hard_heldout::target_resolution_fail::three_beat_cases (6), hard_heldout::json_invalid::three_beat_cases (5)
 - real_runtime: real_runtime::schema_invalid::exact_marker_identity_cases (30), real_runtime::chronology_phase_fail::exact_marker_identity_cases (14), real_runtime::pass::exact_marker_identity_cases (6)

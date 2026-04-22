@@ -11,7 +11,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from cir_contract.contracts.cir_serializer import serialize_to_scenescript
-from v8.compiler import compile_scene_plan_ir
+from v8.compiler import (
+    INVALID_SPATIAL_RELATION_SKIPPED_NOTE,
+    TARGETLESS_ACTION_DOWNGRADED_NOTE,
+    compile_scene_plan_ir,
+    compile_scene_plan_ir_with_notes,
+)
 from v8.eval import summarize_plan_slice_metrics
 from v8.projection import cir_to_scene_plan_ir
 
@@ -61,6 +66,60 @@ class V8ProjectionTests(unittest.TestCase):
         self.assertEqual(metrics["plan_parse_rate"], 0.5)
         self.assertEqual(metrics["plan_reference_binding_accuracy"], 1.0)
         self.assertEqual(metrics["plan_beat_integrity_accuracy"], 0.5)
+
+    def test_compile_downgrades_required_targetless_actions(self) -> None:
+        plan = {
+            "actors": [{"ref": "first", "type": "human"}],
+            "objects": [],
+            "beats": [
+                {
+                    "ref": "beat_1",
+                    "actions": [
+                        {
+                            "actorRef": "first",
+                            "type": "approach",
+                            # targetRef intentionally missing
+                        }
+                    ],
+                }
+            ],
+            "spatialRelations": [],
+            "referenceBindings": {"actorBindings": {"first": "actor_1"}, "markedObjectIDs": []},
+        }
+        compiled, notes = compile_scene_plan_ir_with_notes(plan, original_description="demo")
+        action = compiled["beats"][0]["actions"][0]
+        self.assertEqual(action["type"], "stand")
+        self.assertNotIn("target", action)
+        self.assertIn(TARGETLESS_ACTION_DOWNGRADED_NOTE, notes)
+
+    def test_compile_skips_invalid_spatial_relations(self) -> None:
+        plan = {
+            "actors": [{"ref": "first", "type": "human"}],
+            "objects": [{"ref": "object_slot_1", "type": "table", "relativePosition": "center"}],
+            "beats": [
+                {
+                    "ref": "beat_1",
+                    "actions": [
+                        {
+                            "actorRef": "first",
+                            "type": "stand",
+                        }
+                    ],
+                }
+            ],
+            "spatialRelations": [
+                {
+                    "ref": "rel_1",
+                    "subjectRef": "object_slot_1",
+                    "relation": "inside",
+                    "objectRef": "holding_object_1",
+                }
+            ],
+            "referenceBindings": {"actorBindings": {"first": "actor_1"}, "markedObjectIDs": []},
+        }
+        compiled, notes = compile_scene_plan_ir_with_notes(plan, original_description="demo")
+        self.assertEqual(compiled["spatialRelations"], [])
+        self.assertIn(INVALID_SPATIAL_RELATION_SKIPPED_NOTE, notes)
 
 
 if __name__ == "__main__":

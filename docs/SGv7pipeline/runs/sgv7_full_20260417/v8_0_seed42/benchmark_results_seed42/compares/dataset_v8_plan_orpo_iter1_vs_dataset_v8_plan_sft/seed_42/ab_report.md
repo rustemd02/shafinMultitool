@@ -1,8 +1,8 @@
 # A/B report
 
 - wins_candidate: 9
-- wins_baseline: 9
-- ties: 244
+- wins_baseline: 12
+- ties: 241
 
 ## Promotion checks
 - candidate_not_losing_real_runtime: True

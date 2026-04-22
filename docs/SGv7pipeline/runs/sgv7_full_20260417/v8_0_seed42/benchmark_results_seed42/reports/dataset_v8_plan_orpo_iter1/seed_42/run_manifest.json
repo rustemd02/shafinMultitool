@@ -60,26 +60,26 @@
   "overall_metrics": {
     "case_count": 262,
     "metrics": {
-      "action_recall": 0.391304347826087,
-      "average_target_length": 662.1946564885496,
-      "beat_count_accuracy": 0.23282442748091603,
-      "canonical_parse_rate": 0.6870229007633588,
+      "action_recall": 0.4740532959326788,
+      "average_target_length": 884.7938931297709,
+      "beat_count_accuracy": 0.2786259541984733,
+      "canonical_parse_rate": 0.950381679389313,
       "case_strict_success_rate": 0.10305343511450382,
       "chronology_phase_accuracy": 0.14122137404580154,
-      "dangling_target_rate": 0.39215686274509803,
+      "dangling_target_rate": 0.6684491978609626,
       "described_action_precision": 1.0,
       "exact_marked_object_id_accuracy": 0.9880952380952381,
-      "json_valid_rate": 0.6870229007633588,
+      "json_valid_rate": 0.950381679389313,
       "llm_accept_rate": 0.2862595419847328,
-      "llm_merge_rate": 0.08015267175572519,
-      "llm_reject_rate": 0.6335877862595419,
+      "llm_merge_rate": 0.3435114503816794,
+      "llm_reject_rate": 0.3702290076335878,
       "marked_object_recall": 0.9880952380952381,
-      "ordinal_actor_binding_accuracy": 0.5399305555555556,
-      "prediction_action_count_mean": 2.1717557251908395,
-      "prediction_beat_count_mean": 1.717557251908397,
+      "ordinal_actor_binding_accuracy": 0.8385416666666666,
+      "prediction_action_count_mean": 3.1908396946564888,
+      "prediction_beat_count_mean": 2.427480916030534,
       "runtime_fallback_rate": 0.7137404580152672,
-      "schema_valid_rate": 0.5229007633587787,
-      "target_resolution_accuracy": 0.4153846153846154
+      "schema_valid_rate": 0.5648854961832062,
+      "target_resolution_accuracy": 0.48034188034188036
     },
     "supports": {
       "actions_expected": 713,
@@ -89,21 +89,21 @@
       "marked_refs": 84,
       "ordinal_refs": 576,
       "policy_cases": 262,
-      "required_target_actions": 204,
+      "required_target_actions": 374,
       "target_actions": 585
     },
     "top_failure_clusters": [
       {
-        "cluster_id": "hard_heldout::json_invalid::ordinal_cases",
-        "count": 59
+        "cluster_id": "hard_heldout::schema_invalid::ordinal_cases",
+        "count": 70
+      },
+      {
+        "cluster_id": "synthetic_heldout::ordinal_binding_fail::none",
+        "count": 46
       },
       {
         "cluster_id": "synthetic_heldout::chronology_phase_fail::none",
         "count": 39
-      },
-      {
-        "cluster_id": "synthetic_heldout::ordinal_binding_fail::none",
-        "count": 38
       }
     ]
   },

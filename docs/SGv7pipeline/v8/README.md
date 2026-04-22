@@ -157,6 +157,14 @@ This converts `ScenePlanIR` predictions into two benchmark-ready artifacts:
 - `v8_plan_case_results.jsonl` for `local_plan_raw` slice aggregation
 - `v8_compiled_predictions.jsonl` for normal `SceneScript` product metrics
 
+Lenient compile notes are propagated for traceability:
+- `v8.targetless_action_downgraded`
+- `v8.invalid_spatial_relation_skipped`
+
+These notes are exported into:
+- `plan_case_results.compile_notes`
+- `compiled_predictions.slice_reason_codes`
+
 ### 6. `local_benchmark` (one command)
 
 Когда Colab уже отдал `sgv8_eval_pack_seed42.zip`, локальный benchmark можно прогнать одной командой:

@@ -9,26 +9,51 @@ import Foundation
 
 final class ScenePlanCompiler {
     private let targetRequiredTypes: Set<SceneAction.ActionType> = [
-        .lookAt, .pickUp, .open, .close, .approach, .putDown, .give, .passBy, .stop, .stand
+        .lookAt, .pickUp, .open, .close, .approach, .putDown, .give, .passBy, .stop
     ]
+    private let targetlessActionDowngradedCode = "v8.targetless_action_downgraded"
+    private let invalidSpatialRelationSkippedCode = "v8.invalid_spatial_relation_skipped"
 
     func compile(
         plan: ScenePlanIR,
         originalDescription: String,
         topLevelMetadata: (sceneHeading: String?, locationName: String?, interiorExterior: String?, timeOfDay: String?) = (nil, nil, nil, nil)
     ) throws -> SceneScript {
+        try compileWithNotes(
+            plan: plan,
+            originalDescription: originalDescription,
+            topLevelMetadata: topLevelMetadata
+        ).script
+    }
+
+    func compileWithNotes(
+        plan: ScenePlanIR,
+        originalDescription: String,
+        topLevelMetadata: (sceneHeading: String?, locationName: String?, interiorExterior: String?, timeOfDay: String?) = (nil, nil, nil, nil)
+    ) throws -> (script: SceneScript, notes: [String]) {
         guard !plan.actors.isEmpty else {
             throw ScenePlanCompilerError.invalidPlan("ScenePlanIR must contain at least one actor")
         }
 
+        var compileNotes: [String] = []
         let actorIdMap = try compileActorIDMap(plan.actors)
         let objectIdMap = try compileObjectIDMap(plan.objects)
         let actors = compileActors(plan.actors, actorIdMap: actorIdMap)
         let objects = compileObjects(plan.objects, objectIdMap: objectIdMap)
-        let beats = try compileBeats(plan.beats, actorIdMap: actorIdMap, objectIdMap: objectIdMap)
-        let relations = try compileRelations(plan.spatialRelations, actorIdMap: actorIdMap, objectIdMap: objectIdMap)
+        let beats = try compileBeats(
+            plan.beats,
+            actorIdMap: actorIdMap,
+            objectIdMap: objectIdMap,
+            compileNotes: &compileNotes
+        )
+        let relations = try compileRelations(
+            plan.spatialRelations,
+            actorIdMap: actorIdMap,
+            objectIdMap: objectIdMap,
+            compileNotes: &compileNotes
+        )
 
-        return SceneScript(
+        let script = SceneScript(
             sceneHeading: topLevelMetadata.sceneHeading,
             locationName: topLevelMetadata.locationName,
             interiorExterior: topLevelMetadata.interiorExterior,
@@ -39,6 +64,7 @@ final class ScenePlanCompiler {
             spatialRelations: relations,
             originalDescription: originalDescription
         )
+        return (script: script, notes: uniqueNotes(compileNotes))
     }
 
     private func compileActorIDMap(_ actors: [ScenePlanIR.Actor]) throws -> [String: String] {
@@ -117,7 +143,8 @@ final class ScenePlanCompiler {
     private func compileBeats(
         _ beats: [ScenePlanIR.Beat],
         actorIdMap: [String: String],
-        objectIdMap: [String: String]
+        objectIdMap: [String: String],
+        compileNotes: inout [String]
     ) throws -> [SceneBeat] {
         guard !beats.isEmpty else {
             throw ScenePlanCompilerError.invalidPlan("ScenePlanIR must contain at least one beat")
@@ -130,17 +157,29 @@ final class ScenePlanCompiler {
 
             let actions = try beat.actions.enumerated().map { actionIndex, action in
                 let actorID = try resolveActorRef(action.actorRef, actorIdMap: actorIdMap)
-                let targetID = try resolveTargetRef(action.targetRef, actorIdMap: actorIdMap, objectIdMap: objectIdMap, requireTarget: targetRequiredTypes.contains(action.type))
+                let targetID = try resolveTargetRef(
+                    action.targetRef,
+                    actorIdMap: actorIdMap,
+                    objectIdMap: objectIdMap,
+                    requireTarget: false
+                )
+                let compiledActionType: SceneAction.ActionType
+                if targetRequiredTypes.contains(action.type), targetID == nil {
+                    compiledActionType = .stand
+                    appendNote(targetlessActionDowngradedCode, to: &compileNotes)
+                } else {
+                    compiledActionType = action.type
+                }
                 let holdingObjectID = try resolveOptionalObjectRef(action.holdingObjectRef, objectIdMap: objectIdMap)
 
                 return SceneAction(
                     id: "action_\(beatIndex + 1)_\(actionIndex + 1)",
                     actorId: actorID,
-                    type: action.type,
+                    type: compiledActionType,
                     target: targetID,
                     direction: action.direction,
                     modifier: action.modifier,
-                    resultingPose: action.resultingPose ?? defaultPose(for: action.type),
+                    resultingPose: action.resultingPose ?? defaultPose(for: compiledActionType),
                     holdingObject: holdingObjectID,
                     dialogue: action.dialogue,
                     fallbackText: action.fallbackText,
@@ -160,13 +199,25 @@ final class ScenePlanCompiler {
     private func compileRelations(
         _ relations: [ScenePlanIR.SpatialRelation],
         actorIdMap: [String: String],
-        objectIdMap: [String: String]
+        objectIdMap: [String: String],
+        compileNotes: inout [String]
     ) throws -> [SpatialRelation] {
-        try relations.enumerated().map { index, relation in
-            let subject = try resolveTargetRef(relation.subjectRef, actorIdMap: actorIdMap, objectIdMap: objectIdMap, requireTarget: true)
-            let object = try resolveTargetRef(relation.objectRef, actorIdMap: actorIdMap, objectIdMap: objectIdMap, requireTarget: true)
+        try relations.enumerated().compactMap { index, relation in
+            let subject = try resolveTargetRef(
+                relation.subjectRef,
+                actorIdMap: actorIdMap,
+                objectIdMap: objectIdMap,
+                requireTarget: false
+            )
+            let object = try resolveTargetRef(
+                relation.objectRef,
+                actorIdMap: actorIdMap,
+                objectIdMap: objectIdMap,
+                requireTarget: false
+            )
             guard let subject, let object else {
-                throw ScenePlanCompilerError.invalidPlan("Spatial relation \(relation.ref) contains unresolved refs")
+                appendNote(invalidSpatialRelationSkippedCode, to: &compileNotes)
+                return nil
             }
             return SpatialRelation(
                 id: relation.ref.isEmpty ? "rel_\(index + 1)" : relation.ref,
@@ -232,5 +283,18 @@ final class ScenePlanCompiler {
         default:
             return .standing
         }
+    }
+
+    private func appendNote(_ note: String, to notes: inout [String]) {
+        guard !notes.contains(note) else { return }
+        notes.append(note)
+    }
+
+    private func uniqueNotes(_ notes: [String]) -> [String] {
+        var result: [String] = []
+        for note in notes where !result.contains(note) {
+            result.append(note)
+        }
+        return result
     }
 }

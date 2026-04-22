@@ -97,8 +97,9 @@ final class SceneParseCoordinator {
         ruleBasedFallback: () -> ParsingResult
     ) -> (result: ParsingResult, trace: SceneRuntimeTrace) {
         let compiledScript: SceneScript?
+        let compileNotes: [String]
         if let providerResult {
-            compiledScript = try? compiler.compile(
+            if let compiled = try? compiler.compileWithNotes(
                 plan: providerResult.plan,
                 originalDescription: description,
                 topLevelMetadata: (
@@ -107,15 +108,23 @@ final class SceneParseCoordinator {
                     interiorExterior: metadata.interiorExterior,
                     timeOfDay: metadata.timeOfDay
                 )
-            )
+            ) {
+                compiledScript = compiled.script
+                compileNotes = compiled.notes
+            } else {
+                compiledScript = nil
+                compileNotes = []
+            }
         } else {
             compiledScript = nil
+            compileNotes = []
         }
 
         let trace = qualityGate.decide(
             anchors: anchors,
             providerResult: providerResult,
             compiledScript: compiledScript,
+            compileNotes: compileNotes,
             remoteEnabled: remoteOffloadEnabled
         )
 
@@ -168,7 +177,7 @@ final class SceneParseCoordinator {
                 anchors: anchors,
                 state: state
               ),
-              let remoteScript = try? compiler.compile(
+              let remoteCompiled = try? compiler.compileWithNotes(
                 plan: remoteResult.plan,
                 originalDescription: description,
                 topLevelMetadata: (
@@ -183,11 +192,14 @@ final class SceneParseCoordinator {
         }
 
         var remoteTrace = output.trace
+        for note in remoteCompiled.notes where !remoteTrace.reasons.contains(note) {
+            remoteTrace.reasons.append(note)
+        }
         if !remoteTrace.reasons.contains("remote_plan_used") {
             remoteTrace.reasons.append("remote_plan_used")
         }
         let result = makeParsingResult(
-            script: remoteScript,
+            script: remoteCompiled.script,
             description: description,
             markedObjects: markedObjects,
             trace: remoteTrace
