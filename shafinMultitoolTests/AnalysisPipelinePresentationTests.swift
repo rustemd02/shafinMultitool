@@ -1,5 +1,7 @@
 import XCTest
 import CoreGraphics
+import CoreVideo
+import ImageIO
 @testable import shafinMultitool
 
 final class AnalysisPipelinePauseSnapshotTests: XCTestCase {
@@ -103,6 +105,69 @@ final class AnalysisPipelinePauseSnapshotTests: XCTestCase {
 }
 
 final class AnalysisPipelinePresentationTests: XCTestCase {
+    func testPipelineStoresRecordedNeuralEvidenceOutcome() async {
+        let service = NeuralEvidenceInferenceService(
+            configuration: makeEnabledNeuralConfiguration(),
+            provider: MockNeuralEvidenceProvider { _ in
+                self.makeNeuralProviderOutput()
+            }
+        )
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            neuralEvidenceService: service,
+            thermalGovernor: ThermalGovernor(
+                thermalStateProvider: { .nominal },
+                batteryLevelProvider: { 1.0 }
+            ),
+            neuralHeavyModelsEnabledProvider: { true }
+        )
+        let timestamp = Date(timeIntervalSince1970: 1_771_200_000)
+        let snapshot = pipeline.testingMakeFeatureSnapshot(
+            mode: .live,
+            frameId: "neural-live-frame",
+            capturedAt: timestamp,
+            adapterState: PipelineFeatureSnapshotAdapterState(
+                features: CoachingFeatures(),
+                debugData: DebugData(),
+                vision: nil,
+                horizonMeasuredAt: nil,
+                horizon: nil,
+                lightingMeasuredAt: nil,
+                lighting: nil,
+                detr: nil,
+                aestheticMeasuredAt: nil,
+                aesthetic: nil
+            )
+        )
+        let semantics = SceneSemanticsReport(
+            frameId: snapshot.frameId,
+            mode: .live,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.8,
+            primarySubject: .init(kind: .person, confidence: 0.81),
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.2, backgroundClutterScore: 0.25),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.18, separationScore: 0.66),
+            ambiguities: [],
+            assumptions: []
+        )
+
+        let recorded = await pipeline.testingRunNeuralEvidenceInference(
+            mode: .live,
+            pixelBuffer: self.makePixelBuffer(width: 32, height: 32),
+            orientation: .up,
+            snapshot: snapshot,
+            semantics: semantics,
+            isStable: true,
+            thermalTier: .unrestricted,
+            heavyModelsEnabled: true,
+            batteryLevel: 1.0
+        )
+
+        XCTAssertEqual(recorded?.kind, .executed)
+        XCTAssertEqual(pipeline.testingLatestLiveNeuralOutcome?.kind, .executed)
+        XCTAssertEqual(pipeline.testingLatestLiveNeuralOutcome?.snapshot?.frameId, snapshot.frameId)
+    }
+
     func testLiveStructuredPathPublishesMatchingHintAndExpandedCritique() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(frameId: "live-structured", verdict: .good)
@@ -229,5 +294,52 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             traceRefs: ["trace_\(frameId)"],
             fallbackUsed: false
         )
+    }
+
+    private func makeEnabledNeuralConfiguration() -> NeuralEvidenceInferenceConfiguration {
+        var configuration = NeuralEvidenceInferenceConfiguration.disabled
+        configuration.featureEnabled = true
+        configuration.liveModeEnabled = true
+        configuration.pauseModeEnabled = true
+        return configuration
+    }
+
+    private func makeNeuralProviderOutput() -> NeuralEvidenceProviderOutput {
+        let row: [Double] = [
+            0.81, 0.74, 0.68, 0.15, 0.11, 0.07, 0.06,
+            0.76, 0.24, 0.67, 0.69, 0.63, 0.53, 0.21,
+            0.57, 0.61, 0.64, 0.44, 0.28, 0.56, 0.73
+        ]
+        return NeuralEvidenceProviderOutput(
+            scalarScores: [0.71, 0.33, 0.64, 0.77, 0.58, 0.55, 0.51],
+            scalarConfidences: [0.81, 0.74, 0.71, 0.76, 0.66, 0.63, 0.60],
+            supportingSignalScores: Array(repeating: row, count: 7),
+            shotTypeAffinities: [0.71, 0.29, 0.16, 0.14, 0.11, 0.19, 0.18],
+            shotTypeConfidence: 0.61,
+            actualROIStrategy: .fullFrameOnly
+        )
+    }
+
+    private func makePixelBuffer(width: Int, height: Int) -> CVPixelBuffer {
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [String: Any] = [
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &pixelBuffer
+        )
+        XCTAssertEqual(status, kCVReturnSuccess)
+        guard let pixelBuffer else {
+            fatalError("Failed to create test pixel buffer")
+        }
+        return pixelBuffer
     }
 }

@@ -1427,6 +1427,9 @@ final class AnalysisPipeline: ObservableObject {
     private let frameCritiqueEngine = FrameCritiqueEngine()
     private let recommendationPlanner = RecommendationPlanner()
     private let pauseReasoningCoordinator: PauseReasoningCoordinator
+    private let neuralEvidenceService: NeuralEvidenceInferenceService?
+    private let thermalGovernor: ThermalGovernor
+    private let neuralHeavyModelsEnabledProvider: () -> Bool
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -1443,9 +1446,14 @@ final class AnalysisPipeline: ObservableObject {
     private var latestAestheticSample: FeatureSample<FeatureSnapshotAestheticPayload>?
     private var latestAestheticMeasuredAt: Date?
     private let featureQueue = DispatchQueue(label: "AnalysisPipeline.features")
+    private var lastFrameWasStable = false
     private var lastPixelBuffer: CVPixelBuffer?
     private var lastOrientation: CGImagePropertyOrientation = .right
     private var lastSourceFrameId: String = ""
+    private var latestLiveNeuralOutcome: NeuralEvidenceRecordedOutcome?
+    private var latestPauseNeuralOutcome: NeuralEvidenceRecordedOutcome?
+    private var lastRequestedLiveNeuralFrameId: String?
+    private var lastRequestedPauseNeuralFrameId: String?
     private var suggestionExpiry: Date = .distantPast
     private var lastAestheticRequest: Date = .distantPast
     private var lastDETRRequest: Date = .distantPast
@@ -1454,6 +1462,8 @@ final class AnalysisPipeline: ObservableObject {
     private var lastOverlayPublishAt: Date = .distantPast
     private var pauseAnalysisRevision: Int = 0
     private var pauseReasoningTask: Task<Void, Never>?
+    private var liveNeuralInferenceTask: Task<Void, Never>?
+    private var pauseNeuralInferenceTask: Task<Void, Never>?
     private var lastRefinedPauseFrameId: String?
     private var currentPauseTraceBundle: ExplainabilityTraceBundle?
 
@@ -1463,8 +1473,14 @@ final class AnalysisPipeline: ObservableObject {
     private let liveHintTextOnlyConfidenceDelta: Double = 0.08
     private let maxOverlayHz: Double = 8.0
 
-    init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider()) {
+    init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider(),
+         neuralEvidenceService: NeuralEvidenceInferenceService? = NeuralEvidenceInferenceService.makeDefault(),
+         thermalGovernor: ThermalGovernor = ThermalGovernor(),
+         neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true }) {
         self.pauseReasoningCoordinator = PauseReasoningCoordinator(provider: reasoningProvider)
+        self.neuralEvidenceService = neuralEvidenceService
+        self.thermalGovernor = thermalGovernor
+        self.neuralHeavyModelsEnabledProvider = neuralHeavyModelsEnabledProvider
     }
     
     var currentFeatures: CoachingFeatures {
@@ -1625,6 +1641,7 @@ final class AnalysisPipeline: ObservableObject {
             features.horizon.confidence = horizon.confidence
             features.motion.shakeLevel = CGFloat(context.shakeLevel)
             features.motion.state = context.motionState
+            self.lastFrameWasStable = context.isStable
             if let subject = bestSubject {
                 features.composition = self.compositionFeatures(from: subject.boundingBox)
                 features.composition.saliencyLeftRightBalance = saliencyBalance
@@ -1863,6 +1880,16 @@ final class AnalysisPipeline: ObservableObject {
             capturedAt: now
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+        startNeuralEvidenceInferenceIfNeeded(
+            mode: .live,
+            frameId: snapshot.frameId,
+            capturedAt: now,
+            pixelBuffer: lastPixelBuffer,
+            orientation: lastOrientation,
+            snapshot: snapshot,
+            semantics: semantics,
+            forcePauseExecution: false
+        )
         let critique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
         let structuredDecision = structuredPathDecision(
@@ -2044,6 +2071,16 @@ final class AnalysisPipeline: ObservableObject {
                     adapterState: pauseAdapterState
                 )
                 let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+                self.startNeuralEvidenceInferenceIfNeeded(
+                    mode: .pause,
+                    frameId: snapshot.frameId,
+                    capturedAt: analysisCapturedAt,
+                    pixelBuffer: pixelBuffer,
+                    orientation: orientation,
+                    snapshot: snapshot,
+                    semantics: semantics,
+                    forcePauseExecution: true
+                )
                 let critique = self.frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
                 let plan = self.recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
                 let structuredDecision = self.structuredPathDecision(
@@ -3208,6 +3245,80 @@ final class AnalysisPipeline: ObservableObject {
         }
     }
 
+    private func startNeuralEvidenceInferenceIfNeeded(mode: AnalysisMode,
+                                                      frameId: String,
+                                                      capturedAt: Date,
+                                                      pixelBuffer: CVPixelBuffer?,
+                                                      orientation: CGImagePropertyOrientation,
+                                                      snapshot: FrameFeatureSnapshot,
+                                                      semantics: SceneSemanticsReport,
+                                                      forcePauseExecution: Bool) {
+        guard let neuralEvidenceService, let pixelBuffer else { return }
+
+        let request = NeuralEvidenceInferenceRequest(
+            frameId: frameId,
+            mode: mode,
+            capturedAt: capturedAt,
+            pixelBuffer: pixelBuffer,
+            orientation: orientation,
+            sceneSemantics: semantics,
+            primarySubjectRegion: snapshot.subjectSignals.primaryCandidateRegion,
+            motionState: snapshot.motion.state,
+            shakeLevel: snapshot.motion.shakeLevel,
+            isStable: featureQueue.sync { lastFrameWasStable },
+            thermalTier: thermalGovernor.currentTier(),
+            heavyModelsEnabled: neuralHeavyModelsEnabledProvider(),
+            batteryLevel: thermalGovernor.currentBatteryLevel(),
+            forcePauseExecution: forcePauseExecution
+        )
+
+        recordRequestedNeuralFrame(frameId: frameId, mode: mode)
+
+        switch mode {
+        case .live:
+            liveNeuralInferenceTask?.cancel()
+            liveNeuralInferenceTask = Task { [weak self] in
+                guard let self else { return }
+                let outcome = await neuralEvidenceService.infer(request: request)
+                self.recordNeuralOutcomeIfCurrent(outcome, mode: mode, frameId: frameId)
+            }
+        case .pause:
+            pauseNeuralInferenceTask?.cancel()
+            pauseNeuralInferenceTask = Task { [weak self] in
+                guard let self else { return }
+                let outcome = await neuralEvidenceService.infer(request: request)
+                self.recordNeuralOutcomeIfCurrent(outcome, mode: mode, frameId: frameId)
+            }
+        }
+    }
+
+    private func recordRequestedNeuralFrame(frameId: String, mode: AnalysisMode) {
+        featureQueue.sync {
+            switch mode {
+            case .live:
+                lastRequestedLiveNeuralFrameId = frameId
+            case .pause:
+                lastRequestedPauseNeuralFrameId = frameId
+            }
+        }
+    }
+
+    private func recordNeuralOutcomeIfCurrent(_ outcome: NeuralEvidenceInferenceOutcome,
+                                              mode: AnalysisMode,
+                                              frameId: String) {
+        let recorded = NeuralEvidenceRecordedOutcome(outcome)
+        featureQueue.sync {
+            switch mode {
+            case .live:
+                guard lastRequestedLiveNeuralFrameId == frameId else { return }
+                latestLiveNeuralOutcome = recorded
+            case .pause:
+                guard lastRequestedPauseNeuralFrameId == frameId else { return }
+                latestPauseNeuralOutcome = recorded
+            }
+        }
+    }
+
     private func computationCenter(from boundingBox: CGRect) -> CGPoint {
         CGPoint(x: boundingBox.midX, y: boundingBox.midY)
     }
@@ -3321,6 +3432,54 @@ extension AnalysisPipeline {
 
     var testingHasPauseReasoningTask: Bool {
         pauseReasoningTask != nil
+    }
+
+    @MainActor
+    func testingRunNeuralEvidenceInference(mode: AnalysisMode,
+                                           pixelBuffer: CVPixelBuffer,
+                                           orientation: CGImagePropertyOrientation,
+                                           snapshot: FrameFeatureSnapshot,
+                                           semantics: SceneSemanticsReport,
+                                           isStable: Bool,
+                                           thermalTier: ThermalBudgetTier,
+                                           heavyModelsEnabled: Bool,
+                                           batteryLevel: Float?) async -> NeuralEvidenceRecordedOutcome? {
+        guard let neuralEvidenceService else { return nil }
+        let request = NeuralEvidenceInferenceRequest(
+            frameId: snapshot.frameId,
+            mode: mode,
+            capturedAt: snapshot.capturedAt,
+            pixelBuffer: pixelBuffer,
+            orientation: orientation,
+            sceneSemantics: semantics,
+            primarySubjectRegion: snapshot.subjectSignals.primaryCandidateRegion,
+            motionState: snapshot.motion.state,
+            shakeLevel: snapshot.motion.shakeLevel,
+            isStable: isStable,
+            thermalTier: thermalTier,
+            heavyModelsEnabled: heavyModelsEnabled,
+            batteryLevel: batteryLevel,
+            forcePauseExecution: mode == .pause
+        )
+        let outcome = await neuralEvidenceService.infer(request: request)
+        let recorded = NeuralEvidenceRecordedOutcome(outcome)
+        featureQueue.sync {
+            switch mode {
+            case .live:
+                latestLiveNeuralOutcome = recorded
+            case .pause:
+                latestPauseNeuralOutcome = recorded
+            }
+        }
+        return recorded
+    }
+
+    var testingLatestLiveNeuralOutcome: NeuralEvidenceRecordedOutcome? {
+        featureQueue.sync { latestLiveNeuralOutcome }
+    }
+
+    var testingLatestPauseNeuralOutcome: NeuralEvidenceRecordedOutcome? {
+        featureQueue.sync { latestPauseNeuralOutcome }
     }
 }
 #endif

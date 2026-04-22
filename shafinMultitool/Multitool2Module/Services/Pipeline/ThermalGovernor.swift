@@ -64,6 +64,10 @@ final class ThermalGovernor {
         }
     }
 
+    func currentBatteryLevel() -> Float {
+        batteryLevelProvider()
+    }
+
     func nextBudget() -> Budget {
         // 🔥 THERMAL OPTIMIZATION DISABLED: всегда максимальная производительность!
         // Игнорируем thermal state и battery level
@@ -86,5 +90,4 @@ final class ThermalGovernor {
         return lastBudget
     }
 }
-
 

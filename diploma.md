@@ -101,6 +101,28 @@
 
 ---
 
+## [2026-04-22 14:32] - [PR-H07: on-device neural evidence wrapper для camera analysis]
+
+### Суть изменений
+- Введен абстрактный on-device inference boundary для neural evidence с mock- и Core ML-provider-ами, чтобы добавить ML-слой без жесткой привязки к конкретной модели.
+- Реализована cadence policy для `live` и `pause` режимов с soft-skip логикой, timeout-контролем и деградацией при thermal/battery pressure.
+- Подключен runtime hook в `AnalysisPipeline` для асинхронного запуска inference без изменения deterministic critique/planner logic.
+- Добавлены regression-тесты на cadence, fallback, timeout, descriptor-driven metadata и pipeline-level storage записанных outcomes.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Требовалось встроить on-device ML inference в существующий deterministic camera-analysis pipeline так, чтобы не разрушить воспроизводимость, не вносить race conditions и не терять трассируемость причин принятия решений.
+- **Решение:** Использован слой абстракции `NeuralEvidenceProvider`, который отделяет модель от runtime policy; preprocessing сделан orientation-aware; live cadence защищен атомарным reservation-step; runtime metadata хранит фактический `roiStrategy` и `thresholdProfile`, а не только запрошенные значения.
+- **Детали:** Для `live` введено ограничение частоты с учетом thermal tier и стабильности кадра, а для `pause` разрешен более богатый `full_frame_plus_subject_crop` path с fallback на `full_frame_only`. В случае деградации или ошибки сохраняются явные `policy_skipped`/`failed` outcomes, что важно для последующего анализа качества и построения диссертационного описания архитектуры.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/NeuralEvidenceInferenceService.swift` (cadence policy, timeout, metadata propagation)
+- `shafinMultitool/Multitool2Module/Services/Pipeline/CoreMLNeuralEvidenceProvider.swift` (orientation-aware preprocessing, ROI fallback, Core ML execution)
+- `shafinMultitool/Multitool2Module/Utilities/Metal/MetalPreprocessor.swift` (orientation-aware resize/crop)
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (async neural hook and recorded outcomes)
+- `shafinMultitoolTests/NeuralEvidenceInferenceServiceTests.swift` (cadence, timeout, descriptor, ROI fallback tests)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (pipeline storage coverage)
+
+
 ## [2026-04-12 16:01] - [Проектирование пайплайна SG v7 для дообучения локальной LLM]
 
 ### Суть изменений
@@ -1192,6 +1214,37 @@
 - **Проблема:** До hotfix и после серии быстрых итераций возникли сразу две методологические проблемы: (1) `v8` benchmark недооценивал гибридную архитектуру из-за compile-time fail-closed поведения, и (2) текстовые артефакты сравнения моделей начали расходиться с уже пересчитанными метриками, а журнал прогресса потерял корректный временной порядок.
 - **Решение:** В compiler введена deterministic lenient normalization policy с audit-trace через explicit reason codes, а поверх неё синхронизированы runtime/eval/doc layers: benchmark outputs были пересобраны, человекочитаемые сравнения обновлены на post-hotfix значения, а `diploma.md` нормализован как хронологический research log.
 - **Детали:** После hotfix `dataset_v8_plan_orpo_iter1` достиг `overall.json_valid_rate=0.9504`, сохранив structural parity с `dataset_v7_orpo_iter2`, но одновременно показал заметный semantic gain (`target_resolution_accuracy=0.4803`, `chronology_phase_accuracy=0.1412`, `case_strict_success_rate=0.1031`). Pairwise сравнение стало статистически значимым в пользу `v8` (`151` победа против `82`, `p=7.26e-06`). Это важно для диссертационного нарратива: bottleneck сместился с compile drops на `ordinal_actor_binding_accuracy` и `plan_beat_integrity`, то есть следующий шаг должен оптимизировать binding/integrity contract, а не возвращаться к старой fail-closed compile policy.
+
+### Человекочитаемый вывод по всем итерациям benchmark
+
+Ниже зафиксирован итоговый narrative по эволюции моделей `base -> v6 -> v7 -> v7_orpo_iter1 -> v7_orpo_iter2 -> v8`.
+
+- `base_qwen3_1_7b` выступает как контрольный baseline без доменной адаптации. Он полезен именно как точка отсчёта: на раннем SFT-eval модель почти всегда была parseable, но практически не проходила строгий контракт (`schema_strict_rate=7.58%`, `exact_match_rate=0%`), а в unified runtime benchmark оставалась структурно и семантически непригодной (`json_valid_rate≈42.75%`, `schema_valid≈0.38%`, `runtime_fallback_rate=100%`). Следовательно, без специализированного датасета и контрактной дисциплины компактная Qwen-модель не решает задачу сценического парсинга.
+
+- `v6` нельзя трактовать как "плохую модель вообще". На собственном legacy-контракте она оставалась работоспособной: `json_parse_rate=100%`, `schema_valid_rate=55.02%`, `actor_count_match_rate=81.34%`. Однако при переносе на современный `SG v7`-контракт она почти полностью теряет пригодность. Это означает, что основной разрыв между `v6` и более поздними версиями связан не только с качеством дообучения, но и с изменением самого целевого контракта: появились обязательные требования к marked-object identity, ordinal grounding, multi-beat chronology и runtime-safe target resolution.
+
+- `dataset_v7` стал первой по-настоящему production-совместимой моделью нового поколения. Его ключевая роль не в "лучшем общем score", а в том, что он стабилизировал форму ответа: `json_valid_rate=0.9809`, `ordinal_actor_binding_accuracy=0.9722`, практически идеальная работа с exact marker identity. Поэтому `v7` корректно интерпретировать как **лучший structural baseline**. Одновременно он оставался слабым по динамической семантике сцены: `target_resolution_accuracy=0.0564`, `chronology_phase_accuracy=0.0420`, `case_strict_success_rate=0.0191`. Иными словами, `v7` хорошо держит структуру, но ещё плохо восстанавливает сложный смысл многофазных сцен.
+
+- `dataset_v7_orpo_iter1` показал первый заметный semantic lift поверх `v7`. Улучшились `target_resolution_accuracy` (`0.0940` против `0.0564`), `chronology_phase_accuracy` (`0.0725` против `0.0420`) и `case_strict_success_rate` (`0.0267` против `0.0191`). Однако этот выигрыш был получен ценой частичной утраты structural discipline: `json_valid_rate` снизился до `0.9656`, `ordinal_actor_binding_accuracy` — до `0.9514`. Таким образом, `iter1` доказал полезность preference/ORPO-подстройки, но ещё не решил конфликт между semantic quality и structural fidelity.
+
+- `dataset_v7_orpo_iter2` усилил semantic профиль ещё сильнее и потому был зафиксирован как **лучший semantic candidate внутри ветки `v7`**. По `model_only` slice он достиг `target_resolution_accuracy=0.1128`, `chronology_phase_accuracy=0.0840`, `case_strict_success_rate=0.0344`, а pairwise против `v7` показал человекочитаемый semantic gain. Но одновременно продолжилось проседание structural метрик: `json_valid_rate` упал до `0.9504`, `ordinal_actor_binding_accuracy` — до `0.9340`, а exact marker identity перестал быть идеальным. Это и было основным выводом честного `iter3.1` prep-eval: следующий шаг нельзя было строить как "ещё один ORPO-цикл", потому что проблема локализовалась уже в самих raw outputs, а не в отсутствии preference supervision.
+
+- Honest `iter3.1` corpus build завершился fail-closed (`gold_chosen_share_overall=0.948`, `model_chosen_share_overall=0.052`). Это методологически важный результат: он показал, что transfer-first контур почти не может опираться на реальные model outputs и вынужден возвращаться к gold supervision. Следовательно, bottleneck был не в benchmark-инфраструктуре и не в слабом postprocessing, а в generation contract и в качестве самой планировочной траектории модели.
+
+- `dataset_v8_plan_sft` стал первым шагом, где semantic quality выросла уже не на проценты, а кратно. Даже без ORPO эта модель показала `target_resolution_accuracy=0.4684`, `chronology_phase_accuracy=0.1412`, `case_strict_success_rate=0.0954`, то есть на порядок сильнее всей `v7`-ветки по ключевым runtime-oriented метрикам. Pairwise сравнение подтвердило, что даже чистый `v8 plan-SFT` обгоняет как `dataset_v7`, так и `dataset_v7_orpo_iter2`. Это означает, что основной вклад здесь дал уже не preference-stage, а смена самой архитектуры генерации: переход от прямого text-to-json к plan/compile схеме с явным промежуточным слоем.
+
+- `dataset_v8_plan_orpo_iter1` после hotfix стал **лучшим общим кандидатом** на текущем этапе. Он удержал `json_valid_rate=0.9504`, то есть structural stability была восстановлена до уровня `dataset_v7_orpo_iter2`, но semantic block вырос резко: `target_resolution_accuracy=0.4803`, `chronology_phase_accuracy=0.1412`, `case_strict_success_rate=0.1031`, `runtime_fallback_rate=0.7137`. Pairwise сравнение против `dataset_v7_orpo_iter2` стало уже статистически значимым (`151` победа против `82`, `p=7.26e-06`). Таким образом, после hotfix `v8` больше не выглядит как "семантически сильный, но структурно сломанный" эксперимент.
+
+- Важнейший итог post-hotfix этапа состоит в смене bottleneck-а. Ранее узким местом были compile drops: targetless required actions и invalid spatial relations искажали общую картину. После введения deterministic lenient normalization policy compile-path перестал быть главным источником деградации. Теперь основной ограничитель качества — это `ordinal_actor_binding_accuracy` и более широкий класс `plan integrity`. Это подтверждается не только финальными benchmark-метриками, но и `local_plan_raw` slice, где `plan_parse_rate≈0.958`, но `plan_reference_binding_accuracy≈0.76`, а `plan_beat_integrity_accuracy≈0.28`. Следовательно, следующий исследовательский шаг должен оптимизировать именно binding/integrity contract, а не возвращаться к прежней fail-closed compile policy.
+
+### Практический итог для диссертационного сравнения
+
+- `base_qwen3_1_7b` — контрольный baseline, практически непригодный для задачи.
+- `v6` — работоспособен только в рамках legacy-контракта; с современным `SG v7/v8` контрактом несовместим.
+- `dataset_v7` — лучший structural baseline.
+- `dataset_v7_orpo_iter2` — лучший semantic candidate внутри ветки `v7`.
+- `dataset_v8_plan_sft` — первый качественный скачок, показывающий, что смена архитектуры генерации важнее простого наращивания ORPO-циклов.
+- `dataset_v8_plan_orpo_iter1` post-hotfix — лучший общий кандидат на текущем этапе, потому что удерживает structure на уровне `iter2`, но даёт значительно более сильную semantic reconstruction.
 
 ### Ключевые файлы
 - `docs/SGv7pipeline/v8/compiler.py` (lenient compile policy и compile notes для Python benchmark path)

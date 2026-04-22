@@ -7,6 +7,7 @@
 
 import CoreImage
 import CoreVideo
+import ImageIO
 import Metal
 
 final class MetalPreprocessor {
@@ -24,9 +25,10 @@ final class MetalPreprocessor {
     }
 
     func resizedPixelBuffer(from pixelBuffer: CVPixelBuffer,
+                            orientation: CGImagePropertyOrientation = .up,
                             targetSize: CGSize,
                             cropRect: CGRect? = nil) -> CVPixelBuffer? {
-        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        let image = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
         let cropped = cropRect.map { image.cropped(to: $0) } ?? image
         let scaleX = targetSize.width / cropped.extent.width
         let scaleY = targetSize.height / cropped.extent.height
@@ -54,6 +56,5 @@ final class MetalPreprocessor {
         return outputBuffer
     }
 }
-
 
 

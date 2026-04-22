@@ -672,6 +672,7 @@ Done definition:
 - wrapper
 - mock path
 - cadence policy
+- source-of-truth doc: [20-on-device-inference-wrapper.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/20-on-device-inference-wrapper.md)
 
 Зависимости:
 - `PR-H06`

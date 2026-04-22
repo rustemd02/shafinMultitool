@@ -1459,6 +1459,8 @@ private extension NeuralEvidenceSnapshot {
                 switch entry.headId {
                 case .balanceConfidence, .depthSeparation, .cinematicExpressiveness, .shotTypeConfidence:
                     return entry.payload.status == .notApplicable
+                case .faceSaliency:
+                    return entry.payload.status == .unavailable || entry.payload.status == .notApplicable
                 default:
                     return entry.payload.status == .unavailable
                 }
