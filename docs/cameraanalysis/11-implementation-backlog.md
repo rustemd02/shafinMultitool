@@ -581,6 +581,7 @@ Done definition:
 - evidence taxonomy
 - mapping to issue/action taxonomy
 - confidence semantics
+- зафиксированный source-of-truth doc: [15-evidence-taxonomy-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/15-evidence-taxonomy-contract.md)
 
 Зависимости:
 - `PR-H01`

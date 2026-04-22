@@ -1100,3 +1100,30 @@
 - `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/iter3_corpus_seed42/iter3_manifest.json` (gate report по honest `iter3.1` corpus)
 - `docs/SGv7pipeline/runs/sgv7_full_20260417/iter3/README.md` (маркировка legacy scratch-папки)
 - `experiments/sc_benchmark/README.md` (правила разделения benchmark infrastructure и run-артефактов)
+
+---
+
+## [2026-04-22 11:31] - [Camera Analysis Hybrid Stage: PR-H01/PR-H02 framing и evidence taxonomy]
+
+### Суть изменений
+- Зафиксирован и связан с индексными документами research framing для hybrid stage (`PR-H01`): сформулирована thesis-level граница между deterministic cinematic grammar и интерпретируемым neural evidence.
+- Спроектирован и доведен до source-of-truth состояния `Evidence Taxonomy Contract` (`PR-H02`) для hybrid camera analysis.
+- Введены closed catalogs для `EvidenceHeadId`, `EvidenceCategoryId` и `SupportingSignalTag`, а также canonical shape для scalar/categorical neural outputs.
+- Добавлен frame-level runtime envelope `NeuralEvidenceSnapshot` с dense serialization policy, versioning, canonical ordering и mode-consistency invariants.
+- Зафиксированы `live/pause` boundaries, `status` semantics (`available/not_applicable/unavailable`), mapping к issue/action taxonomy, `supportingSignals` emission rules и ambiguity policy для `shot_type_confidence`.
+- Обновлены обзорные документы пакета (`README`, roadmap, backlog), чтобы `PR-H02` стал явным source-of-truth артефактом следующего этапа после `PR-H01`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** При переходе от полностью deterministic camera critique к hybrid architecture возникает методологический разрыв: без явно зафиксированных границ neural layer быстро превращается либо в black-box judge, либо в набор плохо интерпретируемых auxiliary scores, которые невозможно валидировать, разметить и встроить в explainable mobile pipeline.
+- **Решение:** Архитектура hybrid stage была декомпозирована на два последовательных design-артефакта. В `PR-H01` зафиксирована исследовательская формула `deterministic cinematic grammar + interpretable neural evidence`, а в `PR-H02` эта формула материализована в строгий contract: закрытая taxonomy evidence heads, нормированные semantics score/confidence/status, machine-checkable serialization, а также явный mapping `evidence -> issue/action/fusion boundary`.
+- **Детали:** Существенной частью решения стало устранение недоопределенностей, которые делали бы downstream PR невоспроизводимыми: разделены scalar и categorical payload forms, введен dense snapshot `NeuralEvidenceSnapshot`, зафиксированы canonical order и versioning, запрещено смешивание `live/pause` payload-ов внутри одного snapshot, формализованы `not_applicable` vs `unavailable`, а для `shot_type_confidence` введены tie/unknown semantics. Отдельно разведены `action availability` и `neural support by mode`, чтобы hybrid layer не подменял deterministic planner. Для диссертационного текста это важно как пример того, как explainability-by-construction достигается не только выбором модели, но и строгим проектированием контрактов между research, runtime, dataset и eval слоями.
+
+### Ключевые файлы
+- `docs/cameraanalysis/14-hybrid-research-framing.md` (source-of-truth research framing для `PR-H01`)
+- `docs/cameraanalysis/15-evidence-taxonomy-contract.md` (source-of-truth evidence taxonomy для `PR-H02`)
+- `docs/cameraanalysis/README.md` (индексация hybrid-stage артефактов)
+- `docs/cameraanalysis/01-roadmap.md` (позиционирование `PR-H01/PR-H02` в phase plan)
+- `docs/cameraanalysis/11-implementation-backlog.md` (DoD и dependency graph для `PR-H02`)
+- `docs/cameraanalysis/12-agent-prompts.md` (Prompt 9 и Prompt 10 как design entry points)
+
+---
