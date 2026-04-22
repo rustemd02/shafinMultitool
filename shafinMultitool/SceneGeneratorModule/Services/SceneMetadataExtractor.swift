@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct SceneTopLevelMetadata: Equatable {
+struct SceneTopLevelMetadata: Codable, Equatable {
     var sceneHeading: String?
     var locationName: String?
     var interiorExterior: String?
@@ -55,6 +55,8 @@ final class SceneMetadataExtractor {
         let patterns = [
             #"^(INT|EXT|INT\/EXT)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#,
             #"^(ИНТ|ЭКСТ|ИНТ\/ЭКСТ)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#,
+            #"^(НАТ)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#,
+            #"^([A-ZА-Я0-9][A-ZА-Я0-9 \/_]{2,})\s*[—-]\s*([A-ZА-Яa-zа-я0-9 \/_]{2,})$"#,
         ]
 
         for pattern in patterns {
@@ -106,6 +108,8 @@ final class SceneMetadataExtractor {
         case "INT", "ИНТ":
             return "interior"
         case "EXT", "ЭКСТ":
+            return "exterior"
+        case "НАТ":
             return "exterior"
         case "INT/EXT", "ИНТ/ЭКСТ":
             return "mixed"

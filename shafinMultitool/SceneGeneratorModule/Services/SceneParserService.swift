@@ -27,11 +27,19 @@ final class SceneParserService {
     private let metadataExtractor = SceneMetadataExtractor()
     private let planCompiler = ScenePlanCompiler()
     private let qualityGate = SceneQualityGate()
+    private lazy var bundlePipeline = SceneBundlePipeline(
+        anchorExtractor: anchorExtractor,
+        metadataExtractor: metadataExtractor,
+        localProvider: llmParser,
+        planCompiler: planCompiler
+    )
     private var remotePlanProvider: RemoteScenePlanProvider?
     private var remoteOffloadEnabled = false
 
     private(set) var lastRuntimeTrace: SceneRuntimeTrace?
     private(set) var lastChunkState: SceneChunkState?
+    private(set) var lastDocumentState: ScriptDocumentState?
+    private(set) var lastBundleResult: SceneBundleParsingResult?
 
     private init() {}
 
@@ -47,6 +55,10 @@ final class SceneParserService {
     }
 
     func parse(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) -> ParsingResult {
+        if state == nil {
+            let bundleResult = parseBundle(description, markedObjects: markedObjects)
+            return ParsingResult(script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: bundleResult.diagnostics)
+        }
         let output = makeParseCoordinator().parse(description: description, markedObjects: markedObjects, state: state) { [weak self] in
             self?.ruleBasedParse(description, markedObjects: markedObjects)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: .empty)
@@ -134,6 +146,10 @@ final class SceneParserService {
     }
 
     func parseAsync(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) async -> ParsingResult {
+        if state == nil {
+            let bundleResult = await parseBundleAsync(description, markedObjects: markedObjects)
+            return ParsingResult(script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: bundleResult.diagnostics)
+        }
         let output = await makeParseCoordinator().parseAsync(description: description, markedObjects: markedObjects, state: state) { [weak self] in
             self?.ruleBasedParse(description, markedObjects: markedObjects)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: .empty)
@@ -148,6 +164,46 @@ final class SceneParserService {
         trace?.clarificationMessage
     }
 
+    func parseBundle(
+        _ description: String,
+        markedObjects: [MarkedObject] = [],
+        mode: SceneBundleParseMode = .full,
+        previousState: ScriptDocumentState? = nil
+    ) -> SceneBundleParsingResult {
+        let result = bundlePipeline.parse(
+            description: description,
+            markedObjects: markedObjects,
+            mode: mode,
+            previousState: previousState
+        ) { [weak self] text, markers, state in
+            self?.ruleBasedParse(text, markedObjects: markers)
+                ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
+        }
+        updateBundleContext(with: result, fallbackLocationName: previousState?.stitchStates.last?.metadata.locationName)
+        print("🤖 [PARSER_V1] bundle scenes=\(result.bundleScript.scenes.count) chunks=\(result.sceneChunks.count)")
+        return result
+    }
+
+    func parseBundleAsync(
+        _ description: String,
+        markedObjects: [MarkedObject] = [],
+        mode: SceneBundleParseMode = .full,
+        previousState: ScriptDocumentState? = nil
+    ) async -> SceneBundleParsingResult {
+        let result = await bundlePipeline.parseAsync(
+            description: description,
+            markedObjects: markedObjects,
+            mode: mode,
+            previousState: previousState
+        ) { [weak self] text, markers, _ in
+            self?.ruleBasedParse(text, markedObjects: markers)
+                ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
+        }
+        updateBundleContext(with: result, fallbackLocationName: previousState?.stitchStates.last?.metadata.locationName)
+        print("🤖 [PARSER_V1] bundle scenes=\(result.bundleScript.scenes.count) chunks=\(result.sceneChunks.count)")
+        return result
+    }
+
     func configureRemoteOffload(enabled: Bool, provider: RemoteScenePlanProvider?) {
         remoteOffloadEnabled = enabled
         remotePlanProvider = provider
@@ -156,6 +212,8 @@ final class SceneParserService {
     func resetRuntimeContext() {
         lastRuntimeTrace = nil
         lastChunkState = nil
+        lastDocumentState = nil
+        lastBundleResult = nil
         remoteOffloadEnabled = false
         remotePlanProvider = nil
     }
@@ -164,6 +222,10 @@ final class SceneParserService {
         let knownActors = Dictionary(uniqueKeysWithValues: script.actors.map { actor in
             let key = actor.name?.lowercased() ?? actor.id
             return (key, actor.id)
+        })
+        let knownObjects = Dictionary(uniqueKeysWithValues: script.objects.map { object in
+            let key = object.name?.lowercased() ?? object.id
+            return (key, object.id)
         })
         var actorPoses: [String: ActorPose] = [:]
         var heldObjects: [String: String] = [:]
@@ -187,10 +249,63 @@ final class SceneParserService {
         }
 
         return SceneChunkState(
+            sceneHeading: script.sceneHeading,
             locationName: script.locationName ?? fallbackLocationName,
             knownActors: knownActors,
+            knownObjects: knownObjects,
+            actorAliases: knownActors,
+            objectAliases: knownObjects,
+            speakerAliasMap: [:],
             actorPoses: actorPoses,
             heldObjects: heldObjects
+        )
+    }
+
+    private func makeChunkState(from stitchState: SceneStitchState, fallbackLocationName: String?) -> SceneChunkState {
+        let knownActors = Dictionary(uniqueKeysWithValues: stitchState.actors.map { actor in
+            ((actor.name?.lowercased() ?? actor.ref), actor.ref)
+        })
+        let knownObjects = Dictionary(uniqueKeysWithValues: stitchState.objects.map { object in
+            ((object.name?.lowercased() ?? object.ref), object.ref)
+        })
+        return SceneChunkState(
+            sceneID: stitchState.sceneID,
+            sceneHeading: stitchState.metadata.sceneHeading,
+            locationName: stitchState.metadata.locationName ?? fallbackLocationName,
+            knownActors: knownActors.merging(stitchState.registry.actorAliasMap) { current, _ in current },
+            knownObjects: knownObjects.merging(stitchState.registry.objectAliasMap) { current, _ in current },
+            actorAliases: stitchState.registry.actorAliasMap,
+            objectAliases: stitchState.registry.objectAliasMap,
+            speakerAliasMap: stitchState.registry.speakerAliasMap,
+            actorPoses: stitchState.registry.actorPoses,
+            heldObjects: stitchState.registry.heldObjects,
+            lastResolvedSpeaker: stitchState.registry.lastResolvedSpeaker
+        )
+    }
+
+    private func updateBundleContext(with result: SceneBundleParsingResult, fallbackLocationName: String?) {
+        lastBundleResult = result
+        lastDocumentState = result.documentState
+        if let stitchState = result.documentState.stitchStates.last {
+            lastChunkState = makeChunkState(from: stitchState, fallbackLocationName: fallbackLocationName)
+        } else if let activeSceneScript = result.activeSceneScript {
+            lastChunkState = makeChunkState(from: activeSceneScript, fallbackLocationName: fallbackLocationName)
+        } else {
+            lastChunkState = nil
+        }
+        lastRuntimeTrace = makeRuntimeTrace(from: result)
+    }
+
+    private func makeRuntimeTrace(from result: SceneBundleParsingResult) -> SceneRuntimeTrace {
+        let activeChunk = result.chunkDiagnostics.last
+        let route: SceneRouterOutcome = result.activeSceneScript == nil ? .fallbackRuleOnly : .acceptLocal
+        let reasons = activeChunk?.reasonCodes ?? result.diagnostics.notes
+        return SceneRuntimeTrace(
+            route: route,
+            reasons: reasons,
+            anchors: activeChunk?.anchors.sourceBundle ?? .empty,
+            usedLegacyPlanBridge: activeChunk?.usedLegacyPlanBridge ?? false,
+            clarificationMessage: nil
         )
     }
 

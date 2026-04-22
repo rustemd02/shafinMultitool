@@ -1256,3 +1256,42 @@
 - `diploma.md` (нормализованный и отсортированный chronological log)
 
 ---
+
+## [2026-04-22 15:14] - [SG V1: chunk-native scene bundle pipeline для mixed screenplay/prose, append-only continuity и bundle-level eval]
+
+### Суть изменений
+- Реализован новый `v1` runtime-пайплайн для сценического парсинга, который переводит систему с режима `one text -> one ScenePlanIR -> one compile` на bundle-first архитектуру `Raw text -> ScriptNormalizer -> SceneBoundaryDetector -> ChunkSegmenter -> ChunkAnchorExtractor -> EntityRegistryProjector -> LocalChunkPlanner -> ChunkCanonicalizer -> SceneStitcher -> SceneBundlePlanIR -> SceneBundleCompiler -> SceneBundleScript`.
+- Введён набор versioned контрактов для bundle-уровня: `sg_script_document_v1`, `sg_chunk_anchor_v1`, `sg_entity_registry_v1`, `sg_scene_chunk_draft_v1`, `sg_scene_chunk_v1`, `sg_scene_stitch_state_v1`, `sg_scene_bundle_plan_v1`, `sg_scene_bundle_script_v1`, а также публичный runtime result `SceneBundleParsingResult`.
+- В iOS runtime добавлен deterministic front-end: нормализация текста, scene boundary detection, segmenter для dialogue/action chunks, anchor extraction, canonicalization и stitcher, после чего compile вызывается только один раз на финальном bundle, а не отдельно на каждом чанке.
+- Parser facade переведён на bundle-first поведение с compatibility adapter: старые `parse/parseAsync` продолжают работать, но canonical internal result теперь всегда bundle, а single-scene ответ является лишь `activeSceneScript` представлением текущей сцены.
+- Расширен continuity context, который реально подаётся в локальный planner prompt: теперь туда входят `scene id`, `scene heading`, `known objects`, alias maps актёров и объектов, speaker alias map, `lastResolvedSpeaker`, poses и held objects. Это устраняет часть предыдущего разрыва между runtime state и реальным контекстом, который видела модель.
+- Поддержан append-only режим: если пользователь дописывает хвост документа, пересчитывается только хвостовая сцена; если изменения произошли в середине текста, full-reparse ограничивается только затронутой сценой, а остальные сцены bundle не пересобираются.
+- Добавлен новый research/data/eval пакет `docs/SGv7pipeline/v1` с builders для `macro_scene`, `chunk_anchor`, `entity_registry`, `chunk_patch`, `chunk_preference`, а также со сборкой `stitch_eval_artifacts` и локальным benchmark runner для будущих `chunk_raw / scene_stitched / bundle_compiled` срезов.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Предыдущий `v7/v8` подход, даже после заметного semantic роста, всё ещё опирался на scene-level planning как на primary target. Это делало систему уязвимой при работе с обычным смешанным текстом сценария: модель должна была сразу восстановить целую сцену, continuity приходилось чинить уже постфактум, а chunking не был first-class сущностью. В результате локальная архитектура была недостаточно выразительной для двух реальных продуктовых режимов: полного разбора длинного текста и инкрементального append-only продолжения документа.
+- **Решение:** В `v1` задача переформулирована как иерархический pipeline с жёстким разделением ролей. Deterministic front-end отвечает за документную структуру, boundaries и chunk segmentation; локальный planner генерирует только chunk-level draft; canonicalizer преобразует локальные упоминания в стабильные глобальные refs; continuity truth хранится только в `SceneStitcher`; compile происходит лишь после того, как сцена и bundle уже собраны детерминированно. Таким образом система становится не просто "ещё одной fine-tuned моделью", а многослойной гибридной архитектурой с explainable linking и трассируемой continuity policy.
+- **Детали:** Архитектурно это важный шаг для диплома по нескольким причинам. Во-первых, введены explicit versioned contracts между runtime, data и eval слоями, что делает систему воспроизводимой и пригодной для поэтапной эволюции без скрытых несовместимостей. Во-вторых, continuity больше не размыта по нескольким сервисам: alias matching, object identity, speaker inheritance и deferred refs теперь проходят через единый stitch state. В-третьих, canonical output перестаёт быть одной сценой по умолчанию: даже если в тексте одна сцена, система думает bundle-уровнем, а значит изначально готова к multi-scene screenplay input. В-четвёртых, формализован путь к dissertation-grade eval: отдельно можно измерять качество сырого chunk planner-а, stitched scene plan и финального compiled bundle, а значит разделять model error, canonicalization error и stitching error вместо одной агрегированной "точности".
+
+### Практический смысл для исходной бизнес-задачи
+- Эта архитектура прямо закрывает исходную прикладную цель: приложение должно уметь брать обычный mixed screenplay/prose текст, разрезать его на отдельные JSON-чанки, корректно восстанавливать ссылки между ними и собирать в итоговый `AR/previz-ready` bundle без ручного вмешательства.
+- Появляется технологически корректный путь для incremental authoring: пользователь может дописывать сценарий по кускам, а приложение может не перестраивать весь результат каждый раз, а аккуратно пересчитывать только хвостовую или затронутую сцену.
+- Для продуктовой надёжности важно и то, что chunk JSON теперь становится first-class artifact: его можно хранить, дебажить, сравнивать в benchmark, использовать для audit trail и объяснять, на каком именно этапе возникла ошибка continuity или entity linking.
+
+### Честное состояние реализации
+- Runtime foundation и research scaffolding реализованы, но локальный ML planner пока ещё работает через transitional adapter: существующий local `ScenePlanIR` output адаптируется во внутренний `sg_scene_chunk_draft_v1`, а не генерируется native-моделью напрямую.
+- Это означает, что архитектурный каркас `v1` уже существует и работает как новый execution path, однако следующий полноценный research cycle должен дообучить отдельный adapter именно на `chunk draft` контракте и затем измерить его на новых `chunk_raw / scene_stitched / bundle_compiled` метриках.
+- Полная `xcodebuild` сборка проекта на момент фикса не была доведена до зелёного статуса не из-за `v1` изменений, а из-за внешней, уже существовавшей проблемы с отсутствующим модулем `SnapKit` в unrelated UI-частях проекта. При этом targeted typecheck SceneGenerator bundle-layer и Python tests для `docs/SGv7pipeline/v1` проходят успешно.
+
+### Ключевые файлы
+- `shafinMultitool/SceneGeneratorModule/Models/SceneBundleContracts.swift` (новые v1 contracts и public bundle result)
+- `shafinMultitool/SceneGeneratorModule/Services/SceneBundlePipeline.swift` (deterministic bundle-first pipeline: normalizer, detector, segmenter, anchors, canonicalizer, stitcher, compiler)
+- `shafinMultitool/SceneGeneratorModule/Services/SceneParserService.swift` (bundle facade и compatibility adapter для существующего UI)
+- `shafinMultitool/SceneGeneratorModule/Services/LLMParserService.swift` (расширенный continuity context в planner prompt)
+- `shafinMultitool/SceneGeneratorModule/Models/SceneChunkState.swift` (расширенный stitch-state summary)
+- `shafinMultitoolTests/SceneBundlePipelineTests.swift` (tests на multi-scene, canonical refs, append-only continuation и compatibility path)
+- `docs/SGv7pipeline/v1/datasets.py` (builders нового chunk-native data layer)
+- `docs/SGv7pipeline/v1/eval_artifacts.py` (bundle/stitch eval artifacts и агрегаты)
+- `docs/SGv7pipeline/v1/04_run_v1_local_benchmark.py` (локальный runner для будущего `v1` benchmark контура)
+
+---

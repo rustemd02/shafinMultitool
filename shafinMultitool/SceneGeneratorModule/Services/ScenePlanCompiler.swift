@@ -71,19 +71,21 @@ final class ScenePlanCompiler {
         let canonicalRefs = ["first", "second", "third"]
         var map: [String: String] = [:]
         let seen = Set(actors.map(\.ref))
-        guard seen.contains("first") else {
-            throw ScenePlanCompilerError.invalidPlan("ScenePlanIR must bind at least actor ref 'first'")
-        }
+        if seen.contains("first") {
+            var nextIndex = 1
+            for ref in canonicalRefs where seen.contains(ref) {
+                map[ref] = "actor_\(nextIndex)"
+                nextIndex += 1
+            }
 
-        var nextIndex = 1
-        for ref in canonicalRefs where seen.contains(ref) {
-            map[ref] = "actor_\(nextIndex)"
-            nextIndex += 1
-        }
-
-        for actor in actors where map[actor.ref] == nil {
-            map[actor.ref] = "actor_\(nextIndex)"
-            nextIndex += 1
+            for actor in actors where map[actor.ref] == nil {
+                map[actor.ref] = "actor_\(nextIndex)"
+                nextIndex += 1
+            }
+        } else {
+            for (index, actor) in actors.enumerated() {
+                map[actor.ref] = "actor_\(index + 1)"
+            }
         }
         return map
     }

@@ -90,16 +90,16 @@ final class SceneQualityGate {
                 || $0.hasPrefix("low_confidence:")
         }
         let route: SceneRouterOutcome
-        let clarificationMessage: String?
+        let routeClarificationMessage: String?
         if !clarificationReasons.isEmpty {
             route = .needsClarification
-            clarificationMessage = clarificationMessage(for: clarificationReasons)
+            routeClarificationMessage = clarificationMessage(for: clarificationReasons)
         } else if remoteEnabled {
             route = .offloadRemote
-            clarificationMessage = nil
+            routeClarificationMessage = nil
         } else {
             route = .fallbackRuleOnly
-            clarificationMessage = nil
+            routeClarificationMessage = nil
         }
         let reasons = mergeReasons(blockingReasons, compileNotes: compileNotes)
         return SceneRuntimeTrace(
@@ -107,7 +107,7 @@ final class SceneQualityGate {
             reasons: reasons,
             anchors: anchors,
             usedLegacyPlanBridge: providerResult.usedLegacySceneScriptBridge,
-            clarificationMessage: clarificationMessage
+            clarificationMessage: routeClarificationMessage
         )
     }
 

@@ -237,9 +237,22 @@ final class LLMParserService: LocalScenePlanProvider {
         var stateContext = ""
         if let state = state {
             let actors = state.knownActors.map { "\($0.key) (id: \($0.value))" }.joined(separator: ", ")
+            let objects = state.knownObjects.map { "\($0.key) (id: \($0.value))" }.joined(separator: ", ")
+            let poses = state.actorPoses.map { "\($0.key)=\($0.value.rawValue)" }.joined(separator: ", ")
+            let held = state.heldObjects.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
+            let actorAliases = state.actorAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
+            let objectAliases = state.objectAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
             stateContext = "Предыдущее состояние сцены:\n"
+            if let sceneID = state.sceneID { stateContext += "Scene ID: \(sceneID)\n" }
+            if let heading = state.sceneHeading { stateContext += "Scene heading: \(heading)\n" }
             if let loc = state.locationName { stateContext += "Локация: \(loc)\n" }
             if !actors.isEmpty { stateContext += "Известные персонажи (сохраняй их id): \(actors)\n" }
+            if !objects.isEmpty { stateContext += "Известные объекты (переиспользуй их id): \(objects)\n" }
+            if !actorAliases.isEmpty { stateContext += "Actor alias map: \(actorAliases)\n" }
+            if !objectAliases.isEmpty { stateContext += "Object alias map: \(objectAliases)\n" }
+            if !poses.isEmpty { stateContext += "Пози/poses актёров: \(poses)\n" }
+            if !held.isEmpty { stateContext += "Что кто держит: \(held)\n" }
+            if let speaker = state.lastResolvedSpeaker { stateContext += "Последний говорящий: \(speaker)\n" }
             stateContext += "\n"
         }
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)

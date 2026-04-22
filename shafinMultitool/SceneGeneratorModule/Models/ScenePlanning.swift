@@ -9,7 +9,7 @@ import Foundation
 
 typealias SceneRelationType = SpatialRelation.RelationType
 
-struct SourceAnchorBundle: Equatable {
+struct SourceAnchorBundle: Codable, Equatable {
     var actorCountHint: Int
     var ordinalMentions: [String]
     var mentionedMarkedObjects: [String]
