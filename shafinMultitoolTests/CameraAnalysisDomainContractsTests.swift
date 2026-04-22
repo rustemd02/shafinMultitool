@@ -427,6 +427,471 @@ private extension CameraAnalysisDomainContractsTests {
     }
 }
 
+final class NeuralEvidenceDomainContractTests: XCTestCase {
+    func testNeuralEvidenceSnapshotRejectsNonCanonicalHeadOrdering() {
+        let reversedSnapshot = makeNeuralSnapshot(headEntries: Array(makeCanonicalHeadEntries(mode: .pause).reversed()))
+        let semantics = makeNeuralSemantics(frameId: reversedSnapshot.frameId, mode: reversedSnapshot.mode, primaryKind: .person)
+
+        XCTAssertEqual(reversedSnapshot.headOutputs.map(\.headId), Array(EvidenceHeadId.allCases.reversed()))
+        XCTAssertTrue(reversedSnapshot.validate(expectedFrameId: reversedSnapshot.frameId, semanticsReport: semantics)
+            .contains("neuralEvidence.headOutputs must use canonical head ordering"))
+
+        let canonicalSnapshot = makeNeuralSnapshot()
+        XCTAssertEqual(canonicalSnapshot.headOutputs.map(\.headId), EvidenceHeadId.allCases)
+        XCTAssertTrue(canonicalSnapshot.validate(expectedFrameId: canonicalSnapshot.frameId, semanticsReport: semantics).isEmpty)
+    }
+
+    func testNeuralEvidenceSnapshotRejectsPauseOnlyHeadInLiveMode() {
+        var entries = makeCanonicalHeadEntries(mode: .live)
+        entries[headIndex(.balanceConfidence)] = makeScalarEntry(
+            headId: .balanceConfidence,
+            status: .available,
+            score: 0.72,
+            confidence: 0.66,
+            mode: .live,
+            supportingSignals: [.frameBalance]
+        )
+
+        let snapshot = makeNeuralSnapshot(mode: .live, headEntries: entries)
+        let errors = snapshot.validate(expectedFrameId: snapshot.frameId)
+
+        XCTAssertTrue(errors.contains("balance_confidence must be not_applicable in live mode"))
+    }
+
+    func testFaceSaliencyApplicabilityUsesSemanticsPrimarySubjectKind() {
+        var personEntries = makeCanonicalHeadEntries(mode: .pause)
+        personEntries[headIndex(.faceSaliency)] = makeScalarEntry(
+            headId: .faceSaliency,
+            status: .notApplicable,
+            score: nil,
+            confidence: 0.0,
+            mode: .pause,
+            supportingSignals: []
+        )
+
+        let personSnapshot = makeNeuralSnapshot(headEntries: personEntries)
+        let personSemantics = makeNeuralSemantics(frameId: personSnapshot.frameId, mode: .pause, primaryKind: .person)
+        XCTAssertTrue(personSnapshot.validate(expectedFrameId: personSnapshot.frameId, semanticsReport: personSemantics)
+            .contains("face_saliency must not be not_applicable for person-centric semantics"))
+
+        var objectEntries = makeCanonicalHeadEntries(mode: .pause)
+        objectEntries[headIndex(.faceSaliency)] = makeScalarEntry(
+            headId: .faceSaliency,
+            status: .notApplicable,
+            score: nil,
+            confidence: 0.0,
+            mode: .pause,
+            supportingSignals: []
+        )
+        let objectSnapshot = makeNeuralSnapshot(headEntries: objectEntries)
+        let objectSemantics = makeNeuralSemantics(frameId: objectSnapshot.frameId, mode: .pause, primaryKind: .object)
+        XCTAssertTrue(objectSnapshot.validate(expectedFrameId: objectSnapshot.frameId, semanticsReport: objectSemantics).isEmpty)
+    }
+
+    func testFaceSaliencyRequiresUnavailableStatusWhenSemanticsAreMissing() {
+        let defaultSnapshot = makeNeuralSnapshot()
+        XCTAssertTrue(defaultSnapshot.validate(expectedFrameId: defaultSnapshot.frameId)
+            .contains("face_saliency must be unavailable when deterministic semantics are missing"))
+
+        var unavailableEntries = makeCanonicalHeadEntries(mode: .pause)
+        unavailableEntries[headIndex(.faceSaliency)] = makeScalarEntry(
+            headId: .faceSaliency,
+            status: .unavailable,
+            score: nil,
+            confidence: 0.0,
+            mode: .pause,
+            supportingSignals: []
+        )
+
+        let unavailableSnapshot = makeNeuralSnapshot(headEntries: unavailableEntries)
+        XCTAssertTrue(unavailableSnapshot.validate(expectedFrameId: unavailableSnapshot.frameId).isEmpty)
+    }
+
+    func testShotTypeConfidenceRequiresCompleteCanonicalAffinities() {
+        var entries = makeCanonicalHeadEntries(mode: .pause)
+        let brokenAffinities = EvidenceCategoryId.allCases.dropLast().map {
+            EvidenceCategoryScore(categoryId: $0, score: 0.4)
+        }
+        entries[headIndex(.shotTypeConfidence)] = .init(
+            headId: .shotTypeConfidence,
+            payload: .categorical(
+                .init(
+                    headId: .shotTypeConfidence,
+                    status: .available,
+                    affinities: Array(brokenAffinities),
+                    confidence: 0.63,
+                    mode: .pause,
+                    supportingSignals: []
+                )
+            )
+        )
+
+        let snapshot = makeNeuralSnapshot(headEntries: entries)
+        let errors = snapshot.validate(expectedFrameId: snapshot.frameId)
+        XCTAssertTrue(errors.contains("shot_type_confidence affinities must use complete canonical category ordering"))
+    }
+
+    func testSupportingSignalsEnforceCardinalityAndPerHeadVocabulary() {
+        var entries = makeCanonicalHeadEntries(mode: .pause)
+        entries[headIndex(.subjectProminence)] = makeScalarEntry(
+            headId: .subjectProminence,
+            status: .available,
+            score: 0.72,
+            confidence: 0.84,
+            mode: .pause,
+            supportingSignals: [.subjectScale, .subjectAttentionPull, .subjectReadability]
+        )
+        entries[headIndex(.lightingQuality)] = makeScalarEntry(
+            headId: .lightingQuality,
+            status: .available,
+            score: 0.68,
+            confidence: 0.73,
+            mode: .pause,
+            supportingSignals: [.subjectScale]
+        )
+
+        let snapshot = makeNeuralSnapshot(headEntries: entries)
+        let errors = snapshot.validate(expectedFrameId: snapshot.frameId)
+        XCTAssertTrue(errors.contains("subject_prominence supportingSignals must contain at most 2 tags"))
+        XCTAssertTrue(errors.contains("lighting_quality supportingSignals contain tags outside allowed vocabulary"))
+    }
+
+    func testNeuralEvidenceRuntimeMetadataMustAlignWithSnapshotAndVersion() {
+        let snapshot = makeNeuralSnapshot()
+        let metadata = NeuralEvidenceRuntimeMetadata(
+            metadataSchemaVersion: "h2",
+            frameId: "other-frame",
+            mode: .live,
+            providerKind: .coremlLocal,
+            inferenceTarget: .onDevice,
+            modelFamily: "compact_neural_evidence_net",
+            modelVersion: "h05.v1",
+            preprocessingVersion: "prep.v2",
+            thresholdProfile: "default_pause_v1",
+            producedAt: snapshot.capturedAt.addingTimeInterval(-1),
+            latencyMs: 42,
+            roiStrategy: nil,
+            failureReason: nil
+        )
+
+        let errors = metadata.validate(against: snapshot)
+        XCTAssertTrue(errors.contains("neuralEvidenceRuntimeMetadata must match snapshot frameId+mode"))
+        XCTAssertTrue(errors.contains("neuralEvidenceRuntimeMetadata.metadataSchemaVersion must match snapshot.schemaVersion"))
+        XCTAssertTrue(errors.contains("neuralEvidenceRuntimeMetadata.producedAt must be >= snapshot.capturedAt"))
+    }
+
+    func testNeuralEvidenceRejectsUnsupportedSchemaVersion() {
+        let snapshot = NeuralEvidenceSnapshot(
+            schemaVersion: "h0",
+            frameId: "neural-frame-1",
+            mode: .pause,
+            capturedAt: isoDate("2026-04-22T10:15:31.482Z"),
+            bundleVersion: "hybrid-evidence-bundle.2026-04-22",
+            headOutputs: makeCanonicalHeadEntries(mode: .pause)
+        )
+
+        XCTAssertTrue(snapshot.validate(expectedFrameId: snapshot.frameId)
+            .contains("neuralEvidence.schemaVersion must be \(NeuralEvidenceSnapshot.currentSchemaVersion)"))
+    }
+
+    func testHardFailureSnapshotRemainsValidEnvelope() {
+        let snapshot = makeHardFailureSnapshot(mode: .pause)
+        let metadata = NeuralEvidenceRuntimeMetadata(
+            metadataSchemaVersion: NeuralEvidenceSnapshot.currentSchemaVersion,
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            providerKind: .coremlLocal,
+            inferenceTarget: .onDevice,
+            modelFamily: "compact_neural_evidence_net",
+            modelVersion: "h05.v1",
+            preprocessingVersion: "prep.v2",
+            thresholdProfile: "default_pause_v1",
+            producedAt: snapshot.capturedAt.addingTimeInterval(0.051),
+            latencyMs: 51,
+            roiStrategy: .fullFrameOnly,
+            failureReason: .inferenceFailed
+        )
+
+        XCTAssertTrue(snapshot.validate(expectedFrameId: snapshot.frameId, runtimeMetadata: metadata).isEmpty)
+    }
+
+    func testPolicySkippedRequiresFullyPolicyDegradedLiveSnapshot() {
+        let liveSnapshot = makeNeuralSnapshot(mode: .live)
+        let metadata = NeuralEvidenceRuntimeMetadata(
+            metadataSchemaVersion: NeuralEvidenceSnapshot.currentSchemaVersion,
+            frameId: liveSnapshot.frameId,
+            mode: liveSnapshot.mode,
+            providerKind: .coremlLocal,
+            inferenceTarget: .onDevice,
+            modelFamily: "compact_neural_evidence_net",
+            modelVersion: "h05.v1",
+            preprocessingVersion: "prep.v2",
+            thresholdProfile: "default_live_v1",
+            producedAt: liveSnapshot.capturedAt.addingTimeInterval(0.019),
+            latencyMs: 19,
+            roiStrategy: .fullFrameOnly,
+            failureReason: .policySkipped
+        )
+
+        XCTAssertTrue(liveSnapshot.validate(expectedFrameId: liveSnapshot.frameId, runtimeMetadata: metadata)
+            .contains("policy_skipped requires a fully policy-degraded neural evidence snapshot"))
+    }
+
+    func testNeuralEvidenceExplainabilityKeysMatchScalarAndCategoricalContracts() {
+        let entries = makeCanonicalHeadEntries(mode: .pause)
+        let scalarKeys = entries[headIndex(.subjectProminence)].explainabilityKeys
+        XCTAssertEqual(scalarKeys, [
+            "neural.subject_prominence.status",
+            "neural.subject_prominence.score",
+            "neural.subject_prominence.confidence",
+            "neural.subject_prominence.supportingSignals"
+        ])
+
+        let categoricalKeys = entries[headIndex(.shotTypeConfidence)].explainabilityKeys
+        XCTAssertEqual(categoricalKeys.first, "neural.shot_type_confidence.status")
+        XCTAssertEqual(categoricalKeys.dropFirst().first, "neural.shot_type_confidence.confidence")
+        XCTAssertFalse(categoricalKeys.contains("neural.shot_type_confidence.score"))
+        XCTAssertEqual(Array(categoricalKeys.dropFirst(2)), EvidenceCategoryId.allCases.map {
+            "neural.shot_type_confidence.affinities.\($0.rawValue)"
+        })
+    }
+
+    func testNeuralEvidenceCodableRoundTripUsesIsoDatesAndExplicitNulls() throws {
+        var entries = makeCanonicalHeadEntries(mode: .pause)
+        entries[headIndex(.faceSaliency)] = makeScalarEntry(
+            headId: .faceSaliency,
+            status: .unavailable,
+            score: nil,
+            confidence: 0.0,
+            mode: .pause,
+            supportingSignals: []
+        )
+
+        let snapshot = makeNeuralSnapshot(headEntries: entries)
+        let metadata = NeuralEvidenceRuntimeMetadata(
+            metadataSchemaVersion: "h1",
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            providerKind: .coremlLocal,
+            inferenceTarget: .onDevice,
+            modelFamily: "compact_neural_evidence_net",
+            modelVersion: "h05.v1",
+            preprocessingVersion: "prep.v2",
+            thresholdProfile: "default_pause_v1",
+            producedAt: snapshot.capturedAt.addingTimeInterval(0.133),
+            latencyMs: nil,
+            roiStrategy: nil,
+            failureReason: nil
+        )
+
+        let payload = NeuralEvidenceFixturePayload(snapshot: snapshot, metadata: metadata)
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(NeuralEvidenceFixturePayload.self, from: data)
+
+        XCTAssertEqual(decoded, payload)
+
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let snapshotJSON = try XCTUnwrap(json["snapshot"] as? [String: Any])
+        XCTAssertEqual(snapshotJSON["capturedAt"] as? String, "2026-04-22T10:15:31.482Z")
+
+        let headOutputs = try XCTUnwrap(snapshotJSON["headOutputs"] as? [[String: Any]])
+        let faceEntry = try XCTUnwrap(headOutputs.first { ($0["headId"] as? String) == EvidenceHeadId.faceSaliency.rawValue })
+        let facePayload = try XCTUnwrap(faceEntry["payload"] as? [String: Any])
+        XCTAssertTrue(facePayload["score"] is NSNull)
+
+        let metadataJSON = try XCTUnwrap(json["metadata"] as? [String: Any])
+        XCTAssertEqual(metadataJSON["producedAt"] as? String, "2026-04-22T10:15:31.615Z")
+        XCTAssertTrue(metadataJSON["latencyMs"] is NSNull)
+        XCTAssertTrue(metadataJSON["roiStrategy"] is NSNull)
+        XCTAssertTrue(metadataJSON["failureReason"] is NSNull)
+    }
+
+    func testNeuralEvidenceSnapshotEncodingCanonicalizesArrayOrdering() throws {
+        let snapshot = makeNeuralSnapshot(headEntries: Array(makeCanonicalHeadEntries(mode: .pause).reversed()))
+        let data = try JSONEncoder().encode(snapshot)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let headOutputs = try XCTUnwrap(json["headOutputs"] as? [[String: Any]])
+        XCTAssertEqual(headOutputs.compactMap { $0["headId"] as? String }, EvidenceHeadId.allCases.map(\.rawValue))
+    }
+}
+
+private struct NeuralEvidenceFixturePayload: Codable, Equatable {
+    let snapshot: NeuralEvidenceSnapshot
+    let metadata: NeuralEvidenceRuntimeMetadata
+}
+
+private extension NeuralEvidenceDomainContractTests {
+    func makeNeuralSnapshot(mode: AnalysisMode = .pause,
+                            headEntries: [NeuralEvidenceHeadEntry]? = nil) -> NeuralEvidenceSnapshot {
+        NeuralEvidenceSnapshot(
+            schemaVersion: "h1",
+            frameId: "neural-frame-1",
+            mode: mode,
+            capturedAt: isoDate("2026-04-22T10:15:31.482Z"),
+            bundleVersion: "hybrid-evidence-bundle.2026-04-22",
+            headOutputs: headEntries ?? makeCanonicalHeadEntries(mode: mode)
+        )
+    }
+
+    func makeCanonicalHeadEntries(mode: AnalysisMode) -> [NeuralEvidenceHeadEntry] {
+        let livePauseOnlyStatuses: [EvidenceHeadId: EvidenceHeadStatus] = [
+            .balanceConfidence: .notApplicable,
+            .depthSeparation: .notApplicable,
+            .cinematicExpressiveness: .notApplicable,
+            .shotTypeConfidence: .notApplicable
+        ]
+
+        return EvidenceHeadId.allCases.map { headId in
+            if headId == .shotTypeConfidence {
+                if mode == .live {
+                    return .init(
+                        headId: headId,
+                        payload: .categorical(
+                            .init(
+                                headId: headId,
+                                status: .notApplicable,
+                                affinities: [],
+                                confidence: 0.0,
+                                mode: mode,
+                                supportingSignals: []
+                            )
+                        )
+                    )
+                }
+
+                return .init(
+                    headId: headId,
+                    payload: .categorical(
+                        .init(
+                            headId: headId,
+                            status: .available,
+                            affinities: EvidenceCategoryId.allCases.map { .init(categoryId: $0, score: $0 == .dialogueCloseupAffinity ? 0.72 : 0.14) },
+                            confidence: 0.64,
+                            mode: mode,
+                            supportingSignals: []
+                        )
+                    )
+                )
+            }
+
+            if let forcedStatus = livePauseOnlyStatuses[headId], mode == .live {
+                return makeScalarEntry(
+                    headId: headId,
+                    status: forcedStatus,
+                    score: nil,
+                    confidence: 0.0,
+                    mode: mode,
+                    supportingSignals: []
+                )
+            }
+
+            let defaultSignals: [EvidenceHeadId: [SupportingSignalTag]] = [
+                .subjectProminence: [.subjectReadability, .subjectScale],
+                .backgroundClutter: [.attentionCompetition],
+                .lightingQuality: [.tonalStructure, .subjectExposureReadability],
+                .faceSaliency: [.eyeRegionVisibility, .faceAttentionPull],
+                .balanceConfidence: [.frameBalance],
+                .depthSeparation: [.subjectBackgroundContrast],
+                .cinematicExpressiveness: [.visualHarmonyResidual]
+            ]
+
+            return makeScalarEntry(
+                headId: headId,
+                status: .available,
+                score: 0.7,
+                confidence: 0.75,
+                mode: mode,
+                supportingSignals: defaultSignals[headId] ?? []
+            )
+        }
+    }
+
+    func makeHardFailureSnapshot(mode: AnalysisMode) -> NeuralEvidenceSnapshot {
+        let entries = EvidenceHeadId.allCases.map { headId -> NeuralEvidenceHeadEntry in
+            if headId == .shotTypeConfidence {
+                return .init(
+                    headId: headId,
+                    payload: .categorical(
+                        .init(
+                            headId: headId,
+                            status: .unavailable,
+                            affinities: [],
+                            confidence: 0.0,
+                            mode: mode,
+                            supportingSignals: []
+                        )
+                    )
+                )
+            }
+
+            return makeScalarEntry(
+                headId: headId,
+                status: .unavailable,
+                score: nil,
+                confidence: 0.0,
+                mode: mode,
+                supportingSignals: []
+            )
+        }
+
+        return makeNeuralSnapshot(mode: mode, headEntries: entries)
+    }
+
+    func makeScalarEntry(headId: EvidenceHeadId,
+                         status: EvidenceHeadStatus,
+                         score: Double?,
+                         confidence: Double,
+                         mode: AnalysisMode,
+                         supportingSignals: [SupportingSignalTag]) -> NeuralEvidenceHeadEntry {
+        .init(
+            headId: headId,
+            payload: .scalar(
+                .init(
+                    headId: headId,
+                    status: status,
+                    score: score,
+                    confidence: confidence,
+                    mode: mode,
+                    supportingSignals: supportingSignals
+                )
+            )
+        )
+    }
+
+    func makeNeuralSemantics(frameId: String,
+                             mode: AnalysisMode,
+                             primaryKind: SubjectKind) -> SceneSemanticsReport {
+        SceneSemanticsReport(
+            frameId: frameId,
+            mode: mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.78,
+            primarySubject: .init(kind: primaryKind, confidence: primaryKind == .unknown ? 0.1 : 0.84),
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.2, backgroundClutterScore: 0.3),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.21, separationScore: 0.71),
+            ambiguities: [],
+            assumptions: []
+        )
+    }
+
+    func headIndex(_ headId: EvidenceHeadId) -> Int {
+        guard let index = EvidenceHeadId.allCases.firstIndex(of: headId) else {
+            fatalError("Unknown head id \(headId)")
+        }
+        return index
+    }
+
+    func isoDate(_ value: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        guard let date = formatter.date(from: value) else {
+            fatalError("Invalid ISO date: \(value)")
+        }
+        return date
+    }
+}
+
 final class CameraAnalysisExplainabilityContractTests: XCTestCase {
 
     func testExplainabilityTraceBundleValidatesDeterministicChain() {

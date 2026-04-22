@@ -147,6 +147,7 @@ enum EvidenceSource: String, Codable, Sendable {
     case snapshot
     case semantics
     case derivedRule = "derived_rule"
+    case neuralEvidence = "neural_evidence"
 }
 
 struct EvidenceRef: Codable, Equatable, Sendable {
@@ -757,6 +758,805 @@ struct RecommendationPlan: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - Contract H06: Neural Evidence
+
+enum EvidenceHeadStatus: String, Codable, CaseIterable, Sendable {
+    case available
+    case notApplicable = "not_applicable"
+    case unavailable
+}
+
+enum EvidenceHeadId: String, Codable, CaseIterable, Sendable {
+    case subjectProminence = "subject_prominence"
+    case backgroundClutter = "background_clutter"
+    case lightingQuality = "lighting_quality"
+    case faceSaliency = "face_saliency"
+    case balanceConfidence = "balance_confidence"
+    case depthSeparation = "depth_separation"
+    case cinematicExpressiveness = "cinematic_expressiveness"
+    case shotTypeConfidence = "shot_type_confidence"
+}
+
+enum EvidenceCategoryId: String, Codable, CaseIterable, Sendable {
+    case dialogueCloseupAffinity = "dialogue_closeup_affinity"
+    case singleCharacterMediumAffinity = "single_character_medium_affinity"
+    case twoCharacterFrameAffinity = "two_character_frame_affinity"
+    case objectInsertAffinity = "object_insert_affinity"
+    case establishingLikeFrameAffinity = "establishing_like_frame_affinity"
+    case moodyBacklitSubjectAffinity = "moody_backlit_subject_affinity"
+    case unknownAffinity = "unknown_affinity"
+}
+
+enum SupportingSignalTag: String, Codable, CaseIterable, Sendable {
+    case subjectScale = "subject_scale"
+    case subjectAttentionPull = "subject_attention_pull"
+    case subjectReadability = "subject_readability"
+    case objectDensity = "object_density"
+    case textureNoise = "texture_noise"
+    case attentionCompetition = "attention_competition"
+    case subjectExposureReadability = "subject_exposure_readability"
+    case facialLightSupport = "facial_light_support"
+    case tonalStructure = "tonal_structure"
+    case faceAttentionPull = "face_attention_pull"
+    case eyeRegionVisibility = "eye_region_visibility"
+    case facialAnchorStrength = "facial_anchor_strength"
+    case frameBalance = "frame_balance"
+    case subjectPlacementStability = "subject_placement_stability"
+    case negativeSpaceFit = "negative_space_fit"
+    case foregroundBackgroundSplit = "foreground_background_split"
+    case subjectBackgroundContrast = "subject_background_contrast"
+    case layeringClarity = "layering_clarity"
+    case stylisticIntent = "stylistic_intent"
+    case productionValueResidual = "production_value_residual"
+    case visualHarmonyResidual = "visual_harmony_residual"
+}
+
+struct EvidenceCategoryScore: Codable, Equatable, Sendable {
+    let categoryId: EvidenceCategoryId
+    let score: Double
+
+    init(categoryId: EvidenceCategoryId, score: Double) {
+        self.categoryId = categoryId
+        self.score = Self.clamp01(score)
+    }
+
+    private static func clamp01(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.0 }
+        return min(1.0, max(0.0, value))
+    }
+}
+
+struct ScalarEvidenceHeadOutput: Codable, Equatable, Sendable {
+    let headId: EvidenceHeadId
+    let status: EvidenceHeadStatus
+    let score: Double?
+    let confidence: Double
+    let mode: AnalysisMode
+    let supportingSignals: [SupportingSignalTag]
+
+    init(headId: EvidenceHeadId,
+         status: EvidenceHeadStatus,
+         score: Double?,
+         confidence: Double,
+         mode: AnalysisMode,
+         supportingSignals: [SupportingSignalTag]) {
+        self.headId = headId
+        self.status = status
+        self.score = score.map(Self.clamp01)
+        self.confidence = Self.clamp01(confidence)
+        self.mode = mode
+        self.supportingSignals = supportingSignals
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case headId
+        case status
+        case score
+        case confidence
+        case mode
+        case supportingSignals
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        headId = try container.decode(EvidenceHeadId.self, forKey: .headId)
+        status = try container.decode(EvidenceHeadStatus.self, forKey: .status)
+        score = try container.decodeIfPresent(Double.self, forKey: .score).map(Self.clamp01)
+        confidence = Self.clamp01(try container.decode(Double.self, forKey: .confidence))
+        mode = try container.decode(AnalysisMode.self, forKey: .mode)
+        supportingSignals = try container.decode([SupportingSignalTag].self, forKey: .supportingSignals)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(headId, forKey: .headId)
+        try container.encode(status, forKey: .status)
+        if let score {
+            try container.encode(score, forKey: .score)
+        } else {
+            try container.encodeNil(forKey: .score)
+        }
+        try container.encode(confidence, forKey: .confidence)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(Self.sortTags(supportingSignals), forKey: .supportingSignals)
+    }
+
+    fileprivate static func sortTags(_ tags: [SupportingSignalTag]) -> [SupportingSignalTag] {
+        tags.sorted { lhs, rhs in
+            SupportingSignalTag.canonicalIndex(of: lhs) < SupportingSignalTag.canonicalIndex(of: rhs)
+        }
+    }
+
+    private static func clamp01(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.0 }
+        return min(1.0, max(0.0, value))
+    }
+}
+
+struct CategoricalEvidenceHeadOutput: Codable, Equatable, Sendable {
+    let headId: EvidenceHeadId
+    let status: EvidenceHeadStatus
+    let affinities: [EvidenceCategoryScore]
+    let confidence: Double
+    let mode: AnalysisMode
+    let supportingSignals: [SupportingSignalTag]
+
+    init(headId: EvidenceHeadId,
+         status: EvidenceHeadStatus,
+         affinities: [EvidenceCategoryScore],
+         confidence: Double,
+         mode: AnalysisMode,
+         supportingSignals: [SupportingSignalTag]) {
+        self.headId = headId
+        self.status = status
+        self.affinities = affinities
+        self.confidence = Self.clamp01(confidence)
+        self.mode = mode
+        self.supportingSignals = supportingSignals
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case headId
+        case status
+        case affinities
+        case confidence
+        case mode
+        case supportingSignals
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        headId = try container.decode(EvidenceHeadId.self, forKey: .headId)
+        status = try container.decode(EvidenceHeadStatus.self, forKey: .status)
+        affinities = try container.decode([EvidenceCategoryScore].self, forKey: .affinities)
+        confidence = Self.clamp01(try container.decode(Double.self, forKey: .confidence))
+        mode = try container.decode(AnalysisMode.self, forKey: .mode)
+        supportingSignals = try container.decode([SupportingSignalTag].self, forKey: .supportingSignals)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(headId, forKey: .headId)
+        try container.encode(status, forKey: .status)
+        try container.encode(Self.sortAffinities(affinities), forKey: .affinities)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(ScalarEvidenceHeadOutput.sortTags(supportingSignals), forKey: .supportingSignals)
+    }
+
+    fileprivate static func sortAffinities(_ affinities: [EvidenceCategoryScore]) -> [EvidenceCategoryScore] {
+        affinities.sorted { lhs, rhs in
+            EvidenceCategoryId.canonicalIndex(of: lhs.categoryId) < EvidenceCategoryId.canonicalIndex(of: rhs.categoryId)
+        }
+    }
+
+    private static func clamp01(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.0 }
+        return min(1.0, max(0.0, value))
+    }
+}
+
+enum NeuralEvidenceHeadPayload: Equatable, Sendable {
+    case scalar(ScalarEvidenceHeadOutput)
+    case categorical(CategoricalEvidenceHeadOutput)
+
+    var headId: EvidenceHeadId {
+        switch self {
+        case let .scalar(payload):
+            return payload.headId
+        case let .categorical(payload):
+            return payload.headId
+        }
+    }
+
+    var mode: AnalysisMode {
+        switch self {
+        case let .scalar(payload):
+            return payload.mode
+        case let .categorical(payload):
+            return payload.mode
+        }
+    }
+
+    var status: EvidenceHeadStatus {
+        switch self {
+        case let .scalar(payload):
+            return payload.status
+        case let .categorical(payload):
+            return payload.status
+        }
+    }
+}
+
+extension NeuralEvidenceHeadPayload: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case headId
+        case affinities
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let headId = try container.decode(EvidenceHeadId.self, forKey: .headId)
+        if headId == .shotTypeConfidence || container.contains(.affinities) {
+            self = .categorical(try CategoricalEvidenceHeadOutput(from: decoder))
+        } else {
+            self = .scalar(try ScalarEvidenceHeadOutput(from: decoder))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case let .scalar(payload):
+            try payload.encode(to: encoder)
+        case let .categorical(payload):
+            try payload.encode(to: encoder)
+        }
+    }
+}
+
+struct NeuralEvidenceHeadEntry: Codable, Equatable, Sendable {
+    let headId: EvidenceHeadId
+    let payload: NeuralEvidenceHeadPayload
+
+    init(headId: EvidenceHeadId, payload: NeuralEvidenceHeadPayload) {
+        self.headId = headId
+        self.payload = payload
+    }
+}
+
+struct NeuralEvidenceSnapshot: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = "h1"
+
+    let schemaVersion: String
+    let frameId: String
+    let mode: AnalysisMode
+    let capturedAt: Date
+    let bundleVersion: String
+    let headOutputs: [NeuralEvidenceHeadEntry]
+
+    init(schemaVersion: String,
+         frameId: String,
+         mode: AnalysisMode,
+         capturedAt: Date,
+         bundleVersion: String,
+         headOutputs: [NeuralEvidenceHeadEntry]) {
+        self.schemaVersion = schemaVersion
+        self.frameId = frameId
+        self.mode = mode
+        self.capturedAt = capturedAt
+        self.bundleVersion = bundleVersion
+        self.headOutputs = headOutputs
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case frameId
+        case mode
+        case capturedAt
+        case bundleVersion
+        case headOutputs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(String.self, forKey: .schemaVersion)
+        frameId = try container.decode(String.self, forKey: .frameId)
+        mode = try container.decode(AnalysisMode.self, forKey: .mode)
+        capturedAt = try container.decodeISO8601Date(forKey: .capturedAt)
+        bundleVersion = try container.decode(String.self, forKey: .bundleVersion)
+        headOutputs = try container.decode([NeuralEvidenceHeadEntry].self, forKey: .headOutputs)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(frameId, forKey: .frameId)
+        try container.encode(mode, forKey: .mode)
+        try container.encodeISO8601Date(capturedAt, forKey: .capturedAt)
+        try container.encode(bundleVersion, forKey: .bundleVersion)
+        try container.encode(Self.sortEntries(headOutputs), forKey: .headOutputs)
+    }
+
+    func validate(expectedFrameId: String? = nil,
+                  semanticsReport: SceneSemanticsReport? = nil,
+                  runtimeMetadata: NeuralEvidenceRuntimeMetadata? = nil) -> [String] {
+        var errors: [String] = []
+
+        if schemaVersion.isEmpty {
+            errors.append("neuralEvidence.schemaVersion must be non-empty")
+        } else if schemaVersion != Self.currentSchemaVersion {
+            errors.append("neuralEvidence.schemaVersion must be \(Self.currentSchemaVersion)")
+        }
+
+        if frameId.isEmpty {
+            errors.append("neuralEvidence.frameId must be non-empty")
+        }
+
+        if bundleVersion.isEmpty {
+            errors.append("neuralEvidence.bundleVersion must be non-empty")
+        }
+
+        if let expectedFrameId, expectedFrameId != frameId {
+            errors.append("neuralEvidence.frameId must match snapshot.frameId")
+        }
+
+        if let semanticsReport {
+            if semanticsReport.frameId != frameId || semanticsReport.mode != mode {
+                errors.append("neuralEvidence must match semantics.frameId+mode")
+            }
+        }
+
+        if let runtimeMetadata {
+            errors.append(contentsOf: runtimeMetadata.validate(against: self))
+        }
+
+        if headOutputs.count != EvidenceHeadId.allCases.count {
+            errors.append("neuralEvidence.headOutputs must contain exactly \(EvidenceHeadId.allCases.count) entries")
+        }
+
+        let counts = Dictionary(grouping: headOutputs, by: \.headId).mapValues(\.count)
+        let missing = EvidenceHeadId.allCases.filter { counts[$0] == nil }
+        if !missing.isEmpty {
+            errors.append("neuralEvidence is missing head IDs: \(missing.map(\.rawValue).joined(separator: ", "))")
+        }
+
+        let duplicates = counts.filter { $0.value > 1 }.keys.sorted { $0.rawValue < $1.rawValue }
+        if !duplicates.isEmpty {
+            errors.append("neuralEvidence contains duplicate head IDs: \(duplicates.map(\.rawValue).joined(separator: ", "))")
+        }
+
+        let actualOrder = headOutputs.map(\.headId)
+        let canonicalOrder = EvidenceHeadId.allCases
+        if actualOrder != canonicalOrder {
+            errors.append("neuralEvidence.headOutputs must use canonical head ordering")
+        }
+
+        for entry in headOutputs {
+            if entry.payload.headId != entry.headId {
+                errors.append("payload.headId must match head entry id for \(entry.headId.rawValue)")
+            }
+
+            if entry.payload.mode != mode {
+                errors.append("payload.mode must match snapshot.mode for \(entry.headId.rawValue)")
+            }
+
+            switch entry.payload {
+            case let .scalar(payload):
+                errors.append(contentsOf: validateScalarPayload(payload, semanticsReport: semanticsReport))
+            case let .categorical(payload):
+                errors.append(contentsOf: validateCategoricalPayload(payload))
+            }
+        }
+
+        return errors
+    }
+
+    private func validateScalarPayload(_ payload: ScalarEvidenceHeadOutput,
+                                       semanticsReport: SceneSemanticsReport?) -> [String] {
+        var errors: [String] = []
+
+        if payload.headId == .shotTypeConfidence {
+            errors.append("shot_type_confidence must use categorical payload")
+        }
+
+        if payload.supportingSignals.count > 2 {
+            errors.append("\(payload.headId.rawValue) supportingSignals must contain at most 2 tags")
+        }
+
+        if hasDuplicateTags(payload.supportingSignals) {
+            errors.append("\(payload.headId.rawValue) supportingSignals must not contain duplicates")
+        }
+
+        if payload.supportingSignals != payload.supportingSignals.sorted(by: {
+            SupportingSignalTag.canonicalIndex(of: $0) < SupportingSignalTag.canonicalIndex(of: $1)
+        }) {
+            errors.append("\(payload.headId.rawValue) supportingSignals must use canonical tag ordering")
+        }
+
+        let allowedTags = payload.headId.allowedSupportingSignals
+        if payload.supportingSignals.contains(where: { !allowedTags.contains($0) }) {
+            errors.append("\(payload.headId.rawValue) supportingSignals contain tags outside allowed vocabulary")
+        }
+
+        switch payload.status {
+        case .available:
+            if payload.score == nil {
+                errors.append("\(payload.headId.rawValue) available scalar payload must include score")
+            }
+        case .notApplicable, .unavailable:
+            if payload.score != nil {
+                errors.append("\(payload.headId.rawValue) non-available scalar payload must not include score")
+            }
+            if payload.confidence != 0.0 {
+                errors.append("\(payload.headId.rawValue) non-available scalar payload must use confidence=0")
+            }
+        }
+
+        if let modeError = validateStatusPolicy(for: payload.headId, status: payload.status, semanticsReport: semanticsReport) {
+            errors.append(modeError)
+        }
+
+        return errors
+    }
+
+    private func validateCategoricalPayload(_ payload: CategoricalEvidenceHeadOutput) -> [String] {
+        var errors: [String] = []
+
+        if payload.headId != .shotTypeConfidence {
+            errors.append("\(payload.headId.rawValue) must use scalar payload")
+        }
+
+        if !payload.supportingSignals.isEmpty {
+            errors.append("shot_type_confidence supportingSignals must be empty")
+        }
+
+        switch payload.status {
+        case .available:
+            let categories = payload.affinities.map(\.categoryId)
+            if categories != EvidenceCategoryId.allCases {
+                errors.append("shot_type_confidence affinities must use complete canonical category ordering")
+            }
+        case .notApplicable, .unavailable:
+            if !payload.affinities.isEmpty {
+                errors.append("shot_type_confidence non-available payload must use empty affinities")
+            }
+            if payload.confidence != 0.0 {
+                errors.append("shot_type_confidence non-available payload must use confidence=0")
+            }
+        }
+
+        if hasDuplicateCategories(payload.affinities) {
+            errors.append("shot_type_confidence affinities must not contain duplicate categories")
+        }
+
+        if let modeError = validateStatusPolicy(for: payload.headId, status: payload.status, semanticsReport: nil) {
+            errors.append(modeError)
+        }
+
+        return errors
+    }
+
+    private func validateStatusPolicy(for headId: EvidenceHeadId,
+                                      status: EvidenceHeadStatus,
+                                      semanticsReport: SceneSemanticsReport?) -> String? {
+        switch headId {
+        case .balanceConfidence, .depthSeparation, .cinematicExpressiveness, .shotTypeConfidence:
+            if mode == .live && status != .notApplicable {
+                return "\(headId.rawValue) must be not_applicable in live mode"
+            }
+        case .faceSaliency:
+            guard let semanticsReport else {
+                if status != .unavailable {
+                    return "face_saliency must be unavailable when deterministic semantics are missing"
+                }
+                return nil
+            }
+            let personCentricKinds: Set<SubjectKind> = [.face, .person, .group]
+            if personCentricKinds.contains(semanticsReport.primarySubject.kind) {
+                if status == .notApplicable {
+                    return "face_saliency must not be not_applicable for person-centric semantics"
+                }
+            } else if status != .notApplicable {
+                return "face_saliency must be not_applicable when semantics primarySubject is object or unknown"
+            }
+        default:
+            break
+        }
+
+        return nil
+    }
+
+    private static func sortEntries(_ entries: [NeuralEvidenceHeadEntry]) -> [NeuralEvidenceHeadEntry] {
+        entries.sorted { lhs, rhs in
+            EvidenceHeadId.canonicalIndex(of: lhs.headId) < EvidenceHeadId.canonicalIndex(of: rhs.headId)
+        }
+    }
+
+    private func hasDuplicateTags(_ tags: [SupportingSignalTag]) -> Bool {
+        Set(tags).count != tags.count
+    }
+
+    private func hasDuplicateCategories(_ affinities: [EvidenceCategoryScore]) -> Bool {
+        let categories = affinities.map(\.categoryId)
+        return Set(categories).count != categories.count
+    }
+}
+
+enum NeuralEvidenceProviderKind: String, Codable, Sendable {
+    case coremlLocal = "coreml_local"
+    case mock
+    case remoteTeacher = "remote_teacher"
+}
+
+enum InferenceTargetKind: String, Codable, Sendable {
+    case onDevice = "on_device"
+    case offloaded
+}
+
+enum NeuralEvidenceROIStrategy: String, Codable, Sendable {
+    case fullFrameOnly = "full_frame_only"
+    case fullFramePlusSubjectCrop = "full_frame_plus_subject_crop"
+    case subjectCropOnly = "subject_crop_only"
+}
+
+enum NeuralEvidenceFailureReason: String, Codable, Sendable {
+    case modelNotLoaded = "model_not_loaded"
+    case preprocessingFailed = "preprocessing_failed"
+    case inferenceFailed = "inference_failed"
+    case postprocessingFailed = "postprocessing_failed"
+    case policySkipped = "policy_skipped"
+    case runtimeTimeout = "runtime_timeout"
+    case unknown
+}
+
+struct NeuralEvidenceRuntimeMetadata: Codable, Equatable, Sendable {
+    let metadataSchemaVersion: String
+    let frameId: String
+    let mode: AnalysisMode
+    let providerKind: NeuralEvidenceProviderKind
+    let inferenceTarget: InferenceTargetKind
+    let modelFamily: String
+    let modelVersion: String
+    let preprocessingVersion: String
+    let thresholdProfile: String
+    let producedAt: Date
+    let latencyMs: Int?
+    let roiStrategy: NeuralEvidenceROIStrategy?
+    let failureReason: NeuralEvidenceFailureReason?
+
+    init(metadataSchemaVersion: String,
+         frameId: String,
+         mode: AnalysisMode,
+         providerKind: NeuralEvidenceProviderKind,
+         inferenceTarget: InferenceTargetKind,
+         modelFamily: String,
+         modelVersion: String,
+         preprocessingVersion: String,
+         thresholdProfile: String,
+         producedAt: Date,
+         latencyMs: Int?,
+         roiStrategy: NeuralEvidenceROIStrategy?,
+         failureReason: NeuralEvidenceFailureReason?) {
+        self.metadataSchemaVersion = metadataSchemaVersion
+        self.frameId = frameId
+        self.mode = mode
+        self.providerKind = providerKind
+        self.inferenceTarget = inferenceTarget
+        self.modelFamily = modelFamily
+        self.modelVersion = modelVersion
+        self.preprocessingVersion = preprocessingVersion
+        self.thresholdProfile = thresholdProfile
+        self.producedAt = producedAt
+        self.latencyMs = latencyMs.map { max(0, $0) }
+        self.roiStrategy = roiStrategy
+        self.failureReason = failureReason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case metadataSchemaVersion
+        case frameId
+        case mode
+        case providerKind
+        case inferenceTarget
+        case modelFamily
+        case modelVersion
+        case preprocessingVersion
+        case thresholdProfile
+        case producedAt
+        case latencyMs
+        case roiStrategy
+        case failureReason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        metadataSchemaVersion = try container.decode(String.self, forKey: .metadataSchemaVersion)
+        frameId = try container.decode(String.self, forKey: .frameId)
+        mode = try container.decode(AnalysisMode.self, forKey: .mode)
+        providerKind = try container.decode(NeuralEvidenceProviderKind.self, forKey: .providerKind)
+        inferenceTarget = try container.decode(InferenceTargetKind.self, forKey: .inferenceTarget)
+        modelFamily = try container.decode(String.self, forKey: .modelFamily)
+        modelVersion = try container.decode(String.self, forKey: .modelVersion)
+        preprocessingVersion = try container.decode(String.self, forKey: .preprocessingVersion)
+        thresholdProfile = try container.decode(String.self, forKey: .thresholdProfile)
+        producedAt = try container.decodeISO8601Date(forKey: .producedAt)
+        latencyMs = try container.decodeIfPresent(Int.self, forKey: .latencyMs)
+        roiStrategy = try container.decodeIfPresent(NeuralEvidenceROIStrategy.self, forKey: .roiStrategy)
+        failureReason = try container.decodeIfPresent(NeuralEvidenceFailureReason.self, forKey: .failureReason)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(metadataSchemaVersion, forKey: .metadataSchemaVersion)
+        try container.encode(frameId, forKey: .frameId)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(providerKind, forKey: .providerKind)
+        try container.encode(inferenceTarget, forKey: .inferenceTarget)
+        try container.encode(modelFamily, forKey: .modelFamily)
+        try container.encode(modelVersion, forKey: .modelVersion)
+        try container.encode(preprocessingVersion, forKey: .preprocessingVersion)
+        try container.encode(thresholdProfile, forKey: .thresholdProfile)
+        try container.encodeISO8601Date(producedAt, forKey: .producedAt)
+        if let latencyMs {
+            try container.encode(latencyMs, forKey: .latencyMs)
+        } else {
+            try container.encodeNil(forKey: .latencyMs)
+        }
+        if let roiStrategy {
+            try container.encode(roiStrategy, forKey: .roiStrategy)
+        } else {
+            try container.encodeNil(forKey: .roiStrategy)
+        }
+        if let failureReason {
+            try container.encode(failureReason, forKey: .failureReason)
+        } else {
+            try container.encodeNil(forKey: .failureReason)
+        }
+    }
+
+    func validate(against snapshot: NeuralEvidenceSnapshot) -> [String] {
+        var errors: [String] = []
+
+        if metadataSchemaVersion.isEmpty {
+            errors.append("neuralEvidenceRuntimeMetadata.metadataSchemaVersion must be non-empty")
+        } else if metadataSchemaVersion != NeuralEvidenceSnapshot.currentSchemaVersion {
+            errors.append("neuralEvidenceRuntimeMetadata.metadataSchemaVersion must be \(NeuralEvidenceSnapshot.currentSchemaVersion)")
+        }
+        if modelFamily.isEmpty {
+            errors.append("neuralEvidenceRuntimeMetadata.modelFamily must be non-empty")
+        }
+        if modelVersion.isEmpty {
+            errors.append("neuralEvidenceRuntimeMetadata.modelVersion must be non-empty")
+        }
+        if preprocessingVersion.isEmpty {
+            errors.append("neuralEvidenceRuntimeMetadata.preprocessingVersion must be non-empty")
+        }
+        if thresholdProfile.isEmpty {
+            errors.append("neuralEvidenceRuntimeMetadata.thresholdProfile must be non-empty")
+        }
+        if frameId != snapshot.frameId || mode != snapshot.mode {
+            errors.append("neuralEvidenceRuntimeMetadata must match snapshot frameId+mode")
+        }
+        if metadataSchemaVersion != snapshot.schemaVersion {
+            errors.append("neuralEvidenceRuntimeMetadata.metadataSchemaVersion must match snapshot.schemaVersion")
+        }
+        if producedAt < snapshot.capturedAt {
+            errors.append("neuralEvidenceRuntimeMetadata.producedAt must be >= snapshot.capturedAt")
+        }
+        if failureReason == .policySkipped && !snapshot.isPolicyDegraded {
+            errors.append("policy_skipped requires a fully policy-degraded neural evidence snapshot")
+        }
+
+        return errors
+    }
+}
+
+private extension NeuralEvidenceSnapshot {
+    var isPolicyDegraded: Bool {
+        switch mode {
+        case .live:
+            return headOutputs.allSatisfy { entry in
+                switch entry.headId {
+                case .balanceConfidence, .depthSeparation, .cinematicExpressiveness, .shotTypeConfidence:
+                    return entry.payload.status == .notApplicable
+                default:
+                    return entry.payload.status == .unavailable
+                }
+            }
+        case .pause:
+            return false
+        }
+    }
+}
+
+private extension EvidenceHeadId {
+    var allowedSupportingSignals: Set<SupportingSignalTag> {
+        switch self {
+        case .subjectProminence:
+            return [.subjectScale, .subjectAttentionPull, .subjectReadability]
+        case .backgroundClutter:
+            return [.objectDensity, .textureNoise, .attentionCompetition]
+        case .lightingQuality:
+            return [.subjectExposureReadability, .facialLightSupport, .tonalStructure]
+        case .faceSaliency:
+            return [.faceAttentionPull, .eyeRegionVisibility, .facialAnchorStrength, .facialLightSupport]
+        case .balanceConfidence:
+            return [.frameBalance, .subjectPlacementStability, .negativeSpaceFit]
+        case .depthSeparation:
+            return [.foregroundBackgroundSplit, .subjectBackgroundContrast, .layeringClarity]
+        case .cinematicExpressiveness:
+            return [.stylisticIntent, .productionValueResidual, .visualHarmonyResidual]
+        case .shotTypeConfidence:
+            return []
+        }
+    }
+
+    static func canonicalIndex(of headId: EvidenceHeadId) -> Int {
+        allCases.firstIndex(of: headId) ?? .max
+    }
+}
+
+private extension EvidenceCategoryId {
+    static func canonicalIndex(of categoryId: EvidenceCategoryId) -> Int {
+        allCases.firstIndex(of: categoryId) ?? .max
+    }
+}
+
+private extension SupportingSignalTag {
+    static func canonicalIndex(of tag: SupportingSignalTag) -> Int {
+        allCases.firstIndex(of: tag) ?? .max
+    }
+}
+
+extension NeuralEvidenceHeadEntry {
+    var explainabilityKeys: [String] {
+        let prefix = "neural.\(headId.rawValue)"
+        switch payload {
+        case .scalar:
+            return [
+                "\(prefix).status",
+                "\(prefix).score",
+                "\(prefix).confidence",
+                "\(prefix).supportingSignals"
+            ]
+        case let .categorical(categorical):
+            return [
+                "\(prefix).status",
+                "\(prefix).confidence"
+            ] + CategoricalEvidenceHeadOutput.sortAffinities(categorical.affinities).map {
+                "\(prefix).affinities.\($0.categoryId.rawValue)"
+            }
+        }
+    }
+}
+
+private extension ISO8601DateFormatter {
+    static let neuralEvidenceFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+}
+
+private extension KeyedEncodingContainer {
+    mutating func encodeISO8601Date(_ value: Date, forKey key: Key) throws {
+        try encode(ISO8601DateFormatter.neuralEvidenceFormatter.string(from: value), forKey: key)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeISO8601Date(forKey key: Key) throws -> Date {
+        let rawValue = try decode(String.self, forKey: key)
+        guard let date = ISO8601DateFormatter.neuralEvidenceFormatter.date(from: rawValue) else {
+            throw DecodingError.dataCorruptedError(forKey: key,
+                                                   in: self,
+                                                   debugDescription: "Expected ISO-8601 date with fractional seconds")
+        }
+        return date
+    }
+}
+
 // MARK: - Contract 5: ExplainabilityTrace
 
 enum TraceStage: String, Codable, Sendable {
@@ -768,6 +1568,7 @@ enum TraceStage: String, Codable, Sendable {
 enum TraceSourceKind: String, Codable, Sendable {
     case snapshotSignal = "snapshot_signal"
     case semanticsSignal = "semantics_signal"
+    case neuralEvidence = "neural_evidence"
     case deterministicRule = "deterministic_rule"
     case plannerPolicy = "planner_policy"
     case optionalReasoning = "optional_reasoning"
@@ -1127,6 +1928,7 @@ struct ExplainabilityTraceBundle: Codable, Equatable, Sendable {
         switch (stage, sourceKind) {
         case (.observation, .snapshotSignal),
             (.observation, .semanticsSignal),
+            (.observation, .neuralEvidence),
             (.interpretation, .deterministicRule),
             (.interpretation, .optionalReasoning),
             (.recommendation, .plannerPolicy):
