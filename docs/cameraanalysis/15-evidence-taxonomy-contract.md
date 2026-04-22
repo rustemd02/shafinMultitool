@@ -8,6 +8,7 @@
 - [README.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/README.md)
 - [14-hybrid-research-framing.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/14-hybrid-research-framing.md)
 - [03-domain-contracts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/03-domain-contracts.md)
+- [04-explainability-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/04-explainability-contract.md)
 - [07-critique-engine.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/07-critique-engine.md)
 - [02-pipeline-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/02-pipeline-architecture.md)
 - [11-implementation-backlog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/11-implementation-backlog.md)
@@ -135,6 +136,19 @@ NeuralEvidenceHeadEntry
 - `confidence` описывает надежность этого score или family в текущем кадре и для текущего режима;
 - `supportingSignals` нужны для explainability/fusion/debug, но остаются каталожными tag-ами.
 
+### Runtime vs dataset applicability boundary
+
+`PR-H02` фиксирует runtime semantics, но обязан явно задать handoff для dataset layer:
+
+- runtime использует только `EvidenceHeadStatus`:
+  - `available`
+  - `not_applicable`
+  - `unavailable`
+- dataset labeling в `PR-H03` вправе расширять это пространство dataset-only состоянием `cannot_judge`;
+- `cannot_judge` означает, что annotator не может надежно проставить label из-за asset quality, privacy masking или irreducible ambiguity;
+- `cannot_judge` не является runtime status и не сериализуется в `NeuralEvidenceSnapshot`;
+- `cannot_judge` не должен автоматически маппиться ни в `not_applicable`, ни в `unavailable`; это отдельный adjudication signal для dataset QA.
+
 ### Frame-level serialization rules
 
 - `NeuralEvidenceSnapshot` всегда dense, а не sparse: `headOutputs` обязан содержать все heads из текущего taxonomy ровно по одному разу.
@@ -161,6 +175,33 @@ NeuralEvidenceHeadEntry
 - Для categorical head-а при `status != available` `affinities == []` и `confidence == 0.0`.
 - Для `shot_type_confidence` affinity scores трактуются как независимые compatibility/affinity scores; они не обязаны суммироваться в `1.0`.
 - `unknown_affinity` обязателен во всех `available` output-ах `shot_type_confidence`.
+
+### Explainability and provenance bridge
+
+`PR-H02` обязан быть traceable не только в dataset/runtime storage, но и в explainability chain.
+
+Нормативные правила:
+- любой head, реально использованный в fused issue/strength/action reasoning, должен быть referencable как `EvidenceRef(source = neural_evidence, ...)`;
+- любой head, реально использованный в fused reasoning, должен быть materialized как `observation` item с `TraceSourceKind = neural_evidence` по [04-explainability-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/04-explainability-contract.md);
+- interpretation/planner items, использующие neural evidence, остаются deterministic по source-of-truth semantics:
+  - fused interpretation -> `sourceKind = deterministic_rule`
+  - recommendation -> `sourceKind = planner_policy`
+- neural evidence не создает прямых `action` links и не заменяет deterministic rationale свободным текстом.
+
+Канонический key format:
+- scalar heads:
+  - `neural.<headId>.status`
+  - `neural.<headId>.score`
+  - `neural.<headId>.confidence`
+  - `neural.<headId>.supportingSignals`
+- `shot_type_confidence`:
+  - `neural.shot_type_confidence.status`
+  - `neural.shot_type_confidence.confidence`
+  - `neural.shot_type_confidence.affinities.<categoryId>`
+
+Если head существует в snapshot, но не использован downstream:
+- он может остаться debug/eval-only signal;
+- он не должен появляться как justification для `issue/strength/action` через `TraceLink` или `EvidenceRef`.
 
 ### Closed `supportingSignals` vocabulary
 
@@ -492,6 +533,42 @@ Tie / ambiguity policy:
 - `cinematic_expressiveness` никогда не используется как sole driver для corrective action;
 - `shot_type_confidence` используется только как calibration/context signal.
 
+## Degraded mode contract
+
+Hybrid evidence обязан подчиняться тому же weak-signal degraded policy, что и deterministic critique из [07-critique-engine.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/07-critique-engine.md).
+
+Trigger rules:
+- degraded mode считается активным, если в `FrameFeatureSnapshot.technicalFlags` присутствует `low_scene_confidence`;
+- `semantics.sceneType == unknown` и ambiguity `weak_signal` сами по себе не являются отдельным hybrid trigger, а трактуются как типичное следствие того же weak-signal режима;
+- `PR-H09` вправе materialize-ить это как явный fusion input flag, но semantics trigger не может расходиться с `PR-007`.
+
+Allowed behavior in degraded mode:
+- hybrid layer не может отменять degraded state и не может поднимать verdict выше deterministic floor;
+- `subject_prominence`, `background_clutter`, `lighting_quality`, `face_saliency` могут использоваться только для bounded confidence calibration внутри разрешенного degraded subset issues:
+  - `horizon_distracts`
+  - `backlight_hides_subject`
+  - `subject_not_prominent_enough`
+- эти `live`-grade heads не могут создавать новые issue types вне degraded subset и не могут порождать strengths.
+
+Pause-only heads in degraded mode:
+- `balance_confidence`
+- `depth_separation`
+- `cinematic_expressiveness`
+- `shot_type_confidence`
+
+Для pause-only heads действует жесткое правило:
+- они могут быть вычислены и сохранены для debug/eval;
+- они становятся advisory-only и не участвуют в issue creation, strength generation, verdict aggregation, `leave_frame_as_is` confirmation или action ranking;
+- `cinematic_expressiveness` и `shot_type_confidence` в degraded mode полностью исключаются из fused decision path;
+- `balance_confidence` и `depth_separation` допускаются только как diagnostic/debug observations и не могут повышать confidence issue/action/verdict.
+
+Safety floor:
+- если итоговый critique находится в degraded mode / `fallbackUsed == true`, hybrid layer обязан сохранить:
+  - `verdict != good`
+  - `strengths == []`
+  - `verdictConfidence <= 0.55`
+- ни один neural head не может сделать degraded case "хорошим" или отменить technical fallback.
+
 ## Mapping к issue taxonomy
 
 Ниже `primary heads` означают основные hybrid evidence inputs, а `secondary heads` допускаются как дополнительные факторы. `Mode scope` относится к neural support, а не к существованию самого issue в deterministic pipeline.
@@ -516,6 +593,10 @@ Tie / ambiguity policy:
 | `clear_focus_hierarchy` | `subject_prominence`, inverse `background_clutter` |
 | `stable_horizon_supports_scene` | deterministic only, optional `balance_confidence` support |
 | `balanced_composition_for_scene` | `balance_confidence`, `shot_type_confidence` |
+
+Нормативное уточнение:
+- `inverse background_clutter` означает строго `1.0 - background_clutter.score` и используется только когда `background_clutter.status == available`;
+- при `background_clutter.status != available` synthetic inverse-support factor не создается.
 
 ## Mapping к action taxonomy
 
@@ -614,6 +695,9 @@ Interpretation:
 - Для person-agnostic scenes `face_saliency` обязан быть `not_applicable`, а не "низким".
 - Если neural head конфликтует с deterministic signal при низком confidence, приоритет у deterministic signal.
 - Horizon-related critique не должен зависеть от обязательного neural head в `PR-H02`.
+- dataset-only `cannot_judge` не появляется в runtime outputs и не подменяет `not_applicable`/`unavailable`.
+- любой fused use of neural head должен быть traceable через canonical `neural.*` keys и `EvidenceRef(source = neural_evidence, ...)`.
+- при degraded mode pause-only heads не участвуют в verdict/strength/action aggregation и не могут отменять `fallbackUsed`.
 
 ## Что это разблокирует дальше
 

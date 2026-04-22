@@ -143,6 +143,7 @@ EvidenceSource
 - snapshot
 - semantics
 - derived_rule
+- neural_evidence
 
 FixTypeV1
 - reframing

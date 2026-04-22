@@ -599,6 +599,7 @@ Done definition:
 - dataset schema
 - labeling guide
 - adjudication rules
+- зафиксированный source-of-truth doc: [16-dataset-schema-and-labeling-guide.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/16-dataset-schema-and-labeling-guide.md)
 
 Зависимости:
 - `PR-H02`
