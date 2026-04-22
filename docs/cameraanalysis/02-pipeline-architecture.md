@@ -205,6 +205,8 @@ Server path не должен:
 - заменять deterministic critique core;
 - ломать offline-first mode.
 
+Подробный gated offloading contract для `PR-H12` зафиксирован в [22-offloading-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/22-offloading-contract.md).
+
 ### Recommended fused flow
 
 ```mermaid

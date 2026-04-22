@@ -760,6 +760,7 @@ Done definition:
 - `DeepCriticProvider`
 - payload schema
 - gate policy
+- source-of-truth doc: [22-offloading-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/22-offloading-contract.md)
 
 Зависимости:
 - `PR-H09`
