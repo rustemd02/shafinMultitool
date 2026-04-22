@@ -10,7 +10,7 @@ import Foundation
 
 /// Сервис для парсинга сценариев через локальную LLM (llama.cpp + Qwen2-0.5B)
 /// Используется как fallback когда rule-based парсер имеет низкую confidence
-final class LLMParserService {
+final class LLMParserService: LocalScenePlanProvider {
 
     static let shared = LLMParserService()
     private static let generationTokenBudgets: [Int32] = [512, 768]
@@ -20,6 +20,9 @@ final class LLMParserService {
     ]
     private let lemmatizer = Lemmatizer()
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
+    private let planCompiler = ScenePlanCompiler()
+    private let stateLock = NSLock()
+    private var loadingTask: Task<Void, Never>?
 
     /// LlamaContext (actor) — загружается лениво при первом использовании
     private var llamaContext: LlamaContext?
@@ -27,12 +30,9 @@ final class LLMParserService {
     /// Статус загрузки модели
     private(set) var loadingState: LoadingState = .notLoaded
 
-    /// Последнее описание для вставки в originalDescription
-    private var lastDescription: String = ""
-
     /// Проверяет, доступна ли LLM модель
     var isAvailable: Bool {
-        loadingState == .loaded
+        withStateLock { loadingState == .loaded }
     }
 
     private init() {
@@ -52,36 +52,65 @@ final class LLMParserService {
 
     /// Загружает модель асинхронно
     func loadModelIfNeeded() async {
-        guard loadingState == .notLoaded else { return }
-
-        loadingState = .loading
-        print("🤖 [LLM] Начинаю загрузку модели...")
-
-        guard let modelPath = Bundle.main.path(forResource: "qwen2.5-1.5b-instruct.Q4_K_M", ofType: "gguf") else {
-            let error = "GGUF модель не найдена в бандле приложения"
-            print("❌ [LLM] \(error)")
-            loadingState = .failed(error)
+        if let task = withStateLock({ loadingTask }) {
+            await task.value
+            return
+        }
+        if withStateLock({ loadingState == .loaded }) {
             return
         }
 
-        print("🤖 [LLM] Путь к модели: \(modelPath)")
+        let task = Task { [weak self] in
+            guard let self else { return }
+            if self.withStateLock({ self.loadingState == .loaded }) {
+                self.clearLoadingTask()
+                return
+            }
 
-        do {
-            let context = try LlamaContext.create(
-                modelPath: modelPath,
-                temperature: 0.1,
-                grammarStr: Self.sceneScriptGrammar
-            )
-            self.llamaContext = context
-            self.loadingState = .loaded
+            self.withStateLock {
+                self.loadingState = .loading
+            }
+            print("🤖 [LLM] Начинаю загрузку модели...")
 
-            let info = await context.modelInfo()
-            print("✅ [LLM] Модель загружена: \(info)")
-        } catch {
-            let errorMsg = "Ошибка загрузки модели: \(error.localizedDescription)"
-            print("❌ [LLM] \(errorMsg)")
-            loadingState = .failed(errorMsg)
+            guard let modelPath = Bundle.main.path(forResource: "qwen2.5-1.5b-instruct.Q4_K_M", ofType: "gguf") else {
+                let error = "GGUF модель не найдена в бандле приложения"
+                print("❌ [LLM] \(error)")
+                self.withStateLock {
+                    self.loadingState = .failed(error)
+                }
+                self.clearLoadingTask()
+                return
+            }
+
+            print("🤖 [LLM] Путь к модели: \(modelPath)")
+
+            do {
+                let context = try LlamaContext.create(
+                    modelPath: modelPath,
+                    temperature: 0.1,
+                    grammarStr: Self.scenePlanIRGrammar
+                )
+                self.withStateLock {
+                    self.llamaContext = context
+                    self.loadingState = .loaded
+                }
+
+                let info = await context.modelInfo()
+                print("✅ [LLM] Модель загружена: \(info)")
+            } catch {
+                let errorMsg = "Ошибка загрузки модели: \(error.localizedDescription)"
+                print("❌ [LLM] \(errorMsg)")
+                self.withStateLock {
+                    self.loadingState = .failed(errorMsg)
+                }
+            }
+            self.clearLoadingTask()
         }
+
+        withStateLock {
+            loadingTask = task
+        }
+        await task.value
     }
 
     // MARK: - Public API
@@ -92,17 +121,34 @@ final class LLMParserService {
     ///   - markedObjects: Размеченные объекты для контекста
     /// - Returns: Распарсенный SceneScript или nil если не удалось
     func parseAsync(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState? = nil) async -> SceneScript? {
+        let anchors = SourceAnchorBundle.empty
+        guard let providerResult = await generatePlanAsync(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: state
+        ) else {
+            return nil
+        }
+        return try? planCompiler.compile(plan: providerResult.plan, originalDescription: description)
+    }
+
+    func generatePlanAsync(
+        description: String,
+        markedObjects: [MarkedObject] = [],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState? = nil
+    ) async -> ScenePlanProviderResult? {
         // Загружаем модель если ещё не загружена
         await loadModelIfNeeded()
 
-        guard let context = llamaContext, isAvailable else {
+        guard let context = withStateLock({ llamaContext }), isAvailable else {
             print("⚠️ [LLM] Модель не доступна, пропускаем LLM парсинг")
             return nil
         }
 
         print("🤖 [LLM] Начало LLM парсинга для: '\(description)'")
-        self.lastDescription = description
-        let prompt = buildPrompt(description: description, markedObjects: markedObjects, state: state)
+        let prompt = buildPrompt(description: description, markedObjects: markedObjects, anchors: anchors, state: state)
 
         for (attemptIndex, maxTokens) in Self.generationTokenBudgets.enumerated() {
             let attemptStart = CFAbsoluteTimeGetCurrent()
@@ -118,9 +164,14 @@ final class LLMParserService {
             print("🤖 [LLM] Ответ модели\(attemptSuffix):\n\(generatedText)")
 
             // Парсим JSON из ответа
-            if let script = parseJSONFromResponse(generatedText, description: description, markedObjects: markedObjects) {
-                print("✅ [LLM] SceneScript успешно извлечён из ответа LLM")
-                return script
+            if let planResult = parsePlanFromResponse(
+                generatedText,
+                description: description,
+                markedObjects: markedObjects,
+                anchors: anchors
+            ) {
+                print("✅ [LLM] ScenePlanIR успешно извлечён из ответа LLM")
+                return planResult
             }
 
             if attemptIndex < Self.generationTokenBudgets.count - 1 {
@@ -135,17 +186,43 @@ final class LLMParserService {
 
     /// Синхронная обёртка (для обратной совместимости)
     func parse(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState? = nil) -> SceneScript? {
+        let anchors = SourceAnchorBundle.empty
+        guard let providerResult = generatePlan(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: state
+        ) else {
+            return nil
+        }
+        return try? planCompiler.compile(plan: providerResult.plan, originalDescription: description)
+    }
+
+    func generatePlan(
+        description: String,
+        markedObjects: [MarkedObject] = [],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState? = nil
+    ) -> ScenePlanProviderResult? {
+        if Thread.isMainThread {
+            print("⚠️ [LLM] Sync generatePlan вызван с main thread; пропускаем, чтобы не блокировать UI")
+            return nil
+        }
         guard isAvailable else {
-            print("⚠️ [LLM] Модель не загружена, пропускаем LLM парсинг")
+            print("⚠️ [LLM] Модель не загружена, пропускаем LLM planner")
             return nil
         }
 
-        // Синхронный вызов — блокирует поток, использовать только в крайнем случае
-        var result: SceneScript?
+        var result: ScenePlanProviderResult?
         let semaphore = DispatchSemaphore(value: 0)
 
         Task {
-            result = await parseAsync(description, markedObjects: markedObjects, state: state)
+            result = await generatePlanAsync(
+                description: description,
+                markedObjects: markedObjects,
+                anchors: anchors,
+                state: state
+            )
             semaphore.signal()
         }
 
@@ -156,7 +233,7 @@ final class LLMParserService {
     // MARK: - Prompt Building
 
     /// Формирует промпт для LLM
-    private func buildPrompt(description: String, markedObjects: [MarkedObject], state: SceneChunkState?) -> String {
+    private func buildPrompt(description: String, markedObjects: [MarkedObject], anchors: SourceAnchorBundle, state: SceneChunkState?) -> String {
         var stateContext = ""
         if let state = state {
             let actors = state.knownActors.map { "\($0.key) (id: \($0.value))" }.joined(separator: ", ")
@@ -166,32 +243,24 @@ final class LLMParserService {
             stateContext += "\n"
         }
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
+        let anchorContext = buildAnchorContext(anchors)
 
         return """
         <|im_start|>system
-        Ты парсер мизансцен для кинопроизводства. Преобразуй чанк русского описания сцены в валидный JSON SceneScript.
+        Ты planner мизансцен для кинопроизводства. Преобразуй чанк русского описания сцены в валидный JSON ScenePlanIR.
         КРИТИЧЕСКИ ВАЖНО:
         - лучше недоразметить, чем додумать лишнее
         - не выдумывай объекты, действия и отношения, которых нет в тексте
         - каждый beat = одновременные действия актёров в одной микрофазе
-        - если в тексте явно сказано "идут навстречу друг другу", сохрани симметрию движения и используй direction="toward_each_other"
-        - если сказано "второй начинает бежать", actor_2 должен получить type="run" или modifier="quickly", а не остаться обычным walk
-        - если сказано "проходят мимо объекта", используй type="pass_by" и target этого объекта
-        - actor.name заполняй только собственным именем; не используй "Мужчина", "Женщина", "Он", "Она"
-        - если объект упомянут в тексте и есть среди MARKED OBJECTS, обязательно переиспользуй его id и не создавай новый object с другим id
-        - у каждого action обязательно должны быть id, actorId, type, resultingPose
-        - выводи ТОЛЬКО валидный JSON, без пояснений
-
-        Короткий пример 1:
-        source: 2 актёра идут навстречу друг другу, останавливаются около ноутбука
-        idea: два action walk c direction="toward_each_other", затем stop/approach к object_marked_...
-
-        Короткий пример 2:
-        source: 2 актёра идут навстречу друг другу, проходят мимо ноутбука, второй начинает бежать
-        idea: actor_1 = walk, actor_2 = run, оба сохраняют target/объект и не теряют ноутбук
+        - финальный SceneScript ты НЕ генерируешь
+        - actor refs должны быть символическими: "first", "second", "third"
+        - unmarked objects должны использовать refs вида "object_slot_1", "object_slot_2"
+        - marked objects должны использовать exact refs вида "object_marked_xxxxxxxx"
+        - если действие unsupported, сохраняй его как type="described_action" с fallbackText/sourceText
+        - выводи ТОЛЬКО валидный JSON ScenePlanIR, без пояснений
         <|im_end|>
         <|im_start|>user
-        \(stateContext)\(markedObjectsContext)SOURCE:
+        \(stateContext)\(markedObjectsContext)\(anchorContext)SOURCE:
         \(description)<|im_end|>
         <|im_start|>assistant
         """
@@ -222,11 +291,35 @@ final class LLMParserService {
         """
     }
 
+    private func buildAnchorContext(_ anchors: SourceAnchorBundle) -> String {
+        let ordinals = anchors.ordinalMentions.joined(separator: ", ")
+        let mentioned = anchors.mentionedMarkedObjects.joined(separator: ", ")
+        let phases = anchors.phaseCues.joined(separator: ", ")
+        let unsupported = anchors.unsupportedActionFlags.joined(separator: ", ")
+
+        return """
+        ANCHOR BUNDLE:
+        - actor_count_hint=\(anchors.actorCountHint)
+        - ordinal_mentions=\(ordinals.isEmpty ? "none" : ordinals)
+        - mentioned_marked_objects=\(mentioned.isEmpty ? "none" : mentioned)
+        - phase_cues=\(phases.isEmpty ? "none" : phases)
+        - unsupported_action_flags=\(unsupported.isEmpty ? "none" : unsupported)
+        - same_type_marker_conflict=\(anchors.sameTypeMarkerConflict ? "true" : "false")
+
+        """
+    }
+
 
     // MARK: - JSON Parsing
 
-    /// Парсит JSON (SceneScript) из ответа LLM с починкой типичных ошибок маленькой модели
-    private func parseJSONFromResponse(_ response: String, description: String, markedObjects: [MarkedObject]) -> SceneScript? {
+    /// Парсит JSON (ScenePlanIR) из ответа LLM. В transitional режиме
+    /// допускает legacy SceneScript и конвертирует его во внутренний план.
+    private func parsePlanFromResponse(
+        _ response: String,
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle
+    ) -> ScenePlanProviderResult? {
         guard let extractedJSON = extractJSONPayload(from: response) else {
             print("❌ [LLM] Не найден JSON в ответе")
             return nil
@@ -238,15 +331,22 @@ final class LLMParserService {
             print("🔧 [LLM] JSON после починки [вариант \(index + 1)/\(candidates.count)]: \(candidate.prefix(200))...")
 
             do {
-                let decoded = try decodeSceneScript(from: candidate)
-                let script = repairSceneScript(decoded, description: description, markedObjects: markedObjects)
-                print("✅ [LLM] Декодировано: \(script.actors.count) актёров, \(script.objects.count) объектов, \(script.beats.count) тактов, \(script.actions.count) действий")
-                if let camera = script.beats.first?.camera {
-                    print("📷 [LLM] Камера beat_1: \(camera.shotType.rawValue), movement=\(camera.movement?.rawValue ?? "nil")")
-                }
-                return script
+                let decoded = try decodeScenePlan(from: candidate)
+                let plan = repairScenePlanIR(decoded, description: description, markedObjects: markedObjects, anchors: anchors)
+                print("✅ [LLM] Декодирован ScenePlanIR: actors=\(plan.actors.count), objects=\(plan.objects.count), beats=\(plan.beats.count)")
+                return ScenePlanProviderResult(plan: plan, usedLegacySceneScriptBridge: false)
             } catch {
-                print("❌ [LLM] Ошибка декодирования [вариант \(index + 1)/\(candidates.count)]: \(error)")
+                print("⚠️ [LLM] ScenePlanIR decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
+            }
+
+            do {
+                let decoded = try decodeSceneScript(from: candidate, description: description)
+                let script = repairSceneScript(decoded, description: description, markedObjects: markedObjects)
+                let bridgedPlan = makePlanIR(from: script, markedObjects: markedObjects, anchors: anchors)
+                print("✅ [LLM] Legacy SceneScript bridged to ScenePlanIR")
+                return ScenePlanProviderResult(plan: bridgedPlan, usedLegacySceneScriptBridge: true)
+            } catch {
+                print("❌ [LLM] Legacy SceneScript decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
                 print("   JSON: \(candidate.prefix(300))")
             }
         }
@@ -324,7 +424,74 @@ final class LLMParserService {
         return String(input[..<lastSafeEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func decodeSceneScript(from text: String) throws -> SceneScript {
+    private func decodeScenePlan(from text: String) throws -> ScenePlanIR {
+        guard let data = text.data(using: .utf8) else {
+            throw NSError(domain: "LLMParserService", code: 11, userInfo: [NSLocalizedDescriptionKey: "Не удалось конвертировать ScenePlanIR в Data"])
+        }
+
+        guard var jsonObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "LLMParserService", code: 12, userInfo: [NSLocalizedDescriptionKey: "Корневой JSON plan не является объектом"])
+        }
+
+        if jsonObj["actors"] == nil {
+            jsonObj["actors"] = []
+        }
+        if jsonObj["objects"] == nil {
+            jsonObj["objects"] = []
+        }
+        if jsonObj["beats"] == nil {
+            jsonObj["beats"] = []
+        }
+        if jsonObj["spatialRelations"] == nil {
+            jsonObj["spatialRelations"] = []
+        }
+        if var objects = jsonObj["objects"] as? [[String: Any]] {
+            for index in objects.indices {
+                if objects[index]["relativePosition"] == nil {
+                    objects[index]["relativePosition"] = "unknown"
+                }
+                if objects[index]["ref"] == nil {
+                    if let markedObjectID = objects[index]["markedObjectID"] as? String, markedObjectID.hasPrefix("object_marked_") {
+                        objects[index]["ref"] = markedObjectID
+                    } else {
+                        objects[index]["ref"] = "object_slot_\(index + 1)"
+                    }
+                }
+            }
+            jsonObj["objects"] = objects
+        }
+        if var actors = jsonObj["actors"] as? [[String: Any]] {
+            let refs = ["first", "second", "third"]
+            for index in actors.indices where actors[index]["ref"] == nil {
+                actors[index]["ref"] = index < refs.count ? refs[index] : "actor_ref_\(index + 1)"
+            }
+            jsonObj["actors"] = actors
+        }
+        if var beats = jsonObj["beats"] as? [[String: Any]] {
+            for beatIndex in beats.indices {
+                if beats[beatIndex]["ref"] == nil {
+                    beats[beatIndex]["ref"] = "beat_\(beatIndex + 1)"
+                }
+            }
+            jsonObj["beats"] = beats
+        }
+        var referenceBindings = (jsonObj["referenceBindings"] as? [String: Any]) ?? [:]
+        if referenceBindings["actorBindings"] == nil {
+            referenceBindings["actorBindings"] = [:]
+        }
+        if referenceBindings["markedObjectIDs"] == nil {
+            referenceBindings["markedObjectIDs"] = []
+        }
+        if referenceBindings["aliasToObjectRef"] == nil {
+            referenceBindings["aliasToObjectRef"] = [:]
+        }
+        jsonObj["referenceBindings"] = referenceBindings
+
+        let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
+        return try JSONDecoder().decode(ScenePlanIR.self, from: fixedData)
+    }
+
+    private func decodeSceneScript(from text: String, description: String) throws -> SceneScript {
         guard let data = text.data(using: .utf8) else {
             throw NSError(domain: "LLMParserService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Не удалось конвертировать JSON в Data"])
         }
@@ -333,7 +500,7 @@ final class LLMParserService {
             throw NSError(domain: "LLMParserService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Корневой JSON не является объектом"])
         }
 
-        jsonObj["originalDescription"] = self.lastDescription
+        jsonObj["originalDescription"] = description
 
         if jsonObj["spatialRelations"] == nil {
             jsonObj["spatialRelations"] = []
@@ -375,6 +542,215 @@ final class LLMParserService {
 
         let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
         return try JSONDecoder().decode(SceneScript.self, from: fixedData)
+    }
+
+    private func repairScenePlanIR(
+        _ plan: ScenePlanIR,
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle
+    ) -> ScenePlanIR {
+        let mentionedMarkers = findMentionedMarkers(in: description.lowercased(), markedObjects: markedObjects)
+        var repaired = plan
+
+        repaired.actors = normalizePlanActors(repaired.actors)
+        repaired.objects = normalizePlanObjects(repaired.objects, mentionedMarkers: mentionedMarkers)
+        repaired.beats = normalizePlanBeats(repaired.beats, anchors: anchors)
+
+        let markedObjectIDs = repaired.objects.compactMap { object -> String? in
+            if object.ref.hasPrefix("object_marked_") { return object.ref }
+            if let markedObjectID = object.markedObjectID, markedObjectID.hasPrefix("object_marked_") { return markedObjectID }
+            return nil
+        }
+        repaired.referenceBindings.markedObjectIDs = Array(Set(markedObjectIDs)).sorted()
+        repaired.referenceBindings.actorBindings = repaired.referenceBindings.actorBindings.merging(
+            Dictionary(uniqueKeysWithValues: repaired.actors.enumerated().map { index, actor in
+                let binding = index == 0 ? "actor_1" : "actor_\(index + 1)"
+                return (actor.ref, binding)
+            })
+        ) { _, new in new }
+
+        return repaired
+    }
+
+    private func normalizePlanActors(_ actors: [ScenePlanIR.Actor]) -> [ScenePlanIR.Actor] {
+        let canonicalRefs = ["first", "second", "third"]
+        return actors.enumerated().map { index, actor in
+            var actor = actor
+            if index < canonicalRefs.count {
+                actor.ref = canonicalRefs[index]
+            } else if actor.ref.isEmpty {
+                actor.ref = "actor_ref_\(index + 1)"
+            }
+            if let name = actor.name?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+               Self.genericRoleNames.contains(name) {
+                actor.name = nil
+            }
+            return actor
+        }
+    }
+
+    private func normalizePlanObjects(
+        _ objects: [ScenePlanIR.Object],
+        mentionedMarkers: [MarkedObject]
+    ) -> [ScenePlanIR.Object] {
+        var normalized = objects.enumerated().map { index, object in
+            var object = object
+            if let markedObjectID = object.markedObjectID, markedObjectID.hasPrefix("object_marked_") {
+                object.ref = markedObjectID
+            } else if object.ref.isEmpty {
+                object.ref = "object_slot_\(index + 1)"
+            }
+            return object
+        }
+
+        for marker in mentionedMarkers {
+            let objectID = marker.canonicalMarkedObjectID
+            if !normalized.contains(where: { $0.ref == objectID || $0.markedObjectID == objectID }) {
+                normalized.append(
+                    ScenePlanIR.Object(
+                        ref: objectID,
+                        type: marker.type,
+                        relativePosition: .unknown,
+                        name: marker.name,
+                        markedObjectID: objectID
+                    )
+                )
+            }
+        }
+
+        return normalized
+    }
+
+    private func normalizePlanBeats(_ beats: [ScenePlanIR.Beat], anchors: SourceAnchorBundle) -> [ScenePlanIR.Beat] {
+        beats.enumerated().map { beatIndex, beat in
+            var beat = beat
+            if beat.ref.isEmpty {
+                beat.ref = "beat_\(beatIndex + 1)"
+            }
+            if beat.phase == nil {
+                beat.phase = anchors.phaseCues.first
+            }
+            beat.actions = beat.actions.enumerated().map { _, action in
+                var action = action
+                if action.resultingPose == nil {
+                    action.resultingPose = defaultPose(for: action.type)
+                }
+                return action
+            }
+            return beat
+        }
+    }
+
+    private func makePlanIR(
+        from script: SceneScript,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle
+    ) -> ScenePlanIR {
+        let actorRefMap = Dictionary(uniqueKeysWithValues: script.actors.enumerated().map { index, actor in
+            let ref = index == 0 ? "first" : (index == 1 ? "second" : (index == 2 ? "third" : "actor_ref_\(index + 1)"))
+            return (actor.id, ref)
+        })
+
+        var objectCounter = 1
+        let objectRefMap = Dictionary(uniqueKeysWithValues: script.objects.map { object in
+            let ref: String
+            if object.id.hasPrefix("object_marked_") {
+                ref = object.id
+            } else {
+                ref = "object_slot_\(objectCounter)"
+                objectCounter += 1
+            }
+            return (object.id, ref)
+        })
+
+        let actors = script.actors.enumerated().map { index, actor in
+            ScenePlanIR.Actor(
+                ref: index == 0 ? "first" : (index == 1 ? "second" : (index == 2 ? "third" : "actor_ref_\(index + 1)")),
+                type: actor.type,
+                name: actor.name
+            )
+        }
+
+        let objects = script.objects.map { object in
+            ScenePlanIR.Object(
+                ref: objectRefMap[object.id] ?? object.id,
+                type: object.type,
+                relativePosition: object.relativePosition,
+                name: object.name,
+                markedObjectID: object.id.hasPrefix("object_marked_") ? object.id : nil
+            )
+        }
+
+        let beats = script.beats.enumerated().map { beatIndex, beat in
+            ScenePlanIR.Beat(
+                ref: beat.id.isEmpty ? "beat_\(beatIndex + 1)" : beat.id,
+                phase: anchors.phaseCues.first,
+                actions: beat.actions.map { action in
+                    ScenePlanIR.Action(
+                        actorRef: actorRefMap[action.actorId] ?? "first",
+                        type: action.type,
+                        targetRef: planTargetRef(for: action.target, actorRefMap: actorRefMap, objectRefMap: objectRefMap),
+                        direction: action.direction,
+                        modifier: action.modifier,
+                        resultingPose: action.resultingPose,
+                        holdingObjectRef: objectRefMap[action.holdingObject ?? ""],
+                        dialogue: action.dialogue,
+                        fallbackText: action.fallbackText,
+                        sourceText: action.sourceText
+                    )
+                },
+                minDuration: beat.minDuration
+            )
+        }
+
+        let relations = script.spatialRelations.map { relation in
+            ScenePlanIR.SpatialRelation(
+                ref: relation.id,
+                subjectRef: planTargetRef(for: relation.subject, actorRefMap: actorRefMap, objectRefMap: objectRefMap) ?? relation.subject,
+                relation: relation.relation,
+                objectRef: planTargetRef(for: relation.object, actorRefMap: actorRefMap, objectRefMap: objectRefMap) ?? relation.object
+            )
+        }
+
+        let markedObjectIDs = objects.compactMap { $0.markedObjectID ?? ($0.ref.hasPrefix("object_marked_") ? $0.ref : nil) }
+        let aliasBindings = Dictionary(uniqueKeysWithValues: markedObjects.map { marker in
+            (marker.name.lowercased(), marker.canonicalMarkedObjectID)
+        })
+
+        return repairScenePlanIR(
+            ScenePlanIR(
+                actors: actors,
+                objects: objects,
+                beats: beats,
+                spatialRelations: relations,
+                referenceBindings: .init(
+                    actorBindings: Dictionary(uniqueKeysWithValues: actors.enumerated().map { index, actor in
+                        (actor.ref, "actor_\(index + 1)")
+                    }),
+                    markedObjectIDs: markedObjectIDs,
+                    aliasToObjectRef: aliasBindings
+                )
+            ),
+            description: script.originalDescription,
+            markedObjects: markedObjects,
+            anchors: anchors
+        )
+    }
+
+    private func planTargetRef(
+        for targetID: String?,
+        actorRefMap: [String: String],
+        objectRefMap: [String: String]
+    ) -> String? {
+        guard let targetID, !targetID.isEmpty else { return nil }
+        if let actorRef = actorRefMap[targetID] {
+            return actorRef
+        }
+        if let objectRef = objectRefMap[targetID] {
+            return objectRef
+        }
+        return nil
     }
 
     private func repairSceneScript(_ script: SceneScript, description: String, markedObjects: [MarkedObject]) -> SceneScript {
@@ -686,22 +1062,28 @@ final class LLMParserService {
         return json
     }
 
+    private func withStateLock<T>(_ body: () -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return body()
+    }
+
+    private func clearLoadingTask() {
+        withStateLock {
+            loadingTask = nil
+        }
+    }
+
     // MARK: - GBNF Grammar
 
-    /// GBNF-грамматика, описывающая JSON-схему SceneScript v2 (beat-система + камера + позы).
-    /// Constrained decoding: сэмплер физически не может выдать невалидный JSON.
-    static let sceneScriptGrammar: String = {
-        // GBNF grammar — каждая строка без ведущих пробелов (парсер GBNF чувствителен к отступам)
-        // v2: beats вместо actions, camera/minDuration/resultingPose/holdingObject
+    /// GBNF-грамматика, описывающая внутренний ScenePlanIR.
+    /// Финальный SceneScript собирается только через ScenePlanCompiler.
+    static let scenePlanIRGrammar: String = {
         let lines = [
-            // --- Корневой объект ---
-            #"root ::= "{" ws actors-field "," ws objects-field "," ws beats-field root-relations ws "}""#,
+            #"root ::= "{" ws actors-field "," ws objects-field "," ws beats-field "," ws relations-field "," ws bindings-field ws "}""#,
             "",
             #"ws ::= ([ \t\n])*"#,
             "",
-            #"root-relations ::= ("," ws relations-field) | """#,
-            "",
-            // --- Массивы верхнего уровня ---
             #"actors-field ::= "\"actors\"" ws ":" ws "[" ws actor-list ws "]""#,
             #"actor-list ::= actor ("," ws actor)* | """#,
             "",
@@ -714,49 +1096,45 @@ final class LLMParserService {
             #"relations-field ::= "\"spatialRelations\"" ws ":" ws "[" ws relation-list ws "]""#,
             #"relation-list ::= relation ("," ws relation)* | """#,
             "",
-            // --- Beat ---
-            #"beat ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"actions\"" ws ":" ws "[" ws action-list ws "]" beat-camera beat-duration ws "}""#,
+            #"bindings-field ::= "\"referenceBindings\"" ws ":" ws bindings-obj"#,
+            #"bindings-obj ::= "{" ws "\"actorBindings\"" ws ":" ws bindings-map "," ws "\"markedObjectIDs\"" ws ":" ws "[" ws id-list ws "]" bindings-alias-map ws "}""#,
+            #"bindings-alias-map ::= ("," ws "\"aliasToObjectRef\"" ws ":" ws bindings-map) | """#,
+            #"bindings-map ::= "{" ws bindings-entry-list ws "}""#,
+            #"bindings-entry-list ::= bindings-entry ("," ws bindings-entry)* | """#,
+            #"bindings-entry ::= text-string ws ":" ws id-string"#,
+            #"id-list ::= id-string ("," ws id-string)* | """#,
+            "",
+            #"beat ::= "{" ws "\"ref\"" ws ":" ws id-string beat-phase "," ws "\"actions\"" ws ":" ws "[" ws action-list ws "]" beat-duration ws "}""#,
             #"action-list ::= action ("," ws action)* | """#,
-            #"beat-camera ::= ("," ws "\"camera\"" ws ":" ws camera-obj) | """#,
+            #"beat-phase ::= ("," ws "\"phase\"" ws ":" ws text-string) | """#,
             #"beat-duration ::= ("," ws "\"minDuration\"" ws ":" ws number) | """#,
             "",
-            // --- Camera ---
-            #"camera-obj ::= "{" ws "\"shotType\"" ws ":" ws shot-type camera-movement camera-target ws "}""#,
-            #"shot-type ::= "\"wide\"" | "\"medium\"" | "\"close_up\"" | "\"extreme_close_up\"" | "\"over_shoulder\"" | "\"two_shot\"""#,
-            #"camera-movement ::= ("," ws "\"movement\"" ws ":" ws movement-type) | """#,
-            #"movement-type ::= "\"static\"" | "\"pan_left\"" | "\"pan_right\"" | "\"tilt_up\"" | "\"tilt_down\"" | "\"dolly_in\"" | "\"dolly_out\"" | "\"tracking\"" | "\"crane_up\"" | "\"crane_down\"""#,
-            #"camera-target ::= ("," ws "\"target\"" ws ":" ws id-string) | """#,
-            "",
-            // --- Актёры ---
-            #"actor ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws actor-type actor-name ws "}""#,
+            #"actor ::= "{" ws "\"ref\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws actor-type actor-name ws "}""#,
             #"actor-type ::= "\"human\"" | "\"tiger\"" | "\"lion\"" | "\"dog\"" | "\"cat\"" | "\"bird\"" | "\"generic\"""#,
             #"actor-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
             "",
-            // --- Объекты ---
-            #"object ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws object-type object-name "," ws "\"relativePosition\"" ws ":" ws relative-pos ws "}""#,
+            #"object ::= "{" ws "\"ref\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws object-type "," ws "\"relativePosition\"" ws ":" ws relative-pos object-name object-marked-id ws "}""#,
             #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"tv\"" | "\"generic\"""#,
             #"object-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
+            #"object-marked-id ::= ("," ws "\"markedObjectID\"" ws ":" ws id-string) | """#,
             #"relative-pos ::= "\"left\"" | "\"right\"" | "\"center\"" | "\"background\"" | "\"foreground\"" | "\"unknown\"""#,
             "",
-            // --- Действия ---
-            #"action ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"actorId\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed "," ws "\"resultingPose\"" ws ":" ws pose-type action-holding action-dialogue action-fallback action-source ws "}""#,
+            #"action ::= "{" ws "\"actorRef\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws action-type action-target action-direction action-speed "," ws "\"resultingPose\"" ws ":" ws pose-type action-holding action-dialogue action-fallback action-source ws "}""#,
             #"action-type ::= "\"walk\"" | "\"run\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"" | "\"lie_down\"" | "\"stop\"" | "\"turn\"" | "\"crouch\"" | "\"look_at\"" | "\"pick_up\"" | "\"put_down\"" | "\"open\"" | "\"close\"" | "\"give\"" | "\"talk\"" | "\"described_action\"""#,
-            #"action-target ::= ("," ws "\"target\"" ws ":" ws id-string) | """#,
+            #"action-target ::= ("," ws "\"targetRef\"" ws ":" ws id-string) | """#,
             #"action-direction ::= ("," ws "\"direction\"" ws ":" ws direction-type) | """#,
             #"direction-type ::= "\"left\"" | "\"right\"" | "\"forward\"" | "\"backward\"" | "\"toward_each_other\"" | "\"away_from_each_other\"" | "\"to_target\"""#,
             #"action-speed ::= ("," ws "\"modifier\"" ws ":" ws speed-type) | """#,
             #"speed-type ::= "\"slowly\"" | "\"quickly\"" | "\"carefully\"""#,
             #"pose-type ::= "\"standing\"" | "\"sitting\"" | "\"crouching\"" | "\"lying\"" | "\"walking\"" | "\"running\"""#,
-            #"action-holding ::= ("," ws "\"holdingObject\"" ws ":" ws id-string) | """#,
+            #"action-holding ::= ("," ws "\"holdingObjectRef\"" ws ":" ws id-string) | """#,
             #"action-dialogue ::= ("," ws "\"dialogue\"" ws ":" ws text-string) | """#,
             #"action-fallback ::= ("," ws "\"fallbackText\"" ws ":" ws text-string) | """#,
             #"action-source ::= ("," ws "\"sourceText\"" ws ":" ws text-string) | """#,
             "",
-            // --- Пространственные отношения ---
-            #"relation ::= "{" ws "\"id\"" ws ":" ws id-string "," ws "\"subject\"" ws ":" ws id-string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"object\"" ws ":" ws id-string ws "}""#,
+            #"relation ::= "{" ws "\"ref\"" ws ":" ws id-string "," ws "\"subjectRef\"" ws ":" ws id-string "," ws "\"relation\"" ws ":" ws relation-type "," ws "\"objectRef\"" ws ":" ws id-string ws "}""#,
             #"relation-type ::= "\"near\"" | "\"in_front_of\"" | "\"behind\"" | "\"left_of\"" | "\"right_of\"" | "\"between\"" | "\"pass_by\"" | "\"inside\"" | "\"outside\"""#,
             "",
-            // --- Примитивы ---
             #"id-string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
             #"text-string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]))* "\"""#,
             #"number ::= [0-9]+ ("." [0-9]+)?"#,

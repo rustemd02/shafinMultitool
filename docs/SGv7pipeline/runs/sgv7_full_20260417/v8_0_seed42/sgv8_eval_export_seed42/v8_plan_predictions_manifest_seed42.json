@@ -1,0 +1,14 @@
+{
+  "dataset_v8_plan_sft": {
+    "rows": 262,
+    "plan_parseable_rows": 251,
+    "plan_schema_valid_rows": 251,
+    "path": "/content/drive/MyDrive/sgv7_eval_runs/v8_plan_predictions_seed42/dataset_v8_plan_sft_seed42.plan_predictions.jsonl"
+  },
+  "dataset_v8_plan_orpo_iter1": {
+    "rows": 262,
+    "plan_parseable_rows": 251,
+    "plan_schema_valid_rows": 251,
+    "path": "/content/drive/MyDrive/sgv7_eval_runs/v8_plan_predictions_seed42/dataset_v8_plan_orpo_iter1_seed42.plan_predictions.jsonl"
+  }
+}

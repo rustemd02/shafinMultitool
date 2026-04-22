@@ -141,17 +141,50 @@ struct SceneBeat: Codable, Equatable, Identifiable {
     let actions: [SceneAction]      // Действия, выполняемые одновременно в этом такте
     var camera: CameraSetup?        // Камера для данного beat (nil = не меняется)
     var minDuration: Double?        // Минимальная длительность в секундах (для пауз)
+
+    init(id: String, actions: [SceneAction], camera: CameraSetup? = nil, minDuration: Double? = nil) {
+        self.id = id
+        self.actions = actions
+        self.camera = camera
+        self.minDuration = minDuration
+    }
 }
 
 // MARK: - Main Scene Script
 
 /// Главная структура, содержащая все данные распознанной сцены
 struct SceneScript: Codable, Equatable {
+    let sceneHeading: String?
+    let locationName: String?
+    let interiorExterior: String?
+    let timeOfDay: String?
     let actors: [SceneActor]
     let objects: [SceneObject]
     let beats: [SceneBeat]
     let spatialRelations: [SpatialRelation]
     let originalDescription: String
+
+    init(
+        sceneHeading: String? = nil,
+        locationName: String? = nil,
+        interiorExterior: String? = nil,
+        timeOfDay: String? = nil,
+        actors: [SceneActor],
+        objects: [SceneObject],
+        beats: [SceneBeat],
+        spatialRelations: [SpatialRelation],
+        originalDescription: String
+    ) {
+        self.sceneHeading = sceneHeading
+        self.locationName = locationName
+        self.interiorExterior = interiorExterior
+        self.timeOfDay = timeOfDay
+        self.actors = actors
+        self.objects = objects
+        self.beats = beats
+        self.spatialRelations = spatialRelations
+        self.originalDescription = originalDescription
+    }
     
     /// Обратная совместимость: плоский список всех действий из всех beats
     var actions: [SceneAction] {
@@ -248,8 +281,23 @@ struct SceneActor: Codable, Equatable, Identifiable {
 struct SceneObject: Codable, Equatable, Identifiable {
     let id: String                      // Уникальный ID: "object_1"
     let type: ObjectType                // Тип объекта
+    var name: String?                   // Человекочитаемое имя / surface alias
     var detectedPosition: Position3D?   // Позиция из object detection (если найден)
     var relativePosition: RelativePosition // Относительная позиция в кадре
+
+    init(
+        id: String,
+        type: ObjectType,
+        name: String? = nil,
+        detectedPosition: Position3D? = nil,
+        relativePosition: RelativePosition
+    ) {
+        self.id = id
+        self.type = type
+        self.name = name
+        self.detectedPosition = detectedPosition
+        self.relativePosition = relativePosition
+    }
     
     enum ObjectType: String, Codable, CaseIterable {
         case table = "table"
@@ -359,6 +407,8 @@ struct SceneAction: Codable, Equatable, Identifiable {
     var resultingPose: ActorPose?   // В какую позу переходит актёр после этого действия
     var holdingObject: String?      // Какой объект держит (после pick_up)
     var dialogue: String?           // Текст реплики прямой речи (для type = talk)
+    var fallbackText: String?       // Текстовый fallback для described_action / unresolved motion
+    var sourceText: String?         // Канонический source text для described_action
     
     enum ActionType: String, Codable, CaseIterable {
         case walk = "walk"
@@ -380,6 +430,7 @@ struct SceneAction: Codable, Equatable, Identifiable {
         case close = "close"
         case give = "give"
         case talk = "talk"
+        case describedAction = "described_action"
     }
     
     enum Direction: String, Codable {
@@ -397,13 +448,39 @@ struct SceneAction: Codable, Equatable, Identifiable {
         case quickly = "quickly"
         case carefully = "carefully"
     }
+
+    init(
+        id: String,
+        actorId: String,
+        type: ActionType,
+        target: String? = nil,
+        direction: Direction? = nil,
+        modifier: ActionModifier? = nil,
+        resultingPose: ActorPose? = nil,
+        holdingObject: String? = nil,
+        dialogue: String? = nil,
+        fallbackText: String? = nil,
+        sourceText: String? = nil
+    ) {
+        self.id = id
+        self.actorId = actorId
+        self.type = type
+        self.target = target
+        self.direction = direction
+        self.modifier = modifier
+        self.resultingPose = resultingPose
+        self.holdingObject = holdingObject
+        self.dialogue = dialogue
+        self.fallbackText = fallbackText
+        self.sourceText = sourceText
+    }
     
     /// Скорость движения в м/с
     var speed: Float {
         let baseSpeed: Float = switch type {
         case .walk, .approach, .passBy, .enter, .exit: 0.8
         case .run: 2.5
-        case .stop, .stand, .sit, .lieDown, .crouch, .lookAt, .pickUp, .putDown, .open, .close, .give, .talk: 0.0
+        case .stop, .stand, .sit, .lieDown, .crouch, .lookAt, .pickUp, .putDown, .open, .close, .give, .talk, .describedAction: 0.0
         case .turn: 0.3
         }
         

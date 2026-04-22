@@ -101,6 +101,49 @@
 
 ---
 
+## [2026-04-22 13:46] - [SG V8.0: первый end-to-end benchmark run (plan->compile->score) и локальный runner]
+
+### Суть изменений
+- Реализован и проверен полный локальный post-Colab контур `v8`: распаковка `sgv8_eval_pack_seed42.zip`, сборка `eval_artifacts` (`plan_case_results + compiled_predictions`), генерация benchmark-конфига и запуск `run_scientific_benchmark.py`.
+- Добавлен единый orchestration-скрипт для воспроизводимого прогона одной командой: `07_run_v8_local_benchmark.py`.
+- Исправлена совместимость `v8` compiled predictions с dual-slice контрактом benchmark orchestrator: в `compiled_predictions.jsonl` теперь явно пишутся `model_only_predicted_script` и `end_to_end_predicted_script`, что снимает `require_both_slices` ошибку.
+- Получены финальные агрегаты `v8_0_seed42/benchmark_results_seed42/aggregate` в формате, совместимом с предыдущими `v7` итерациями (`runs_scored.csv`, `pairwise_compare.csv`, `scientific_report.md`) и дополнительно `v8_plan_slice_summary.csv`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Первый `v8` эксперимент показал типичный риск гибридной архитектуры на раннем этапе: semantic метрики растут, но structural устойчивость деградирует, а стандартный benchmark-контур требует dual-slice поля даже для compiled-предиктов, что блокирует корректный end-to-end запуск.
+- **Решение:** 
+  - (1) Для воспроизводимости введён единый локальный runner `07_run_v8_local_benchmark.py`, который формализует весь post-Colab lifecycle без ручных шагов.
+  - (2) Для технической совместимости с существующим benchmark orchestrator обновлён `eval_artifacts.py`: compiled predictions теперь содержат dual-slice contract fields (`model_only_predicted_script`, `end_to_end_predicted_script`, `selected_predicted_script`), что сохраняет строгий admission в `run_scientific_benchmark.py`.
+- **Детали:** По итогам `seed=42`:
+  - `dataset_v8_plan_orpo_iter1` vs `dataset_v7_orpo_iter2`:
+    - `overall.target_resolution_accuracy`: `0.4154` vs `0.1778` (`+0.2376`)
+    - `overall.chronology_phase_accuracy`: `0.1412` vs `0.0840` (`+0.0573`)
+    - `overall.case_strict_success_rate`: `0.1031` vs `0.0344` (`+0.0687`)
+    - `overall.runtime_fallback_rate`: `0.7137` vs `0.8435` (`-0.1298`, лучше)
+    - при этом структурные регрессии:
+      - `overall.json_valid_rate`: `0.6870` vs `0.9504` (`-0.2634`)
+      - `overall.ordinal_actor_binding_accuracy`: `0.5399` vs `0.9340` (`-0.3941`)
+  - Pairwise:
+    - `dataset_v8_plan_orpo_iter1` vs `dataset_v7_orpo_iter2`: wins `109` vs `132`, `p=0.1563` (не статистически значимое преимущество)
+    - `dataset_v8_plan_orpo_iter1` vs `dataset_v8_plan_sft`: wins `9` vs `9`, `p=1.0` (ORPO поверх текущего plan-SFT почти не сдвинул pairwise outcome)
+  - `local_plan_raw` slice:
+    - `plan_parse_rate = 0.9580`
+    - `plan_reference_binding_accuracy ≈ 0.7595`
+    - `plan_beat_integrity_accuracy ≈ 0.2786`
+  Эти значения подтверждают, что на текущем этапе bottleneck смещён в plan integrity/binding consistency, а не в отсутствие semantic signal.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/v8/07_run_v8_local_benchmark.py` (единый локальный runner post-Colab benchmark цикла)
+- `docs/SGv7pipeline/v8/eval_artifacts.py` (dual-slice совместимый compiled predictions contract)
+- `docs/SGv7pipeline/v8/06_build_v8_eval_artifacts.py` (CLI генерации `plan_case_results` и `compiled_predictions`)
+- `docs/SGv7pipeline/v8/README.md` (документированный one-command запуск локального v8 benchmark)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv` (основные модельные метрики)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv` (pairwise outcome и p-value)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv` (`local_plan_raw` quality metrics)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md` (сводный отчёт прогона)
+
+---
+
 ## [2026-04-14 18:56] - [Prompt 10: Реализация runtime feedback loop SG v7 и bridge в dataset/eval]
 
 ### Суть изменений

@@ -24,6 +24,7 @@
    - `aggregate/runs_scored.csv`
    - `aggregate/model_summary.csv`
    - `aggregate/pairwise_compare.csv`
+   - `aggregate/v8_plan_slice_summary.csv` (optional, если заданы `v8_plan_case_results_*`)
    - `aggregate/scientific_report.md`
    - `aggregate/benchmark_manifest.json`
 
@@ -92,3 +93,19 @@ python3 /Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchm
 
 Шаблонные переменные внутри команды:
 - `{model_id}`, `{model_name}`, `{seed}`, `{checkpoint_id}`, `{predictions_jsonl}`, `{report_dir}`
+
+## Optional: V8 Plan Slice
+
+Если для модели есть sidecar JSONL с case-level `ScenePlanIR` eval rows, можно добавить один из ключей:
+- `v8_plan_case_results_path`
+- `v8_plan_case_results_path_template`
+- `v8_plan_case_results_by_seed`
+
+Тогда orchestrator дополнительно посчитает:
+- `aggregate/v8_plan_slice_summary.csv`
+- `aggregate/v8_plan_slice_summary_by_model.csv`
+
+Ожидаемые поля на строку:
+- `plan_parse_ok`
+- `plan_reference_binding_pass`
+- `plan_beat_integrity_pass`

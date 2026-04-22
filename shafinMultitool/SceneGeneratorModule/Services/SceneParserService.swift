@@ -23,6 +23,15 @@ final class SceneParserService {
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
     private let diagnosticsCalculator = DiagnosticsCalculator()
     private let llmParser = LLMParserService.shared
+    private let anchorExtractor = SceneAnchorExtractor()
+    private let metadataExtractor = SceneMetadataExtractor()
+    private let planCompiler = ScenePlanCompiler()
+    private let qualityGate = SceneQualityGate()
+    private var remotePlanProvider: RemoteScenePlanProvider?
+    private var remoteOffloadEnabled = false
+
+    private(set) var lastRuntimeTrace: SceneRuntimeTrace?
+    private(set) var lastChunkState: SceneChunkState?
 
     private init() {}
 
@@ -34,41 +43,18 @@ final class SceneParserService {
     ///   - markedObjects: Размеченные пользователем объекты в реальном пространстве
     /// - Returns: Результат парсинга с диагностикой
     func parse(_ description: String, markedObjects: [MarkedObject] = []) -> ParsingResult {
-        let ruleBasedResult = ruleBasedParse(description, markedObjects: markedObjects)
+        parse(description, markedObjects: markedObjects, state: nil)
+    }
 
-        // Пробуем LLM если модель доступна
-        if llmParser.isAvailable, let llmScript = llmParser.parse(description, markedObjects: markedObjects) {
-            print("🤖 [PARSER] LLM успешно распарсила сценарий")
-
-            // Пересчитываем диагностику для LLM результата
-            let llmMatchedIds = matchedMarkedObjectIDs(from: llmScript.objects, markedObjects: markedObjects)
-
-            let llmDiagnostics = diagnosticsCalculator.calculateDiagnostics(
-                script: llmScript,
-                originalText: description,
-                markedObjects: markedObjects,
-                matchedMarkedObjects: llmMatchedIds
-            )
-
-            let llmResult = ParsingResult(script: llmScript, diagnostics: llmDiagnostics)
-            switch decideLLMSelection(
-                llmResult: llmResult,
-                ruleBasedResult: ruleBasedResult,
-                description: description,
-                markedObjects: markedObjects
-            ) {
-            case .accept:
-                print("🤖 [PARSER] LLM результат принят в sync-пути")
-                return llmResult
-            case .merge:
-                print("🤖 [PARSER] LLM результат смержен с rule-based в sync-пути")
-                return mergeLLMResult(llmResult, with: ruleBasedResult, description: description, markedObjects: markedObjects)
-            case .reject(let reason):
-                print("🤖 [PARSER] LLM результат отклонён в sync-пути: \(reason)")
-            }
+    func parse(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) -> ParsingResult {
+        let output = makeParseCoordinator().parse(description: description, markedObjects: markedObjects, state: state) { [weak self] in
+            self?.ruleBasedParse(description, markedObjects: markedObjects)
+                ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: .empty)
         }
-
-        return ruleBasedResult
+        lastRuntimeTrace = output.trace
+        lastChunkState = makeChunkState(from: output.result.script, fallbackLocationName: state?.locationName)
+        print("🤖 [PARSER_V8] route=\(output.trace.route.rawValue) reasons=\(output.trace.reasons.joined(separator: ","))")
+        return output.result
     }
 
     private func matchedMarkedObjectIDs(from objects: [SceneObject], markedObjects: [MarkedObject]) -> [UUID] {
@@ -92,6 +78,7 @@ final class SceneParserService {
 
     private func ruleBasedParse(_ description: String, markedObjects: [MarkedObject]) -> ParsingResult {
         let lowercased = description.lowercased()
+        let metadata = metadataExtractor.extract(description: description)
 
         // 1. Извлекаем актёров
         let actors = extractActors(from: lowercased, originalText: description)
@@ -118,6 +105,10 @@ final class SceneParserService {
         }
 
         let script = SceneScript(
+            sceneHeading: metadata.sceneHeading,
+            locationName: metadata.locationName,
+            interiorExterior: metadata.interiorExterior,
+            timeOfDay: metadata.timeOfDay,
             actors: actors,
             objects: objects,
             beats: beats,
@@ -139,54 +130,87 @@ final class SceneParserService {
     /// Асинхронный парсинг с поддержкой LLM fallback.
     /// LLM пробуется всегда, если модель доступна.
     func parseAsync(_ description: String, markedObjects: [MarkedObject] = []) async -> ParsingResult {
-        // 1. Сначала делаем rule-based парсинг (быстрый fallback)
-        let ruleBasedResult = ruleBasedParse(description, markedObjects: markedObjects)
+        await parseAsync(description, markedObjects: markedObjects, state: nil)
+    }
 
-        // 2. Пробуем LLM (дообученная модель)
-        print("🤖 [PARSER] Запускаем LLM парсинг (дообученная модель)...")
+    func parseAsync(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) async -> ParsingResult {
+        let output = await makeParseCoordinator().parseAsync(description: description, markedObjects: markedObjects, state: state) { [weak self] in
+            self?.ruleBasedParse(description, markedObjects: markedObjects)
+                ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: .empty)
+        }
+        lastRuntimeTrace = output.trace
+        lastChunkState = makeChunkState(from: output.result.script, fallbackLocationName: state?.locationName)
+        print("🤖 [PARSER_V8] route=\(output.trace.route.rawValue) reasons=\(output.trace.reasons.joined(separator: ","))")
+        return output.result
+    }
 
-        if let llmScript = await llmParser.parseAsync(description, markedObjects: markedObjects) {
-            // Пересчитываем диагностику для LLM результата
-            let llmMatchedIds = matchedMarkedObjectIDs(from: llmScript.objects, markedObjects: markedObjects)
+    func clarificationMessage(for trace: SceneRuntimeTrace?) -> String? {
+        trace?.clarificationMessage
+    }
 
-            let llmDiagnostics = diagnosticsCalculator.calculateDiagnostics(
-                script: llmScript,
-                originalText: description,
-                markedObjects: markedObjects,
-                matchedMarkedObjects: llmMatchedIds
-            )
+    func configureRemoteOffload(enabled: Bool, provider: RemoteScenePlanProvider?) {
+        remoteOffloadEnabled = enabled
+        remotePlanProvider = provider
+    }
 
-            let llmResult = ParsingResult(script: llmScript, diagnostics: llmDiagnostics)
+    func resetRuntimeContext() {
+        lastRuntimeTrace = nil
+        lastChunkState = nil
+        remoteOffloadEnabled = false
+        remotePlanProvider = nil
+    }
 
-            switch decideLLMSelection(
-                llmResult: llmResult,
-                ruleBasedResult: ruleBasedResult,
-                description: description,
-                markedObjects: markedObjects
-            ) {
-            case .accept:
-                print("✅ [PARSER] Используем LLM результат (beats: \(llmScript.beats.count), actions: \(llmScript.actions.count), confidence: \(String(format: "%.2f", llmDiagnostics.confidence)))")
-                return llmResult
-            case .merge:
-                let merged = mergeLLMResult(llmResult, with: ruleBasedResult, description: description, markedObjects: markedObjects)
-                print("✅ [PARSER] Используем merged результат (beats: \(merged.script.beats.count), actions: \(merged.script.actions.count), confidence: \(String(format: "%.2f", merged.diagnostics.confidence)))")
-                return merged
-            case .reject(let reason):
-                print("⚠️ [PARSER] LLM результат отклонён: \(reason)")
+    private func makeChunkState(from script: SceneScript, fallbackLocationName: String?) -> SceneChunkState {
+        let knownActors = Dictionary(uniqueKeysWithValues: script.actors.map { actor in
+            let key = actor.name?.lowercased() ?? actor.id
+            return (key, actor.id)
+        })
+        var actorPoses: [String: ActorPose] = [:]
+        var heldObjects: [String: String] = [:]
+
+        for beat in script.beats {
+            for action in beat.actions {
+                if let pose = action.resultingPose {
+                    actorPoses[action.actorId] = pose
+                }
+                switch action.type {
+                case .pickUp:
+                    if let target = action.target {
+                        heldObjects[action.actorId] = target
+                    }
+                case .putDown, .give:
+                    heldObjects.removeValue(forKey: action.actorId)
+                default:
+                    break
+                }
             }
-        } else {
-            print("⚠️ [PARSER] LLM не смогла распарсить, используем rule-based результат")
         }
 
-        // 3. Fallback на rule-based
-        print("🤖 [PARSER] Используем rule-based результат (confidence: \(String(format: "%.2f", ruleBasedResult.diagnostics.confidence)))")
-        return ruleBasedResult
+        return SceneChunkState(
+            locationName: script.locationName ?? fallbackLocationName,
+            knownActors: knownActors,
+            actorPoses: actorPoses,
+            heldObjects: heldObjects
+        )
     }
 
     /// Старый метод для обратной совместимости (deprecated)
     @available(*, deprecated, message: "Используйте parse(_:markedObjects:) который возвращает ParsingResult")
     func parse(_ description: String) -> SceneScript {
         return parse(description, markedObjects: []).script
+    }
+
+    private func makeParseCoordinator() -> SceneParseCoordinator {
+        SceneParseCoordinator(
+            anchorExtractor: anchorExtractor,
+            metadataExtractor: metadataExtractor,
+            localProvider: llmParser,
+            remoteProvider: remotePlanProvider,
+            compiler: planCompiler,
+            qualityGate: qualityGate,
+            diagnosticsCalculator: diagnosticsCalculator,
+            remoteOffloadEnabled: remoteOffloadEnabled
+        )
     }
 
     private func decideLLMSelection(

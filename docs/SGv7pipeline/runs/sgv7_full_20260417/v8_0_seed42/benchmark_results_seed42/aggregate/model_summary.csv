@@ -1,0 +1,6 @@
+model_id,seed_count,overall.json_valid_rate.mean,overall.json_valid_rate.std,hard_heldout.chronology_phase_accuracy.mean,hard_heldout.chronology_phase_accuracy.std,real_runtime.runtime_fallback_rate.mean,real_runtime.runtime_fallback_rate.std,overall.case_strict_success_rate.mean,overall.case_strict_success_rate.std
+dataset_v7,1,0.9809160305343512,0.0,0.0,0.0,0.671875,0.0,0.019083969465648856,0.0
+dataset_v7_orpo_iter1,1,0.9656488549618321,0.0,0.0,0.0,0.640625,0.0,0.026717557251908396,0.0
+dataset_v7_orpo_iter2,1,0.950381679389313,0.0,0.0,0.0,0.609375,0.0,0.03435114503816794,0.0
+dataset_v8_plan_orpo_iter1,1,0.6870229007633588,0.0,0.0449438202247191,0.0,0.03125,0.0,0.10305343511450382,0.0
+dataset_v8_plan_sft,1,0.6908396946564885,0.0,0.056179775280898875,0.0,0.015625,0.0,0.09541984732824428,0.0

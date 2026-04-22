@@ -7,7 +7,8 @@
     {
       "id": "base_qwen3_1_7b",
       "name": "Base Qwen3-1.7B",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/base_qwen3_1_7b_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/base_qwen3_1_7b_seed{seed}.jsonl",
+      "v8_plan_case_results_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/v8_plan_case_results/base_qwen3_1_7b_seed{seed}.jsonl"
     },
     {
       "id": "dataset_v6",

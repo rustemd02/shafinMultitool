@@ -31,6 +31,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Результат парсинга с диагностикой
     @Published var parsingResult: ParsingResult?
+
+    /// Компактное состояние сцены между последовательными перегенерациями
+    @Published var sceneChunkState: SceneChunkState?
     
     /// Спланированная сцена с координатами
     @Published var plannedScene: PlannedScene?
@@ -215,8 +218,9 @@ final class SceneGeneratorViewModel: ObservableObject {
         // 1. Парсим описание с учётом markedObjects (async — поддержка LLM fallback)
         print("🔍 [VIEWMODEL] Вызов parserService.parseAsync()...")
         statusMessage = "Анализирую текст..."
-        let result = await parserService.parseAsync(sceneDescription, markedObjects: markedObjects)
+        let result = await parserService.parseAsync(sceneDescription, markedObjects: markedObjects, state: sceneChunkState)
         let script = result.script
+        let runtimeTrace = parserService.lastRuntimeTrace
         
         print("🔍 [VIEWMODEL] Результат парсинга:")
         print("🔍 [VIEWMODEL]   Actors: \(script.actors.count)")
@@ -239,9 +243,19 @@ final class SceneGeneratorViewModel: ObservableObject {
         
         parsedScript = script
         parsingResult = result
-        
+        sceneChunkState = parserService.lastChunkState
+        if let runtimeTrace {
+            print("🔍 [VIEWMODEL]   Runtime route: \(runtimeTrace.route.rawValue)")
+            print("🔍 [VIEWMODEL]   Runtime reasons: \(runtimeTrace.reasons.joined(separator: ","))")
+        }
+
         // Отображаем диагностику в статусе
-        if result.diagnostics.confidence < 0.6 {
+        if runtimeTrace?.route == .needsClarification, let clarification = parserService.clarificationMessage(for: runtimeTrace) {
+            statusMessage = "Нужно уточнение"
+            errorMessage = clarification
+        } else if runtimeTrace?.route == .offloadRemote {
+            statusMessage = "Нужен более сильный парсер, использую fallback"
+        } else if result.diagnostics.confidence < 0.6 {
             statusMessage = "Низкая уверенность парсинга (\(Int(result.diagnostics.confidence * 100))%)"
             if !result.diagnostics.notes.isEmpty {
                 errorMessage = result.diagnostics.notes.joined(separator: "; ")
@@ -400,6 +414,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         
         plannedScene = nil
         parsedScript = nil
+        sceneChunkState = nil
         sceneDescription = ""
         isPlaying = false
         

@@ -19,6 +19,7 @@ if str(DOCS_ROOT) not in sys.path:
     sys.path.insert(0, str(DOCS_ROOT))
 
 from eval.scorer import ScoreCasesRequest, score_cases
+from v8.eval import summarize_plan_slice_metrics
 
 
 PRIMARY_SET_METRICS = [
@@ -50,6 +51,11 @@ SLICE_METRICS = [
     "runtime_fallback_rate",
     "case_strict_success_rate",
 ]
+V8_PLAN_SLICE_METRICS = [
+    "plan_parse_rate",
+    "plan_reference_binding_accuracy",
+    "plan_beat_integrity_accuracy",
+]
 
 
 class BenchmarkConfigError(ValueError):
@@ -63,6 +69,7 @@ class ModelRunSpec:
     seed: int
     checkpoint_id: str
     predictions_jsonl: Path
+    v8_plan_case_results_jsonl: Path | None
     report_dir: Path
 
 
@@ -147,6 +154,32 @@ def _resolve_predictions_path(model_cfg: dict[str, Any], *, seed: int, mapping: 
         return Path(_fmt(template, mapping)).expanduser()
 
     single = model_cfg.get("predictions_path")
+    if isinstance(single, str):
+        return Path(_fmt(single, mapping)).expanduser()
+
+    return None
+
+
+def _resolve_optional_model_path(
+    model_cfg: dict[str, Any],
+    *,
+    seed: int,
+    mapping: dict[str, Any],
+    by_seed_key: str,
+    template_key: str,
+    single_key: str,
+) -> Path | None:
+    by_seed = model_cfg.get(by_seed_key)
+    if isinstance(by_seed, dict):
+        raw = by_seed.get(str(seed))
+        if raw is not None:
+            return Path(_fmt(raw, mapping)).expanduser()
+
+    template = model_cfg.get(template_key)
+    if isinstance(template, str):
+        return Path(_fmt(template, mapping)).expanduser()
+
+    single = model_cfg.get(single_key)
     if isinstance(single, str):
         return Path(_fmt(single, mapping)).expanduser()
 
@@ -406,6 +439,26 @@ def _collect_slice_metrics(
     return out_flat, out_rows, reason_counts, available_slices, case_results_by_slice
 
 
+def _collect_v8_plan_slice_metrics(
+    *,
+    plan_case_results_jsonl: Path,
+    checkpoint_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    rows = _read_jsonl(plan_case_results_jsonl)
+    metrics = summarize_plan_slice_metrics(rows)
+    flat = {
+        f"slice.local_plan_raw.{metric_name}": float(metrics.get(metric_name, 0.0))
+        for metric_name in V8_PLAN_SLICE_METRICS
+    }
+    row = {
+        "checkpoint_id": checkpoint_id,
+        "slice": "local_plan_raw",
+        "case_results_jsonl": str(plan_case_results_jsonl),
+    }
+    row.update({metric_name: float(metrics.get(metric_name, 0.0)) for metric_name in V8_PLAN_SLICE_METRICS})
+    return flat, row
+
+
 def _write_csv(rows: list[dict[str, Any]], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames: list[str] = []
@@ -437,6 +490,7 @@ def _build_markdown_report(
     pair_rows: list[dict[str, Any]],
     slice_summary_rows: list[dict[str, Any]],
     slice_reason_rows: list[dict[str, Any]],
+    v8_plan_slice_rows: list[dict[str, Any]],
 ) -> None:
     lines: list[str] = []
     lines.append("# Scientific Benchmark Report")
@@ -513,6 +567,25 @@ def _build_markdown_report(
                 )
             )
     lines.append("")
+    lines.append("## V8 Local Plan Slice Summary")
+    lines.append("")
+    if not v8_plan_slice_rows:
+        lines.append("- none")
+    else:
+        lines.append("| model_id | seed | slice | plan_parse_rate | plan_reference_binding_accuracy | plan_beat_integrity_accuracy |")
+        lines.append("| --- | ---: | --- | ---: | ---: | ---: |")
+        for row in v8_plan_slice_rows:
+            lines.append(
+                "| {model_id} | {seed} | {slice} | {parse:.4f} | {binding:.4f} | {beat:.4f} |".format(
+                    model_id=row.get("model_id", ""),
+                    seed=row.get("seed", ""),
+                    slice=row.get("slice", ""),
+                    parse=float(row.get("plan_parse_rate", 0.0)),
+                    binding=float(row.get("plan_reference_binding_accuracy", 0.0)),
+                    beat=float(row.get("plan_beat_integrity_accuracy", 0.0)),
+                )
+            )
+    lines.append("")
     lines.append("## Slice Reason Codes")
     lines.append("")
     if not slice_reason_rows:
@@ -536,6 +609,8 @@ def _build_markdown_report(
     lines.append("- `pairwise_compare.csv`")
     lines.append("- `model_slice_summary.csv`")
     lines.append("- `model_slice_summary_by_model.csv`")
+    lines.append("- `v8_plan_slice_summary.csv`")
+    lines.append("- `v8_plan_slice_summary_by_model.csv`")
     lines.append("- `slice_reason_codes.csv`")
     lines.append("- `slice_gate_results.csv`")
     lines.append("- `slice_gate_winner.json` (when at least one candidate passes)")
@@ -586,6 +661,30 @@ def _build_slice_model_summary(slice_rows: list[dict[str, Any]]) -> list[dict[st
             "seed_count": len(rows),
         }
         for metric in SLICE_METRICS:
+            values = [float(item.get(metric, 0.0)) for item in rows]
+            mean, std = _mean_std(values)
+            summary[f"{metric}.mean"] = mean
+            summary[f"{metric}.std"] = std
+        summary_rows.append(summary)
+    return summary_rows
+
+
+def _build_v8_plan_model_summary(v8_plan_slice_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in v8_plan_slice_rows:
+        model_id = str(row.get("model_id", ""))
+        slice_name = str(row.get("slice", ""))
+        grouped.setdefault((model_id, slice_name), []).append(row)
+
+    summary_rows: list[dict[str, Any]] = []
+    for (model_id, slice_name) in sorted(grouped.keys()):
+        rows = grouped[(model_id, slice_name)]
+        summary: dict[str, Any] = {
+            "model_id": model_id,
+            "slice": slice_name,
+            "seed_count": len(rows),
+        }
+        for metric in V8_PLAN_SLICE_METRICS:
             values = [float(item.get(metric, 0.0)) for item in rows]
             mean, std = _mean_std(values)
             summary[f"{metric}.mean"] = mean
@@ -811,6 +910,14 @@ def _prepare_specs(
             }
             checkpoint_id = _fmt(checkpoint_template, mapping)
             predictions_path = _resolve_predictions_path(mcfg, seed=seed, mapping=mapping)
+            v8_plan_case_results_path = _resolve_optional_model_path(
+                mcfg,
+                seed=seed,
+                mapping=mapping,
+                by_seed_key="v8_plan_case_results_by_seed",
+                template_key="v8_plan_case_results_path_template",
+                single_key="v8_plan_case_results_path",
+            )
             if predictions_path is None:
                 raise BenchmarkConfigError(
                     f"model {model_id!r} seed {seed}: predictions path is missing; "
@@ -824,6 +931,7 @@ def _prepare_specs(
                     seed=seed,
                     checkpoint_id=checkpoint_id,
                     predictions_jsonl=predictions_path,
+                    v8_plan_case_results_jsonl=v8_plan_case_results_path,
                     report_dir=report_dir,
                 )
             )
@@ -1020,6 +1128,7 @@ def main() -> int:
     aggregate_dir = output_dir / "aggregate"
     run_rows: list[dict[str, Any]] = []
     slice_rows: list[dict[str, Any]] = []
+    v8_plan_slice_rows: list[dict[str, Any]] = []
     reason_rows: list[dict[str, Any]] = []
     slice_case_result_payloads: list[tuple[Path, list[dict[str, Any]]]] = []
     eval_cases_path = eval_bundle_dir / "eval_cases.jsonl"
@@ -1053,6 +1162,7 @@ def main() -> int:
             "checkpoint_id": spec.checkpoint_id,
             "report_dir": str(spec.report_dir),
             "predictions_jsonl": str(spec.predictions_jsonl),
+            "v8_plan_case_results_jsonl": str(spec.v8_plan_case_results_jsonl) if spec.v8_plan_case_results_jsonl else "",
         }
         row.update(_collect_score_metrics(spec.report_dir))
         if can_recompute_slices and spec.predictions_jsonl.exists():
@@ -1096,6 +1206,20 @@ def main() -> int:
                 )
         elif args.mode == "aggregate-only":
             row["slice_available"] = "unavailable"
+
+        if spec.v8_plan_case_results_jsonl and spec.v8_plan_case_results_jsonl.exists():
+            plan_flat, plan_row = _collect_v8_plan_slice_metrics(
+                plan_case_results_jsonl=spec.v8_plan_case_results_jsonl,
+                checkpoint_id=spec.checkpoint_id,
+            )
+            row.update(plan_flat)
+            v8_plan_slice_rows.append(
+                {
+                    "model_id": spec.model_id,
+                    "seed": spec.seed,
+                    **plan_row,
+                }
+            )
         run_rows.append(row)
 
     pair_rows: list[dict[str, Any]] = []
@@ -1113,6 +1237,7 @@ def main() -> int:
 
     model_summary_rows = _build_model_summary(run_rows)
     slice_model_summary_rows = _build_slice_model_summary(slice_rows)
+    v8_plan_model_summary_rows = _build_v8_plan_model_summary(v8_plan_slice_rows)
     baseline_model_id = str(cfg.get("slice_gate_baseline_model_id", "")).strip()
     if not baseline_model_id and any(str(row.get("model_id", "")) == "dataset_v7_orpo" for row in run_rows):
         baseline_model_id = "dataset_v7_orpo"
@@ -1129,6 +1254,8 @@ def main() -> int:
     _write_csv(pair_rows, aggregate_dir / "pairwise_compare.csv")
     _write_csv(slice_rows, aggregate_dir / "model_slice_summary.csv")
     _write_csv(slice_model_summary_rows, aggregate_dir / "model_slice_summary_by_model.csv")
+    _write_csv(v8_plan_slice_rows, aggregate_dir / "v8_plan_slice_summary.csv")
+    _write_csv(v8_plan_model_summary_rows, aggregate_dir / "v8_plan_slice_summary_by_model.csv")
     _write_csv(reason_rows, aggregate_dir / "slice_reason_codes.csv")
     for path, rows in slice_case_result_payloads:
         _write_jsonl(rows, path)
@@ -1148,6 +1275,7 @@ def main() -> int:
         "total_runs": len(run_rows),
         "total_pairwise_rows": len(pair_rows),
         "total_slice_rows": len(slice_rows),
+        "total_v8_plan_slice_rows": len(v8_plan_slice_rows),
         "total_slice_reason_rows": len(reason_rows),
         "total_slice_case_result_files": len(slice_case_result_payloads),
         "slice_recompute_enabled": can_recompute_slices,
@@ -1156,6 +1284,7 @@ def main() -> int:
         "primary_set_metrics": PRIMARY_SET_METRICS,
         "primary_buckets": PRIMARY_BUCKETS,
         "slice_metrics": SLICE_METRICS,
+        "v8_plan_slice_metrics": V8_PLAN_SLICE_METRICS,
     }
     (aggregate_dir / "benchmark_manifest.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
@@ -1171,6 +1300,7 @@ def main() -> int:
         pair_rows=pair_rows,
         slice_summary_rows=slice_rows,
         slice_reason_rows=reason_rows,
+        v8_plan_slice_rows=v8_plan_slice_rows,
     )
 
     print(f"[benchmark] done. aggregate artifacts: {aggregate_dir}")

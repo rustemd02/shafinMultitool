@@ -1,0 +1,38 @@
+{
+  "blocking_reasons": [
+    "gate1:floor_not_met:action_recall",
+    "gate1:floor_not_met:beat_count_accuracy",
+    "gate1:floor_not_met:chronology_phase_accuracy",
+    "gate1:floor_not_met:json_valid_rate",
+    "gate1:floor_not_met:ordinal_actor_binding_accuracy",
+    "gate1:floor_not_met:runtime_fallback_rate",
+    "gate1:floor_not_met:target_resolution_accuracy"
+  ],
+  "bucket_deltas": {},
+  "critical_deltas": {},
+  "gate_status": "fail",
+  "passed_checks": [
+    "gate0_contract_integrity",
+    "gate2_hard_bucket_guardrails",
+    "gate3_improvement_requirement",
+    "gate4_runtime_outcome_sanity"
+  ],
+  "recommended_action": "do_not_promote",
+  "run_metadata": {
+    "bundle_id": "sgv7_eval_bundle_v1",
+    "bundle_version": "eval_bundle_v1",
+    "checkpoint_id": "dataset_v8_plan_orpo_iter1_seed42",
+    "contract_version": "sg_v7_contract_v1",
+    "decoding_snapshot_hash": "f9779b62a87f9d0c163c51a41bf61e8c23e2223699acdbbf5f7ebba2bbc5d246",
+    "grammar_snapshot_hash": "a1f2fc00a384faa69e8177cf9077b50b7e0086cba8f35abbf6fde9ad47af4945",
+    "normalization_snapshot_hash": "678bdc22303cae685242a0356ccfddcefb3207d99d05909f80199a6670cf9f71",
+    "prompt_snapshot_hash": "6b8fbd0d86cbf3ca09d36516a7e8ec22a96c14b9badde3bdae113dc91a7f940b",
+    "runtime_policy_snapshot_hash": "75374ebdf4fa5bf39a9a21543ad6e96fa4d53318d07e25c6ce68411311c19335",
+    "seed": 20260421
+  },
+  "watchlist": [
+    "gate2_skipped_no_baseline_bucket_reference",
+    "gate3_improvement_check_skipped_no_baseline",
+    "gate4_runtime_sanity_skipped_no_baseline"
+  ]
+}

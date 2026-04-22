@@ -15,9 +15,11 @@ final class SceneParserServiceTests: XCTestCase {
     override func setUpWithError() throws {
         super.setUp()
         parser = SceneParserService.shared
+        parser.resetRuntimeContext()
     }
-    
+
     override func tearDownWithError() throws {
+        parser?.resetRuntimeContext()
         parser = nil
         super.tearDown()
     }
@@ -165,8 +167,18 @@ final class SceneParserServiceTests: XCTestCase {
         // Старый метод должен работать
         let description = "2 актёра идут"
         let script = parser.parse(description) // Старый метод без markedObjects
-        
+
         XCTAssertFalse(script.isEmpty, "Старый метод должен работать")
         XCTAssertEqual(script.actors.count, 2, "Должно быть 2 актёра")
+    }
+
+    func testParseExtractsTopLevelSceneMetadata() throws {
+        let description = "INT. OFFICE - NIGHT\nЧеловек подходит к столу"
+        let result = parser.parse(description, markedObjects: [])
+
+        XCTAssertEqual(result.script.sceneHeading, "INT. OFFICE - NIGHT")
+        XCTAssertEqual(result.script.locationName, "OFFICE")
+        XCTAssertEqual(result.script.interiorExterior, "interior")
+        XCTAssertEqual(result.script.timeOfDay, "night")
     }
 }
