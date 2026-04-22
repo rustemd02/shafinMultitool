@@ -14,6 +14,8 @@ struct FrameCritiqueEngine {
         static let degradedVerdictConfidenceCap = 0.55
     }
 
+    private let summaryBuilder = DeterministicCritiqueSummaryBuilder()
+
     private struct IssueCandidate {
         let type: IssueTypeV1
         let rawScore: Double
@@ -97,11 +99,11 @@ struct FrameCritiqueEngine {
         }
 
         let summaryId = "summary_\(snapshot.frameId)_main"
-        let summary = makeSummary(
+        let summary = summaryBuilder.makeSummary(
             summaryId: summaryId,
             verdict: verdict,
-            strengths: strengthEntries.map(\.strength),
-            issues: issueEntries.map(\.issue)
+            rankedStrengths: strengthEntries.map(\.strength),
+            rankedIssues: issueEntries.map(\.issue)
         )
 
         let traceRefs = issueEntries.map(\.seedId)
@@ -679,46 +681,6 @@ struct FrameCritiqueEngine {
         )
         let consistency = clamp01(1.0 - (Double(abs(strengths.count - issues.count)) / 6.0))
         return clamp01((0.65 * signalSupport) + (0.35 * consistency))
-    }
-
-    private func makeSummary(summaryId: String,
-                             verdict: FrameVerdict,
-                             strengths: [FrameStrength],
-                             issues: [FrameIssue]) -> CritiqueSummary {
-        let shortVerdict: String
-        switch verdict {
-        case .good:
-            shortVerdict = "Кадр читается стабильно, критичных проблем не выявлено."
-        case .mixed:
-            shortVerdict = "Кадр рабочий, но есть зоны для улучшения композиции и читаемости."
-        case .needsFix:
-            shortVerdict = "Главный объект считывается с трудом, сначала исправьте приоритетные дефекты."
-        }
-
-        let whyGood = strengths
-            .sorted { lhs, rhs in
-                if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
-                return lhs.type.rawValue < rhs.type.rawValue
-            }
-            .prefix(2)
-            .map(\.rationale)
-            .joined(separator: " ")
-
-        let whyProblematic = issues
-            .sorted { lhs, rhs in
-                if lhs.severity != rhs.severity { return lhs.severity > rhs.severity }
-                return lhs.type.rawValue < rhs.type.rawValue
-            }
-            .prefix(2)
-            .map(\.rationale)
-            .joined(separator: " ")
-
-        return CritiqueSummary(
-            id: summaryId,
-            shortVerdict: shortVerdict,
-            whyGood: whyGood.isEmpty ? nil : whyGood,
-            whyProblematic: whyProblematic.isEmpty ? nil : whyProblematic
-        )
     }
 
     private func makeIssue(index: Int,

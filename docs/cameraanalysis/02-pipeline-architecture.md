@@ -174,6 +174,7 @@ flowchart TD
 
 Подробная policy для `PR-H04` зафиксирована в [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md).
 Подробная architecture spec для `PR-H05` зафиксирована в [18-hybrid-model-architecture-spec.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/18-hybrid-model-architecture-spec.md).
+Подробная bounded fusion policy для `PR-H09` зафиксирована в [21-hybrid-fusion-layer.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/21-hybrid-fusion-layer.md).
 
 ### Recommended hybrid data strategy
 
@@ -211,13 +212,17 @@ flowchart TD
     A["Frame"] --> B["Deterministic Feature Pipeline"]
     A --> C["Compact Neural Evidence Model"]
     B --> D["Scene Semantics"]
+    D --> G["Frame Critique Engine"]
     C --> E["Evidence Heads"]
-    D --> F["Fusion Layer"]
+    G --> F["Fusion Layer"]
     E --> F
-    F --> G["Frame Critique Engine"]
-    G --> H["Recommendation Planner"]
+    F --> H["Recommendation Planner"]
     H --> I["Live Hint / Pause Critique"]
     F --> J["Confidence Gate"]
     J --> K["Optional Offloaded Deep Critic"]
     K --> I
 ```
+
+Implementation note for `PR-H09`:
+- practical sequencing is `deterministic critique -> fusion -> planner`;
+- this keeps `FrameCritiqueEngine` source-of-truth and treats fusion as bounded calibration, not as a replacement critic.

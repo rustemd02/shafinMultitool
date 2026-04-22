@@ -708,6 +708,7 @@ Done definition:
 - fusion policy
 - weighting rules
 - calibration policy
+- source-of-truth doc: [21-hybrid-fusion-layer.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/21-hybrid-fusion-layer.md)
 
 Зависимости:
 - `PR-H08`

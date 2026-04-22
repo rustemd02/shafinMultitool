@@ -178,6 +178,7 @@ PR wave:
 - hybrid fusion layer
 - reranking / confidence calibration policy
 - on-device wrapper source-of-truth inside [20-on-device-inference-wrapper.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/20-on-device-inference-wrapper.md)
+- fusion source-of-truth inside [21-hybrid-fusion-layer.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/21-hybrid-fusion-layer.md)
 
 PR wave:
 - `PR-H07 on-device inference wrapper`

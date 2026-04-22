@@ -414,7 +414,7 @@ final class NeuralEvidenceInferenceService {
             let snapshot = makeFailureSnapshot(
                 request: request,
                 descriptor: provider.descriptor,
-                roiStrategy: failureContext.actualROIStrategy
+                roiStrategy: failureContext.actualROIStrategy ?? profile.roiStrategy
             )
             let metadata = makeMetadata(
                 for: request,

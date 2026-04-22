@@ -168,6 +168,102 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertEqual(pipeline.testingLatestLiveNeuralOutcome?.snapshot?.frameId, snapshot.frameId)
     }
 
+    func testLiveHybridFusionAwaitsCurrentFrameNeuralOutcome() async {
+        let service = NeuralEvidenceInferenceService(
+            configuration: makeEnabledNeuralConfiguration(),
+            provider: MockNeuralEvidenceProvider { _ in
+                self.makeLiveFusionProviderOutput()
+            }
+        )
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            neuralEvidenceService: service,
+            thermalGovernor: ThermalGovernor(
+                thermalStateProvider: { .nominal },
+                batteryLevelProvider: { 1.0 }
+            ),
+            neuralHeavyModelsEnabledProvider: { true }
+        )
+        let timestamp = Date(timeIntervalSince1970: 1_771_200_100)
+        let snapshot = pipeline.testingMakeFeatureSnapshot(
+            mode: .live,
+            frameId: "neural-live-fused-frame",
+            capturedAt: timestamp,
+            adapterState: PipelineFeatureSnapshotAdapterState(
+                features: CoachingFeatures(),
+                debugData: DebugData(),
+                vision: nil,
+                horizonMeasuredAt: nil,
+                horizon: nil,
+                lightingMeasuredAt: nil,
+                lighting: nil,
+                detr: nil,
+                aestheticMeasuredAt: nil,
+                aesthetic: nil
+            )
+        )
+        let semantics = SceneSemanticsReport(
+            frameId: snapshot.frameId,
+            mode: .live,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.8,
+            primarySubject: .init(kind: .person, confidence: 0.81),
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.2, backgroundClutterScore: 0.25),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.18, separationScore: 0.66),
+            ambiguities: [],
+            assumptions: []
+        )
+        let deterministicCritique = CritiqueReport(
+            frameId: snapshot.frameId,
+            mode: .live,
+            verdict: .mixed,
+            verdictConfidence: 0.73,
+            strengths: [],
+            issues: [
+                FrameIssue(
+                    id: "iss_live_prominence",
+                    type: .subjectNotProminentEnough,
+                    severity: 0.58,
+                    confidence: 0.55,
+                    rationale: "Главный объект недостаточно выделен.",
+                    evidence: [EvidenceRef(source: .semantics, key: "semantics.readability.separationScore", value: "0.66")],
+                    affectedRegion: NormalizedRect(x: 0.3, y: 0.2, width: 0.3, height: 0.4),
+                    suggestedFixTypes: [.reframing]
+                )
+            ],
+            summary: CritiqueSummary(
+                id: "summary_\(snapshot.frameId)_main",
+                shortVerdict: "Кадр рабочий, но есть зоны для улучшения композиции и читаемости.",
+                whyGood: nil,
+                whyProblematic: "Главный объект недостаточно выделен."
+            ),
+            traceRefs: [
+                "trc_\(snapshot.frameId)_crit_i01",
+                "trc_\(snapshot.frameId)_crit_summary_main"
+            ],
+            fallbackUsed: false
+        )
+
+        let (fusionOutput, recordedOutcome) = await pipeline.testingResolveCritiqueWithHybridFusion(
+            mode: .live,
+            capturedAt: timestamp,
+            pixelBuffer: makePixelBuffer(width: 32, height: 32),
+            orientation: .up,
+            snapshot: snapshot,
+            semantics: semantics,
+            deterministicCritique: deterministicCritique,
+            forcePauseExecution: false
+        )
+
+        XCTAssertEqual(recordedOutcome?.kind, .executed)
+        XCTAssertEqual(recordedOutcome?.snapshot?.frameId, snapshot.frameId)
+        XCTAssertTrue(fusionOutput.appliedDecisions.contains(where: { $0.targetId == "iss_live_prominence" }))
+        XCTAssertGreaterThan(
+            fusionOutput.critique.issues.first(where: { $0.id == "iss_live_prominence" })?.confidence ?? 0,
+            deterministicCritique.issues[0].confidence
+        )
+    }
+
     func testLiveStructuredPathPublishesMatchingHintAndExpandedCritique() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(frameId: "live-structured", verdict: .good)
@@ -316,6 +412,18 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             supportingSignalScores: Array(repeating: row, count: 7),
             shotTypeAffinities: [0.71, 0.29, 0.16, 0.14, 0.11, 0.19, 0.18],
             shotTypeConfidence: 0.61,
+            actualROIStrategy: .fullFrameOnly
+        )
+    }
+
+    private func makeLiveFusionProviderOutput() -> NeuralEvidenceProviderOutput {
+        let row: [Double] = Array(repeating: 0.7, count: 21)
+        return NeuralEvidenceProviderOutput(
+            scalarScores: [0.12, 0.84, 0.62, 0.24, 0.0, 0.0, 0.0],
+            scalarConfidences: [0.90, 0.88, 0.82, 0.79, 0.0, 0.0, 0.0],
+            supportingSignalScores: Array(repeating: row, count: 7),
+            shotTypeAffinities: [0, 0, 0, 0, 0, 0, 0],
+            shotTypeConfidence: 0.0,
             actualROIStrategy: .fullFrameOnly
         )
     }

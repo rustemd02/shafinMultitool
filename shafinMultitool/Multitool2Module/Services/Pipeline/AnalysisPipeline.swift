@@ -28,6 +28,10 @@ struct DebugData {
     var saliencyCenter: CGPoint?
 }
 
+private struct SendablePixelBuffer: @unchecked Sendable {
+    let value: CVPixelBuffer
+}
+
 struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     let id: String
     let frameId: String
@@ -1425,6 +1429,7 @@ final class AnalysisPipeline: ObservableObject {
     private let featureSnapshotAdapter = PipelineFeatureSnapshotAdapter()
     private let sceneSemanticsAnalyzer = SceneSemanticsAnalyzer()
     private let frameCritiqueEngine = FrameCritiqueEngine()
+    private let hybridFusionService = HybridFusionService()
     private let recommendationPlanner = RecommendationPlanner()
     private let pauseReasoningCoordinator: PauseReasoningCoordinator
     private let neuralEvidenceService: NeuralEvidenceInferenceService?
@@ -1466,6 +1471,7 @@ final class AnalysisPipeline: ObservableObject {
     private var pauseNeuralInferenceTask: Task<Void, Never>?
     private var lastRefinedPauseFrameId: String?
     private var currentPauseTraceBundle: ExplainabilityTraceBundle?
+    private var currentLiveFusionTraceBundle: ExplainabilityTraceBundle?
 
     private var suggestionCancellable: AnyCancellable?
     private let minLiveHintHold: TimeInterval = 1.2
@@ -1859,6 +1865,7 @@ final class AnalysisPipeline: ObservableObject {
                 currentSuggestion = nil
             }
             currentLiveHint = nil
+            currentLiveFusionTraceBundle = nil
             publishOverlayAnnotations([], now: now)
             return
         }
@@ -1880,18 +1887,30 @@ final class AnalysisPipeline: ObservableObject {
             capturedAt: now
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
-        startNeuralEvidenceInferenceIfNeeded(
+        let deterministicCritique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+        let (fusionOutput, liveNeuralOutcome) = await resolveCritiqueWithHybridFusion(
             mode: .live,
-            frameId: snapshot.frameId,
             capturedAt: now,
             pixelBuffer: lastPixelBuffer,
             orientation: lastOrientation,
             snapshot: snapshot,
             semantics: semantics,
+            deterministicCritique: deterministicCritique,
             forcePauseExecution: false
         )
-        let critique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+        let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+        if let neuralSnapshot = executedNeuralSnapshot(from: liveNeuralOutcome),
+           !fusionOutput.appliedDecisions.isEmpty {
+            currentLiveFusionTraceBundle = makeLiveFusionTraceBundle(
+                critique: critique,
+                plan: plan,
+                neuralSnapshot: neuralSnapshot,
+                fusionOutput: fusionOutput
+            )
+        } else {
+            currentLiveFusionTraceBundle = nil
+        }
         let structuredDecision = structuredPathDecision(
             mode: .live,
             critique: critique,
@@ -1960,6 +1979,7 @@ final class AnalysisPipeline: ObservableObject {
         DispatchQueue.main.async {
             self.currentLiveHint = nil
         }
+        currentLiveFusionTraceBundle = nil
     }
 
     // Полный прогон heavy‑модулей на последнем кадре; возвращает legacy suggestions + structured pause critique.
@@ -1979,6 +1999,7 @@ final class AnalysisPipeline: ObservableObject {
         let analysisCapturedAt = Date()
         let pauseSourceFrameId = currentSourceFrameId(fallbackDate: analysisCapturedAt)
         let orientation = lastOrientation
+        let sendablePixelBuffer = SendablePixelBuffer(value: pixelBuffer)
         let baseAdapterState = currentAdapterState()
         lowQueue.async { [weak self] in
             guard let self else { return }
@@ -2037,99 +2058,112 @@ final class AnalysisPipeline: ObservableObject {
             }
 
             group.notify(queue: .main) {
-                let isCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
-                guard isCurrentRevision else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
 
-                let pauseFeatures = pauseStateQueue.sync { localFeatures }
-                let pauseDebugData = pauseStateQueue.sync { localDebugData }
-                let pauseDetections = pauseStateQueue.sync { pauseDetectionsOverride }
-                let pauseDetectionsMeasuredAt = pauseStateQueue.sync { pauseDetectionsMeasuredAt }
-                let pauseAestheticScore = pauseStateQueue.sync { pauseAestheticScoreOverride }
-                let pauseAestheticMeasuredAt = pauseStateQueue.sync { pauseAestheticMeasuredAt }
+                    let isCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
+                    guard isCurrentRevision else { return }
 
-                let list = self.suggestionEngine.rankedSuggestions(from: pauseFeatures, topN: 6)
-                let pauseAdapterState = PipelineFeatureSnapshotAdapterState(
-                    features: pauseFeatures,
-                    debugData: pauseDebugData,
-                    vision: baseAdapterState.vision,
-                    horizonMeasuredAt: baseAdapterState.horizonMeasuredAt,
-                    horizon: baseAdapterState.horizon,
-                    lightingMeasuredAt: baseAdapterState.lightingMeasuredAt,
-                    lighting: baseAdapterState.lighting,
-                    detr: pauseDetections.map {
-                        self.makeDetrFeatureSample(from: $0, measuredAt: pauseDetectionsMeasuredAt ?? analysisCapturedAt)
-                    } ?? baseAdapterState.detr,
-                    aestheticMeasuredAt: pauseAestheticScore.map { _ in pauseAestheticMeasuredAt ?? analysisCapturedAt } ?? baseAdapterState.aestheticMeasuredAt,
-                    aesthetic: pauseAestheticScore.map {
-                        self.makeAestheticFeatureSample(score10: $0, measuredAt: pauseAestheticMeasuredAt ?? analysisCapturedAt)
-                    } ?? baseAdapterState.aesthetic
-                )
-                let snapshot = self.makeFeatureSnapshot(
-                    mode: .pause,
-                    frameId: pauseSourceFrameId,
-                    capturedAt: analysisCapturedAt,
-                    adapterState: pauseAdapterState
-                )
-                let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
-                self.startNeuralEvidenceInferenceIfNeeded(
-                    mode: .pause,
-                    frameId: snapshot.frameId,
-                    capturedAt: analysisCapturedAt,
-                    pixelBuffer: pixelBuffer,
-                    orientation: orientation,
-                    snapshot: snapshot,
-                    semantics: semantics,
-                    forcePauseExecution: true
-                )
-                let critique = self.frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
-                let plan = self.recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
-                let structuredDecision = self.structuredPathDecision(
-                    mode: .pause,
-                    critique: critique,
-                    plan: plan,
-                    motionState: snapshot.motion.state
-                )
+                    let pauseFeatures = pauseStateQueue.sync { localFeatures }
+                    let pauseDebugData = pauseStateQueue.sync { localDebugData }
+                    let pauseDetections = pauseStateQueue.sync { pauseDetectionsOverride }
+                    let pauseDetectionsMeasuredAt = pauseStateQueue.sync { pauseDetectionsMeasuredAt }
+                    let pauseAestheticScore = pauseStateQueue.sync { pauseAestheticScoreOverride }
+                    let pauseAestheticMeasuredAt = pauseStateQueue.sync { pauseAestheticMeasuredAt }
 
-                guard structuredDecision.isAvailable else {
-                    let fallbackAnnotations = self.makeOverlayAnnotations(
+                    let list = self.suggestionEngine.rankedSuggestions(from: pauseFeatures, topN: 6)
+                    let pauseAdapterState = PipelineFeatureSnapshotAdapterState(
+                        features: pauseFeatures,
+                        debugData: pauseDebugData,
+                        vision: baseAdapterState.vision,
+                        horizonMeasuredAt: baseAdapterState.horizonMeasuredAt,
+                        horizon: baseAdapterState.horizon,
+                        lightingMeasuredAt: baseAdapterState.lightingMeasuredAt,
+                        lighting: baseAdapterState.lighting,
+                        detr: pauseDetections.map {
+                            self.makeDetrFeatureSample(from: $0, measuredAt: pauseDetectionsMeasuredAt ?? analysisCapturedAt)
+                        } ?? baseAdapterState.detr,
+                        aestheticMeasuredAt: pauseAestheticScore.map { _ in pauseAestheticMeasuredAt ?? analysisCapturedAt } ?? baseAdapterState.aestheticMeasuredAt,
+                        aesthetic: pauseAestheticScore.map {
+                            self.makeAestheticFeatureSample(score10: $0, measuredAt: pauseAestheticMeasuredAt ?? analysisCapturedAt)
+                        } ?? baseAdapterState.aesthetic
+                    )
+                    let snapshot = self.makeFeatureSnapshot(
+                        mode: .pause,
+                        frameId: pauseSourceFrameId,
+                        capturedAt: analysisCapturedAt,
+                        adapterState: pauseAdapterState
+                    )
+                    let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+                    let deterministicCritique = self.frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+                    let (fusionOutput, pauseNeuralOutcome) = await self.resolveCritiqueWithHybridFusion(
+                        mode: .pause,
+                        capturedAt: analysisCapturedAt,
+                        pixelBuffer: sendablePixelBuffer.value,
+                        orientation: orientation,
+                        snapshot: snapshot,
+                        semantics: semantics,
+                        deterministicCritique: deterministicCritique,
+                        forcePauseExecution: true
+                    )
+                    let stillCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
+                    guard stillCurrentRevision else { return }
+
+                    let critique = fusionOutput.critique
+                    let plan = self.recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+                    let structuredDecision = self.structuredPathDecision(
+                        mode: .pause,
+                        critique: critique,
+                        plan: plan,
+                        motionState: snapshot.motion.state
+                    )
+
+                    guard structuredDecision.isAvailable else {
+                        let fallbackAnnotations = self.makeOverlayAnnotations(
+                            frameId: snapshot.frameId,
+                            critique: critique,
+                            plan: plan,
+                            features: pauseFeatures,
+                            mode: .pause,
+                            legacySuggestions: list,
+                            forceLegacyOnly: true
+                        )
+                        self.currentPauseCritique = nil
+                        self.currentOverlayAnnotations = fallbackAnnotations
+                        self.currentPauseTraceBundle = nil
+                        completion(list, nil)
+                        return
+                    }
+
+                    let pauseCritique = self.makePauseCritiquePresentation(critique: critique, plan: plan)
+                    let pauseTrace = self.makePauseTraceBundle(
+                        critique: critique,
+                        plan: plan,
+                        neuralSnapshot: self.executedNeuralSnapshot(from: pauseNeuralOutcome),
+                        fusionOutput: fusionOutput
+                    )
+                    self.currentPauseTraceBundle = pauseTrace
+                    self.currentPauseCritique = pauseCritique
+                    let pauseAnnotations = self.makeOverlayAnnotations(
                         frameId: snapshot.frameId,
                         critique: critique,
                         plan: plan,
                         features: pauseFeatures,
                         mode: .pause,
-                        legacySuggestions: list,
-                        forceLegacyOnly: true
+                        legacySuggestions: list
                     )
-                    self.currentPauseCritique = nil
-                    self.currentOverlayAnnotations = fallbackAnnotations
-                    self.currentPauseTraceBundle = nil
-                    completion(list, nil)
-                    return
+                    self.currentOverlayAnnotations = pauseAnnotations
+                    completion(list, pauseCritique)
+
+                    let reasoningRequest = self.makePauseReasoningRequest(
+                        frameId: snapshot.frameId,
+                        critique: critique,
+                        plan: plan,
+                        pauseDraft: pauseCritique,
+                        trace: pauseTrace
+                    )
+                    self.schedulePauseReasoningRefinement(request: reasoningRequest, revision: revision)
                 }
-
-                let pauseCritique = self.makePauseCritiquePresentation(critique: critique, plan: plan)
-                let deterministicTrace = self.makeDeterministicPauseTraceBundle(critique: critique, plan: plan)
-                self.currentPauseTraceBundle = deterministicTrace
-                self.currentPauseCritique = pauseCritique
-                let pauseAnnotations = self.makeOverlayAnnotations(
-                    frameId: snapshot.frameId,
-                    critique: critique,
-                    plan: plan,
-                    features: pauseFeatures,
-                    mode: .pause,
-                    legacySuggestions: list
-                )
-                self.currentOverlayAnnotations = pauseAnnotations
-                completion(list, pauseCritique)
-
-                let reasoningRequest = self.makePauseReasoningRequest(
-                    frameId: snapshot.frameId,
-                    critique: critique,
-                    plan: plan,
-                    pauseDraft: pauseCritique,
-                    trace: deterministicTrace
-                )
-                self.schedulePauseReasoningRefinement(request: reasoningRequest, revision: revision)
             }
         }
     }
@@ -2270,9 +2304,11 @@ final class AnalysisPipeline: ObservableObject {
             }
         }
 
-        let actionText = actionCandidate.flatMap { candidate in
-            guard candidate != primaryText else { return nil }
-            return candidate
+        let actionText: String?
+        if let actionCandidate, actionCandidate != primaryText {
+            actionText = actionCandidate
+        } else {
+            actionText = nil
         }
 
         return LiveExpandedVerdictPresentation(
@@ -2286,7 +2322,7 @@ final class AnalysisPipeline: ObservableObject {
     @MainActor
     private func applyLiveHint(candidate: LiveHintPresentation?, now: Date) {
         guard let candidate else {
-            if let current = currentLiveHint,
+            if currentLiveHint != nil,
                now.timeIntervalSince(liveHintShownAt) >= minLiveHintHold {
                 currentLiveHint = nil
                 liveHintShownAt = now
@@ -2575,11 +2611,68 @@ final class AnalysisPipeline: ObservableObject {
         )
     }
 
-    private func makeDeterministicPauseTraceBundle(critique: CritiqueReport,
-                                                   plan: RecommendationPlan) -> ExplainabilityTraceBundle {
+    private func makePauseTraceBundle(critique: CritiqueReport,
+                                      plan: RecommendationPlan,
+                                      neuralSnapshot: NeuralEvidenceSnapshot?,
+                                      fusionOutput: HybridFusionOutput) -> ExplainabilityTraceBundle {
+        let bundle = makeTraceBundle(
+            critique: critique,
+            plan: plan,
+            neuralSnapshot: neuralSnapshot,
+            fusionOutput: fusionOutput
+        )
+        if !bundle.validate(critiqueReport: critique, recommendationPlan: plan).isEmpty {
+            os_log(
+                "pause trace validation failed for frame=%{public}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .error,
+                critique.frameId
+            )
+        }
+        return bundle
+    }
+
+    private func makeLiveFusionTraceBundle(critique: CritiqueReport,
+                                           plan: RecommendationPlan,
+                                           neuralSnapshot: NeuralEvidenceSnapshot,
+                                           fusionOutput: HybridFusionOutput) -> ExplainabilityTraceBundle? {
+        let bundle = makeTraceBundle(
+            critique: critique,
+            plan: plan,
+            neuralSnapshot: neuralSnapshot,
+            fusionOutput: fusionOutput
+        )
+        let validationErrors = bundle.validate(critiqueReport: critique, recommendationPlan: plan)
+        if !validationErrors.isEmpty {
+            os_log(
+                "live fusion trace validation failed for frame=%{public}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .error,
+                critique.frameId
+            )
+            return nil
+        }
+        return bundle
+    }
+
+    private func makeTraceBundle(critique: CritiqueReport,
+                                 plan: RecommendationPlan,
+                                 neuralSnapshot: NeuralEvidenceSnapshot?,
+                                 fusionOutput: HybridFusionOutput) -> ExplainabilityTraceBundle {
         let baseTimestamp = Int(Date().timeIntervalSince1970 * 1000)
         let frameId = critique.frameId
         let observationId = "trc_\(frameId)_obs_semantics"
+        let appliedDecisionByTargetId = Dictionary(
+            uniqueKeysWithValues: fusionOutput.appliedDecisions.map { ($0.targetId, $0) }
+        )
+        let usedHeadIds = fusionOutput.appliedDecisions
+            .flatMap(\.appliedHeadIds)
+            .sorted { (EvidenceHeadId.allCases.firstIndex(of: $0) ?? .max) < (EvidenceHeadId.allCases.firstIndex(of: $1) ?? .max) }
+            .reduce(into: [EvidenceHeadId]()) { ids, headId in
+                if !ids.contains(headId) {
+                    ids.append(headId)
+                }
+            }
 
         var items: [ExplainabilityTraceItem] = [
             ExplainabilityTraceItem(
@@ -2601,6 +2694,33 @@ final class AnalysisPipeline: ObservableObject {
 
         var nextTimestamp = baseTimestamp + 10
         var deterministicInterpretationByIssueId: [String: String] = [:]
+        var neuralObservationIdByHeadId: [EvidenceHeadId: String] = [:]
+
+        if let neuralSnapshot, !usedHeadIds.isEmpty {
+            for headId in usedHeadIds {
+                guard let entry = neuralSnapshot.headOutputs.first(where: { $0.headId == headId }) else { continue }
+                let neuralObservationId = "trc_\(frameId)_obs_neural_\(headId.rawValue)"
+                neuralObservationIdByHeadId[headId] = neuralObservationId
+                items.append(
+                    ExplainabilityTraceItem(
+                        id: neuralObservationId,
+                        frameId: frameId,
+                        mode: critique.mode,
+                        stage: .observation,
+                        sourceKind: .neuralEvidence,
+                        certainty: .probabilistic,
+                        confidence: neuralHeadConfidence(for: entry),
+                        timestampMs: nextTimestamp,
+                        statement: neuralObservationStatement(for: entry),
+                        evidenceKeys: entry.explainabilityKeys,
+                        dependsOn: [observationId],
+                        links: [],
+                        audiences: [.core, .debug, .eval]
+                    )
+                )
+                nextTimestamp += 10
+            }
+        }
 
         let issueTraceRefs = critique.traceRefs.filter { $0.contains("_crit_i") }
         for (index, issue) in critique.issues.enumerated() {
@@ -2611,6 +2731,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId = "trc_\(frameId)_crit_i\(index + 1)"
             }
             deterministicInterpretationByIssueId[issue.id] = traceId
+            let appliedDecision = appliedDecisionByTargetId[issue.id]
+            let dependsOn = [observationId] + (appliedDecision?.appliedHeadIds.compactMap { neuralObservationIdByHeadId[$0] } ?? [])
             items.append(
                 ExplainabilityTraceItem(
                     id: traceId,
@@ -2623,9 +2745,10 @@ final class AnalysisPipeline: ObservableObject {
                     timestampMs: nextTimestamp,
                     statement: issue.rationale,
                     evidenceKeys: issue.evidence.map(\.key),
-                    dependsOn: [observationId],
+                    dependsOn: dependsOn,
                     links: [TraceLink(kind: .issue, refId: issue.id)],
-                    audiences: [.core, .debug]
+                    audiences: [.core, .debug],
+                    metadata: fusionMetadata(for: appliedDecision, deterministicConfidence: deterministicIssueConfidence(issueId: issue.id, fusionOutput: fusionOutput, critique: critique))
                 )
             )
             nextTimestamp += 10
@@ -2639,6 +2762,8 @@ final class AnalysisPipeline: ObservableObject {
             } else {
                 traceId = "trc_\(frameId)_crit_s\(index + 1)"
             }
+            let appliedDecision = appliedDecisionByTargetId[strength.id]
+            let dependsOn = [observationId] + (appliedDecision?.appliedHeadIds.compactMap { neuralObservationIdByHeadId[$0] } ?? [])
             items.append(
                 ExplainabilityTraceItem(
                     id: traceId,
@@ -2651,9 +2776,10 @@ final class AnalysisPipeline: ObservableObject {
                     timestampMs: nextTimestamp,
                     statement: strength.rationale,
                     evidenceKeys: strength.evidence.map(\.key),
-                    dependsOn: [observationId],
+                    dependsOn: dependsOn,
                     links: [TraceLink(kind: .strength, refId: strength.id)],
-                    audiences: [.core, .debug]
+                    audiences: [.core, .debug],
+                    metadata: fusionMetadata(for: appliedDecision, deterministicConfidence: deterministicStrengthConfidence(strengthId: strength.id, fusionOutput: fusionOutput, critique: critique))
                 )
             )
             nextTimestamp += 10
@@ -2661,6 +2787,7 @@ final class AnalysisPipeline: ObservableObject {
 
         let summaryTraceId = critique.traceRefs.first(where: { $0.contains("_crit_summary_") })
             ?? "trc_\(frameId)_crit_summary_main"
+        let summaryDependsOn = [observationId] + usedHeadIds.compactMap { neuralObservationIdByHeadId[$0] }
         items.append(
             ExplainabilityTraceItem(
                 id: summaryTraceId,
@@ -2673,7 +2800,7 @@ final class AnalysisPipeline: ObservableObject {
                 timestampMs: nextTimestamp,
                 statement: critique.summary.shortVerdict,
                 evidenceKeys: [],
-                dependsOn: [observationId],
+                dependsOn: summaryDependsOn,
                 links: [TraceLink(kind: .summary, refId: critique.summary.id)],
                 audiences: [.core, .debug]
             )
@@ -2713,21 +2840,62 @@ final class AnalysisPipeline: ObservableObject {
             nextTimestamp += 10
         }
 
-        let bundle = ExplainabilityTraceBundle(
+        return ExplainabilityTraceBundle(
             frameId: frameId,
             mode: critique.mode,
             items: items,
             rootSummaryIds: [summaryTraceId]
         )
-        if !bundle.validate(critiqueReport: critique, recommendationPlan: plan).isEmpty {
-            os_log(
-                "deterministic pause trace validation failed for frame=%{public}@",
-                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                type: .error,
-                frameId
-            )
+    }
+
+    private func fusionMetadata(for decision: HybridFusionDecision?,
+                                deterministicConfidence: Double?) -> [String: String] {
+        guard let decision, decision.applied else { return [:] }
+        return [
+            "fusionApplied": "true",
+            "fusionDelta": String(format: "%.4f", decision.delta),
+            "deterministicConfidenceBefore": String(format: "%.4f", deterministicConfidence ?? decision.deterministicConfidenceBefore),
+            "fusedConfidenceAfter": String(format: "%.4f", decision.fusedConfidenceAfter),
+            "appliedHeadIds": decision.appliedHeadIds.map(\.rawValue).joined(separator: ",")
+        ]
+    }
+
+    private func deterministicIssueConfidence(issueId: String,
+                                              fusionOutput: HybridFusionOutput,
+                                              critique: CritiqueReport) -> Double? {
+        if let appliedDecision = fusionOutput.appliedDecisions.first(where: { $0.targetId == issueId }) {
+            return appliedDecision.deterministicConfidenceBefore
         }
-        return bundle
+        return critique.issues.first(where: { $0.id == issueId })?.confidence
+    }
+
+    private func deterministicStrengthConfidence(strengthId: String,
+                                                 fusionOutput: HybridFusionOutput,
+                                                 critique: CritiqueReport) -> Double? {
+        if let appliedDecision = fusionOutput.appliedDecisions.first(where: { $0.targetId == strengthId }) {
+            return appliedDecision.deterministicConfidenceBefore
+        }
+        return critique.strengths.first(where: { $0.id == strengthId })?.confidence
+    }
+
+    private func neuralHeadConfidence(for entry: NeuralEvidenceHeadEntry) -> Double {
+        switch entry.payload {
+        case let .scalar(payload):
+            return payload.confidence
+        case let .categorical(payload):
+            return payload.confidence
+        }
+    }
+
+    private func neuralObservationStatement(for entry: NeuralEvidenceHeadEntry) -> String {
+        switch entry.payload {
+        case let .scalar(payload):
+            let score = payload.score.map { String(format: "%.2f", $0) } ?? "n/a"
+            return "Neural head \(entry.headId.rawValue) observed score \(score)."
+        case let .categorical(payload):
+            let topCategory = payload.affinities.max(by: { $0.score < $1.score })?.categoryId.rawValue ?? "unknown"
+            return "Neural head \(entry.headId.rawValue) favored \(topCategory)."
+        }
     }
 
     private func mergeOptionalReasoningTrace(_ optionalItems: [ExplainabilityTraceItem],
@@ -3172,6 +3340,10 @@ final class AnalysisPipeline: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+
     private func confidenceForSuggestion(_ suggestion: Suggestion) -> Double {
         switch suggestion.priority {
         case .critical: return 0.85
@@ -3253,24 +3425,17 @@ final class AnalysisPipeline: ObservableObject {
                                                       snapshot: FrameFeatureSnapshot,
                                                       semantics: SceneSemanticsReport,
                                                       forcePauseExecution: Bool) {
-        guard let neuralEvidenceService, let pixelBuffer else { return }
-
-        let request = NeuralEvidenceInferenceRequest(
-            frameId: frameId,
-            mode: mode,
-            capturedAt: capturedAt,
-            pixelBuffer: pixelBuffer,
-            orientation: orientation,
-            sceneSemantics: semantics,
-            primarySubjectRegion: snapshot.subjectSignals.primaryCandidateRegion,
-            motionState: snapshot.motion.state,
-            shakeLevel: snapshot.motion.shakeLevel,
-            isStable: featureQueue.sync { lastFrameWasStable },
-            thermalTier: thermalGovernor.currentTier(),
-            heavyModelsEnabled: neuralHeavyModelsEnabledProvider(),
-            batteryLevel: thermalGovernor.currentBatteryLevel(),
-            forcePauseExecution: forcePauseExecution
-        )
+        guard let neuralEvidenceService,
+              let pixelBuffer,
+              let request = makeNeuralEvidenceInferenceRequest(
+                mode: mode,
+                capturedAt: capturedAt,
+                pixelBuffer: pixelBuffer,
+                orientation: orientation,
+                snapshot: snapshot,
+                semantics: semantics,
+                forcePauseExecution: forcePauseExecution
+              ) else { return }
 
         recordRequestedNeuralFrame(frameId: frameId, mode: mode)
 
@@ -3290,6 +3455,111 @@ final class AnalysisPipeline: ObservableObject {
                 self.recordNeuralOutcomeIfCurrent(outcome, mode: mode, frameId: frameId)
             }
         }
+    }
+
+    private func makeNeuralEvidenceInferenceRequest(mode: AnalysisMode,
+                                                    capturedAt: Date,
+                                                    pixelBuffer: CVPixelBuffer,
+                                                    orientation: CGImagePropertyOrientation,
+                                                    snapshot: FrameFeatureSnapshot,
+                                                    semantics: SceneSemanticsReport,
+                                                    forcePauseExecution: Bool) -> NeuralEvidenceInferenceRequest? {
+        NeuralEvidenceInferenceRequest(
+            frameId: snapshot.frameId,
+            mode: mode,
+            capturedAt: capturedAt,
+            pixelBuffer: pixelBuffer,
+            orientation: orientation,
+            sceneSemantics: semantics,
+            primarySubjectRegion: snapshot.subjectSignals.primaryCandidateRegion,
+            motionState: snapshot.motion.state,
+            shakeLevel: snapshot.motion.shakeLevel,
+            isStable: featureQueue.sync { lastFrameWasStable },
+            thermalTier: thermalGovernor.currentTier(),
+            heavyModelsEnabled: neuralHeavyModelsEnabledProvider(),
+            batteryLevel: thermalGovernor.currentBatteryLevel(),
+            forcePauseExecution: forcePauseExecution
+        )
+    }
+
+    private func runNeuralEvidenceInference(mode: AnalysisMode,
+                                            capturedAt: Date,
+                                            pixelBuffer: CVPixelBuffer,
+                                            orientation: CGImagePropertyOrientation,
+                                            snapshot: FrameFeatureSnapshot,
+                                            semantics: SceneSemanticsReport,
+                                            forcePauseExecution: Bool) async -> NeuralEvidenceRecordedOutcome? {
+        guard let neuralEvidenceService,
+              let request = makeNeuralEvidenceInferenceRequest(
+                mode: mode,
+                capturedAt: capturedAt,
+                pixelBuffer: pixelBuffer,
+                orientation: orientation,
+                snapshot: snapshot,
+                semantics: semantics,
+                forcePauseExecution: forcePauseExecution
+              ) else { return nil }
+
+        recordRequestedNeuralFrame(frameId: snapshot.frameId, mode: mode)
+        let outcome = await neuralEvidenceService.infer(request: request)
+        recordNeuralOutcomeIfCurrent(outcome, mode: mode, frameId: snapshot.frameId)
+        return NeuralEvidenceRecordedOutcome(outcome)
+    }
+
+    private func resolveCritiqueWithHybridFusion(mode: AnalysisMode,
+                                                 capturedAt: Date,
+                                                 pixelBuffer: CVPixelBuffer?,
+                                                 orientation: CGImagePropertyOrientation,
+                                                 snapshot: FrameFeatureSnapshot,
+                                                 semantics: SceneSemanticsReport,
+                                                 deterministicCritique: CritiqueReport,
+                                                 forcePauseExecution: Bool) async -> (HybridFusionOutput, NeuralEvidenceRecordedOutcome?) {
+        guard let pixelBuffer else {
+            return (
+                hybridFusionService.fuse(
+                    HybridFusionInput(
+                        snapshot: snapshot,
+                        semantics: semantics,
+                        critique: deterministicCritique,
+                        neuralSnapshot: nil,
+                        neuralMetadata: nil
+                    )
+                ),
+                nil
+            )
+        }
+
+        let recordedOutcome = await runNeuralEvidenceInference(
+            mode: mode,
+            capturedAt: capturedAt,
+            pixelBuffer: pixelBuffer,
+            orientation: orientation,
+            snapshot: snapshot,
+            semantics: semantics,
+            forcePauseExecution: forcePauseExecution
+        )
+        return (
+            hybridFusionService.fuse(
+                HybridFusionInput(
+                    snapshot: snapshot,
+                    semantics: semantics,
+                    critique: deterministicCritique,
+                    neuralSnapshot: executedNeuralSnapshot(from: recordedOutcome),
+                    neuralMetadata: executedNeuralMetadata(from: recordedOutcome)
+                )
+            ),
+            recordedOutcome
+        )
+    }
+
+    private func executedNeuralSnapshot(from outcome: NeuralEvidenceRecordedOutcome?) -> NeuralEvidenceSnapshot? {
+        guard outcome?.kind == .executed else { return nil }
+        return outcome?.snapshot
+    }
+
+    private func executedNeuralMetadata(from outcome: NeuralEvidenceRecordedOutcome?) -> NeuralEvidenceRuntimeMetadata? {
+        guard outcome?.kind == .executed else { return nil }
+        return outcome?.metadata
     }
 
     private func recordRequestedNeuralFrame(frameId: String, mode: AnalysisMode) {
@@ -3428,6 +3698,58 @@ extension AnalysisPipeline {
     @MainActor
     var testingPauseTraceBundle: ExplainabilityTraceBundle? {
         currentPauseTraceBundle
+    }
+
+    @MainActor
+    var testingLiveFusionTraceBundle: ExplainabilityTraceBundle? {
+        currentLiveFusionTraceBundle
+    }
+
+    func testingFuseCritique(snapshot: FrameFeatureSnapshot,
+                             semantics: SceneSemanticsReport,
+                             critique: CritiqueReport,
+                             recordedOutcome: NeuralEvidenceRecordedOutcome?) -> HybridFusionOutput {
+        hybridFusionService.fuse(
+            HybridFusionInput(
+                snapshot: snapshot,
+                semantics: semantics,
+                critique: critique,
+                neuralSnapshot: executedNeuralSnapshot(from: recordedOutcome),
+                neuralMetadata: executedNeuralMetadata(from: recordedOutcome)
+            )
+        )
+    }
+
+    func testingResolveCritiqueWithHybridFusion(mode: AnalysisMode,
+                                                capturedAt: Date,
+                                                pixelBuffer: CVPixelBuffer?,
+                                                orientation: CGImagePropertyOrientation,
+                                                snapshot: FrameFeatureSnapshot,
+                                                semantics: SceneSemanticsReport,
+                                                deterministicCritique: CritiqueReport,
+                                                forcePauseExecution: Bool) async -> (HybridFusionOutput, NeuralEvidenceRecordedOutcome?) {
+        await resolveCritiqueWithHybridFusion(
+            mode: mode,
+            capturedAt: capturedAt,
+            pixelBuffer: pixelBuffer,
+            orientation: orientation,
+            snapshot: snapshot,
+            semantics: semantics,
+            deterministicCritique: deterministicCritique,
+            forcePauseExecution: forcePauseExecution
+        )
+    }
+
+    func testingMakePauseTraceBundle(critique: CritiqueReport,
+                                     plan: RecommendationPlan,
+                                     neuralSnapshot: NeuralEvidenceSnapshot?,
+                                     fusionOutput: HybridFusionOutput) -> ExplainabilityTraceBundle {
+        makePauseTraceBundle(
+            critique: critique,
+            plan: plan,
+            neuralSnapshot: neuralSnapshot,
+            fusionOutput: fusionOutput
+        )
     }
 
     var testingHasPauseReasoningTask: Bool {
