@@ -1,0 +1,33 @@
+{
+  "anchorVariantId": "deterministic_only",
+  "variants": [
+    {
+      "variantId": "deterministic_only",
+      "label": "Deterministic only anchor",
+      "source": {
+        "kind": "builtin",
+        "id": "camera_analysis_v1_core"
+      },
+      "capabilities": {
+        "pauseLocalHybrid": false,
+        "liveHybrid": false,
+        "offload": false
+      }
+    },
+    {
+      "variantId": "hybrid_pause_local",
+      "parentVariantId": "deterministic_only",
+      "family": "runtime_policy",
+      "label": "Pause-only local hybrid",
+      "source": {
+        "kind": "jsonl",
+        "path": "fixtures/hybrid_pause_local_outputs.jsonl"
+      },
+      "capabilities": {
+        "pauseLocalHybrid": true,
+        "liveHybrid": false,
+        "offload": false
+      }
+    }
+  ]
+}

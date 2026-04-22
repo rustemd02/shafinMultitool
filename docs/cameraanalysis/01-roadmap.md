@@ -205,6 +205,7 @@ PR wave:
 - runtime telemetry for hybrid disagreements
 - demo scenarios
 - offloading source-of-truth inside [22-offloading-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/22-offloading-contract.md)
+- hybrid eval source-of-truth inside [23-hybrid-eval-harness.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/23-hybrid-eval-harness.md)
 
 PR wave:
 - `PR-H12 offloading contract`

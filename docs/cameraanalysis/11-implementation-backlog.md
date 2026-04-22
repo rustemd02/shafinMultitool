@@ -793,6 +793,7 @@ Done definition:
 - hybrid metrics
 - ablations
 - comparison reports
+- source-of-truth doc: [23-hybrid-eval-harness.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/23-hybrid-eval-harness.md)
 
 Зависимости:
 - `PR-H09`
