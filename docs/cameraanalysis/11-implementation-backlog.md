@@ -616,6 +616,7 @@ Done definition:
 - AVA policy
 - pretraining strategy
 - risk register
+- зафиксированный source-of-truth doc: [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md)
 
 Зависимости:
 - `PR-H03`

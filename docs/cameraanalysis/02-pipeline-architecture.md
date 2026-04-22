@@ -172,6 +172,8 @@ flowchart TD
 - `AVA` использовать для initialization;
 - собственную rubric-driven cinematic разметку использовать как task-specific слой.
 
+Подробная policy для `PR-H04` зафиксирована в [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md).
+
 ### Recommended hybrid data strategy
 
 1. `Public pretraining layer`

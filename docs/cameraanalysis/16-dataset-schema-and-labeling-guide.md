@@ -38,9 +38,15 @@
 `PR-H03` не отвечает за:
 - выбор backbone и loss design;
 - AVA/pretraining policy;
+- raw aesthetic-only public pretraining corpus contract;
 - runtime fusion formula;
 - изменение deterministic issue/action taxonomy;
 - замену eval harness полноценным dataset pipeline.
+
+Граница ответственности:
+- `PR-H03` описывает только rubric/eval-совместимый dataset, который хранится как `HybridDatasetRecord`;
+- raw public aesthetic corpora без rubric labels не должны насильно маппиться в `HybridDatasetRecord`;
+- contract для таких corpora задается отдельно в [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md).
 
 ## Design Summary
 
@@ -109,6 +115,11 @@ Dataset shape обязан быть близок к runtime/eval contracts:
 Роль:
 - weak pretraining / auxiliary calibration / broad visual diversity.
 
+Важно:
+- в рамках `PR-H03` bucket `public` означает только public assets, которые уже вошли в rubric/eval dataset;
+- raw aesthetic-only public corpora без `SceneRoutingLabel` и `EvidenceTargetLabel` не являются `HybridDatasetRecord` и не получают `labelTier` из этого документа;
+- такие corpora должны описываться отдельным pretraining manifest из [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md).
+
 Типичные источники:
 - public datasets;
 - research/demo assets с понятной лицензией;
@@ -122,6 +133,7 @@ Dataset shape обязан быть близок к runtime/eval contracts:
 Обязательные поля:
 - `licenseClass`;
 - `sourceUrl` или стабильный provenance note;
+- `asset.crossDatasetLinkKey`;
 - `labelTier = public_partial_rubric` или `full_rubric`.
 
 ### Bucket 2. `curated`
@@ -224,7 +236,11 @@ SplitGrouping
 
 ### 2. `HybridDatasetRecord`
 
-Одна запись соответствует одному still frame или одной live sequence.
+Одна запись соответствует одному still frame или одной live sequence внутри rubric/eval dataset.
+
+Нормативное уточнение:
+- `HybridDatasetRecord` не используется для raw aesthetic-only pretraining corpora;
+- если public asset хранит только native aesthetic label source dataset-а, он должен идти через отдельный pretraining manifest из `PR-H04`, а не через этот entity.
 
 ```text
 HybridDatasetRecord
@@ -277,6 +293,7 @@ AssetDescriptor
 - assetRef: String                      // repo/local/object-store pointer
 - previewRef: String?                   // optional thumbnail or low-res preview
 - assetSha256: String
+- crossDatasetLinkKey: String?          // required for public; stable upstream identity hook across PR-H04/H03
 - width: Int
 - height: Int
 - frameCount: Int?                      // required for live_sequence video
@@ -301,6 +318,14 @@ PrivacyClass
 - consented_runtime_export
 - internal_private_do_not_share
 ```
+
+Нормативные правила:
+- `sourceBucket = public` требует `asset.crossDatasetLinkKey`;
+- если record происходит из raw public pretraining corpus по [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md), `asset.crossDatasetLinkKey` обязан точно совпадать со значением `PublicAestheticPretrainingRecord.crossDatasetLinkKey`;
+- `assetSha256` и `crossDatasetLinkKey` не взаимозаменяемы:
+  - `assetSha256` идентифицирует конкретный файл/экспорт;
+  - `crossDatasetLinkKey` идентифицирует один и тот же upstream public asset across manifests;
+- crop/resize/frame-export variants одного и того же public asset могут иметь разные `assetSha256`, но обязаны сохранять общий `crossDatasetLinkKey`.
 
 ```text
 GroupingDescriptor
@@ -629,6 +654,9 @@ SequenceFrameExpectation
 
 ## Label Tier Policy
 
+Эти tiers применяются только к `HybridDatasetRecord` внутри rubric/eval dataset.
+Они не применяются к raw public aesthetic corpora без rubric labels, описываемым в `PR-H04`.
+
 ### `full_rubric`
 
 Обязателен для:
@@ -651,6 +679,10 @@ SequenceFrameExpectation
 - все scalar heads, разрешенные для целевого mode
 - `shot_type_confidence` можно оставлять unlabeled только если record идет исключительно как weak auxiliary pretraining asset и помечен `releaseGate = eval_only` или `training_ready` с explicit waiver in manifest notes
 - `CritiqueCompatibilityLabel` опционален
+
+Нормативное уточнение:
+- `releaseGate = eval_only` означает, что record не используется ни в semantic, ни в auxiliary training objectives;
+- любой `public_partial_rubric` record, который идет в training, обязан иметь `releaseGate = training_ready`.
 
 ### `live_sequence_qa`
 
@@ -868,6 +900,8 @@ Adjudicator обязан:
 - кадры из одного `shootId` или `sequenceId` не могут расползаться между `train` и `test`;
 - runtime hard cases нельзя все отправлять в train;
 - near-duplicates и соседние видеокадры считаются leakage risk.
+- public-derived assets с одинаковым `asset.crossDatasetLinkKey` считаются одним upstream identity cluster для split/dedup review;
+- если `PR-H03` record ссылается на public source, leakage check обязан учитывать `asset.crossDatasetLinkKey` наряду с `shootId/sequenceId/sourceAssetGroup`.
 
 Рекомендуемая starter policy:
 - curated/public: `70 / 15 / 15`
@@ -1166,7 +1200,9 @@ Adjudicator обязан:
 
 - provenance и licensing задокументированы
 - privacy/export status разрешает выбранный use
-- split leakage по `shootId/sequenceId/sourceAssetGroup` отсутствует
+- split leakage по `shootId/sequenceId/sourceAssetGroup/crossDatasetLinkKey` отсутствует
+- для `sourceBucket = public` заполнен `asset.crossDatasetLinkKey`
+- если record происходит из raw public pretraining corpus, `asset.crossDatasetLinkKey` совпадает с `PublicAestheticPretrainingRecord.crossDatasetLinkKey`
 - `labelTier` соответствует bucket policy
 - все required heads присутствуют ровно по одному разу
 - `shot_type_confidence` содержит полный closed catalog и canonical order
@@ -1194,7 +1230,7 @@ Adjudicator обязан:
 ## Что это разблокирует дальше
 
 После фиксации этого документа:
-- `PR-H04` может описывать AVA/public pretraining policy уже против конкретных label tiers;
+- `PR-H04` может зафиксировать AVA/public pretraining policy уже против конкретных label tiers и отдельного raw-public pretraining manifest в [17-ava-usage-policy-and-pretraining-design.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md);
 - `PR-H05` может выбирать outputs и losses под закрытый dataset shape;
 - `PR-H06` может оформлять runtime/domain contract с максимальным shape match к dataset;
 - `PR-H14` может строить hybrid eval buckets вокруг тех же ambiguity, bucket и critique-anchor сущностей.
