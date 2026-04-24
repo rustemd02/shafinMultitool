@@ -1,0 +1,820 @@
+classDiagram
+    class SceneBundleParseMode["SceneBundleParseMode"]
+    class SceneBundleParseMode {
+        <<enum>>
+        +full
+        +append
+    }
+    class ScriptOffsetRange["ScriptOffsetRange"]
+    class ScriptOffsetRange {
+        <<struct>>
+        +start: Int
+        +end: Int
+    }
+    class NormalizedScriptUnit["NormalizedScriptUnit"]
+    class NormalizedScriptUnit {
+        <<struct>>
+        +id: String
+        +kind: NormalizedScriptUnitKind
+        +text: String
+        +lineIndex: Int
+        +charRange: ScriptOffsetRange
+    }
+    class ScriptSceneCandidate["ScriptSceneCandidate"]
+    class ScriptSceneCandidate {
+        <<struct>>
+        +id: String
+        +sceneIndex: Int
+        +heading: String?
+        +unitRange: Range<Int>
+        +sourceRange: ScriptOffsetRange
+        +sourceText: String
+        +metadata: SceneTopLevelMetadata
+        +isImplicit: Bool
+    }
+    class SceneChunkAnchor["SceneChunkAnchor"]
+    class SceneChunkAnchor {
+        <<struct>>
+        +sourceBundle: SourceAnchorBundle
+        +speakerCues: [String]
+        +actorMentions: [String]
+        +objectMentions: [String]
+        +markedObjectMentions: [String]
+        +pronounMentions: [String]
+        +chronologyCues: [String]
+        +locationCues: [String]
+        +timeCues: [String]
+        +uncertaintyFlags: [String]
+    }
+    class SceneEntityRegistrySnapshot["SceneEntityRegistrySnapshot"]
+    class SceneEntityRegistrySnapshot {
+        <<struct>>
+        +actors: [ScenePlanIR.Actor]
+        +objects: [ScenePlanIR.Object]
+        +actorAliasMap: [String: String]
+        +objectAliasMap: [String: String]
+        +speakerAliasMap: [String: String]
+        +unresolvedMentions: [String]
+        +lastResolvedSpeaker: String?
+        +locationName: String?
+        +actorPoses: [String: ActorPose]
+        +heldObjects: [String: String]
+    }
+    class SceneChunkDraft["SceneChunkDraft"]
+    class SceneChunkDraft {
+        <<struct>>
+        +id: String
+        +sceneID: String
+        +chunkID: String
+        +chunkIndex: Int
+        +sourceText: String
+        +sourceRange: ScriptOffsetRange
+        +anchors: SceneChunkAnchor
+        +registrySnapshot: SceneEntityRegistrySnapshot
+        +plan: ScenePlanIR
+        +usedFallbackPlanner: Bool
+        +usedLegacyPlanBridge: Bool
+        +confidence: Float
+        +unresolvedMentions: [String]
+        +reasonCodes: [String]
+    }
+    class SceneChunk["SceneChunk"]
+    class SceneChunk {
+        <<struct>>
+        +id: String
+        +sceneID: String
+        +chunkID: String
+        +chunkIndex: Int
+        +sourceText: String
+        +sourceRange: ScriptOffsetRange
+        +anchors: SceneChunkAnchor
+        +registryPatch: RegistryPatch
+        +beatPatch: [ScenePlanIR.Beat]
+        +spatialRelationPatch: [ScenePlanIR.SpatialRelation]
+        +stateDelta: SceneChunkStateDelta
+        +deferredRefs: [SceneDeferredRef]
+        +reasonCodes: [String]
+        +usedFallbackPlanner: Bool
+        +usedLegacyPlanBridge: Bool
+    }
+    class SceneChunk_RegistryPatch["SceneChunk.RegistryPatch"]
+    class SceneChunk_RegistryPatch {
+        <<struct>>
+        +actors: [ScenePlanIR.Actor]
+        +objects: [ScenePlanIR.Object]
+        +actorAliasMap: [String: String]
+        +objectAliasMap: [String: String]
+        +speakerAliasMap: [String: String]
+    }
+    class SceneStitchState["SceneStitchState"]
+    class SceneStitchState {
+        <<struct>>
+        +id: String
+        +sceneID: String
+        +sceneIndex: Int
+        +sourceText: String
+        +metadata: SceneTopLevelMetadata
+        +registry: SceneEntityRegistrySnapshot
+        +actors: [ScenePlanIR.Actor]
+        +objects: [ScenePlanIR.Object]
+        +beats: [ScenePlanIR.Beat]
+        +spatialRelations: [ScenePlanIR.SpatialRelation]
+        +chunkLedger: [String]
+        +deferredRefs: [SceneDeferredRef]
+        +continuityDiagnostics: [String]
+    }
+    class SceneBundlePlan["SceneBundlePlan"]
+    class SceneBundlePlan {
+        <<struct>>
+        +bundleID: String
+        +scenes: [SceneEntry]
+        +activeSceneIndex: Int
+        +diagnostics: [String]
+    }
+    class SceneBundlePlan_SceneEntry["SceneBundlePlan.SceneEntry"]
+    class SceneBundlePlan_SceneEntry {
+        <<struct>>
+        +id: String
+        +sceneID: String
+        +sceneIndex: Int
+        +sourceText: String
+        +metadata: SceneTopLevelMetadata
+        +chunks: [SceneChunk]
+        +diagnostics: [String]
+        +plan: ScenePlanIR
+    }
+    class SceneBundleScript["SceneBundleScript"]
+    class SceneBundleScript {
+        <<struct>>
+        +bundleID: String
+        +scenes: [SceneScript]
+        +activeSceneIndex: Int
+        +diagnostics: [String]
+        +activeSceneScript: SceneScript?
+        +activeSceneID: String?
+    }
+    class SceneChunkDiagnostics["SceneChunkDiagnostics"]
+    class SceneChunkDiagnostics {
+        <<struct>>
+        +id: String
+        +sceneID: String
+        +chunkID: String
+        +chunkIndex: Int
+        +reasonCodes: [String]
+        +unresolvedRefs: [String]
+        +anchors: SceneChunkAnchor
+        +usedFallbackPlanner: Bool
+        +usedLegacyPlanBridge: Bool
+    }
+    class ScriptDocumentState["ScriptDocumentState"]
+    class ScriptDocumentState {
+        <<struct>>
+        +documentID: String
+        +mode: SceneBundleParseMode
+        +sourceText: String
+        +normalizedUnits: [NormalizedScriptUnit]
+        +sceneCandidates: [ScriptSceneCandidate]
+        +stitchStates: [SceneStitchState]
+        +bundlePlan: SceneBundlePlan
+        +bundleScript: SceneBundleScript
+        +activeSceneIndex: Int
+    }
+    class SceneBundleParsingResult["SceneBundleParsingResult"]
+    class SceneBundleParsingResult {
+        <<struct>>
+        +bundleScript: SceneBundleScript
+        +activeSceneScript: SceneScript?
+        +activeSceneId: String?
+        +sceneChunks: [SceneChunk]
+        +documentState: ScriptDocumentState
+        +diagnostics: ParsingDiagnostics
+        +chunkDiagnostics: [SceneChunkDiagnostics]
+    }
+    class SceneChunkState["SceneChunkState"]
+    class SceneChunkState {
+        <<struct>>
+        +sceneID: String?
+        +sceneHeading: String?
+        +locationName: String?
+        +knownActors: [String: String]
+        +knownObjects: [String: String]
+        +actorAliases: [String: String]
+        +objectAliases: [String: String]
+        +speakerAliasMap: [String: String]
+        +actorPoses: [String: ActorPose]
+        +heldObjects: [String: String]
+        +lastResolvedSpeaker: String?
+    }
+    class ScenePlanIR["ScenePlanIR"]
+    class ScenePlanIR {
+        <<struct>>
+        +actors: [Actor]
+        +objects: [Object]
+        +beats: [Beat]
+        +spatialRelations: [SpatialRelation]
+        +referenceBindings: ReferenceBindings
+    }
+    class ScenePlanIR_Actor["ScenePlanIR.Actor"]
+    class ScenePlanIR_Actor {
+        <<struct>>
+        +ref: String
+        +type: SceneActor.ActorType
+        +name: String?
+    }
+    class ScenePlanIR_Object["ScenePlanIR.Object"]
+    class ScenePlanIR_Object {
+        <<struct>>
+        +ref: String
+        +type: SceneObject.ObjectType
+        +relativePosition: SceneObject.RelativePosition
+        +name: String?
+        +markedObjectID: String?
+    }
+    class ScenePlanIR_Beat["ScenePlanIR.Beat"]
+    class ScenePlanIR_Beat {
+        <<struct>>
+        +ref: String
+        +phase: String?
+        +actions: [Action]
+        +minDuration: Double?
+    }
+    class ScenePlanIR_Action["ScenePlanIR.Action"]
+    class ScenePlanIR_Action {
+        <<struct>>
+        +actorRef: String
+        +type: SceneAction.ActionType
+        +targetRef: String?
+        +direction: SceneAction.Direction?
+        +modifier: SceneAction.ActionModifier?
+        +resultingPose: ActorPose?
+        +holdingObjectRef: String?
+        +dialogue: String?
+        +fallbackText: String?
+        +sourceText: String?
+    }
+    class ScenePlanIR_SpatialRelation["ScenePlanIR.SpatialRelation"]
+    class ScenePlanIR_SpatialRelation {
+        <<struct>>
+        +ref: String
+        +subjectRef: String
+        +relation: SceneRelationType
+        +objectRef: String
+    }
+    class ScenePlanIR_ReferenceBindings["ScenePlanIR.ReferenceBindings"]
+    class ScenePlanIR_ReferenceBindings {
+        <<struct>>
+        +actorBindings: [String: String]
+        +markedObjectIDs: [String]
+        +aliasToObjectRef: [String: String]
+    }
+    class ScenePlanProviderResult["ScenePlanProviderResult"]
+    class ScenePlanProviderResult {
+        <<struct>>
+        +plan: ScenePlanIR
+        +usedLegacySceneScriptBridge: Bool
+    }
+    class MarkedObject["MarkedObject"]
+    class MarkedObject {
+        <<struct>>
+        +id: UUID
+        +name: String
+        +type: SceneObject.ObjectType
+        +worldPosition: Position3D
+        +anchorID: UUID?
+        +createdAt: Date
+        +markerColor: UIColor
+    }
+    class CameraSetup["CameraSetup"]
+    class CameraSetup {
+        <<struct>>
+        +shotType: ShotType
+        +movement: CameraMovement?
+        +target: String?
+    }
+    class ActorPose["ActorPose"]
+    class ActorPose {
+        <<enum>>
+        +standing
+        +sitting
+        +crouching
+        +lying
+        +walking
+        +running
+    }
+    class SceneBeat["SceneBeat"]
+    class SceneBeat {
+        <<struct>>
+        +id: String
+        +actions: [SceneAction]
+        +camera: CameraSetup?
+        +minDuration: Double?
+    }
+    class SceneScript["SceneScript"]
+    class SceneScript {
+        <<struct>>
+        +sceneHeading: String?
+        +locationName: String?
+        +interiorExterior: String?
+        +timeOfDay: String?
+        +actors: [SceneActor]
+        +objects: [SceneObject]
+        +beats: [SceneBeat]
+        +spatialRelations: [SpatialRelation]
+        +originalDescription: String
+        +actions: [SceneAction]
+        +isEmpty: Bool
+    }
+    class ParsingDiagnostics["ParsingDiagnostics"]
+    class ParsingDiagnostics {
+        <<struct>>
+        +confidence: Float
+        +coverage: Float
+        +missingActors: Bool
+        +missingObjects: Bool
+        +unresolvedPronouns: Bool
+        +unresolvedMarkedObjects: Bool
+        +notes: [String]
+        +matchedMarkedObjects: [UUID]
+    }
+    class ParsingResult["ParsingResult"]
+    class ParsingResult {
+        <<struct>>
+        +script: SceneScript
+        +diagnostics: ParsingDiagnostics
+    }
+    class SceneActor["SceneActor"]
+    class SceneActor {
+        <<struct>>
+        +id: String
+        +type: ActorType
+        +name: String?
+    }
+    class SceneActor_ActorType["SceneActor.ActorType"]
+    class SceneActor_ActorType {
+        <<enum>>
+        +placeholderColor: (r: Float, g: Float, b: Float)
+        +placeholderSize: simd_float3
+        +human
+        +tiger
+        +lion
+        +dog
+        +cat
+        +bird
+        +generic
+    }
+    class SceneObject["SceneObject"]
+    class SceneObject {
+        <<struct>>
+        +id: String
+        +type: ObjectType
+        +name: String?
+        +detectedPosition: Position3D?
+        +relativePosition: RelativePosition
+    }
+    class SceneObject_ObjectType["SceneObject.ObjectType"]
+    class SceneObject_ObjectType {
+        <<enum>>
+        +cocoLabels: [String]
+        +placeholderSize: simd_float3
+        +placeholderColor: (r: Float, g: Float, b: Float)
+        +table
+        +chair
+        +cabinet
+        +door
+        +couch
+        +bed
+        +window
+        +shelf
+        +tv
+        +generic
+    }
+    class SceneObject_RelativePosition["SceneObject.RelativePosition"]
+    class SceneObject_RelativePosition {
+        <<enum>>
+        +left
+        +right
+        +center
+        +background
+        +foreground
+        +unknown
+    }
+    class SceneAction["SceneAction"]
+    class SceneAction {
+        <<struct>>
+        +id: String
+        +actorId: String
+        +type: ActionType
+        +target: String?
+        +direction: Direction?
+        +modifier: ActionModifier?
+        +resultingPose: ActorPose?
+        +holdingObject: String?
+        +dialogue: String?
+        +fallbackText: String?
+        +sourceText: String?
+        +speed: Float
+    }
+    class SceneAction_ActionType["SceneAction.ActionType"]
+    class SceneAction_ActionType {
+        <<enum>>
+        +walk
+        +run
+        +stop
+        +turn
+        +approach
+        +passBy
+        +enter
+        +exit
+        +stand
+        +sit
+        +lieDown
+        +crouch
+        +lookAt
+        +pickUp
+        +putDown
+        +open
+        +close
+        +give
+        +talk
+        +describedAction
+    }
+    class SceneAction_Direction["SceneAction.Direction"]
+    class SceneAction_Direction {
+        <<enum>>
+        +left
+        +right
+        +forward
+        +backward
+        +towardEachOther
+        +awayFromEachOther
+        +toTarget
+    }
+    class SceneAction_ActionModifier["SceneAction.ActionModifier"]
+    class SceneAction_ActionModifier {
+        <<enum>>
+        +slowly
+        +quickly
+        +carefully
+    }
+    class SpatialRelation["SpatialRelation"]
+    class SpatialRelation {
+        <<struct>>
+        +id: String
+        +subject: String
+        +relation: RelationType
+        +object: String
+    }
+    class SpatialRelation_RelationType["SpatialRelation.RelationType"]
+    class SpatialRelation_RelationType {
+        <<enum>>
+        +near
+        +inFrontOf
+        +behind
+        +leftOf
+        +rightOf
+        +between
+        +passBy
+        +inside
+        +outside
+    }
+    class Position3D["Position3D"]
+    class Position3D {
+        <<struct>>
+        +x: Float
+        +y: Float
+        +z: Float
+        +simdVector: simd_float3
+    }
+    class PlannedScene["PlannedScene"]
+    class PlannedScene {
+        <<struct>>
+        +placedActors: [PlacedActor]
+        +placedObjects: [PlacedObject]
+    }
+    class PlannedScene_PlacedActor["PlannedScene.PlacedActor"]
+    class PlannedScene_PlacedActor {
+        <<struct>>
+        +id: String
+        +actorId: String
+        +type: SceneActor.ActorType
+        +name: String?
+        +initialPosition: Position3D
+        +initialRotation: Float
+        +path: [Position3D]
+        +pathDurations: [Double]
+        +pathPoses: [ActorPose]
+        +pathCameras: [CameraSetup?]
+        +color: (r: Float, g: Float, b: Float)
+        +size: simd_float3
+    }
+    class PlannedScene_PlacedObject["PlannedScene.PlacedObject"]
+    class PlannedScene_PlacedObject {
+        <<struct>>
+        +id: String
+        +objectId: String
+        +type: SceneObject.ObjectType
+        +position: Position3D
+        +rotation: Float
+        +isDetected: Bool
+        +placementSource: PlacementSource
+        +color: (r: Float, g: Float, b: Float)
+        +size: simd_float3
+        +isRealWorld: Bool
+    }
+    class PlannedScene_PlacedObject_PlacementSource["PlannedScene.PlacedObject.PlacementSource"]
+    class PlannedScene_PlacedObject_PlacementSource {
+        <<enum>>
+        +marked
+        +detected
+        +virtual
+    }
+    class DetectedObject["DetectedObject"]
+    class DetectedObject {
+        <<struct>>
+        +id: UUID
+        +label: String
+        +confidence: Float
+        +boundingBox: CGRect
+        +worldPosition: Position3D?
+        +objectType: SceneObject.ObjectType?
+    }
+    class ObjectDetectionBridge["ObjectDetectionBridge"]
+    class ObjectDetectionBridge {
+        <<class>>
+        +detector: DETRDetector?
+        +lastDetections: [DetectedObject]
+        +lastDetectionTime: Date
+        +detectionInterval: TimeInterval
+        +minimumConfidence: Float
+        +isReady: Bool
+    }
+    class SceneBundleWorkload["SceneBundleWorkload"]
+    class SceneBundleWorkload {
+        <<struct>>
+        +documentID: String
+        +bundleID: String
+        +mode: SceneBundleParseMode
+        +units: [NormalizedScriptUnit]
+        +finalDescription: String
+        +finalSceneCandidates: [ScriptSceneCandidate]
+        +pendingScenes: [ScriptSceneCandidate]
+        +reusedStates: [SceneStitchState]
+        +reusedSceneEntries: [SceneBundlePlan.SceneEntry]
+        +reusedChunks: [SceneChunk]
+        +reusedChunkDiagnostics: [SceneChunkDiagnostics]
+        +coldStartSceneIDs: [String]
+    }
+    class SceneTopLevelMetadata["SceneTopLevelMetadata"]
+    class SceneTopLevelMetadata {
+        <<struct>>
+        +sceneHeading: String?
+        +locationName: String?
+        +interiorExterior: String?
+        +timeOfDay: String?
+    }
+    class SceneParserService["SceneParserService"]
+    class SceneParserService {
+        <<class>>
+        +remotePlanProvider: RemoteScenePlanProvider?
+        +lastRuntimeTrace: SceneRuntimeTrace?
+        +lastChunkState: SceneChunkState?
+        +lastDocumentState: ScriptDocumentState?
+        +lastBundleResult: SceneBundleParsingResult?
+    }
+    class SpatialPlannerService_SceneSpace["SpatialPlannerService.SceneSpace"]
+    class SpatialPlannerService_SceneSpace {
+        <<struct>>
+        +center: Position3D
+        +forward: simd_float3
+        +right: simd_float3
+        +bounds: (min: Position3D, max: Position3D)
+        +floorY: Float
+    }
+    class SceneGeneratorViewModel["SceneGeneratorViewModel"]
+    class SceneGeneratorViewModel {
+        <<class>>
+        +sceneDescription: String
+        +parsedScript: SceneScript?
+        +parsingResult: ParsingResult?
+        +sceneChunkState: SceneChunkState?
+        +plannedScene: PlannedScene?
+        +detectedObjects: [DetectedObject]
+        +markedObjects: [MarkedObject]
+        +isGenerating: Bool
+        +isPlaying: Bool
+        +isARSessionReady: Bool
+        +errorMessage: String?
+        +showInputSheet: Bool
+        +showMarkerNameInput: Bool
+        +pendingMarkerPosition: Position3D?
+        +isMarkingMode: Bool
+        +statusMessage: String
+        +detectionBridge: ObjectDetectionBridge?
+        +arView: ARView?
+        +currentCameraTransform: simd_float4x4?
+        +latestDepthFrameSnapshot: DepthFrameSnapshot?
+        +detectedPlanes: [ARPlaneAnchor]
+        +lastPlaneUpdateTimestamp: TimeInterval
+        +planeRefreshInterval: TimeInterval
+        +placedEntities: [String: ModelEntity]
+        +sceneAnchor: AnchorEntity?
+        +markerEntities: [UUID: ModelEntity]
+        +markersAnchor: AnchorEntity?
+        +animationWorkItems: [DispatchWorkItem]
+    }
+    class SceneGeneratorViewModel_DepthFrameSnapshot["SceneGeneratorViewModel.DepthFrameSnapshot"]
+    class SceneGeneratorViewModel_DepthFrameSnapshot {
+        <<struct>>
+        +depthMap: CVPixelBuffer
+        +cameraTransform: simd_float4x4
+        +intrinsics: simd_float3x3
+        +imageResolution: CGSize
+    }
+    class ARSceneContainer["ARSceneContainer"]
+    class ARSceneContainer {
+        <<struct>>
+        +viewModel: SceneGeneratorViewModel
+    }
+    class ARSceneContainer_Coordinator["ARSceneContainer.Coordinator"]
+    class ARSceneContainer_Coordinator {
+        <<class>>
+        +viewModel: SceneGeneratorViewModel
+        +isDepthEnabled: Bool?
+        +lastProcessedFrameTimestamp: TimeInterval
+        +frameProcessingInterval: TimeInterval
+    }
+    class MarkedObjectBadge["MarkedObjectBadge"]
+    class MarkedObjectBadge {
+        <<struct>>
+        +marker: MarkedObject
+        +onRemove: () -> Void
+        +body: View
+    }
+    class MarkerNameInputSheet["MarkerNameInputSheet"]
+    class MarkerNameInputSheet {
+        <<struct>>
+        +viewModel: SceneGeneratorViewModel
+        +markerName: String
+        +body: View
+    }
+    class SceneInputSheet["SceneInputSheet"]
+    class SceneInputSheet {
+        <<struct>>
+        +viewModel: SceneGeneratorViewModel
+        +isTextFieldFocused: Bool
+        +body: View
+        +portraitLayout: View
+        +landscapeLayout: View
+        +headerSection: View
+        +textInputSection: View
+        +markedObjectsSection: View
+        +detectedObjectsSection: View
+        +examplesSection: View
+        +generateButton: View
+    }
+    class MarkedObjectChip["MarkedObjectChip"]
+    class MarkedObjectChip {
+        <<struct>>
+        +marker: MarkedObject
+        +isRecognized: Bool
+        +onTap: () -> Void
+        +body: View
+    }
+    ARSceneContainer "1" *-- "*" ARSceneContainer_Coordinator : contains
+    ARSceneContainer "1" --> "1" SceneGeneratorViewModel : viewModel
+    ARSceneContainer_Coordinator "1" --> "1" SceneGeneratorViewModel : viewModel
+    DetectedObject "1" --> "0..1" Position3D : worldPosition
+    DetectedObject "1" --> "0..1" SceneObject_ObjectType : objectType
+    MarkedObject "1" --> "1" Position3D : worldPosition
+    MarkedObject "1" --> "1" SceneObject_ObjectType : type
+    MarkedObjectBadge "1" --> "1" MarkedObject : marker
+    MarkedObjectChip "1" --> "1" MarkedObject : marker
+    MarkerNameInputSheet "1" --> "1" SceneGeneratorViewModel : viewModel
+    NormalizedScriptUnit "1" --> "1" ScriptOffsetRange : charRange
+    ObjectDetectionBridge "1" --> "*" DetectedObject : lastDetections
+    ParsingResult "1" --> "1" ParsingDiagnostics : diagnostics
+    ParsingResult "1" --> "1" SceneScript : script
+    PlannedScene "1" --> "*" PlannedScene_PlacedActor : placedActors
+    PlannedScene "1" *-- "*" PlannedScene_PlacedActor : contains
+    PlannedScene "1" --> "*" PlannedScene_PlacedObject : placedObjects
+    PlannedScene "1" *-- "*" PlannedScene_PlacedObject : contains
+    PlannedScene_PlacedActor "1" --> "*" ActorPose : pathPoses
+    PlannedScene_PlacedActor "1" --> "*" CameraSetup : pathCameras
+    PlannedScene_PlacedActor "1" --> "1" Position3D : initialPosition
+    PlannedScene_PlacedActor "1" --> "*" Position3D : path
+    PlannedScene_PlacedActor "1" --> "1" SceneActor_ActorType : type
+    PlannedScene_PlacedObject "1" --> "1" PlannedScene_PlacedObject_PlacementSource : placementSource
+    PlannedScene_PlacedObject "1" *-- "*" PlannedScene_PlacedObject_PlacementSource : contains
+    PlannedScene_PlacedObject "1" --> "1" Position3D : position
+    PlannedScene_PlacedObject "1" --> "1" SceneObject_ObjectType : type
+    SceneAction "1" --> "0..1" ActorPose : resultingPose
+    SceneAction "1" --> "0..1" SceneAction_ActionModifier : modifier
+    SceneAction "1" *-- "*" SceneAction_ActionModifier : contains
+    SceneAction "1" --> "1" SceneAction_ActionType : type
+    SceneAction "1" *-- "*" SceneAction_ActionType : contains
+    SceneAction "1" --> "0..1" SceneAction_Direction : direction
+    SceneAction "1" *-- "*" SceneAction_Direction : contains
+    SceneActor "1" --> "1" SceneActor_ActorType : type
+    SceneActor "1" *-- "*" SceneActor_ActorType : contains
+    SceneBeat "1" --> "0..1" CameraSetup : camera
+    SceneBeat "1" --> "*" SceneAction : actions
+    SceneBundleParsingResult "1" --> "1" ParsingDiagnostics : diagnostics
+    SceneBundleParsingResult "1" --> "1" SceneBundleScript : bundleScript
+    SceneBundleParsingResult "1" --> "*" SceneChunk : sceneChunks
+    SceneBundleParsingResult "1" --> "*" SceneChunkDiagnostics : chunkDiagnostics
+    SceneBundleParsingResult "1" --> "0..1" SceneScript : activeSceneScript
+    SceneBundleParsingResult "1" --> "1" ScriptDocumentState : documentState
+    SceneBundlePlan "1" --> "*" SceneBundlePlan_SceneEntry : scenes
+    SceneBundlePlan "1" *-- "*" SceneBundlePlan_SceneEntry : contains
+    SceneBundlePlan_SceneEntry "1" --> "*" SceneChunk : chunks
+    SceneBundlePlan_SceneEntry "1" --> "1" ScenePlanIR : plan
+    SceneBundlePlan_SceneEntry "1" --> "1" SceneTopLevelMetadata : metadata
+    SceneBundleScript "1" --> "0..1" SceneScript : activeSceneScript
+    SceneBundleScript "1" --> "*" SceneScript : scenes
+    SceneBundleWorkload "1" --> "*" NormalizedScriptUnit : units
+    SceneBundleWorkload "1" --> "1" SceneBundleParseMode : mode
+    SceneBundleWorkload "1" --> "*" SceneBundlePlan_SceneEntry : reusedSceneEntries
+    SceneBundleWorkload "1" --> "*" SceneChunk : reusedChunks
+    SceneBundleWorkload "1" --> "*" SceneChunkDiagnostics : reusedChunkDiagnostics
+    SceneBundleWorkload "1" --> "*" SceneStitchState : reusedStates
+    SceneBundleWorkload "1" --> "*" ScriptSceneCandidate : finalSceneCandidates
+    SceneBundleWorkload "1" --> "*" ScriptSceneCandidate : pendingScenes
+    SceneChunk "1" --> "1" SceneChunk_RegistryPatch : registryPatch
+    SceneChunk "1" *-- "*" SceneChunk_RegistryPatch : contains
+    SceneChunk "1" --> "1" SceneChunkAnchor : anchors
+    SceneChunk "1" --> "*" ScenePlanIR_Beat : beatPatch
+    SceneChunk "1" --> "*" ScenePlanIR_SpatialRelation : spatialRelationPatch
+    SceneChunk "1" --> "1" ScriptOffsetRange : sourceRange
+    SceneChunk_RegistryPatch "1" --> "*" ScenePlanIR_Actor : actors
+    SceneChunk_RegistryPatch "1" --> "*" ScenePlanIR_Object : objects
+    SceneChunkDiagnostics "1" --> "1" SceneChunkAnchor : anchors
+    SceneChunkDraft "1" --> "1" SceneChunkAnchor : anchors
+    SceneChunkDraft "1" --> "1" SceneEntityRegistrySnapshot : registrySnapshot
+    SceneChunkDraft "1" --> "1" ScenePlanIR : plan
+    SceneChunkDraft "1" --> "1" ScriptOffsetRange : sourceRange
+    SceneChunkState "1" --> "*" ActorPose : actorPoses
+    SceneEntityRegistrySnapshot "1" --> "*" ActorPose : actorPoses
+    SceneEntityRegistrySnapshot "1" --> "*" ScenePlanIR_Actor : actors
+    SceneEntityRegistrySnapshot "1" --> "*" ScenePlanIR_Object : objects
+    SceneGeneratorViewModel "1" --> "*" DetectedObject : detectedObjects
+    SceneGeneratorViewModel "1" --> "*" MarkedObject : markedObjects
+    SceneGeneratorViewModel "1" --> "0..1" ObjectDetectionBridge : detectionBridge
+    SceneGeneratorViewModel "1" --> "0..1" ParsingResult : parsingResult
+    SceneGeneratorViewModel "1" --> "0..1" PlannedScene : plannedScene
+    SceneGeneratorViewModel "1" --> "0..1" Position3D : pendingMarkerPosition
+    SceneGeneratorViewModel "1" --> "0..1" SceneChunkState : sceneChunkState
+    SceneGeneratorViewModel "1" --> "0..1" SceneGeneratorViewModel_DepthFrameSnapshot : latestDepthFrameSnapshot
+    SceneGeneratorViewModel "1" *-- "*" SceneGeneratorViewModel_DepthFrameSnapshot : contains
+    SceneGeneratorViewModel "1" --> "0..1" SceneScript : parsedScript
+    SceneInputSheet "1" --> "1" SceneGeneratorViewModel : viewModel
+    SceneObject "1" --> "0..1" Position3D : detectedPosition
+    SceneObject "1" --> "1" SceneObject_ObjectType : type
+    SceneObject "1" *-- "*" SceneObject_ObjectType : contains
+    SceneObject "1" --> "1" SceneObject_RelativePosition : relativePosition
+    SceneObject "1" *-- "*" SceneObject_RelativePosition : contains
+    SceneParserService "1" --> "0..1" SceneBundleParsingResult : lastBundleResult
+    SceneParserService "1" --> "0..1" SceneChunkState : lastChunkState
+    SceneParserService "1" --> "0..1" ScriptDocumentState : lastDocumentState
+    ScenePlanIR "1" *-- "*" ScenePlanIR_Action : contains
+    ScenePlanIR "1" --> "*" ScenePlanIR_Actor : actors
+    ScenePlanIR "1" *-- "*" ScenePlanIR_Actor : contains
+    ScenePlanIR "1" --> "*" ScenePlanIR_Beat : beats
+    ScenePlanIR "1" *-- "*" ScenePlanIR_Beat : contains
+    ScenePlanIR "1" --> "*" ScenePlanIR_Object : objects
+    ScenePlanIR "1" *-- "*" ScenePlanIR_Object : contains
+    ScenePlanIR "1" --> "1" ScenePlanIR_ReferenceBindings : referenceBindings
+    ScenePlanIR "1" *-- "*" ScenePlanIR_ReferenceBindings : contains
+    ScenePlanIR "1" *-- "*" ScenePlanIR_SpatialRelation : contains
+    ScenePlanIR "1" --> "*" SpatialRelation : spatialRelations
+    ScenePlanIR_Action "1" --> "0..1" ActorPose : resultingPose
+    ScenePlanIR_Action "1" --> "0..1" SceneAction_ActionModifier : modifier
+    ScenePlanIR_Action "1" --> "1" SceneAction_ActionType : type
+    ScenePlanIR_Action "1" --> "0..1" SceneAction_Direction : direction
+    ScenePlanIR_Actor "1" --> "1" SceneActor_ActorType : type
+    ScenePlanIR_Beat "1" --> "*" ScenePlanIR_Action : actions
+    ScenePlanIR_Object "1" --> "1" SceneObject_ObjectType : type
+    ScenePlanIR_Object "1" --> "1" SceneObject_RelativePosition : relativePosition
+    ScenePlanProviderResult "1" --> "1" ScenePlanIR : plan
+    SceneScript "1" --> "*" SceneAction : actions
+    SceneScript "1" --> "*" SceneActor : actors
+    SceneScript "1" --> "*" SceneBeat : beats
+    SceneScript "1" --> "*" SceneObject : objects
+    SceneScript "1" --> "*" SpatialRelation : spatialRelations
+    SceneStitchState "1" --> "1" SceneEntityRegistrySnapshot : registry
+    SceneStitchState "1" --> "*" ScenePlanIR_Actor : actors
+    SceneStitchState "1" --> "*" ScenePlanIR_Beat : beats
+    SceneStitchState "1" --> "*" ScenePlanIR_Object : objects
+    SceneStitchState "1" --> "*" ScenePlanIR_SpatialRelation : spatialRelations
+    SceneStitchState "1" --> "1" SceneTopLevelMetadata : metadata
+    ScriptDocumentState "1" --> "*" NormalizedScriptUnit : normalizedUnits
+    ScriptDocumentState "1" --> "1" SceneBundleParseMode : mode
+    ScriptDocumentState "1" --> "1" SceneBundlePlan : bundlePlan
+    ScriptDocumentState "1" --> "1" SceneBundleScript : bundleScript
+    ScriptDocumentState "1" --> "*" SceneStitchState : stitchStates
+    ScriptDocumentState "1" --> "*" ScriptSceneCandidate : sceneCandidates
+    ScriptSceneCandidate "1" --> "1" SceneTopLevelMetadata : metadata
+    ScriptSceneCandidate "1" --> "1" ScriptOffsetRange : sourceRange
+    SpatialPlannerService_SceneSpace "1" --> "1" Position3D : bounds
+    SpatialPlannerService_SceneSpace "1" --> "1" Position3D : center
+    SpatialRelation "1" --> "1" SpatialRelation_RelationType : relation
+    SpatialRelation "1" *-- "*" SpatialRelation_RelationType : contains

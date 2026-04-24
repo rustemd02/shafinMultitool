@@ -1,0 +1,352 @@
+classDiagram
+    class MarkedObject["MarkedObject"]
+    class MarkedObject {
+        <<struct>>
+        +id: UUID
+        +name: String
+        +type: SceneObject.ObjectType
+        +worldPosition: Position3D
+        +anchorID: UUID?
+        +createdAt: Date
+        +markerColor: UIColor
+    }
+    class CameraSetup["CameraSetup"]
+    class CameraSetup {
+        <<struct>>
+        +shotType: ShotType
+        +movement: CameraMovement?
+        +target: String?
+    }
+    class CameraSetup_ShotType["CameraSetup.ShotType"]
+    class CameraSetup_ShotType {
+        <<enum>>
+        +wide
+        +medium
+        +closeUp
+        +extremeCloseUp
+        +overShoulder
+        +twoShot
+    }
+    class CameraSetup_CameraMovement["CameraSetup.CameraMovement"]
+    class CameraSetup_CameraMovement {
+        <<enum>>
+        +panLeft
+        +panRight
+        +tiltUp
+        +tiltDown
+        +dollyIn
+        +dollyOut
+        +tracking
+        +craneUp
+        +craneDown
+    }
+    class ActorPose["ActorPose"]
+    class ActorPose {
+        <<enum>>
+        +standing
+        +sitting
+        +crouching
+        +lying
+        +walking
+        +running
+    }
+    class SceneBeat["SceneBeat"]
+    class SceneBeat {
+        <<struct>>
+        +id: String
+        +actions: [SceneAction]
+        +camera: CameraSetup?
+        +minDuration: Double?
+    }
+    class SceneScript["SceneScript"]
+    class SceneScript {
+        <<struct>>
+        +sceneHeading: String?
+        +locationName: String?
+        +interiorExterior: String?
+        +timeOfDay: String?
+        +actors: [SceneActor]
+        +objects: [SceneObject]
+        +beats: [SceneBeat]
+        +spatialRelations: [SpatialRelation]
+        +originalDescription: String
+        +actions: [SceneAction]
+        +isEmpty: Bool
+    }
+    class ParsingDiagnostics["ParsingDiagnostics"]
+    class ParsingDiagnostics {
+        <<struct>>
+        +confidence: Float
+        +coverage: Float
+        +missingActors: Bool
+        +missingObjects: Bool
+        +unresolvedPronouns: Bool
+        +unresolvedMarkedObjects: Bool
+        +notes: [String]
+        +matchedMarkedObjects: [UUID]
+    }
+    class ParsingResult["ParsingResult"]
+    class ParsingResult {
+        <<struct>>
+        +script: SceneScript
+        +diagnostics: ParsingDiagnostics
+    }
+    class SceneActor["SceneActor"]
+    class SceneActor {
+        <<struct>>
+        +id: String
+        +type: ActorType
+        +name: String?
+    }
+    class SceneActor_ActorType["SceneActor.ActorType"]
+    class SceneActor_ActorType {
+        <<enum>>
+        +placeholderColor: (r: Float, g: Float, b: Float)
+        +placeholderSize: simd_float3
+        +human
+        +tiger
+        +lion
+        +dog
+        +cat
+        +bird
+        +generic
+    }
+    class SceneObject["SceneObject"]
+    class SceneObject {
+        <<struct>>
+        +id: String
+        +type: ObjectType
+        +name: String?
+        +detectedPosition: Position3D?
+        +relativePosition: RelativePosition
+    }
+    class SceneObject_ObjectType["SceneObject.ObjectType"]
+    class SceneObject_ObjectType {
+        <<enum>>
+        +cocoLabels: [String]
+        +placeholderSize: simd_float3
+        +placeholderColor: (r: Float, g: Float, b: Float)
+        +table
+        +chair
+        +cabinet
+        +door
+        +couch
+        +bed
+        +window
+        +shelf
+        +tv
+        +generic
+    }
+    class SceneObject_RelativePosition["SceneObject.RelativePosition"]
+    class SceneObject_RelativePosition {
+        <<enum>>
+        +left
+        +right
+        +center
+        +background
+        +foreground
+        +unknown
+    }
+    class SceneAction["SceneAction"]
+    class SceneAction {
+        <<struct>>
+        +id: String
+        +actorId: String
+        +type: ActionType
+        +target: String?
+        +direction: Direction?
+        +modifier: ActionModifier?
+        +resultingPose: ActorPose?
+        +holdingObject: String?
+        +dialogue: String?
+        +fallbackText: String?
+        +sourceText: String?
+        +speed: Float
+    }
+    class SceneAction_ActionType["SceneAction.ActionType"]
+    class SceneAction_ActionType {
+        <<enum>>
+        +walk
+        +run
+        +stop
+        +turn
+        +approach
+        +passBy
+        +enter
+        +exit
+        +stand
+        +sit
+        +lieDown
+        +crouch
+        +lookAt
+        +pickUp
+        +putDown
+        +open
+        +close
+        +give
+        +talk
+        +describedAction
+    }
+    class SceneAction_Direction["SceneAction.Direction"]
+    class SceneAction_Direction {
+        <<enum>>
+        +left
+        +right
+        +forward
+        +backward
+        +towardEachOther
+        +awayFromEachOther
+        +toTarget
+    }
+    class SceneAction_ActionModifier["SceneAction.ActionModifier"]
+    class SceneAction_ActionModifier {
+        <<enum>>
+        +slowly
+        +quickly
+        +carefully
+    }
+    class SpatialRelation["SpatialRelation"]
+    class SpatialRelation {
+        <<struct>>
+        +id: String
+        +subject: String
+        +relation: RelationType
+        +object: String
+    }
+    class SpatialRelation_RelationType["SpatialRelation.RelationType"]
+    class SpatialRelation_RelationType {
+        <<enum>>
+        +near
+        +inFrontOf
+        +behind
+        +leftOf
+        +rightOf
+        +between
+        +passBy
+        +inside
+        +outside
+    }
+    class Position3D["Position3D"]
+    class Position3D {
+        <<struct>>
+        +x: Float
+        +y: Float
+        +z: Float
+        +simdVector: simd_float3
+    }
+    class PlannedScene["PlannedScene"]
+    class PlannedScene {
+        <<struct>>
+        +placedActors: [PlacedActor]
+        +placedObjects: [PlacedObject]
+    }
+    class PlannedScene_PlacedActor["PlannedScene.PlacedActor"]
+    class PlannedScene_PlacedActor {
+        <<struct>>
+        +id: String
+        +actorId: String
+        +type: SceneActor.ActorType
+        +name: String?
+        +initialPosition: Position3D
+        +initialRotation: Float
+        +path: [Position3D]
+        +pathDurations: [Double]
+        +pathPoses: [ActorPose]
+        +pathCameras: [CameraSetup?]
+        +color: (r: Float, g: Float, b: Float)
+        +size: simd_float3
+    }
+    class PlannedScene_PlacedObject["PlannedScene.PlacedObject"]
+    class PlannedScene_PlacedObject {
+        <<struct>>
+        +id: String
+        +objectId: String
+        +type: SceneObject.ObjectType
+        +position: Position3D
+        +rotation: Float
+        +isDetected: Bool
+        +placementSource: PlacementSource
+        +color: (r: Float, g: Float, b: Float)
+        +size: simd_float3
+        +isRealWorld: Bool
+    }
+    class PlannedScene_PlacedObject_PlacementSource["PlannedScene.PlacedObject.PlacementSource"]
+    class PlannedScene_PlacedObject_PlacementSource {
+        <<enum>>
+        +marked
+        +detected
+        +virtual
+    }
+    class DetectedObject["DetectedObject"]
+    class DetectedObject {
+        <<struct>>
+        +id: UUID
+        +label: String
+        +confidence: Float
+        +boundingBox: CGRect
+        +worldPosition: Position3D?
+        +objectType: SceneObject.ObjectType?
+    }
+    class KeywordsMapping["KeywordsMapping"]
+    class KeywordsMapping {
+        <<struct>>
+        +actorKeywords: [String: SceneActor.ActorType]
+        +objectKeywords: [String: SceneObject.ObjectType]
+        +actionKeywords: [String: SceneAction.ActionType]
+        +directionKeywords: [String: SceneAction.Direction]
+        +relationKeywords: [String: SpatialRelation.RelationType]
+        +modifierKeywords: [String: SceneAction.ActionModifier]
+        +cocoToRussian: [String: String]
+    }
+    CameraSetup "1" --> "0..1" CameraSetup_CameraMovement : movement
+    CameraSetup "1" *-- "*" CameraSetup_CameraMovement : contains
+    CameraSetup "1" --> "1" CameraSetup_ShotType : shotType
+    CameraSetup "1" *-- "*" CameraSetup_ShotType : contains
+    DetectedObject "1" --> "0..1" Position3D : worldPosition
+    DetectedObject "1" --> "0..1" SceneObject_ObjectType : objectType
+    KeywordsMapping "1" --> "*" SceneAction_ActionModifier : modifierKeywords
+    KeywordsMapping "1" --> "*" SceneAction_ActionType : actionKeywords
+    KeywordsMapping "1" --> "*" SceneAction_Direction : directionKeywords
+    KeywordsMapping "1" --> "*" SceneActor_ActorType : actorKeywords
+    KeywordsMapping "1" --> "*" SceneObject_ObjectType : objectKeywords
+    KeywordsMapping "1" --> "*" SpatialRelation_RelationType : relationKeywords
+    MarkedObject "1" --> "1" Position3D : worldPosition
+    MarkedObject "1" --> "1" SceneObject_ObjectType : type
+    ParsingResult "1" --> "1" ParsingDiagnostics : diagnostics
+    ParsingResult "1" --> "1" SceneScript : script
+    PlannedScene "1" --> "*" PlannedScene_PlacedActor : placedActors
+    PlannedScene "1" *-- "*" PlannedScene_PlacedActor : contains
+    PlannedScene "1" --> "*" PlannedScene_PlacedObject : placedObjects
+    PlannedScene "1" *-- "*" PlannedScene_PlacedObject : contains
+    PlannedScene_PlacedActor "1" --> "*" ActorPose : pathPoses
+    PlannedScene_PlacedActor "1" --> "*" CameraSetup : pathCameras
+    PlannedScene_PlacedActor "1" --> "1" Position3D : initialPosition
+    PlannedScene_PlacedActor "1" --> "*" Position3D : path
+    PlannedScene_PlacedActor "1" --> "1" SceneActor_ActorType : type
+    PlannedScene_PlacedObject "1" --> "1" PlannedScene_PlacedObject_PlacementSource : placementSource
+    PlannedScene_PlacedObject "1" *-- "*" PlannedScene_PlacedObject_PlacementSource : contains
+    PlannedScene_PlacedObject "1" --> "1" Position3D : position
+    PlannedScene_PlacedObject "1" --> "1" SceneObject_ObjectType : type
+    SceneAction "1" --> "0..1" ActorPose : resultingPose
+    SceneAction "1" --> "0..1" SceneAction_ActionModifier : modifier
+    SceneAction "1" *-- "*" SceneAction_ActionModifier : contains
+    SceneAction "1" --> "1" SceneAction_ActionType : type
+    SceneAction "1" *-- "*" SceneAction_ActionType : contains
+    SceneAction "1" --> "0..1" SceneAction_Direction : direction
+    SceneAction "1" *-- "*" SceneAction_Direction : contains
+    SceneActor "1" --> "1" SceneActor_ActorType : type
+    SceneActor "1" *-- "*" SceneActor_ActorType : contains
+    SceneBeat "1" --> "0..1" CameraSetup : camera
+    SceneBeat "1" --> "*" SceneAction : actions
+    SceneObject "1" --> "0..1" Position3D : detectedPosition
+    SceneObject "1" --> "1" SceneObject_ObjectType : type
+    SceneObject "1" *-- "*" SceneObject_ObjectType : contains
+    SceneObject "1" --> "1" SceneObject_RelativePosition : relativePosition
+    SceneObject "1" *-- "*" SceneObject_RelativePosition : contains
+    SceneScript "1" --> "*" SceneAction : actions
+    SceneScript "1" --> "*" SceneActor : actors
+    SceneScript "1" --> "*" SceneBeat : beats
+    SceneScript "1" --> "*" SceneObject : objects
+    SceneScript "1" --> "*" SpatialRelation : spatialRelations
+    SpatialRelation "1" --> "1" SpatialRelation_RelationType : relation
+    SpatialRelation "1" *-- "*" SpatialRelation_RelationType : contains
