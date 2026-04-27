@@ -11,6 +11,22 @@ import Combine
 import ARKit
 import RealityKit
 
+struct BeatPlaybackTimelineItem: Identifiable, Equatable {
+    var id: String { "\(index)-\(beatID)" }
+    let beatID: String
+    let index: Int
+    let startTime: TimeInterval
+    let duration: TimeInterval
+    let hasDialogueCaption: Bool
+    let hasActionCaption: Bool
+}
+
+struct BeatPlaybackProgressState: Equatable {
+    let activeBeatIndex: Int
+    let beatProgress: Double
+    let elapsedTime: TimeInterval
+}
+
 /// ViewModel для управления генерацией AR сцены из текстового описания
 @MainActor
 final class SceneGeneratorViewModel: ObservableObject {
@@ -49,6 +65,24 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Статус воспроизведения анимации
     @Published var isPlaying: Bool = false
+
+    /// Текущий диалоговый субтитр во время playback.
+    @Published var activeDialogueCaption: String?
+
+    /// Текущее описательное действие во время playback.
+    @Published var activeActionCaption: String?
+
+    /// Beat timeline во время playback.
+    @Published var beatTimelineItems: [BeatPlaybackTimelineItem] = []
+
+    /// Индекс активного beat во время playback.
+    @Published var activeBeatIndex: Int = 0
+
+    /// Прогресс активного beat от 0 до 1.
+    @Published var beatProgress: Double = 0
+
+    /// Прошедшее время текущего playback.
+    @Published var playbackElapsedTime: TimeInterval = 0
     
     /// Статус AR сессии
     @Published var isARSessionReady: Bool = false
@@ -111,6 +145,12 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Work items для анимаций (для отмены)
     private var animationWorkItems: [DispatchWorkItem] = []
+
+    /// ID текущего диалога/действия, чтобы старые delayed-clear не гасили новый текст.
+    private var activeDialogueCaptionID: UUID?
+    private var activeActionCaptionID: UUID?
+    private var playbackTimelineTimer: Timer?
+    private var playbackStartDate: Date?
     
     // MARK: - Cancellables
     
@@ -337,7 +377,9 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Отменяем все предыдущие анимации
         cancelAllAnimations()
         
+        beatTimelineItems = buildBeatTimelineItems(for: planned, script: parsedScript)
         isPlaying = true
+        resetPlaybackUIState(clearTimeline: false)
         statusMessage = "Воспроизведение..."
         
         // Инициализируем счётчики анимаций
@@ -361,6 +403,8 @@ final class SceneGeneratorViewModel: ObservableObject {
             for actor in planned.placedActors {
                 self.animateActor(actor)
             }
+            self.startPlaybackTimelineTimer()
+            self.schedulePlaybackCaptions(for: planned)
         }
         animationWorkItems.append(startWorkItem)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: startWorkItem)
@@ -372,6 +416,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         cancelAllAnimations()
         
         isPlaying = false
+        resetPlaybackUIState(clearTimeline: true)
         statusMessage = "Остановлено"
         
         // Мгновенно возвращаем актёров на начальные позиции
@@ -389,6 +434,9 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Сбрасываем счётчики
         completedActorAnimations = 0
         totalActorAnimations = 0
+        invalidatePlaybackTimelineTimer()
+        activeDialogueCaptionID = nil
+        activeActionCaptionID = nil
         
         // Останавливаем все текущие RealityKit анимации
         stopAllEntityAnimations()
@@ -400,6 +448,26 @@ final class SceneGeneratorViewModel: ObservableObject {
             // Устанавливаем текущую трансформацию как конечную (останавливает анимацию)
             entity.stopAllAnimations()
         }
+    }
+
+    private func resetPlaybackUIState(clearTimeline: Bool) {
+        activeDialogueCaption = nil
+        activeActionCaption = nil
+        activeDialogueCaptionID = nil
+        activeActionCaptionID = nil
+        activeBeatIndex = 0
+        beatProgress = 0
+        playbackElapsedTime = 0
+        playbackStartDate = nil
+        if clearTimeline {
+            beatTimelineItems = []
+        }
+    }
+
+    private func invalidatePlaybackTimelineTimer() {
+        playbackTimelineTimer?.invalidate()
+        playbackTimelineTimer = nil
+        playbackStartDate = nil
     }
     
     /// Сбрасывает сцену
@@ -417,6 +485,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         sceneChunkState = nil
         sceneDescription = ""
         isPlaying = false
+        resetPlaybackUIState(clearTimeline: true)
         
         statusMessage = "Сцена очищена"
     }
@@ -761,24 +830,48 @@ final class SceneGeneratorViewModel: ObservableObject {
         color: (r: Float, g: Float, b: Float),
         label: String
     ) -> ModelEntity {
-        // Для актёров используем капсулу вместо куба
-        let mesh = MeshResource.generateBox(
+        let actorColor = UIColor(
+            red: CGFloat(color.r),
+            green: CGFloat(color.g),
+            blue: CGFloat(color.b),
+            alpha: 1.0
+        )
+        
+        if let personEntity = try? ModelEntity.loadModel(named: "Person") {
+            // Используем ту же модель, что и в CameraScreenModule.
+            // Нормализуем масштаб по высоте, чтобы анимация и размещение остались предсказуемыми.
+            let bounds = personEntity.visualBounds(relativeTo: personEntity)
+            let sourceHeight = max(bounds.extents.y, 0.001)
+            let scaleFactor = max(size.y, 0.1) / sourceHeight
+            personEntity.scale = simd_float3(repeating: scaleFactor)
+            applyTintRecursively(entity: personEntity, color: actorColor)
+            personEntity.generateCollisionShapes(recursive: true)
+            
+            let textMesh = MeshResource.generateText(
+                label,
+                extrusionDepth: 0.01,
+                font: .boldSystemFont(ofSize: 0.08)
+            )
+            let textMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
+            let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
+            let scaledHeight = bounds.extents.y * scaleFactor
+            textEntity.position = simd_float3(-0.1, scaledHeight / 2 + 0.1, 0)
+            personEntity.addChild(textEntity)
+            
+            return personEntity
+        }
+        
+        // Fallback, если ассет недоступен.
+        let fallbackMesh = MeshResource.generateBox(
             width: size.x,
             height: size.y,
             depth: size.z,
             cornerRadius: min(size.x, size.z) / 4
         )
+        let fallbackMaterial = SimpleMaterial(color: actorColor, roughness: 0.3, isMetallic: false)
+        let fallbackEntity = ModelEntity(mesh: fallbackMesh, materials: [fallbackMaterial])
+        fallbackEntity.generateCollisionShapes(recursive: true)
         
-        let material = SimpleMaterial(
-            color: UIColor(red: CGFloat(color.r), green: CGFloat(color.g), blue: CGFloat(color.b), alpha: 1.0),
-            roughness: 0.3,
-            isMetallic: false
-        )
-        
-        let entity = ModelEntity(mesh: mesh, materials: [material])
-        entity.generateCollisionShapes(recursive: true)
-        
-        // Добавляем подпись
         let textMesh = MeshResource.generateText(
             label,
             extrusionDepth: 0.01,
@@ -787,10 +880,20 @@ final class SceneGeneratorViewModel: ObservableObject {
         let textMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
         let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
         textEntity.position = simd_float3(-0.1, size.y / 2 + 0.1, 0)
+        fallbackEntity.addChild(textEntity)
         
-        entity.addChild(textEntity)
+        return fallbackEntity
+    }
+    
+    private func applyTintRecursively(entity: Entity, color: UIColor) {
+        if let modelEntity = entity as? ModelEntity, let model = modelEntity.model {
+            let material = SimpleMaterial(color: color, roughness: 0.3, isMetallic: false)
+            modelEntity.model?.materials = Array(repeating: material, count: max(model.materials.count, 1))
+        }
         
-        return entity
+        for child in entity.children {
+            applyTintRecursively(entity: child, color: color)
+        }
     }
     
     // MARK: - Animation
@@ -831,7 +934,13 @@ final class SceneGeneratorViewModel: ObservableObject {
         
         // Если расстояние слишком маленькое, пропускаем этот сегмент
         guard distance > 0.01 else {
-            animateActorSegment(entity: entity, actor: actor, segmentIndex: segmentIndex + 1)
+            let waitWorkItem = DispatchWorkItem { [weak self] in
+                guard let self = self, self.isPlaying else { return }
+                entity.position = targetPosition
+                self.animateActorSegment(entity: entity, actor: actor, segmentIndex: segmentIndex + 1)
+            }
+            animationWorkItems.append(waitWorkItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: waitWorkItem)
             return
         }
         
@@ -870,8 +979,240 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Все актёры завершили анимацию
         if completedActorAnimations >= totalActorAnimations && isPlaying {
             isPlaying = false
+            resetPlaybackUIState(clearTimeline: true)
             statusMessage = "Воспроизведение завершено"
         }
+    }
+
+    private struct PlaybackCaptionEvent {
+        let startTime: TimeInterval
+        let duration: TimeInterval
+        let kind: PlaybackPathAnnotation.Kind
+        let actorLabel: String
+        let caption: String
+
+        var renderedText: String {
+            "\(actorLabel): \(caption)"
+        }
+    }
+
+    func buildBeatTimelineItems(for planned: PlannedScene, script: SceneScript?) -> [BeatPlaybackTimelineItem] {
+        let beats = script?.beats ?? []
+        guard !beats.isEmpty else {
+            return buildFallbackBeatTimelineItems(for: planned)
+        }
+
+        var items: [BeatPlaybackTimelineItem] = []
+        var startTime: TimeInterval = 0
+
+        for (index, beat) in beats.enumerated() {
+            var duration: TimeInterval = fallbackDuration(for: beat)
+            var hasDialogueCaption = false
+            var hasActionCaption = false
+
+            for actor in planned.placedActors {
+                var actorBeatDuration: TimeInterval = 0
+                for segmentIndex in 0..<actor.pathDurations.count {
+                    let annotationIndex = segmentIndex + 1
+                    guard actor.pathBeatIDs.indices.contains(annotationIndex),
+                          actor.pathBeatIDs[annotationIndex] == beat.id
+                    else {
+                        continue
+                    }
+
+                    actorBeatDuration += max(actor.pathDurations[segmentIndex], 0.1)
+                    if actor.pathAnnotations.indices.contains(annotationIndex),
+                       let annotation = actor.pathAnnotations[annotationIndex] {
+                        hasDialogueCaption = hasDialogueCaption || annotation.kind == .dialogue
+                        hasActionCaption = hasActionCaption || annotation.kind == .action
+                    }
+                }
+                duration = max(duration, actorBeatDuration)
+            }
+
+            items.append(
+                BeatPlaybackTimelineItem(
+                    beatID: beat.id.isEmpty ? "beat_\(index + 1)" : beat.id,
+                    index: index,
+                    startTime: startTime,
+                    duration: duration,
+                    hasDialogueCaption: hasDialogueCaption,
+                    hasActionCaption: hasActionCaption
+                )
+            )
+            startTime += duration
+        }
+
+        return items
+    }
+
+    func playbackProgressState(at elapsedTime: TimeInterval, items: [BeatPlaybackTimelineItem]) -> BeatPlaybackProgressState {
+        guard !items.isEmpty else {
+            return BeatPlaybackProgressState(activeBeatIndex: 0, beatProgress: 0, elapsedTime: elapsedTime)
+        }
+
+        let lastIndex = items.count - 1
+        guard let activeItem = items.last(where: { elapsedTime >= $0.startTime }) else {
+            return BeatPlaybackProgressState(activeBeatIndex: 0, beatProgress: 0, elapsedTime: elapsedTime)
+        }
+
+        let rawProgress = activeItem.duration > 0 ? (elapsedTime - activeItem.startTime) / activeItem.duration : 1
+        let progress = min(max(rawProgress, 0), 1)
+        return BeatPlaybackProgressState(
+            activeBeatIndex: min(activeItem.index, lastIndex),
+            beatProgress: progress,
+            elapsedTime: elapsedTime
+        )
+    }
+
+    private func buildFallbackBeatTimelineItems(for planned: PlannedScene) -> [BeatPlaybackTimelineItem] {
+        let orderedBeatIDs = planned.placedActors
+            .flatMap(\.pathBeatIDs)
+            .compactMap { $0 }
+            .reduce(into: [String]()) { result, beatID in
+                if !result.contains(beatID) {
+                    result.append(beatID)
+                }
+            }
+
+        guard !orderedBeatIDs.isEmpty else { return [] }
+
+        let syntheticBeats = orderedBeatIDs.enumerated().map { index, beatID in
+            SceneBeat(id: beatID.isEmpty ? "beat_\(index + 1)" : beatID, actions: [], minDuration: 0.4)
+        }
+        return buildBeatTimelineItems(for: planned, script: SceneScript(actors: [], objects: [], beats: syntheticBeats, spatialRelations: [], originalDescription: ""))
+    }
+
+    private func fallbackDuration(for beat: SceneBeat) -> TimeInterval {
+        min(max(beat.minDuration ?? 0.4, 0.4), 4.0)
+    }
+
+    private func startPlaybackTimelineTimer() {
+        invalidatePlaybackTimelineTimer()
+        playbackStartDate = Date()
+        updatePlaybackTimeline(elapsedTime: 0)
+
+        playbackTimelineTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.isPlaying, let playbackStartDate = self.playbackStartDate else { return }
+                self.updatePlaybackTimeline(elapsedTime: Date().timeIntervalSince(playbackStartDate))
+            }
+        }
+    }
+
+    private func updatePlaybackTimeline(elapsedTime: TimeInterval) {
+        let state = playbackProgressState(at: elapsedTime, items: beatTimelineItems)
+        playbackElapsedTime = state.elapsedTime
+        activeBeatIndex = state.activeBeatIndex
+        beatProgress = state.beatProgress
+    }
+
+    private func schedulePlaybackCaptions(for planned: PlannedScene) {
+        let events = buildPlaybackCaptionEvents(for: planned)
+        var nextAvailableTimeByKind: [PlaybackPathAnnotation.Kind: TimeInterval] = [
+            .dialogue: 0,
+            .action: 0
+        ]
+
+        for event in events {
+            let captionID = UUID()
+            let startTime = max(event.startTime, nextAvailableTimeByKind[event.kind] ?? 0)
+            let displayDuration = min(max(event.duration, 1.15), 2.8)
+            nextAvailableTimeByKind[event.kind] = startTime + displayDuration + 0.15
+
+            let showWorkItem = DispatchWorkItem { [weak self] in
+                guard let self = self, self.isPlaying else { return }
+                switch event.kind {
+                case .dialogue:
+                    self.activeDialogueCaptionID = captionID
+                    self.activeDialogueCaption = event.renderedText
+                case .action:
+                    self.activeActionCaptionID = captionID
+                    self.activeActionCaption = event.renderedText
+                }
+            }
+            animationWorkItems.append(showWorkItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + startTime, execute: showWorkItem)
+
+            let hideWorkItem = DispatchWorkItem { [weak self] in
+                guard let self = self, self.isPlaying else { return }
+                switch event.kind {
+                case .dialogue:
+                    guard self.activeDialogueCaptionID == captionID else { return }
+                    self.activeDialogueCaption = nil
+                    self.activeDialogueCaptionID = nil
+                case .action:
+                    guard self.activeActionCaptionID == captionID else { return }
+                    self.activeActionCaption = nil
+                    self.activeActionCaptionID = nil
+                }
+            }
+            animationWorkItems.append(hideWorkItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + startTime + displayDuration, execute: hideWorkItem)
+        }
+    }
+
+    private func buildPlaybackCaptionEvents(for planned: PlannedScene) -> [PlaybackCaptionEvent] {
+        var events: [PlaybackCaptionEvent] = []
+        var seenKeys = Set<String>()
+
+        for actor in planned.placedActors {
+            var elapsed: TimeInterval = 0
+            for segmentIndex in 0..<actor.pathDurations.count {
+                let duration = max(actor.pathDurations[segmentIndex], 0.1)
+                let annotationIndex = segmentIndex + 1
+                defer { elapsed += duration }
+
+                guard actor.pathAnnotations.indices.contains(annotationIndex),
+                      let rawAnnotation = actor.pathAnnotations[annotationIndex],
+                      !rawAnnotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else {
+                    continue
+                }
+
+                let caption = sanitizeCaption(rawAnnotation.text)
+                guard !caption.isEmpty else { continue }
+
+                let roundedStart = Int((elapsed * 10).rounded())
+                let key = "\(rawAnnotation.kind.rawValue)|\(roundedStart)|\(caption)"
+                guard !seenKeys.contains(key) else { continue }
+                seenKeys.insert(key)
+
+                events.append(
+                    PlaybackCaptionEvent(
+                        startTime: elapsed,
+                        duration: duration,
+                        kind: rawAnnotation.kind,
+                        actorLabel: displayName(for: actor),
+                        caption: caption
+                    )
+                )
+            }
+        }
+
+        return events.sorted {
+            if abs($0.startTime - $1.startTime) > 0.001 {
+                return $0.startTime < $1.startTime
+            }
+            return $0.actorLabel < $1.actorLabel
+        }
+    }
+
+    private func displayName(for actor: PlannedScene.PlacedActor) -> String {
+        if let name = actor.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return name
+        }
+        if let suffix = actor.actorId.split(separator: "_").last, Int(suffix) != nil {
+            return "Актёр \(suffix)"
+        }
+        return "Актёр"
+    }
+
+    private func sanitizeCaption(_ caption: String) -> String {
+        caption
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     /// Мгновенно устанавливает актёров на начальные позиции (без анимации)
@@ -951,10 +1292,14 @@ extension SceneGeneratorViewModel {
     
     /// Примеры описаний для UI
     static let exampleDescriptions: [(title: String, description: String)] = [
-        ("Встреча", "2 актёра идут навстречу друг другу"),
-        ("У стола", "Человек подходит к столу"),
-        ("Расхождение", "2 человека идут навстречу, проходят мимо друг друга, один поворачивает направо, другой продолжает идти прямо"),
-        ("Мимо шкафа", "Актёр проходит мимо шкафа"),
-        ("Быстрый бег", "Человек быстро бежит вперёд")
+        ("Первый и второй", "Первый подходит к экрану, а второй смотрит на него."),
+        ("Остановка у объекта", "Сначала первый актёр и второй актёр идут навстречу друг другу, потом оба останавливаются рядом с рабочим компьютером."),
+        ("Проход мимо объекта", "Первый актёр и второй актёр идут навстречу друг другу и затем оба проходят мимо рабочего компьютера."),
+        ("Открыть и взять", "Первый актёр сначала открывает коробку, затем берёт папку."),
+        ("Трое в сцене", "Первый подходит к шкафу, второй смотрит на первого, а третий остаётся у киоска."),
+        ("Сказать и положить", "Первый актёр говорит: «Положи коробку сюда, потом разберём», после чего второй кладёт коробку на стойку."),
+        ("Сказать и повернуться", "Первый актёр говорит: «Я уже приложил отчёт». Второй актёр отвечает: «Тогда быстро проверь отчёт», после чего второй актёр поворачивается к первому актёру."),
+        ("Сказать и передать", "Таня говорит: «Передай конверт третьему». Рома отвечает: «Сейчас передам». Затем второй берёт письмо и передаёт его Яне, после чего письмо получает третий."),
+        ("Сказать и посмотреть", "Илья говорит: «Я уже отправил скриншот», а потом Мила отвечает: «Тогда покажи скриншот», и Мила смотрит на Илью.")
     ]
 }

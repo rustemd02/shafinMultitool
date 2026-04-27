@@ -13,6 +13,12 @@ struct SceneGeneratorView: View {
     @StateObject private var viewModel = SceneGeneratorViewModel()
     @Environment(\.dismiss) private var dismiss
     
+    private let panelFill = Color.black.opacity(0.55)
+    private let panelStroke = Color.white.opacity(0.14)
+    private let panelStrongFill = Color.black.opacity(0.72)
+    private let primaryControlFill = Color.white.opacity(0.2)
+    private let secondaryTextColor = Color.white.opacity(0.74)
+    
     var body: some View {
         ZStack {
             // AR Camera View
@@ -22,25 +28,41 @@ struct SceneGeneratorView: View {
             // Overlay UI
             VStack {
                 // Top bar
-                topBar
+                if viewModel.isPlaying {
+                    playbackTimeline
+                } else {
+                    topBar
+                }
                 
                 Spacer()
-                
-                // Marked objects badges (user-defined)
-                if !viewModel.markedObjects.isEmpty {
-                    markedObjectsBadges
+
+                if let actionCaption = viewModel.activeActionCaption {
+                    playbackActionCaption(actionCaption)
                 }
-                
-                // Detected objects badges
-                if !viewModel.detectedObjects.isEmpty {
-                    detectedObjectsBadges
+
+                if let dialogueCaption = viewModel.activeDialogueCaption {
+                    playbackDialogueCaption(dialogueCaption)
                 }
-                
-                // Status message
-                statusBar
-                
-                // Bottom controls
-                bottomControls
+
+                if viewModel.isPlaying {
+                    playbackStopControl
+                } else {
+                    // Marked objects badges (user-defined)
+                    if !viewModel.markedObjects.isEmpty {
+                        markedObjectsBadges
+                    }
+
+                    // Detected objects badges
+                    if !viewModel.detectedObjects.isEmpty {
+                        detectedObjectsBadges
+                    }
+
+                    // Status message
+                    statusBar
+
+                    // Bottom controls
+                    bottomControls
+                }
             }
             .padding()
             
@@ -74,52 +96,169 @@ struct SceneGeneratorView: View {
         }
         .preferredColorScheme(.dark)
     }
+
+    private var playbackTimeline: some View {
+        HStack(spacing: 6) {
+            ForEach(viewModel.beatTimelineItems) { item in
+                beatTimelineSegment(item)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.46))
+                .overlay(
+                    Capsule()
+                        .stroke(panelStroke, lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+    }
+
+    private func beatTimelineSegment(_ item: BeatPlaybackTimelineItem) -> some View {
+        let isPast = item.index < viewModel.activeBeatIndex
+        let isActive = item.index == viewModel.activeBeatIndex
+        let progress = isPast ? 1 : (isActive ? viewModel.beatProgress : 0)
+
+        return VStack(spacing: 4) {
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(isActive ? 0.22 : 0.12))
+
+                GeometryReader { proxy in
+                    Capsule()
+                        .fill(isActive ? Color.green : Color.white.opacity(0.72))
+                        .frame(width: max(0, proxy.size.width * progress))
+                }
+                .clipShape(Capsule())
+            }
+            .frame(width: isActive ? 72 : 28, height: isActive ? 7 : 5)
+            .animation(.easeInOut(duration: 0.2), value: isActive)
+
+            HStack(spacing: 3) {
+                if item.hasDialogueCaption {
+                    Image(systemName: "bubble.left.fill")
+                }
+                if item.hasActionCaption {
+                    Image(systemName: "sparkles")
+                }
+            }
+            .font(.system(size: 7, weight: .bold))
+            .foregroundColor(.white.opacity(isActive ? 0.95 : 0.45))
+            .frame(height: 8)
+        }
+        .accessibilityLabel("Beat \(item.index + 1)")
+    }
+
+    private func playbackDialogueCaption(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(.white)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .frame(maxWidth: 340)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(panelStrongFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(panelStroke, lineWidth: 1)
+                    )
+            )
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func playbackActionCaption(_ text: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 11, weight: .bold))
+
+            Text(text)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+        .foregroundColor(.white.opacity(0.94))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 310)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.56))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+        )
+        .padding(.bottom, 8)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
     
     // MARK: - Top Bar
     
     private var topBar: some View {
         HStack {
-            // Back button
             Button(action: { dismiss() }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.white.opacity(0.8))
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(primaryControlFill)
+                            .overlay(
+                                Circle().stroke(panelStroke, lineWidth: 1)
+                            )
+                    )
             }
             
             Spacer()
             
-            // Title
             VStack(alignment: .center, spacing: 2) {
-                Text("Scene Generator")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                Text("Генератор сцен")
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
                 
                 if viewModel.parsedScript != nil {
                     Text("\(viewModel.parsedScript?.actors.count ?? 0) актёров")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.7))
+                    .font(.system(size: 12))
+                        .foregroundColor(secondaryTextColor)
                 }
             }
             
             Spacer()
             
-            // Reset button
             Button(action: { viewModel.resetScene() }) {
-                Image(systemName: "arrow.counterclockwise.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.white.opacity(0.8))
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(primaryControlFill)
+                            .overlay(
+                                Circle().stroke(panelStroke, lineWidth: 1)
+                            )
+                    )
             }
             .opacity(viewModel.plannedScene != nil ? 1 : 0.3)
             .disabled(viewModel.plannedScene == nil)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
-            LinearGradient(
-                colors: [Color.black.opacity(0.6), Color.clear],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            RoundedRectangle(cornerRadius: 16)
+                .fill(panelFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(panelStroke, lineWidth: 1)
+                )
         )
     }
     
@@ -151,10 +290,10 @@ struct SceneGeneratorView: View {
                 // Заголовок
                 HStack(spacing: 4) {
                     Image(systemName: "mappin.circle.fill")
-                        .foregroundColor(.green)
+                        .foregroundColor(.green.opacity(0.85))
                     Text("Мои объекты:")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(secondaryTextColor)
                 }
                 
                 ForEach(viewModel.markedObjects) { marker in
@@ -182,46 +321,72 @@ struct SceneGeneratorView: View {
             
             Text(viewModel.statusMessage)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(.white)
             
             Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(
-            Capsule()
-                .fill(Color.black.opacity(0.5))
+            RoundedRectangle(cornerRadius: 13)
+                .fill(panelFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13)
+                        .stroke(panelStroke, lineWidth: 1)
+                )
         )
         .padding(.horizontal)
         .padding(.bottom, 8)
     }
     
     // MARK: - Bottom Controls
+
+    private var playbackStopControl: some View {
+        Button(action: { viewModel.stopScene() }) {
+            HStack(spacing: 8) {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 13, weight: .bold))
+                Text("Стоп")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(panelFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.red.opacity(0.45), lineWidth: 1)
+                    )
+            )
+        }
+        .padding(.bottom, 16)
+    }
     
     private var bottomControls: some View {
         HStack(spacing: 16) {
-            // Marking mode button
             Button(action: { viewModel.toggleMarkingMode() }) {
                 ZStack {
                     Circle()
-                        .fill(viewModel.isMarkingMode ? Color.green : Color.white.opacity(0.2))
-                        .frame(width: 50, height: 50)
+                        .fill(viewModel.isMarkingMode ? Color.green : primaryControlFill)
+                        .frame(width: 54, height: 54)
+                        .overlay(
+                            Circle().stroke(panelStroke, lineWidth: 1)
+                        )
                     
                     Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 20))
-                        .foregroundColor(viewModel.isMarkingMode ? .white : .white.opacity(0.8))
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
                 }
             }
-            .shadow(color: viewModel.isMarkingMode ? Color.green.opacity(0.5) : .clear, radius: 8)
             
-            // Scene info (if generated)
             if let script = viewModel.parsedScript {
                 sceneInfoButton(script: script)
             }
             
             Spacer()
             
-            // Play/Stop button
             if viewModel.plannedScene != nil {
                 Button(action: {
                     if viewModel.isPlaying {
@@ -232,38 +397,35 @@ struct SceneGeneratorView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(viewModel.isPlaying ? Color.red : Color.green)
-                            .frame(width: 60, height: 60)
+                            .fill(viewModel.isPlaying ? Color.red : Color.white)
+                            .frame(width: 62, height: 62)
+                            .overlay(
+                                Circle().stroke(panelStroke, lineWidth: 1)
+                            )
                         
                         Image(systemName: viewModel.isPlaying ? "stop.fill" : "play.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.white)
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(viewModel.isPlaying ? .white : .black)
                     }
                 }
-                .shadow(color: (viewModel.isPlaying ? Color.red : Color.green).opacity(0.5), radius: 10)
             }
             
             Spacer()
             
-            // Add scene button
             Button(action: { viewModel.showInput() }) {
                 ZStack {
                     Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.blue, Color.purple],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                        .fill(viewModel.isARSessionReady && !viewModel.isMarkingMode ? Color.white : Color.gray.opacity(0.5))
+                        .frame(width: 66, height: 66)
+                        .overlay(
+                            Circle().stroke(panelStroke, lineWidth: 1)
                         )
-                        .frame(width: 70, height: 70)
                     
                     Image(systemName: "plus")
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.black)
                 }
             }
-            .shadow(color: Color.purple.opacity(0.5), radius: 15)
             .disabled(!viewModel.isARSessionReady || viewModel.isGenerating || viewModel.isMarkingMode)
             .opacity(viewModel.isARSessionReady && !viewModel.isMarkingMode ? 1 : 0.5)
         }
@@ -295,7 +457,11 @@ struct SceneGeneratorView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.5))
+                .fill(panelFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(panelStroke, lineWidth: 1)
+                )
         )
     }
     
@@ -318,7 +484,11 @@ struct SceneGeneratorView: View {
             .padding(32)
             .background(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.black.opacity(0.8))
+                    .fill(panelStrongFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(panelStroke, lineWidth: 1)
+                    )
             )
         }
     }
@@ -333,7 +503,7 @@ struct SceneGeneratorView: View {
                 
                 HStack(spacing: 8) {
                     Image(systemName: "hand.tap.fill")
-                        .foregroundColor(.green)
+                        .foregroundColor(.green.opacity(0.9))
                     Text("Тапните на объект для разметки")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.white)
@@ -341,11 +511,11 @@ struct SceneGeneratorView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(
-                    Capsule()
-                        .fill(Color.green.opacity(0.3))
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(panelFill)
                         .overlay(
-                            Capsule()
-                                .strokeBorder(Color.green.opacity(0.5), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 14)
+                                .strokeBorder(Color.green.opacity(0.55), lineWidth: 1)
                         )
                 )
                 
@@ -358,13 +528,13 @@ struct SceneGeneratorView: View {
             // Cancel button
             Button(action: { viewModel.toggleMarkingMode() }) {
                 Text("Отмена")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.black)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .background(
-                        Capsule()
-                            .fill(Color.red.opacity(0.8))
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(Color.white)
                     )
             }
             .padding(.bottom, 100)
@@ -382,7 +552,7 @@ struct DetectedObjectBadge: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(isMatched ? Color.green : Color.blue)
+                .fill(isMatched ? Color.green : Color.white.opacity(0.7))
                 .frame(width: 6, height: 6)
             
             Text(label.capitalized)
@@ -391,16 +561,16 @@ struct DetectedObjectBadge: View {
             
             Text("\(Int(confidence * 100))%")
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(.white.opacity(0.62))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
             Capsule()
-                .fill(Color.black.opacity(0.5))
+                .fill(Color.black.opacity(0.45))
                 .overlay(
                     Capsule()
-                        .strokeBorder(isMatched ? Color.green.opacity(0.5) : Color.clear, lineWidth: 1)
+                        .strokeBorder(isMatched ? Color.green.opacity(0.5) : Color.white.opacity(0.14), lineWidth: 1)
                 )
         )
     }
@@ -425,14 +595,14 @@ struct MarkedObjectBadge: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 14))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.white.opacity(0.5))
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
             Capsule()
-                .fill(Color.green.opacity(0.2))
+                .fill(Color.black.opacity(0.45))
                 .overlay(
                     Capsule()
                         .strokeBorder(Color.green.opacity(0.5), lineWidth: 1)
@@ -465,12 +635,7 @@ struct MarkerNameInputSheet: View {
             }
             .padding()
             .background(
-                LinearGradient(
-                    colors: [Color(red: 0.08, green: 0.08, blue: 0.15), Color.black],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                Color.black.ignoresSafeArea()
             )
             .navigationTitle("Новый объект")
             .navigationBarTitleDisplayMode(.inline)

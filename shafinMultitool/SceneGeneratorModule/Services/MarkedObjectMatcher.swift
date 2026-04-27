@@ -44,34 +44,56 @@ final class MarkedObjectMatcher {
         for (index, marker) in markedObjects.enumerated() {
             print("🔍 [MATCHER] Проверка markedObject[\(index)]: name='\(marker.name)', type=\(marker.type.rawValue)")
             let markerName = marker.name.lowercased()
+            let normalizedMarkerNames = normalizedSearchCandidates(for: markerName)
             
             // Ищем прямое упоминание имени маркера
-            if let range = lowercasedText.range(of: markerName) {
-                print("🔍 [MATCHER]   Найдено прямое упоминание '\(markerName)'")
-                references.append(MarkedObjectReference(
-                    markerId: marker.id,
-                    markerName: marker.name,
-                    matchedText: String(text[range]),
-                    position: range
-                ))
-                continue
+            for candidate in normalizedMarkerNames {
+                if let range = lowercasedText.range(of: candidate) {
+                    print("🔍 [MATCHER]   Найдено прямое упоминание '\(candidate)'")
+                    references.append(MarkedObjectReference(
+                        markerId: marker.id,
+                        markerName: marker.name,
+                        matchedText: String(text[range]),
+                        position: range
+                    ))
+                    break
+                }
             }
+            if references.last?.markerId == marker.id { continue }
             
             // Ищем через лемматизацию
-            if lemmatizer.textContainsKeyword(lowercasedText, keyword: markerName) {
-                print("🔍 [MATCHER]   Найдено через лемматизацию '\(markerName)'")
-                // Находим точную позицию через поиск по словам
-                if let position = findWordPosition(in: lowercasedText, word: markerName) {
+            for candidate in normalizedMarkerNames {
+                if lemmatizer.textContainsKeyword(lowercasedText, keyword: candidate) {
+                    print("🔍 [MATCHER]   Найдено через лемматизацию '\(candidate)'")
+                    // Находим точную позицию через поиск по словам
+                    if let position = findWordPosition(in: lowercasedText, word: candidate) {
+                        references.append(MarkedObjectReference(
+                            markerId: marker.id,
+                            markerName: marker.name,
+                            matchedText: String(text[position]),
+                            position: position
+                        ))
+                        break
+                    }
+                }
+            }
+            if references.last?.markerId == marker.id { continue }
+
+            for candidate in normalizedMarkerNames {
+                if let position = findMultiWordMarkerPosition(in: lowercasedText, markerName: candidate) {
+                    print("🔍 [MATCHER]   Найдено по многословной лемме '\(candidate)'")
                     references.append(MarkedObjectReference(
                         markerId: marker.id,
                         markerName: marker.name,
                         matchedText: String(text[position]),
                         position: position
                     ))
+                    break
                 }
-            } else {
-                print("🔍 [MATCHER]   Не найдено упоминание '\(markerName)'")
             }
+            if references.last?.markerId == marker.id { continue }
+
+            print("🔍 [MATCHER]   Не найдено упоминание '\(markerName)'")
             
             // Ищем с притяжательными местоимениями ("мой стол", "этот стол")
             let possessivePatterns = ["мой \(markerName)", "моя \(markerName)", "моё \(markerName)",
@@ -208,5 +230,43 @@ final class MarkedObjectMatcher {
         }
         
         return nil
+    }
+
+    private func findMultiWordMarkerPosition(in text: String, markerName: String) -> Range<String.Index>? {
+        let markerTokens = markerName
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        guard markerTokens.count > 1 else { return nil }
+
+        let textTokens = text
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+
+        let allTokensMatch = markerTokens.allSatisfy { markerToken in
+            textTokens.contains { textToken in
+                lemmatizer.matchesKeyword(textToken, keyword: markerToken)
+                    || haveSharedStem(textToken, markerToken)
+            }
+        }
+        guard allTokensMatch else { return nil }
+
+        return findWordPosition(in: text, word: markerTokens[0])
+    }
+
+    private func haveSharedStem(_ lhs: String, _ rhs: String) -> Bool {
+        let left = lemmatizer.lemmatize(lhs)
+        let right = lemmatizer.lemmatize(rhs)
+        guard left.count >= 3, right.count >= 3 else { return false }
+        return String(left.prefix(3)) == String(right.prefix(3))
+    }
+
+    private func normalizedSearchCandidates(for markerName: String) -> [String] {
+        let sanitized = markerName.replacingOccurrences(of: "_", with: " ")
+        let tokens = sanitized.split(separator: " ").map(String.init)
+        var candidates = [sanitized]
+        if tokens.count > 1, ["мой", "моя", "моё", "мое", "наш", "наша", "этот", "эта", "тот", "та"].contains(tokens[0]) {
+            candidates.append(tokens.dropFirst().joined(separator: " "))
+        }
+        return Array(NSOrderedSet(array: candidates)) as? [String] ?? candidates
     }
 }

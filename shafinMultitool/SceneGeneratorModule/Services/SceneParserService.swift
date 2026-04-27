@@ -50,13 +50,13 @@ final class SceneParserService {
     ///   - description: Текстовое описание сцены
     ///   - markedObjects: Размеченные пользователем объекты в реальном пространстве
     /// - Returns: Результат парсинга с диагностикой
-    func parse(_ description: String, markedObjects: [MarkedObject] = []) -> ParsingResult {
-        parse(description, markedObjects: markedObjects, state: nil)
+    func parse(_ description: String, markedObjects: [MarkedObject] = []) async -> ParsingResult {
+        await parse(description, markedObjects: markedObjects, state: nil)
     }
 
-    func parse(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) -> ParsingResult {
+    func parse(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) async -> ParsingResult {
         if state == nil {
-            let bundleResult = parseBundle(description, markedObjects: markedObjects)
+            let bundleResult = await parseBundle(description, markedObjects: markedObjects)
             return ParsingResult(script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: bundleResult.diagnostics)
         }
         let output = makeParseCoordinator().parse(description: description, markedObjects: markedObjects, state: state) { [weak self] in
@@ -169,8 +169,8 @@ final class SceneParserService {
         markedObjects: [MarkedObject] = [],
         mode: SceneBundleParseMode = .full,
         previousState: ScriptDocumentState? = nil
-    ) -> SceneBundleParsingResult {
-        let result = bundlePipeline.parse(
+    ) async -> SceneBundleParsingResult {
+        let result = await bundlePipeline.parse(
             description: description,
             markedObjects: markedObjects,
             mode: mode,
@@ -311,8 +311,8 @@ final class SceneParserService {
 
     /// Старый метод для обратной совместимости (deprecated)
     @available(*, deprecated, message: "Используйте parse(_:markedObjects:) который возвращает ParsingResult")
-    func parse(_ description: String) -> SceneScript {
-        return parse(description, markedObjects: []).script
+    func parse(_ description: String) async -> SceneScript {
+        return await parse(description, markedObjects: []).script
     }
 
     private func makeParseCoordinator() -> SceneParseCoordinator {

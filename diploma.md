@@ -1962,3 +1962,27 @@
 - `docs/SGv7pipeline/v1/04_run_v1_local_benchmark.py` (локальный runner для будущего `v1` benchmark контура)
 
 ---
+
+## [2026-04-26 22:30] - [SG Live Dataset Smoke: честная проверка реальной GGUF-модели в iOS runtime]
+
+### Суть изменений
+- Добавлен полноценный live smoke-контур для `SceneV8PipelineTests`, который прогоняет реальные sampled cases из сгенерированных SGv7 train datasets через приложение и локальную GGUF-модель, а не через stub/rule-based shortcut.
+- Расширены тесты датасетно-ориентированными паттернами: `dialogue_only`, `dialogue_then_put_down_object`, `dialogue_then_pick_up_object_then_give_to_third_actor`, `ordinal_first_second_third`, `toward_each_other_then_pass_by_marked_object`, `same_type_two_marked_objects`.
+- Введены параметры воспроизводимого запуска: `SG_LIVE_DATASET_SEED`, `SG_LIVE_DATASET_CASE_LIMIT`, `SG_LIVE_DATASET_PATTERN_FILTER`, а также запись summary через `SG_LIVE_DATASET_SUMMARY_PATH`.
+- Исправлена инфраструктура запуска в hosted XCTest: live bundle path теперь действительно cold-start-ит локальный LLM через async provider, а поиск GGUF-модели работает не только через `Bundle.main`, но и через все bundle/framework контейнеры тестового процесса.
+- Получен честный отрицательный результат на текущей модели `dataset_v8_plan_orpo_iter1_q4_k_m.gguf`: live smoke выполнялся около 808 секунд, модель реально загрузилась, но итоговый pass rate на 12 sampled сложных кейсах составил `0/12`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** До этого быстрые тесты могли давать ложное чувство корректности: часть запусков фактически пропускалась, часть шла через deterministic fallback, а hosted XCTest не всегда видел bundled GGUF-модель. Это означало, что существующий test harness проверял совместимость контрактов, но не давал честного ответа на главный прикладной вопрос: справляется ли локальная дообученная модель с реальными сложными сценарными входами в том же пути, который использует приложение.
+- **Решение:** Live smoke был переведён в режим end-to-end проверки через реальный `SceneBundlePipeline` и локальный model provider. Для воспроизводимости добавлен seeded sampling из `docs/SGv7pipeline/runs/sgv7_full_20260417/core/accepted_source.jsonl` и `hard/accepted_source.jsonl`, pattern-aware expectations, structured per-case diagnostics и summary output. Отдельно устранены две инфраструктурные причины ложных результатов: синхронный provider path больше не обходит cold-start LLM, а discovery GGUF-модели учитывает специфику тестового bundle layout.
+- **Детали:** Нормальные deterministic `SceneV8PipelineTests` проходят (`14` тестов: `12` passed, `2` skipped), что подтверждает базовую совместимость контрактов и fallback-path. Однако live dataset smoke с реальной моделью выявил существенный model/pipeline quality gap. Модель была загружена из `shafinMultitool/SceneGeneratorModule/Models/dataset_v8_plan_orpo_iter1_q4_k_m.gguf`, состояние загрузки `loaded`, но по sampled cases результат остался `passed=0/12`. По паттернам: `dialogue_only` дал `0/2` из-за missing active scene; `dialogue_then_pick_up_object_then_give_to_third_actor` дал только частичные планы без стабильных `pick_up/give`; `dialogue_then_put_down_object` терял `put_down` и dialogue; `same_type_two_marked_objects` часто схлопывал актёров и объекты; `toward_each_other_then_pass_by_marked_object` нестабилен по `pass_by`; `ordinal_first_second_third` схлопывал несколько актёров в одного. Это важный отрицательный результат: текущая GGUF-модель подходит для простых демо-паттернов, но пока не подтверждена как надёжный runtime parser для complex dialogue/action, ordinal binding и multi-object identity.
+
+### Ключевые файлы
+- `shafinMultitoolTests/SceneV8PipelineTests.swift` (live dataset smoke, seeded sampler, pattern-aware assertions, per-case diagnostics)
+- `shafinMultitool/SceneGeneratorModule/Services/SceneBundlePipeline.swift` (async local provider path для честного запуска GGUF-модели в bundle pipeline)
+- `shafinMultitool/SceneGeneratorModule/Services/LLMParserService.swift` (расширенный discovery bundled GGUF в hosted XCTest/runtime containers)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/core/accepted_source.jsonl` (источник sampled core cases для live smoke)
+- `docs/SGv7pipeline/runs/sgv7_full_20260417/hard/accepted_source.jsonl` (источник sampled hard cases для live smoke)
+- `/tmp/sg_live_dataset_probe/Logs/Test/Test-shafinMultitool-2026.04.26_22-12-02-+0300.xcresult` (артефакт полного live smoke запуска с реальной моделью)
+
+---

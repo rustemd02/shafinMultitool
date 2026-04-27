@@ -27,6 +27,7 @@ final class SceneQualityGate {
         }
 
         let plan = providerResult.plan
+        let providerNotes = providerResult.reasonCodes
         var blockingReasons: [String] = []
 
         if plan.beats.isEmpty || plan.beats.contains(where: { $0.actions.isEmpty }) {
@@ -74,7 +75,7 @@ final class SceneQualityGate {
 
         if blockingReasons.isEmpty {
             let baseReasons = providerResult.usedLegacySceneScriptBridge ? ["legacy_scene_script_bridge"] : ["local_plan_valid"]
-            let reasons = mergeReasons(baseReasons, compileNotes: compileNotes)
+            let reasons = mergeReasons(baseReasons + providerNotes, compileNotes: compileNotes)
             return SceneRuntimeTrace(
                 route: .acceptLocal,
                 reasons: reasons,
@@ -87,7 +88,7 @@ final class SceneQualityGate {
         let clarificationReasons = blockingReasons.filter {
             $0 == "ordinal_ambiguity"
                 || $0 == "same_type_marker_conflict"
-                || $0.hasPrefix("low_confidence:")
+                || $0 == "low_confidence:ordinal_actor_count_mismatch"
         }
         let route: SceneRouterOutcome
         let routeClarificationMessage: String?
@@ -101,7 +102,7 @@ final class SceneQualityGate {
             route = .fallbackRuleOnly
             routeClarificationMessage = nil
         }
-        let reasons = mergeReasons(blockingReasons, compileNotes: compileNotes)
+        let reasons = mergeReasons(blockingReasons + providerNotes, compileNotes: compileNotes)
         return SceneRuntimeTrace(
             route: route,
             reasons: reasons,

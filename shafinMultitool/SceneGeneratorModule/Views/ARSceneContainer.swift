@@ -81,7 +81,7 @@ struct ARSceneContainer: UIViewRepresentable {
     class Coordinator: NSObject, ARSessionDelegate {
         
         let viewModel: SceneGeneratorViewModel
-        private var isDepthEnabled: Bool?
+        private var isDepthEnabled = false
         private var isSessionPausedForGeneration = false
         private var lastProcessedFrameTimestamp: TimeInterval = 0
         private let frameProcessingInterval: TimeInterval = 1.0 / 15.0
@@ -153,7 +153,6 @@ struct ARSceneContainer: UIViewRepresentable {
         
         func session(_ session: ARSession, didUpdate frame: ARFrame) {
             guard !isSessionPausedForGeneration else { return }
-            guard !viewModel.isGenerating else { return }
 
             // processARFrame не требует 60 вызовов/сек — ограничиваем до ~15 Гц.
             let timestamp = frame.timestamp
@@ -165,7 +164,7 @@ struct ARSceneContainer: UIViewRepresentable {
             let imageResolution = frame.camera.imageResolution
             let planeAnchors = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
             let depthMap: CVPixelBuffer?
-            if viewModel.isMarkingMode {
+            if isDepthEnabled {
                 depthMap = (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap
             } else {
                 depthMap = nil

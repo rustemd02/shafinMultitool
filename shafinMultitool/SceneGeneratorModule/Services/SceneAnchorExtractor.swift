@@ -12,7 +12,8 @@ final class SceneAnchorExtractor {
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
 
     private let unsupportedActionKeywords = [
-        "улыба", "танцу", "машет", "машут", "кивает", "кивают", "обнима", "целует", "жестикулиру"
+        "улыба", "танцу", "машет", "машут", "кивает", "кивают", "обнима", "целует", "жестикулиру",
+        "поправ", "осматрива", "смотрит", "смотрят", "внимательно смотр", "делает помет", "замира"
     ]
 
     func extract(description: String, markedObjects: [MarkedObject]) -> SourceAnchorBundle {
@@ -44,7 +45,11 @@ final class SceneAnchorExtractor {
 
         let phaseCues = extractPhaseCues(from: text)
         let unsupportedActionFlags = unsupportedActionKeywords.filter { text.contains($0) }
-        let sameTypeMarkerConflict = hasSameTypeMarkerConflict(mentionedMarkerIDs: mentionedMarkedObjects, markedObjects: markedObjects)
+        let sameTypeMarkerConflict = hasSameTypeMarkerConflict(
+            mentionedMarkerIDs: mentionedMarkedObjects,
+            markedObjects: markedObjects,
+            text: text
+        )
 
         var lowConfidenceFlags: [String] = []
         if actorCountHint == 0 {
@@ -120,11 +125,34 @@ final class SceneAnchorExtractor {
         return cues
     }
 
-    private func hasSameTypeMarkerConflict(mentionedMarkerIDs: [String], markedObjects: [MarkedObject]) -> Bool {
+    private func hasSameTypeMarkerConflict(mentionedMarkerIDs: [String], markedObjects: [MarkedObject], text: String) -> Bool {
         let mentioned = mentionedMarkerIDs.compactMap { objectID in
             markedObjects.first(where: { $0.canonicalMarkedObjectID == objectID })
         }
         let types = Dictionary(grouping: mentioned, by: \.type)
-        return types.values.contains { $0.count > 1 }
+        if types.values.contains(where: { $0.count > 1 }) {
+            return true
+        }
+
+        let sameTypeGroups = Dictionary(grouping: markedObjects, by: \.type).values.filter { $0.count > 1 }
+        let hasDirectionalDisambiguationCue = ["лев", "прав", "ближ", "даль", "перв", "втор"].contains { cue in
+            text.contains(cue)
+        }
+        guard hasDirectionalDisambiguationCue else { return false }
+
+        return sameTypeGroups.contains { group in
+            group.contains { marker in
+                lemmatizer.textContainsKeyword(text, keyword: marker.name.replacingOccurrences(of: "_", with: " "))
+                    || markerSurfaceKeyword(for: marker).map { lemmatizer.textContainsKeyword(text, keyword: $0) } == true
+            }
+        }
+    }
+
+    private func markerSurfaceKeyword(for marker: MarkedObject) -> String? {
+        let tokens = marker.name
+            .replacingOccurrences(of: "_", with: " ")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        return tokens.last
     }
 }

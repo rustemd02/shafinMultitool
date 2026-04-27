@@ -13,7 +13,9 @@ import Foundation
 final class LLMParserService: LocalScenePlanProvider {
 
     static let shared = LLMParserService()
-    private static let generationTokenBudgets: [Int32] = [512, 768]
+    private static let modelPathOverrideDefaultsKey = "scene_generator_llm_model_path"
+    private static let generationTokenBudgets: [Int32] = [1024, 1536, 2048]
+    private static let maxGenerationTokens: Int32 = 3072
     private static let genericRoleNames: Set<String> = [
         "мужчина", "женщина", "парень", "девушка", "человек", "персонаж",
         "актёр", "актер", "актриса", "герой", "героиня", "он", "она", "они"
@@ -72,8 +74,14 @@ final class LLMParserService: LocalScenePlanProvider {
             }
             print("🤖 [LLM] Начинаю загрузку модели...")
 
-            guard let modelPath = Bundle.main.path(forResource: "qwen2.5-1.5b-instruct.Q4_K_M", ofType: "gguf") else {
-                let error = "GGUF модель не найдена в бандле приложения"
+            guard let modelPath = self.resolvePreferredModelPath() else {
+                let availableGGUF = self.discoverBundledGGUFModelURLs()
+                    .map { $0.lastPathComponent }
+                    .sorted()
+                    .joined(separator: ", ")
+                let error = availableGGUF.isEmpty
+                    ? "V8 GGUF модель не найдена в приложении"
+                    : "V8 GGUF модель не найдена. Доступные GGUF: [\(availableGGUF)]"
                 print("❌ [LLM] \(error)")
                 self.withStateLock {
                     self.loadingState = .failed(error)
@@ -149,18 +157,23 @@ final class LLMParserService: LocalScenePlanProvider {
 
         print("🤖 [LLM] Начало LLM парсинга для: '\(description)'")
         let prompt = buildPrompt(description: description, markedObjects: markedObjects, anchors: anchors, state: state)
+        let budgets = generationBudgets(for: description, anchors: anchors, state: state)
+        var reasonCodes: [String] = []
 
-        for (attemptIndex, maxTokens) in Self.generationTokenBudgets.enumerated() {
+        for (attemptIndex, maxTokens) in budgets.enumerated() {
             let attemptStart = CFAbsoluteTimeGetCurrent()
-            let attemptSuffix = Self.generationTokenBudgets.count > 1
-                ? " [попытка \(attemptIndex + 1)/\(Self.generationTokenBudgets.count), maxTokens=\(maxTokens)]"
+            let attemptSuffix = budgets.count > 1
+                ? " [попытка \(attemptIndex + 1)/\(budgets.count), maxTokens=\(maxTokens)]"
                 : ""
 
             // Генерируем ответ через llama.cpp
-            let generatedText = await context.generate(prompt: prompt, maxTokens: maxTokens)
+            let generationOutput = await context.generateWithMetadata(prompt: prompt, maxTokens: maxTokens)
+            let generatedText = generationOutput.text
+            let hitTokenLimit = generationOutput.stopReason == .maxTokensReached
 
             let elapsed = CFAbsoluteTimeGetCurrent() - attemptStart
             print("🤖 [LLM] Генерация\(attemptSuffix) заняла: \(String(format: "%.2f", elapsed)) сек")
+            print("🤖 [LLM] stopReason=\(generationOutput.stopReason.rawValue), generatedTokens=\(generationOutput.generatedTokenCount)/\(generationOutput.maxTokens)")
             print("🤖 [LLM] Ответ модели\(attemptSuffix):\n\(generatedText)")
 
             // Парсим JSON из ответа
@@ -170,18 +183,133 @@ final class LLMParserService: LocalScenePlanProvider {
                 markedObjects: markedObjects,
                 anchors: anchors
             ) {
+                if shouldRetryForLikelyTruncatedResponse(
+                    generatedText,
+                    plan: planResult.plan,
+                    description: description,
+                    stoppedByTokenBudget: hitTokenLimit
+                ), attemptIndex < budgets.count - 1 {
+                    let nextBudget = budgets[attemptIndex + 1]
+                    let reason = hitTokenLimit
+                        ? "обрезано по maxTokens"
+                        : "план выглядит неполным"
+                    print("⚠️ [LLM] План распознан, но \(reason). Повторяем с maxTokens=\(nextBudget)")
+                    if hitTokenLimit, !reasonCodes.contains("llm.retry_after_max_tokens") {
+                        reasonCodes.append("llm.retry_after_max_tokens")
+                    } else if !reasonCodes.contains("llm.retry_after_possible_truncation") {
+                        reasonCodes.append("llm.retry_after_possible_truncation")
+                    }
+                    continue
+                }
                 print("✅ [LLM] ScenePlanIR успешно извлечён из ответа LLM")
-                return planResult
+                if attemptIndex > 0, !reasonCodes.contains("llm.retry_recovered") {
+                    reasonCodes.append("llm.retry_recovered")
+                }
+                if hitTokenLimit, !reasonCodes.contains("llm.max_tokens_reached") {
+                    reasonCodes.append("llm.max_tokens_reached")
+                }
+                return ScenePlanProviderResult(
+                    plan: planResult.plan,
+                    usedLegacySceneScriptBridge: planResult.usedLegacySceneScriptBridge,
+                    reasonCodes: reasonCodes
+                )
             }
 
-            if attemptIndex < Self.generationTokenBudgets.count - 1 {
-                let nextBudget = Self.generationTokenBudgets[attemptIndex + 1]
+            if hitTokenLimit, !reasonCodes.contains("llm.max_tokens_reached") {
+                reasonCodes.append("llm.max_tokens_reached")
+            }
+
+            if attemptIndex < budgets.count - 1 {
+                let nextBudget = budgets[attemptIndex + 1]
                 print("⚠️ [LLM] Ответ не удалось распарсить, повторяем генерацию с maxTokens=\(nextBudget)")
+                if !reasonCodes.contains("llm.retry_after_json_parse_failure") {
+                    reasonCodes.append("llm.retry_after_json_parse_failure")
+                }
             }
         }
 
         print("❌ [LLM] Не удалось извлечь SceneScript из ответа")
         return nil
+    }
+
+    private func generationBudgets(
+        for description: String,
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?
+    ) -> [Int32] {
+        let stateEntityCount = (state?.knownActors.count ?? 0) + (state?.knownObjects.count ?? 0)
+        let anchorComplexity = (anchors.mentionedMarkedObjects.count * 60)
+            + (anchors.objectSurfaceMentions.count * 30)
+            + (anchors.phaseCues.count * 20)
+        let estimated = Int32(description.count / 2) + 640 + Int32(anchorComplexity + (stateEntityCount * 25))
+        let firstBudget = max(Self.generationTokenBudgets[0], min(estimated, Self.maxGenerationTokens))
+
+        var budgets = [firstBudget]
+        for budget in Self.generationTokenBudgets {
+            let normalized = min(max(budget, firstBudget), Self.maxGenerationTokens)
+            if !budgets.contains(normalized) {
+                budgets.append(normalized)
+            }
+        }
+
+        if let last = budgets.last, last < Self.maxGenerationTokens {
+            budgets.append(Self.maxGenerationTokens)
+        }
+
+        return budgets
+    }
+
+    private func shouldRetryForLikelyTruncatedPlan(_ plan: ScenePlanIR, description: String) -> Bool {
+        guard plan.beats.isEmpty else { return false }
+        return descriptionLikelyContainsActionsOrDialogue(description)
+    }
+
+    private func shouldRetryForLikelyTruncatedResponse(
+        _ response: String,
+        plan: ScenePlanIR,
+        description: String,
+        stoppedByTokenBudget: Bool
+    ) -> Bool {
+        if shouldRetryForLikelyTruncatedPlan(plan, description: description) {
+            return true
+        }
+        guard stoppedByTokenBudget else {
+            return false
+        }
+        return responseLikelyContainsIncompleteJSON(response)
+    }
+
+    private func responseLikelyContainsIncompleteJSON(_ response: String) -> Bool {
+        guard let payload = extractJSONPayload(from: response) else {
+            return true
+        }
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return true
+        }
+        if trimmed.hasSuffix(",") {
+            return true
+        }
+        return !trimmed.hasSuffix("}")
+    }
+
+    private func descriptionLikelyContainsActionsOrDialogue(_ description: String) -> Bool {
+        let text = description.lowercased()
+
+        if text.contains(":") || text.contains("«") || text.contains("\"") {
+            return true
+        }
+
+        let actionCues = [
+            "идет", "идёт", "пошел", "пошёл", "идут",
+            "бежит", "бегут", "подходит", "подошел", "подошёл",
+            "садится", "встает", "встаёт", "берет", "берёт",
+            "кладет", "кладёт", "открывает", "закрывает",
+            "поворачивается", "смотрит", "говорит", "спрашивает",
+            "подбегает", "проходит", "останавливается"
+        ]
+
+        return actionCues.contains { text.contains($0) }
     }
 
     /// Синхронная обёртка (для обратной совместимости)
@@ -270,6 +398,7 @@ final class LLMParserService: LocalScenePlanProvider {
         - unmarked objects должны использовать refs вида "object_slot_1", "object_slot_2"
         - marked objects должны использовать exact refs вида "object_marked_xxxxxxxx"
         - если действие unsupported, сохраняй его как type="described_action" с fallbackText/sourceText
+        - JSON должен быть полностью закрыт: все { } и [ ] должны быть сбалансированы
         - выводи ТОЛЬКО валидный JSON ScenePlanIR, без пояснений
         <|im_end|>
         <|im_start|>user
@@ -935,7 +1064,7 @@ final class LLMParserService: LocalScenePlanProvider {
                    actionIndex == secondActorRunUpgrade.actionIndex {
                     print("🔧 [LLM] Усиливаем семантику: второй актёр начинает бежать")
                     if secondActorRunUpgrade.shouldPromoteToRun {
-                        action.type = .run
+                        action = replacingActionType(in: action, with: .run)
                         action.resultingPose = .running
                     } else {
                         action.modifier = .quickly
@@ -949,7 +1078,7 @@ final class LLMParserService: LocalScenePlanProvider {
                    primaryMarkedObjectId != nil,
                    action.type == .walk,
                    action.target == primaryMarkedObjectId {
-                    action.type = .passBy
+                    action = replacingActionType(in: action, with: .passBy)
                 }
 
                 return action
@@ -994,6 +1123,22 @@ final class LLMParserService: LocalScenePlanProvider {
         }
 
         return nil
+    }
+
+    private func replacingActionType(in action: SceneAction, with type: SceneAction.ActionType) -> SceneAction {
+        SceneAction(
+            id: action.id,
+            actorId: action.actorId,
+            type: type,
+            target: action.target,
+            direction: action.direction,
+            modifier: action.modifier,
+            resultingPose: action.resultingPose,
+            holdingObject: action.holdingObject,
+            dialogue: action.dialogue,
+            fallbackText: action.fallbackText,
+            sourceText: action.sourceText
+        )
     }
 
     private func defaultPose(for type: SceneAction.ActionType) -> ActorPose {
@@ -1085,6 +1230,65 @@ final class LLMParserService: LocalScenePlanProvider {
         withStateLock {
             loadingTask = nil
         }
+    }
+
+    private func resolvePreferredModelPath() -> String? {
+        if let overridePath = UserDefaults.standard.string(forKey: Self.modelPathOverrideDefaultsKey),
+           FileManager.default.fileExists(atPath: overridePath) {
+            print("🤖 [LLM] Используем модель из override path: \(overridePath)")
+            return overridePath
+        }
+
+        let urls = discoverBundledGGUFModelURLs()
+        let preferred = urls
+            .map { ($0, modelSelectionScore(for: $0.lastPathComponent.lowercased())) }
+            .sorted { lhs, rhs in
+                if lhs.1 == rhs.1 {
+                    return lhs.0.lastPathComponent < rhs.0.lastPathComponent
+                }
+                return lhs.1 > rhs.1
+            }
+
+        guard let selected = preferred.first, selected.1 > 0 else {
+            return nil
+        }
+
+        print("🤖 [LLM] Автовыбор модели: \(selected.0.lastPathComponent)")
+        return selected.0.path
+    }
+
+    private func discoverBundledGGUFModelURLs() -> [URL] {
+        let bundleRoots = ([Bundle.main] + Bundle.allBundles + Bundle.allFrameworks)
+            .compactMap(\.resourceURL)
+        var seenPaths = Set<String>()
+        var urls: [URL] = []
+
+        for resourceRoot in bundleRoots {
+            guard seenPaths.insert(resourceRoot.path).inserted else { continue }
+            guard let enumerator = FileManager.default.enumerator(
+                at: resourceRoot,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+
+            for case let fileURL as URL in enumerator {
+                guard fileURL.pathExtension.lowercased() == "gguf" else { continue }
+                urls.append(fileURL)
+            }
+        }
+
+        return urls
+    }
+
+    private func modelSelectionScore(for filename: String) -> Int {
+        var score = 0
+        if filename.contains("v8") { score += 100 }
+        if filename.contains("iter1") || filename.contains("orpo") { score += 40 }
+        if filename.contains("qwen3") { score += 20 }
+        if filename.contains("qwen2.5") { score -= 1000 }
+        return score
     }
 
     // MARK: - GBNF Grammar

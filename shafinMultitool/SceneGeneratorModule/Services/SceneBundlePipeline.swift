@@ -346,32 +346,41 @@ final class ChunkCanonicalizer {
         var actorRefMap: [String: String] = [:]
         var objectRefMap: [String: String] = [:]
         var reasonCodes = draft.reasonCodes
-        var deferredRefs: [SceneDeferredRef] = []
-
         let existingActorsInOrder = stitchState?.actors ?? []
         let existingObjectsInOrder = stitchState?.objects ?? []
+        var deferredRefs: [SceneDeferredRef] = []
+        var orderedStableActorRefs: [String] = existingActorsInOrder.map(\.ref)
+        let chunkSourceText = draft.sourceText.lowercased()
 
         for (index, actor) in draft.plan.actors.enumerated() {
             let normalizedName = normalizeAlias(actor.name)
             let stableRef: String
-            if let normalizedName, let existing = actorAliasMap[normalizedName] {
+            if let existing = actorRefMap[actor.ref] {
+                stableRef = existing
+            } else if let normalizedName, let existing = actorAliasMap[normalizedName] {
                 stableRef = existing
             } else if let ordinalRef = resolveOrdinalActorRef(actor.ref, index: index, existingActors: existingActorsInOrder) {
                 stableRef = ordinalRef
-            } else if normalizedName == nil, let existing = existingActorsInOrder.first?.ref {
-                stableRef = existing
-            } else if normalizedName == nil, let existing = createdActors.first?.ref {
-                stableRef = existing
             } else {
-                let slug = slugify(normalizedName ?? "actor")
-                let nextIndex = existingActorMap.count + createdActors.count + 1
-                stableRef = "actor_scene\(sceneIndex)_\(slug)_\(nextIndex)"
+                stableRef = makeStableActorRef(
+                    rawRef: actor.ref,
+                    normalizedName: normalizedName,
+                    sceneIndex: sceneIndex,
+                    existingActorMap: existingActorMap,
+                    createdActors: createdActors
+                )
+            }
+
+            if existingActorMap[stableRef] == nil && !createdActors.contains(where: { $0.ref == stableRef }) {
                 let created = ScenePlanIR.Actor(ref: stableRef, type: actor.type, name: normalizedName ?? actor.name)
                 createdActors.append(created)
                 existingActorMap[stableRef] = created
             }
 
             actorRefMap[actor.ref] = stableRef
+            if !orderedStableActorRefs.contains(stableRef) {
+                orderedStableActorRefs.append(stableRef)
+            }
             if let normalizedName {
                 actorAliasMap[normalizedName] = stableRef
                 if draft.anchors.speakerCues.contains(normalizedName) {
@@ -384,7 +393,28 @@ final class ChunkCanonicalizer {
             actorRefMap["first"] = existingActorsInOrder[0].ref
         }
 
+        let referencedObjectRefs = Set(
+            draft.plan.beats
+                .flatMap(\.actions)
+                .flatMap { [$0.targetRef, $0.holdingObjectRef] }
+                .compactMap { $0 }
+        )
+
         for object in draft.plan.objects {
+            guard shouldAcceptObject(
+                object,
+                chunkSourceText: chunkSourceText,
+                anchors: draft.anchors,
+                existingObjects: existingObjectsInOrder,
+                objectAliasMap: objectAliasMap,
+                referencedObjectRefs: referencedObjectRefs
+            ) else {
+                if !reasonCodes.contains("v1.hallucinated_object_skipped") {
+                    reasonCodes.append("v1.hallucinated_object_skipped")
+                }
+                continue
+            }
+
             let stableRef: String
             let normalizedName = normalizeAlias(object.name)
 
@@ -441,7 +471,7 @@ final class ChunkCanonicalizer {
             }
         }
 
-        let beatPatch = draft.plan.beats.enumerated().map { beatIndex, beat in
+        let beatPatch = draft.plan.beats.enumerated().compactMap { beatIndex, beat -> ScenePlanIR.Beat? in
             var actions: [ScenePlanIR.Action] = []
             for actionIndex in beat.actions.indices {
                 let action = beat.actions[actionIndex]
@@ -475,20 +505,45 @@ final class ChunkCanonicalizer {
                     deferredRefs: &deferredRefs,
                     reasonCodes: &reasonCodes
                 )
-                let newAction = ScenePlanIR.Action(
-                    actorRef: actorRef,
-                    type: action.type,
-                    targetRef: targetResolution,
-                    direction: action.direction,
-                    modifier: action.modifier,
-                    resultingPose: action.resultingPose,
-                    holdingObjectRef: holdingObjectResolution,
-                    dialogue: action.dialogue,
-                    fallbackText: action.fallbackText,
-                    sourceText: action.sourceText
+                let newAction = normalizeActionSemantics(
+                    action: ScenePlanIR.Action(
+                        actorRef: actorRef,
+                        type: action.type,
+                        targetRef: targetResolution,
+                        direction: action.direction,
+                        modifier: action.modifier,
+                        resultingPose: action.resultingPose,
+                        holdingObjectRef: holdingObjectResolution,
+                        dialogue: action.dialogue,
+                        fallbackText: action.fallbackText,
+                        sourceText: action.sourceText
+                    ),
+                    orderedActorRefs: orderedStableActorRefs,
+                    anchorBundle: draft.anchors.sourceBundle,
+                    objectMap: objectRefMap,
+                    objectAliasMap: objectAliasMap
                 )
+                if newAction.type == .describedAction,
+                   !reasonCodes.contains("v1.unsupported_action_described") {
+                    reasonCodes.append("v1.unsupported_action_described")
+                }
                 actions.append(newAction)
             }
+            if shouldDropUngroundedStandBeat(actions: actions, chunkSourceText: draft.sourceText) {
+                if !reasonCodes.contains("v1.ungrounded_stand_beat_dropped") {
+                    reasonCodes.append("v1.ungrounded_stand_beat_dropped")
+                }
+                return nil
+            }
+            actions = normalizeCollectiveBeatSemantics(
+                actions: actions,
+                orderedActorRefs: orderedStableActorRefs,
+                beatPhase: beat.phase,
+                chunkSourceText: draft.sourceText,
+                objectMap: objectRefMap,
+                objectAliasMap: objectAliasMap,
+                reasonCodes: &reasonCodes
+            )
             return ScenePlanIR.Beat(
                 ref: "\(draft.chunkID)_beat_\(beatIndex + 1)",
                 phase: beat.phase,
@@ -565,10 +620,455 @@ final class ChunkCanonicalizer {
         if let resolved = resolveOrdinalActorRef(rawRef, index: 0, existingActors: existingActors) {
             return resolved
         }
-        if !anchors.speakerCues.isEmpty, let fallback = existingActors.first?.ref {
+        let lowered = rawRef.lowercased()
+        if !anchors.speakerCues.isEmpty,
+           ["он", "она", "они", "герой", "героиня", "человек", "персонаж"].contains(lowered),
+           let fallback = existingActors.first?.ref {
             return fallback
         }
-        return actorMap.values.sorted().first
+        return nil
+    }
+
+    private func shouldAcceptObject(
+        _ object: ScenePlanIR.Object,
+        chunkSourceText: String,
+        anchors: SceneChunkAnchor,
+        existingObjects: [ScenePlanIR.Object],
+        objectAliasMap: [String: String],
+        referencedObjectRefs: Set<String>
+    ) -> Bool {
+        if object.ref.hasPrefix("object_marked_") || (object.markedObjectID?.hasPrefix("object_marked_") ?? false) {
+            return true
+        }
+        if referencedObjectRefs.contains(object.ref) {
+            return true
+        }
+        if existingObjects.contains(where: { $0.ref == object.ref }) {
+            return true
+        }
+
+        let normalizedName = normalizeAlias(object.name)
+        if let normalizedName, objectAliasMap[normalizedName] != nil {
+            return true
+        }
+        if let normalizedName, chunkSourceText.contains(normalizedName) {
+            return true
+        }
+
+        let surfaceMentions = Set(anchors.sourceBundle.objectSurfaceMentions.map { $0.lowercased() })
+        if let normalizedName, surfaceMentions.contains(normalizedName) {
+            return true
+        }
+        if surfaceMentions.contains(object.type.rawValue.lowercased()) {
+            return true
+        }
+
+        return false
+    }
+
+    private func shouldDropUngroundedStandBeat(actions: [ScenePlanIR.Action], chunkSourceText: String) -> Bool {
+        guard !actions.isEmpty, actions.allSatisfy({ $0.type == .stand }) else {
+            return false
+        }
+        let lowercased = chunkSourceText.lowercased()
+        let hasStandCue = lowercased.contains("стоит")
+            || lowercased.contains("стоят")
+            || lowercased.contains("остан")
+            || lowercased.contains("жд")
+        let hasMotionCue = lowercased.contains("ид")
+            || lowercased.contains("подход")
+            || lowercased.contains("направ")
+            || lowercased.contains("навстреч")
+        return hasMotionCue && !hasStandCue
+    }
+
+    private func makeStableActorRef(
+        rawRef: String,
+        normalizedName: String?,
+        sceneIndex: Int,
+        existingActorMap: [String: ScenePlanIR.Actor],
+        createdActors: [ScenePlanIR.Actor]
+    ) -> String {
+        if ["first", "second", "third"].contains(rawRef),
+           existingActorMap[rawRef] == nil,
+           !createdActors.contains(where: { $0.ref == rawRef }) {
+            return rawRef
+        }
+
+        let slug = slugify(normalizedName ?? "actor")
+        let nextIndex = existingActorMap.count + createdActors.count + 1
+        return "actor_scene\(sceneIndex)_\(slug)_\(nextIndex)"
+    }
+
+    private func normalizeActionSemantics(
+        action: ScenePlanIR.Action,
+        orderedActorRefs: [String],
+        anchorBundle: SourceAnchorBundle,
+        objectMap: [String: String],
+        objectAliasMap: [String: String]
+    ) -> ScenePlanIR.Action {
+        guard action.type == .walk || action.type == .run else {
+            return action
+        }
+
+        var normalized = action
+        let actionText = (action.sourceText ?? action.fallbackText ?? "").lowercased()
+
+        if let explicitObjectTarget = inferObjectTarget(
+            from: actionText,
+            objectMap: objectMap,
+            objectAliasMap: objectAliasMap
+        ) {
+            if normalized.targetRef == nil || orderedActorRefs.contains(normalized.targetRef ?? "") {
+                normalized.targetRef = explicitObjectTarget
+            }
+            if normalized.direction == nil, actionText.contains(" к ") || actionText.hasPrefix("к ") {
+                normalized.direction = .toTarget
+            }
+            return normalized
+        }
+
+        let shouldMoveTowardEachOther = actionTextIndicatesTowardEachOther(actionText)
+            || (actionText.isEmpty && anchorBundle.phaseCues.contains("navstrechu"))
+
+        guard shouldMoveTowardEachOther,
+              orderedActorRefs.count >= 2,
+              normalized.direction == nil else {
+            return normalized
+        }
+
+        normalized.direction = .towardEachOther
+        if normalized.targetRef == nil,
+           let actorIndex = orderedActorRefs.firstIndex(of: action.actorRef) {
+            let counterpartIndex = actorIndex == 0 ? 1 : 0
+            if orderedActorRefs.indices.contains(counterpartIndex) {
+                normalized.targetRef = orderedActorRefs[counterpartIndex]
+            }
+        }
+        return normalized
+    }
+
+    private func actionTextIndicatesTowardEachOther(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        return text.contains("навстреч")
+            || text.contains("друг к другу")
+            || text.contains("друг на друга")
+            || text.contains("другому")
+    }
+
+    private func inferObjectTarget(
+        from actionText: String,
+        objectMap: [String: String],
+        objectAliasMap: [String: String]
+    ) -> String? {
+        guard !actionText.isEmpty else { return nil }
+
+        for (alias, objectRef) in objectAliasMap.sorted(by: { $0.key.count > $1.key.count }) {
+            if actionTextMentionsAlias(actionText, alias: alias) {
+                return objectRef
+            }
+        }
+
+        if (actionText.contains(" к ") || actionText.hasPrefix("к ")) && objectMap.count == 1 {
+            return objectMap.values.first
+        }
+
+        return nil
+    }
+
+    private func actionTextMentionsAlias(_ actionText: String, alias: String) -> Bool {
+        if actionText.contains(alias) {
+            return true
+        }
+
+        let trimmedAlias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedAlias.count >= 5 else { return false }
+        let prefixLength = min(5, trimmedAlias.count - 1)
+        let prefix = String(trimmedAlias.prefix(prefixLength))
+        return actionText.contains(prefix)
+    }
+
+    private func normalizeCollectiveBeatSemantics(
+        actions: [ScenePlanIR.Action],
+        orderedActorRefs: [String],
+        beatPhase: String?,
+        chunkSourceText: String,
+        objectMap: [String: String],
+        objectAliasMap: [String: String],
+        reasonCodes: inout [String]
+    ) -> [ScenePlanIR.Action] {
+        var normalizedTowardEachOther = normalizeCollectiveTowardEachOtherBeat(
+            actions: actions,
+            orderedActorRefs: orderedActorRefs,
+            beatPhase: beatPhase,
+            chunkSourceText: chunkSourceText,
+            reasonCodes: &reasonCodes
+        )
+
+        if let collectiveStopTarget = collectiveStopNearObjectTarget(
+            chunkSourceText: chunkSourceText,
+            objectMap: objectMap,
+            objectAliasMap: objectAliasMap
+        ) {
+            normalizedTowardEachOther = expandCollectiveStopNearObject(
+                actions: normalizedTowardEachOther,
+                orderedActorRefs: orderedActorRefs,
+                targetRef: collectiveStopTarget,
+                chunkSourceText: chunkSourceText,
+                reasonCodes: &reasonCodes
+            )
+        }
+
+        guard orderedActorRefs.count >= 2,
+              chunkTextIndicatesCollectiveApproach(chunkSourceText) else {
+            return normalizedTowardEachOther
+        }
+
+        guard let seedAction = normalizedTowardEachOther.first(where: { action in
+            (action.type == .approach || action.direction == .toTarget) &&
+            (action.targetRef?.hasPrefix("object_") ?? false)
+        }) else {
+            return normalizedTowardEachOther
+        }
+
+        var normalized = normalizedTowardEachOther
+        let actorsWithActions = Set(normalizedTowardEachOther.map(\.actorRef))
+        let targetRef = seedAction.targetRef
+
+        for index in normalized.indices {
+            let action = normalized[index]
+            guard action.actorRef != seedAction.actorRef else { continue }
+            let shouldReplace = action.type == .stand
+                || action.type == .stop
+                || action.direction == .towardEachOther
+                || ((action.type == .walk || action.type == .run) && (action.targetRef?.hasPrefix("actor_") ?? false))
+            guard shouldReplace else { continue }
+
+            normalized[index] = ScenePlanIR.Action(
+                actorRef: action.actorRef,
+                type: .approach,
+                targetRef: targetRef,
+                direction: .toTarget,
+                modifier: seedAction.modifier,
+                resultingPose: .walking,
+                holdingObjectRef: action.holdingObjectRef,
+                dialogue: action.dialogue,
+                fallbackText: action.fallbackText,
+                sourceText: action.sourceText ?? seedAction.sourceText
+            )
+        }
+
+        let missingActors = orderedActorRefs.filter { !actorsWithActions.contains($0) }
+        for actorRef in missingActors {
+            normalized.append(
+                ScenePlanIR.Action(
+                    actorRef: actorRef,
+                    type: .approach,
+                    targetRef: targetRef,
+                    direction: .toTarget,
+                    modifier: seedAction.modifier,
+                    resultingPose: .walking,
+                    holdingObjectRef: nil,
+                    dialogue: nil,
+                    fallbackText: nil,
+                    sourceText: seedAction.sourceText
+                )
+            )
+        }
+
+        if !reasonCodes.contains("v1.collective_object_motion_hotfix_v2") {
+            reasonCodes.append("v1.collective_object_motion_hotfix_v2")
+        }
+        if normalized != actions, !reasonCodes.contains("v1.collective_motion_expanded") {
+            reasonCodes.append("v1.collective_motion_expanded")
+        }
+
+        return normalized
+    }
+
+    private func normalizeCollectiveTowardEachOtherBeat(
+        actions: [ScenePlanIR.Action],
+        orderedActorRefs: [String],
+        beatPhase: String?,
+        chunkSourceText: String,
+        reasonCodes: inout [String]
+    ) -> [ScenePlanIR.Action] {
+        guard orderedActorRefs.count >= 2 else {
+            return actions
+        }
+
+        let phaseText = (beatPhase ?? "").lowercased()
+        let chunkText = chunkSourceText.lowercased()
+        let hasTowardEachOtherCue = phaseText.contains("navstrechu")
+            || phaseText.contains("toward_each_other")
+            || actionTextIndicatesTowardEachOther(chunkText)
+            || actions.contains { action in
+                action.direction == .towardEachOther
+                    || actionTextIndicatesTowardEachOther((action.sourceText ?? action.fallbackText ?? "").lowercased())
+            }
+        let chunkHasExplicitObjectTarget = textHasExplicitObjectTarget(chunkText)
+
+        guard hasTowardEachOtherCue else {
+            return actions
+        }
+
+        var normalized = actions
+        let primary = orderedActorRefs[0]
+        let secondary = orderedActorRefs[1]
+
+        normalized = normalized.map { action in
+            guard action.type == .walk || action.type == .run else { return action }
+            if isExplicitObjectMovementAction(action) && chunkHasExplicitObjectTarget {
+                if !reasonCodes.contains("v1.object_target_preserved") {
+                    reasonCodes.append("v1.object_target_preserved")
+                }
+                return action
+            }
+            var updated = action
+            if action.actorRef == primary {
+                updated.direction = .towardEachOther
+                updated.targetRef = secondary
+            } else if action.actorRef == secondary {
+                updated.direction = .towardEachOther
+                updated.targetRef = primary
+            }
+            return updated
+        }
+
+        let existingActorRefs = Set(normalized.map(\.actorRef))
+        if !existingActorRefs.contains(primary) {
+            normalized.append(
+                ScenePlanIR.Action(
+                    actorRef: primary,
+                    type: .walk,
+                    targetRef: secondary,
+                    direction: .towardEachOther,
+                    modifier: nil,
+                    resultingPose: .walking,
+                    holdingObjectRef: nil,
+                    dialogue: nil,
+                    fallbackText: nil,
+                    sourceText: "collective_toward_each_other"
+                )
+            )
+        }
+        if !existingActorRefs.contains(secondary) {
+            normalized.append(
+                ScenePlanIR.Action(
+                    actorRef: secondary,
+                    type: .walk,
+                    targetRef: primary,
+                    direction: .towardEachOther,
+                    modifier: nil,
+                    resultingPose: .walking,
+                    holdingObjectRef: nil,
+                    dialogue: nil,
+                    fallbackText: nil,
+                    sourceText: "collective_toward_each_other"
+                )
+            )
+        }
+
+        if normalized != actions, !reasonCodes.contains("v1.collective_toward_each_other_expanded") {
+            reasonCodes.append("v1.collective_toward_each_other_expanded")
+        }
+
+        return normalized
+    }
+
+    private func collectiveStopNearObjectTarget(
+        chunkSourceText: String,
+        objectMap: [String: String],
+        objectAliasMap: [String: String]
+    ) -> String? {
+        let lowercased = chunkSourceText.lowercased()
+        let hasPluralActorCue = lowercased.contains("оба")
+            || lowercased.contains("обе")
+            || lowercased.contains("первый") && lowercased.contains("второй")
+            || lowercased.contains("2 акт")
+            || lowercased.contains("два акт")
+        let hasStopCue = lowercased.contains("остан")
+        let hasNearCue = lowercased.contains("рядом")
+            || lowercased.contains("около")
+            || lowercased.contains(" возле ")
+            || lowercased.contains(" у ")
+        guard hasPluralActorCue && hasStopCue && hasNearCue else {
+            return nil
+        }
+        return inferObjectTarget(from: lowercased, objectMap: objectMap, objectAliasMap: objectAliasMap)
+    }
+
+    private func expandCollectiveStopNearObject(
+        actions: [ScenePlanIR.Action],
+        orderedActorRefs: [String],
+        targetRef: String,
+        chunkSourceText: String,
+        reasonCodes: inout [String]
+    ) -> [ScenePlanIR.Action] {
+        guard orderedActorRefs.count >= 2 else { return actions }
+
+        var normalized = actions
+        let firstTwoActors = Array(orderedActorRefs.prefix(2))
+        for actorRef in firstTwoActors {
+            if let existingIndex = normalized.firstIndex(where: { $0.actorRef == actorRef && ($0.type == .stand || $0.type == .stop) }) {
+                normalized[existingIndex].type = .stop
+                normalized[existingIndex].targetRef = targetRef
+                normalized[existingIndex].resultingPose = .standing
+                normalized[existingIndex].sourceText = normalized[existingIndex].sourceText ?? chunkSourceText
+            } else if !normalized.contains(where: { $0.actorRef == actorRef && $0.type == .stop && $0.targetRef == targetRef }) {
+                normalized.append(
+                    ScenePlanIR.Action(
+                        actorRef: actorRef,
+                        type: .stop,
+                        targetRef: targetRef,
+                        resultingPose: .standing,
+                        sourceText: chunkSourceText
+                    )
+                )
+            }
+        }
+
+        if normalized != actions, !reasonCodes.contains("v1.collective_stop_near_object_expanded") {
+            reasonCodes.append("v1.collective_stop_near_object_expanded")
+        }
+        return normalized
+    }
+
+    private func isExplicitObjectMovementAction(_ action: ScenePlanIR.Action) -> Bool {
+        if let targetRef = action.targetRef, targetRef.hasPrefix("object_") || targetRef.hasPrefix("object_marked_") {
+            return true
+        }
+        let text = (action.sourceText ?? action.fallbackText ?? "").lowercased()
+        return inferObjectTarget(from: text, objectMap: [:], objectAliasMap: [:]) != nil
+            || text.contains(" к ")
+            || text.hasPrefix("к ")
+    }
+
+    private func textHasExplicitObjectTarget(_ text: String) -> Bool {
+        let movementToCue = (text.contains(" к ") || text.hasPrefix("к "))
+            && !text.contains("друг к другу")
+            && !text.contains("друг ко другу")
+        return movementToCue
+            || text.contains(" у ")
+            || text.contains("рядом")
+            || text.contains("около")
+            || text.contains("возле")
+    }
+
+    private func chunkTextIndicatesCollectiveApproach(_ text: String) -> Bool {
+        let lowercased = text.lowercased()
+        let hasPluralActorCue = lowercased.contains("2 акт")
+            || lowercased.contains("два акт")
+            || lowercased.contains("2 челов")
+            || lowercased.contains("два челов")
+            || lowercased.contains("оба")
+            || lowercased.contains("обе")
+        let hasCollectiveMovementCue = lowercased.contains("идут к")
+            || lowercased.contains("подходят к")
+            || lowercased.contains("направляются к")
+            || lowercased.contains("потом идут к")
+            || lowercased.contains("затем идут к")
+        return hasPluralActorCue && hasCollectiveMovementCue
     }
 
     private func resolveTargetRef(
@@ -921,14 +1421,16 @@ final class SceneBundlePipeline {
         mode: SceneBundleParseMode,
         previousState: ScriptDocumentState?,
         fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult
-    ) -> SceneBundleParsingResult {
+    ) async -> SceneBundleParsingResult {
         let workload = makeWorkload(description: description, mode: mode, previousState: previousState)
-        return finalizeWorkload(
+        return await finalizeWorkload(
             workload,
             markedObjects: markedObjects,
             previousState: previousState,
             fallbackPlanner: fallbackPlanner,
-            asyncPlanner: nil
+            asyncPlanner: { [localProvider] text, markers, anchors, state in
+                await localProvider.generatePlanAsync(description: text, markedObjects: markers, anchors: anchors, state: state)
+            }
         )
     }
 
@@ -1041,7 +1543,10 @@ final class SceneBundlePipeline {
             activeSceneIndex: max(0, sceneEntries.indices.last ?? 0),
             diagnostics: ["bundle_mode=\(workload.mode.rawValue)", "scene_count=\(sceneEntries.count)"]
         )
-        let bundleScript = bundleCompiler.compile(bundlePlan: bundlePlan)
+        let bundleScript = hydrateMarkedObjectPositions(
+            in: bundleCompiler.compile(bundlePlan: bundlePlan),
+            markedObjects: markedObjects
+        )
         let activeSceneScript = bundleScript.activeSceneScript
         let diagnostics = makeDiagnostics(
             bundleScript: bundleScript,
@@ -1087,7 +1592,7 @@ final class SceneBundlePipeline {
         _ workload: SceneBundleWorkload,
         markedObjects: [MarkedObject],
         previousState: ScriptDocumentState?,
-        fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult,
+        fallbackPlanner: @escaping (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult,
         asyncPlanner: ((_ text: String, _ markers: [MarkedObject], _ anchors: SourceAnchorBundle, _ state: SceneChunkState?) async -> ScenePlanProviderResult?)?
     ) -> SceneBundleParsingResult {
         let semaphore = DispatchSemaphore(value: 0)
@@ -1117,6 +1622,13 @@ final class SceneBundlePipeline {
         fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult
     ) -> SceneChunkDraft {
         if let providerResult {
+            var reasonCodes = providerResult.usedLegacySceneScriptBridge ? ["v1.legacy_scene_bridge_chunk"] : ["v1.local_chunk_plan"]
+            let enrichedPlan = enrichRuleFallbackPlan(
+                providerResult.plan,
+                sourceText: rawSegment.sourceText,
+                anchors: anchors.sourceBundle,
+                reasonCodes: &reasonCodes
+            )
             return SceneChunkDraft(
                 sceneID: scene.id,
                 chunkID: rawSegment.chunkID,
@@ -1125,20 +1637,27 @@ final class SceneBundlePipeline {
                 sourceRange: rawSegment.sourceRange,
                 anchors: anchors,
                 registrySnapshot: registrySnapshot,
-                plan: providerResult.plan,
+                plan: enrichedPlan,
                 usedFallbackPlanner: false,
                 usedLegacyPlanBridge: providerResult.usedLegacySceneScriptBridge,
                 confidence: 0.9,
                 unresolvedMentions: anchors.pronounMentions,
-                reasonCodes: providerResult.usedLegacySceneScriptBridge ? ["v1.legacy_scene_bridge_chunk"] : ["v1.local_chunk_plan"]
+                reasonCodes: reasonCodes
             )
         }
 
         let fallback = fallbackPlanner(rawSegment.sourceText, markedObjects, chunkState)
-        let bridgedPlan = bridgePlan(
+        var reasonCodes = ["v1.rule_chunk_plan"]
+        var bridgedPlan = bridgePlan(
             from: fallback.script,
             markedObjects: markedObjects,
             anchors: anchors.sourceBundle
+        )
+        bridgedPlan = enrichRuleFallbackPlan(
+            bridgedPlan,
+            sourceText: rawSegment.sourceText,
+            anchors: anchors.sourceBundle,
+            reasonCodes: &reasonCodes
         )
         return SceneChunkDraft(
             sceneID: scene.id,
@@ -1153,8 +1672,106 @@ final class SceneBundlePipeline {
             usedLegacyPlanBridge: true,
             confidence: max(0.3, fallback.diagnostics.confidence),
             unresolvedMentions: anchors.pronounMentions,
-            reasonCodes: ["v1.rule_chunk_plan"]
+            reasonCodes: reasonCodes
         )
+    }
+
+    private func enrichRuleFallbackPlan(
+        _ plan: ScenePlanIR,
+        sourceText: String,
+        anchors: SourceAnchorBundle,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        var enriched = ensureOrdinalActors(in: plan, sourceText: sourceText, anchors: anchors)
+
+        guard !anchors.unsupportedActionFlags.isEmpty,
+              !enriched.beats.flatMap(\.actions).contains(where: { $0.type == .describedAction })
+        else {
+            return enriched
+        }
+
+        let describedText = extractUnsupportedActionSentence(
+            from: sourceText,
+            unsupportedFlags: anchors.unsupportedActionFlags
+        )
+        guard !describedText.isEmpty else { return enriched }
+
+        let actorRef = inferUnsupportedActionActorRef(from: describedText, sourceText: sourceText, anchors: anchors)
+        if !enriched.actors.contains(where: { $0.ref == actorRef }) {
+            enriched.actors.append(.init(ref: actorRef, type: .human))
+        }
+        enriched.beats.append(
+            ScenePlanIR.Beat(
+                ref: "beat_described_\(enriched.beats.count + 1)",
+                phase: "described_action",
+                actions: [
+                    ScenePlanIR.Action(
+                        actorRef: actorRef,
+                        type: .describedAction,
+                        resultingPose: .standing,
+                        fallbackText: describedText,
+                        sourceText: describedText
+                    ),
+                ],
+                minDuration: 0.5
+            )
+        )
+        if !reasonCodes.contains("v1.unsupported_action_described") {
+            reasonCodes.append("v1.unsupported_action_described")
+        }
+        return enriched
+    }
+
+    private func ensureOrdinalActors(in plan: ScenePlanIR, sourceText: String, anchors: SourceAnchorBundle) -> ScenePlanIR {
+        var enriched = plan
+        let lowercased = sourceText.lowercased()
+        let requiredCount: Int
+        if anchors.actorCountHint >= 3 || lowercased.contains("трет") {
+            requiredCount = 3
+        } else if anchors.actorCountHint >= 2
+            || lowercased.contains("оба")
+            || lowercased.contains("обе")
+            || lowercased.contains("перв") && lowercased.contains("втор") {
+            requiredCount = 2
+        } else {
+            requiredCount = enriched.actors.count
+        }
+
+        let ordinalRefs = ["first", "second", "third"]
+        for ref in ordinalRefs.prefix(requiredCount) where !enriched.actors.contains(where: { $0.ref == ref }) {
+            enriched.actors.append(.init(ref: ref, type: .human))
+        }
+        return enriched
+    }
+
+    private func extractUnsupportedActionSentence(from sourceText: String, unsupportedFlags: [String]) -> String {
+        let candidates = sourceText
+            .components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let lowercasedFlags = unsupportedFlags.map { $0.lowercased() }
+        return candidates.first { sentence in
+            let lowercased = sentence.lowercased()
+            return lowercasedFlags.contains(where: { lowercased.contains($0) })
+        } ?? ""
+    }
+
+    private func inferUnsupportedActionActorRef(
+        from describedText: String,
+        sourceText: String,
+        anchors: SourceAnchorBundle
+    ) -> String {
+        let lowercased = describedText.lowercased()
+        if lowercased.contains("трет") { return "third" }
+        if lowercased.contains("втор") { return "second" }
+        if lowercased.contains("перв") { return "first" }
+
+        let fullText = sourceText.lowercased()
+        if fullText.contains("трет") { return "third" }
+        if fullText.contains("втор") { return "second" }
+        if fullText.contains("перв") { return "first" }
+        if anchors.ordinalMentions.contains("second") { return "second" }
+        return "first"
     }
 
     private func bridgePlan(
@@ -1304,6 +1921,42 @@ final class SceneBundlePipeline {
             unresolvedMarkedObjects: !matchedMarkedObjects.isEmpty ? false : !markedObjects.isEmpty,
             notes: notes,
             matchedMarkedObjects: matchedMarkedObjects
+        )
+    }
+
+    private func hydrateMarkedObjectPositions(
+        in bundleScript: SceneBundleScript,
+        markedObjects: [MarkedObject]
+    ) -> SceneBundleScript {
+        guard !markedObjects.isEmpty else { return bundleScript }
+        let markerMap = Dictionary(uniqueKeysWithValues: markedObjects.map { ($0.canonicalMarkedObjectID, $0) })
+        let hydratedScenes = bundleScript.scenes.map { scene in
+            let hydratedObjects = scene.objects.map { object in
+                guard let marker = markerMap[object.id] else { return object }
+                var objectCopy = object
+                objectCopy.detectedPosition = marker.worldPosition
+                if objectCopy.name == nil {
+                    objectCopy.name = marker.name
+                }
+                return objectCopy
+            }
+            return SceneScript(
+                sceneHeading: scene.sceneHeading,
+                locationName: scene.locationName,
+                interiorExterior: scene.interiorExterior,
+                timeOfDay: scene.timeOfDay,
+                actors: scene.actors,
+                objects: hydratedObjects,
+                beats: scene.beats,
+                spatialRelations: scene.spatialRelations,
+                originalDescription: scene.originalDescription
+            )
+        }
+        return SceneBundleScript(
+            bundleID: bundleScript.bundleID,
+            scenes: hydratedScenes,
+            activeSceneIndex: bundleScript.activeSceneIndex,
+            diagnostics: bundleScript.diagnostics
         )
     }
 
@@ -1576,6 +2229,26 @@ private struct SceneBundleWorkload {
         if coldStartSceneIDs.contains(scene.id) {
             return nil
         }
-        return previousState?.stitchStates.first(where: { $0.sceneID == scene.id })
+        if let existing = previousState?.stitchStates.first(where: { $0.sceneID == scene.id }) {
+            return existing
+        }
+        return SceneStitchState(
+            sceneID: scene.id,
+            sceneIndex: scene.sceneIndex,
+            sourceText: "",
+            metadata: scene.metadata,
+            registry: SceneEntityRegistrySnapshot(
+                actors: [],
+                objects: [],
+                actorAliasMap: [:],
+                objectAliasMap: [:],
+                speakerAliasMap: [:],
+                unresolvedMentions: [],
+                lastResolvedSpeaker: nil,
+                locationName: scene.metadata.locationName,
+                actorPoses: [:],
+                heldObjects: [:]
+            )
+        )
     }
 }

@@ -205,6 +205,13 @@ protocol RemoteScenePlanProvider {
 struct ScenePlanProviderResult {
     let plan: ScenePlanIR
     let usedLegacySceneScriptBridge: Bool
+    let reasonCodes: [String]
+
+    init(plan: ScenePlanIR, usedLegacySceneScriptBridge: Bool, reasonCodes: [String] = []) {
+        self.plan = plan
+        self.usedLegacySceneScriptBridge = usedLegacySceneScriptBridge
+        self.reasonCodes = reasonCodes
+    }
 }
 
 enum ScenePlanCompilerError: Error, LocalizedError, Equatable {

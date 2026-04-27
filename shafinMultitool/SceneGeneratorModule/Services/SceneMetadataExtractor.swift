@@ -52,14 +52,15 @@ final class SceneMetadataExtractor {
     }
 
     private func parseHeading(_ line: String) -> SceneTopLevelMetadata? {
-        let patterns = [
-            #"^(INT|EXT|INT\/EXT)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#,
-            #"^(ИНТ|ЭКСТ|ИНТ\/ЭКСТ)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#,
-            #"^(НАТ)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#,
-            #"^([A-ZА-Я0-9][A-ZА-Я0-9 \/_]{2,})\s*[—-]\s*([A-ZА-Яa-zа-я0-9 \/_]{2,})$"#,
+        let patterns: [(pattern: String, genericLocationDashTime: Bool)] = [
+            (#"^(INT|EXT|INT\/EXT)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#, false),
+            (#"^(ИНТ|ЭКСТ|ИНТ\/ЭКСТ)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#, false),
+            (#"^(НАТ)\.?\s+([^-\n]+?)(?:\s*-\s*(.+))?$"#, false),
+            (#"^([A-ZА-Я0-9][A-ZА-Я0-9 \/_]{2,})\s*[—-]\s*([A-ZА-Яa-zа-я0-9 \/_]{2,})$"#, true),
         ]
 
-        for pattern in patterns {
+        for entry in patterns {
+            let pattern = entry.pattern
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
                 continue
             }
@@ -68,11 +69,22 @@ final class SceneMetadataExtractor {
                 continue
             }
 
-            let prefix = capture(match: match, index: 1, in: line)?.uppercased() ?? ""
-            let location = capture(match: match, index: 2, in: line)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let rawTime = capture(match: match, index: 3, in: line)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let prefix: String
+            let location: String?
+            let rawTime: String?
+            if entry.genericLocationDashTime {
+                prefix = ""
+                location = capture(match: match, index: 1, in: line)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                rawTime = capture(match: match, index: 2, in: line)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                prefix = capture(match: match, index: 1, in: line)?.uppercased() ?? ""
+                location = capture(match: match, index: 2, in: line)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                rawTime = capture(match: match, index: 3, in: line)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
 
             return SceneTopLevelMetadata(
                 sceneHeading: line.uppercased(),
@@ -121,16 +133,16 @@ final class SceneMetadataExtractor {
     private func normalizeTimeOfDay(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let lowercased = raw.lowercased()
-        if lowercased.contains("утр") {
+        if lowercased.contains("утр") || lowercased.contains("morning") {
             return "morning"
         }
-        if lowercased.contains("дн") {
+        if lowercased.contains("дн") || lowercased.contains("day") || lowercased.contains("afternoon") {
             return "day"
         }
-        if lowercased.contains("вечер") {
+        if lowercased.contains("вечер") || lowercased.contains("evening") {
             return "evening"
         }
-        if lowercased.contains("ноч") {
+        if lowercased.contains("ноч") || lowercased.contains("night") {
             return "night"
         }
         return nil

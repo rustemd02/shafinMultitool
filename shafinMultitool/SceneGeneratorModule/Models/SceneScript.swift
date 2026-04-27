@@ -550,6 +550,17 @@ struct Position3D: Codable, Equatable {
 
 // MARK: - Planned Scene (Output of Spatial Planner)
 
+/// Текстовое playback-событие, привязанное к конкретной точке пути.
+struct PlaybackPathAnnotation: Codable, Equatable {
+    enum Kind: String, Codable {
+        case dialogue
+        case action
+    }
+
+    var kind: Kind
+    var text: String
+}
+
 /// Результат планирования сцены - готовые координаты для размещения
 struct PlannedScene {
     let placedActors: [PlacedActor]
@@ -566,6 +577,8 @@ struct PlannedScene {
         let pathDurations: [Double]     // Время между точками пути
         var pathPoses: [ActorPose]      // Поза в каждой точке пути
         var pathCameras: [CameraSetup?] // Камера для каждого beat (nil = без изменений)
+        var pathAnnotations: [PlaybackPathAnnotation?] // Субтитры/текстовые действия для сегментов пути
+        var pathBeatIDs: [String?]       // Beat id для каждой точки пути
         
         var color: (r: Float, g: Float, b: Float) {
             type.placeholderColor

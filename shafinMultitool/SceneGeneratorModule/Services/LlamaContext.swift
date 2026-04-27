@@ -11,6 +11,17 @@ import llama
 /// Swift-обёртка для llama.cpp C API
 /// Инкапсулирует загрузку модели, токенизацию и генерацию текста
 actor LlamaContext {
+    struct GenerationOutput {
+        enum StopReason: String {
+            case endOfGeneration = "eog"
+            case maxTokensReached = "max_tokens_reached"
+        }
+
+        let text: String
+        let generatedTokenCount: Int32
+        let maxTokens: Int32
+        let stopReason: StopReason
+    }
     
     private var model: OpaquePointer
     private var context: OpaquePointer
@@ -27,6 +38,10 @@ actor LlamaContext {
     
     /// Текущая позиция в последовательности
     private var nCur: Int32 = 0
+    /// Количество сгенерированных токенов (без токенов промпта)
+    private var generatedTokens: Int32 = 0
+    /// Причина остановки последней генерации
+    private var stopReason: GenerationOutput.StopReason?
     
     // MARK: - Initialization
     
@@ -120,8 +135,14 @@ actor LlamaContext {
     ///   - maxTokens: Максимальное количество токенов (по умолчанию 512)
     /// - Returns: Сгенерированный текст
     func generate(prompt: String, maxTokens: Int32 = 512) -> String {
+        let output = generateWithMetadata(prompt: prompt, maxTokens: maxTokens)
+        return output.text
+    }
+
+    /// Генерирует текст и возвращает метаданные остановки
+    func generateWithMetadata(prompt: String, maxTokens: Int32 = 512) -> GenerationOutput {
         self.maxTokens = maxTokens
-        
+
         // Инициализируем промпт
         completionInit(text: prompt)
         
@@ -131,11 +152,18 @@ actor LlamaContext {
             let piece = completionLoop()
             result += piece
         }
-        
+
+        let output = GenerationOutput(
+            text: result,
+            generatedTokenCount: generatedTokens,
+            maxTokens: maxTokens,
+            stopReason: stopReason ?? .endOfGeneration
+        )
+
         // Сброс для повторного использования
         clear()
-        
-        return result
+
+        return output
     }
     
     /// Информация о модели
@@ -155,7 +183,14 @@ actor LlamaContext {
         isDone = false
         tokensList = tokenize(text: text, addBos: true)
         temporaryInvalidCChars = []
-        
+        generatedTokens = 0
+        stopReason = nil
+        // Samplers are stateful in llama.cpp. In particular, grammar and
+        // repetition samplers must be reset between independent prompts,
+        // otherwise a previous EOG can make the next call return 0 tokens.
+        llama_sampler_reset(sampling)
+        llama_memory_clear(llama_get_memory(context), true)
+
         llama_batch_clear(&batch)
         
         for (i, token) in tokensList.enumerated() {
@@ -172,11 +207,20 @@ actor LlamaContext {
     }
     
     private func completionLoop() -> String {
-        let newTokenId = llama_sampler_sample(sampling, context, batch.n_tokens - 1)
-        
-        // Проверяем конец генерации
-        if llama_vocab_is_eog(vocab, newTokenId) || nCur == maxTokens {
+        if generatedTokens >= maxTokens {
             isDone = true
+            stopReason = .maxTokensReached
+            let str = String(cString: temporaryInvalidCChars + [0])
+            temporaryInvalidCChars.removeAll()
+            return str
+        }
+
+        let newTokenId = llama_sampler_sample(sampling, context, batch.n_tokens - 1)
+
+        // Проверяем конец генерации
+        if llama_vocab_is_eog(vocab, newTokenId) {
+            isDone = true
+            stopReason = .endOfGeneration
             let str = String(cString: temporaryInvalidCChars + [0])
             temporaryInvalidCChars.removeAll()
             return str
@@ -202,9 +246,14 @@ actor LlamaContext {
         // Подготовка следующего шага
         llama_batch_clear(&batch)
         llama_batch_add(&batch, newTokenId, nCur, [0], true)
-        
+
         nCur += 1
-        
+        generatedTokens += 1
+        if generatedTokens >= maxTokens {
+            isDone = true
+            stopReason = .maxTokensReached
+        }
+
         if llama_decode(context, batch) != 0 {
             print("❌ [LLM] llama_decode() failed при генерации")
         }
@@ -216,6 +265,9 @@ actor LlamaContext {
         tokensList.removeAll()
         temporaryInvalidCChars.removeAll()
         isDone = false
+        generatedTokens = 0
+        stopReason = nil
+        llama_sampler_reset(sampling)
         llama_memory_clear(llama_get_memory(context), true)
     }
     

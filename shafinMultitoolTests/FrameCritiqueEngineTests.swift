@@ -40,8 +40,8 @@ final class FrameCritiqueEngineTests: XCTestCase {
 
     func testBacklightIssueSuppressesContradictoryGoodLightStrength() {
         let snapshot = makeSnapshot(
-            lighting: .init(exposureBiasHint: -0.40, backlightIndex: 0.55, keyToFillRatio: 1.2),
-            composition: .init(horizontalOffset: 0.02, verticalOffset: 0.0, subjectAreaRatio: 0.20, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0)
+            composition: .init(horizontalOffset: 0.02, verticalOffset: 0.0, subjectAreaRatio: 0.20, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.40, backlightIndex: 0.55, keyToFillRatio: 1.2)
         )
         let semantics = makeSemantics(
             frameId: snapshot.frameId,
@@ -113,8 +113,8 @@ final class FrameCritiqueEngineTests: XCTestCase {
 
     func testHorizonDistractsThresholdAtConfidencePointThree() {
         let baseSnapshot = makeSnapshot(
-            horizon: .init(angleDegrees: 8.0, confidence: 0.29),
-            composition: .init(horizontalOffset: 0.0, verticalOffset: 0.0, subjectAreaRatio: 0.2, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0)
+            composition: .init(horizontalOffset: 0.0, verticalOffset: 0.0, subjectAreaRatio: 0.2, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0),
+            horizon: .init(angleDegrees: 8.0, confidence: 0.29)
         )
         let semantics = makeSemantics(frameId: baseSnapshot.frameId, mode: baseSnapshot.mode)
 
@@ -122,8 +122,8 @@ final class FrameCritiqueEngineTests: XCTestCase {
         XCTAssertFalse(lowConfidence.issues.contains(where: { $0.type == .horizonDistracts }))
 
         let highSnapshot = makeSnapshot(
-            horizon: .init(angleDegrees: 8.0, confidence: 0.30),
-            composition: .init(horizontalOffset: 0.0, verticalOffset: 0.0, subjectAreaRatio: 0.2, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0)
+            composition: .init(horizontalOffset: 0.0, verticalOffset: 0.0, subjectAreaRatio: 0.2, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0),
+            horizon: .init(angleDegrees: 8.0, confidence: 0.30)
         )
         let highConfidence = engine.analyze(snapshot: highSnapshot, semantics: semantics)
         XCTAssertTrue(highConfidence.issues.contains(where: { $0.type == .horizonDistracts }))
@@ -153,8 +153,8 @@ final class FrameCritiqueEngineTests: XCTestCase {
             technicalFlags: [.lowSceneConfidence],
             composition: .init(horizontalOffset: 0.78, verticalOffset: 0.0, subjectAreaRatio: 0.06, saliencyLeftRightBalance: 0.6, saliencyTopBottomBalance: 0.1),
             lighting: .init(exposureBiasHint: -0.33, backlightIndex: 0.81, keyToFillRatio: nil),
-            objects: .init(totalCount: 7, topKLabels: ["person", "chair", "screen"]),
-            horizon: .init(angleDegrees: 9.0, confidence: 0.89)
+            horizon: .init(angleDegrees: 9.0, confidence: 0.89),
+            objects: .init(totalCount: 7, topKLabels: ["person", "chair", "screen"])
         )
         let semantics = makeSemantics(
             frameId: snapshot.frameId,
@@ -274,13 +274,17 @@ final class FrameCritiqueEngineTests: XCTestCase {
         let summarySeed = "trc_\(snapshot.frameId)_crit_summary_main"
         XCTAssertTrue(report.traceRefs.contains(summarySeed))
 
-        for idx in 1...report.issues.count {
-            let seed = "trc_\(snapshot.frameId)_crit_i\(String(format: "%02d", idx))"
-            XCTAssertTrue(report.traceRefs.contains(seed))
+        if !report.issues.isEmpty {
+            for idx in 1...report.issues.count {
+                let seed = "trc_\(snapshot.frameId)_crit_i\(String(format: "%02d", idx))"
+                XCTAssertTrue(report.traceRefs.contains(seed))
+            }
         }
-        for idx in 1...report.strengths.count {
-            let seed = "trc_\(snapshot.frameId)_crit_s\(String(format: "%02d", idx))"
-            XCTAssertTrue(report.traceRefs.contains(seed))
+        if !report.strengths.isEmpty {
+            for idx in 1...report.strengths.count {
+                let seed = "trc_\(snapshot.frameId)_crit_s\(String(format: "%02d", idx))"
+                XCTAssertTrue(report.traceRefs.contains(seed))
+            }
         }
     }
 

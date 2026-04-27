@@ -14,53 +14,38 @@ struct SceneInputSheet: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextFieldFocused: Bool
     
+    private let panelFill = Color.white.opacity(0.08)
+    private let panelBorder = Color.white.opacity(0.14)
+    private let secondaryText = Color.white.opacity(0.62)
+    
     var body: some View {
-        GeometryReader { geometry in
-            let isLandscape = geometry.size.width > geometry.size.height
-            
-            NavigationView {
-                ZStack {
-                    // Background
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.05, green: 0.05, blue: 0.12),
-                            Color.black
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .ignoresSafeArea()
-                    
-                    if isLandscape {
-                        landscapeLayout
-                    } else {
-                        portraitLayout
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                portraitLayout
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Отмена") {
+                        dismiss()
                     }
+                    .foregroundColor(.white)
                 }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Отмена") {
-                            dismiss()
-                        }
-                        .foregroundColor(.white.opacity(0.8))
-                    }
-                    
-                    // Кнопка скрытия клавиатуры — появляется только когда клавиатура открыта
-                    if isTextFieldFocused {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button {
-                                isTextFieldFocused = false
-                            } label: {
-                                Image(systemName: "keyboard.chevron.compact.down")
-                                    .foregroundColor(.white.opacity(0.8))
-                            }
+                
+                if isTextFieldFocused {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            isTextFieldFocused = false
+                        } label: {
+                            Image(systemName: "keyboard.chevron.compact.down")
+                                .foregroundColor(.white)
                         }
                     }
                 }
             }
-            .preferredColorScheme(.dark)
         }
+        .preferredColorScheme(.dark)
     }
     
     // MARK: - Portrait Layout
@@ -68,13 +53,12 @@ struct SceneInputSheet: View {
     private var portraitLayout: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 16) {
                     headerSection
-                    textInputSection
                     if !viewModel.markedObjects.isEmpty { markedObjectsSection }
-                    if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
+                    textInputSection
                     examplesSection
-                    if let result = viewModel.parsingResult { diagnosticsSection(result: result) }
+                    if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
                     Spacer(minLength: 100)
                 }
                 .padding()
@@ -83,65 +67,17 @@ struct SceneInputSheet: View {
         }
     }
     
-    // MARK: - Landscape Layout
-    
-    private var landscapeLayout: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // Левая колонка: ввод + кнопка генерации
-            ZStack(alignment: .bottom) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        headerSection
-                        textInputSection
-                        Spacer(minLength: 80)
-                    }
-                    .padding()
-                }
-                generateButton
-            }
-            .frame(maxWidth: .infinity)
-            
-            Divider()
-                .background(Color.white.opacity(0.1))
-            
-            // Правая колонка: объекты + примеры
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if !viewModel.markedObjects.isEmpty { markedObjectsSection }
-                    if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
-                    examplesSection
-                    if let result = viewModel.parsingResult { diagnosticsSection(result: result) }
-                    Spacer(minLength: 16)
-                }
-                .padding()
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-    
     // MARK: - Header Section
     
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 28))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.purple, .blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                
-                Text("Создание сцены")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-            }
+        HStack {
+            Image(systemName: "text.bubble")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(.white)
             
-            Text("Опишите сцену текстом, и она будет создана в AR")
-                .font(.system(size: 15))
-                .foregroundColor(.white.opacity(0.7))
+            Text("Создание сцены")
+                .font(.system(size: 26, weight: .bold))
+                .foregroundColor(.white)
         }
     }
     
@@ -151,7 +87,7 @@ struct SceneInputSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Описание сцены")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(secondaryText)
             
             ZStack(alignment: .topLeading) {
                 // Placeholder
@@ -192,15 +128,15 @@ struct SceneInputSheet: View {
                                 Text("Вставить")
                                     .font(.system(size: 12, weight: .medium))
                             }
-                            .foregroundColor(.blue.opacity(0.9))
+                            .foregroundColor(.white)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(
                                 Capsule()
-                                    .fill(Color.blue.opacity(0.15))
+                                    .fill(Color.white.opacity(0.08))
                                     .overlay(
                                         Capsule()
-                                            .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
+                                            .strokeBorder(panelBorder, lineWidth: 1)
                                     )
                             )
                         }
@@ -212,23 +148,16 @@ struct SceneInputSheet: View {
             .frame(minHeight: 120, maxHeight: 200)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white.opacity(0.08))
+                    .fill(panelFill)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
                             .strokeBorder(
-                                isTextFieldFocused ? Color.blue.opacity(0.5) : Color.white.opacity(0.1),
+                                isTextFieldFocused ? Color.white.opacity(0.35) : panelBorder,
                                 lineWidth: 1
                             )
                     )
             )
             
-            // Character count
-            HStack {
-                Spacer()
-                Text("\(viewModel.sceneDescription.count) символов")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.4))
-            }
         }
     }
     
@@ -241,19 +170,7 @@ struct SceneInputSheet: View {
                     .foregroundColor(.green)
                 Text("Мои объекты (реальные)")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
-                
-                Spacer()
-                
-                Text("Высший приоритет")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Color.green.opacity(0.2))
-                    )
+                    .foregroundColor(secondaryText)
             }
             
             FlowLayout(spacing: 8) {
@@ -272,17 +189,14 @@ struct SceneInputSheet: View {
                 }
             }
             
-            Text("Эти объекты привязаны к реальным позициям в пространстве")
-                .font(.system(size: 12))
-                .foregroundColor(.white.opacity(0.4))
         }
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.green.opacity(0.15))
+                .fill(Color.black.opacity(0.45))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(Color.green.opacity(0.3), lineWidth: 1)
+                        .strokeBorder(Color.green.opacity(0.42), lineWidth: 1)
                 )
         )
     }
@@ -293,10 +207,10 @@ struct SceneInputSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "eye.fill")
-                    .foregroundColor(.blue)
+                    .foregroundColor(.white)
                 Text("Обнаруженные объекты")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(secondaryText)
             }
             
             FlowLayout(spacing: 8) {
@@ -315,90 +229,14 @@ struct SceneInputSheet: View {
                 }
             }
             
-            Text("Нажмите на объект, чтобы добавить в описание")
-                .font(.system(size: 12))
-                .foregroundColor(.white.opacity(0.4))
         }
         .padding()
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.blue.opacity(0.1))
-        )
-    }
-    
-    // MARK: - Diagnostics Section
-    
-    private func diagnosticsSection(result: ParsingResult) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: result.diagnostics.confidence >= 0.6 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundColor(result.diagnostics.confidence >= 0.6 ? .green : .orange)
-                Text("Качество парсинга")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
-                
-                Spacer()
-                
-                Text("\(Int(result.diagnostics.confidence * 100))%")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(result.diagnostics.confidence >= 0.6 ? .green : .orange)
-            }
-            
-            // Покрытие текста
-            if result.diagnostics.coverage > 0 {
-                HStack {
-                    Text("Покрытие текста:")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.5))
-                    Spacer()
-                    Text("\(Int(result.diagnostics.coverage * 100))%")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
-                }
-            }
-            
-            // Распознанные размеченные объекты
-            if !result.diagnostics.matchedMarkedObjects.isEmpty {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                        .font(.system(size: 10))
-                    Text("Распознано размеченных объектов: \(result.diagnostics.matchedMarkedObjects.count)")
-                        .font(.system(size: 12))
-                        .foregroundColor(.green.opacity(0.8))
-                }
-            }
-            
-            // Предупреждения
-            if !result.diagnostics.notes.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(result.diagnostics.notes, id: \.self) { note in
-                        HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.orange)
-                                .font(.system(size: 10))
-                            Text(note)
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(result.diagnostics.confidence >= 0.6 
-                      ? Color.green.opacity(0.1)
-                      : Color.orange.opacity(0.1))
+                .fill(Color.black.opacity(0.45))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(
-                            result.diagnostics.confidence >= 0.6 
-                            ? Color.green.opacity(0.3) 
-                            : Color.orange.opacity(0.3),
-                            lineWidth: 1
-                        )
+                        .stroke(panelBorder, lineWidth: 1)
                 )
         )
     }
@@ -409,10 +247,10 @@ struct SceneInputSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "lightbulb.fill")
-                    .foregroundColor(.yellow)
+                    .foregroundColor(.white)
                 Text("Примеры")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(secondaryText)
             }
             
             VStack(spacing: 8) {
@@ -433,7 +271,6 @@ struct SceneInputSheet: View {
     
     private var generateButton: some View {
         VStack(spacing: 0) {
-            // Gradient fade
             LinearGradient(
                 colors: [Color.clear, Color.black.opacity(0.9)],
                 startPoint: .top,
@@ -441,7 +278,6 @@ struct SceneInputSheet: View {
             )
             .frame(height: 40)
             
-            // Button container
             HStack {
                 Button(action: {
                     isTextFieldFocused = false
@@ -452,32 +288,31 @@ struct SceneInputSheet: View {
                     HStack(spacing: 12) {
                         if viewModel.isGenerating {
                             ProgressView()
-                                .tint(.white)
+                                .tint(.black)
                         } else {
-                            Image(systemName: "sparkles")
+                            Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 18, weight: .semibold))
                         }
                         
                         Text(viewModel.isGenerating ? "Создаю..." : "Создать сцену")
                             .font(.system(size: 17, weight: .semibold))
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(
+                        viewModel.sceneDescription.isEmpty ? Color.white.opacity(0.5) : .black
+                    )
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(
-                        LinearGradient(
-                            colors: viewModel.sceneDescription.isEmpty 
-                                ? [Color.gray.opacity(0.5), Color.gray.opacity(0.3)]
-                                : [Color.blue, Color.purple],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .shadow(
-                        color: viewModel.sceneDescription.isEmpty ? .clear : Color.purple.opacity(0.4),
-                        radius: 15,
-                        y: 5
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(
+                                viewModel.sceneDescription.isEmpty
+                                ? Color.white.opacity(0.16)
+                                : Color.white
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(panelBorder, lineWidth: 1)
+                            )
                     )
                 }
                 .disabled(viewModel.sceneDescription.isEmpty || viewModel.isGenerating)
@@ -501,7 +336,7 @@ struct MarkedObjectChip: View {
             HStack(spacing: 6) {
                 Image(systemName: isRecognized ? "checkmark.circle.fill" : "mappin.circle.fill")
                     .font(.system(size: 12))
-                    .foregroundColor(isRecognized ? .blue : .green)
+                    .foregroundColor(isRecognized ? .white : .green)
                 
                 Text(marker.name.capitalized)
                     .font(.system(size: 14, weight: .semibold))
@@ -517,10 +352,12 @@ struct MarkedObjectChip: View {
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill(isRecognized ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
+                    .fill(Color.black.opacity(0.45))
                     .overlay(
-                        Capsule()
-                            .strokeBorder(isRecognized ? Color.blue.opacity(0.5) : Color.green.opacity(0.5), lineWidth: 1)
+                        Capsule().strokeBorder(
+                            isRecognized ? Color.white.opacity(0.28) : Color.green.opacity(0.5),
+                            lineWidth: 1
+                        )
                     )
             )
         }
@@ -538,7 +375,7 @@ struct DetectedObjectChip: View {
             HStack(spacing: 6) {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 12))
-                    .foregroundColor(.blue)
+                    .foregroundColor(.white)
                 
                 Text(label.capitalized)
                     .font(.system(size: 14, weight: .medium))
@@ -548,10 +385,10 @@ struct DetectedObjectChip: View {
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(Color.black.opacity(0.45))
                     .overlay(
                         Capsule()
-                            .strokeBorder(Color.blue.opacity(0.3), lineWidth: 1)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
                     )
             )
         }
@@ -590,7 +427,11 @@ struct ExampleButton: View {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(isPressed ? 0.15 : 0.05))
+                    .fill(Color.black.opacity(isPressed ? 0.55 : 0.45))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    )
             )
         }
         .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
@@ -673,4 +514,3 @@ struct SceneInputSheet_Previews: PreviewProvider {
     }
 }
 #endif
-

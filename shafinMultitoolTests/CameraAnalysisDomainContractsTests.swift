@@ -1683,9 +1683,6 @@ final class FeatureSnapshotAggregatorTests: XCTestCase {
             capturedAt: capturedAt,
             motionState: .moving,
             shakeLevel: 0.9,
-            horizon: makeHorizonSample(measuredAt: capturedAt, angle: 0.1, confidence: 0.1),
-            lighting: makeLightingSample(measuredAt: capturedAt, exposure: -0.7, backlight: 0.8, keyFill: 1.0),
-            detr: makeDetrSample(measuredAt: capturedAt, baseConfidence: 0.1, detections: []),
             vision: makeVisionSample(
                 measuredAt: capturedAt,
                 baseConfidence: 0.1,
@@ -1693,7 +1690,10 @@ final class FeatureSnapshotAggregatorTests: XCTestCase {
                 saliencyCenter: nil,
                 faceCount: 0,
                 personCount: 0
-            )
+            ),
+            horizon: makeHorizonSample(measuredAt: capturedAt, angle: 0.1, confidence: 0.1),
+            lighting: makeLightingSample(measuredAt: capturedAt, exposure: -0.7, backlight: 0.8, keyFill: 1.0),
+            detr: makeDetrSample(measuredAt: capturedAt, baseConfidence: 0.1, detections: [])
         )
         let allFlags = aggregator.makeSnapshot(from: allFlagsInput).technicalFlags
         XCTAssertEqual(allFlags, [.highMotion, .lowLight, .lowSceneConfidence, .lowSubjectConfidence])
@@ -2112,7 +2112,6 @@ final class SceneSemanticsAnalyzerTests: XCTestCase {
         let analyzer = SceneSemanticsAnalyzer()
         let snapshot = makeSnapshot(
             frameId: "sem-high-motion",
-            technicalFlags: [.highMotion],
             composition: .init(
                 horizontalOffset: 0.9,
                 verticalOffset: 0.0,
@@ -2128,7 +2127,8 @@ final class SceneSemanticsAnalyzerTests: XCTestCase {
                 topObjectConfidence: 0.4,
                 primaryCandidateRegion: .init(x: 0.95, y: 0.2, width: 0.04, height: 0.4),
                 primaryCandidateConfidence: 0.85
-            )
+            ),
+            technicalFlags: [.highMotion]
         )
 
         let report = analyzer.analyze(snapshot: snapshot)
