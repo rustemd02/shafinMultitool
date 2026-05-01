@@ -25,6 +25,34 @@ All values are percentages (`%`). Higher is better except `runtime_fallback_rate
 | `v7` | 98.85 | 98.85 | 2.29 | 100.00 | 98.26 | 6.32 | 4.58 | 6.03 | 97.33 |
 | `v7_orpo` | 96.56 | 96.18 | 2.67 | 100.00 | 95.31 | 8.89 | 6.49 | 8.42 | 95.80 |
 
+## Addendum: `v8 hotfix` and `v9 slot-event` (seed 42, same eval bundle)
+
+This addendum extends the original report with newer architecture iterations that are directly comparable under the same `262`-case frozen eval bundle.
+
+Key point:
+- `v8` moved from `text -> final JSON` to `plan -> compile`.
+- `v9` moved further to `slot/event table -> compile`, removing plan-structure responsibility from the model.
+
+All values are percentages (`%`). Higher is better except `runtime_fallback_rate` (lower is better).
+
+| Model | json_valid | schema_valid | strict_success | ordinal_binding | target_resolution | chronology | action_recall | runtime_fallback |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `v7_orpo_iter2` (model_only) | 95.04 | 94.66 | 3.44 | 93.40 | 11.28 | 8.40 | 10.66 | 95.04 |
+| `v8_plan_orpo_iter1` (end_to_end) | 95.04 | 56.49 | 10.31 | 83.85 | 48.03 | 14.12 | 47.41 | 71.37 |
+| `v9_event_sft` (end_to_end) | 100.00 | 60.69 | 50.76 | 100.00 | 92.14 | 87.02 | 93.55 | 43.51 |
+
+### V9 event-table metrics (raw slice)
+
+These are **V9-specific** metrics measured on the raw `event table` output (separate from compiled `SceneScript` scoring):
+
+| Metric | Value (%) | Notes |
+|---|---:|---|
+| `event_schema_valid_rate` | 100.00 | Structural validity of event table |
+| `event_actor_slot_accuracy` | 96.91 | Gold-based semantic accuracy |
+| `event_target_slot_accuracy` | 94.39 | Gold-based semantic accuracy |
+| `event_action_type_accuracy` | 96.21 | Gold-based semantic accuracy |
+| `event_beat_order_accuracy` | 96.77 | Gold-based semantic accuracy |
+
 ## Legacy v6 Metrics Aligned To SG v7 Naming
 
 Important: numbers are not altered.  

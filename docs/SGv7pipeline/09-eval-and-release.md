@@ -68,6 +68,10 @@
 - dangling target rate не растёт
 - hard runtime prompts не ухудшились
 
+Дополнение для `v9`:
+- оценка должна разделять **compiled-slice** метрики (конечный `SceneScript`) и **event-slice** метрики (raw `event table`);
+- verifier-derived показатели фиксируются отдельно от gold-based semantic accuracy (structural pass vs semantic accuracy).
+
 ## A/B protocol
 
 - одинаковый prompt set
@@ -218,6 +222,53 @@
 
 Следующий шаг должен улучшать не только preference-corpus, а именно raw generation contract:
 - prompt / decoding / output-shape discipline
+
+## Current Snapshot: V8 Hotfix vs V9 Slot-Event (`seed42`, 2026-05-01)
+
+Ниже зафиксирован актуальный reproducible benchmark snapshot на том же frozen eval bundle (`262` cases) для:
+- `dataset_v8_plan_orpo_iter1` (post-hotfix `plan -> compile`)
+- `dataset_v9_event_sft` (slot-first `event table -> compile`)
+
+Источник артефактов:
+- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
+- [model_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/model_slice_summary.csv)
+- [event_slice_summary.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json)
+
+### Compiled-slice (end_to_end)
+
+- `dataset_v8_plan_orpo_iter1`:
+  - `json_valid_rate=0.9504`
+  - `ordinal_actor_binding_accuracy=0.8385`
+  - `target_resolution_accuracy=0.4803`
+  - `chronology_phase_accuracy=0.1412`
+  - `runtime_fallback_rate=0.7137`
+  - `case_strict_success_rate=0.1031`
+- `dataset_v9_event_sft`:
+  - `json_valid_rate=1.0000`
+  - `ordinal_actor_binding_accuracy=1.0000`
+  - `target_resolution_accuracy=0.9214`
+  - `chronology_phase_accuracy=0.8702`
+  - `runtime_fallback_rate=0.4351`
+  - `case_strict_success_rate=0.5076`
+
+Интерпретация:
+- `v9` снимает основную причину integrity regressions: модель больше не отвечает за сборку beats/refs в “плане сцены”, а выбирает семантику в контролируемом IR.
+- `v8` остаётся полезным fallback/A-B baseline, но его bottleneck — `plan integrity` (binding/beat integrity), что прямо отражается в `strict_success` и runtime fallback.
+
+### Event-slice (raw event table, V9-specific)
+
+Structural pass:
+- `event_parse_rate=1.0000`
+- `event_schema_valid_rate=1.0000`
+
+Gold-based semantic accuracy:
+- `event_actor_slot_accuracy≈0.9691`
+- `event_target_slot_accuracy≈0.9439`
+- `event_action_type_accuracy≈0.9621`
+- `event_beat_order_accuracy≈0.9677`
+
+Практический вывод:
+- В release gate для `v9` обязательны оба слоя: compiled-slice (end-to-end пригодность) и event-slice (семантическая точность IR до компиляции).
 - family-specific integrity на `open_then_pick_up`, `give_to_third_actor`, `ordinal`, `three_beat`
 - и только потом новый prep-export и новый `iter3` corpus build
 
@@ -356,13 +407,13 @@
 - `dataset_v7` — всё ещё лучший structural baseline по entity binding discipline
 - `dataset_v7_orpo_iter2` — лучший `v7` semantic candidate
 - `dataset_v8_plan_orpo_iter1` — лучший общий candidate после hotfix, потому что держит structure на уровне `iter2`, но заметно сильнее по semantics
+- `dataset_v9_event_sft` — лучший общий candidate на текущем этапе: slot/event-table контракт снимает bottleneck plan integrity и даёт кратный рост по `target_resolution/chronology/strict_success` при `json_valid_rate=1.0000`
 
 Следующий шаг должен улучшать:
-- `ordinal_actor_binding_accuracy`
-- `plan_reference_binding_accuracy`
-- `plan_beat_integrity_accuracy`
+- для ветки `v8`: `ordinal_actor_binding_accuracy`, `plan_reference_binding_accuracy`, `plan_beat_integrity_accuracy`
+- для ветки `v9`: coverage внутри chunk/event table (missing events), cross-chunk continuity state, и parity-проверки поведения runtime (не только JSON/score)
 
-То есть `v8.1` должен дожимать уже не compile-path, а binding/integrity слой самого `ScenePlanIR`.
+То есть `v9.1` должен дожимать не структуру JSON, а семантическое покрытие событий и continuity между чанками при сохранении verifier/repair boundary.
 
 ## Что вынести отдельному агенту
 

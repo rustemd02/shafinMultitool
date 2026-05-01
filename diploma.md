@@ -1884,7 +1884,7 @@
 
 ### Человекочитаемый вывод по всем итерациям benchmark
 
-Ниже зафиксирован итоговый narrative по эволюции моделей `base -> v6 -> v7 -> v7_orpo_iter1 -> v7_orpo_iter2 -> v8`.
+Ниже зафиксирован итоговый narrative по эволюции моделей `base -> v6 -> v7 -> v7_orpo_iter1 -> v7_orpo_iter2 -> v8 -> v9`.
 
 - `base_qwen3_1_7b` выступает как контрольный baseline без доменной адаптации. Он полезен именно как точка отсчёта: на раннем SFT-eval модель почти всегда была parseable, но практически не проходила строгий контракт (`schema_strict_rate=7.58%`, `exact_match_rate=0%`), а в unified runtime benchmark оставалась структурно и семантически непригодной (`json_valid_rate≈42.75%`, `schema_valid≈0.38%`, `runtime_fallback_rate=100%`). Следовательно, без специализированного датасета и контрактной дисциплины компактная Qwen-модель не решает задачу сценического парсинга.
 
@@ -1902,6 +1902,8 @@
 
 - `dataset_v8_plan_orpo_iter1` после hotfix стал **лучшим общим кандидатом** на текущем этапе. Он удержал `json_valid_rate=0.9504`, то есть structural stability была восстановлена до уровня `dataset_v7_orpo_iter2`, но semantic block вырос резко: `target_resolution_accuracy=0.4803`, `chronology_phase_accuracy=0.1412`, `case_strict_success_rate=0.1031`, `runtime_fallback_rate=0.7137`. Pairwise сравнение против `dataset_v7_orpo_iter2` стало уже статистически значимым (`151` победа против `82`, `p=7.26e-06`). Таким образом, после hotfix `v8` больше не выглядит как "семантически сильный, но структурно сломанный" эксперимент.
 
+- `dataset_v9_event_sft` (slot-first event-table, seed `42`) стал следующим качественным скачком: модель перестала генерировать полный scene-level план и вместо этого заполняет компактную таблицу событий по закрытым слотам, а целевой `ScenePlanIR/SceneScript` собирается детерминированно. В compiled-slice метриках это дало резкое улучшение всех ключевых runtime-oriented показателей: `json_valid_rate=1.0000`, `ordinal_actor_binding_accuracy=1.0000`, `target_resolution_accuracy=0.9214`, `chronology_phase_accuracy=0.8702`, `case_strict_success_rate=0.5076`, при одновременном снижении `runtime_fallback_rate` до `0.4351`. Дополнительно введены V9 event-slice метрики (raw event table), позволяющие измерять semantic correctness отдельно от компиляции: `event_schema_valid_rate=1.0000`, `event_actor_slot_accuracy≈0.9691`, `event_target_slot_accuracy≈0.9439`, `event_action_type_accuracy≈0.9621`, `event_beat_order_accuracy≈0.9677`. Это подтверждает ключевой тезис: bottleneck переносится с “умеет ли модель написать структуру JSON” на “умеет ли модель выбрать правильную семантику в контролируемом IR”.
+
 - Важнейший итог post-hotfix этапа состоит в смене bottleneck-а. Ранее узким местом были compile drops: targetless required actions и invalid spatial relations искажали общую картину. После введения deterministic lenient normalization policy compile-path перестал быть главным источником деградации. Теперь основной ограничитель качества — это `ordinal_actor_binding_accuracy` и более широкий класс `plan integrity`. Это подтверждается не только финальными benchmark-метриками, но и `local_plan_raw` slice, где `plan_parse_rate≈0.958`, но `plan_reference_binding_accuracy≈0.76`, а `plan_beat_integrity_accuracy≈0.28`. Следовательно, следующий исследовательский шаг должен оптимизировать именно binding/integrity contract, а не возвращаться к прежней fail-closed compile policy.
 
 ### Практический итог для диссертационного сравнения
@@ -1912,6 +1914,7 @@
 - `dataset_v7_orpo_iter2` — лучший semantic candidate внутри ветки `v7`.
 - `dataset_v8_plan_sft` — первый качественный скачок, показывающий, что смена архитектуры генерации важнее простого наращивания ORPO-циклов.
 - `dataset_v8_plan_orpo_iter1` post-hotfix — лучший общий кандидат на текущем этапе, потому что удерживает structure на уровне `iter2`, но даёт значительно более сильную semantic reconstruction.
+- `dataset_v9_event_sft` — лучший общий кандидат на текущем этапе: slot/event-table контракт устраняет структурную недоопределённость плана и резко повышает семантическую точность (targets/chronology/strict success), при этом оставаясь совместимым с local-first runtime и audit-требованиями (reason codes, verifier/repair boundary).
 
 ### Ключевые файлы
 - `docs/SGv7pipeline/v8/compiler.py` (lenient compile policy и compile notes для Python benchmark path)
@@ -1984,5 +1987,34 @@
 - `docs/SGv7pipeline/runs/sgv7_full_20260417/core/accepted_source.jsonl` (источник sampled core cases для live smoke)
 - `docs/SGv7pipeline/runs/sgv7_full_20260417/hard/accepted_source.jsonl` (источник sampled hard cases для live smoke)
 - `/tmp/sg_live_dataset_probe/Logs/Test/Test-shafinMultitool-2026.04.26_22-12-02-+0300.xcresult` (артефакт полного live smoke запуска с реальной моделью)
+
+---
+
+## [2026-05-01 17:24] - [V9 Slot-Event Benchmark: метрики, сравнение и фиксация результатов]
+
+### Суть изменений
+- Зафиксирован reproducible benchmark-прогон для `dataset_v9_event_sft` (seed `42`) в контуре `frozen eval bundle` и добавлены его агрегированные метрики в документацию сравнения.
+- Подтверждено, что переход на slot/event-table контракт резко снижает структурную неопределенность и повышает семантическую точность без retraining старого `ScenePlanIR`-контракта.
+- Добавлены V9-specific event-метрики (structural/semantic) как отдельный слой контроля качества поверх “compiled slice” метрик.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** В `v8` модель всё ещё несла ответственность за целостную структуру плана (beats/actions/refs), что приводило к деградациям на `ordinal_actor_binding_accuracy`, `plan_reference_binding_accuracy` и `plan_beat_integrity_accuracy`, а также к высоким runtime fallback из-за частичных/неполных планов (даже при формально валидном JSON).
+- **Решение:** В `v9` введён контролируемый slot-first контракт: модель заполняет компактную `event table` из закрытых слотов (`actorSlot/targetSlot/actionType/beatSlot`), а финальная сцена компилируется детерминированно. Дополнительно введены verifier/repair контуры с traceable reason codes, что позволяет измерять отдельно: (1) структурную проходимость и (2) семантическую точность относительно gold.
+- **Детали:** На seed `42` получен скачок ключевых метрик в compiled slice для `dataset_v9_event_sft` по сравнению с `dataset_v8_plan_orpo_iter1`:
+  - `json_valid_rate`: `1.0000` vs `0.9504`
+  - `ordinal_actor_binding_accuracy`: `1.0000` vs `0.8385`
+  - `target_resolution_accuracy`: `0.9214` vs `0.4803`
+  - `chronology_phase_accuracy`: `0.8702` vs `0.1412`
+  - `case_strict_success_rate`: `0.5076` vs `0.1031`
+  Event-slice метрики (raw event table) зафиксировали высокий semantic correctness при полной structural валидности: `event_schema_valid_rate=1.0000`, `event_actor_slot_accuracy≈0.9691`, `event_target_slot_accuracy≈0.9439`, `event_action_type_accuracy≈0.9621`, `event_beat_order_accuracy≈0.9677`.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/v9/contracts.py` (V9 typed contracts: slot catalog, event table, patch ops)
+- `docs/SGv7pipeline/v9/verifier.py` (структурная проверка и deterministic repairs с reason codes)
+- `docs/SGv7pipeline/v9/compiler.py` (event table -> ScenePlanIR -> compiled SceneScript)
+- `docs/SGv7pipeline/v9/eval.py` (event-slice structural/semantic метрики)
+- `docs/SGv7pipeline/v9/eval_artifacts.py` (event predictions -> compiled predictions + benchmark artifacts)
+- `docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/model_slice_summary.csv` (итоговые сравнимые compiled-slice метрики)
+- `docs/SGv7pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json` (V9 event-метрики: structural/semantic/degradation)
 
 ---

@@ -218,6 +218,21 @@
 
 "Если в речи захочется показать не только `SG v7`, но и куда исследование пришло сейчас, то главный вывод состоит в том, что смена архитектуры генерации важнее простого наращивания `ORPO`."
 
+#### `v9` как переход от `plan -> compile` к `slot/event table -> compile`
+
+- В `v9` модель перестаёт “писать план сцены”, а вместо этого заполняет компактную `event table` по закрытым слотам (`actorSlot/targetSlot/actionType/beatSlot`).
+- Deteriministic compiler собирает `ScenePlanIR` и затем компилирует финальный `SceneScript`; verifier фиксирует только допустимые repair/degradation шаги с обязательными reason codes.
+- На seed `42` `dataset_v9_event_sft` показал резкий рост semantic метрик при полной `json_valid_rate=1.0000`:
+  - `ordinal_actor_binding_accuracy = 1.0000`
+  - `target_resolution_accuracy = 0.9214`
+  - `chronology_phase_accuracy = 0.8702`
+  - `case_strict_success_rate = 0.5076`
+- Дополнительно зафиксированы V9 event-slice метрики (raw event table): `event_schema_valid_rate=1.0000`, `event_actor_slot_accuracy≈0.9691`, `event_target_slot_accuracy≈0.9439`, `event_action_type_accuracy≈0.9621`, `event_beat_order_accuracy≈0.9677`.
+
+Почему это важно:
+
+"Это thesis-level шаг: структура больше не является задачей модели. Модель решает узкую задачу выбора семантики из каталога, а целевой JSON формируется детерминированно и проверяется отдельно."
+
 #### Bundle-first и append-only архитектура `SG v1`
 
 - Введён bundle-first pipeline для mixed screenplay/prose текста.
@@ -575,6 +590,33 @@
 Что сказать:
 
 "Дальнейший рост качества было невозможно получить только за счёт preference-итераций... Поэтому в четвёртой итерации была изменена сама архитектура генерации."
+
+### Слайд 10.5. Пятая итерация: `v9` (slot-first event table)
+
+Что должно быть на слайде:
+
+- Проблема `v8`:
+  - модель всё ещё “собирает план” и ломает beats/refs/binding.
+- Новая схема:
+  - `text/chunk -> slot catalog + beat skeleton -> event table -> verify/patch -> compile`.
+- Ключевые метрики (seed `42`, `dataset_v9_event_sft`):
+  - `json_valid_rate = 1.0000`
+  - `target_resolution_accuracy = 0.9214`
+  - `chronology_phase_accuracy = 0.8702`
+  - `case_strict_success_rate = 0.5076`
+- V9 event-slice метрики (raw):
+  - `event_schema_valid_rate = 1.0000`
+  - `event_actor_slot_accuracy ≈ 0.9691`
+  - `event_target_slot_accuracy ≈ 0.9439`
+
+Что лучше показать визуально:
+
+- “Таблица событий” вместо “плана сцены”:
+  - rows: `(beat, actor, action, target, text)` -> deterministic compile.
+
+Что сказать:
+
+"В пятой итерации мы окончательно забрали у модели ответственность за структуру. Она выбирает значения в контролируемой таблице событий, а уже потом детерминированный компилятор собирает целевой формат."
 
 ### Слайд 11. Расширение `SceneScript`
 
