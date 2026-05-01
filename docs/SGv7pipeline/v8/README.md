@@ -53,7 +53,7 @@ bash docs/SGv7pipeline/v8/build_v8_train_pack.sh
 ```
 
 Скрипт пишет артефакты в:
-- `docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42`
+- `docs/SGv7pipeline/runs/v8_0_seed42`
 - итоговый upload pack: `.../v8_0_seed42/sgv8_train_pack`
 
 ### 1. `plan_sft`

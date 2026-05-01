@@ -1,0 +1,33 @@
+{
+  "accepted_count": 7,
+  "counts_by_correction_tier": {
+    "tier_b_deterministic_canonical": 20
+  },
+  "counts_by_difficulty_bucket": {
+    "hard": 20
+  },
+  "critic_verdict_distribution": {
+    "hard_fail": 7,
+    "pass": 8,
+    "soft_fail": 5
+  },
+  "manual_review_count": 6,
+  "recoverability_score_histogram": {
+    "0": 5,
+    "100": 9,
+    "70": 3,
+    "80": 1,
+    "90": 2
+  },
+  "reject_counts_by_taxonomy_code": {
+    "contract_invalid_critic_payload": 1,
+    "contract_missing_cir_join_source": 1,
+    "recoverability_borderline": 1,
+    "semantic_invented_dialogue": 2,
+    "semantic_marked_object_lost": 1,
+    "semantic_unsupported_action_lost": 4
+  },
+  "rejected_count": 7,
+  "total_input_count": 20,
+  "validator_stack_version": "sgv7_validator_stack_v1"
+}

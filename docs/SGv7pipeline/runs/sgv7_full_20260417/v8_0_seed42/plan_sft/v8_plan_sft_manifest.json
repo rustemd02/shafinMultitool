@@ -1,6 +1,0 @@
-{
-  "contract_version": "sg_v8_plan_sft_v1",
-  "total_rows": 5000,
-  "train_rows": 4500,
-  "val_rows": 500
-}

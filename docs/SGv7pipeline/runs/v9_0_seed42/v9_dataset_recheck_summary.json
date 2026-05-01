@@ -1,0 +1,17 @@
+{
+  "stats": {
+    "cases": 5000,
+    "cir_actions_total": 14667,
+    "cir_actions_with_actor": 14667,
+    "cir_actions_with_target": 12600,
+    "event_rows": 14667,
+    "compile_ok": 5000
+  },
+  "issue_codes": {},
+  "compile_notes": {},
+  "event_dataset_rows": 5000,
+  "patch_dataset_rows": 5000,
+  "patch_nonempty_ops": 5000,
+  "patch_empty_ops": 0,
+  "examples": {}
+}

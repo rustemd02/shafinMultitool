@@ -1,5 +1,0 @@
-model_id,seed,baseline_model_id,gate_pass,blocking_reasons,balanced_score
-dataset_v7,42,dataset_v7_orpo_iter2,False,raw::target_improved;raw::chronology_improved;raw::action_improved;raw::strict_improved;raw::fallback_reduced;end_to_end::parse_non_regression_vs_raw;end_to_end::chronology_improved_vs_raw,-19.367565473793324
-dataset_v7_orpo_iter1,42,dataset_v7_orpo_iter2,False,raw::target_improved;raw::chronology_improved;raw::action_improved;raw::strict_improved;raw::fallback_reduced;end_to_end::parse_non_regression_vs_raw;end_to_end::chronology_improved_vs_raw,-6.757058902279085
-dataset_v8_plan_orpo_iter1,42,dataset_v7_orpo_iter2,False,raw::schema_non_regression;raw::ordinal_non_regression;end_to_end::target_improved_vs_raw;end_to_end::chronology_improved_vs_raw;end_to_end::action_improved_vs_raw;end_to_end::fallback_reduced_vs_raw,21.202902371133057
-dataset_v8_plan_sft,42,dataset_v7_orpo_iter2,False,raw::json_non_regression;raw::schema_non_regression;raw::ordinal_non_regression;end_to_end::target_improved_vs_raw;end_to_end::chronology_improved_vs_raw;end_to_end::action_improved_vs_raw;end_to_end::fallback_reduced_vs_raw,17.12630274782991

@@ -162,6 +162,197 @@ struct ScenePlanIR: Codable, Equatable {
     )
 }
 
+struct SceneV9SlotCatalog: Codable, Equatable {
+    struct ActorSlot: Codable, Equatable {
+        var slotID: String
+        var ref: String
+        var type: SceneActor.ActorType
+        var name: String?
+    }
+
+    struct ObjectSlot: Codable, Equatable {
+        var slotID: String
+        var ref: String
+        var type: SceneObject.ObjectType
+        var relativePosition: SceneObject.RelativePosition
+        var markedObjectID: String?
+        var name: String?
+    }
+
+    struct BeatSlot: Codable, Equatable {
+        var slotID: String
+        var beatRef: String
+        var phaseHint: String?
+        var order: Int
+        var minDuration: Double?
+    }
+
+    struct RelationHint: Codable, Equatable {
+        var subjectSlot: String
+        var relation: SceneRelationType
+        var objectSlot: String
+    }
+
+    var contractVersion: String
+    var actorSlots: [ActorSlot]
+    var objectSlots: [ObjectSlot]
+    var markedObjectSlots: [String]
+    var beatSlots: [BeatSlot]
+    var actionTypes: [SceneAction.ActionType]
+    var relationHints: [RelationHint]
+
+    static let empty = SceneV9SlotCatalog(
+        contractVersion: "sg_v9_slot_catalog_v1",
+        actorSlots: [],
+        objectSlots: [],
+        markedObjectSlots: [],
+        beatSlots: [],
+        actionTypes: [],
+        relationHints: []
+    )
+}
+
+struct SceneV9EventTable: Codable, Equatable {
+    struct EventRow: Codable, Equatable {
+        var rowID: String
+        var beatSlot: String
+        var actorSlot: String
+        var actionType: SceneAction.ActionType
+        var targetSlot: String?
+        var holdingObjectSlot: String?
+        var dialogueText: String?
+        var describedActionText: String?
+        var sourceSpan: String?
+        var confidence: Double?
+
+        private enum CodingKeys: String, CodingKey {
+            case rowID
+            case rowId
+            case beatSlot
+            case actorSlot
+            case actionType
+            case targetSlot
+            case holdingObjectSlot
+            case dialogueText
+            case describedActionText
+            case sourceSpan
+            case confidence
+        }
+
+        init(
+            rowID: String,
+            beatSlot: String,
+            actorSlot: String,
+            actionType: SceneAction.ActionType,
+            targetSlot: String? = nil,
+            holdingObjectSlot: String? = nil,
+            dialogueText: String? = nil,
+            describedActionText: String? = nil,
+            sourceSpan: String? = nil,
+            confidence: Double? = nil
+        ) {
+            self.rowID = rowID
+            self.beatSlot = beatSlot
+            self.actorSlot = actorSlot
+            self.actionType = actionType
+            self.targetSlot = targetSlot
+            self.holdingObjectSlot = holdingObjectSlot
+            self.dialogueText = dialogueText
+            self.describedActionText = describedActionText
+            self.sourceSpan = sourceSpan
+            self.confidence = confidence
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let rowIDFromCamel = try container.decodeIfPresent(String.self, forKey: .rowId)
+            let rowIDFromLegacy = try container.decodeIfPresent(String.self, forKey: .rowID)
+            self.rowID = rowIDFromCamel ?? rowIDFromLegacy ?? ""
+            self.beatSlot = try container.decode(String.self, forKey: .beatSlot)
+            self.actorSlot = try container.decode(String.self, forKey: .actorSlot)
+            self.actionType = try container.decode(SceneAction.ActionType.self, forKey: .actionType)
+            self.targetSlot = try container.decodeIfPresent(String.self, forKey: .targetSlot)
+            self.holdingObjectSlot = try container.decodeIfPresent(String.self, forKey: .holdingObjectSlot)
+            self.dialogueText = try container.decodeIfPresent(String.self, forKey: .dialogueText)
+            self.describedActionText = try container.decodeIfPresent(String.self, forKey: .describedActionText)
+            self.sourceSpan = try container.decodeIfPresent(String.self, forKey: .sourceSpan)
+            self.confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(rowID, forKey: .rowId)
+            try container.encode(beatSlot, forKey: .beatSlot)
+            try container.encode(actorSlot, forKey: .actorSlot)
+            try container.encode(actionType, forKey: .actionType)
+            try container.encodeIfPresent(targetSlot, forKey: .targetSlot)
+            try container.encodeIfPresent(holdingObjectSlot, forKey: .holdingObjectSlot)
+            try container.encodeIfPresent(dialogueText, forKey: .dialogueText)
+            try container.encodeIfPresent(describedActionText, forKey: .describedActionText)
+            try container.encodeIfPresent(sourceSpan, forKey: .sourceSpan)
+            try container.encodeIfPresent(confidence, forKey: .confidence)
+        }
+    }
+
+    var contractVersion: String
+    var rows: [EventRow]
+
+    static let empty = SceneV9EventTable(contractVersion: "sg_v9_event_table_v1", rows: [])
+}
+
+struct SceneV9PatchOps: Codable, Equatable {
+    struct PatchOp: Codable, Equatable {
+        enum Operation: String, Codable {
+            case replace
+            case add
+            case delete
+        }
+
+        var op: Operation
+        var rowID: String
+        var field: String?
+        var value: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case op
+            case rowID
+            case rowId
+            case field
+            case value
+        }
+
+        init(op: Operation, rowID: String, field: String? = nil, value: String? = nil) {
+            self.op = op
+            self.rowID = rowID
+            self.field = field
+            self.value = value
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.op = try container.decode(Operation.self, forKey: .op)
+            let rowIDFromCamel = try container.decodeIfPresent(String.self, forKey: .rowId)
+            let rowIDFromLegacy = try container.decodeIfPresent(String.self, forKey: .rowID)
+            self.rowID = rowIDFromCamel ?? rowIDFromLegacy ?? ""
+            self.field = try container.decodeIfPresent(String.self, forKey: .field)
+            self.value = try container.decodeIfPresent(String.self, forKey: .value)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(op, forKey: .op)
+            try container.encode(rowID, forKey: .rowId)
+            try container.encodeIfPresent(field, forKey: .field)
+            try container.encodeIfPresent(value, forKey: .value)
+        }
+    }
+
+    var contractVersion: String
+    var ops: [PatchOp]
+
+    static let empty = SceneV9PatchOps(contractVersion: "sg_v9_patch_ops_v1", ops: [])
+}
+
 enum SceneRouterOutcome: String, Equatable {
     case acceptLocal = "accept_local"
     case fallbackRuleOnly = "fallback_rule_only"
@@ -191,6 +382,42 @@ protocol LocalScenePlanProvider {
         anchors: SourceAnchorBundle,
         state: SceneChunkState?
     ) async -> ScenePlanProviderResult?
+
+    func generateEventTable(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> SceneV9EventProviderResult?
+
+    func generateEventTableAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog
+    ) async -> SceneV9EventProviderResult?
+
+    func generateEventPatchOps(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) -> SceneV9PatchOps?
+
+    func generateEventPatchOpsAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) async -> SceneV9PatchOps?
 }
 
 protocol RemoteScenePlanProvider {
@@ -211,6 +438,71 @@ struct ScenePlanProviderResult {
         self.plan = plan
         self.usedLegacySceneScriptBridge = usedLegacySceneScriptBridge
         self.reasonCodes = reasonCodes
+    }
+}
+
+struct SceneV9EventProviderResult {
+    let slotCatalog: SceneV9SlotCatalog
+    let eventTable: SceneV9EventTable
+    let patchOps: SceneV9PatchOps?
+    let reasonCodes: [String]
+
+    init(
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        patchOps: SceneV9PatchOps? = nil,
+        reasonCodes: [String] = []
+    ) {
+        self.slotCatalog = slotCatalog
+        self.eventTable = eventTable
+        self.patchOps = patchOps
+        self.reasonCodes = reasonCodes
+    }
+}
+
+extension LocalScenePlanProvider {
+    func generateEventTable(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> SceneV9EventProviderResult? {
+        nil
+    }
+
+    func generateEventTableAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog
+    ) async -> SceneV9EventProviderResult? {
+        nil
+    }
+
+    func generateEventPatchOps(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) -> SceneV9PatchOps? {
+        nil
+    }
+
+    func generateEventPatchOpsAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) async -> SceneV9PatchOps? {
+        nil
     }
 }
 

@@ -1,0 +1,6 @@
+{
+  "contract_version": "sg_v9_patch_dataset_v1",
+  "total_rows": 50,
+  "train_rows": 40,
+  "val_rows": 10
+}

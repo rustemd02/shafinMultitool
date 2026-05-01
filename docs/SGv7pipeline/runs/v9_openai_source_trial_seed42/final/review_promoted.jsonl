@@ -1,0 +1,2 @@
+{"sample_id": "same_type_two_marked_objects__same_type_marker_stress__s830288__65f9f681", "promoted_train_eligibility": "hard_or_preference_only", "review_decision": "promote_same_type_marker_conflict_for_pilot_coverage", "reviewed_at": "pilot-auto", "reviewer": "sgv7_pilot_script"}
+{"sample_id": "same_type_two_marked_objects_near_far__same_type_marker_stress__s98904__a15b4140", "promoted_train_eligibility": "hard_or_preference_only", "review_decision": "promote_same_type_marker_conflict_for_pilot_coverage", "reviewed_at": "pilot-auto", "reviewer": "sgv7_pilot_script"}

@@ -1,8 +1,0 @@
-{
-  "contract_version": "sg_v8_critic_rank_v1",
-  "candidate_model_id": "dataset_v7_orpo_iter2",
-  "baseline_model_id": "dataset_v7_orpo_iter1",
-  "total_rows": 38,
-  "train_rows": 34,
-  "val_rows": 4
-}

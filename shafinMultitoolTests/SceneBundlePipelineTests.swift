@@ -12,9 +12,14 @@ import simd
 final class SceneBundlePipelineTests: XCTestCase {
     private final class StubLocalProvider: LocalScenePlanProvider {
         let result: ScenePlanProviderResult?
+        let eventProvider: ((String, [MarkedObject], SourceAnchorBundle, SceneChunkState?, SceneV9SlotCatalog) -> SceneV9EventProviderResult?)?
 
-        init(result: ScenePlanProviderResult?) {
+        init(
+            result: ScenePlanProviderResult?,
+            eventProvider: ((String, [MarkedObject], SourceAnchorBundle, SceneChunkState?, SceneV9SlotCatalog) -> SceneV9EventProviderResult?)? = nil
+        ) {
             self.result = result
+            self.eventProvider = eventProvider
         }
 
         func generatePlan(
@@ -33,6 +38,16 @@ final class SceneBundlePipelineTests: XCTestCase {
             state: SceneChunkState?
         ) async -> ScenePlanProviderResult? {
             result
+        }
+
+        func generateEventTable(
+            description: String,
+            markedObjects: [MarkedObject],
+            anchors: SourceAnchorBundle,
+            state: SceneChunkState?,
+            slotCatalog: SceneV9SlotCatalog
+        ) -> SceneV9EventProviderResult? {
+            eventProvider?(description, markedObjects, anchors, state, slotCatalog)
         }
     }
 
@@ -55,6 +70,18 @@ final class SceneBundlePipelineTests: XCTestCase {
             anchorExtractor: SceneAnchorExtractor(),
             metadataExtractor: SceneMetadataExtractor(),
             localProvider: StubLocalProvider(result: result),
+            planCompiler: ScenePlanCompiler()
+        )
+    }
+
+    private func makeBundlePipeline(
+        result: ScenePlanProviderResult?,
+        eventProvider: @escaping (String, [MarkedObject], SourceAnchorBundle, SceneChunkState?, SceneV9SlotCatalog) -> SceneV9EventProviderResult?
+    ) -> SceneBundlePipeline {
+        SceneBundlePipeline(
+            anchorExtractor: SceneAnchorExtractor(),
+            metadataExtractor: SceneMetadataExtractor(),
+            localProvider: StubLocalProvider(result: result, eventProvider: eventProvider),
             planCompiler: ScenePlanCompiler()
         )
     }
@@ -618,5 +645,154 @@ final class SceneBundlePipelineTests: XCTestCase {
         let progress = viewModel.playbackProgressState(at: middleOfSecondBeat, items: timeline)
         XCTAssertEqual(progress.activeBeatIndex, 1)
         XCTAssertEqual(progress.beatProgress, 0.5, accuracy: 0.05)
+    }
+
+    @MainActor
+    func testSceneParserRuntimeModeAPIBackCompatRoundtrip() throws {
+        let modeKey = "scene_generator_v9_runtime_mode"
+        let enabledKey = "scene_generator_v9_enabled"
+        let defaults = UserDefaults.standard
+        let oldMode = defaults.object(forKey: modeKey)
+        let oldEnabled = defaults.object(forKey: enabledKey)
+        defer {
+            if let oldMode {
+                defaults.set(oldMode, forKey: modeKey)
+            } else {
+                defaults.removeObject(forKey: modeKey)
+            }
+            if let oldEnabled {
+                defaults.set(oldEnabled, forKey: enabledKey)
+            } else {
+                defaults.removeObject(forKey: enabledKey)
+            }
+        }
+
+        parser.setV9RuntimeMode(.v8Hotfix)
+        XCTAssertEqual(parser.getV9RuntimeMode(), .v8Hotfix)
+
+        parser.setV9RuntimeMode(.v9Bridge)
+        XCTAssertEqual(parser.getV9RuntimeMode(), .v9Bridge)
+
+        parser.setV9RuntimeMode(.v9Full)
+        XCTAssertEqual(parser.getV9RuntimeMode(), .v9Full)
+    }
+
+    func testV9FullBudgetFallbackEmitsReasonCode() async throws {
+        let modeKey = "scene_generator_v9_runtime_mode"
+        let budgetKey = "scene_generator_v9_chunk_budget_ms"
+        let defaults = UserDefaults.standard
+        let oldMode = defaults.string(forKey: modeKey)
+        let oldBudgetObj = defaults.object(forKey: budgetKey)
+        defaults.set("v9_full", forKey: modeKey)
+        defaults.set(10.0, forKey: budgetKey)
+        defer {
+            if let oldMode {
+                defaults.set(oldMode, forKey: modeKey)
+            } else {
+                defaults.removeObject(forKey: modeKey)
+            }
+            if let oldBudgetObj {
+                defaults.set(oldBudgetObj, forKey: budgetKey)
+            } else {
+                defaults.removeObject(forKey: budgetKey)
+            }
+        }
+
+        let sourcePlan = ScenePlanIR(
+            actors: [
+                .init(ref: "first", type: .human),
+                .init(ref: "second", type: .human),
+            ],
+            objects: [],
+            beats: [
+                .init(
+                    ref: "beat_1",
+                    actions: [
+                        .init(actorRef: "first", type: .walk, targetRef: "second", resultingPose: .walking),
+                        .init(actorRef: "second", type: .walk, targetRef: "first", resultingPose: .walking),
+                    ]
+                ),
+            ],
+            spatialRelations: [],
+            referenceBindings: .init(actorBindings: ["first": "actor_1", "second": "actor_2"])
+        )
+        let pipeline = makeBundlePipeline(
+            result: ScenePlanProviderResult(plan: sourcePlan, usedLegacySceneScriptBridge: false),
+            eventProvider: { _, _, _, _, slotCatalog in
+                Thread.sleep(forTimeInterval: 0.05)
+                return SceneV9EventProviderResult(
+                    slotCatalog: slotCatalog,
+                    eventTable: SceneV9EventTable(
+                        contractVersion: "sg_v9_event_table_v1",
+                        rows: [
+                            .init(
+                                rowID: "row_1",
+                                beatSlot: slotCatalog.beatSlots.first?.slotID ?? "beat_slot_1",
+                                actorSlot: slotCatalog.actorSlots.first?.slotID ?? "actor_slot_1",
+                                actionType: .walk,
+                                targetSlot: slotCatalog.actorSlots.dropFirst().first?.slotID,
+                                holdingObjectSlot: nil,
+                                dialogueText: nil,
+                                describedActionText: nil,
+                                sourceSpan: "идут навстречу друг другу",
+                                confidence: 0.9
+                            ),
+                        ]
+                    ),
+                    patchOps: nil,
+                    reasonCodes: ["v9.event_provider_test_payload"]
+                )
+            }
+        )
+
+        let result = await pipeline.parse(
+            description: "Первый и второй актер идут навстречу друг другу.",
+            markedObjects: [],
+            mode: .full,
+            previousState: nil as ScriptDocumentState?
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        let reasons = Set(result.chunkDiagnostics.flatMap(\.reasonCodes))
+        XCTAssertTrue(reasons.contains("v9.runtime_budget_exceeded_fallback_v8"))
+        XCTAssertTrue(reasons.contains("runtime_guardrail:v9.runtime_budget_exceeded_fallback_v8"))
+    }
+
+    func testV9FixableVerifierIssuePolicy() {
+        let service = SceneEventTableV9Service()
+        XCTAssertTrue(service.containsFixableVerifierIssues(["v9.targetless_event_repaired"]))
+        XCTAssertTrue(service.containsFixableVerifierIssues(["v9.holding_slot_repaired", "other"]))
+        XCTAssertFalse(service.containsFixableVerifierIssues(["v9.unknown_slot_blocked"]))
+        XCTAssertFalse(service.containsFixableVerifierIssues([]))
+    }
+
+    func testV9ContractsAcceptRowIdAndLegacyRowID() throws {
+        let eventRowPayloadRowId = """
+        {"contractVersion":"sg_v9_event_table_v1","rows":[{"rowId":"row_1","beatSlot":"beat_slot_1","actorSlot":"actor_slot_1","actionType":"stand"}]}
+        """
+        let eventRowPayloadLegacy = """
+        {"contractVersion":"sg_v9_event_table_v1","rows":[{"rowID":"row_2","beatSlot":"beat_slot_1","actorSlot":"actor_slot_1","actionType":"walk"}]}
+        """
+
+        let decodedRowId = try JSONDecoder().decode(SceneV9EventTable.self, from: Data(eventRowPayloadRowId.utf8))
+        let decodedLegacy = try JSONDecoder().decode(SceneV9EventTable.self, from: Data(eventRowPayloadLegacy.utf8))
+        XCTAssertEqual(decodedRowId.rows.first?.rowID, "row_1")
+        XCTAssertEqual(decodedLegacy.rows.first?.rowID, "row_2")
+
+        let patchPayloadRowId = """
+        {"contractVersion":"sg_v9_patch_ops_v1","ops":[{"op":"replace","rowId":"row_1","field":"actionType","value":"stand"}]}
+        """
+        let patchPayloadLegacy = """
+        {"contractVersion":"sg_v9_patch_ops_v1","ops":[{"op":"delete","rowID":"row_2"}]}
+        """
+
+        let decodedPatchRowId = try JSONDecoder().decode(SceneV9PatchOps.self, from: Data(patchPayloadRowId.utf8))
+        let decodedPatchLegacy = try JSONDecoder().decode(SceneV9PatchOps.self, from: Data(patchPayloadLegacy.utf8))
+        XCTAssertEqual(decodedPatchRowId.ops.first?.rowID, "row_1")
+        XCTAssertEqual(decodedPatchLegacy.ops.first?.rowID, "row_2")
     }
 }

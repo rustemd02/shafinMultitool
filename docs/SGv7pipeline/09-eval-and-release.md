@@ -230,11 +230,11 @@
 - `dataset_v8_plan_orpo_iter1`
 
 Источник артефактов:
-- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
-- [runs_scored.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv)
-- [pairwise_compare.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv)
-- [v8_plan_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv)
-- [slice_reason_codes.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_results_seed42/aggregate/slice_reason_codes.csv)
+- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
+- [runs_scored.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv)
+- [pairwise_compare.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv)
+- [v8_plan_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv)
+- [slice_reason_codes.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/slice_reason_codes.csv)
 
 ### Короткий вывод
 

@@ -1,0 +1,12 @@
+{
+  "checked_outputs": {
+    "preference_test": 0,
+    "preference_train": 1,
+    "preference_val": 0,
+    "sft_test": 2,
+    "sft_train": 16,
+    "sft_val": 2
+  },
+  "status": "pass",
+  "violations": []
+}

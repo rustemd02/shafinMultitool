@@ -1,0 +1,63 @@
+{
+  "build_request": {
+    "difficulty_bucket": "core",
+    "fail_on_duplicates": false,
+    "include_variants": null,
+    "output_jsonl": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_openai_source_trial_seed42/core/graphs.jsonl",
+    "output_manifest": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_openai_source_trial_seed42/core/graphs.manifest.json",
+    "pattern_names": null,
+    "refill_budget": 12,
+    "seed": 20260415,
+    "total_records": 30
+  },
+  "build_seed": 20260415,
+  "cir_version": "sg_v7_cir_v1",
+  "complexity_counts": {
+    "M": 18,
+    "S": 12
+  },
+  "contract_version": "sg_v7_contract_v1",
+  "dedup_group_counts": {
+    "dialogue_only|base|dialogue_exchange|2|marked=0|unmarked=0|talk,talk": 2,
+    "dialogue_then_put_down_object|base|dialogue_exchange,putdown_object|2|marked=0|unmarked=2|talk,put_down": 2,
+    "dialogue_then_small_action|base|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,look_at": 2,
+    "enter_then_put_down_object|base|single_action,putdown_object|1|marked=0|unmarked=2|enter,put_down": 2,
+    "open_then_pick_up_object|base|open_object,pickup_object|1|marked=0|unmarked=2|open,pick_up": 3,
+    "ordinal_first_second|base|approach_object|2|marked=0|unmarked=1|approach,look_at": 4,
+    "pick_up_then_put_down_object|base|pickup_object,putdown_object|1|marked=0|unmarked=2|pick_up,put_down": 3,
+    "toward_each_other_then_pass_by_marked_object|base|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 2,
+    "toward_each_other_then_pass_by_marked_object|morphology_stress|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 1,
+    "toward_each_other_then_pass_by_marked_object|ordinal_stress|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 1,
+    "toward_each_other_then_stop_near_marked_object|base|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 2,
+    "toward_each_other_then_stop_near_marked_object|morphology_stress|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 2,
+    "toward_each_other|base|toward_each_other|2|marked=0|unmarked=0|walk,walk": 2,
+    "unsupported_action_described_action|base|single_action|1|marked=0|unmarked=1|described_action": 2
+  },
+  "difficulty_bucket": "core",
+  "duplicate_drop_count": 0,
+  "emitted_total_records": 30,
+  "generator_name": "sg_v7_graph_generator_v1",
+  "pattern_counts": {
+    "dialogue_only": 2,
+    "dialogue_then_put_down_object": 2,
+    "dialogue_then_small_action": 2,
+    "enter_then_put_down_object": 2,
+    "open_then_pick_up_object": 3,
+    "ordinal_first_second": 4,
+    "pick_up_then_put_down_object": 3,
+    "toward_each_other": 2,
+    "toward_each_other_then_pass_by_marked_object": 4,
+    "toward_each_other_then_stop_near_marked_object": 4,
+    "unsupported_action_described_action": 2
+  },
+  "pattern_registry_version": "sg_v7_pattern_library_v1",
+  "refill_attempt_count": 2,
+  "rejected_by_budget": 2,
+  "rejected_by_duplicate": 0,
+  "requested_total_records": 30,
+  "variant_counts": {
+    "base": 26,
+    "morphology_stress": 3,
+    "ordinal_stress": 1
+  }
+}

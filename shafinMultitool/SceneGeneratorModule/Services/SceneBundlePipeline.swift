@@ -1392,6 +1392,12 @@ final class SceneBundleCompiler {
 }
 
 final class SceneBundlePipeline {
+    private enum V9RuntimeMode: String {
+        case v8Hotfix = "v8_hotfix"
+        case v9Bridge = "v9_bridge"
+        case v9Full = "v9_full"
+    }
+
     private let normalizer = ScriptNormalizer()
     private let boundaryDetector = SceneBoundaryDetector()
     private let segmenter = ChunkSegmenter()
@@ -1399,9 +1405,17 @@ final class SceneBundlePipeline {
     private let registryProjector = EntityRegistryProjector()
     private let canonicalizer = ChunkCanonicalizer()
     private let stitcher = SceneStitcher()
+    private let v9EventService = SceneEventTableV9Service()
     private let metadataExtractor: SceneMetadataExtractor
     private let localProvider: LocalScenePlanProvider
     private let bundleCompiler: SceneBundleCompiler
+    private let v9EnabledDefaultsKey = "scene_generator_v9_enabled"
+    private let v9RuntimeModeDefaultsKey = "scene_generator_v9_runtime_mode"
+    private let v9MaxRowsDefaultsKey = "scene_generator_v9_max_rows"
+    private let v9MaxActorsDefaultsKey = "scene_generator_v9_max_actors"
+    private let v9MaxObjectsDefaultsKey = "scene_generator_v9_max_objects"
+    private let v9MaxBeatsDefaultsKey = "scene_generator_v9_max_beats"
+    private let v9ChunkBudgetMsDefaultsKey = "scene_generator_v9_chunk_budget_ms"
 
     init(
         anchorExtractor: SceneAnchorExtractor,
@@ -1623,12 +1637,59 @@ final class SceneBundlePipeline {
     ) -> SceneChunkDraft {
         if let providerResult {
             var reasonCodes = providerResult.usedLegacySceneScriptBridge ? ["v1.legacy_scene_bridge_chunk"] : ["v1.local_chunk_plan"]
+            appendReasons(providerResult.reasonCodes, provenance: "provider", into: &reasonCodes)
+
+            let runtimeMode = selectedV9RuntimeMode()
+            let limits = runtimeGuardrails(for: runtimeMode)
+            let startTime = CFAbsoluteTimeGetCurrent()
+
+            let v8BasePlan = providerResult.plan
+            var sourcePlan = v8BasePlan
+
+            if runtimeMode != .v8Hotfix {
+                let guardrailPlan = v9EventService.applyGuardrails(to: sourcePlan, limits: limits)
+                sourcePlan = guardrailPlan.plan
+                appendReasons(guardrailPlan.reasonCodes, provenance: "runtime_guardrail", into: &reasonCodes)
+                if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
+                    appendReasonWithProvenance(
+                        "v9.runtime_budget_exceeded_fallback_v8",
+                        provenance: "runtime_guardrail",
+                        into: &reasonCodes
+                    )
+                    sourcePlan = v8BasePlan
+                } else {
+                    let v9Plan = applyV9RuntimeMode(
+                        runtimeMode,
+                        sourcePlan: sourcePlan,
+                        v8FallbackPlan: v8BasePlan,
+                        sourceText: rawSegment.sourceText,
+                        anchors: anchors.sourceBundle,
+                        chunkState: chunkState,
+                        markedObjects: markedObjects,
+                        limits: limits,
+                        startTime: startTime,
+                        reasonCodes: &reasonCodes
+                    )
+                    sourcePlan = v9Plan
+                }
+            } else {
+                appendReasonWithProvenance(
+                    "v9.runtime_mode_v8_hotfix",
+                    provenance: "runtime_guardrail",
+                    into: &reasonCodes
+                )
+            }
+
+            let beforeEnrich = Set(reasonCodes)
             let enrichedPlan = enrichRuleFallbackPlan(
-                providerResult.plan,
+                sourcePlan,
                 sourceText: rawSegment.sourceText,
                 anchors: anchors.sourceBundle,
                 reasonCodes: &reasonCodes
             )
+            let afterEnrich = Set(reasonCodes)
+            let newEnricherCodes = afterEnrich.subtracting(beforeEnrich).sorted()
+            appendReasons(newEnricherCodes, provenance: "enricher", into: &reasonCodes)
             return SceneChunkDraft(
                 sceneID: scene.id,
                 chunkID: rawSegment.chunkID,
@@ -1674,6 +1735,232 @@ final class SceneBundlePipeline {
             unresolvedMentions: anchors.pronounMentions,
             reasonCodes: reasonCodes
         )
+    }
+
+    private func selectedV9RuntimeMode() -> V9RuntimeMode {
+        if let raw = UserDefaults.standard.string(forKey: v9RuntimeModeDefaultsKey),
+           let parsed = V9RuntimeMode(rawValue: raw) {
+            return parsed
+        }
+        // Backward compatibility for older boolean toggle.
+        if UserDefaults.standard.object(forKey: v9EnabledDefaultsKey) != nil,
+           UserDefaults.standard.bool(forKey: v9EnabledDefaultsKey) == false {
+            return .v8Hotfix
+        }
+        return .v9Bridge
+    }
+
+    private func runtimeGuardrails(for mode: V9RuntimeMode) -> SceneEventTableV9Service.RuntimeGuardrails {
+        let defaults: SceneEventTableV9Service.RuntimeGuardrails
+        switch mode {
+        case .v8Hotfix:
+            defaults = .init(maxRows: 64, maxActors: 8, maxObjects: 12, maxBeats: 16, wallClockBudgetMs: 80)
+        case .v9Bridge:
+            defaults = .init(maxRows: 96, maxActors: 10, maxObjects: 16, maxBeats: 24, wallClockBudgetMs: 120)
+        case .v9Full:
+            defaults = .init(maxRows: 128, maxActors: 12, maxObjects: 20, maxBeats: 32, wallClockBudgetMs: 180)
+        }
+        return .init(
+            maxRows: max(1, UserDefaults.standard.object(forKey: v9MaxRowsDefaultsKey) == nil ? defaults.maxRows : UserDefaults.standard.integer(forKey: v9MaxRowsDefaultsKey)),
+            maxActors: max(1, UserDefaults.standard.object(forKey: v9MaxActorsDefaultsKey) == nil ? defaults.maxActors : UserDefaults.standard.integer(forKey: v9MaxActorsDefaultsKey)),
+            maxObjects: max(1, UserDefaults.standard.object(forKey: v9MaxObjectsDefaultsKey) == nil ? defaults.maxObjects : UserDefaults.standard.integer(forKey: v9MaxObjectsDefaultsKey)),
+            maxBeats: max(1, UserDefaults.standard.object(forKey: v9MaxBeatsDefaultsKey) == nil ? defaults.maxBeats : UserDefaults.standard.integer(forKey: v9MaxBeatsDefaultsKey)),
+            wallClockBudgetMs: UserDefaults.standard.object(forKey: v9ChunkBudgetMsDefaultsKey) == nil
+                ? defaults.wallClockBudgetMs
+                : max(10, UserDefaults.standard.double(forKey: v9ChunkBudgetMsDefaultsKey))
+        )
+    }
+
+    private func didExceedChunkBudget(startTime: CFAbsoluteTime, budgetMs: Double) -> Bool {
+        (CFAbsoluteTimeGetCurrent() - startTime) * 1_000.0 > budgetMs
+    }
+
+    private func applyV9RuntimeMode(
+        _ mode: V9RuntimeMode,
+        sourcePlan: ScenePlanIR,
+        v8FallbackPlan: ScenePlanIR,
+        sourceText: String,
+        anchors: SourceAnchorBundle,
+        chunkState: SceneChunkState,
+        markedObjects: [MarkedObject],
+        limits: SceneEventTableV9Service.RuntimeGuardrails,
+        startTime: CFAbsoluteTime,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        switch mode {
+        case .v8Hotfix:
+            return v8FallbackPlan
+        case .v9Bridge:
+            return applyV9Bridge(
+                sourcePlan: sourcePlan,
+                v8FallbackPlan: v8FallbackPlan,
+                limits: limits,
+                startTime: startTime,
+                reasonCodes: &reasonCodes
+            )
+        case .v9Full:
+            return applyV9Full(
+                sourcePlan: sourcePlan,
+                v8FallbackPlan: v8FallbackPlan,
+                sourceText: sourceText,
+                anchors: anchors,
+                chunkState: chunkState,
+                markedObjects: markedObjects,
+                limits: limits,
+                startTime: startTime,
+                reasonCodes: &reasonCodes
+            )
+        }
+    }
+
+    private func applyV9Bridge(
+        sourcePlan: ScenePlanIR,
+        v8FallbackPlan: ScenePlanIR,
+        limits: SceneEventTableV9Service.RuntimeGuardrails,
+        startTime: CFAbsoluteTime,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        let slotCatalog = v9EventService.buildSlotCatalog(from: sourcePlan)
+        var eventTable = v9EventService.buildEventTable(from: sourcePlan, slotCatalog: slotCatalog)
+        let rowClamp = v9EventService.clampRows(in: eventTable, maxRows: limits.maxRows)
+        eventTable = rowClamp.eventTable
+        appendReasons(rowClamp.reasonCodes, provenance: "runtime_guardrail", into: &reasonCodes)
+
+        if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
+            appendReasonWithProvenance("v9.runtime_budget_exceeded_fallback_v8", provenance: "runtime_guardrail", into: &reasonCodes)
+            return v8FallbackPlan
+        }
+
+        let verification = v9EventService.verifyAndRepair(eventTable: eventTable, slotCatalog: slotCatalog)
+        appendReasons(verification.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
+        if !verification.reasonCodes.isEmpty {
+            appendReasonWithProvenance("v9.local_event_table_pipeline", provenance: "v9_verifier", into: &reasonCodes)
+        }
+        return v9EventService.compileToPlan(
+            eventTable: verification.repairedEventTable,
+            slotCatalog: slotCatalog,
+            originalPlan: sourcePlan
+        )
+    }
+
+    private func applyV9Full(
+        sourcePlan: ScenePlanIR,
+        v8FallbackPlan: ScenePlanIR,
+        sourceText: String,
+        anchors: SourceAnchorBundle,
+        chunkState: SceneChunkState,
+        markedObjects: [MarkedObject],
+        limits: SceneEventTableV9Service.RuntimeGuardrails,
+        startTime: CFAbsoluteTime,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        var slotCatalog = v9EventService.buildSlotCatalog(from: sourcePlan)
+        var eventTable = v9EventService.buildEventTable(from: sourcePlan, slotCatalog: slotCatalog)
+        var usedProvider = false
+
+        if let providerResult = localProvider.generateEventTable(
+            description: sourceText,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: chunkState,
+            slotCatalog: slotCatalog
+        ) {
+            usedProvider = true
+            slotCatalog = providerResult.slotCatalog
+            eventTable = providerResult.eventTable
+            appendReasons(providerResult.reasonCodes, provenance: "provider", into: &reasonCodes)
+            if let patchOps = providerResult.patchOps {
+                // Provider may return already-applied patch ops for diagnostics; runtime must not apply them twice.
+                if !patchOps.ops.isEmpty {
+                    appendReasonWithProvenance("v9.patch_ops_embedded_in_provider_payload", provenance: "provider", into: &reasonCodes)
+                }
+            }
+            appendReasonWithProvenance("v9.event_provider_path_used", provenance: "provider", into: &reasonCodes)
+        } else {
+            appendReasonWithProvenance("v9.event_provider_unavailable_fallback_bridge", provenance: "provider", into: &reasonCodes)
+        }
+
+        let rowClamp = v9EventService.clampRows(in: eventTable, maxRows: limits.maxRows)
+        eventTable = rowClamp.eventTable
+        appendReasons(rowClamp.reasonCodes, provenance: "runtime_guardrail", into: &reasonCodes)
+
+        if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
+            appendReasonWithProvenance("v9.runtime_budget_exceeded_fallback_v8", provenance: "runtime_guardrail", into: &reasonCodes)
+            return v8FallbackPlan
+        }
+
+        var verification = v9EventService.verifyAndRepair(eventTable: eventTable, slotCatalog: slotCatalog)
+        appendReasons(verification.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
+
+        let canRetry = usedProvider
+            && v9EventService.containsFixableVerifierIssues(verification.reasonCodes)
+            && !didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs * 0.75)
+        if canRetry {
+            appendReasonWithProvenance("v9.patch_retry_attempted", provenance: "v9_verifier", into: &reasonCodes)
+            if let retryPatchOps = localProvider.generateEventPatchOps(
+                description: sourceText,
+                markedObjects: markedObjects,
+                anchors: anchors,
+                state: chunkState,
+                slotCatalog: slotCatalog,
+                eventTable: verification.repairedEventTable,
+                verifierIssues: verification.reasonCodes
+            ) {
+                let patched = v9EventService.applyPatchOps(
+                    retryPatchOps,
+                    to: verification.repairedEventTable,
+                    slotCatalog: slotCatalog
+                )
+                appendReasons(patched.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
+                let retryClamp = v9EventService.clampRows(in: patched.eventTable, maxRows: limits.maxRows)
+                let retryVerification = v9EventService.verifyAndRepair(eventTable: retryClamp.eventTable, slotCatalog: slotCatalog)
+                if retryVerification.reasonCodes.count <= verification.reasonCodes.count {
+                    verification = retryVerification
+                    appendReasonWithProvenance("v9.patch_retry_applied", provenance: "v9_verifier", into: &reasonCodes)
+                    appendReasons(retryVerification.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
+                } else {
+                    appendReasonWithProvenance("v9.patch_retry_no_gain", provenance: "v9_verifier", into: &reasonCodes)
+                }
+            } else {
+                appendReasonWithProvenance("v9.patch_retry_unavailable", provenance: "v9_verifier", into: &reasonCodes)
+            }
+        }
+
+        if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
+            appendReasonWithProvenance("v9.runtime_budget_exceeded_fallback_v8", provenance: "runtime_guardrail", into: &reasonCodes)
+            return v8FallbackPlan
+        }
+
+        appendReasonWithProvenance("v9.local_event_table_pipeline", provenance: "v9_verifier", into: &reasonCodes)
+        return v9EventService.compileToPlan(
+            eventTable: verification.repairedEventTable,
+            slotCatalog: slotCatalog,
+            originalPlan: sourcePlan
+        )
+    }
+
+    private func appendReasonWithProvenance(
+        _ reason: String,
+        provenance: String,
+        into reasons: inout [String]
+    ) {
+        if !reasons.contains(reason) {
+            reasons.append(reason)
+        }
+        let tagged = "\(provenance):\(reason)"
+        if !reasons.contains(tagged) {
+            reasons.append(tagged)
+        }
+    }
+
+    private func appendReasons(
+        _ additional: [String],
+        provenance: String,
+        into reasons: inout [String]
+    ) {
+        for reason in additional {
+            appendReasonWithProvenance(reason, provenance: provenance, into: &reasons)
+        }
     }
 
     private func enrichRuleFallbackPlan(

@@ -117,7 +117,7 @@ def main() -> None:
     parser.add_argument(
         "--run-root",
         type=Path,
-        default=repo_root / "docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42",
+        default=repo_root / "docs/SGv7pipeline/runs/v8_0_seed42",
     )
     parser.add_argument(
         "--prep-root",

@@ -1,0 +1,47 @@
+{
+  "config_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/benchmark_config.v8.seed42.json",
+  "eval_bundle_dir": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/eval_bundle_v1",
+  "eval_cli": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/eval/07_eval_local_model.py",
+  "mode": "full",
+  "eval_seed": 20260421,
+  "total_runs": 5,
+  "total_pairwise_rows": 9,
+  "total_slice_rows": 10,
+  "total_v8_plan_slice_rows": 2,
+  "total_slice_reason_rows": 13,
+  "total_slice_case_result_files": 10,
+  "slice_recompute_enabled": true,
+  "slice_gate_baseline_model_id": "dataset_v7_orpo_iter2",
+  "slice_gate_rows": 4,
+  "primary_set_metrics": [
+    "json_valid_rate",
+    "exact_marked_object_id_accuracy",
+    "ordinal_actor_binding_accuracy",
+    "target_resolution_accuracy",
+    "chronology_phase_accuracy",
+    "runtime_fallback_rate",
+    "case_strict_success_rate"
+  ],
+  "primary_buckets": [
+    "same_type_markers",
+    "three_beat_cases",
+    "ordinal_cases",
+    "exact_marker_identity_cases",
+    "marked_object_morphology"
+  ],
+  "slice_metrics": [
+    "json_valid_rate",
+    "schema_valid_rate",
+    "ordinal_actor_binding_accuracy",
+    "target_resolution_accuracy",
+    "chronology_phase_accuracy",
+    "action_recall",
+    "runtime_fallback_rate",
+    "case_strict_success_rate"
+  ],
+  "v8_plan_slice_metrics": [
+    "plan_parse_rate",
+    "plan_reference_binding_accuracy",
+    "plan_beat_integrity_accuracy"
+  ]
+}

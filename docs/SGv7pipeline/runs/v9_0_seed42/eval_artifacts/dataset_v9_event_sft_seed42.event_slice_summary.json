@@ -1,0 +1,63 @@
+{
+  "slice": "local_event_raw",
+  "overall": {
+    "case_count": 262,
+    "semantic_row_total": 713
+  },
+  "structural": {
+    "event_parse_rate": 1.0,
+    "event_schema_valid_rate": 1.0,
+    "event_actor_slot_structural_pass_rate": 1.0,
+    "event_target_slot_structural_pass_rate": 1.0,
+    "event_action_type_structural_pass_rate": 0.9923664122137404,
+    "event_beat_order_structural_pass_rate": 1.0,
+    "patch_success_rate": 0.007633587786259542,
+    "compiler_repair_rate": 0.007633587786259542
+  },
+  "semantic": {
+    "event_actor_slot_accuracy": 0.9691444600280504,
+    "event_target_slot_accuracy": 0.9438990182328191,
+    "event_action_type_accuracy": 0.9621318373071529,
+    "event_beat_order_accuracy": 0.967741935483871
+  },
+  "degradation": {
+    "targetless_event_repaired_rate": 0.0,
+    "unknown_slot_blocked_rate": 0.0,
+    "dropped_event_row_rate": 0.0,
+    "targetless_event_repaired_count": 0,
+    "unknown_slot_blocked_count": 0,
+    "dropped_event_rows_total": 0,
+    "input_event_rows_total": 694
+  },
+  "metrics": {
+    "overall": {
+      "case_count": 262,
+      "semantic_row_total": 713
+    },
+    "structural": {
+      "event_parse_rate": 1.0,
+      "event_schema_valid_rate": 1.0,
+      "event_actor_slot_structural_pass_rate": 1.0,
+      "event_target_slot_structural_pass_rate": 1.0,
+      "event_action_type_structural_pass_rate": 0.9923664122137404,
+      "event_beat_order_structural_pass_rate": 1.0,
+      "patch_success_rate": 0.007633587786259542,
+      "compiler_repair_rate": 0.007633587786259542
+    },
+    "semantic": {
+      "event_actor_slot_accuracy": 0.9691444600280504,
+      "event_target_slot_accuracy": 0.9438990182328191,
+      "event_action_type_accuracy": 0.9621318373071529,
+      "event_beat_order_accuracy": 0.967741935483871
+    },
+    "degradation": {
+      "targetless_event_repaired_rate": 0.0,
+      "unknown_slot_blocked_rate": 0.0,
+      "dropped_event_row_rate": 0.0,
+      "targetless_event_repaired_count": 0,
+      "unknown_slot_blocked_count": 0,
+      "dropped_event_rows_total": 0,
+      "input_event_rows_total": 694
+    }
+  }
+}

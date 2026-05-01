@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="${REPO:-/Users/unterlantas/Documents/XCode/shafinMultitool}"
-RUN_ROOT="${RUN_ROOT:-$REPO/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42}"
+RUN_ROOT="${RUN_ROOT:-$REPO/docs/SGv7pipeline/runs/v8_0_seed42}"
 PREP_ROOT="${PREP_ROOT:-$REPO/docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42}"
 EVAL_CASES="${EVAL_CASES:-$REPO/experiments/sc_benchmark/workspace/eval_bundle_v1/eval_cases.jsonl}"
 CIR_JSONL="${CIR_JSONL:-$REPO/docs/SGv7pipeline/runs/sgv7_full_20260417/final/cir_merged.jsonl}"

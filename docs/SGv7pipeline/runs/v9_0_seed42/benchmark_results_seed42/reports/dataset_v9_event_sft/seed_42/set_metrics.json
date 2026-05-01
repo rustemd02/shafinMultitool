@@ -1,0 +1,216 @@
+{
+  "overall": {
+    "case_count": 262,
+    "metrics": {
+      "action_recall": 0.9354838709677419,
+      "average_target_length": 783.8778625954199,
+      "beat_count_accuracy": 0.9580152671755725,
+      "canonical_parse_rate": 1.0,
+      "case_strict_success_rate": 0.5076335877862596,
+      "chronology_phase_accuracy": 0.8702290076335878,
+      "dangling_target_rate": 0.4108527131782946,
+      "described_action_precision": 0.0,
+      "exact_marked_object_id_accuracy": 1.0,
+      "json_valid_rate": 1.0,
+      "llm_accept_rate": 0.5648854961832062,
+      "llm_merge_rate": 0.0,
+      "llm_reject_rate": 0.4351145038167939,
+      "marked_object_recall": 1.0,
+      "ordinal_actor_binding_accuracy": 1.0,
+      "prediction_action_count_mean": 2.648854961832061,
+      "prediction_beat_count_mean": 1.5572519083969465,
+      "runtime_fallback_rate": 0.4351145038167939,
+      "schema_valid_rate": 0.6068702290076335,
+      "target_resolution_accuracy": 0.9213675213675213
+    },
+    "supports": {
+      "actions_expected": 713,
+      "beat_cases": 262,
+      "cases": 262,
+      "chronology_cases": 262,
+      "marked_refs": 84,
+      "ordinal_refs": 576,
+      "policy_cases": 262,
+      "required_target_actions": 258,
+      "target_actions": 585
+    },
+    "top_failure_clusters": [
+      {
+        "cluster_id": "synthetic_heldout::fallback_reject::none",
+        "count": 95
+      },
+      {
+        "cluster_id": "hard_heldout::schema_invalid::ordinal_cases",
+        "count": 73
+      },
+      {
+        "cluster_id": "real_runtime::schema_invalid::exact_marker_identity_cases",
+        "count": 30
+      }
+    ]
+  },
+  "run_metadata": {
+    "bundle_id": "sgv7_eval_bundle_v1",
+    "bundle_version": "eval_bundle_v1",
+    "checkpoint_id": "dataset_v9_event_sft_seed42",
+    "contract_version": "sg_v7_contract_v1",
+    "decoding_snapshot_hash": "f9779b62a87f9d0c163c51a41bf61e8c23e2223699acdbbf5f7ebba2bbc5d246",
+    "grammar_snapshot_hash": "a1f2fc00a384faa69e8177cf9077b50b7e0086cba8f35abbf6fde9ad47af4945",
+    "normalization_snapshot_hash": "678bdc22303cae685242a0356ccfddcefb3207d99d05909f80199a6670cf9f71",
+    "prompt_snapshot_hash": "6b8fbd0d86cbf3ca09d36516a7e8ec22a96c14b9badde3bdae113dc91a7f940b",
+    "runtime_policy_snapshot_hash": "75374ebdf4fa5bf39a9a21543ad6e96fa4d53318d07e25c6ce68411311c19335",
+    "seed": 20260430
+  },
+  "sets": {
+    "hard_heldout": {
+      "case_count": 89,
+      "metrics": {
+        "action_recall": 0.9120879120879121,
+        "average_target_length": 875.8426966292135,
+        "beat_count_accuracy": 0.9662921348314607,
+        "canonical_parse_rate": 1.0,
+        "case_strict_success_rate": 0.8314606741573034,
+        "chronology_phase_accuracy": 0.8314606741573034,
+        "dangling_target_rate": 0.5066666666666667,
+        "described_action_precision": 0.0,
+        "exact_marked_object_id_accuracy": 0.0,
+        "json_valid_rate": 1.0,
+        "llm_accept_rate": 0.9662921348314607,
+        "llm_merge_rate": 0.0,
+        "llm_reject_rate": 0.033707865168539325,
+        "marked_object_recall": 0.0,
+        "ordinal_actor_binding_accuracy": 1.0,
+        "prediction_action_count_mean": 2.9887640449438204,
+        "prediction_beat_count_mean": 1.2584269662921348,
+        "runtime_fallback_rate": 0.033707865168539325,
+        "schema_valid_rate": 0.1797752808988764,
+        "target_resolution_accuracy": 0.88
+      },
+      "supports": {
+        "actions_expected": 273,
+        "beat_cases": 89,
+        "cases": 89,
+        "chronology_cases": 89,
+        "marked_refs": 0,
+        "ordinal_refs": 267,
+        "policy_cases": 89,
+        "required_target_actions": 150,
+        "target_actions": 200
+      },
+      "top_failure_clusters": [
+        {
+          "cluster_id": "hard_heldout::schema_invalid::ordinal_cases",
+          "count": 73
+        },
+        {
+          "cluster_id": "hard_heldout::pass::three_beat_cases",
+          "count": 8
+        },
+        {
+          "cluster_id": "hard_heldout::pass::ordinal_cases",
+          "count": 5
+        }
+      ]
+    },
+    "real_runtime": {
+      "case_count": 64,
+      "metrics": {
+        "action_recall": 0.9523809523809523,
+        "average_target_length": 871.265625,
+        "beat_count_accuracy": 0.96875,
+        "canonical_parse_rate": 1.0,
+        "case_strict_success_rate": 0.921875,
+        "chronology_phase_accuracy": 0.921875,
+        "dangling_target_rate": 0.2777777777777778,
+        "described_action_precision": 1.0,
+        "exact_marked_object_id_accuracy": 1.0,
+        "json_valid_rate": 1.0,
+        "llm_accept_rate": 0.96875,
+        "llm_merge_rate": 0.0,
+        "llm_reject_rate": 0.03125,
+        "marked_object_recall": 1.0,
+        "ordinal_actor_binding_accuracy": 1.0,
+        "prediction_action_count_mean": 3.21875,
+        "prediction_beat_count_mean": 1.921875,
+        "runtime_fallback_rate": 0.03125,
+        "schema_valid_rate": 0.53125,
+        "target_resolution_accuracy": 0.9358974358974359
+      },
+      "supports": {
+        "actions_expected": 210,
+        "beat_cases": 64,
+        "cases": 64,
+        "chronology_cases": 64,
+        "marked_refs": 84,
+        "ordinal_refs": 138,
+        "policy_cases": 64,
+        "required_target_actions": 108,
+        "target_actions": 156
+      },
+      "top_failure_clusters": [
+        {
+          "cluster_id": "real_runtime::schema_invalid::exact_marker_identity_cases",
+          "count": 30
+        },
+        {
+          "cluster_id": "real_runtime::pass::exact_marker_identity_cases",
+          "count": 24
+        },
+        {
+          "cluster_id": "real_runtime::pass::ordinal_cases",
+          "count": 5
+        }
+      ]
+    },
+    "synthetic_heldout": {
+      "case_count": 109,
+      "metrics": {
+        "action_recall": 0.9478260869565217,
+        "average_target_length": 657.4770642201835,
+        "beat_count_accuracy": 0.944954128440367,
+        "canonical_parse_rate": 1.0,
+        "case_strict_success_rate": 0.0,
+        "chronology_phase_accuracy": 0.8715596330275229,
+        "dangling_target_rate": 0.0,
+        "described_action_precision": 1.0,
+        "exact_marked_object_id_accuracy": 0.0,
+        "json_valid_rate": 1.0,
+        "llm_accept_rate": 0.0,
+        "llm_merge_rate": 0.0,
+        "llm_reject_rate": 1.0,
+        "marked_object_recall": 0.0,
+        "ordinal_actor_binding_accuracy": 1.0,
+        "prediction_action_count_mean": 2.036697247706422,
+        "prediction_beat_count_mean": 1.5871559633027523,
+        "runtime_fallback_rate": 1.0,
+        "schema_valid_rate": 1.0,
+        "target_resolution_accuracy": 0.9475982532751092
+      },
+      "supports": {
+        "actions_expected": 230,
+        "beat_cases": 109,
+        "cases": 109,
+        "chronology_cases": 109,
+        "marked_refs": 0,
+        "ordinal_refs": 171,
+        "policy_cases": 109,
+        "required_target_actions": 0,
+        "target_actions": 229
+      },
+      "top_failure_clusters": [
+        {
+          "cluster_id": "synthetic_heldout::fallback_reject::none",
+          "count": 95
+        },
+        {
+          "cluster_id": "synthetic_heldout::target_resolution_fail::none",
+          "count": 12
+        },
+        {
+          "cluster_id": "synthetic_heldout::chronology_phase_fail::none",
+          "count": 2
+        }
+      ]
+    }
+  }
+}

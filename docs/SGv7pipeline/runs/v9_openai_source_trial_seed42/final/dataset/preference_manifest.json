@@ -1,0 +1,40 @@
+{
+  "build_config": {
+    "contract_version": "sg_v7_contract_v1",
+    "preference_ratios": {
+      "test": 0.05,
+      "train": 0.85,
+      "val": 0.1
+    },
+    "seed": 20260415
+  },
+  "counts_by_correction_tier": {
+    "tier_b_deterministic_canonical": 1
+  },
+  "counts_by_difficulty_bucket": {
+    "hard": 1
+  },
+  "counts_by_graph_family_key": {
+    "ea934cb90b2ef9f8": 1
+  },
+  "counts_by_preference_origin": {
+    "runtime_failure_reviewed_merge": 1
+  },
+  "counts_by_split": {
+    "test": 0,
+    "train": 1,
+    "val": 0
+  },
+  "dropped_candidate_counts": {
+    "by_reason": {},
+    "total": 0
+  },
+  "family_resolution_proof_summary": {
+    "resolved": 1
+  },
+  "preference_test_coverage_status": "undersized_preference_corpus",
+  "quarantined_candidate_counts": {
+    "by_reason": {},
+    "total": 0
+  }
+}

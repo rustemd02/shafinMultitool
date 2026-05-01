@@ -1,0 +1,76 @@
+{
+  "eval_bundle_dir": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/eval_bundle_v1",
+  "eval_seed": 20260421,
+  "seeds": [
+    42
+  ],
+  "checkpoint_id_template": "{model_id}_seed{seed}",
+  "slice_gate_baseline_model_id": "dataset_v7_orpo_iter2",
+  "models": [
+    {
+      "id": "dataset_v7",
+      "name": "Fine-tuned on generate_dataset_v7",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/colab_prep_export_seed42/predictions_dualslice_seed42/dataset_v7_seed{seed}.jsonl"
+    },
+    {
+      "id": "dataset_v7_orpo_iter1",
+      "name": "Fine-tuned on generate_dataset_v7 + ORPO iter1",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/colab_prep_export_seed42/predictions_dualslice_seed42/dataset_v7_orpo_iter1_seed{seed}.jsonl"
+    },
+    {
+      "id": "dataset_v7_orpo_iter2",
+      "name": "Fine-tuned on generate_dataset_v7 + ORPO iter2",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/iter3_1_prep_seed42/colab_prep_export_seed42/predictions_dualslice_seed42/dataset_v7_orpo_iter2_seed{seed}.jsonl"
+    },
+    {
+      "id": "dataset_v8_plan_sft",
+      "name": "V8 plan SFT",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/eval_artifacts/dataset_v8_plan_sft_seed{seed}.compiled_predictions.jsonl",
+      "v8_plan_case_results_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/eval_artifacts/dataset_v8_plan_sft_seed{seed}.plan_case_results.jsonl"
+    },
+    {
+      "id": "dataset_v8_plan_orpo_iter1",
+      "name": "V8 plan SFT + ORPO iter1",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/eval_artifacts/dataset_v8_plan_orpo_iter1_seed{seed}.compiled_predictions.jsonl",
+      "v8_plan_case_results_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/v8_0_seed42/eval_artifacts/dataset_v8_plan_orpo_iter1_seed{seed}.plan_case_results.jsonl"
+    }
+  ],
+  "pairs": [
+    [
+      "dataset_v7_orpo_iter1",
+      "dataset_v7"
+    ],
+    [
+      "dataset_v7_orpo_iter2",
+      "dataset_v7"
+    ],
+    [
+      "dataset_v7_orpo_iter2",
+      "dataset_v7_orpo_iter1"
+    ],
+    [
+      "dataset_v8_plan_sft",
+      "dataset_v7"
+    ],
+    [
+      "dataset_v8_plan_sft",
+      "dataset_v7_orpo_iter2"
+    ],
+    [
+      "dataset_v8_plan_orpo_iter1",
+      "dataset_v7"
+    ],
+    [
+      "dataset_v8_plan_orpo_iter1",
+      "dataset_v7_orpo_iter1"
+    ],
+    [
+      "dataset_v8_plan_orpo_iter1",
+      "dataset_v7_orpo_iter2"
+    ],
+    [
+      "dataset_v8_plan_orpo_iter1",
+      "dataset_v8_plan_sft"
+    ]
+  ]
+}

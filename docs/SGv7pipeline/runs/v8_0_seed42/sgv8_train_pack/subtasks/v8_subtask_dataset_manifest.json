@@ -1,0 +1,26 @@
+{
+  "contract_version": "sg_v8_subtask_dataset_v1",
+  "total_rows": 20000,
+  "train_rows": 18000,
+  "val_rows": 2000,
+  "subtask_counts": {
+    "anchor_extraction": 5000,
+    "beat_plan": 5000,
+    "ordinal_linking": 5000,
+    "target_linking": 5000
+  },
+  "split_subtask_counts": {
+    "train": {
+      "anchor_extraction": 4500,
+      "beat_plan": 4500,
+      "ordinal_linking": 4500,
+      "target_linking": 4500
+    },
+    "val": {
+      "anchor_extraction": 500,
+      "beat_plan": 500,
+      "ordinal_linking": 500,
+      "target_linking": 500
+    }
+  }
+}

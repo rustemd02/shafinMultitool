@@ -16,6 +16,14 @@ final class LLMParserService: LocalScenePlanProvider {
     private static let modelPathOverrideDefaultsKey = "scene_generator_llm_model_path"
     private static let generationTokenBudgets: [Int32] = [1024, 1536, 2048]
     private static let maxGenerationTokens: Int32 = 3072
+    private static let v9EventTokenBudgets: [Int32] = [768, 1024, 1536]
+    private static let v9EventMaxGenerationTokens: Int32 = 2048
+    private static let v9PatchMaxRetry: Int = 1
+    private static let v9PatchMaxTokens: Int32 = 512
+    private static let v9PatchWallClockBudgetSeconds: TimeInterval = 8
+    private static let v9EventTargetRequiredTypes: Set<SceneAction.ActionType> = [
+        .lookAt, .pickUp, .open, .close, .approach, .putDown, .give, .passBy, .stop
+    ]
     private static let genericRoleNames: Set<String> = [
         "мужчина", "женщина", "парень", "девушка", "человек", "персонаж",
         "актёр", "актер", "актриса", "герой", "героиня", "он", "она", "они"
@@ -26,8 +34,12 @@ final class LLMParserService: LocalScenePlanProvider {
     private let stateLock = NSLock()
     private var loadingTask: Task<Void, Never>?
 
-    /// LlamaContext (actor) — загружается лениво при первом использовании
+    /// Plan context с grammar ScenePlanIR — текущий backward-compatible путь.
     private var llamaContext: LlamaContext?
+    /// Отдельный context под V9 event-table grammar.
+    private var eventTableLlamaContext: LlamaContext?
+    /// Отдельный context под V9 patch-ops grammar.
+    private var patchOpsLlamaContext: LlamaContext?
 
     /// Статус загрузки модели
     private(set) var loadingState: LoadingState = .notLoaded
@@ -119,6 +131,64 @@ final class LLMParserService: LocalScenePlanProvider {
             loadingTask = task
         }
         await task.value
+    }
+
+    private enum V9ContextKind {
+        case eventTable
+        case patchOps
+    }
+
+    private func loadV9ContextIfNeeded(_ kind: V9ContextKind) async -> LlamaContext? {
+        await loadModelIfNeeded()
+
+        if !isAvailable {
+            return nil
+        }
+
+        if let existing = withStateLock({
+            switch kind {
+            case .eventTable:
+                return eventTableLlamaContext
+            case .patchOps:
+                return patchOpsLlamaContext
+            }
+        }) {
+            return existing
+        }
+
+        guard let modelPath = resolvePreferredModelPath() else {
+            print("⚠️ [LLM][V9] Модель не найдена для \(kind == .eventTable ? "event_table" : "patch_ops") context")
+            return nil
+        }
+
+        let grammar: String
+        switch kind {
+        case .eventTable:
+            grammar = Self.sceneV9EventTableGrammar
+        case .patchOps:
+            grammar = Self.sceneV9PatchOpsGrammar
+        }
+
+        do {
+            let context = try LlamaContext.create(
+                modelPath: modelPath,
+                temperature: 0.05,
+                grammarStr: grammar
+            )
+            withStateLock {
+                switch kind {
+                case .eventTable:
+                    self.eventTableLlamaContext = context
+                case .patchOps:
+                    self.patchOpsLlamaContext = context
+                }
+            }
+            print("✅ [LLM][V9] Загружен отдельный context: \(kind == .eventTable ? "event_table" : "patch_ops")")
+            return context
+        } catch {
+            print("⚠️ [LLM][V9] Не удалось загрузить \(kind == .eventTable ? "event_table" : "patch_ops") context: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // MARK: - Public API
@@ -358,6 +428,195 @@ final class LLMParserService: LocalScenePlanProvider {
         return result
     }
 
+    func generateEventTable(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> SceneV9EventProviderResult? {
+        if Thread.isMainThread {
+            print("⚠️ [LLM][V9] Sync generateEventTable вызван с main thread; пропускаем")
+            return nil
+        }
+
+        var result: SceneV9EventProviderResult?
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            result = await generateEventTableAsync(
+                description: description,
+                markedObjects: markedObjects,
+                anchors: anchors,
+                state: state,
+                slotCatalog: slotCatalog
+            )
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return result
+    }
+
+    func generateEventTableAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog
+    ) async -> SceneV9EventProviderResult? {
+        guard let context = await loadV9ContextIfNeeded(.eventTable) else {
+            print("⚠️ [LLM][V9] Event-table context недоступен, fallback на V8 path")
+            return nil
+        }
+
+        let prompt = buildV9EventTablePrompt(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: state,
+            slotCatalog: slotCatalog
+        )
+        let budgets = v9EventGenerationBudgets(for: description, anchors: anchors, slotCatalog: slotCatalog)
+        var reasonCodes: [String] = ["v9.event_table_prompt_used"]
+        let startedAt = CFAbsoluteTimeGetCurrent()
+
+        for (attemptIndex, maxTokens) in budgets.enumerated() {
+            let output = await context.generateWithMetadata(prompt: prompt, maxTokens: maxTokens)
+            let hitTokenLimit = output.stopReason == .maxTokensReached
+            print("🤖 [LLM][V9] EventTable attempt \(attemptIndex + 1)/\(budgets.count), tokens=\(output.generatedTokenCount)/\(output.maxTokens), stop=\(output.stopReason.rawValue)")
+
+            guard let parsed = parseEventTableFromResponse(output.text, slotCatalog: slotCatalog) else {
+                if hitTokenLimit, !reasonCodes.contains("v9.event_table_max_tokens_reached") {
+                    reasonCodes.append("v9.event_table_max_tokens_reached")
+                }
+                if attemptIndex < budgets.count - 1, !reasonCodes.contains("v9.event_table_retry_after_parse_failure") {
+                    reasonCodes.append("v9.event_table_retry_after_parse_failure")
+                }
+                continue
+            }
+
+            var currentEventTable = parsed
+            var patchOps: SceneV9PatchOps?
+            var verifierIssues = v9VerifierIssues(for: currentEventTable, slotCatalog: slotCatalog)
+            if !verifierIssues.isEmpty {
+                reasonCodes.append("v9.event_table_verifier_issues_detected")
+            }
+
+            if !verifierIssues.isEmpty {
+                let patchDeadline = startedAt + Self.v9PatchWallClockBudgetSeconds
+                var retriesLeft = Self.v9PatchMaxRetry
+                while retriesLeft > 0, CFAbsoluteTimeGetCurrent() < patchDeadline, !verifierIssues.isEmpty {
+                    retriesLeft -= 1
+                    reasonCodes.append("v9.patch_retry_attempted")
+                    guard let candidatePatch = await generateEventPatchOpsAsync(
+                        description: description,
+                        markedObjects: markedObjects,
+                        anchors: anchors,
+                        state: state,
+                        slotCatalog: slotCatalog,
+                        eventTable: currentEventTable,
+                        verifierIssues: verifierIssues
+                    ) else {
+                        reasonCodes.append("v9.patch_retry_unavailable")
+                        break
+                    }
+                    patchOps = candidatePatch
+                    currentEventTable = applying(candidatePatch, to: currentEventTable)
+                    verifierIssues = v9VerifierIssues(for: currentEventTable, slotCatalog: slotCatalog)
+                    if verifierIssues.isEmpty {
+                        reasonCodes.append("v9.patch_retry_recovered")
+                    } else {
+                        reasonCodes.append("v9.patch_retry_not_recovered")
+                    }
+                }
+                if !verifierIssues.isEmpty {
+                    reasonCodes.append("v9.patch_retry_failed")
+                }
+            }
+
+            if attemptIndex > 0 {
+                reasonCodes.append("v9.event_table_retry_recovered")
+            }
+            if hitTokenLimit, !reasonCodes.contains("v9.event_table_max_tokens_reached") {
+                reasonCodes.append("v9.event_table_max_tokens_reached")
+            }
+
+            return SceneV9EventProviderResult(
+                slotCatalog: slotCatalog,
+                eventTable: currentEventTable,
+                patchOps: patchOps,
+                reasonCodes: dedupeReasons(reasonCodes)
+            )
+        }
+
+        print("❌ [LLM][V9] Не удалось сгенерировать EventTable")
+        return nil
+    }
+
+    func generateEventPatchOps(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) -> SceneV9PatchOps? {
+        if Thread.isMainThread {
+            print("⚠️ [LLM][V9] Sync generateEventPatchOps вызван с main thread; пропускаем")
+            return nil
+        }
+
+        var result: SceneV9PatchOps?
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            result = await generateEventPatchOpsAsync(
+                description: description,
+                markedObjects: markedObjects,
+                anchors: anchors,
+                state: state,
+                slotCatalog: slotCatalog,
+                eventTable: eventTable,
+                verifierIssues: verifierIssues
+            )
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return result
+    }
+
+    func generateEventPatchOpsAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) async -> SceneV9PatchOps? {
+        guard !verifierIssues.isEmpty else {
+            return SceneV9PatchOps.empty
+        }
+        guard let context = await loadV9ContextIfNeeded(.patchOps) else {
+            return nil
+        }
+
+        let prompt = buildV9PatchPrompt(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: state,
+            slotCatalog: slotCatalog,
+            eventTable: eventTable,
+            verifierIssues: verifierIssues
+        )
+        let output = await context.generateWithMetadata(prompt: prompt, maxTokens: Self.v9PatchMaxTokens)
+        print("🤖 [LLM][V9] PatchOps tokens=\(output.generatedTokenCount)/\(output.maxTokens), stop=\(output.stopReason.rawValue)")
+        guard let patchOps = parsePatchOpsFromResponse(output.text) else {
+            return nil
+        }
+        return patchOps
+    }
+
     // MARK: - Prompt Building
 
     /// Формирует промпт для LLM
@@ -451,6 +710,136 @@ final class LLMParserService: LocalScenePlanProvider {
         """
     }
 
+    private func buildV9EventTablePrompt(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> String {
+        let stateContext = buildStateContext(state)
+        let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
+        let anchorContext = buildAnchorContext(anchors)
+        let slotCatalogJSON = encodePrettyJSON(slotCatalog) ?? "{}"
+
+        return """
+        <|im_start|>system
+        Ты planner V9 slot-event. Верни ТОЛЬКО валидный JSON контракта sg_v9_event_table_v1.
+        ПРАВИЛА:
+        - используй только slot id из slotCatalog
+        - не придумывай новые actor/object/beat слоты
+        - actionType только из разрешённых actionTypes
+        - если actionType=described_action, заполни describedActionText
+        - если не уверен, оставь targetSlot пустым, но НЕ выдумывай слот
+        - формат ответа: {"contractVersion":"sg_v9_event_table_v1","rows":[...]}
+        <|im_end|>
+        <|im_start|>user
+        \(stateContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
+        \(slotCatalogJSON)
+
+        SOURCE:
+        \(description)
+        <|im_end|>
+        <|im_start|>assistant
+        """
+    }
+
+    private func buildV9PatchPrompt(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) -> String {
+        let stateContext = buildStateContext(state)
+        let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
+        let anchorContext = buildAnchorContext(anchors)
+        let slotCatalogJSON = encodePrettyJSON(slotCatalog) ?? "{}"
+        let eventTableJSON = encodePrettyJSON(eventTable) ?? "{}"
+        let issues = verifierIssues.joined(separator: "\n- ")
+
+        return """
+        <|im_start|>system
+        Ты fixer V9. Верни ТОЛЬКО валидный JSON контракта sg_v9_patch_ops_v1.
+        Разрешены операции: replace, add, delete.
+        Меняй только поля существующего event table и только по списку verifier issues.
+        Не меняй contractVersion. Не добавляй комментарии.
+        <|im_end|>
+        <|im_start|>user
+        \(stateContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
+        \(slotCatalogJSON)
+
+        EVENT TABLE JSON:
+        \(eventTableJSON)
+
+        VERIFIER ISSUES:
+        - \(issues)
+
+        SOURCE:
+        \(description)
+        <|im_end|>
+        <|im_start|>assistant
+        """
+    }
+
+    private func buildStateContext(_ state: SceneChunkState?) -> String {
+        guard let state else { return "" }
+        let actors = state.knownActors.map { "\($0.key) (id: \($0.value))" }.joined(separator: ", ")
+        let objects = state.knownObjects.map { "\($0.key) (id: \($0.value))" }.joined(separator: ", ")
+        let poses = state.actorPoses.map { "\($0.key)=\($0.value.rawValue)" }.joined(separator: ", ")
+        let held = state.heldObjects.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
+        let actorAliases = state.actorAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
+        let objectAliases = state.objectAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
+
+        var context = "Предыдущее состояние сцены:\n"
+        if let sceneID = state.sceneID { context += "Scene ID: \(sceneID)\n" }
+        if let heading = state.sceneHeading { context += "Scene heading: \(heading)\n" }
+        if let loc = state.locationName { context += "Локация: \(loc)\n" }
+        if !actors.isEmpty { context += "Известные персонажи: \(actors)\n" }
+        if !objects.isEmpty { context += "Известные объекты: \(objects)\n" }
+        if !actorAliases.isEmpty { context += "Actor alias map: \(actorAliases)\n" }
+        if !objectAliases.isEmpty { context += "Object alias map: \(objectAliases)\n" }
+        if !poses.isEmpty { context += "Позы актёров: \(poses)\n" }
+        if !held.isEmpty { context += "Что кто держит: \(held)\n" }
+        if let speaker = state.lastResolvedSpeaker { context += "Последний говорящий: \(speaker)\n" }
+        context += "\n"
+        return context
+    }
+
+    private func encodePrettyJSON<T: Encodable>(_ value: T) -> String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(value) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func v9EventGenerationBudgets(
+        for description: String,
+        anchors: SourceAnchorBundle,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> [Int32] {
+        let estimated = Int32(description.count / 3)
+            + 256
+            + Int32(slotCatalog.beatSlots.count * 48)
+            + Int32(slotCatalog.actorSlots.count * 20)
+            + Int32(anchors.phaseCues.count * 12)
+        let first = max(Self.v9EventTokenBudgets[0], min(estimated, Self.v9EventMaxGenerationTokens))
+
+        var budgets = [first]
+        for budget in Self.v9EventTokenBudgets {
+            let normalized = min(max(budget, first), Self.v9EventMaxGenerationTokens)
+            if !budgets.contains(normalized) {
+                budgets.append(normalized)
+            }
+        }
+        if budgets.last != Self.v9EventMaxGenerationTokens {
+            budgets.append(Self.v9EventMaxGenerationTokens)
+        }
+        return budgets
+    }
+
 
     // MARK: - JSON Parsing
 
@@ -493,6 +882,45 @@ final class LLMParserService: LocalScenePlanProvider {
             }
         }
 
+        return nil
+    }
+
+    private func parseEventTableFromResponse(
+        _ response: String,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> SceneV9EventTable? {
+        guard let extractedJSON = extractJSONPayload(from: response) else {
+            print("❌ [LLM][V9] Не найден JSON EventTable")
+            return nil
+        }
+        let candidates = makeJSONCandidates(from: extractedJSON)
+        for (index, candidate) in candidates.enumerated() {
+            do {
+                let decoded = try decodeEventTable(from: candidate, slotCatalog: slotCatalog)
+                print("✅ [LLM][V9] EventTable decoded [вариант \(index + 1)/\(candidates.count)], rows=\(decoded.rows.count)")
+                return decoded
+            } catch {
+                print("⚠️ [LLM][V9] EventTable decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
+            }
+        }
+        return nil
+    }
+
+    private func parsePatchOpsFromResponse(_ response: String) -> SceneV9PatchOps? {
+        guard let extractedJSON = extractJSONPayload(from: response) else {
+            print("❌ [LLM][V9] Не найден JSON PatchOps")
+            return nil
+        }
+        let candidates = makeJSONCandidates(from: extractedJSON)
+        for (index, candidate) in candidates.enumerated() {
+            do {
+                let decoded = try decodePatchOps(from: candidate)
+                print("✅ [LLM][V9] PatchOps decoded [вариант \(index + 1)/\(candidates.count)], ops=\(decoded.ops.count)")
+                return decoded
+            } catch {
+                print("⚠️ [LLM][V9] PatchOps decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
+            }
+        }
         return nil
     }
 
@@ -631,6 +1059,78 @@ final class LLMParserService: LocalScenePlanProvider {
 
         let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
         return try JSONDecoder().decode(ScenePlanIR.self, from: fixedData)
+    }
+
+    private func decodeEventTable(from text: String, slotCatalog: SceneV9SlotCatalog) throws -> SceneV9EventTable {
+        guard let data = text.data(using: .utf8) else {
+            throw NSError(domain: "LLMParserService", code: 31, userInfo: [NSLocalizedDescriptionKey: "Не удалось конвертировать EventTable в Data"])
+        }
+        guard var jsonObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "LLMParserService", code: 32, userInfo: [NSLocalizedDescriptionKey: "Корневой JSON event table не является объектом"])
+        }
+
+        if jsonObj["contractVersion"] == nil {
+            jsonObj["contractVersion"] = "sg_v9_event_table_v1"
+        }
+        var rows = (jsonObj["rows"] as? [[String: Any]]) ?? []
+        let defaultBeat = slotCatalog.beatSlots.first?.slotID ?? "beat_slot_1"
+        let defaultActor = slotCatalog.actorSlots.first?.slotID ?? "actor_slot_1"
+
+        for index in rows.indices {
+            let existingRowID = (rows[index]["rowId"] as? String) ?? (rows[index]["rowID"] as? String)
+            if existingRowID?.isEmpty != false {
+                rows[index]["rowId"] = "row_\(index + 1)"
+            } else if rows[index]["rowId"] == nil {
+                rows[index]["rowId"] = existingRowID
+            }
+            if rows[index]["beatSlot"] == nil {
+                rows[index]["beatSlot"] = defaultBeat
+            }
+            if rows[index]["actorSlot"] == nil {
+                rows[index]["actorSlot"] = defaultActor
+            }
+            if rows[index]["actionType"] == nil {
+                rows[index]["actionType"] = SceneAction.ActionType.stand.rawValue
+            } else if let raw = rows[index]["actionType"] as? String,
+                      SceneAction.ActionType(rawValue: raw) == nil {
+                rows[index]["actionType"] = SceneAction.ActionType.describedAction.rawValue
+                if rows[index]["describedActionText"] == nil {
+                    rows[index]["describedActionText"] = rows[index]["sourceSpan"] as? String ?? "described_action"
+                }
+            }
+        }
+        jsonObj["rows"] = rows
+        let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
+        return try JSONDecoder().decode(SceneV9EventTable.self, from: fixedData)
+    }
+
+    private func decodePatchOps(from text: String) throws -> SceneV9PatchOps {
+        guard let data = text.data(using: .utf8) else {
+            throw NSError(domain: "LLMParserService", code: 33, userInfo: [NSLocalizedDescriptionKey: "Не удалось конвертировать PatchOps в Data"])
+        }
+        guard var jsonObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "LLMParserService", code: 34, userInfo: [NSLocalizedDescriptionKey: "Корневой JSON patch ops не является объектом"])
+        }
+
+        if jsonObj["contractVersion"] == nil {
+            jsonObj["contractVersion"] = "sg_v9_patch_ops_v1"
+        }
+        var ops = (jsonObj["ops"] as? [[String: Any]]) ?? []
+        for index in ops.indices {
+            if ops[index]["op"] == nil {
+                ops[index]["op"] = SceneV9PatchOps.PatchOp.Operation.replace.rawValue
+            }
+            let existingRowID = (ops[index]["rowId"] as? String) ?? (ops[index]["rowID"] as? String)
+            if existingRowID?.isEmpty != false {
+                ops[index]["rowId"] = "row_\(index + 1)"
+            } else if ops[index]["rowId"] == nil {
+                ops[index]["rowId"] = existingRowID
+            }
+        }
+        jsonObj["ops"] = ops
+
+        let fixedData = try JSONSerialization.data(withJSONObject: jsonObj)
+        return try JSONDecoder().decode(SceneV9PatchOps.self, from: fixedData)
     }
 
     private func decodeSceneScript(from text: String, description: String) throws -> SceneScript {
@@ -1158,6 +1658,181 @@ final class LLMParserService: LocalScenePlanProvider {
         }
     }
 
+    private func v9VerifierIssues(
+        for eventTable: SceneV9EventTable,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> [String] {
+        let actorSlots = Set(slotCatalog.actorSlots.map(\.slotID))
+        let objectSlots = Set(slotCatalog.objectSlots.map(\.slotID))
+        let beatSlots = Set(slotCatalog.beatSlots.map(\.slotID))
+
+        var issues: [String] = []
+        for row in eventTable.rows {
+            if !beatSlots.contains(row.beatSlot) {
+                issues.append("row=\(row.rowID): unknown beatSlot=\(row.beatSlot)")
+            }
+            if !actorSlots.contains(row.actorSlot) {
+                issues.append("row=\(row.rowID): unknown actorSlot=\(row.actorSlot)")
+            }
+            if let targetSlot = row.targetSlot,
+               !targetSlot.isEmpty,
+               !actorSlots.contains(targetSlot),
+               !objectSlots.contains(targetSlot) {
+                issues.append("row=\(row.rowID): unknown targetSlot=\(targetSlot)")
+            }
+            if let holdingSlot = row.holdingObjectSlot,
+               !holdingSlot.isEmpty,
+               !objectSlots.contains(holdingSlot) {
+                issues.append("row=\(row.rowID): unknown holdingObjectSlot=\(holdingSlot)")
+            }
+            if Self.v9EventTargetRequiredTypes.contains(row.actionType),
+               (row.targetSlot ?? "").isEmpty {
+                issues.append("row=\(row.rowID): target required for actionType=\(row.actionType.rawValue)")
+            }
+            if row.actionType == .describedAction,
+               (row.describedActionText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                issues.append("row=\(row.rowID): describedActionText is required")
+            }
+        }
+
+        return issues
+    }
+
+    private func applying(_ patchOps: SceneV9PatchOps, to table: SceneV9EventTable) -> SceneV9EventTable {
+        var rows = table.rows
+        for op in patchOps.ops {
+            switch op.op {
+            case .delete:
+                rows.removeAll { $0.rowID == op.rowID }
+            case .add:
+                let defaultBeat = rows.first?.beatSlot ?? "beat_slot_1"
+                let defaultActor = rows.first?.actorSlot ?? "actor_slot_1"
+                guard let newRow = makeEventRowFromPatch(
+                    op: op,
+                    fallbackRowID: op.rowID,
+                    defaultBeatSlot: defaultBeat,
+                    defaultActorSlot: defaultActor
+                ) else { continue }
+                if !rows.contains(where: { $0.rowID == newRow.rowID }) {
+                    rows.append(newRow)
+                }
+            case .replace:
+                guard let index = rows.firstIndex(where: { $0.rowID == op.rowID }),
+                      let field = op.field,
+                      let value = op.value else {
+                    continue
+                }
+                var row = rows[index]
+                switch field {
+                case "beatSlot":
+                    row.beatSlot = value
+                case "actorSlot":
+                    row.actorSlot = value
+                case "actionType":
+                    if let action = SceneAction.ActionType(rawValue: value) {
+                        row.actionType = action
+                    }
+                case "targetSlot":
+                    row.targetSlot = value.isEmpty ? nil : value
+                case "holdingObjectSlot":
+                    row.holdingObjectSlot = value.isEmpty ? nil : value
+                case "dialogueText":
+                    row.dialogueText = value.isEmpty ? nil : value
+                case "describedActionText":
+                    row.describedActionText = value.isEmpty ? nil : value
+                case "sourceSpan":
+                    row.sourceSpan = value.isEmpty ? nil : value
+                case "confidence":
+                    row.confidence = Double(value)
+                default:
+                    continue
+                }
+                rows[index] = row
+            }
+        }
+        return SceneV9EventTable(contractVersion: table.contractVersion, rows: rows)
+    }
+
+    private func makeEventRowFromPatch(
+        op: SceneV9PatchOps.PatchOp,
+        fallbackRowID: String,
+        defaultBeatSlot: String,
+        defaultActorSlot: String
+    ) -> SceneV9EventTable.EventRow? {
+        if let raw = op.value, let data = raw.data(using: .utf8) {
+            if let decoded = try? JSONDecoder().decode(SceneV9EventTable.EventRow.self, from: data) {
+                return decoded
+            }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let beatSlot = json["beatSlot"] as? String,
+               let actorSlot = json["actorSlot"] as? String,
+               let actionRaw = json["actionType"] as? String,
+               let actionType = SceneAction.ActionType(rawValue: actionRaw) {
+                let rowID = ((json["rowId"] as? String) ?? (json["rowID"] as? String)).flatMap { $0.isEmpty ? nil : $0 } ?? fallbackRowID
+                return SceneV9EventTable.EventRow(
+                    rowID: rowID,
+                    beatSlot: beatSlot,
+                    actorSlot: actorSlot,
+                    actionType: actionType,
+                    targetSlot: json["targetSlot"] as? String,
+                    holdingObjectSlot: json["holdingObjectSlot"] as? String,
+                    dialogueText: json["dialogueText"] as? String,
+                    describedActionText: json["describedActionText"] as? String,
+                    sourceSpan: json["sourceSpan"] as? String,
+                    confidence: json["confidence"] as? Double
+                )
+            }
+        }
+
+        var row = SceneV9EventTable.EventRow(
+            rowID: fallbackRowID,
+            beatSlot: defaultBeatSlot,
+            actorSlot: defaultActorSlot,
+            actionType: .stand,
+            targetSlot: nil,
+            holdingObjectSlot: nil,
+            dialogueText: nil,
+            describedActionText: nil,
+            sourceSpan: nil,
+            confidence: 1.0
+        )
+        guard let field = op.field else {
+            return row
+        }
+        switch field {
+        case "beatSlot":
+            row.beatSlot = op.value ?? row.beatSlot
+        case "actorSlot":
+            row.actorSlot = op.value ?? row.actorSlot
+        case "actionType":
+            if let value = op.value, let parsed = SceneAction.ActionType(rawValue: value) {
+                row.actionType = parsed
+            }
+        case "targetSlot":
+            row.targetSlot = op.value
+        case "holdingObjectSlot":
+            row.holdingObjectSlot = op.value
+        case "dialogueText":
+            row.dialogueText = op.value
+        case "describedActionText":
+            row.describedActionText = op.value
+        case "sourceSpan":
+            row.sourceSpan = op.value
+        case "confidence":
+            if let value = op.value, let parsed = Double(value) {
+                row.confidence = parsed
+            }
+        default:
+            break
+        }
+        return row
+    }
+
+    private func dedupeReasons(_ reasons: [String]) -> [String] {
+        var seen = Set<String>()
+        return reasons.filter { seen.insert($0).inserted }
+    }
+
     /// Исправляет типичные ошибки JSON от маленькой модели
     private func repairJSON(_ input: String) -> String {
         var json = input
@@ -1355,6 +2030,49 @@ final class LLMParserService: LocalScenePlanProvider {
             #"id-string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
             #"text-string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]))* "\"""#,
             #"number ::= [0-9]+ ("." [0-9]+)?"#,
+        ]
+        return lines.joined(separator: "\n")
+    }()
+
+    static let sceneV9EventTableGrammar: String = {
+        let lines = [
+            #"root ::= "{" ws "\"contractVersion\"" ws ":" ws "\"sg_v9_event_table_v1\"" ws "," ws "\"rows\"" ws ":" ws "[" ws row-list ws "]" ws "}""#,
+            "",
+            #"ws ::= ([ \t\n])*"#,
+            "",
+            #"row-list ::= row ("," ws row)* | """#,
+            #"row ::= "{" ws "\"rowId\"" ws ":" ws id-string "," ws "\"beatSlot\"" ws ":" ws slot-string "," ws "\"actorSlot\"" ws ":" ws slot-string "," ws "\"actionType\"" ws ":" ws action-type row-target row-holding row-dialogue row-described row-source row-confidence ws "}""#,
+            #"row-target ::= ("," ws "\"targetSlot\"" ws ":" ws nullable-slot) | """#,
+            #"row-holding ::= ("," ws "\"holdingObjectSlot\"" ws ":" ws nullable-slot) | """#,
+            #"row-dialogue ::= ("," ws "\"dialogueText\"" ws ":" ws nullable-text) | """#,
+            #"row-described ::= ("," ws "\"describedActionText\"" ws ":" ws nullable-text) | """#,
+            #"row-source ::= ("," ws "\"sourceSpan\"" ws ":" ws nullable-text) | """#,
+            #"row-confidence ::= ("," ws "\"confidence\"" ws ":" ws number) | """#,
+            "",
+            #"action-type ::= "\"walk\"" | "\"run\"" | "\"approach\"" | "\"pass_by\"" | "\"enter\"" | "\"exit\"" | "\"stand\"" | "\"sit\"" | "\"lie_down\"" | "\"stop\"" | "\"turn\"" | "\"crouch\"" | "\"look_at\"" | "\"pick_up\"" | "\"put_down\"" | "\"open\"" | "\"close\"" | "\"give\"" | "\"talk\"" | "\"described_action\"""#,
+            #"nullable-slot ::= slot-string | "null""#,
+            #"nullable-text ::= text-string | "null""#,
+            #"slot-string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
+            #"id-string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
+            #"text-string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]))* "\"""#,
+            #"number ::= [0-9]+ ("." [0-9]+)?"#
+        ]
+        return lines.joined(separator: "\n")
+    }()
+
+    static let sceneV9PatchOpsGrammar: String = {
+        let lines = [
+            #"root ::= "{" ws "\"contractVersion\"" ws ":" ws "\"sg_v9_patch_ops_v1\"" ws "," ws "\"ops\"" ws ":" ws "[" ws op-list ws "]" ws "}""#,
+            "",
+            #"ws ::= ([ \t\n])*"#,
+            "",
+            #"op-list ::= op-entry ("," ws op-entry)* | """#,
+            #"op-entry ::= "{" ws "\"op\"" ws ":" ws op-type "," ws "\"rowId\"" ws ":" ws id-string op-field op-value ws "}""#,
+            #"op-type ::= "\"replace\"" | "\"add\"" | "\"delete\"""#,
+            #"op-field ::= ("," ws "\"field\"" ws ":" ws text-string) | """#,
+            #"op-value ::= ("," ws "\"value\"" ws ":" ws text-string) | """#,
+            #"id-string ::= "\"" [a-zA-Z0-9_]+ "\"""#,
+            #"text-string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]))* "\"""#
         ]
         return lines.joined(separator: "\n")
     }()

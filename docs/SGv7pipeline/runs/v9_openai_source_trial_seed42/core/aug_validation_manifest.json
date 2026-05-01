@@ -1,0 +1,22 @@
+{
+  "accepted_count": 10,
+  "counts_by_correction_tier": {
+    "tier_b_deterministic_canonical": 13
+  },
+  "counts_by_difficulty_bucket": {
+    "core": 13
+  },
+  "critic_verdict_distribution": {
+    "pass": 10,
+    "soft_fail": 3
+  },
+  "manual_review_count": 3,
+  "recoverability_score_histogram": {
+    "100": 11,
+    "90": 2
+  },
+  "reject_counts_by_taxonomy_code": {},
+  "rejected_count": 0,
+  "total_input_count": 13,
+  "validator_stack_version": "sgv7_validator_stack_v1"
+}

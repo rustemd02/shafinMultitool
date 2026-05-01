@@ -1,0 +1,10 @@
+{
+  "contract_version": "sg_v9_event_dataset_v1",
+  "total_rows": 5000,
+  "train_rows": 4500,
+  "val_rows": 500,
+  "difficulty_counts": {
+    "core": 2500,
+    "hard": 2500
+  }
+}

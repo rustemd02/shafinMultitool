@@ -1,0 +1,63 @@
+{
+  "slice": "local_event_raw",
+  "overall": {
+    "case_count": 262,
+    "semantic_row_total": 713
+  },
+  "structural": {
+    "event_parse_rate": 1.0,
+    "event_schema_valid_rate": 1.0,
+    "event_actor_slot_structural_pass_rate": 1.0,
+    "event_target_slot_structural_pass_rate": 1.0,
+    "event_action_type_structural_pass_rate": 1.0,
+    "event_beat_order_structural_pass_rate": 1.0,
+    "patch_success_rate": 0.0,
+    "compiler_repair_rate": 0.0
+  },
+  "semantic": {
+    "event_actor_slot_accuracy": 1.0,
+    "event_target_slot_accuracy": 1.0,
+    "event_action_type_accuracy": 1.0,
+    "event_beat_order_accuracy": 1.0
+  },
+  "degradation": {
+    "targetless_event_repaired_rate": 0.0,
+    "unknown_slot_blocked_rate": 0.0,
+    "dropped_event_row_rate": 0.0,
+    "targetless_event_repaired_count": 0,
+    "unknown_slot_blocked_count": 0,
+    "dropped_event_rows_total": 0,
+    "input_event_rows_total": 713
+  },
+  "metrics": {
+    "overall": {
+      "case_count": 262,
+      "semantic_row_total": 713
+    },
+    "structural": {
+      "event_parse_rate": 1.0,
+      "event_schema_valid_rate": 1.0,
+      "event_actor_slot_structural_pass_rate": 1.0,
+      "event_target_slot_structural_pass_rate": 1.0,
+      "event_action_type_structural_pass_rate": 1.0,
+      "event_beat_order_structural_pass_rate": 1.0,
+      "patch_success_rate": 0.0,
+      "compiler_repair_rate": 0.0
+    },
+    "semantic": {
+      "event_actor_slot_accuracy": 1.0,
+      "event_target_slot_accuracy": 1.0,
+      "event_action_type_accuracy": 1.0,
+      "event_beat_order_accuracy": 1.0
+    },
+    "degradation": {
+      "targetless_event_repaired_rate": 0.0,
+      "unknown_slot_blocked_rate": 0.0,
+      "dropped_event_row_rate": 0.0,
+      "targetless_event_repaired_count": 0,
+      "unknown_slot_blocked_count": 0,
+      "dropped_event_rows_total": 0,
+      "input_event_rows_total": 713
+    }
+  }
+}

@@ -10,6 +10,12 @@ import NaturalLanguage
 
 /// Сервис для парсинга текстового описания сцены в структурированный SceneScript
 final class SceneParserService {
+    enum V9RuntimeMode: String, CaseIterable, Equatable {
+        case v8Hotfix = "v8_hotfix"
+        case v9Bridge = "v9_bridge"
+        case v9Full = "v9_full"
+    }
+
     private enum LLMSelectionDecision {
         case accept
         case merge
@@ -27,6 +33,8 @@ final class SceneParserService {
     private let metadataExtractor = SceneMetadataExtractor()
     private let planCompiler = ScenePlanCompiler()
     private let qualityGate = SceneQualityGate()
+    private let v9RuntimeModeDefaultsKey = "scene_generator_v9_runtime_mode"
+    private let v9EnabledDefaultsKey = "scene_generator_v9_enabled"
     private lazy var bundlePipeline = SceneBundlePipeline(
         anchorExtractor: anchorExtractor,
         metadataExtractor: metadataExtractor,
@@ -207,6 +215,24 @@ final class SceneParserService {
     func configureRemoteOffload(enabled: Bool, provider: RemoteScenePlanProvider?) {
         remoteOffloadEnabled = enabled
         remotePlanProvider = provider
+    }
+
+    func setV9RuntimeMode(_ mode: V9RuntimeMode) {
+        UserDefaults.standard.set(mode.rawValue, forKey: v9RuntimeModeDefaultsKey)
+        // Backward compatibility: old boolean toggle stays aligned with explicit mode.
+        UserDefaults.standard.set(mode != .v8Hotfix, forKey: v9EnabledDefaultsKey)
+    }
+
+    func getV9RuntimeMode() -> V9RuntimeMode {
+        if let raw = UserDefaults.standard.string(forKey: v9RuntimeModeDefaultsKey),
+           let mode = V9RuntimeMode(rawValue: raw) {
+            return mode
+        }
+        if UserDefaults.standard.object(forKey: v9EnabledDefaultsKey) != nil,
+           UserDefaults.standard.bool(forKey: v9EnabledDefaultsKey) == false {
+            return .v8Hotfix
+        }
+        return .v9Bridge
     }
 
     func resetRuntimeContext() {
