@@ -99,7 +99,7 @@ final class SceneBundlePipelineTests: XCTestCase {
 
         XCTAssertEqual(result.bundleScript.scenes.count, 2)
         XCTAssertEqual(result.documentState.sceneCandidates.count, 2)
-        XCTAssertEqual(result.bundleScript.activeSceneIndex, 1)
+        XCTAssertEqual(result.bundleScript.activeSceneIndex, 0)
         XCTAssertEqual(result.bundleScript.scenes.first?.locationName, "OFFICE")
         XCTAssertEqual(result.bundleScript.scenes.last?.locationName, "STREET")
         XCTAssertFalse(result.sceneChunks.isEmpty)
@@ -766,8 +766,117 @@ final class SceneBundlePipelineTests: XCTestCase {
         let service = SceneEventTableV9Service()
         XCTAssertTrue(service.containsFixableVerifierIssues(["v9.targetless_event_repaired"]))
         XCTAssertTrue(service.containsFixableVerifierIssues(["v9.holding_slot_repaired", "other"]))
+        XCTAssertTrue(service.containsFixableVerifierIssues(["v9.missing_event_for_beat:beat_slot_2"]))
         XCTAssertFalse(service.containsFixableVerifierIssues(["v9.unknown_slot_blocked"]))
         XCTAssertFalse(service.containsFixableVerifierIssues([]))
+    }
+
+    func testScriptNormalizerSplitsInlineDialogueStageNotesAndScreenText() throws {
+        let normalizer = ScriptNormalizer()
+        let units = normalizer.normalize(description: """
+        На экране появляются надписи:
+        Великое Древо, 2048
+        20 лет после разрушения Земли
+
+        Ведущий: Спасибо тебе. *речь затухает*
+        """)
+
+        XCTAssertTrue(units.contains { $0.kind == .speakerCue && $0.text == "Ведущий" })
+        XCTAssertTrue(units.contains { $0.kind == .dialogue && $0.text.contains("Спасибо тебе") })
+        XCTAssertFalse(units.contains { $0.kind == .dialogue && $0.text.contains("речь затухает") })
+        XCTAssertTrue(units.contains { $0.kind == .stageNote && $0.text.contains("речь затухает") })
+        XCTAssertEqual(units.filter { $0.kind == .screenText }.map(\.text), ["Великое Древо, 2048", "20 лет после разрушения Земли"])
+    }
+
+    func testScreenplayFragmentKeepsMontageOverlaysAndImplicitRustamShot() async throws {
+        let plan = ScenePlanIR(
+            actors: [.init(ref: "first", type: .human)],
+            objects: [],
+            beats: [
+                .init(ref: "beat_1", actions: [.init(actorRef: "first", type: .talk, dialogue: "тест")]),
+            ],
+            spatialRelations: [],
+            referenceBindings: .init(actorBindings: ["first": "actor_1"])
+        )
+        let pipeline = makeBundlePipeline(result: ScenePlanProviderResult(plan: plan, usedLegacySceneScriptBridge: false))
+        let fragment = """
+        Кадр из космоса, показано Великое Древо. На экране появляются надписи:
+        Великое Древо, 2048
+        20 лет после разрушения Земли
+
+        ИНТ. Телестудия
+        Ведущий: 19 лет эта кошмарная эпидемия держала нас в страхе. Что вы об этом думаете?
+        Лейла: Наконец-то. Вместе мы прошли через большие трудности. Каждый день люди продолжают двигаться вперёд.
+        Ведущий: Согласен. *речь затухает* На этом у нас всё.
+
+        Рустам сидит поникший, смотрит на коробочку с надписью Жизнь с пришельцем.
+        """
+
+        let result = await pipeline.parse(
+            description: fragment,
+            markedObjects: [],
+            mode: .full,
+            previousState: nil as ScriptDocumentState?
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        XCTAssertTrue(result.documentState.sceneCandidates.first?.isMontage == true)
+        XCTAssertTrue(result.visualOverlays.contains { $0.kind == .screenText && $0.text.contains("2048") })
+        XCTAssertTrue(result.visualOverlays.contains { $0.kind == .stageNote && $0.text.contains("речь затухает") })
+        XCTAssertTrue(result.documentState.sceneCandidates.contains { $0.isImplicit && $0.sourceText.contains("Рустам сидит") })
+        XCTAssertEqual(result.bundleScript.activeSceneIndex, 0)
+        XCTAssertEqual(result.activeSceneScript?.locationName, "Телестудия")
+    }
+
+    func testV9CoverageVerifierEmitsSemanticIssues() {
+        let service = SceneEventTableV9Service()
+        let slotCatalog = SceneV9SlotCatalog(
+            contractVersion: "sg_v9_slot_catalog_v1",
+            actorSlots: [
+                .init(slotID: "actor_slot_1", ref: "first", type: .human, name: nil),
+                .init(slotID: "actor_slot_2", ref: "second", type: .human, name: nil),
+            ],
+            objectSlots: [],
+            markedObjectSlots: [],
+            beatSlots: [
+                .init(slotID: "beat_slot_1", beatRef: "beat_1", phaseHint: nil, order: 1, minDuration: nil),
+                .init(slotID: "beat_slot_2", beatRef: "beat_2", phaseHint: nil, order: 2, minDuration: nil),
+            ],
+            actionTypes: SceneAction.ActionType.allCases,
+            relationHints: []
+        )
+        let eventTable = SceneV9EventTable(
+            contractVersion: "sg_v9_event_table_v1",
+            rows: [
+                .init(
+                    rowID: "row_1",
+                    beatSlot: "beat_slot_1",
+                    actorSlot: "actor_slot_1",
+                    actionType: .stand,
+                    targetSlot: nil,
+                    holdingObjectSlot: nil,
+                    dialogueText: nil,
+                    describedActionText: nil,
+                    sourceSpan: nil,
+                    confidence: 1.0
+                ),
+            ]
+        )
+
+        let issues = service.coverageIssueCodes(
+            eventTable: eventTable,
+            slotCatalog: slotCatalog,
+            sourceText: "Первый говорит: «идём». Затем оба идут навстречу друг другу.",
+            anchors: .empty
+        )
+
+        XCTAssertTrue(issues.contains("v9.missing_event_for_beat:beat_slot_2"))
+        XCTAssertTrue(issues.contains("v9.dialogue_action_collapsed"))
+        XCTAssertTrue(issues.contains { $0.hasPrefix("v9.collective_action_not_expanded") })
     }
 
     func testV9ContractsAcceptRowIdAndLegacyRowID() throws {

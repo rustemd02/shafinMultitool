@@ -29,6 +29,15 @@ def summarize_event_slice_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "event_target_slot_accuracy": None,
                 "event_action_type_accuracy": None,
                 "event_beat_order_accuracy": None,
+                "event_full_row_accuracy": None,
+            },
+            "chunk": {
+                "chunk_event_coverage_rate": None,
+                "cross_chunk_actor_continuity": None,
+                "cross_chunk_object_continuity": None,
+                "pronoun_resolution_after_chunk": None,
+                "stitch_no_duplicate_actor_rate": None,
+                "playback_intent_success_rate": None,
             },
             "degradation": {
                 "targetless_event_repaired_rate": 0.0,
@@ -55,6 +64,16 @@ def summarize_event_slice_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     semantic_target_hits = sum(int(row.get("semantic_target_hit_count", 0) or 0) for row in rows)
     semantic_action_hits = sum(int(row.get("semantic_action_hit_count", 0) or 0) for row in rows)
     semantic_beat_hits = sum(int(row.get("semantic_beat_hit_count", 0) or 0) for row in rows)
+    semantic_full_row_hits = sum(int(row.get("semantic_full_row_hit_count", 0) or 0) for row in rows)
+
+    chunk_expected_total = sum(int(row.get("chunk_expected_event_count", 0) or 0) for row in rows)
+    chunk_missing_total = sum(int(row.get("chunk_missing_event_count", 0) or 0) for row in rows)
+
+    def _optional_bool_rate(field: str) -> float | None:
+        typed = [row for row in rows if row.get(field) is not None]
+        if not typed:
+            return None
+        return sum(1 for row in typed if bool(row.get(field))) / len(typed)
 
     targetless_cases = sum(1 for row in rows if bool(row.get("targetless_event_repaired", False)))
     unknown_slot_cases = sum(1 for row in rows if bool(row.get("unknown_slot_blocked", False)))
@@ -81,6 +100,15 @@ def summarize_event_slice_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "event_target_slot_accuracy": _safe_rate(semantic_target_hits, semantic_total),
             "event_action_type_accuracy": _safe_rate(semantic_action_hits, semantic_total),
             "event_beat_order_accuracy": _safe_rate(semantic_beat_hits, semantic_total),
+            "event_full_row_accuracy": _safe_rate(semantic_full_row_hits, semantic_total),
+        },
+        "chunk": {
+            "chunk_event_coverage_rate": _safe_rate(chunk_expected_total - chunk_missing_total, chunk_expected_total),
+            "cross_chunk_actor_continuity": _optional_bool_rate("cross_chunk_actor_continuity_pass"),
+            "cross_chunk_object_continuity": _optional_bool_rate("cross_chunk_object_continuity_pass"),
+            "pronoun_resolution_after_chunk": _optional_bool_rate("pronoun_resolution_after_chunk_pass"),
+            "stitch_no_duplicate_actor_rate": _optional_bool_rate("stitch_no_duplicate_actor_pass"),
+            "playback_intent_success_rate": _optional_bool_rate("playback_intent_success_pass"),
         },
         "degradation": {
             "targetless_event_repaired_rate": targetless_cases / total,

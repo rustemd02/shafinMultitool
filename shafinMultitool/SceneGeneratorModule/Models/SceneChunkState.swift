@@ -21,6 +21,9 @@ struct SceneChunkState: Codable, Equatable {
     var actorPoses: [String: ActorPose]
     var heldObjects: [String: String]
     var lastResolvedSpeaker: String?
+    var previousChunkSummary: String?
+    var openBeatContext: String?
+    var lastActorPositions: [String: String]
 
     init(
         sceneID: String? = nil,
@@ -33,7 +36,10 @@ struct SceneChunkState: Codable, Equatable {
         speakerAliasMap: [String: String] = [:],
         actorPoses: [String: ActorPose] = [:],
         heldObjects: [String: String] = [:],
-        lastResolvedSpeaker: String? = nil
+        lastResolvedSpeaker: String? = nil,
+        previousChunkSummary: String? = nil,
+        openBeatContext: String? = nil,
+        lastActorPositions: [String: String] = [:]
     ) {
         self.sceneID = sceneID
         self.sceneHeading = sceneHeading
@@ -46,5 +52,8 @@ struct SceneChunkState: Codable, Equatable {
         self.actorPoses = actorPoses
         self.heldObjects = heldObjects
         self.lastResolvedSpeaker = lastResolvedSpeaker
+        self.previousChunkSummary = previousChunkSummary
+        self.openBeatContext = openBeatContext
+        self.lastActorPositions = lastActorPositions
     }
 }

@@ -79,3 +79,74 @@ Sources:
 1. Re-run canonical parity suite in live app and attach artifacts.
 2. Re-run A/B matrix (`v8_hotfix`, `v9_bridge`, `v9_full`) on same eval pack and attach updated reports.
 3. Consider relation reconciliation in `compileToPlan` for stricter semantic consistency between repaired rows and `spatialRelations`.
+
+---
+
+# V9.1 Chunk-Ready Screenplay Parser Gate Update
+Date: 2026-05-01  
+Role: Integrator/Senior Architect
+
+## Status
+- Current architecture status: **V9.1 runtime/eval-first hardening implemented**.
+- Retrain/GGUF status: **not required for V9.1**.
+- Demo sign-off status: **conditional**, because live-model real-app parity still needs to be rerun.
+
+## What Was Implemented
+- Screenplay front-end:
+  - inline speaker cues like `Ведущий: текст` split into `speaker_cue + dialogue`,
+  - `*...*` notes are extracted as stage notes and removed from dialogue text,
+  - long dialogue lines are split into ordered dialogue units,
+  - pre-heading material becomes a montage/establishing scene,
+  - post-dialogue named physical action can become an implicit shot.
+- Overlay contract:
+  - `SceneVisualOverlay(kind=screen_text|stage_note)` added to bundle result, document state, and bundle script,
+  - `screen_text` is overlay-only and does not modify action enum,
+  - playback UI has a separate top channel for screen text.
+- Chunk continuity:
+  - `previousChunkSummary`, `openBeatContext`, and semantic `lastActorPositions` added to chunk state,
+  - V9 prompt receives these fields.
+- V9 semantic coverage:
+  - coverage verifier emits `missing_event_for_beat`, `dialogue_action_collapsed`, `collective_action_not_expanded`, `wrong_target_slot`, and `unsupported_action_missing_text`,
+  - patch prompt explicitly supports `add rowId` then `replace` fields,
+  - fixable issue policy supports prefixed semantic issue codes.
+- Deterministic enrichers:
+  - collective object motion, reciprocal motion, and collective stop-near-object now emit V9 reason codes.
+- Eval/data:
+  - added chunk coverage metrics and continuity/playback placeholders,
+  - added hard-case mining script `05_mine_v9_hard_cases.py`.
+
+## MoE Sources
+- [v9_1_runtime_architect](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v9/moe_artifacts/2026-05-01/v9_1_runtime_architect.md)
+- [v9_1_data_eval_scientist](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v9/moe_artifacts/2026-05-01/v9_1_data_eval_scientist.md)
+- [v9_1_swift_ios_runtime](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v9/moe_artifacts/2026-05-01/v9_1_swift_ios_runtime.md)
+- [v9_1_reviewer_red_team](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v9/moe_artifacts/2026-05-01/v9_1_reviewer_red_team.md)
+- [v9_1_ml_llm_senior](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v9/moe_artifacts/2026-05-01/v9_1_ml_llm_senior.md)
+- [v9_1_integrator_senior_architect](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v9/moe_artifacts/2026-05-01/v9_1_integrator_senior_architect.md)
+
+## Gate Matrix
+### contract_gate
+- Decision: **PASS**
+- Evidence: overlay contracts and chunk state fields compile in app/test build.
+
+### runtime_gate
+- Decision: **PASS**
+- Evidence: workspace `build-for-testing` succeeds with Pods included.
+
+### eval_gate
+- Decision: **PASS for V9.1 artifact layer**
+- Evidence: Python V9 dataset/eval tests pass with chunk metrics.
+
+### demo_gate
+- Decision: **CONDITIONAL PASS**
+- Required follow-up: run live-model parity suite on canonical demo cases and the real series fragment.
+
+## Evidence Collected
+- Python eval tests:
+  - `python3 -m unittest docs.SGv7pipeline.v9.tests.test_v9_datasets_eval`
+  - `Ran 9 tests ... OK`.
+- iOS compile verification:
+  - `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -derivedDataPath /tmp/sg_v91_workspace_dd -only-testing:shafinMultitoolTests/SceneBundlePipelineTests build-for-testing`
+  - `** TEST BUILD SUCCEEDED **`.
+- iOS runtime test execution:
+  - direct `test` through workspace built the bundle but hung before useful test output; the process was stopped.
+  - direct `.xcodeproj` test remains invalid for this repo because it misses `SnapKit`; use `.xcworkspace`.

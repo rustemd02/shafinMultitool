@@ -18,7 +18,8 @@
     "event_actor_slot_accuracy": 0.9691444600280504,
     "event_target_slot_accuracy": 0.9438990182328191,
     "event_action_type_accuracy": 0.9621318373071529,
-    "event_beat_order_accuracy": 0.967741935483871
+    "event_beat_order_accuracy": 0.967741935483871,
+    "event_full_row_accuracy": 0.9354838709677419
   },
   "degradation": {
     "targetless_event_repaired_rate": 0.0,
@@ -48,7 +49,16 @@
       "event_actor_slot_accuracy": 0.9691444600280504,
       "event_target_slot_accuracy": 0.9438990182328191,
       "event_action_type_accuracy": 0.9621318373071529,
-      "event_beat_order_accuracy": 0.967741935483871
+      "event_beat_order_accuracy": 0.967741935483871,
+      "event_full_row_accuracy": 0.9354838709677419
+    },
+    "chunk": {
+      "chunk_event_coverage_rate": 0.9354838709677419,
+      "cross_chunk_actor_continuity": null,
+      "cross_chunk_object_continuity": null,
+      "pronoun_resolution_after_chunk": null,
+      "stitch_no_duplicate_actor_rate": null,
+      "playback_intent_success_rate": null
     },
     "degradation": {
       "targetless_event_repaired_rate": 0.0,

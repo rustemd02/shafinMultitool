@@ -72,6 +72,12 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Текущее описательное действие во время playback.
     @Published var activeActionCaption: String?
 
+    /// Текущая экранная надпись/montage overlay во время playback.
+    @Published var activeScreenTextCaption: String?
+
+    /// Bundle-level overlays из screenplay front-end.
+    @Published var visualOverlays: [SceneVisualOverlay] = []
+
     /// Beat timeline во время playback.
     @Published var beatTimelineItems: [BeatPlaybackTimelineItem] = []
 
@@ -149,6 +155,7 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// ID текущего диалога/действия, чтобы старые delayed-clear не гасили новый текст.
     private var activeDialogueCaptionID: UUID?
     private var activeActionCaptionID: UUID?
+    private var activeScreenTextCaptionID: UUID?
     private var playbackTimelineTimer: Timer?
     private var playbackStartDate: Date?
     
@@ -284,6 +291,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         parsedScript = script
         parsingResult = result
         sceneChunkState = parserService.lastChunkState
+        visualOverlays = parserService.lastBundleResult?.visualOverlays ?? []
         if let runtimeTrace {
             print("🔍 [VIEWMODEL]   Runtime route: \(runtimeTrace.route.rawValue)")
             print("🔍 [VIEWMODEL]   Runtime reasons: \(runtimeTrace.reasons.joined(separator: ","))")
@@ -323,6 +331,10 @@ final class SceneGeneratorViewModel: ObservableObject {
         }
         
         let updatedScript = SceneScript(
+            sceneHeading: script.sceneHeading,
+            locationName: script.locationName,
+            interiorExterior: script.interiorExterior,
+            timeOfDay: script.timeOfDay,
             actors: script.actors,
             objects: matchedObjects,
             beats: script.beats,
@@ -405,6 +417,7 @@ final class SceneGeneratorViewModel: ObservableObject {
             }
             self.startPlaybackTimelineTimer()
             self.schedulePlaybackCaptions(for: planned)
+            self.scheduleScreenTextOverlays()
         }
         animationWorkItems.append(startWorkItem)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: startWorkItem)
@@ -437,6 +450,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         invalidatePlaybackTimelineTimer()
         activeDialogueCaptionID = nil
         activeActionCaptionID = nil
+        activeScreenTextCaptionID = nil
         
         // Останавливаем все текущие RealityKit анимации
         stopAllEntityAnimations()
@@ -453,8 +467,10 @@ final class SceneGeneratorViewModel: ObservableObject {
     private func resetPlaybackUIState(clearTimeline: Bool) {
         activeDialogueCaption = nil
         activeActionCaption = nil
+        activeScreenTextCaption = nil
         activeDialogueCaptionID = nil
         activeActionCaptionID = nil
+        activeScreenTextCaptionID = nil
         activeBeatIndex = 0
         beatProgress = 0
         playbackElapsedTime = 0
@@ -1146,6 +1162,34 @@ final class SceneGeneratorViewModel: ObservableObject {
                     self.activeActionCaption = nil
                     self.activeActionCaptionID = nil
                 }
+            }
+            animationWorkItems.append(hideWorkItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + startTime + displayDuration, execute: hideWorkItem)
+        }
+    }
+
+    private func scheduleScreenTextOverlays() {
+        let screenTextOverlays = visualOverlays
+            .filter { $0.kind == .screenText }
+            .sorted { $0.displayOrder < $1.displayOrder }
+
+        for (index, overlay) in screenTextOverlays.enumerated() {
+            let captionID = UUID()
+            let startTime = TimeInterval(index) * 2.2
+            let displayDuration: TimeInterval = 2.0
+
+            let showWorkItem = DispatchWorkItem { [weak self] in
+                guard let self, self.isPlaying else { return }
+                self.activeScreenTextCaptionID = captionID
+                self.activeScreenTextCaption = overlay.text
+            }
+            animationWorkItems.append(showWorkItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + startTime, execute: showWorkItem)
+
+            let hideWorkItem = DispatchWorkItem { [weak self] in
+                guard let self, self.isPlaying, self.activeScreenTextCaptionID == captionID else { return }
+                self.activeScreenTextCaption = nil
+                self.activeScreenTextCaptionID = nil
             }
             animationWorkItems.append(hideWorkItem)
             DispatchQueue.main.asyncAfter(deadline: .now() + startTime + displayDuration, execute: hideWorkItem)

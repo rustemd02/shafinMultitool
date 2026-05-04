@@ -31,6 +31,11 @@ final class SceneEventTableV9Service {
         "v9.holding_slot_repaired",
         "v9.targetless_event_repaired",
         "v9.described_text_repaired",
+        "v9.missing_event_for_beat",
+        "v9.wrong_target_slot",
+        "v9.collective_action_not_expanded",
+        "v9.dialogue_action_collapsed",
+        "v9.unsupported_action_missing_text",
     ]
 
     func buildSlotCatalog(from plan: ScenePlanIR) -> SceneV9SlotCatalog {
@@ -389,7 +394,82 @@ final class SceneEventTableV9Service {
     }
 
     func containsFixableVerifierIssues(_ reasonCodes: [String]) -> Bool {
-        reasonCodes.contains(where: { fixableVerifierReasonCodes.contains($0) })
+        reasonCodes.contains { code in
+            fixableVerifierReasonCodes.contains { fixable in
+                code == fixable || code.hasPrefix("\(fixable):")
+            }
+        }
+    }
+
+    func coverageIssueCodes(
+        eventTable: SceneV9EventTable,
+        slotCatalog: SceneV9SlotCatalog,
+        sourceText: String,
+        anchors: SourceAnchorBundle
+    ) -> [String] {
+        let lowercased = sourceText.lowercased()
+        var issues: [String] = []
+        let rows = eventTable.rows
+        let rowsByBeat = Dictionary(grouping: rows, by: \.beatSlot)
+        let actorCount = max(1, slotCatalog.actorSlots.count)
+
+        func append(_ code: String) {
+            if !issues.contains(code) {
+                issues.append(code)
+            }
+        }
+
+        for beatSlot in slotCatalog.beatSlots where rowsByBeat[beatSlot.slotID, default: []].isEmpty {
+            append("v9.missing_event_for_beat:\(beatSlot.slotID)")
+        }
+
+        let hasTemporalSplit = containsAny(lowercased, ["потом", "затем", "после этого", "в этот момент", "после чего"])
+        if hasTemporalSplit, slotCatalog.beatSlots.count > 1, Set(rows.map(\.beatSlot)).count < 2 {
+            append("v9.missing_event_for_beat:temporal_connector")
+        }
+
+        let hasDialogueCue = sourceText.contains("«")
+            || sourceText.contains("\"")
+            || containsAny(lowercased, ["говорит", "спрашивает", "отвечает", "произносит"])
+        if hasDialogueCue, !rows.contains(where: { $0.actionType == .talk && !($0.dialogueText ?? "").isEmpty }) {
+            append("v9.dialogue_action_collapsed")
+        }
+
+        let hasCollectiveCue = containsAny(lowercased, ["оба", "вместе", "двое", "первый актёр и второй актёр", "первый актер и второй актер"])
+        let motionRows = rows.filter { [.walk, .approach, .run, .stop].contains($0.actionType) }
+        if hasCollectiveCue, actorCount > 1, motionRows.count < min(actorCount, 2) {
+            append("v9.collective_action_not_expanded")
+        }
+
+        if lowercased.contains("навстреч") {
+            let reciprocalRows = rows.filter { [.walk, .approach].contains($0.actionType) && $0.targetSlot != nil }
+            if actorCount > 1, reciprocalRows.count < 2 {
+                append("v9.collective_action_not_expanded:reciprocal_motion")
+            }
+        }
+
+        let unsupportedCue = !anchors.unsupportedActionFlags.isEmpty
+            || containsAny(lowercased, ["поправляет", "улыбается", "вздыхает", "кивает", "машет", "смотрит на экран", "речь затухает"])
+        if unsupportedCue,
+           !rows.contains(where: { $0.actionType == .describedAction && !($0.describedActionText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            append("v9.unsupported_action_missing_text")
+        }
+
+        let mentionsMarkedObject = slotCatalog.markedObjectSlots.contains { slotID in
+            guard let object = slotCatalog.objectSlots.first(where: { $0.slotID == slotID }) else { return false }
+            return [object.name, object.markedObjectID, object.ref]
+                .compactMap { $0?.lowercased() }
+                .contains { !$0.isEmpty && lowercased.contains($0) }
+        }
+        let objectMotionCue = containsAny(lowercased, ["к компьютеру", "к объекту", "рядом", "около", "у "])
+        if mentionsMarkedObject || objectMotionCue {
+            let rowsWithTarget = rows.filter { $0.targetSlot != nil }
+            if rowsWithTarget.isEmpty, rows.contains(where: { targetRequiredTypes.contains($0.actionType) }) {
+                append("v9.wrong_target_slot:marked_object")
+            }
+        }
+
+        return issues
     }
 
     func applyPatchOps(
@@ -485,5 +565,9 @@ final class SceneEventTableV9Service {
         if !reasons.contains(reason) {
             reasons.append(reason)
         }
+    }
+
+    private func containsAny(_ text: String, _ needles: [String]) -> Bool {
+        needles.contains { text.contains($0) }
     }
 }

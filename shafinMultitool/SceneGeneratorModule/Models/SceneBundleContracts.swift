@@ -17,6 +17,8 @@ enum NormalizedScriptUnitKind: String, Codable, Equatable {
     case speakerCue = "speaker_cue"
     case parenthetical = "parenthetical"
     case dialogue = "dialogue"
+    case screenText = "screen_text"
+    case stageNote = "stage_note"
     case actionLine = "action_line"
     case proseLine = "prose_line"
     case blank
@@ -44,6 +46,22 @@ struct ScriptSceneCandidate: Codable, Equatable, Identifiable {
     var sourceText: String
     var metadata: SceneTopLevelMetadata
     var isImplicit: Bool
+    var isMontage: Bool = false
+}
+
+struct SceneVisualOverlay: Codable, Equatable, Identifiable {
+    enum Kind: String, Codable, Equatable {
+        case screenText = "screen_text"
+        case stageNote = "stage_note"
+    }
+
+    var id: String
+    var kind: Kind
+    var text: String
+    var sceneID: String
+    var sourceRange: ScriptOffsetRange
+    var displayOrder: Int
+    var beatID: String?
 }
 
 struct SceneChunkAnchor: Codable, Equatable {
@@ -83,6 +101,9 @@ struct SceneEntityRegistrySnapshot: Codable, Equatable {
     var locationName: String?
     var actorPoses: [String: ActorPose]
     var heldObjects: [String: String]
+    var previousChunkSummary: String? = nil
+    var openBeatContext: String? = nil
+    var lastActorPositions: [String: String] = [:]
 
     static let empty = SceneEntityRegistrySnapshot(
         actors: [],
@@ -94,7 +115,10 @@ struct SceneEntityRegistrySnapshot: Codable, Equatable {
         lastResolvedSpeaker: nil,
         locationName: nil,
         actorPoses: [:],
-        heldObjects: [:]
+        heldObjects: [:],
+        previousChunkSummary: nil,
+        openBeatContext: nil,
+        lastActorPositions: [:]
     )
 }
 
@@ -133,12 +157,18 @@ struct SceneChunkStateDelta: Codable, Equatable {
     var actorPoseUpdates: [String: ActorPose]
     var heldObjectUpdates: [String: String]
     var releasedObjects: [String]
+    var previousChunkSummary: String? = nil
+    var openBeatContext: String? = nil
+    var lastActorPositions: [String: String] = [:]
 
     static let empty = SceneChunkStateDelta(
         locationUpdate: nil,
         actorPoseUpdates: [:],
         heldObjectUpdates: [:],
-        releasedObjects: []
+        releasedObjects: [],
+        previousChunkSummary: nil,
+        openBeatContext: nil,
+        lastActorPositions: [:]
     )
 }
 
@@ -235,6 +265,7 @@ struct SceneBundlePlan: Codable, Equatable {
     var bundleID: String
     var scenes: [SceneEntry]
     var activeSceneIndex: Int
+    var visualOverlays: [SceneVisualOverlay] = []
     var diagnostics: [String]
 }
 
@@ -242,6 +273,7 @@ struct SceneBundleScript: Codable, Equatable {
     var bundleID: String
     var scenes: [SceneScript]
     var activeSceneIndex: Int
+    var visualOverlays: [SceneVisualOverlay] = []
     var diagnostics: [String]
 
     var activeSceneScript: SceneScript? {
@@ -276,6 +308,7 @@ struct ScriptDocumentState: Codable, Equatable {
     var bundlePlan: SceneBundlePlan
     var bundleScript: SceneBundleScript
     var activeSceneIndex: Int
+    var visualOverlays: [SceneVisualOverlay] = []
 }
 
 struct SceneBundleParsingResult: Equatable {
@@ -283,6 +316,7 @@ struct SceneBundleParsingResult: Equatable {
     var activeSceneScript: SceneScript?
     var activeSceneId: String?
     var sceneChunks: [SceneChunk]
+    var visualOverlays: [SceneVisualOverlay] = []
     var documentState: ScriptDocumentState
     var diagnostics: ParsingDiagnostics
     var chunkDiagnostics: [SceneChunkDiagnostics]

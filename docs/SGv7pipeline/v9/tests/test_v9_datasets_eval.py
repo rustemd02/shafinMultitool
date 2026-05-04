@@ -150,6 +150,7 @@ class V9DatasetEvalTests(unittest.TestCase):
                 "semantic_target_hit_count": 0,
                 "semantic_action_hit_count": 0,
                 "semantic_beat_hit_count": 0,
+                "semantic_full_row_hit_count": 0,
                 "targetless_event_repaired": False,
                 "unknown_slot_blocked": False,
                 "input_event_row_count": 0,
@@ -218,6 +219,9 @@ class V9DatasetEvalTests(unittest.TestCase):
         self.assertEqual(event_rows[0]["semantic_target_hit_count"], 1)
         self.assertEqual(event_rows[0]["semantic_action_hit_count"], 1)
         self.assertEqual(event_rows[0]["semantic_beat_hit_count"], 1)
+        self.assertEqual(event_rows[0]["semantic_full_row_hit_count"], 1)
+        summary = summarize_event_slice_metrics(event_rows)
+        self.assertEqual(summary["chunk"]["chunk_event_coverage_rate"], 1.0)
 
     def test_semantic_target_compare_resolves_marked_object_identity(self) -> None:
         eval_case = {
@@ -275,6 +279,40 @@ class V9DatasetEvalTests(unittest.TestCase):
         }
         event_rows, _ = build_v9_eval_artifacts(eval_case_rows=[eval_case], prediction_rows=[prediction])
         self.assertEqual(event_rows[0]["semantic_target_hit_count"], 1)
+
+    def test_chunk_metrics_capture_missing_event_coverage(self) -> None:
+        eval_case = {
+            "eval_case_id": "case_1",
+            "source_text": "Первый говорит. Затем второй идет к столу.",
+            "chunk_metadata": {"chunk_group_id": "doc_1", "chunk_id": "chunk_1", "chunk_index": 0, "chunk_count": 1},
+            "gold_event_table": {
+                "rows": [
+                    {"rowId": "row_1", "beatSlot": "beat_slot_1", "actorSlot": "actor_slot_1", "actionType": "talk"},
+                    {"rowId": "row_2", "beatSlot": "beat_slot_2", "actorSlot": "actor_slot_2", "actionType": "walk"},
+                ]
+            },
+            "gold_slot_catalog": {
+                "actorSlots": [{"slotId": "actor_slot_1"}, {"slotId": "actor_slot_2"}],
+                "objectSlots": [],
+                "beatSlots": [{"slotId": "beat_slot_1"}, {"slotId": "beat_slot_2"}],
+                "actionTypes": ["talk", "walk", "stand"],
+            },
+        }
+        prediction = {
+            "eval_case_id": "case_1",
+            "predicted_slot_catalog": eval_case["gold_slot_catalog"],
+            "predicted_event_table": {
+                "rows": [
+                    {"rowId": "row_1", "beatSlot": "beat_slot_1", "actorSlot": "actor_slot_1", "actionType": "talk"},
+                ]
+            },
+        }
+        event_rows, _ = build_v9_eval_artifacts(eval_case_rows=[eval_case], prediction_rows=[prediction])
+        self.assertEqual(event_rows[0]["chunk_expected_event_count"], 2)
+        self.assertEqual(event_rows[0]["chunk_missing_event_count"], 1)
+        self.assertFalse(event_rows[0]["chunk_event_coverage_pass"])
+        summary = summarize_event_slice_metrics(event_rows)
+        self.assertEqual(summary["chunk"]["chunk_event_coverage_rate"], 0.5)
 
 
 if __name__ == "__main__":

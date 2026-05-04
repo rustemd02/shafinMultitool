@@ -308,6 +308,7 @@ def _semantic_hit_counts(
             "semantic_target_hit_count": 0,
             "semantic_action_hit_count": 0,
             "semantic_beat_hit_count": 0,
+            "semantic_full_row_hit_count": 0,
         }
     predicted_rows = predicted_event_table.get("rows")
     gold_rows = gold_event_table.get("rows")
@@ -318,6 +319,7 @@ def _semantic_hit_counts(
             "semantic_target_hit_count": 0,
             "semantic_action_hit_count": 0,
             "semantic_beat_hit_count": 0,
+            "semantic_full_row_hit_count": 0,
         }
 
     predicted_by_id = _rows_by_id([row for row in predicted_rows if isinstance(row, dict)])
@@ -344,27 +346,39 @@ def _semantic_hit_counts(
     target_hits = 0
     action_hits = 0
     beat_hits = 0
+    full_row_hits = 0
     for predicted, gold in aligned_pairs:
         total += 1
+        row_actor_hit = False
+        row_target_hit = False
+        row_action_hit = False
+        row_beat_hit = False
         predicted_actor = _resolved_slot_value(str(predicted.get("actorSlot") or ""), predicted_identity)
         gold_actor = _resolved_slot_value(str(gold.get("actorSlot") or ""), gold_identity)
         if predicted_actor == gold_actor:
             actor_hits += 1
+            row_actor_hit = True
 
         predicted_target = _resolved_slot_value(str(predicted.get("targetSlot") or ""), predicted_identity)
         gold_target = _resolved_slot_value(str(gold.get("targetSlot") or ""), gold_identity)
         if predicted_target == gold_target:
             target_hits += 1
+            row_target_hit = True
 
         predicted_action = str(predicted.get("actionType") or "").strip()
         gold_action = str(gold.get("actionType") or "").strip()
         if predicted_action == gold_action:
             action_hits += 1
+            row_action_hit = True
 
         predicted_beat = _resolved_slot_value(str(predicted.get("beatSlot") or ""), predicted_identity)
         gold_beat = _resolved_slot_value(str(gold.get("beatSlot") or ""), gold_identity)
         if predicted_beat == gold_beat:
             beat_hits += 1
+            row_beat_hit = True
+
+        if row_actor_hit and row_target_hit and row_action_hit and row_beat_hit:
+            full_row_hits += 1
 
     return {
         "semantic_row_total": total,
@@ -372,6 +386,7 @@ def _semantic_hit_counts(
         "semantic_target_hit_count": target_hits,
         "semantic_action_hit_count": action_hits,
         "semantic_beat_hit_count": beat_hits,
+        "semantic_full_row_hit_count": full_row_hits,
     }
 
 
@@ -446,7 +461,9 @@ def build_v9_eval_artifacts(
             "semantic_target_hit_count": 0,
             "semantic_action_hit_count": 0,
             "semantic_beat_hit_count": 0,
+            "semantic_full_row_hit_count": 0,
         }
+        chunk_metadata = eval_case.get("chunk_metadata") if isinstance(eval_case.get("chunk_metadata"), dict) else {}
 
         if parse_ok and slot_catalog and event_table:
             input_rows = event_table.get("rows")
@@ -509,6 +526,23 @@ def build_v9_eval_artifacts(
                 "repaired_event_row_count": repaired_event_row_count,
                 "dropped_event_row_count": dropped_event_row_count,
                 **semantic_counts,
+                "chunk_group_id": chunk_metadata.get("chunk_group_id") or eval_case.get("document_id") or eval_case.get("scene_id"),
+                "chunk_id": chunk_metadata.get("chunk_id") or eval_case.get("chunk_id"),
+                "chunk_index": chunk_metadata.get("chunk_index") if chunk_metadata.get("chunk_index") is not None else eval_case.get("chunk_index"),
+                "chunk_count": chunk_metadata.get("chunk_count") if chunk_metadata.get("chunk_count") is not None else eval_case.get("chunk_count"),
+                "chunk_expected_event_count": semantic_counts["semantic_row_total"],
+                "chunk_predicted_event_count": repaired_event_row_count,
+                "chunk_missing_event_count": max(0, semantic_counts["semantic_row_total"] - semantic_counts["semantic_full_row_hit_count"]),
+                "chunk_extra_event_count": max(0, repaired_event_row_count - semantic_counts["semantic_row_total"]),
+                "chunk_event_coverage_pass": (
+                    semantic_counts["semantic_row_total"] > 0
+                    and semantic_counts["semantic_full_row_hit_count"] >= semantic_counts["semantic_row_total"]
+                ),
+                "cross_chunk_actor_continuity_pass": eval_case.get("cross_chunk_actor_continuity_pass"),
+                "cross_chunk_object_continuity_pass": eval_case.get("cross_chunk_object_continuity_pass"),
+                "pronoun_resolution_after_chunk_pass": eval_case.get("pronoun_resolution_after_chunk_pass"),
+                "stitch_no_duplicate_actor_pass": eval_case.get("stitch_no_duplicate_actor_pass"),
+                "playback_intent_success_pass": eval_case.get("playback_intent_success_pass"),
                 "compile_notes": compile_notes,
                 "compile_error": compile_error,
             }

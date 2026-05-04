@@ -30,6 +30,9 @@ struct SceneGeneratorView: View {
                 // Top bar
                 if viewModel.isPlaying {
                     playbackTimeline
+                    if let screenText = viewModel.activeScreenTextCaption {
+                        playbackScreenTextOverlay(screenText)
+                    }
                 } else {
                     topBar
                 }
@@ -150,6 +153,23 @@ struct SceneGeneratorView: View {
             .frame(height: 8)
         }
         .accessibilityLabel("Beat \(item.index + 1)")
+    }
+
+    private func playbackScreenTextOverlay(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.58))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
+            )
+            .padding(.top, 6)
+            .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private func playbackDialogueCaption(_ text: String) -> some View {

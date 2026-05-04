@@ -31,6 +31,7 @@ final class LLMParserService: LocalScenePlanProvider {
     private let lemmatizer = Lemmatizer()
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
     private let planCompiler = ScenePlanCompiler()
+    private let v9EventTableService = SceneEventTableV9Service()
     private let stateLock = NSLock()
     private var loadingTask: Task<Void, Never>?
 
@@ -496,7 +497,12 @@ final class LLMParserService: LocalScenePlanProvider {
 
             var currentEventTable = parsed
             var patchOps: SceneV9PatchOps?
-            var verifierIssues = v9VerifierIssues(for: currentEventTable, slotCatalog: slotCatalog)
+            var verifierIssues = v9VerifierIssues(
+                for: currentEventTable,
+                slotCatalog: slotCatalog,
+                sourceText: description,
+                anchors: anchors
+            )
             if !verifierIssues.isEmpty {
                 reasonCodes.append("v9.event_table_verifier_issues_detected")
             }
@@ -521,7 +527,12 @@ final class LLMParserService: LocalScenePlanProvider {
                     }
                     patchOps = candidatePatch
                     currentEventTable = applying(candidatePatch, to: currentEventTable)
-                    verifierIssues = v9VerifierIssues(for: currentEventTable, slotCatalog: slotCatalog)
+                    verifierIssues = v9VerifierIssues(
+                        for: currentEventTable,
+                        slotCatalog: slotCatalog,
+                        sourceText: description,
+                        anchors: anchors
+                    )
                     if verifierIssues.isEmpty {
                         reasonCodes.append("v9.patch_retry_recovered")
                     } else {
@@ -629,6 +640,7 @@ final class LLMParserService: LocalScenePlanProvider {
             let held = state.heldObjects.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
             let actorAliases = state.actorAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
             let objectAliases = state.objectAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
+            let actorPositions = state.lastActorPositions.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
             stateContext = "Предыдущее состояние сцены:\n"
             if let sceneID = state.sceneID { stateContext += "Scene ID: \(sceneID)\n" }
             if let heading = state.sceneHeading { stateContext += "Scene heading: \(heading)\n" }
@@ -640,6 +652,9 @@ final class LLMParserService: LocalScenePlanProvider {
             if !poses.isEmpty { stateContext += "Пози/poses актёров: \(poses)\n" }
             if !held.isEmpty { stateContext += "Что кто держит: \(held)\n" }
             if let speaker = state.lastResolvedSpeaker { stateContext += "Последний говорящий: \(speaker)\n" }
+            if let summary = state.previousChunkSummary, !summary.isEmpty { stateContext += "Краткое содержание прошлого чанка: \(summary)\n" }
+            if let openBeat = state.openBeatContext, !openBeat.isEmpty { stateContext += "Открытый beat-контекст: \(openBeat)\n" }
+            if !actorPositions.isEmpty { stateContext += "Последние смысловые позиции актёров: \(actorPositions)\n" }
             stateContext += "\n"
         }
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
@@ -764,7 +779,11 @@ final class LLMParserService: LocalScenePlanProvider {
         <|im_start|>system
         Ты fixer V9. Верни ТОЛЬКО валидный JSON контракта sg_v9_patch_ops_v1.
         Разрешены операции: replace, add, delete.
-        Меняй только поля существующего event table и только по списку verifier issues.
+        Меняй только поля по списку verifier issues.
+        Если issue требует missing_event_for_beat / collective_action_not_expanded / unsupported_action_missing_text:
+        - сначала добавь новую строку через {"op":"add","rowId":"row_new_1"}
+        - затем replace для beatSlot, actorSlot, actionType, targetSlot/dialogueText/describedActionText/sourceSpan/confidence.
+        Используй только slot id из slotCatalog, новые слоты запрещены.
         Не меняй contractVersion. Не добавляй комментарии.
         <|im_end|>
         <|im_start|>user
@@ -792,6 +811,7 @@ final class LLMParserService: LocalScenePlanProvider {
         let held = state.heldObjects.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
         let actorAliases = state.actorAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
         let objectAliases = state.objectAliases.map { "\($0.key)->\($0.value)" }.joined(separator: ", ")
+        let actorPositions = state.lastActorPositions.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
 
         var context = "Предыдущее состояние сцены:\n"
         if let sceneID = state.sceneID { context += "Scene ID: \(sceneID)\n" }
@@ -804,6 +824,9 @@ final class LLMParserService: LocalScenePlanProvider {
         if !poses.isEmpty { context += "Позы актёров: \(poses)\n" }
         if !held.isEmpty { context += "Что кто держит: \(held)\n" }
         if let speaker = state.lastResolvedSpeaker { context += "Последний говорящий: \(speaker)\n" }
+        if let summary = state.previousChunkSummary, !summary.isEmpty { context += "Краткое содержание прошлого чанка: \(summary)\n" }
+        if let openBeat = state.openBeatContext, !openBeat.isEmpty { context += "Открытый beat-контекст: \(openBeat)\n" }
+        if !actorPositions.isEmpty { context += "Последние смысловые позиции актёров: \(actorPositions)\n" }
         context += "\n"
         return context
     }
@@ -1660,7 +1683,9 @@ final class LLMParserService: LocalScenePlanProvider {
 
     private func v9VerifierIssues(
         for eventTable: SceneV9EventTable,
-        slotCatalog: SceneV9SlotCatalog
+        slotCatalog: SceneV9SlotCatalog,
+        sourceText: String,
+        anchors: SourceAnchorBundle
     ) -> [String] {
         let actorSlots = Set(slotCatalog.actorSlots.map(\.slotID))
         let objectSlots = Set(slotCatalog.objectSlots.map(\.slotID))
@@ -1693,6 +1718,16 @@ final class LLMParserService: LocalScenePlanProvider {
                (row.describedActionText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 issues.append("row=\(row.rowID): describedActionText is required")
             }
+        }
+
+        let coverageIssues = v9EventTableService.coverageIssueCodes(
+            eventTable: eventTable,
+            slotCatalog: slotCatalog,
+            sourceText: sourceText,
+            anchors: anchors
+        )
+        for issue in coverageIssues where !issues.contains(issue) {
+            issues.append(issue)
         }
 
         return issues

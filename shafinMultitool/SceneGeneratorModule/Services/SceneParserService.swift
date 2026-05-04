@@ -283,7 +283,8 @@ final class SceneParserService {
             objectAliases: knownObjects,
             speakerAliasMap: [:],
             actorPoses: actorPoses,
-            heldObjects: heldObjects
+            heldObjects: heldObjects,
+            previousChunkSummary: script.originalDescription
         )
     }
 
@@ -305,14 +306,20 @@ final class SceneParserService {
             speakerAliasMap: stitchState.registry.speakerAliasMap,
             actorPoses: stitchState.registry.actorPoses,
             heldObjects: stitchState.registry.heldObjects,
-            lastResolvedSpeaker: stitchState.registry.lastResolvedSpeaker
+            lastResolvedSpeaker: stitchState.registry.lastResolvedSpeaker,
+            previousChunkSummary: stitchState.registry.previousChunkSummary,
+            openBeatContext: stitchState.registry.openBeatContext,
+            lastActorPositions: stitchState.registry.lastActorPositions
         )
     }
 
     private func updateBundleContext(with result: SceneBundleParsingResult, fallbackLocationName: String?) {
         lastBundleResult = result
         lastDocumentState = result.documentState
-        if let stitchState = result.documentState.stitchStates.last {
+        if let activeSceneID = result.activeSceneId,
+           let stitchState = result.documentState.stitchStates.first(where: { $0.sceneID == activeSceneID }) {
+            lastChunkState = makeChunkState(from: stitchState, fallbackLocationName: fallbackLocationName)
+        } else if let stitchState = result.documentState.stitchStates.last {
             lastChunkState = makeChunkState(from: stitchState, fallbackLocationName: fallbackLocationName)
         } else if let activeSceneScript = result.activeSceneScript {
             lastChunkState = makeChunkState(from: activeSceneScript, fallbackLocationName: fallbackLocationName)

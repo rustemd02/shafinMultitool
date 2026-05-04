@@ -20,6 +20,7 @@ struct RawSceneChunkSegment {
 final class ScriptNormalizer {
     private let headingDetector = SceneMetadataExtractor()
     private let speakerCueRegex = try? NSRegularExpression(pattern: #"^[A-ZА-Я0-9][A-ZА-Я0-9 \-_.]{1,40}:?$"#)
+    private let inlineSpeakerRegex = try? NSRegularExpression(pattern: #"^([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9 \-_.]{1,40}):\s*(.+)$"#)
 
     func normalize(description: String) -> [NormalizedScriptUnit] {
         let prepared = description
@@ -31,44 +32,172 @@ final class ScriptNormalizer {
         var units: [NormalizedScriptUnit] = []
         var cursor = 0
         var previousNonBlankKind: NormalizedScriptUnitKind?
+        var screenTextMode = false
+
+        func appendRawUnit(kind: NormalizedScriptUnitKind, text: String, lineIndex: Int, range: ScriptOffsetRange) {
+            units.append(
+                NormalizedScriptUnit(
+                    id: "unit_\(units.count + 1)",
+                    kind: kind,
+                    text: text,
+                    lineIndex: lineIndex,
+                    charRange: range
+                )
+            )
+            if kind != .blank {
+                previousNonBlankKind = kind
+            }
+        }
+
+        func appendUnit(kind: NormalizedScriptUnitKind, text: String, lineIndex: Int, range: ScriptOffsetRange) {
+            guard kind == .dialogue else {
+                appendRawUnit(kind: kind, text: text, lineIndex: lineIndex, range: range)
+                return
+            }
+
+            let (dialogueText, stageNotes) = splitStageNotes(from: text)
+            for segment in splitLongDialogue(dialogueText) {
+                appendRawUnit(kind: .dialogue, text: segment, lineIndex: lineIndex, range: range)
+            }
+            for note in stageNotes {
+                appendRawUnit(kind: .stageNote, text: note, lineIndex: lineIndex, range: range)
+            }
+        }
 
         for (lineIndex, rawLine) in lines.enumerated() {
             let rawLength = rawLine.count
             let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            let kind: NormalizedScriptUnitKind
-            let normalizedText: String
 
             if trimmed.isEmpty {
-                kind = .blank
-                normalizedText = ""
+                appendUnit(
+                    kind: .blank,
+                    text: "",
+                    lineIndex: lineIndex,
+                    range: ScriptOffsetRange(start: cursor, end: cursor + rawLength)
+                )
+                screenTextMode = false
             } else {
-                normalizedText = rawLine
+                let normalizedText = rawLine
                     .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                kind = classify(line: normalizedText, previousNonBlankKind: previousNonBlankKind)
-                previousNonBlankKind = kind
-            }
 
-            let unit = NormalizedScriptUnit(
-                id: "unit_\(lineIndex + 1)",
-                kind: kind,
-                text: normalizedText,
-                lineIndex: lineIndex,
-                charRange: ScriptOffsetRange(start: cursor, end: cursor + rawLength)
-            )
-            units.append(unit)
+                if let split = splitInlineSpeakerCue(normalizedText) {
+                    appendUnit(
+                        kind: .speakerCue,
+                        text: split.speaker,
+                        lineIndex: lineIndex,
+                        range: ScriptOffsetRange(start: cursor, end: cursor + split.speaker.count)
+                    )
+                    appendUnit(
+                        kind: .dialogue,
+                        text: split.dialogue,
+                        lineIndex: lineIndex,
+                        range: ScriptOffsetRange(start: cursor + split.speaker.count + 1, end: cursor + rawLength)
+                    )
+                    screenTextMode = false
+                } else {
+                    let kind = classify(
+                        line: normalizedText,
+                        previousNonBlankKind: previousNonBlankKind,
+                        screenTextMode: screenTextMode
+                    )
+                    appendUnit(
+                        kind: kind,
+                        text: normalizedText,
+                        lineIndex: lineIndex,
+                        range: ScriptOffsetRange(start: cursor, end: cursor + rawLength)
+                    )
+                    let lowercased = normalizedText.lowercased()
+                    screenTextMode = lowercased.contains("на экране появляются надписи")
+                        || (screenTextMode && kind == .screenText)
+                }
+            }
             cursor += rawLength + 1
         }
 
         return units
     }
 
-    private func classify(line: String, previousNonBlankKind: NormalizedScriptUnitKind?) -> NormalizedScriptUnitKind {
+    private func splitInlineSpeakerCue(_ line: String) -> (speaker: String, dialogue: String)? {
+        guard headingDetector.extract(description: line).sceneHeading == nil,
+              let inlineSpeakerRegex
+        else { return nil }
+        let nsRange = NSRange(line.startIndex..<line.endIndex, in: line)
+        guard let match = inlineSpeakerRegex.firstMatch(in: line, range: nsRange),
+              let speakerRange = Range(match.range(at: 1), in: line),
+              let dialogueRange = Range(match.range(at: 2), in: line)
+        else { return nil }
+        let speaker = String(line[speakerRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let dialogue = String(line[dialogueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !speaker.isEmpty, !dialogue.isEmpty else { return nil }
+        return (speaker, dialogue)
+    }
+
+    private func splitStageNotes(from text: String) -> (dialogue: String, stageNotes: [String]) {
+        let pattern = #"\*([^*]+)\*"#
+        let nsText = text as NSString
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return (text, [])
+        }
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+        let notes = matches.compactMap { match -> String? in
+            guard match.numberOfRanges > 1 else { return nil }
+            let note = nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return note.isEmpty ? nil : note
+        }
+        let dialogue = regex
+            .stringByReplacingMatches(in: text, range: NSRange(location: 0, length: nsText.length), withTemplate: "")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (dialogue, notes)
+    }
+
+    private func splitLongDialogue(_ text: String, maxCharacters: Int = 170) -> [String] {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return [] }
+        guard cleaned.count > maxCharacters else { return [cleaned] }
+
+        let nsText = cleaned as NSString
+        let sentenceRegex = try? NSRegularExpression(pattern: #"[^.!?…]+[.!?…]?"#)
+        let sentences = sentenceRegex?
+            .matches(in: cleaned, range: NSRange(location: 0, length: nsText.length))
+            .map { nsText.substring(with: $0.range).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+
+        var chunks: [String] = []
+        var current = ""
+        for sentence in sentences.isEmpty ? [cleaned] : sentences {
+            if current.isEmpty {
+                current = sentence
+            } else if current.count + sentence.count + 1 <= maxCharacters {
+                current += " " + sentence
+            } else {
+                chunks.append(current)
+                current = sentence
+            }
+        }
+        if !current.isEmpty {
+            chunks.append(current)
+        }
+        return chunks
+    }
+
+    private func classify(
+        line: String,
+        previousNonBlankKind: NormalizedScriptUnitKind?,
+        screenTextMode: Bool
+    ) -> NormalizedScriptUnitKind {
         if headingDetector.extract(description: line).sceneHeading != nil {
             return .sceneHeading
         }
+        if line.hasPrefix("*"), line.hasSuffix("*") {
+            return .stageNote
+        }
         if line.hasPrefix("("), line.hasSuffix(")") {
             return .parenthetical
+        }
+        if screenTextMode, isLikelyScreenText(line) {
+            return .screenText
         }
         let nsRange = NSRange(line.startIndex..<line.endIndex, in: line)
         if let speakerCueRegex, speakerCueRegex.firstMatch(in: line, range: nsRange) != nil {
@@ -81,6 +210,14 @@ final class ScriptNormalizer {
             return .proseLine
         }
         return .actionLine
+    }
+
+    private func isLikelyScreenText(_ line: String) -> Bool {
+        guard !line.contains(":") else { return false }
+        guard line.count <= 80 else { return false }
+        let lowercased = line.lowercased()
+        let actionWords = ["сидит", "идёт", "идет", "говорит", "смотрит", "берёт", "берет", "кладёт", "кладет"]
+        return !actionWords.contains(where: { lowercased.contains($0) })
     }
 }
 
@@ -113,6 +250,34 @@ final class SceneBoundaryDetector {
         }
 
         var scenes: [ScriptSceneCandidate] = []
+        if let firstHeading = headingIndices.first, firstHeading > 0 {
+            let preHeadingUnits = Array(units[0..<firstHeading])
+            let contentUnits = preHeadingUnits.filter { $0.kind != .blank }
+            if !contentUnits.isEmpty {
+                let sourceText = render(units: preHeadingUnits)
+                scenes.append(
+                    ScriptSceneCandidate(
+                        id: "scene_1",
+                        sceneIndex: 0,
+                        heading: nil,
+                        unitRange: 0..<firstHeading,
+                        sourceRange: ScriptOffsetRange(
+                            start: preHeadingUnits.first?.charRange.start ?? 0,
+                            end: preHeadingUnits.last?.charRange.end ?? 0
+                        ),
+                        sourceText: sourceText,
+                        metadata: SceneTopLevelMetadata(
+                            sceneHeading: "MONTAGE",
+                            locationName: "montage",
+                            interiorExterior: nil,
+                            timeOfDay: nil
+                        ),
+                        isImplicit: true,
+                        isMontage: true
+                    )
+                )
+            }
+        }
         for (sceneOrdinal, startIndex) in headingIndices.enumerated() {
             let endIndex = headingIndices.dropFirst(sceneOrdinal + 1).first ?? units.count
             let sceneUnits = Array(units[startIndex..<endIndex])
@@ -120,25 +285,92 @@ final class SceneBoundaryDetector {
             guard contentUnits.count > 1 else { continue }
             let sourceText = render(units: sceneUnits)
             let metadata = metadataExtractor.extract(description: sourceText)
-            let sourceRange = ScriptOffsetRange(
-                start: sceneUnits.first?.charRange.start ?? 0,
-                end: sceneUnits.last?.charRange.end ?? 0
-            )
-            scenes.append(
-                ScriptSceneCandidate(
-                    id: "scene_\(scenes.count + 1)",
-                    sceneIndex: scenes.count,
-                    heading: metadata.sceneHeading,
-                    unitRange: startIndex..<endIndex,
-                    sourceRange: sourceRange,
-                    sourceText: sourceText,
+            if let splitIndex = implicitShotSplitIndex(in: sceneUnits, absoluteStartIndex: startIndex) {
+                appendSceneCandidate(
+                    units: Array(units[startIndex..<splitIndex]),
+                    unitRange: startIndex..<splitIndex,
                     metadata: metadata,
-                    isImplicit: false
+                    isImplicit: false,
+                    to: &scenes
                 )
-            )
+                let shotUnits = Array(units[splitIndex..<endIndex])
+                let shotText = render(units: shotUnits)
+                let shotMetadata = metadataExtractor.extract(description: shotText, fallbackLocationName: metadata.locationName)
+                appendSceneCandidate(
+                    units: shotUnits,
+                    unitRange: splitIndex..<endIndex,
+                    metadata: shotMetadata,
+                    isImplicit: true,
+                    to: &scenes
+                )
+            } else {
+                appendSceneCandidate(
+                    units: sceneUnits,
+                    unitRange: startIndex..<endIndex,
+                    metadata: metadata,
+                    isImplicit: false,
+                    to: &scenes
+                )
+            }
         }
 
         return scenes
+    }
+
+    private func appendSceneCandidate(
+        units: [NormalizedScriptUnit],
+        unitRange: Range<Int>,
+        metadata: SceneTopLevelMetadata,
+        isImplicit: Bool,
+        to scenes: inout [ScriptSceneCandidate]
+    ) {
+        let contentUnits = units.filter { $0.kind != .blank }
+        guard !contentUnits.isEmpty else { return }
+        let sourceText = render(units: units)
+        let sourceRange = ScriptOffsetRange(
+            start: units.first?.charRange.start ?? 0,
+            end: units.last?.charRange.end ?? 0
+        )
+        scenes.append(
+            ScriptSceneCandidate(
+                id: "scene_\(scenes.count + 1)",
+                sceneIndex: scenes.count,
+                heading: metadata.sceneHeading,
+                unitRange: unitRange,
+                sourceRange: sourceRange,
+                sourceText: sourceText,
+                metadata: metadata,
+                isImplicit: isImplicit
+            )
+        )
+    }
+
+    private func implicitShotSplitIndex(in sceneUnits: [NormalizedScriptUnit], absoluteStartIndex: Int) -> Int? {
+        var dialogueCharacterCount = 0
+        var dialogueUnitCount = 0
+        for (localIndex, unit) in sceneUnits.enumerated() {
+            switch unit.kind {
+            case .dialogue:
+                dialogueCharacterCount += unit.text.count
+                dialogueUnitCount += 1
+            case .actionLine, .proseLine:
+                if (dialogueCharacterCount > 450 || dialogueUnitCount >= 4),
+                   looksLikeNamedActorPhysicalAction(unit.text) {
+                    return absoluteStartIndex + localIndex
+                }
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    private func looksLikeNamedActorPhysicalAction(_ text: String) -> Bool {
+        let lowercased = text.lowercased()
+        let physicalCues = ["сидит", "стоит", "идёт", "идет", "смотрит", "берёт", "берет", "кладёт", "кладет", "подходит", "останавливается"]
+        guard physicalCues.contains(where: { lowercased.contains($0) }) else { return false }
+        guard let firstScalar = text.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.first else { return false }
+        return CharacterSet.uppercaseLetters.contains(firstScalar)
     }
 
     private func render(units: [NormalizedScriptUnit]) -> String {
@@ -321,7 +553,10 @@ final class EntityRegistryProjector {
             speakerAliasMap: registry.speakerAliasMap,
             actorPoses: registry.actorPoses,
             heldObjects: registry.heldObjects,
-            lastResolvedSpeaker: registry.lastResolvedSpeaker
+            lastResolvedSpeaker: registry.lastResolvedSpeaker,
+            previousChunkSummary: registry.previousChunkSummary,
+            openBeatContext: registry.openBeatContext,
+            lastActorPositions: registry.lastActorPositions
         )
     }
 }
@@ -570,7 +805,11 @@ final class ChunkCanonicalizer {
             )
         }
 
-        let stateDelta = makeStateDelta(beats: beatPatch, metadata: draft.registrySnapshot.locationName ?? draft.anchors.locationCues.first)
+        let stateDelta = makeStateDelta(
+            beats: beatPatch,
+            metadata: draft.registrySnapshot.locationName ?? draft.anchors.locationCues.first,
+            sourceText: draft.sourceText
+        )
 
         return SceneChunk(
             sceneID: draft.sceneID,
@@ -879,6 +1118,9 @@ final class ChunkCanonicalizer {
         if !reasonCodes.contains("v1.collective_object_motion_hotfix_v2") {
             reasonCodes.append("v1.collective_object_motion_hotfix_v2")
         }
+        if !reasonCodes.contains("v9.collective_action_expanded") {
+            reasonCodes.append("v9.collective_action_expanded")
+        }
         if normalized != actions, !reasonCodes.contains("v1.collective_motion_expanded") {
             reasonCodes.append("v1.collective_motion_expanded")
         }
@@ -972,6 +1214,9 @@ final class ChunkCanonicalizer {
         if normalized != actions, !reasonCodes.contains("v1.collective_toward_each_other_expanded") {
             reasonCodes.append("v1.collective_toward_each_other_expanded")
         }
+        if normalized != actions, !reasonCodes.contains("v9.reciprocal_motion_expanded") {
+            reasonCodes.append("v9.reciprocal_motion_expanded")
+        }
 
         return normalized
     }
@@ -1030,6 +1275,9 @@ final class ChunkCanonicalizer {
 
         if normalized != actions, !reasonCodes.contains("v1.collective_stop_near_object_expanded") {
             reasonCodes.append("v1.collective_stop_near_object_expanded")
+        }
+        if normalized != actions, !reasonCodes.contains("v9.collective_stop_near_object_expanded") {
+            reasonCodes.append("v9.collective_stop_near_object_expanded")
         }
         return normalized
     }
@@ -1148,10 +1396,11 @@ final class ChunkCanonicalizer {
         actorMap[rawRef] ?? objectMap[rawRef] ?? (rawRef.hasPrefix("object_marked_") ? rawRef : nil)
     }
 
-    private func makeStateDelta(beats: [ScenePlanIR.Beat], metadata: String?) -> SceneChunkStateDelta {
+    private func makeStateDelta(beats: [ScenePlanIR.Beat], metadata: String?, sourceText: String) -> SceneChunkStateDelta {
         var poses: [String: ActorPose] = [:]
         var heldObjects: [String: String] = [:]
         var released: [String] = []
+        var lastPositions: [String: String] = [:]
 
         for beat in beats {
             for action in beat.actions {
@@ -1168,6 +1417,11 @@ final class ChunkCanonicalizer {
                 default:
                     break
                 }
+                if let target = action.targetRef {
+                    lastPositions[action.actorRef] = "near:\(target)"
+                } else if let pose = action.resultingPose {
+                    lastPositions[action.actorRef] = "pose:\(pose.rawValue)"
+                }
             }
         }
 
@@ -1175,8 +1429,22 @@ final class ChunkCanonicalizer {
             locationUpdate: metadata,
             actorPoseUpdates: poses,
             heldObjectUpdates: heldObjects,
-            releasedObjects: released
+            releasedObjects: released,
+            previousChunkSummary: compactChunkSummary(sourceText),
+            openBeatContext: beats.last.map { beat in
+                let actionSummary = beat.actions.map { "\($0.actorRef):\($0.type.rawValue)" }.joined(separator: ",")
+                return "\(beat.ref)|\(actionSummary)"
+            },
+            lastActorPositions: lastPositions
         )
+    }
+
+    private func compactChunkSummary(_ sourceText: String) -> String {
+        let normalized = sourceText
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > 180 else { return normalized }
+        return String(normalized.prefix(180))
     }
 
     private func normalizeAlias(_ value: String?) -> String? {
@@ -1348,6 +1616,13 @@ final class SceneStitcher {
         for actorRef in delta.releasedObjects {
             state.registry.heldObjects.removeValue(forKey: actorRef)
         }
+        if let summary = delta.previousChunkSummary, !summary.isEmpty {
+            state.registry.previousChunkSummary = summary
+        }
+        if let context = delta.openBeatContext, !context.isEmpty {
+            state.registry.openBeatContext = context
+        }
+        state.registry.lastActorPositions.merge(delta.lastActorPositions) { _, new in new }
     }
 
     private func actionFingerprint(_ action: ScenePlanIR.Action) -> String {
@@ -1386,6 +1661,7 @@ final class SceneBundleCompiler {
             bundleID: bundlePlan.bundleID,
             scenes: scripts,
             activeSceneIndex: scripts.isEmpty ? 0 : activeIndex,
+            visualOverlays: bundlePlan.visualOverlays,
             diagnostics: bundlePlan.diagnostics
         )
     }
@@ -1480,6 +1756,9 @@ final class SceneBundlePipeline {
         var chunkDiagnostics: [SceneChunkDiagnostics] = workload.reusedChunkDiagnostics
 
         for scene in workload.pendingScenes {
+            if scene.isMontage {
+                continue
+            }
             var sceneState = workload.seedState(for: scene, previousState: previousState)
             var sceneChunks: [SceneChunk] = []
             let rawSegments = segmenter.segment(scene: scene, units: workload.units)
@@ -1551,10 +1830,13 @@ final class SceneBundlePipeline {
         sceneEntries.sort { $0.sceneIndex < $1.sceneIndex }
         stitchedStates.sort { $0.sceneIndex < $1.sceneIndex }
 
+        let renderableSceneEntries = sceneEntries.filter { !$0.plan.beats.isEmpty || !$0.plan.objects.isEmpty }
+        let activeRenderableIndex = 0
         let bundlePlan = SceneBundlePlan(
             bundleID: workload.bundleID,
-            scenes: sceneEntries.filter { !$0.plan.beats.isEmpty || !$0.plan.objects.isEmpty },
-            activeSceneIndex: max(0, sceneEntries.indices.last ?? 0),
+            scenes: renderableSceneEntries,
+            activeSceneIndex: activeRenderableIndex,
+            visualOverlays: workload.visualOverlays,
             diagnostics: ["bundle_mode=\(workload.mode.rawValue)", "scene_count=\(sceneEntries.count)"]
         )
         let bundleScript = hydrateMarkedObjectPositions(
@@ -1578,19 +1860,21 @@ final class SceneBundlePipeline {
             stitchStates: stitchedStates,
             bundlePlan: bundlePlan,
             bundleScript: bundleScript,
-            activeSceneIndex: bundlePlan.activeSceneIndex
+            activeSceneIndex: bundlePlan.activeSceneIndex,
+            visualOverlays: workload.visualOverlays
         )
 
         return SceneBundleParsingResult(
             bundleScript: bundleScript,
             activeSceneScript: activeSceneScript,
-            activeSceneId: sceneEntries.indices.contains(bundlePlan.activeSceneIndex) ? sceneEntries[bundlePlan.activeSceneIndex].sceneID : nil,
+            activeSceneId: renderableSceneEntries.indices.contains(bundlePlan.activeSceneIndex) ? renderableSceneEntries[bundlePlan.activeSceneIndex].sceneID : nil,
             sceneChunks: allChunks.sorted { lhs, rhs in
                 if lhs.sceneID == rhs.sceneID {
                     return lhs.chunkIndex < rhs.chunkIndex
                 }
                 return lhs.sceneID < rhs.sceneID
             },
+            visualOverlays: workload.visualOverlays,
             documentState: documentState,
             diagnostics: diagnostics,
             chunkDiagnostics: chunkDiagnostics.sorted { lhs, rhs in
@@ -1891,9 +2175,17 @@ final class SceneBundlePipeline {
 
         var verification = v9EventService.verifyAndRepair(eventTable: eventTable, slotCatalog: slotCatalog)
         appendReasons(verification.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
+        let coverageIssues = v9EventService.coverageIssueCodes(
+            eventTable: verification.repairedEventTable,
+            slotCatalog: slotCatalog,
+            sourceText: sourceText,
+            anchors: anchors
+        )
+        appendReasons(coverageIssues, provenance: "v9_verifier", into: &reasonCodes)
+        var verifierIssuesForRetry = verification.reasonCodes + coverageIssues
 
         let canRetry = usedProvider
-            && v9EventService.containsFixableVerifierIssues(verification.reasonCodes)
+            && v9EventService.containsFixableVerifierIssues(verifierIssuesForRetry)
             && !didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs * 0.75)
         if canRetry {
             appendReasonWithProvenance("v9.patch_retry_attempted", provenance: "v9_verifier", into: &reasonCodes)
@@ -1904,7 +2196,7 @@ final class SceneBundlePipeline {
                 state: chunkState,
                 slotCatalog: slotCatalog,
                 eventTable: verification.repairedEventTable,
-                verifierIssues: verification.reasonCodes
+                verifierIssues: verifierIssuesForRetry
             ) {
                 let patched = v9EventService.applyPatchOps(
                     retryPatchOps,
@@ -1914,10 +2206,19 @@ final class SceneBundlePipeline {
                 appendReasons(patched.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
                 let retryClamp = v9EventService.clampRows(in: patched.eventTable, maxRows: limits.maxRows)
                 let retryVerification = v9EventService.verifyAndRepair(eventTable: retryClamp.eventTable, slotCatalog: slotCatalog)
-                if retryVerification.reasonCodes.count <= verification.reasonCodes.count {
+                let retryCoverageIssues = v9EventService.coverageIssueCodes(
+                    eventTable: retryVerification.repairedEventTable,
+                    slotCatalog: slotCatalog,
+                    sourceText: sourceText,
+                    anchors: anchors
+                )
+                let retryIssues = retryVerification.reasonCodes + retryCoverageIssues
+                if retryIssues.count <= verifierIssuesForRetry.count {
                     verification = retryVerification
+                    verifierIssuesForRetry = retryIssues
                     appendReasonWithProvenance("v9.patch_retry_applied", provenance: "v9_verifier", into: &reasonCodes)
                     appendReasons(retryVerification.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
+                    appendReasons(retryCoverageIssues, provenance: "v9_verifier", into: &reasonCodes)
                 } else {
                     appendReasonWithProvenance("v9.patch_retry_no_gain", provenance: "v9_verifier", into: &reasonCodes)
                 }
@@ -2243,6 +2544,7 @@ final class SceneBundlePipeline {
             bundleID: bundleScript.bundleID,
             scenes: hydratedScenes,
             activeSceneIndex: bundleScript.activeSceneIndex,
+            visualOverlays: bundleScript.visualOverlays,
             diagnostics: bundleScript.diagnostics
         )
     }
@@ -2254,8 +2556,8 @@ final class SceneBundlePipeline {
     }
 
     private func emptyResult(description: String) -> SceneBundleParsingResult {
-        let bundlePlan = SceneBundlePlan(bundleID: UUID().uuidString.lowercased(), scenes: [], activeSceneIndex: 0, diagnostics: ["bundle_empty"])
-        let bundleScript = SceneBundleScript(bundleID: bundlePlan.bundleID, scenes: [], activeSceneIndex: 0, diagnostics: bundlePlan.diagnostics)
+        let bundlePlan = SceneBundlePlan(bundleID: UUID().uuidString.lowercased(), scenes: [], activeSceneIndex: 0, visualOverlays: [], diagnostics: ["bundle_empty"])
+        let bundleScript = SceneBundleScript(bundleID: bundlePlan.bundleID, scenes: [], activeSceneIndex: 0, visualOverlays: [], diagnostics: bundlePlan.diagnostics)
         let documentState = ScriptDocumentState(
             documentID: UUID().uuidString.lowercased(),
             mode: .full,
@@ -2265,13 +2567,15 @@ final class SceneBundlePipeline {
             stitchStates: [],
             bundlePlan: bundlePlan,
             bundleScript: bundleScript,
-            activeSceneIndex: 0
+            activeSceneIndex: 0,
+            visualOverlays: []
         )
         return SceneBundleParsingResult(
             bundleScript: bundleScript,
             activeSceneScript: nil,
             activeSceneId: nil,
             sceneChunks: [],
+            visualOverlays: [],
             documentState: documentState,
             diagnostics: .empty,
             chunkDiagnostics: []
@@ -2290,6 +2594,7 @@ final class SceneBundlePipeline {
 
         let units = normalizer.normalize(description: description)
         let scenes = boundaryDetector.detect(units: units, originalText: description, metadataExtractor: metadataExtractor)
+        let visualOverlays = makeVisualOverlays(units: units, scenes: scenes)
         return SceneBundleWorkload(
             documentID: previousState?.documentID ?? UUID().uuidString.lowercased(),
             bundleID: previousState?.bundlePlan.bundleID ?? UUID().uuidString.lowercased(),
@@ -2297,6 +2602,7 @@ final class SceneBundlePipeline {
             units: units,
             finalDescription: description,
             finalSceneCandidates: scenes,
+            visualOverlays: visualOverlays,
             pendingScenes: scenes,
             reusedStates: [],
             reusedSceneEntries: [],
@@ -2309,6 +2615,7 @@ final class SceneBundlePipeline {
     private func makeFullReuseWorkload(description: String, previousState: ScriptDocumentState) -> SceneBundleWorkload {
         let units = normalizer.normalize(description: description)
         let scenes = boundaryDetector.detect(units: units, originalText: description, metadataExtractor: metadataExtractor)
+        let visualOverlays = makeVisualOverlays(units: units, scenes: scenes)
 
         var reusedStates: [SceneStitchState] = []
         var reusedEntries: [SceneBundlePlan.SceneEntry] = []
@@ -2355,6 +2662,7 @@ final class SceneBundlePipeline {
             units: units,
             finalDescription: description,
             finalSceneCandidates: scenes,
+            visualOverlays: visualOverlays,
             pendingScenes: pendingScenes,
             reusedStates: reusedStates,
             reusedSceneEntries: reusedEntries,
@@ -2374,6 +2682,7 @@ final class SceneBundlePipeline {
                 units: previousState.normalizedUnits,
                 finalDescription: description,
                 finalSceneCandidates: previousState.sceneCandidates,
+                visualOverlays: previousState.visualOverlays,
                 pendingScenes: [],
                 reusedStates: previousState.stitchStates,
                 reusedSceneEntries: previousState.bundlePlan.scenes,
@@ -2481,6 +2790,7 @@ final class SceneBundlePipeline {
             finalCandidates.append(contentsOf: pendingScenes)
         }
 
+        let visualOverlays = makeVisualOverlays(units: units, scenes: finalCandidates)
         return SceneBundleWorkload(
             documentID: previousState.documentID,
             bundleID: previousState.bundlePlan.bundleID,
@@ -2488,6 +2798,7 @@ final class SceneBundlePipeline {
             units: units,
             finalDescription: description,
             finalSceneCandidates: finalCandidates,
+            visualOverlays: visualOverlays,
             pendingScenes: pendingScenes,
             reusedStates: reusedStates,
             reusedSceneEntries: reusedSceneEntries,
@@ -2495,6 +2806,64 @@ final class SceneBundlePipeline {
             reusedChunkDiagnostics: reusedChunkDiagnostics,
             coldStartSceneIDs: startsWithImplicitContinuation ? [previousState.sceneCandidates.last?.id ?? ""] : []
         )
+    }
+
+    private func makeVisualOverlays(units: [NormalizedScriptUnit], scenes: [ScriptSceneCandidate]) -> [SceneVisualOverlay] {
+        var overlays: [SceneVisualOverlay] = []
+        var displayOrder = 0
+
+        func sceneID(forUnitIndex unitIndex: Int) -> String {
+            scenes.first { scene in
+                scene.unitRange.contains(unitIndex)
+            }?.id ?? scenes.first?.id ?? "scene_1"
+        }
+
+        func appendOverlay(kind: SceneVisualOverlay.Kind, text: String, unit: NormalizedScriptUnit, unitIndex: Int, range: ScriptOffsetRange? = nil) {
+            let cleaned = text
+                .replacingOccurrences(of: "*", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { return }
+            displayOrder += 1
+            overlays.append(
+                SceneVisualOverlay(
+                    id: "overlay_\(displayOrder)",
+                    kind: kind,
+                    text: cleaned,
+                    sceneID: sceneID(forUnitIndex: unitIndex),
+                    sourceRange: range ?? unit.charRange,
+                    displayOrder: displayOrder,
+                    beatID: nil
+                )
+            )
+        }
+
+        for (unitIndex, unit) in units.enumerated() {
+            switch unit.kind {
+            case .screenText:
+                appendOverlay(kind: .screenText, text: unit.text, unit: unit, unitIndex: unitIndex)
+            case .stageNote, .parenthetical:
+                appendOverlay(kind: .stageNote, text: unit.text, unit: unit, unitIndex: unitIndex)
+            case .dialogue, .actionLine, .proseLine:
+                let pattern = #"\*([^*]+)\*"#
+                let nsText = unit.text as NSString
+                let matches = (try? NSRegularExpression(pattern: pattern))?.matches(
+                    in: unit.text,
+                    range: NSRange(location: 0, length: nsText.length)
+                ) ?? []
+                for match in matches where match.numberOfRanges > 1 {
+                    let text = nsText.substring(with: match.range(at: 1))
+                    appendOverlay(
+                        kind: .stageNote,
+                        text: text,
+                        unit: unit,
+                        unitIndex: unitIndex
+                    )
+                }
+            default:
+                continue
+            }
+        }
+        return overlays
     }
 }
 
@@ -2505,6 +2874,7 @@ private struct SceneBundleWorkload {
     var units: [NormalizedScriptUnit]
     var finalDescription: String
     var finalSceneCandidates: [ScriptSceneCandidate]
+    var visualOverlays: [SceneVisualOverlay]
     var pendingScenes: [ScriptSceneCandidate]
     var reusedStates: [SceneStitchState]
     var reusedSceneEntries: [SceneBundlePlan.SceneEntry]
