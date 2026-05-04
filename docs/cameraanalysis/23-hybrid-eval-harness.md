@@ -1,6 +1,6 @@
 # 23. Hybrid Eval Harness (PR-H14)
 
-Статус: design spec + design verify (ready for implement)
+Статус: implemented (initial) + design spec/design verify
 
 Дата: 2026-04-22
 
@@ -1043,3 +1043,64 @@ Verdict readiness:
 - ablation matrix достаточно точна для `PR-H05/H09/H11/H12` follow-up runs;
 - report template пригоден и для engineering merge decision, и для thesis/demo narrative;
 - по документу можно реализовать hybrid eval harness без домысливания о variant ids, bundle extension и compare rules.
+
+## Implement Verify Snapshot (2026-05-04)
+
+Ниже зафиксирован фактический запуск реализованного eval контура.
+
+### 1. `v1 core` vs `legacy`
+
+Источник:
+- [compare_report.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/out_v1/compare_report.json)
+- [eval_summary.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/out_v1/eval_summary.md)
+
+Ключевые результаты:
+- `release_recommendation.status = pass`
+- `issue_f1 delta = +0.111111`
+- `primary_action_match_rate delta = +0.333333`
+- `strength_f1 delta = +0.333333`
+- `explanation_faithfulness_score delta = +0.175`
+- `fallback_policy_accuracy delta = +0.333333`
+- `unsupported_claim_rate delta = 0.0` (не вырос)
+
+Интерпретация:
+- deterministic `camera_analysis_v1_core` стабильно лучше legacy baseline по ключевым quality метрикам;
+- критических регрессий не выявлено.
+
+### 2. Hybrid smoke run
+
+Источник:
+- [ablation_summary.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/out_hybrid_example/ablation_summary.json)
+- [hybrid_metrics.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/out_hybrid_example/hybrid_metrics.json)
+- [explainability_agreement.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/out_hybrid_example/explainability_agreement.json)
+- [mobile_system_metrics.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/eval/out_hybrid_example/mobile_system_metrics.json)
+
+Ключевые результаты:
+- `best_local_variant_id = hybrid_pause_local`
+- `release_verdict = mobile_blocked`
+- причина: `pause_execute_success_rate below 0.90` (в run: `0.0`)
+- explainability agreement на этом smoke:  
+  `fusion_trace_coverage_rate = 1.0`,  
+  `head_policy_agreement_rate = 1.0`,  
+  `status_trace_consistency_rate = 1.0`
+- `safe_noop_rate = 1.0` (fallback-семантика не нарушена)
+
+Интерпретация:
+- harness и отчеты работают end-to-end;
+- текущий `variant_matrix.example.json` используется как smoke/config check и не отражает production neural execution;
+- для release-grade hybrid verdict нужны реальные `jsonl` projections с materialized `inferenceOutcome/runtimeSample`, а не demo replay.
+
+### 3. Ограничения текущего снимка
+
+- hybrid прогон пока не является научно полноценным доказательством uplift модели;
+- mobile metrics для `pause/local` еще не калиброваны на реальных runtime traces;
+- offloading tiers (`structured_only`, `redacted_visual`) пока не покрыты реальными variant outputs.
+
+### 4. Следующий обязательный шаг
+
+Для thesis-ready `PR-H14` нужно добавить реальные variant outputs:
+- `deterministic_only.jsonl` (anchor)
+- `hybrid_pause_local.jsonl` (с выполненным local inference path)
+- при готовности: `hybrid_pause_live_local.jsonl` и offload variants
+
+После этого повторить `run_hybrid_eval.py` и зафиксировать итоговый verdict уже не как smoke, а как release-candidate hybrid evaluation.

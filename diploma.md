@@ -101,6 +101,57 @@
 
 ---
 
+## [2026-05-04 20:10] - [Camera Analysis v1 + Hybrid Eval: фиксирование результатов implement verify]
+
+### Суть изменений
+- Выполнен reproducible прогон eval-контура для нового `Camera Analysis`:
+  - deterministic сравнение `camera_analysis_v1_core` против `legacy_suggestion_engine`;
+  - hybrid smoke-прогон через `run_hybrid_eval.py` на `variant_matrix.example.json`.
+- Обновлен статус `PR-H14`: гибридный eval harness реализован в initial версии и выдает полный набор артефактов (`ablation`, `pairwise`, `hybrid metrics`, `mobile metrics`, `explainability agreement`).
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** После реализации pipeline нужно было не только “чтобы работало в UI”, но и доказать улучшение качества через воспроизводимые метрики, включая explainability и мобильные ограничения.
+- **Решение:** Использован двухэтапный eval:
+  - базовый deterministic compare (`v1 core` vs `legacy`);
+  - staged hybrid compare с отдельными gates для explainability/mobile.
+- **Детали:** По deterministic-части получен устойчивый выигрыш без роста unsupported claims. По hybrid-секции зафиксирован рабочий end-to-end harness, но verdict пока `mobile_blocked` из-за demo-level replay и отсутствия production runtime projections.
+
+### Зафиксированные метрики
+
+1. `camera_analysis_v1_core` vs `legacy_suggestion_engine`:
+- `release_recommendation.status = pass`
+- `issue_f1 delta = +0.111111`
+- `primary_action_match_rate delta = +0.333333`
+- `strength_f1 delta = +0.333333`
+- `explanation_faithfulness_score delta = +0.175`
+- `fallback_policy_accuracy delta = +0.333333`
+- `unsupported_claim_rate delta = 0.0`
+
+2. Hybrid smoke (`hybrid_pause_local`):
+- `release_verdict = mobile_blocked`
+- причина: `pause_execute_success_rate below 0.90` (факт: `0.0`)
+- explainability agreement на smoke-run:
+  - `fusion_trace_coverage_rate = 1.0`
+  - `head_policy_agreement_rate = 1.0`
+  - `status_trace_consistency_rate = 1.0`
+- safety invariant:
+  - `safe_noop_rate = 1.0`
+
+### Честное состояние и ограничения
+- Deterministic `v1` уже показал измеримый quality uplift и готов как baseline для защиты.
+- Hybrid eval harness технически реализован и воспроизводим, но текущий примерный matrix-run не является финальным доказательством neural uplift.
+- Для полноценного диссертационного вывода о hybrid-слое нужны реальные variant outputs с materialized `inferenceOutcome/runtimeSample` из on-device execution path.
+
+### Ключевые файлы
+- `docs/cameraanalysis/eval/run_eval.py`
+- `docs/cameraanalysis/eval/run_hybrid_eval.py`
+- `docs/cameraanalysis/eval/out_v1/compare_report.json`
+- `docs/cameraanalysis/eval/out_hybrid_example/ablation_summary.json`
+- `docs/cameraanalysis/eval/out_hybrid_example/hybrid_metrics.json`
+- `docs/cameraanalysis/23-hybrid-eval-harness.md`
+
+---
+
 ## Разъясняющий блок: как устроены `SG v7`, `v8`, `CIR`, `ScenePlanIR` и рантайм на телефоне
 
 Ниже зафиксировано подробное пояснение всей цепочки, поскольку при обсуждении `SG v7` и `v8` легко смешать три разных уровня:

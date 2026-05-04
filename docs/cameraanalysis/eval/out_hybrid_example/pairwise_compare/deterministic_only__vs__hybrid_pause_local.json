@@ -1,0 +1,122 @@
+{
+  "baseline_id": "deterministic_only",
+  "bucket_wins": {
+    "baseline": 0,
+    "candidate": 0,
+    "tie": 8
+  },
+  "bundle_id": "camera_analysis_eval_v1_demo",
+  "candidate_id": "hybrid_pause_local",
+  "case_deltas": [
+    {
+      "eval_case_id": "live-sequence-motion-recover-001",
+      "why": [
+        "all priority metrics tied"
+      ],
+      "winner": "tie"
+    },
+    {
+      "eval_case_id": "live-weak-signal-001",
+      "why": [
+        "all priority metrics tied"
+      ],
+      "winner": "tie"
+    },
+    {
+      "eval_case_id": "pause-edge-backlight-001",
+      "why": [
+        "all priority metrics tied"
+      ],
+      "winner": "tie"
+    },
+    {
+      "eval_case_id": "pause-good-clean-portrait-001",
+      "why": [
+        "all priority metrics tied"
+      ],
+      "winner": "tie"
+    }
+  ],
+  "compare_id": "camera_analysis_eval_v1_demo_compare",
+  "critical_bucket_delta": {
+    "edge_pressure_portrait": {
+      "fallback_policy_accuracy_delta": 0.0,
+      "issue_f1_delta": 0.0,
+      "primary_action_match_rate_delta": 0.0
+    },
+    "good_frame_do_not_overcoach": {
+      "fallback_policy_accuracy_delta": 0.0,
+      "good_frame_confirmation_rate_delta": 0.0,
+      "issue_f1_delta": 0.0,
+      "primary_action_match_rate_delta": 0.0
+    },
+    "weak_signal_fallback": {
+      "fallback_policy_accuracy_delta": 0.0,
+      "hint_visibility_policy_accuracy_delta": 0.0,
+      "issue_f1_delta": 0.0,
+      "primary_action_match_rate_delta": 0.0
+    }
+  },
+  "overall": {
+    "explanation_faithfulness_score": {
+      "baseline": 0.95,
+      "candidate": 0.95,
+      "delta": 0.0
+    },
+    "fallback_policy_accuracy": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0
+    },
+    "good_frame_confirmation_rate": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0
+    },
+    "hint_visibility_policy_accuracy": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0
+    },
+    "issue_f1": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0
+    },
+    "primary_action_match_rate": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0
+    },
+    "strength_f1": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0
+    },
+    "summary_consistency_rate": {
+      "baseline": 0.666667,
+      "candidate": 0.666667,
+      "delta": 0.0
+    },
+    "unsupported_claim_rate": {
+      "baseline": 0.0,
+      "candidate": 0.0,
+      "delta": 0.0
+    },
+    "verdict_accuracy": {
+      "baseline": 1.0,
+      "candidate": 1.0,
+      "delta": 0.0
+    }
+  },
+  "release_recommendation": {
+    "reasons": [
+      "not enough critical bucket improvements",
+      "no critical regression on issue_f1",
+      "no critical regression on primary_action_match_rate",
+      "good frame confirmation did not regress",
+      "unsupported claims did not increase"
+    ],
+    "status": "fail"
+  }
+}

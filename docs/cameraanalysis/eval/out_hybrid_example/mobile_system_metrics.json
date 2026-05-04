@@ -1,0 +1,19 @@
+{
+  "anchor_variant_id": "deterministic_only",
+  "bundle_id": "camera_analysis_eval_v1_demo",
+  "variants": {
+    "hybrid_pause_local": {
+      "critical_thermal_skip_rate": null,
+      "live_latency_p50_ms": null,
+      "live_latency_p95_ms": null,
+      "live_policy_skip_rate": null,
+      "pause_degraded_execution_rate": null,
+      "pause_execute_success_rate": 0.0,
+      "pause_failure_rate": 0.0,
+      "pause_latency_p50_ms": null,
+      "pause_latency_p95_ms": null,
+      "peak_memory_p95_mb": null,
+      "stale_result_drop_rate": null
+    }
+  }
+}

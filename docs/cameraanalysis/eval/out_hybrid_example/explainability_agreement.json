@@ -1,0 +1,11 @@
+{
+  "anchor_variant_id": "deterministic_only",
+  "bundle_id": "camera_analysis_eval_v1_demo",
+  "variants": {
+    "hybrid_pause_local": {
+      "fusion_trace_coverage_rate": 1.0,
+      "head_policy_agreement_rate": 1.0,
+      "status_trace_consistency_rate": 1.0
+    }
+  }
+}

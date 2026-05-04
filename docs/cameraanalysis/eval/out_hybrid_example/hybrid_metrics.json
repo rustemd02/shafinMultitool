@@ -1,0 +1,20 @@
+{
+  "anchor_variant_id": "deterministic_only",
+  "bundle_id": "camera_analysis_eval_v1_demo",
+  "variants": {
+    "hybrid_pause_local": {
+      "ambiguity_borderline_win_rate": null,
+      "applied_fusion_rate": 0.0,
+      "case_neural_coverage_rate": 0.0,
+      "eligible_head_availability_rate": 0.0,
+      "hybrid_degraded_fallback_case_pass_rate": 0.5,
+      "hybrid_degraded_fallback_score": 0.5,
+      "hybrid_degraded_fallback_win_rate": 0.5,
+      "live_guarded_win_rate": null,
+      "pause_neural_value_win_rate": null,
+      "pause_uplift_win_rate": null,
+      "safe_noop_rate": 1.0,
+      "style_vs_failure_conflict_win_rate": null
+    }
+  }
+}

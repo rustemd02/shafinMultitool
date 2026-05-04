@@ -1,0 +1,30 @@
+{
+  "anchor_variant_id": "deterministic_only",
+  "best_local_variant_id": "hybrid_pause_local",
+  "bundle_id": "camera_analysis_eval_v1_demo",
+  "offload_tiers": {
+    "redacted_visual": [],
+    "structured_only": []
+  },
+  "variants": [
+    {
+      "ambiguity_borderline_win_rate": null,
+      "family": "runtime_policy",
+      "hybrid_degraded_fallback_win_rate": 0.5,
+      "live_guarded_win_rate": null,
+      "offload_boundary_compliance_rate": null,
+      "offload_completed_rate": null,
+      "offload_response_applied_rate": null,
+      "offload_tier": null,
+      "parent_variant_id": "deterministic_only",
+      "pause_neural_value_win_rate": null,
+      "pause_uplift_win_rate": null,
+      "reasons": [
+        "pause_execute_success_rate below 0.90"
+      ],
+      "release_verdict": "mobile_blocked",
+      "style_vs_failure_conflict_win_rate": null,
+      "variant_id": "hybrid_pause_local"
+    }
+  ]
+}

@@ -20,8 +20,8 @@
       "family": "runtime_policy",
       "label": "Pause-only local hybrid",
       "source": {
-        "kind": "jsonl",
-        "path": "fixtures/hybrid_pause_local_outputs.jsonl"
+        "kind": "builtin",
+        "id": "camera_analysis_v1_core"
       },
       "capabilities": {
         "pauseLocalHybrid": true,
