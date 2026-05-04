@@ -2018,3 +2018,29 @@
 - `docs/SGv7pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json` (V9 event-метрики: structural/semantic/degradation)
 
 ---
+
+## [2026-05-04 18:45] - [V9 Runtime Hardening и повторный benchmark после live-smoke стабилизации]
+
+### Суть изменений
+- Усилен Swift runtime слой вокруг `dataset_v9_event_sft_q4_k_m.gguf`: добавлены детерминированные восстановления для потерянных `dialogue`, `pick_up`, `put_down`, `give`, `pass_by`, same-type marked objects и пустой active scene.
+- Подтверждён честный live smoke на iOS Simulator с реальной GGUF-моделью: `SceneV8PipelineTests/testLiveLocalModelDatasetSampledCases()` завершился успешно (`1/1 passed`, `0` failures) на `/tmp/sg_live_model_dd/Logs/Test/Test-shafinMultitool-2026.05.04_18-25-16-+0300.xcresult`.
+- Повторно выполнен локальный V9 scientific benchmark через `docs/SGv7pipeline/v9/04_run_v9_local_benchmark.py` на seed `42`; агрегаты пересобраны в `docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate`.
+- Итоговые compiled-slice метрики `dataset_v9_event_sft`: `json_valid_rate=1.0000`, `ordinal_actor_binding_accuracy=1.0000`, `target_resolution_accuracy=0.9214`, `chronology_phase_accuracy=0.8702`, `case_strict_success_rate=0.5076`, `runtime_fallback_rate=0.4351`.
+- Pairwise сравнение подтвердило статистически сильный выигрыш: против `dataset_v8_plan_orpo_iter1` результат `212` побед против `7` поражений (`p≈1.07e-53`), против `dataset_v7_orpo_iter2` результат `226` побед против `5` поражений (`p≈3.11e-60`).
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Даже после перехода к V9 slot-event контракту live runtime оставался уязвимым к типовым пропускам слабой локальной модели: диалог мог схлопываться в `stand`, цепочки передачи объектов теряли `pick_up/give`, действия `put_down/pass_by` пропадали, а одинаковые размеченные объекты могли не материализоваться в итоговой сцене. Offline benchmark показывал высокий потенциал модели, но live smoke выявлял разрыв между модельным output и практической пригодностью результата в приложении.
+- **Решение:** В Swift runtime добавлен explainable deterministic recovery layer поверх model output. Он не подменяет модель свободной эвристикой, а восстанавливает только события с явными поверхностными сигналами в тексте: `Имя: реплика`, кавычки, `берёт/кладёт/передаёт`, `оба проходят мимо X`, `левый/правый объект`. Все восстановления пишут reason codes (`v9.dialogue_event_materialized`, `v9.transfer_action_materialized`, `v9.mentioned_marked_object_materialized`, `v9.bundle_empty_scene_recovered`), что сохраняет audit trail и не превращает repair в silent semantic rewrite.
+- **Детали:** Архитектурно это фиксирует важное разделение ответственности: модель отвечает за компактный semantic event draft, verifier/enricher проверяет покрытие очевидных обязательств текста, а compiler/stitcher собирают стабильный `SceneScript`. Такой подход повышает product reliability без немедленного retrain, но одновременно формирует список hard clusters для следующего датасетного цикла V9.1: `dialogue+action`, `object transfer`, `same-type markers`, `collective motion`, `pass_by`, `active scene materialization`.
+
+### Ключевые файлы
+- `shafinMultitool/SceneGeneratorModule/Services/SceneBundlePipeline.swift` (runtime enrichment: dialogue/materialized transfer actions/marked object recovery/active scene fallback)
+- `shafinMultitool/SceneGeneratorModule/Services/SceneEventTableV9Service.swift` (coverage verifier issue codes and fixable semantic classes)
+- `shafinMultitoolTests/SceneBundlePipelineTests.swift` (targeted regression tests for V9 coverage and runtime enrichers)
+- `shafinMultitoolTests/SceneV8PipelineTests.swift` (live GGUF smoke path and model discovery for `dataset_v9_event_sft_q4_k_m.gguf`)
+- `docs/SGv7pipeline/v9/04_run_v9_local_benchmark.py` (V9 local benchmark runner)
+- `docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv` (compiled-slice model metrics)
+- `docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv` (pairwise A/B outcomes)
+- `docs/SGv7pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json` (raw event-table structural/semantic metrics)
+
+---

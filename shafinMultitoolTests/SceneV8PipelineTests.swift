@@ -290,13 +290,15 @@ final class SceneV8PipelineTests: XCTestCase {
     }
 
     private func resolveLiveModelPath() -> String? {
-        let env = ProcessInfo.processInfo.environment
-        if let explicit = env["SG_LIVE_MODEL_PATH"], !explicit.isEmpty, FileManager.default.fileExists(atPath: explicit) {
+        if let explicit = configString("SG_LIVE_MODEL_PATH"),
+           !explicit.isEmpty,
+           FileManager.default.fileExists(atPath: explicit) {
             return explicit
         }
 
         let root = datasetWorkspaceRoot()
         let candidates = [
+            root.appendingPathComponent("shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf").path,
             root.appendingPathComponent("shafinMultitool/SceneGeneratorModule/Models/dataset_v8_plan_orpo_iter1_q4_k_m.gguf").path,
             root.appendingPathComponent("shafinMultitool/Resources/Models/qwen2.5-1.5b-instruct.Q4_K_M.gguf").path,
         ]

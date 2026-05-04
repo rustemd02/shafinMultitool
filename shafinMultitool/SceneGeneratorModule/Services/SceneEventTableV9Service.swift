@@ -36,6 +36,8 @@ final class SceneEventTableV9Service {
         "v9.collective_action_not_expanded",
         "v9.dialogue_action_collapsed",
         "v9.unsupported_action_missing_text",
+        "v9.missing_target_for_object_action",
+        "v9.collective_stop_near_not_expanded",
     ]
 
     func buildSlotCatalog(from plan: ScenePlanIR) -> SceneV9SlotCatalog {
@@ -434,6 +436,13 @@ final class SceneEventTableV9Service {
         if hasDialogueCue, !rows.contains(where: { $0.actionType == .talk && !($0.dialogueText ?? "").isEmpty }) {
             append("v9.dialogue_action_collapsed")
         }
+        let hasPhysicalActionCue = containsAny(
+            lowercased,
+            ["идет", "идёт", "подходит", "подходит", "берет", "берёт", "кладет", "кладёт", "останавли"]
+        )
+        if hasDialogueCue, hasPhysicalActionCue, !rows.contains(where: { $0.actionType != .talk }) {
+            append("v9.dialogue_action_collapsed")
+        }
 
         let hasCollectiveCue = containsAny(lowercased, ["оба", "вместе", "двое", "первый актёр и второй актёр", "первый актер и второй актер"])
         let motionRows = rows.filter { [.walk, .approach, .run, .stop].contains($0.actionType) }
@@ -466,6 +475,19 @@ final class SceneEventTableV9Service {
             let rowsWithTarget = rows.filter { $0.targetSlot != nil }
             if rowsWithTarget.isEmpty, rows.contains(where: { targetRequiredTypes.contains($0.actionType) }) {
                 append("v9.wrong_target_slot:marked_object")
+            }
+        }
+
+        let objectActionTypes: Set<SceneAction.ActionType> = [.pickUp, .putDown]
+        if rows.contains(where: { objectActionTypes.contains($0.actionType) && $0.targetSlot == nil }) {
+            append("v9.missing_target_for_object_action")
+        }
+
+        let hasStopNearCue = containsAny(lowercased, ["останавливаются рядом", "остановились рядом", "остановились у", "останавливаются у"])
+        if hasStopNearCue, actorCount > 1 {
+            let stopTargetRows = rows.filter { $0.actionType == .stop && $0.targetSlot != nil }
+            if stopTargetRows.count < min(actorCount, 2) {
+                append("v9.collective_stop_near_not_expanded")
             }
         }
 

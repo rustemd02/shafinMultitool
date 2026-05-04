@@ -1,0 +1,8 @@
+{
+  "cluster_counts": {
+    "dialogue_action": 13,
+    "put_pick": 9,
+    "stop_near": 12
+  },
+  "total": 34
+}

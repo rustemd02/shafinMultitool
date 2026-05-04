@@ -469,6 +469,80 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertTrue(result.chunkDiagnostics.flatMap(\.reasonCodes).contains("v1.unsupported_action_described"))
     }
 
+    func testRuleFallbackMaterializesActiveSceneForDialogueOnlyInput() async throws {
+        let description = "Кирилл: Я уже переслал отчёт. Таня: Тогда посмотри отчёт."
+        let pipeline = makeBundlePipeline(result: nil)
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: SceneBundleParseMode.full,
+            previousState: nil as ScriptDocumentState?
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        let active = try XCTUnwrap(result.activeSceneScript)
+        XCTAssertFalse(active.beats.isEmpty)
+        XCTAssertFalse(active.actors.isEmpty)
+    }
+
+    func testCollectivePassByGetsExpandedForBothActors() async throws {
+        let description = "Сначала первый актёр и второй актёр идут навстречу друг другу, затем оба проходят мимо монитора."
+        let pipeline = makeBundlePipeline(
+            result: ScenePlanProviderResult(
+                plan: ScenePlanIR(
+                    actors: [
+                        .init(ref: "first", type: .human),
+                        .init(ref: "second", type: .human),
+                    ],
+                    objects: [
+                        .init(ref: "object_monitor", type: .generic, relativePosition: .center, name: "монитор"),
+                    ],
+                    beats: [
+                        .init(
+                            ref: "beat_1",
+                            actions: [
+                                .init(actorRef: "first", type: .walk, targetRef: "second", resultingPose: .walking, sourceText: "идут навстречу"),
+                                .init(actorRef: "second", type: .walk, targetRef: "first", resultingPose: .walking, sourceText: "идут навстречу"),
+                            ]
+                        ),
+                        .init(
+                            ref: "beat_2",
+                            actions: [
+                                .init(actorRef: "first", type: .walk, resultingPose: .walking, sourceText: "оба проходят мимо монитора"),
+                            ]
+                        ),
+                    ],
+                    spatialRelations: [],
+                    referenceBindings: .init(actorBindings: ["first": "actor_1", "second": "actor_2"])
+                ),
+                usedLegacySceneScriptBridge: false
+            )
+        )
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: SceneBundleParseMode.full,
+            previousState: nil as ScriptDocumentState?
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        let script = try XCTUnwrap(result.activeSceneScript)
+        let passByActions = script.beats.flatMap(\.actions).filter { $0.type == .passBy }
+        XCTAssertGreaterThanOrEqual(passByActions.count, 2)
+        XCTAssertTrue(passByActions.allSatisfy { $0.target != nil })
+        XCTAssertTrue(result.chunkDiagnostics.flatMap(\.reasonCodes).contains("v9.collective_pass_by_expanded"))
+    }
+
     func testPlannerPreservesDialogueAndDescribedActionAsPlaybackAnnotations() throws {
         let marker = MarkedObject(name: "компьютер", position: .zero)
         let script = SceneScript(
@@ -877,6 +951,115 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertTrue(issues.contains("v9.missing_event_for_beat:beat_slot_2"))
         XCTAssertTrue(issues.contains("v9.dialogue_action_collapsed"))
         XCTAssertTrue(issues.contains { $0.hasPrefix("v9.collective_action_not_expanded") })
+    }
+
+    func testV9CoverageVerifierFlagsMissingTargetForPutPickAndCollectiveStopNear() {
+        let service = SceneEventTableV9Service()
+        let slotCatalog = SceneV9SlotCatalog(
+            contractVersion: "sg_v9_slot_catalog_v1",
+            actorSlots: [
+                .init(slotID: "actor_slot_1", ref: "first", type: .human, name: nil),
+                .init(slotID: "actor_slot_2", ref: "second", type: .human, name: nil),
+            ],
+            objectSlots: [
+                .init(
+                    slotID: "object_slot_1",
+                    ref: "object_marked_1",
+                    type: .generic,
+                    relativePosition: .center,
+                    markedObjectID: "object_marked_1",
+                    name: "компьютер"
+                ),
+            ],
+            markedObjectSlots: ["object_slot_1"],
+            beatSlots: [
+                .init(slotID: "beat_slot_1", beatRef: "beat_1", phaseHint: nil, order: 1, minDuration: nil),
+            ],
+            actionTypes: SceneAction.ActionType.allCases,
+            relationHints: []
+        )
+        let eventTable = SceneV9EventTable(
+            contractVersion: "sg_v9_event_table_v1",
+            rows: [
+                .init(
+                    rowID: "row_1",
+                    beatSlot: "beat_slot_1",
+                    actorSlot: "actor_slot_1",
+                    actionType: .putDown,
+                    targetSlot: nil,
+                    holdingObjectSlot: nil,
+                    dialogueText: nil,
+                    describedActionText: nil,
+                    sourceSpan: nil,
+                    confidence: 1.0
+                ),
+                .init(
+                    rowID: "row_2",
+                    beatSlot: "beat_slot_1",
+                    actorSlot: "actor_slot_1",
+                    actionType: .stop,
+                    targetSlot: "object_slot_1",
+                    holdingObjectSlot: nil,
+                    dialogueText: nil,
+                    describedActionText: nil,
+                    sourceSpan: nil,
+                    confidence: 1.0
+                ),
+            ]
+        )
+
+        let issues = service.coverageIssueCodes(
+            eventTable: eventTable,
+            slotCatalog: slotCatalog,
+            sourceText: "Оба останавливаются рядом с компьютером, потом первый кладет папку.",
+            anchors: .empty
+        )
+
+        XCTAssertTrue(issues.contains("v9.missing_target_for_object_action"))
+        XCTAssertTrue(issues.contains("v9.collective_stop_near_not_expanded"))
+    }
+
+    func testV9CoverageVerifierFlagsDialogueActionCollapsedWhenNoSeparateActionRow() {
+        let service = SceneEventTableV9Service()
+        let slotCatalog = SceneV9SlotCatalog(
+            contractVersion: "sg_v9_slot_catalog_v1",
+            actorSlots: [
+                .init(slotID: "actor_slot_1", ref: "first", type: .human, name: nil),
+            ],
+            objectSlots: [],
+            markedObjectSlots: [],
+            beatSlots: [
+                .init(slotID: "beat_slot_1", beatRef: "beat_1", phaseHint: nil, order: 1, minDuration: nil),
+            ],
+            actionTypes: SceneAction.ActionType.allCases,
+            relationHints: []
+        )
+        let eventTable = SceneV9EventTable(
+            contractVersion: "sg_v9_event_table_v1",
+            rows: [
+                .init(
+                    rowID: "row_1",
+                    beatSlot: "beat_slot_1",
+                    actorSlot: "actor_slot_1",
+                    actionType: .talk,
+                    targetSlot: nil,
+                    holdingObjectSlot: nil,
+                    dialogueText: "Идем к компьютеру",
+                    describedActionText: nil,
+                    sourceSpan: nil,
+                    confidence: 1.0
+                ),
+            ]
+        )
+
+        let issues = service.coverageIssueCodes(
+            eventTable: eventTable,
+            slotCatalog: slotCatalog,
+            sourceText: "Первый говорит: «Идем к компьютеру», затем идет вперед.",
+            anchors: .empty
+        )
+
+        XCTAssertTrue(issues.contains("v9.dialogue_action_collapsed"))
     }
 
     func testV9ContractsAcceptRowIdAndLegacyRowID() throws {
