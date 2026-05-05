@@ -938,3 +938,27 @@ Done definition:
 Зависимости:
 - `PR-S01`
 - `PR-H12` для offloading compatibility
+
+### PR-S04. Semantic Fusion and Tip Planner
+
+Цель:
+- связать deterministic critique, recommendation plan, scene semantics и optional validated VLM evidence в финальные экранные semantic tips.
+
+Скоуп:
+- `docs/cameraanalysis/*`
+- `Models/CameraAnalysis/*`
+- `Services/Recommendation/*` или эквивалентный planner layer
+- mapping/contract tests
+
+Артефакт:
+- `SemanticTipPlanner` contract
+- live/pause selection policy
+- bounded VLM rerank/localization rules
+- entity-aware materialization rules
+- зафиксированный source-of-truth doc: [26-semantic-tip-fusion-and-planner.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/26-semantic-tip-fusion-and-planner.md)
+
+Зависимости:
+- `PR-S01`
+- `PR-S02`
+- `PR-008`
+- compatibility target: `PR-H09`, `PR-009`, `PR-010`

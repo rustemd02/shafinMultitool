@@ -44,6 +44,7 @@
 Если хочется перейти к этапу `semantic screen tips`:
 - closed catalog semantic tips для `PR-S01` зафиксирован в [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md)
 - VLM visual semantic evidence contract для `PR-S02` зафиксирован в [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md)
+- semantic fusion and tip planner для `PR-S04` зафиксирован в [26-semantic-tip-fusion-and-planner.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/26-semantic-tip-fusion-and-planner.md)
 - prompts для semantic stage добавлены в [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md)
 
 ## Главная идея
@@ -92,6 +93,7 @@
 - [23-hybrid-eval-harness.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/23-hybrid-eval-harness.md): source-of-truth hybrid eval harness, ablation compare и mobile/explainability gates для `PR-H14`
 - [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md): source-of-truth semantic tip taxonomy, action catalog и screen-tip copy contract для `PR-S01`
 - [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md): source-of-truth VLM visual semantic evidence request/response contract для `PR-S02`
+- [26-semantic-tip-fusion-and-planner.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/26-semantic-tip-fusion-and-planner.md): source-of-truth semantic tip planner, bounded VLM rerank policy и live/pause tip selection contract для `PR-S04`
 - [camera-analysis-requirements-draft.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-requirements-draft.md): требования и продуктовые решения
 - [camera-analysis-v1-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-v1-architecture.md): подробная архитектура
 - [11-implementation-backlog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/11-implementation-backlog.md): tracks и PR-пайплайн

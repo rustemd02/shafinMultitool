@@ -2867,6 +2867,10 @@ struct VLMEvidenceValidationResult: Codable, Equatable, Sendable {
     let requestId: String
     let frameId: String
     let accepted: Bool
+    let acceptedPrimaryEntityRef: String?
+    let acceptedPrimaryEntityKind: VLMEntityKind?
+    let acceptedSecondaryEntityRef: String?
+    let acceptedSecondaryEntityKind: VLMEntityKind?
     let acceptedObservations: [VLMVisualEvidenceObservation]
     let acceptedRelations: [VLMEntityRelation]
     let acceptedSuggestedActionIds: [SemanticActionType]
@@ -2949,6 +2953,10 @@ private struct VLMVisualEvidenceValidator {
         if hardReject {
             return result(
                 accepted: false,
+                primaryEntityRef: nil,
+                primaryEntityKind: nil,
+                secondaryEntityRef: nil,
+                secondaryEntityKind: nil,
                 observations: [],
                 relations: [],
                 suggestedActionIds: [],
@@ -2968,6 +2976,10 @@ private struct VLMVisualEvidenceValidator {
         if acceptedObservations.isEmpty {
             return result(
                 accepted: false,
+                primaryEntityRef: nil,
+                primaryEntityKind: nil,
+                secondaryEntityRef: nil,
+                secondaryEntityKind: nil,
                 observations: [],
                 relations: [],
                 suggestedActionIds: [],
@@ -2981,6 +2993,10 @@ private struct VLMVisualEvidenceValidator {
         let fallback: VLMEvidenceFallback = labelResult.requiresGenericFallback ? .deterministicWithGenericLabels : .useValidatedEvidence
         return result(
             accepted: true,
+            primaryEntityRef: response.primaryEntityRef,
+            primaryEntityKind: response.primaryEntityKind,
+            secondaryEntityRef: response.secondaryEntityRef,
+            secondaryEntityKind: response.secondaryEntityKind,
             observations: acceptedObservations,
             relations: acceptedRelations,
             suggestedActionIds: response.suggestedActionIds,
@@ -3205,6 +3221,10 @@ private struct VLMVisualEvidenceValidator {
     }
 
     private func result(accepted: Bool,
+                        primaryEntityRef: String?,
+                        primaryEntityKind: VLMEntityKind?,
+                        secondaryEntityRef: String?,
+                        secondaryEntityKind: VLMEntityKind?,
                         observations: [VLMVisualEvidenceObservation],
                         relations: [VLMEntityRelation],
                         suggestedActionIds: [SemanticActionType],
@@ -3216,6 +3236,10 @@ private struct VLMVisualEvidenceValidator {
             requestId: request.requestId,
             frameId: request.frameId,
             accepted: accepted,
+            acceptedPrimaryEntityRef: primaryEntityRef,
+            acceptedPrimaryEntityKind: primaryEntityKind,
+            acceptedSecondaryEntityRef: secondaryEntityRef,
+            acceptedSecondaryEntityKind: secondaryEntityKind,
             acceptedObservations: observations,
             acceptedRelations: relations,
             acceptedSuggestedActionIds: suggestedActionIds,

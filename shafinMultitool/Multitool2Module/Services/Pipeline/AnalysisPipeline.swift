@@ -1431,6 +1431,7 @@ final class AnalysisPipeline: ObservableObject {
     private let frameCritiqueEngine = FrameCritiqueEngine()
     private let hybridFusionService = HybridFusionService()
     private let recommendationPlanner = RecommendationPlanner()
+    private let semanticTipPlanner = SemanticTipPlanner()
     private let pauseReasoningCoordinator: PauseReasoningCoordinator
     private let neuralEvidenceService: NeuralEvidenceInferenceService?
     private let thermalGovernor: ThermalGovernor
@@ -1900,6 +1901,16 @@ final class AnalysisPipeline: ObservableObject {
         )
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+        let semanticTips = semanticTipPlanner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: snapshot.frameId,
+                mode: .live,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: semantics,
+                currentLiveTipKey: currentSemanticLiveTipKey()
+            )
+        )
         if let neuralSnapshot = executedNeuralSnapshot(from: liveNeuralOutcome),
            !fusionOutput.appliedDecisions.isEmpty {
             currentLiveFusionTraceBundle = makeLiveFusionTraceBundle(
@@ -1921,6 +1932,7 @@ final class AnalysisPipeline: ObservableObject {
             frameId: snapshot.frameId,
             critique: critique,
             plan: plan,
+            semanticTips: semanticTips,
             legacySuggestion: currentSuggestion,
             structuredAvailable: structuredDecision.isAvailable,
             now: now
@@ -1941,6 +1953,7 @@ final class AnalysisPipeline: ObservableObject {
     private func publishLivePresentation(frameId: String,
                                          critique: CritiqueReport,
                                          plan: RecommendationPlan,
+                                         semanticTips: SemanticTipPlannerOutput,
                                          legacySuggestion: Suggestion?,
                                          structuredAvailable: Bool,
                                          now: Date) {
@@ -1948,6 +1961,8 @@ final class AnalysisPipeline: ObservableObject {
             frameId: frameId,
             critique: critique,
             plan: plan,
+            semanticTip: semanticTips.livePrimaryTip,
+            semanticFallbackUsed: semanticTips.fallbackUsed,
             legacySuggestion: legacySuggestion,
             forceLegacyFallback: !structuredAvailable
         )
@@ -2111,6 +2126,15 @@ final class AnalysisPipeline: ObservableObject {
 
                     let critique = fusionOutput.critique
                     let plan = self.recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+                    let semanticTips = self.semanticTipPlanner.plan(
+                        input: SemanticTipPlannerInput(
+                            frameId: snapshot.frameId,
+                            mode: .pause,
+                            critique: critique,
+                            recommendationPlan: plan,
+                            semantics: semantics
+                        )
+                    )
                     let structuredDecision = self.structuredPathDecision(
                         mode: .pause,
                         critique: critique,
@@ -2135,7 +2159,12 @@ final class AnalysisPipeline: ObservableObject {
                         return
                     }
 
-                    let pauseCritique = self.makePauseCritiquePresentation(critique: critique, plan: plan)
+                    let pauseCritique = self.makePauseCritiquePresentation(
+                        critique: critique,
+                        plan: plan,
+                        semanticTips: semanticTips.pauseExpandedTips,
+                        semanticFallbackUsed: semanticTips.fallbackUsed
+                    )
                     let pauseTrace = self.makePauseTraceBundle(
                         critique: critique,
                         plan: plan,
@@ -2178,14 +2207,67 @@ final class AnalysisPipeline: ObservableObject {
     private func makeLiveHintPresentation(frameId: String,
                                           critique: CritiqueReport,
                                           plan: RecommendationPlan,
+                                          semanticTip: SemanticTipCandidate?,
+                                          semanticFallbackUsed: Bool,
                                           legacySuggestion: Suggestion?,
                                           forceLegacyFallback: Bool) -> LiveHintPresentation? {
+        let fallbackUsed = critique.fallbackUsed || semanticFallbackUsed
         if forceLegacyFallback {
             return makeLegacyLiveHint(
                 frameId: frameId,
                 critique: critique,
                 plan: plan,
                 legacySuggestion: legacySuggestion
+            )
+        }
+
+        if let semanticTip,
+           let linkedAction = linkedAction(for: semanticTip, plan: plan) {
+            let targetRegion = linkedAction.targetRegion ?? firstIssueRegion(linkedIssueIds: semanticTip.linkedIssueIds, critique: critique)
+            return LiveHintPresentation(
+                id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
+                frameId: frameId,
+                text: semanticTip.liveText,
+                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                actionType: linkedAction.actionType,
+                actionId: linkedAction.id,
+                linkedIssueIds: semanticTip.linkedIssueIds,
+                summaryId: semanticTip.summaryId ?? critique.summary.id,
+                traceRootIds: semanticTip.linkedTraceIds,
+                targetRegion: targetRegion,
+                overlayHint: linkedAction.overlayHint,
+                isFallback: fallbackUsed,
+                expandedVerdict: makeLiveExpandedVerdictPresentation(
+                    critique: critique,
+                    plan: plan,
+                    semanticTip: semanticTip,
+                    primaryText: semanticTip.liveText,
+                    fallbackUsed: fallbackUsed
+                )
+            )
+        }
+
+        if let semanticTip, critique.verdict == .good {
+            return LiveHintPresentation(
+                id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
+                frameId: frameId,
+                text: semanticTip.liveText,
+                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                actionType: .leaveFrameAsIs,
+                actionId: nil,
+                linkedIssueIds: [],
+                summaryId: semanticTip.summaryId ?? critique.summary.id,
+                traceRootIds: semanticTip.linkedTraceIds,
+                targetRegion: nil,
+                overlayHint: nil,
+                isFallback: fallbackUsed,
+                expandedVerdict: makeLiveExpandedVerdictPresentation(
+                    critique: critique,
+                    plan: plan,
+                    semanticTip: semanticTip,
+                    primaryText: semanticTip.liveText,
+                    fallbackUsed: fallbackUsed
+                )
             )
         }
 
@@ -2211,11 +2293,13 @@ final class AnalysisPipeline: ObservableObject {
                 traceRootIds: critique.traceRefs,
                 targetRegion: targetRegion,
                 overlayHint: primaryAction.overlayHint,
-                isFallback: critique.fallbackUsed,
+                isFallback: fallbackUsed,
                 expandedVerdict: makeLiveExpandedVerdictPresentation(
                     critique: critique,
                     plan: plan,
-                    primaryText: text
+                    semanticTip: nil,
+                    primaryText: text,
+                    fallbackUsed: fallbackUsed
                 )
             )
         }
@@ -2237,11 +2321,13 @@ final class AnalysisPipeline: ObservableObject {
                 traceRootIds: critique.traceRefs,
                 targetRegion: nil,
                 overlayHint: nil,
-                isFallback: critique.fallbackUsed,
+                isFallback: fallbackUsed,
                 expandedVerdict: makeLiveExpandedVerdictPresentation(
                     critique: critique,
                     plan: plan,
-                    primaryText: noChangeText
+                    semanticTip: nil,
+                    primaryText: noChangeText,
+                    fallbackUsed: fallbackUsed
                 )
             )
         }
@@ -2275,14 +2361,18 @@ final class AnalysisPipeline: ObservableObject {
             expandedVerdict: makeLiveExpandedVerdictPresentation(
                 critique: critique,
                 plan: plan,
-                primaryText: legacySuggestion.text
+                semanticTip: nil,
+                primaryText: legacySuggestion.text,
+                fallbackUsed: true
             )
         )
     }
 
     private func makeLiveExpandedVerdictPresentation(critique: CritiqueReport,
                                                      plan: RecommendationPlan,
-                                                     primaryText: String?) -> LiveExpandedVerdictPresentation? {
+                                                     semanticTip: SemanticTipCandidate?,
+                                                     primaryText: String?,
+                                                     fallbackUsed: Bool) -> LiveExpandedVerdictPresentation? {
         guard let shortVerdict = nonEmpty(critique.summary.shortVerdict) else { return nil }
         let primaryText = nonEmpty(primaryText)
         let supportingText: String?
@@ -2295,7 +2385,9 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         let actionCandidate: String?
-        if critique.verdict == .good {
+        if let semanticTip {
+            actionCandidate = nonEmpty(semanticTip.pauseText)
+        } else if critique.verdict == .good {
             actionCandidate = nonEmpty(plan.noChangeRationale)
         } else {
             actionCandidate = plan.primaryAction.flatMap { action in
@@ -2315,7 +2407,7 @@ final class AnalysisPipeline: ObservableObject {
             shortVerdict: shortVerdict,
             supportingText: supportingText,
             actionText: actionText,
-            fallbackUsed: critique.fallbackUsed
+            fallbackUsed: fallbackUsed
         )
     }
 
@@ -2374,7 +2466,10 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     private func makePauseCritiquePresentation(critique: CritiqueReport,
-                                               plan: RecommendationPlan) -> PauseCritiquePresentation {
+                                               plan: RecommendationPlan,
+                                               semanticTips: [SemanticTipCandidate],
+                                               semanticFallbackUsed: Bool) -> PauseCritiquePresentation {
+        let fallbackUsed = critique.fallbackUsed || semanticFallbackUsed
         let strengths = critique.strengths.prefix(2).map { strength in
             PauseStrengthRow(
                 strengthId: strength.id,
@@ -2398,32 +2493,54 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
-        let plannedActions = [plan.primaryAction]
-            .compactMap { $0 }
-            + Array(plan.secondaryActions.prefix(2))
-        let actions = plannedActions.prefix(3).map { action in
-            PauseActionRow(
+        let semanticActionRows = semanticTips.prefix(4).compactMap { tip -> PauseActionRow? in
+            guard critique.verdict != .good else { return nil }
+            guard let action = linkedAction(for: tip, plan: plan) else { return nil }
+            return PauseActionRow(
                 actionId: action.id,
                 actionType: action.actionType,
                 priority: action.priority,
-                linkedIssueIds: action.linkedIssueIds,
-                expectedOutcome: action.expectedOutcome,
-                targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: action.linkedIssueIds, critique: critique),
+                linkedIssueIds: tip.linkedIssueIds,
+                expectedOutcome: tip.pauseText,
+                targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: tip.linkedIssueIds, critique: critique),
                 overlayHintId: action.overlayHint?.id,
-                traceRefId: traceRefIdForAction(action: action, critique: critique)
+                traceRefId: tip.linkedTraceIds.first ?? traceRefIdForAction(action: action, critique: critique)
             )
+        }
+        let actions: [PauseActionRow]
+        if semanticActionRows.isEmpty {
+            let plannedActions = [plan.primaryAction]
+                .compactMap { $0 }
+                + Array(plan.secondaryActions.prefix(2))
+            actions = plannedActions.prefix(3).map { action in
+                PauseActionRow(
+                    actionId: action.id,
+                    actionType: action.actionType,
+                    priority: action.priority,
+                    linkedIssueIds: action.linkedIssueIds,
+                    expectedOutcome: action.expectedOutcome,
+                    targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: action.linkedIssueIds, critique: critique),
+                    overlayHintId: action.overlayHint?.id,
+                    traceRefId: traceRefIdForAction(action: action, critique: critique)
+                )
+            }
+        } else {
+            actions = semanticActionRows
         }
 
         let noChangeRationale: String?
         if critique.verdict == .good && actions.isEmpty {
-            noChangeRationale = nonEmpty(plan.noChangeRationale) ?? critique.summary.whyGood ?? critique.summary.shortVerdict
+            noChangeRationale = nonEmpty(semanticTips.first?.pauseText)
+                ?? nonEmpty(plan.noChangeRationale)
+                ?? critique.summary.whyGood
+                ?? critique.summary.shortVerdict
         } else {
             noChangeRationale = nil
         }
 
         let assumptions: [String] = {
             var values: [String] = []
-            if critique.fallbackUsed {
+            if fallbackUsed {
                 values.append("Structured analysis degraded: using reduced-coverage critique output.")
             }
             return values
@@ -2442,8 +2559,16 @@ final class AnalysisPipeline: ObservableObject {
             noChangeRationale: noChangeRationale,
             assumptions: assumptions,
             traceRootIds: critique.traceRefs,
-            fallbackUsed: critique.fallbackUsed
+            fallbackUsed: fallbackUsed
         )
+    }
+
+    @MainActor
+    private func currentSemanticLiveTipKey() -> String? {
+        guard let id = currentLiveHint?.id else { return nil }
+        let prefix = "lh_live_sem_"
+        guard id.hasPrefix(prefix) else { return nil }
+        return String(id.dropFirst(prefix.count))
     }
 
     private func makePauseReasoningRequest(frameId: String,
@@ -3261,6 +3386,21 @@ final class AnalysisPipeline: ObservableObject {
         return nil
     }
 
+    private func linkedAction(for semanticTip: SemanticTipCandidate,
+                              plan: RecommendationPlan) -> RecommendationAction? {
+        let actions = [plan.primaryAction].compactMap { $0 } + plan.secondaryActions + plan.deferredActions
+        if let primaryActionId = semanticTip.primaryActionId,
+           let action = actions.first(where: { $0.id == primaryActionId }) {
+            return action
+        }
+        for linkedActionId in semanticTip.linkedActionIds {
+            if let action = actions.first(where: { $0.id == linkedActionId }) {
+                return action
+            }
+        }
+        return nil
+    }
+
     private func traceRefIdForIssue(issueId: String,
                                     critique: CritiqueReport) -> String? {
         guard let issueIndex = critique.issues.firstIndex(where: { $0.id == issueId }) else { return nil }
@@ -3666,13 +3806,34 @@ extension AnalysisPipeline {
     func testingPublishLivePresentation(frameId: String,
                                         critique: CritiqueReport,
                                         plan: RecommendationPlan,
+                                        semantics: SceneSemanticsReport? = nil,
                                         legacySuggestion: Suggestion?,
                                         structuredAvailable: Bool,
                                         now: Date = Date()) {
+        let semanticTips = semanticTipPlanner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: frameId,
+                mode: critique.mode,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: semantics ?? SceneSemanticsReport(
+                    frameId: frameId,
+                    mode: critique.mode,
+                    sceneType: .unknown,
+                    sceneTypeConfidence: 0,
+                    primarySubject: .init(kind: .unknown, confidence: 0),
+                    dominance: .init(hasClearFocus: false, focusCompetitionScore: 0, backgroundClutterScore: 0),
+                    readability: .init(subjectReadable: false, lookSpaceAdequate: nil, edgePressureScore: 0, separationScore: 0),
+                    ambiguities: [],
+                    assumptions: []
+                )
+            )
+        )
         publishLivePresentation(
             frameId: frameId,
             critique: critique,
             plan: plan,
+            semanticTips: semanticTips,
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
             now: now
