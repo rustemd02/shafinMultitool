@@ -2095,3 +2095,37 @@
 - `docs/SGv7pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json` (raw event-table structural/semantic metrics)
 
 ---
+
+## [2026-05-04 20:09] - [Camera Analysis Semantic Tips: Prompt 19/20, PR-S01/PR-S02]
+
+### Суть изменений
+- Выполнен полный цикл `design -> design verify -> implement -> implement verify` для Prompt 19 (`PR-S01 Semantic Tip Taxonomy and Action Catalog`) и Prompt 20 (`PR-S02 VLM Visual Semantic Evidence Contract`).
+- Для Prompt 19 зафиксирован source-of-truth документ закрытого каталога semantic screen tips: entity-aware taxonomy, action catalog, safe display label policy, priority/fallback rules, golden cases и mapping `evidence -> issue/strength -> semantic tip -> physical user move`.
+- В Swift domain layer добавлены contract-safe типы `PR-S01`: `SemanticTipType`, `SemanticActionType`, `VisualProblemType`, `VisualStrengthType`, entity roles/kinds, `SemanticTipDefinition`, `SemanticTipCandidate`, `SemanticDisplayLabelPolicy` и `SemanticTipCatalog`.
+- Для Prompt 20 зафиксирован source-of-truth VLM evidence contract: `VLMVisualEvidenceRequest`, `VLMVisualEvidenceResponse`, closed evidence dimensions, entity-aware response fields, relation types, confidence/uncertainty semantics, privacy tiers, validation/fallback matrix и JSON/prompt examples.
+- В Swift domain layer добавлены contract-safe типы `PR-S02`: `VLMVisualEvidenceObservation`, `VLMEntityRelation`, `VLMAllowedSemanticCatalog`, `VLMVisualEvidenceConstraints`, `VLMEvidenceValidationResult` и локальный validator с fail-closed поведением.
+- Добавлены unit/contract tests для PR-S01 и PR-S02: coverage полноты каталога, validation ошибок, safe-label fallback, Codable round-trip, VLM request/response validation, unknown action fail-closed, live-mode reject, privacy-tier checks и локальная фильтрация недостоверных relations.
+- После `$infinite-reviewer` усилены четыре защитных места PR-S02: обязательный `redactionApplied` для redacted visual input, проверка display labels через `allowedCatalog`, нормализация grounded labels перед сравнением и fail-closed при превышении `maxSuggestedActionIds`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Ранний camera-analysis контур мог выдавать доменные оценки и рекомендации, но между визуальной причиной кадра и экранной подсказкой не было формального, ограниченного и проверяемого слоя. Это создавало риск "разговорных" подсказок без воспроизводимого основания: модель или future VLM могли invent-ить новые action ids, небезопасные object labels или свободный текст, который невозможно надежно связать с deterministic critique/fusion pipeline.
+- **Решение:** Введён двухуровневый контракт. `PR-S01` формализует закрытый semantic-tip слой: finite catalog из meaningful screen tips и semantic actions, entity-aware target fields, политики выбора между `смести камеру`, `сдвинь героя`, `сдвинь предмет`, а также fallback при слабом grounding. `PR-S02` формализует VLM как поставщика не финального вердикта, а bounded visual evidence: response валидируется машинно и может только поддерживать/локализовать semantic tip planner, но не переписывать deterministic taxonomy.
+- **Детали:**
+  - `PR-S01` отделяет planner-level `ActionTypeV1` от human-facing `SemanticActionType`: первый остаётся transport/planner anchor, второй описывает физическое действие пользователя. Это важно для UI и научной воспроизводимости, потому что одна и та же domain issue теперь имеет явную цепочку `observation -> interpretation -> recommendation -> user move`.
+  - Введена safe naming policy: человек/лицо допускаются как generic labels (`герой`, `человек`, `лицо`), а конкретные object labels (`цветок`, `ваза`, `книга`, `чашка`, `бутылка`, `лампа`, `стул`, `телефон`) допускаются только при confidence-aware grounding; иначе система деградирует к `предмет`, `объект справа`, `яркий объект на фоне` или `предмет у лица`.
+  - `PR-S02` добавляет privacy-aware request contract: `structured_only` не содержит изображение, `redacted_visual` требует redacted still/crop, stripped EXIF и явный `redactionApplied=true`. Это сохраняет совместимость с offloading boundary и предотвращает silent privacy regression.
+  - Validator `PR-S02` реализует fail-closed стратегию: mismatch request/frame/schema, non-pause mode, privacy mismatch, failed safety report, unknown action id, конфликт `keep_current_setup` с corrective actions и превышение top-level action budget возвращают deterministic-only fallback. Частично битые observations/relations отбрасываются локально, если базовый response всё ещё пригоден.
+  - Свободный VLM prose ограничен вторичной explanation/debug ролью; decision source остаётся структурированным (`dimension`, `polarity`, `score`, `confidence`, `uncertaintyReasons`, `entityRef`, `suggestedActionIds`). Это снижает риск недетерминированных UI-сообщений и делает future evaluation пригодным для измерения agreement между local critique, neural evidence и VLM evidence.
+  - Узкая верификация показала, что новые domain contracts typecheck-ятся изолированно (`swiftc -typecheck`), а VLM test-class проходит targeted typecheck со stubs. `git diff --check` чистый. Полная `xcodebuild` сборка проекта пока блокируется существующей внешней проблемой `Unable to find module dependency: 'SnapKit'` в unrelated UI-файлах, а не изменениями Prompt 19/20.
+
+### Ключевые файлы
+- `docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md` (source-of-truth для Prompt 19 / PR-S01: taxonomy, mappings, safe labels, examples, test plan)
+- `docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md` (source-of-truth для Prompt 20 / PR-S02: VLM request/response, validation, privacy, failure matrix)
+- `docs/cameraanalysis/12-agent-prompts.md` (формализация Prompt 19 и Prompt 20 в agent backlog)
+- `docs/cameraanalysis/01-roadmap.md` (roadmap registration для PR-S01 и PR-S02)
+- `docs/cameraanalysis/11-implementation-backlog.md` (Track 18, PR-S01/PR-S02 scope и dependencies)
+- `docs/cameraanalysis/README.md` (индексация новых source-of-truth документов)
+- `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (`PR-S01` и `PR-S02` Swift domain contracts, validators, catalog constants)
+- `shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift` (contract tests для semantic tips и VLM visual evidence validation)
+
+---

@@ -892,6 +892,819 @@ private extension NeuralEvidenceDomainContractTests {
     }
 }
 
+final class SemanticTipContractTests: XCTestCase {
+
+    func testSemanticCatalogCoversLegacyIssueAndStrengthAnchors() {
+        XCTAssertEqual(Set(SemanticTipCatalog.issueTipCoverage.keys), Set(IssueTypeV1.allCases))
+        XCTAssertEqual(Set(SemanticTipCatalog.strengthTipCoverage.keys), Set(StrengthTypeV1.allCases))
+        XCTAssertTrue(SemanticTipCatalog.issueTipCoverage.values.allSatisfy { !$0.isEmpty })
+        XCTAssertTrue(SemanticTipCatalog.strengthTipCoverage.values.allSatisfy { !$0.isEmpty })
+    }
+
+    func testSemanticCatalogDefinitionsCoverClosedTaxonomies() {
+        let definitions = SemanticTipCatalog.definitions
+
+        XCTAssertEqual(Set(definitions.map(\.tipType)), Set(SemanticTipType.allCases))
+        XCTAssertEqual(Set(definitions.map(\.actionType)), Set(SemanticActionType.allCases))
+        XCTAssertEqual(SemanticTipCatalog.v1Actions, Set(SemanticActionType.allCases))
+        XCTAssertEqual(SemanticTipCatalog.deferredActions, Set([
+            "add_rim_light",
+            "add_side_light",
+            "turn_subject_for_cleaner_profile"
+        ]))
+
+        let coveredProblems = Set(definitions.flatMap(\.problemTypes))
+        let coveredStrengths = Set(definitions.flatMap(\.strengthTypes))
+        XCTAssertEqual(coveredProblems, Set(VisualProblemType.allCases))
+        XCTAssertEqual(coveredStrengths, Set(VisualStrengthType.allCases))
+        XCTAssertTrue(definitions.flatMap { $0.validate() }.isEmpty)
+    }
+
+    func testSemanticCatalogCoversRequiredActionFramesAndObjectStaging() {
+        let frames = Set(SemanticTipCatalog.definitions.map(\.actionFrame))
+        XCTAssertTrue(frames.isSuperset(of: [.moveCamera, .moveSubject, .moveObject, .adjustLight, .wait]))
+
+        let objectActions = SemanticTipCatalog.definitions
+            .filter { $0.actionFrame == .moveObject }
+            .map(\.actionType)
+
+        XCTAssertTrue(objectActions.contains(.moveObjectLeft))
+        XCTAssertTrue(objectActions.contains(.moveObjectRight))
+        XCTAssertTrue(objectActions.contains(.moveObjectForward))
+        XCTAssertTrue(objectActions.contains(.moveObjectBack))
+        XCTAssertTrue(objectActions.contains(.removeDistractingObject))
+        XCTAssertTrue(objectActions.contains(.repositionPropForBalance))
+    }
+
+    func testSafeDisplayLabelPolicyGroundsKnownObjectsAndDegradesUnknownObjects() {
+        XCTAssertEqual(
+            SemanticDisplayLabelPolicy.displayLabel(
+                entityKind: .object,
+                role: .foregroundObject,
+                groundedLabel: " цветок ",
+                confidence: 0.9
+            ),
+            "цветок"
+        )
+
+        XCTAssertEqual(
+            SemanticDisplayLabelPolicy.displayLabel(
+                entityKind: .object,
+                role: .foregroundObject,
+                groundedLabel: "дракон",
+                confidence: 0.95
+            ),
+            "предмет"
+        )
+
+        XCTAssertEqual(
+            SemanticDisplayLabelPolicy.displayLabel(
+                entityKind: .object,
+                role: .foregroundObject,
+                groundedLabel: nil,
+                confidence: 0.35,
+                direction: .right
+            ),
+            "объект справа"
+        )
+
+        XCTAssertEqual(
+            SemanticDisplayLabelPolicy.displayLabel(
+                entityKind: .prop,
+                role: .faceContourOccluder,
+                groundedLabel: nil,
+                confidence: 0.4
+            ),
+            "предмет у лица"
+        )
+
+        XCTAssertEqual(
+            SemanticDisplayLabelPolicy.displayLabel(
+                entityKind: .person,
+                role: .primarySubject,
+                groundedLabel: "Алексей",
+                confidence: 0.99
+            ),
+            "герой"
+        )
+
+        XCTAssertFalse(SemanticDisplayLabelPolicy.isAllowedDisplayLabel("Алексей"))
+    }
+
+    func testSemanticTipCandidateValidationAcceptsEntityAwareActionableTip() {
+        let candidate = SemanticTipCandidate(
+            tipType: .moveObjectOffLeftEdge,
+            actionType: .moveObjectRight,
+            actionFrame: .moveObject,
+            direction: .right,
+            problemType: .objectEdgePressure,
+            strengthType: nil,
+            targetEntityKind: .object,
+            targetEntityRole: .foregroundObject,
+            targetEntityRef: "object:flower:1",
+            targetEntityGroundingConfidence: 0.92,
+            targetEntityDisplayLabel: "цветок",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-1",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-1"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-1"],
+            summaryId: nil,
+            supportedModes: [.live, .pause],
+            priorityBand: .primaryCorrective,
+            liveText: "Сдвинь цветок правее.",
+            pauseText: "Цветок слишком близко к краю. Сдвинь его правее, чтобы кадр стал спокойнее.",
+            fallbackBehavior: .degradeToGenericLabel
+        )
+
+        XCTAssertTrue(candidate.validate().isEmpty, candidate.validate().joined(separator: "\n"))
+    }
+
+    func testSemanticTipCandidateValidationRejectsUnsafeLabelsAndMismatchedWaitActions() {
+        let unsafeLabelCandidate = SemanticTipCandidate(
+            tipType: .moveSubjectLeftForBalance,
+            actionType: .moveSubjectLeft,
+            actionFrame: .moveSubject,
+            direction: .left,
+            problemType: .backgroundCompetition,
+            strengthType: nil,
+            targetEntityKind: .person,
+            targetEntityRole: .primarySubject,
+            targetEntityRef: "person:1",
+            targetEntityGroundingConfidence: 0.99,
+            targetEntityDisplayLabel: "Алексей",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-1",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-1"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-1"],
+            summaryId: nil,
+            supportedModes: [.pause],
+            priorityBand: .contextualCorrective,
+            liveText: "Смести героя левее.",
+            pauseText: "Смести героя левее, чтобы фон меньше спорил с ним.",
+            fallbackBehavior: .degradeToGenericActionCopy
+        )
+
+        let invalidWaitCandidate = SemanticTipCandidate(
+            tipType: .waitForBackgroundClearance,
+            actionType: .moveObjectRight,
+            actionFrame: .wait,
+            direction: SemanticDirection.none,
+            problemType: .timingBlockerInFrame,
+            strengthType: nil,
+            targetEntityKind: .object,
+            targetEntityRole: .backgroundObject,
+            targetEntityRef: nil,
+            targetEntityGroundingConfidence: nil,
+            targetEntityDisplayLabel: "яркий объект на фоне",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-2",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-2"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-2"],
+            summaryId: nil,
+            supportedModes: [.live],
+            priorityBand: .timingCorrective,
+            liveText: "Подожди, пока фон очистится.",
+            pauseText: "В фоне есть временная помеха. Подожди, пока она уйдет.",
+            fallbackBehavior: .degradeToGenericActionCopy
+        )
+
+        let personWithObjectLabelCandidate = SemanticTipCandidate(
+            tipType: .moveSubjectLeftForBalance,
+            actionType: .moveSubjectLeft,
+            actionFrame: .moveSubject,
+            direction: .left,
+            problemType: .backgroundCompetition,
+            strengthType: nil,
+            targetEntityKind: .person,
+            targetEntityRole: .primarySubject,
+            targetEntityRef: "person:1",
+            targetEntityGroundingConfidence: 0.92,
+            targetEntityDisplayLabel: "ваза",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-3",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-3"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-3"],
+            summaryId: nil,
+            supportedModes: [.pause],
+            priorityBand: .contextualCorrective,
+            liveText: "Смести героя левее.",
+            pauseText: "Смести героя левее, чтобы фон меньше спорил с ним.",
+            fallbackBehavior: .degradeToGenericActionCopy
+        )
+
+        XCTAssertTrue(unsafeLabelCandidate.validate().contains("targetEntityDisplayLabel must follow safe label policy"))
+        XCTAssertTrue(invalidWaitCandidate.validate().contains("wait actionFrame requires wait_for_background_clearance action"))
+        XCTAssertTrue(personWithObjectLabelCandidate.validate().contains("targetEntityDisplayLabel must follow safe label policy"))
+    }
+
+    func testSemanticTipCandidateValidationRequiresFaceRelationForContourRemoval() {
+        let missingFaceRelationCandidate = SemanticTipCandidate(
+            tipType: .removeObjectFromFaceContour,
+            actionType: .removeDistractingObject,
+            actionFrame: .moveObject,
+            direction: SemanticDirection.none,
+            problemType: .faceContourOcclusion,
+            strengthType: nil,
+            targetEntityKind: .prop,
+            targetEntityRole: .faceContourOccluder,
+            targetEntityRef: "object:vase:1",
+            targetEntityGroundingConfidence: 0.91,
+            targetEntityDisplayLabel: "ваза",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-3",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-3"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-3"],
+            summaryId: nil,
+            supportedModes: [.live, .pause],
+            priorityBand: .primaryCorrective,
+            liveText: "Убери вазу из-за лица.",
+            pauseText: "Ваза заходит на контур лица. Убери ее в сторону, чтобы лицо читалось чище.",
+            fallbackBehavior: .degradeToGenericLabel
+        )
+
+        let errors = missingFaceRelationCandidate.validate()
+
+        XCTAssertTrue(errors.contains("remove_object_from_face_contour requires secondaryEntityRef"))
+        XCTAssertTrue(errors.contains("remove_object_from_face_contour requires secondaryEntityDisplayLabel"))
+    }
+
+    func testSemanticTipCandidateValidationRequiresGroundingForSpecificObjectLabels() {
+        let ungroundedFlowerCandidate = SemanticTipCandidate(
+            tipType: .moveObjectOffLeftEdge,
+            actionType: .moveObjectRight,
+            actionFrame: .moveObject,
+            direction: .right,
+            problemType: .objectEdgePressure,
+            strengthType: nil,
+            targetEntityKind: .object,
+            targetEntityRole: .foregroundObject,
+            targetEntityRef: nil,
+            targetEntityGroundingConfidence: 0.92,
+            targetEntityDisplayLabel: "цветок",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-1",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-1"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-1"],
+            summaryId: nil,
+            supportedModes: [.live, .pause],
+            priorityBand: .primaryCorrective,
+            liveText: "Сдвинь цветок правее.",
+            pauseText: "Цветок слишком близко к краю. Сдвинь его правее, чтобы кадр стал спокойнее.",
+            fallbackBehavior: .degradeToGenericLabel
+        )
+
+        let lowConfidenceFlowerCandidate = SemanticTipCandidate(
+            tipType: .moveObjectOffLeftEdge,
+            actionType: .moveObjectRight,
+            actionFrame: .moveObject,
+            direction: .right,
+            problemType: .objectEdgePressure,
+            strengthType: nil,
+            targetEntityKind: .object,
+            targetEntityRole: .foregroundObject,
+            targetEntityRef: "object:flower:1",
+            targetEntityGroundingConfidence: 0.62,
+            targetEntityDisplayLabel: "цветок",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-1",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-1"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-1"],
+            summaryId: nil,
+            supportedModes: [.live, .pause],
+            priorityBand: .primaryCorrective,
+            liveText: "Сдвинь цветок правее.",
+            pauseText: "Цветок слишком близко к краю. Сдвинь его правее, чтобы кадр стал спокойнее.",
+            fallbackBehavior: .degradeToGenericLabel
+        )
+
+        XCTAssertTrue(ungroundedFlowerCandidate.validate().contains("grounded targetEntityDisplayLabel requires targetEntityRef"))
+        XCTAssertTrue(lowConfidenceFlowerCandidate.validate().contains("grounded targetEntityDisplayLabel requires high-confidence grounding"))
+    }
+
+    func testSemanticTipCandidateValidationRejectsCatalogDrift() {
+        let pauseOnlyTipInLive = SemanticTipCandidate(
+            tipType: .addFrontFillOnSubject,
+            actionType: .addFrontFillLight,
+            actionFrame: .adjustLight,
+            direction: SemanticDirection.none,
+            problemType: .frontLightDeficit,
+            strengthType: nil,
+            targetEntityKind: .lightSource,
+            targetEntityRole: .lightTarget,
+            targetEntityRef: nil,
+            targetEntityGroundingConfidence: nil,
+            targetEntityDisplayLabel: "свет",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-4",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-4"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-4"],
+            summaryId: nil,
+            supportedModes: [.live],
+            priorityBand: .secondaryCorrective,
+            liveText: "Добавь слабый фронтальный свет.",
+            pauseText: "Лицу не хватает фронтального света. Добавь слабую заливку спереди.",
+            fallbackBehavior: .degradeToGenericActionCopy
+        )
+
+        let catalogDriftCandidate = SemanticTipCandidate(
+            tipType: .moveObjectOffLeftEdge,
+            actionType: .shiftFrameRight,
+            actionFrame: .moveObject,
+            direction: .right,
+            problemType: .objectEdgePressure,
+            strengthType: nil,
+            targetEntityKind: .object,
+            targetEntityRole: .foregroundObject,
+            targetEntityRef: "object:flower:1",
+            targetEntityGroundingConfidence: 0.92,
+            targetEntityDisplayLabel: "цветок",
+            secondaryEntityRef: nil,
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: nil,
+            primaryActionId: "action-5",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-5"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-5"],
+            summaryId: nil,
+            supportedModes: [.live],
+            priorityBand: .secondaryCorrective,
+            liveText: "Сдвинь цветок правее.",
+            pauseText: "Цветок слишком близко к краю. Сдвинь его правее.",
+            fallbackBehavior: .degradeToGenericLabel
+        )
+
+        XCTAssertTrue(pauseOnlyTipInLive.validate().contains("semantic tip supportedModes must be subset of catalog definition"))
+        XCTAssertTrue(catalogDriftCandidate.validate().contains("semantic tip actionType must match catalog definition"))
+        XCTAssertTrue(catalogDriftCandidate.validate().contains("semantic tip priorityBand must match catalog definition"))
+    }
+
+    func testSemanticTipCandidateCodableRoundTripPreservesEntityFields() throws {
+        let candidate = SemanticTipCandidate(
+            tipType: .removeObjectFromFaceContour,
+            actionType: .removeDistractingObject,
+            actionFrame: .moveObject,
+            direction: SemanticDirection.none,
+            problemType: .faceContourOcclusion,
+            strengthType: nil,
+            targetEntityKind: .prop,
+            targetEntityRole: .faceContourOccluder,
+            targetEntityRef: "object:vase:1",
+            targetEntityGroundingConfidence: 0.91,
+            targetEntityDisplayLabel: "ваза",
+            secondaryEntityRef: "face:1",
+            secondaryEntityGroundingConfidence: nil,
+            secondaryEntityDisplayLabel: "лицо",
+            primaryActionId: "action-3",
+            linkedActionIds: [],
+            linkedIssueIds: ["issue-3"],
+            linkedStrengthIds: [],
+            linkedTraceIds: ["trace-3"],
+            summaryId: nil,
+            supportedModes: [.live, .pause],
+            priorityBand: .primaryCorrective,
+            liveText: "Убери вазу из-за лица.",
+            pauseText: "Ваза заходит на контур лица. Убери ее в сторону, чтобы лицо читалось чище.",
+            fallbackBehavior: .degradeToGenericLabel
+        )
+
+        let data = try JSONEncoder().encode(candidate)
+        let decoded = try JSONDecoder().decode(SemanticTipCandidate.self, from: data)
+
+        XCTAssertEqual(decoded, candidate)
+        XCTAssertEqual(decoded.targetEntityGroundingConfidence, 0.91)
+        XCTAssertNil(decoded.secondaryEntityGroundingConfidence)
+    }
+}
+
+final class VLMVisualEvidenceContractTests: XCTestCase {
+
+    func testValidProblemFrameResponseAcceptsStructuredEvidenceAndRelation() {
+        let request = makeRequest()
+        let response = makeProblemResponse()
+
+        let result = response.validate(against: request)
+
+        XCTAssertTrue(result.accepted, result.violations.map(\.rawValue).joined(separator: "\n"))
+        XCTAssertEqual(result.fallback, .useValidatedEvidence)
+        XCTAssertEqual(result.acceptedObservations.map(\.observationId), ["obs-face-block-1"])
+        XCTAssertEqual(result.acceptedRelations.map(\.relationId), ["rel-vase-blocks-face"])
+        XCTAssertEqual(result.acceptedSuggestedActionIds, [.removeDistractingObject])
+        XCTAssertEqual(result.acceptedPrimaryLabel, "герой")
+        XCTAssertEqual(result.acceptedSecondaryLabel, "ваза")
+    }
+
+    func testUnknownActionIdFailsClosedAgainstAllowedCatalog() {
+        let restrictedCatalog = VLMAllowedSemanticCatalog(
+            catalogVersion: VLMAllowedSemanticCatalog.prS01.catalogVersion,
+            allowedEvidenceDimensions: VLMAllowedSemanticCatalog.prS01.allowedEvidenceDimensions,
+            allowedVisualProblemTypes: VLMAllowedSemanticCatalog.prS01.allowedVisualProblemTypes,
+            allowedVisualStrengthTypes: VLMAllowedSemanticCatalog.prS01.allowedVisualStrengthTypes,
+            allowedSemanticActionTypes: [.keepCurrentSetup],
+            allowedGroundedObjectDisplayLabels: VLMAllowedSemanticCatalog.prS01.allowedGroundedObjectDisplayLabels,
+            allowedGenericDisplayLabels: VLMAllowedSemanticCatalog.prS01.allowedGenericDisplayLabels
+        )
+        let request = makeRequest(allowedCatalog: restrictedCatalog)
+        let response = makeProblemResponse()
+
+        let result = response.validate(against: request)
+
+        XCTAssertFalse(result.accepted)
+        XCTAssertEqual(result.fallback, .deterministicOnly)
+        XCTAssertTrue(result.violations.contains(.unknownActionId))
+    }
+
+    func testLiveModeFailsClosed() {
+        let request = makeRequest(mode: .live)
+        let response = makeProblemResponse(mode: .live)
+
+        let result = response.validate(against: request)
+
+        XCTAssertFalse(result.accepted)
+        XCTAssertEqual(result.fallback, .deterministicOnly)
+        XCTAssertTrue(result.violations.contains(.modeNotPause))
+    }
+
+    func testStructuredOnlyCannotIntroduceNewSpecificObjectLabel() {
+        let request = makeRequest(
+            privacyTier: .structuredOnly,
+            visualInput: nil,
+            groundedEntities: [makePersonEntity()]
+        )
+        let response = makeProblemResponse(
+            privacyTier: .structuredOnly,
+            secondaryEntityRef: nil,
+            secondaryLabel: "ваза"
+        )
+
+        let result = response.validate(against: request)
+
+        XCTAssertTrue(result.accepted, result.violations.map(\.rawValue).joined(separator: "\n"))
+        XCTAssertEqual(result.fallback, .deterministicWithGenericLabels)
+        XCTAssertEqual(result.acceptedSecondaryLabel, "предмет")
+        XCTAssertTrue(result.violations.contains(.labelWithoutGrounding))
+    }
+
+    func testRedactedVisualRequiresAppliedRedaction() {
+        let request = makeRequest(
+            visualInput: VLMVisualInput(
+                attachmentKind: .redactedStill,
+                mediaRef: "unredacted-frame-1",
+                longEdgePx: 768,
+                exifStripped: true,
+                redactionApplied: false,
+                redactionNotes: []
+            )
+        )
+        let response = makeProblemResponse()
+
+        let result = response.validate(against: request)
+
+        XCTAssertFalse(result.accepted)
+        XCTAssertEqual(result.fallback, .deterministicOnly)
+        XCTAssertTrue(result.violations.contains(.privacyTierMismatch))
+    }
+
+    func testRestrictedLabelCatalogFallsBackToGenericLabel() {
+        let restrictedCatalog = VLMAllowedSemanticCatalog(
+            catalogVersion: VLMAllowedSemanticCatalog.prS01.catalogVersion,
+            allowedEvidenceDimensions: VLMAllowedSemanticCatalog.prS01.allowedEvidenceDimensions,
+            allowedVisualProblemTypes: VLMAllowedSemanticCatalog.prS01.allowedVisualProblemTypes,
+            allowedVisualStrengthTypes: VLMAllowedSemanticCatalog.prS01.allowedVisualStrengthTypes,
+            allowedSemanticActionTypes: VLMAllowedSemanticCatalog.prS01.allowedSemanticActionTypes,
+            allowedGroundedObjectDisplayLabels: [],
+            allowedGenericDisplayLabels: VLMAllowedSemanticCatalog.prS01.allowedGenericDisplayLabels
+        )
+        let request = makeRequest(allowedCatalog: restrictedCatalog)
+        let response = makeProblemResponse()
+
+        let result = response.validate(against: request)
+
+        XCTAssertTrue(result.accepted, result.violations.map(\.rawValue).joined(separator: "\n"))
+        XCTAssertEqual(result.fallback, .deterministicWithGenericLabels)
+        XCTAssertEqual(result.acceptedSecondaryLabel, "предмет")
+        XCTAssertTrue(result.violations.contains(.unsafeSpecificLabel))
+    }
+
+    func testProviderSafetyPassedDoesNotBypassLocalRelationValidation() {
+        let request = makeRequest()
+        let response = makeProblemResponse(relationTargetRef: "unknown-entity")
+
+        let result = response.validate(against: request)
+
+        XCTAssertTrue(result.accepted, result.violations.map(\.rawValue).joined(separator: "\n"))
+        XCTAssertTrue(result.violations.contains(.unknownEntityRef))
+        XCTAssertEqual(result.acceptedRelations, [])
+        XCTAssertEqual(result.acceptedObservations.count, 1)
+    }
+
+    func testKeepCurrentSetupCannotCoexistWithCorrectiveAction() {
+        let request = makeRequest()
+        let response = makeProblemResponse(suggestedActionIds: [.keepCurrentSetup, .removeDistractingObject])
+
+        let result = response.validate(against: request)
+
+        XCTAssertFalse(result.accepted)
+        XCTAssertEqual(result.fallback, .deterministicOnly)
+        XCTAssertTrue(result.violations.contains(.contradictoryKeepAndCorrect))
+    }
+
+    func testTooManyTopLevelSuggestedActionsFailsClosed() {
+        let constraints = VLMVisualEvidenceConstraints(
+            maxObservations: VLMVisualEvidenceConstraints.default.maxObservations,
+            maxRelations: VLMVisualEvidenceConstraints.default.maxRelations,
+            maxSuggestedActionIds: 0,
+            maxExplanationChars: VLMVisualEvidenceConstraints.default.maxExplanationChars,
+            allowMoodPreservation: VLMVisualEvidenceConstraints.default.allowMoodPreservation,
+            requireEntityGroundingForSpecificLabels: VLMVisualEvidenceConstraints.default.requireEntityGroundingForSpecificLabels,
+            failClosedOnUnknownIds: VLMVisualEvidenceConstraints.default.failClosedOnUnknownIds
+        )
+        let request = makeRequest(constraints: constraints)
+        let response = makeProblemResponse()
+
+        let result = response.validate(against: request)
+
+        XCTAssertFalse(result.accepted)
+        XCTAssertEqual(result.acceptedSuggestedActionIds, [])
+        XCTAssertEqual(result.fallback, .deterministicOnly)
+        XCTAssertTrue(result.violations.contains(.outputTooLong))
+    }
+
+    func testVLMVisualEvidenceResponseCodableRoundTripPreservesEntityFields() throws {
+        let response = makeProblemResponse()
+
+        let data = try JSONEncoder().encode(response)
+        let decoded = try JSONDecoder().decode(VLMVisualEvidenceResponse.self, from: data)
+
+        XCTAssertEqual(decoded, response)
+    }
+
+    private func makeRequest(mode: AnalysisMode = .pause,
+                             privacyTier: VLMPrivacyTier = .redactedVisual,
+                             visualInput: VLMVisualInput? = VLMVisualInput(
+                                attachmentKind: .redactedStill,
+                                mediaRef: "redacted-frame-1",
+                                longEdgePx: 768,
+                                exifStripped: true,
+                                redactionApplied: true,
+                                redactionNotes: []
+                             ),
+                             allowedCatalog: VLMAllowedSemanticCatalog = .prS01,
+                             constraints: VLMVisualEvidenceConstraints = .default,
+                             groundedEntities: [VLMGroundedEntity]? = nil) -> VLMVisualEvidenceRequest {
+        let context = makeLocalContext(mode: mode, groundedEntities: groundedEntities ?? [makePersonEntity(), makeVaseEntity()])
+        return VLMVisualEvidenceRequest(
+            schemaVersion: .s1,
+            requestId: "vlm-req-002",
+            frameId: "pause-frame-077",
+            mode: mode,
+            locale: "ru-RU",
+            privacyTier: privacyTier,
+            trigger: privacyTier == .redactedVisual ? .explicitUserRequest : .ambiguousLocalCase,
+            visualInput: visualInput,
+            localContext: context,
+            allowedCatalog: allowedCatalog,
+            constraints: constraints,
+            correlation: VLMVisualEvidenceCorrelation(
+                localCritiqueSummaryId: "summary-1",
+                localPlanSummaryId: "plan-1",
+                semanticCatalogVersion: allowedCatalog.catalogVersion,
+                offloadingSchemaVersion: "h12",
+                providerConfigVersion: "test",
+                sessionEphemeralId: "session-ephemeral"
+            )
+        )
+    }
+
+    private func makeProblemResponse(mode: AnalysisMode = .pause,
+                                     privacyTier: VLMPrivacyTier = .redactedVisual,
+                                     secondaryEntityRef: String? = "ent-vase-1",
+                                     secondaryLabel: String = "ваза",
+                                     relationTargetRef: String? = "ent-person-1",
+                                     suggestedActionIds: [SemanticActionType] = [.removeDistractingObject]) -> VLMVisualEvidenceResponse {
+        VLMVisualEvidenceResponse(
+            schemaVersion: .s1,
+            requestId: "vlm-req-002",
+            frameId: "pause-frame-077",
+            mode: mode,
+            providerId: "mock-vlm-semantic-v1",
+            status: .completed,
+            primaryEntityRef: "ent-person-1",
+            primaryEntityKind: .person,
+            primaryEntityDisplayLabelCandidate: "герой",
+            primaryEntityLabelConfidence: 0.88,
+            secondaryEntityRef: secondaryEntityRef,
+            secondaryEntityKind: .prop,
+            secondaryEntityDisplayLabelCandidate: secondaryLabel,
+            secondaryEntityLabelConfidence: 0.81,
+            observations: [
+                VLMVisualEvidenceObservation(
+                    observationId: "obs-face-block-1",
+                    dimension: .faceVisibility,
+                    polarity: .supportsProblem,
+                    score: 0.74,
+                    confidence: 0.79,
+                    uncertaintyReasons: [],
+                    primaryEntityRef: "ent-person-1",
+                    secondaryEntityRef: secondaryEntityRef,
+                    visualProblemType: .faceContourOcclusion,
+                    visualStrengthType: nil,
+                    supportedIssueIds: ["issue-background-competes"],
+                    supportedStrengthIds: [],
+                    suggestedActionIds: suggestedActionIds.filter { $0 != .keepCurrentSetup },
+                    evidenceNote: "Предмет пересекает контур лица и забирает внимание."
+                )
+            ],
+            relations: [
+                VLMEntityRelation(
+                    relationId: "rel-vase-blocks-face",
+                    sourceEntityRef: secondaryEntityRef ?? "ent-vase-1",
+                    targetEntityRef: relationTargetRef,
+                    relationType: .blocks,
+                    dimension: .faceVisibility,
+                    score: 0.74,
+                    confidence: 0.79,
+                    uncertaintyReasons: [],
+                    supportedObservationIds: ["obs-face-block-1"]
+                )
+            ],
+            suggestedActionIds: suggestedActionIds,
+            explanation: VLMSecondaryExplanation(
+                language: "ru-RU",
+                summary: "Главная проблема в предмете у лица: он ломает контур героя.",
+                caveats: []
+            ),
+            safety: VLMEvidenceSafetyReport(passed: true, violations: []),
+            diagnostics: VLMEvidenceDiagnostics(
+                latencyMs: 740,
+                providerModelFamily: "mock-vlm",
+                providerModelVersion: "s1-dev",
+                promptVersion: "vlm-evidence-s1",
+                privacyTier: privacyTier,
+                fallbackReason: nil
+            )
+        )
+    }
+
+    private func makePersonEntity() -> VLMGroundedEntity {
+        VLMGroundedEntity(
+            entityRef: "ent-person-1",
+            kind: .person,
+            role: .primarySubject,
+            region: NormalizedRect(x: 0.20, y: 0.15, width: 0.30, height: 0.45),
+            detectorLabel: "person",
+            detectorConfidence: 0.91,
+            displayLabelCandidate: "герой",
+            displayLabelConfidence: 0.90
+        )
+    }
+
+    private func makeVaseEntity() -> VLMGroundedEntity {
+        VLMGroundedEntity(
+            entityRef: "ent-vase-1",
+            kind: .prop,
+            role: .faceContourOccluder,
+            region: NormalizedRect(x: 0.34, y: 0.18, width: 0.14, height: 0.24),
+            detectorLabel: "vase",
+            detectorConfidence: 0.82,
+            displayLabelCandidate: "ваза",
+            displayLabelConfidence: 0.82
+        )
+    }
+
+    private func makeLocalContext(mode: AnalysisMode, groundedEntities: [VLMGroundedEntity]) -> VLMVisualEvidenceLocalContext {
+        VLMVisualEvidenceLocalContext(
+            frameFeatureSnapshotExcerpt: ["mode": mode.rawValue],
+            sceneSemantics: makeSemantics(mode: mode),
+            critique: makeCritique(mode: mode),
+            recommendationPlan: makePlan(mode: mode),
+            semanticTipDrafts: [
+                SemanticTipDraftContext(
+                    draftId: "draft-remove-prop",
+                    tipType: .removeObjectFromFaceContour,
+                    actionType: .removeDistractingObject,
+                    actionFrame: .moveObject,
+                    targetEntityRef: "ent-vase-1",
+                    targetEntityKind: .prop,
+                    targetEntityDisplayLabel: "ваза",
+                    linkedIssueIds: ["issue-background-competes"],
+                    linkedStrengthIds: [],
+                    linkedActionIds: ["action-remove"],
+                    priorityBand: .primaryCorrective
+                )
+            ],
+            groundedEntities: groundedEntities,
+            localNeuralEvidenceSummary: nil
+        )
+    }
+
+    private func makeSemantics(mode: AnalysisMode) -> SceneSemanticsReport {
+        SceneSemanticsReport(
+            frameId: "pause-frame-077",
+            mode: mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.82,
+            primarySubject: .init(
+                kind: .person,
+                label: "person",
+                region: NormalizedRect(x: 0.20, y: 0.15, width: 0.30, height: 0.45),
+                confidence: 0.89
+            ),
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.30, backgroundClutterScore: 0.35),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.22, separationScore: 0.70),
+            ambiguities: [],
+            assumptions: []
+        )
+    }
+
+    private func makeCritique(mode: AnalysisMode) -> CritiqueReport {
+        CritiqueReport(
+            frameId: "pause-frame-077",
+            mode: mode,
+            verdict: .mixed,
+            verdictConfidence: 0.72,
+            strengths: [
+                FrameStrength(
+                    id: "strength-good-subject-isolation",
+                    type: .goodSubjectIsolation,
+                    confidence: 0.68,
+                    rationale: "Субъект в целом читается.",
+                    evidence: [EvidenceRef(source: .semantics, key: "readability.subjectReadable", value: "true", confidence: 0.8)]
+                )
+            ],
+            issues: [
+                FrameIssue(
+                    id: "issue-background-competes",
+                    type: .backgroundCompetesWithSubject,
+                    severity: 0.62,
+                    confidence: 0.74,
+                    rationale: "Предмет рядом с лицом конкурирует с героем.",
+                    evidence: [EvidenceRef(source: .semantics, key: "dominance.focusCompetitionScore", value: "0.30", confidence: 0.74)],
+                    affectedRegion: NormalizedRect(x: 0.34, y: 0.18, width: 0.14, height: 0.24),
+                    suggestedFixTypes: [.angleAdjustment]
+                )
+            ],
+            summary: CritiqueSummary(id: "summary-1", shortVerdict: "Есть помеха у лица.", whyProblematic: "Предмет ломает контур героя."),
+            traceRefs: ["trace-1"],
+            fallbackUsed: false
+        )
+    }
+
+    private func makePlan(mode: AnalysisMode) -> RecommendationPlan {
+        RecommendationPlan(
+            frameId: "pause-frame-077",
+            mode: mode,
+            inputVerdict: .mixed,
+            primaryAction: RecommendationAction(
+                id: "action-remove",
+                actionType: .reduceBackgroundDistractions,
+                priority: 1,
+                targetRegion: NormalizedRect(x: 0.34, y: 0.18, width: 0.14, height: 0.24),
+                linkedIssueIds: ["issue-background-competes"],
+                expectedOutcome: "Контур лица станет чище.",
+                guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.5, suppressWhenMoving: false),
+                overlayHint: nil
+            ),
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.74
+        )
+    }
+}
+
 final class CameraAnalysisExplainabilityContractTests: XCTestCase {
 
     func testExplainabilityTraceBundleValidatesDeterministicChain() {

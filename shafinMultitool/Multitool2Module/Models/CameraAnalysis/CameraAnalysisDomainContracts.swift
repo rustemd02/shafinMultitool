@@ -502,7 +502,7 @@ struct SceneSemanticsReport: Codable, Equatable, Sendable {
 
 // MARK: - Contract 3: CritiqueReport
 
-enum IssueTypeV1: String, Codable, Sendable {
+enum IssueTypeV1: String, Codable, CaseIterable, Sendable {
     case subjectTooCloseToEdge = "subject_too_close_to_edge"
     case subjectNotProminentEnough = "subject_not_prominent_enough"
     case backgroundCompetesWithSubject = "background_competes_with_subject"
@@ -513,7 +513,7 @@ enum IssueTypeV1: String, Codable, Sendable {
     case horizonDistracts = "horizon_distracts"
 }
 
-enum StrengthTypeV1: String, Codable, Sendable {
+enum StrengthTypeV1: String, Codable, CaseIterable, Sendable {
     case goodSubjectIsolation = "good_subject_isolation"
     case goodLightEmphasis = "good_light_emphasis"
     case clearFocusHierarchy = "clear_focus_hierarchy"
@@ -644,7 +644,7 @@ struct CritiqueReport: Codable, Equatable, Sendable {
 
 // MARK: - Contract 4: RecommendationPlan
 
-enum ActionTypeV1: String, Codable, Sendable {
+enum ActionTypeV1: String, Codable, CaseIterable, Sendable {
     case moveFrameLeft = "move_frame_left"
     case moveFrameRight = "move_frame_right"
     case moveFrameUp = "move_frame_up"
@@ -1944,5 +1944,1318 @@ struct ExplainabilityTraceBundle: Codable, Equatable, Sendable {
 private extension RecommendationPlan {
     var allActions: [RecommendationAction] {
         [primaryAction].compactMap { $0 } + secondaryActions + deferredActions
+    }
+}
+
+// MARK: - PR-S01: Entity-Aware Semantic Tip Contract
+
+enum TargetEntityKind: String, Codable, CaseIterable, Sendable {
+    case person
+    case face
+    case object
+    case prop
+    case backgroundArea = "background_area"
+    case lightSource = "light_source"
+    case frame
+    case unknown
+}
+
+enum TargetEntityRole: String, Codable, CaseIterable, Sendable {
+    case primarySubject = "primary_subject"
+    case secondarySubject = "secondary_subject"
+    case foregroundObject = "foreground_object"
+    case backgroundObject = "background_object"
+    case distractingObject = "distracting_object"
+    case prop
+    case faceContourOccluder = "face_contour_occluder"
+    case lightTarget = "light_target"
+    case backgroundZone = "background_zone"
+    case wholeFrame = "whole_frame"
+}
+
+enum SemanticActionFrame: String, Codable, CaseIterable, Sendable {
+    case moveCamera = "move_camera"
+    case moveSubject = "move_subject"
+    case moveObject = "move_object"
+    case adjustLight = "adjust_light"
+    case wait
+}
+
+enum SemanticDirection: String, Codable, CaseIterable, Sendable {
+    case left
+    case right
+    case up
+    case down
+    case forward
+    case back
+    case none
+}
+
+enum VisualProblemType: String, Codable, CaseIterable, Sendable {
+    case subjectEdgePressure = "subject_edge_pressure"
+    case objectEdgePressure = "object_edge_pressure"
+    case tightFraming = "tight_framing"
+    case insufficientLookSpace = "insufficient_look_space"
+    case weakSubjectProminence = "weak_subject_prominence"
+    case weakObjectProminence = "weak_object_prominence"
+    case backgroundCompetition = "background_competition"
+    case backgroundClutter = "background_clutter"
+    case frontLightDeficit = "front_light_deficit"
+    case subjectBlendsIntoDarkBackground = "subject_blends_into_dark_background"
+    case brightBackgroundPull = "bright_background_pull"
+    case flatDepth = "flat_depth"
+    case weakSubjectBackgroundSeparation = "weak_subject_background_separation"
+    case cameraHeightMismatch = "camera_height_mismatch"
+    case perspectiveMismatch = "perspective_mismatch"
+    case unclearFocusHierarchy = "unclear_focus_hierarchy"
+    case propBreaksBalance = "prop_breaks_balance"
+    case objectConflictsWithSubject = "object_conflicts_with_subject"
+    case faceContourOcclusion = "face_contour_occlusion"
+    case tiltedHorizon = "tilted_horizon"
+    case timingBlockerInFrame = "timing_blocker_in_frame"
+}
+
+enum VisualStrengthType: String, Codable, CaseIterable, Sendable {
+    case cleanSubjectSeparation = "clean_subject_separation"
+    case flatteringLightDirection = "flattering_light_direction"
+    case clearFocusHierarchy = "clear_focus_hierarchy"
+    case balancedSceneComposition = "balanced_scene_composition"
+    case stableHorizon = "stable_horizon"
+    case readableDepthLayers = "readable_depth_layers"
+    case objectBalanceHolds = "object_balance_holds"
+    case frameReady = "frame_ready"
+}
+
+enum SemanticActionType: String, Codable, CaseIterable, Sendable {
+    case shiftFrameLeft = "shift_frame_left"
+    case shiftFrameRight = "shift_frame_right"
+    case shiftFrameUp = "shift_frame_up"
+    case shiftFrameDown = "shift_frame_down"
+    case stepBack = "step_back"
+    case stepCloser = "step_closer"
+    case lowerCamera = "lower_camera"
+    case raiseCamera = "raise_camera"
+    case changeCameraAngle = "change_camera_angle"
+    case levelHorizon = "level_horizon"
+    case rotateSubjectTowardLight = "rotate_subject_toward_light"
+    case moveSubjectLeft = "move_subject_left"
+    case moveSubjectRight = "move_subject_right"
+    case moveSubjectAwayFromBackground = "move_subject_away_from_background"
+    case moveObjectLeft = "move_object_left"
+    case moveObjectRight = "move_object_right"
+    case moveObjectForward = "move_object_forward"
+    case moveObjectBack = "move_object_back"
+    case removeDistractingObject = "remove_distracting_object"
+    case repositionPropForBalance = "reposition_prop_for_balance"
+    case addFrontFillLight = "add_front_fill_light"
+    case addBackgroundLight = "add_background_light"
+    case removeBackgroundHotspot = "remove_background_hotspot"
+    case simplifyBackground = "simplify_background"
+    case waitForBackgroundClearance = "wait_for_background_clearance"
+    case keepCurrentSetup = "keep_current_setup"
+}
+
+enum SemanticTipType: String, Codable, CaseIterable, Sendable {
+    case createLookSpaceLeft = "create_look_space_left"
+    case createLookSpaceRight = "create_look_space_right"
+    case moveSubjectOffLeftEdge = "move_subject_off_left_edge"
+    case moveSubjectOffRightEdge = "move_subject_off_right_edge"
+    case moveObjectOffLeftEdge = "move_object_off_left_edge"
+    case moveObjectOffRightEdge = "move_object_off_right_edge"
+    case addHeadroom = "add_headroom"
+    case showMoreLowerFrame = "show_more_lower_frame"
+    case stepBackForBreathingRoom = "step_back_for_breathing_room"
+    case stepCloserForSubjectProminence = "step_closer_for_subject_prominence"
+    case stepCloserForObjectProminence = "step_closer_for_object_prominence"
+    case lowerCameraForSubject = "lower_camera_for_subject"
+    case raiseCameraForSubject = "raise_camera_for_subject"
+    case changeAngleForCleanerBackground = "change_angle_for_cleaner_background"
+    case addDepthByMovingSubjectFromBackground = "add_depth_by_moving_subject_from_background"
+    case addDepthByMovingObjectForward = "add_depth_by_moving_object_forward"
+    case moveObjectBackForBalance = "move_object_back_for_balance"
+    case moveSubjectLeftForBalance = "move_subject_left_for_balance"
+    case moveSubjectRightForBalance = "move_subject_right_for_balance"
+    case moveObjectLeftForBalance = "move_object_left_for_balance"
+    case moveObjectRightForBalance = "move_object_right_for_balance"
+    case removeObjectFromFaceContour = "remove_object_from_face_contour"
+    case removeDistractingProp = "remove_distracting_prop"
+    case rebalancePropLayout = "rebalance_prop_layout"
+    case turnSubjectTowardLight = "turn_subject_toward_light"
+    case addFrontFillOnSubject = "add_front_fill_on_subject"
+    case addBackgroundLightForSeparation = "add_background_light_for_separation"
+    case removeBrightSpotBehindSubject = "remove_bright_spot_behind_subject"
+    case clarifyMainSubjectFocus = "clarify_main_subject_focus"
+    case simplifyBusyBackground = "simplify_busy_background"
+    case waitForBackgroundClearance = "wait_for_background_clearance"
+    case levelHorizonForStability = "level_horizon_for_stability"
+    case keepSubjectSeparation = "keep_subject_separation"
+    case keepLightDirection = "keep_light_direction"
+    case keepFocusHierarchy = "keep_focus_hierarchy"
+    case keepHorizonStability = "keep_horizon_stability"
+    case keepDepthReadability = "keep_depth_readability"
+    case keepObjectBalance = "keep_object_balance"
+    case keepFrameAsIs = "keep_frame_as_is"
+}
+
+enum SemanticTipPriorityBand: String, Codable, CaseIterable, Sendable {
+    case primaryCorrective = "primary_corrective"
+    case secondaryCorrective = "secondary_corrective"
+    case contextualCorrective = "contextual_corrective"
+    case timingCorrective = "timing_corrective"
+    case positiveConfirmation = "positive_confirmation"
+}
+
+enum SemanticTipFallback: String, Codable, CaseIterable, Sendable {
+    case suppress
+    case degradeToGenericLabel = "degrade_to_generic_label"
+    case degradeToGenericActionCopy = "degrade_to_generic_action_copy"
+    case replaceWithKeepFrameAsIs = "replace_with_keep_frame_as_is"
+    case useLegacySuggestion = "use_legacy_suggestion"
+}
+
+struct SemanticTipDefinition: Codable, Equatable, Sendable {
+    let tipType: SemanticTipType
+    let actionType: SemanticActionType
+    let actionFrame: SemanticActionFrame
+    let direction: SemanticDirection
+    let targetEntityKind: TargetEntityKind
+    let targetEntityRole: TargetEntityRole
+    let problemTypes: [VisualProblemType]
+    let strengthTypes: [VisualStrengthType]
+    let supportedModes: [AnalysisMode]
+    let priorityBand: SemanticTipPriorityBand
+    let fallbackBehavior: SemanticTipFallback
+
+    var isCorrective: Bool {
+        !problemTypes.isEmpty
+    }
+
+    var isPositive: Bool {
+        priorityBand == .positiveConfirmation
+    }
+
+    func validate() -> [String] {
+        var errors: [String] = []
+
+        if supportedModes.isEmpty {
+            errors.append("semantic tip definition must support at least one mode")
+        }
+
+        if isPositive {
+            if strengthTypes.isEmpty {
+                errors.append("positive semantic tip definition requires strengthTypes")
+            }
+            if !problemTypes.isEmpty {
+                errors.append("positive semantic tip definition must not include problemTypes")
+            }
+        } else if problemTypes.isEmpty {
+            errors.append("corrective semantic tip definition requires problemTypes")
+        }
+
+        if actionFrame == .wait && actionType != .waitForBackgroundClearance {
+            errors.append("wait actionFrame requires wait_for_background_clearance action")
+        }
+
+        if actionType == .waitForBackgroundClearance && actionFrame != .wait {
+            errors.append("wait_for_background_clearance requires wait actionFrame")
+        }
+
+        if actionType == .keepCurrentSetup && priorityBand != .positiveConfirmation {
+            errors.append("keep_current_setup is reserved for positive confirmation tips")
+        }
+
+        return errors
+    }
+}
+
+struct SemanticTipCandidate: Codable, Equatable, Sendable {
+    let tipType: SemanticTipType
+    let actionType: SemanticActionType
+    let actionFrame: SemanticActionFrame
+    let direction: SemanticDirection?
+    let problemType: VisualProblemType?
+    let strengthType: VisualStrengthType?
+    let targetEntityKind: TargetEntityKind
+    let targetEntityRole: TargetEntityRole
+    let targetEntityRef: String?
+    let targetEntityGroundingConfidence: Double?
+    let targetEntityDisplayLabel: String
+    let secondaryEntityRef: String?
+    let secondaryEntityGroundingConfidence: Double?
+    let secondaryEntityDisplayLabel: String?
+    let primaryActionId: String?
+    let linkedActionIds: [String]
+    let linkedIssueIds: [String]
+    let linkedStrengthIds: [String]
+    let linkedTraceIds: [String]
+    let summaryId: String?
+    let supportedModes: [AnalysisMode]
+    let priorityBand: SemanticTipPriorityBand
+    let liveText: String
+    let pauseText: String
+    let fallbackBehavior: SemanticTipFallback
+
+    func validate() -> [String] {
+        var errors: [String] = []
+
+        if supportedModes.isEmpty {
+            errors.append("semantic tip must support at least one mode")
+        }
+
+        if liveText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || pauseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errors.append("semantic tip copy must be non-empty")
+        }
+
+        if liveText.count > 90 {
+            errors.append("liveText must be <= 90 characters")
+        }
+
+        if !SemanticDisplayLabelPolicy.isAllowedDisplayLabel(targetEntityDisplayLabel, for: targetEntityKind) {
+            errors.append("targetEntityDisplayLabel must follow safe label policy")
+        }
+
+        if let secondaryEntityDisplayLabel,
+           !SemanticDisplayLabelPolicy.isAllowedDisplayLabel(secondaryEntityDisplayLabel) {
+            errors.append("secondaryEntityDisplayLabel must follow safe label policy")
+        }
+
+        if SemanticDisplayLabelPolicy.isGroundedObjectDisplayLabel(targetEntityDisplayLabel),
+           targetEntityRef?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            errors.append("grounded targetEntityDisplayLabel requires targetEntityRef")
+        }
+
+        if let targetEntityGroundingConfidence,
+           !SemanticDisplayLabelPolicy.isValidConfidence(targetEntityGroundingConfidence) {
+            errors.append("targetEntityGroundingConfidence must be between 0 and 1")
+        }
+
+        if SemanticDisplayLabelPolicy.isGroundedObjectDisplayLabel(targetEntityDisplayLabel),
+           targetEntityGroundingConfidence.map(SemanticDisplayLabelPolicy.isHighConfidenceGrounding) != true {
+            errors.append("grounded targetEntityDisplayLabel requires high-confidence grounding")
+        }
+
+        if let secondaryEntityDisplayLabel,
+           SemanticDisplayLabelPolicy.isGroundedObjectDisplayLabel(secondaryEntityDisplayLabel),
+           secondaryEntityRef?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            errors.append("grounded secondaryEntityDisplayLabel requires secondaryEntityRef")
+        }
+
+        if let secondaryEntityGroundingConfidence,
+           !SemanticDisplayLabelPolicy.isValidConfidence(secondaryEntityGroundingConfidence) {
+            errors.append("secondaryEntityGroundingConfidence must be between 0 and 1")
+        }
+
+        if let secondaryEntityDisplayLabel,
+           SemanticDisplayLabelPolicy.isGroundedObjectDisplayLabel(secondaryEntityDisplayLabel),
+           secondaryEntityGroundingConfidence.map(SemanticDisplayLabelPolicy.isHighConfidenceGrounding) != true {
+            errors.append("grounded secondaryEntityDisplayLabel requires high-confidence grounding")
+        }
+
+        if let definition = SemanticTipCatalog.definition(for: tipType) {
+            if actionType != definition.actionType {
+                errors.append("semantic tip actionType must match catalog definition")
+            }
+
+            if actionFrame != definition.actionFrame {
+                errors.append("semantic tip actionFrame must match catalog definition")
+            }
+
+            if let direction, direction != definition.direction {
+                errors.append("semantic tip direction must match catalog definition")
+            }
+
+            if targetEntityKind != definition.targetEntityKind {
+                errors.append("semantic tip targetEntityKind must match catalog definition")
+            }
+
+            if targetEntityRole != definition.targetEntityRole {
+                errors.append("semantic tip targetEntityRole must match catalog definition")
+            }
+
+            if !Set(supportedModes).isSubset(of: Set(definition.supportedModes)) {
+                errors.append("semantic tip supportedModes must be subset of catalog definition")
+            }
+
+            if priorityBand != definition.priorityBand {
+                errors.append("semantic tip priorityBand must match catalog definition")
+            }
+
+            if fallbackBehavior != definition.fallbackBehavior {
+                errors.append("semantic tip fallbackBehavior must match catalog definition")
+            }
+
+            if let problemType, !definition.problemTypes.contains(problemType) {
+                errors.append("semantic tip problemType must match catalog definition")
+            }
+
+            if let strengthType, !definition.strengthTypes.contains(strengthType) {
+                errors.append("semantic tip strengthType must match catalog definition")
+            }
+        }
+
+        if priorityBand == .positiveConfirmation {
+            if strengthType == nil && summaryId == nil {
+                errors.append("positive tip requires strengthType or summaryId")
+            }
+            if summaryId == nil {
+                errors.append("positive tip requires summaryId")
+            }
+            if problemType != nil || !linkedIssueIds.isEmpty {
+                errors.append("positive tip must not link corrective issue anchors")
+            }
+        } else {
+            if problemType == nil {
+                errors.append("corrective tip requires problemType")
+            }
+            if linkedIssueIds.isEmpty {
+                errors.append("corrective tip requires linkedIssueIds")
+            }
+            if primaryActionId == nil && linkedActionIds.isEmpty {
+                errors.append("corrective tip requires primaryActionId or linkedActionIds")
+            }
+        }
+
+        if linkedTraceIds.isEmpty {
+            errors.append("semantic tip requires linkedTraceIds")
+        }
+
+        if actionType == .keepCurrentSetup && priorityBand != .positiveConfirmation {
+            errors.append("keep_current_setup is reserved for positive confirmation tips")
+        }
+
+        if actionFrame == .wait && actionType != .waitForBackgroundClearance {
+            errors.append("wait actionFrame requires wait_for_background_clearance action")
+        }
+
+        if actionType == .waitForBackgroundClearance && actionFrame != .wait {
+            errors.append("wait_for_background_clearance requires wait actionFrame")
+        }
+
+        if tipType == .removeObjectFromFaceContour {
+            if secondaryEntityRef?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                errors.append("remove_object_from_face_contour requires secondaryEntityRef")
+            }
+            if secondaryEntityDisplayLabel == nil {
+                errors.append("remove_object_from_face_contour requires secondaryEntityDisplayLabel")
+            }
+        }
+
+        return errors
+    }
+}
+
+enum GroundedObjectDisplayLabelV1: String, CaseIterable, Sendable {
+    case flower = "цветок"
+    case vase = "ваза"
+    case book = "книга"
+    case cup = "чашка"
+    case bottle = "бутылка"
+    case lamp = "лампа"
+    case chair = "стул"
+    case phone = "телефон"
+}
+
+enum SemanticDisplayLabelPolicy {
+    static let minimumGroundedObjectConfidence = 0.75
+    static let personLabels: Set<String> = ["герой", "человек", "лицо", "персонаж"]
+    static let genericObjectLabels: Set<String> = ["предмет", "объект", "объект справа", "яркий объект на фоне", "предмет у лица"]
+    static let relationLabels: Set<String> = ["у лица", "на фоне", "фон", "свет", "за героем", "у края кадра"]
+    static let groundedObjectLabels = Set(GroundedObjectDisplayLabelV1.allCases.map(\.rawValue))
+
+    static func displayLabel(entityKind: TargetEntityKind,
+                             role: TargetEntityRole,
+                             groundedLabel: String?,
+                             confidence: Double,
+                             direction: SemanticDirection? = nil) -> String {
+        switch entityKind {
+        case .face:
+            return "лицо"
+        case .person:
+            return role == .primarySubject ? "герой" : "человек"
+        case .object, .prop:
+            let normalizedGroundedLabel = groundedLabel?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if isHighConfidenceGrounding(confidence),
+               let normalizedGroundedLabel,
+               groundedObjectLabels.contains(normalizedGroundedLabel) {
+                return normalizedGroundedLabel
+            }
+            if role == .faceContourOccluder {
+                return "предмет у лица"
+            }
+            if role == .backgroundObject {
+                return "яркий объект на фоне"
+            }
+            if direction == .right {
+                return "объект справа"
+            }
+            return "предмет"
+        case .backgroundArea:
+            return "фон"
+        case .lightSource:
+            return "свет"
+        case .frame:
+            return "кадр"
+        case .unknown:
+            return "предмет"
+        }
+    }
+
+    static func isAllowedDisplayLabel(_ label: String) -> Bool {
+        personLabels.contains(label)
+            || genericObjectLabels.contains(label)
+            || relationLabels.contains(label)
+            || groundedObjectLabels.contains(label)
+            || label == "кадр"
+    }
+
+    static func isAllowedDisplayLabel(_ label: String, for entityKind: TargetEntityKind) -> Bool {
+        switch entityKind {
+        case .face:
+            return label == "лицо"
+        case .person:
+            return personLabels.contains(label)
+        case .object, .prop, .unknown:
+            return genericObjectLabels.contains(label) || groundedObjectLabels.contains(label)
+        case .backgroundArea:
+            return label == "фон" || relationLabels.contains(label) || genericObjectLabels.contains(label)
+        case .lightSource:
+            return label == "свет"
+        case .frame:
+            return label == "кадр"
+        }
+    }
+
+    static func isGroundedObjectDisplayLabel(_ label: String) -> Bool {
+        groundedObjectLabels.contains(label)
+    }
+
+    static func isValidConfidence(_ confidence: Double) -> Bool {
+        (0...1).contains(confidence)
+    }
+
+    static func isHighConfidenceGrounding(_ confidence: Double) -> Bool {
+        isValidConfidence(confidence) && confidence >= minimumGroundedObjectConfidence
+    }
+}
+
+enum SemanticTipCatalog {
+    static let v1Actions: Set<SemanticActionType> = Set(SemanticActionType.allCases)
+
+    static let deferredActions: Set<String> = [
+        "add_rim_light",
+        "add_side_light",
+        "turn_subject_for_cleaner_profile"
+    ]
+
+    static let definitions: [SemanticTipDefinition] = [
+        .init(tipType: .createLookSpaceLeft, actionType: .shiftFrameLeft, actionFrame: .moveCamera, direction: .left, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [.insufficientLookSpace], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .createLookSpaceRight, actionType: .shiftFrameRight, actionFrame: .moveCamera, direction: .right, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [.insufficientLookSpace], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .moveSubjectOffLeftEdge, actionType: .shiftFrameRight, actionFrame: .moveCamera, direction: .right, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.subjectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .moveSubjectOffRightEdge, actionType: .shiftFrameLeft, actionFrame: .moveCamera, direction: .left, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.subjectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .moveObjectOffLeftEdge, actionType: .moveObjectRight, actionFrame: .moveObject, direction: .right, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.objectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .moveObjectOffRightEdge, actionType: .moveObjectLeft, actionFrame: .moveObject, direction: .left, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.objectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .addHeadroom, actionType: .shiftFrameUp, actionFrame: .moveCamera, direction: .up, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.tightFraming], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .showMoreLowerFrame, actionType: .shiftFrameDown, actionFrame: .moveCamera, direction: .down, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.tightFraming], strengthTypes: [], supportedModes: [.pause], priorityBand: .contextualCorrective, fallbackBehavior: .suppress),
+        .init(tipType: .stepBackForBreathingRoom, actionType: .stepBack, actionFrame: .moveCamera, direction: .back, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [.tightFraming], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .stepCloserForSubjectProminence, actionType: .stepCloser, actionFrame: .moveCamera, direction: .forward, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.weakSubjectProminence], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .stepCloserForObjectProminence, actionType: .stepCloser, actionFrame: .moveCamera, direction: .forward, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.weakObjectProminence], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .lowerCameraForSubject, actionType: .lowerCamera, actionFrame: .moveCamera, direction: .down, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.cameraHeightMismatch, .perspectiveMismatch], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .raiseCameraForSubject, actionType: .raiseCamera, actionFrame: .moveCamera, direction: .up, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.cameraHeightMismatch, .perspectiveMismatch], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .changeAngleForCleanerBackground, actionType: .changeCameraAngle, actionFrame: .moveCamera, direction: .none, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [.backgroundCompetition, .perspectiveMismatch], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .useLegacySuggestion),
+        .init(tipType: .addDepthByMovingSubjectFromBackground, actionType: .moveSubjectAwayFromBackground, actionFrame: .moveSubject, direction: .back, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.weakSubjectBackgroundSeparation, .flatDepth], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .addDepthByMovingObjectForward, actionType: .moveObjectForward, actionFrame: .moveObject, direction: .forward, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.weakObjectProminence, .flatDepth], strengthTypes: [], supportedModes: [.pause], priorityBand: .contextualCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .moveObjectBackForBalance, actionType: .moveObjectBack, actionFrame: .moveObject, direction: .back, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.objectConflictsWithSubject, .propBreaksBalance], strengthTypes: [], supportedModes: [.pause], priorityBand: .contextualCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .moveSubjectLeftForBalance, actionType: .moveSubjectLeft, actionFrame: .moveSubject, direction: .left, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.backgroundCompetition, .unclearFocusHierarchy], strengthTypes: [], supportedModes: [.pause], priorityBand: .contextualCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .moveSubjectRightForBalance, actionType: .moveSubjectRight, actionFrame: .moveSubject, direction: .right, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.backgroundCompetition, .unclearFocusHierarchy], strengthTypes: [], supportedModes: [.pause], priorityBand: .contextualCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .moveObjectLeftForBalance, actionType: .moveObjectLeft, actionFrame: .moveObject, direction: .left, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.propBreaksBalance, .objectConflictsWithSubject], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .moveObjectRightForBalance, actionType: .moveObjectRight, actionFrame: .moveObject, direction: .right, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.propBreaksBalance, .objectConflictsWithSubject], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .removeObjectFromFaceContour, actionType: .removeDistractingObject, actionFrame: .moveObject, direction: .none, targetEntityKind: .prop, targetEntityRole: .faceContourOccluder, problemTypes: [.faceContourOcclusion, .objectConflictsWithSubject], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .removeDistractingProp, actionType: .removeDistractingObject, actionFrame: .moveObject, direction: .none, targetEntityKind: .prop, targetEntityRole: .distractingObject, problemTypes: [.objectConflictsWithSubject, .backgroundCompetition], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .rebalancePropLayout, actionType: .repositionPropForBalance, actionFrame: .moveObject, direction: .none, targetEntityKind: .prop, targetEntityRole: .prop, problemTypes: [.propBreaksBalance, .weakObjectProminence], strengthTypes: [], supportedModes: [.pause], priorityBand: .contextualCorrective, fallbackBehavior: .degradeToGenericLabel),
+        .init(tipType: .turnSubjectTowardLight, actionType: .rotateSubjectTowardLight, actionFrame: .moveSubject, direction: .none, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.frontLightDeficit], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .addFrontFillOnSubject, actionType: .addFrontFillLight, actionFrame: .adjustLight, direction: .none, targetEntityKind: .lightSource, targetEntityRole: .lightTarget, problemTypes: [.frontLightDeficit], strengthTypes: [], supportedModes: [.pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .addBackgroundLightForSeparation, actionType: .addBackgroundLight, actionFrame: .adjustLight, direction: .none, targetEntityKind: .backgroundArea, targetEntityRole: .backgroundZone, problemTypes: [.subjectBlendsIntoDarkBackground, .weakSubjectBackgroundSeparation], strengthTypes: [], supportedModes: [.pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .removeBrightSpotBehindSubject, actionType: .removeBackgroundHotspot, actionFrame: .adjustLight, direction: .none, targetEntityKind: .backgroundArea, targetEntityRole: .backgroundZone, problemTypes: [.brightBackgroundPull], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .clarifyMainSubjectFocus, actionType: .stepCloser, actionFrame: .moveCamera, direction: .forward, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.unclearFocusHierarchy], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .simplifyBusyBackground, actionType: .simplifyBackground, actionFrame: .moveObject, direction: .none, targetEntityKind: .backgroundArea, targetEntityRole: .backgroundZone, problemTypes: [.backgroundClutter], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .useLegacySuggestion),
+        .init(tipType: .waitForBackgroundClearance, actionType: .waitForBackgroundClearance, actionFrame: .wait, direction: .none, targetEntityKind: .object, targetEntityRole: .backgroundObject, problemTypes: [.timingBlockerInFrame], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .timingCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .levelHorizonForStability, actionType: .levelHorizon, actionFrame: .moveCamera, direction: .none, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [.tiltedHorizon], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .keepSubjectSeparation, actionType: .keepCurrentSetup, actionFrame: .moveCamera, direction: .none, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [], strengthTypes: [.cleanSubjectSeparation], supportedModes: [.live, .pause], priorityBand: .positiveConfirmation, fallbackBehavior: .replaceWithKeepFrameAsIs),
+        .init(tipType: .keepLightDirection, actionType: .keepCurrentSetup, actionFrame: .adjustLight, direction: .none, targetEntityKind: .lightSource, targetEntityRole: .lightTarget, problemTypes: [], strengthTypes: [.flatteringLightDirection], supportedModes: [.live, .pause], priorityBand: .positiveConfirmation, fallbackBehavior: .replaceWithKeepFrameAsIs),
+        .init(tipType: .keepFocusHierarchy, actionType: .keepCurrentSetup, actionFrame: .moveCamera, direction: .none, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [], strengthTypes: [.clearFocusHierarchy], supportedModes: [.live, .pause], priorityBand: .positiveConfirmation, fallbackBehavior: .replaceWithKeepFrameAsIs),
+        .init(tipType: .keepHorizonStability, actionType: .keepCurrentSetup, actionFrame: .moveCamera, direction: .none, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [], strengthTypes: [.stableHorizon], supportedModes: [.live, .pause], priorityBand: .positiveConfirmation, fallbackBehavior: .replaceWithKeepFrameAsIs),
+        .init(tipType: .keepDepthReadability, actionType: .keepCurrentSetup, actionFrame: .moveCamera, direction: .none, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [], strengthTypes: [.readableDepthLayers], supportedModes: [.live, .pause], priorityBand: .positiveConfirmation, fallbackBehavior: .replaceWithKeepFrameAsIs),
+        .init(tipType: .keepObjectBalance, actionType: .keepCurrentSetup, actionFrame: .moveObject, direction: .none, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [], strengthTypes: [.objectBalanceHolds], supportedModes: [.live, .pause], priorityBand: .positiveConfirmation, fallbackBehavior: .replaceWithKeepFrameAsIs),
+        .init(tipType: .keepFrameAsIs, actionType: .keepCurrentSetup, actionFrame: .moveCamera, direction: .none, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [], strengthTypes: [.balancedSceneComposition, .frameReady], supportedModes: [.live, .pause], priorityBand: .positiveConfirmation, fallbackBehavior: .useLegacySuggestion)
+    ]
+
+    static let issueTipCoverage: [IssueTypeV1: Set<SemanticTipType>] = [
+        .subjectTooCloseToEdge: [.moveSubjectOffLeftEdge, .moveSubjectOffRightEdge, .moveObjectOffLeftEdge, .moveObjectOffRightEdge, .addHeadroom, .showMoreLowerFrame, .stepBackForBreathingRoom, .lowerCameraForSubject, .raiseCameraForSubject],
+        .subjectNotProminentEnough: [.stepCloserForSubjectProminence, .stepCloserForObjectProminence, .addDepthByMovingSubjectFromBackground, .addDepthByMovingObjectForward, .addBackgroundLightForSeparation],
+        .backgroundCompetesWithSubject: [.changeAngleForCleanerBackground, .moveSubjectLeftForBalance, .moveSubjectRightForBalance, .moveObjectLeftForBalance, .moveObjectRightForBalance, .moveObjectBackForBalance, .removeObjectFromFaceContour, .removeDistractingProp, .rebalancePropLayout, .removeBrightSpotBehindSubject],
+        .insufficientLookSpace: [.createLookSpaceLeft, .createLookSpaceRight],
+        .backlightHidesSubject: [.turnSubjectTowardLight, .addFrontFillOnSubject, .addBackgroundLightForSeparation, .removeBrightSpotBehindSubject],
+        .sceneHasNoClearFocus: [.clarifyMainSubjectFocus, .simplifyBusyBackground, .moveSubjectLeftForBalance, .moveSubjectRightForBalance],
+        .frameVisuallyOverloaded: [.simplifyBusyBackground, .waitForBackgroundClearance, .removeDistractingProp],
+        .horizonDistracts: [.levelHorizonForStability]
+    ]
+
+    static let strengthTipCoverage: [StrengthTypeV1: Set<SemanticTipType>] = [
+        .goodSubjectIsolation: [.keepSubjectSeparation, .keepDepthReadability],
+        .goodLightEmphasis: [.keepLightDirection],
+        .clearFocusHierarchy: [.keepFocusHierarchy, .keepDepthReadability],
+        .stableHorizonSupportsScene: [.keepHorizonStability],
+        .balancedCompositionForScene: [.keepObjectBalance, .keepFrameAsIs]
+    ]
+
+    static func definition(for tipType: SemanticTipType) -> SemanticTipDefinition? {
+        definitions.first { $0.tipType == tipType }
+    }
+}
+
+// MARK: - PR-S02: VLM Visual Semantic Evidence Contract
+
+enum VLMEvidenceSchemaVersion: String, Codable, CaseIterable, Sendable {
+    case s1
+}
+
+enum VLMVisualEvidenceDimension: String, Codable, CaseIterable, Sendable {
+    case subjectReadability = "subject_readability"
+    case backgroundSeparation = "background_separation"
+    case lightingRelation = "lighting_relation"
+    case clutter
+    case depth
+    case faceVisibility = "face_visibility"
+    case frameIntent = "frame_intent"
+    case moodPreservation = "mood_preservation"
+}
+
+enum VLMEntityKind: String, Codable, CaseIterable, Sendable {
+    case person
+    case face
+    case object
+    case prop
+    case backgroundArea = "background_area"
+    case lightSource = "light_source"
+    case frame
+    case unknown
+}
+
+enum VLMEntityRelationType: String, Codable, CaseIterable, Sendable {
+    case competesWith = "competes_with"
+    case mergesWith = "merges_with"
+    case blocks
+    case pullsAttentionFrom = "pulls_attention_from"
+}
+
+enum VLMEvidencePolarity: String, Codable, CaseIterable, Sendable {
+    case supportsProblem = "supports_problem"
+    case supportsStrength = "supports_strength"
+    case neutralContext = "neutral_context"
+}
+
+enum VLMUncertaintyReason: String, Codable, CaseIterable, Sendable {
+    case lowVisualConfidence = "low_visual_confidence"
+    case occludedEntity = "occluded_entity"
+    case ambiguousSubject = "ambiguous_subject"
+    case ambiguousObjectLabel = "ambiguous_object_label"
+    case weakGrounding = "weak_grounding"
+    case privacyRedaction = "privacy_redaction"
+    case insufficientResolution = "insufficient_resolution"
+    case conflictingLocalContext = "conflicting_local_context"
+    case moodIntentAmbiguous = "mood_intent_ambiguous"
+}
+
+enum VLMResponseStatus: String, Codable, CaseIterable, Sendable {
+    case completed
+    case refused
+    case unavailable
+}
+
+enum VLMTrigger: String, Codable, CaseIterable, Sendable {
+    case explicitUserRequest = "explicit_user_request"
+    case ambiguousLocalCase = "ambiguous_local_case"
+    case fusionDisagreementProbe = "fusion_disagreement_probe"
+    case partialLocalFailure = "partial_local_failure"
+    case evalSampling = "eval_sampling"
+}
+
+enum VLMPrivacyTier: String, Codable, CaseIterable, Sendable {
+    case structuredOnly = "structured_only"
+    case redactedVisual = "redacted_visual"
+}
+
+enum VLMVisualInputAttachmentKind: String, Codable, CaseIterable, Sendable {
+    case redactedStill = "redacted_still"
+    case redactedSubjectCrop = "redacted_subject_crop"
+}
+
+enum VLMEvidenceViolation: String, Codable, CaseIterable, Sendable {
+    case modeNotPause = "mode_not_pause"
+    case requestMismatch = "request_mismatch"
+    case unknownEntityRef = "unknown_entity_ref"
+    case unknownIssueId = "unknown_issue_id"
+    case unknownStrengthId = "unknown_strength_id"
+    case unknownActionId = "unknown_action_id"
+    case unknownProblemType = "unknown_problem_type"
+    case unknownStrengthType = "unknown_strength_type"
+    case unknownDimension = "unknown_dimension"
+    case unsafeSpecificLabel = "unsafe_specific_label"
+    case labelWithoutGrounding = "label_without_grounding"
+    case contradictoryKeepAndCorrect = "contradictory_keep_and_correct"
+    case attemptsToChangeVerdict = "attempts_to_change_verdict"
+    case attemptsToChangeTaxonomy = "attempts_to_change_taxonomy"
+    case outputTooLong = "output_too_long"
+    case privacyTierMismatch = "privacy_tier_mismatch"
+    case malformedJSON = "malformed_json"
+}
+
+struct VLMVisualInput: Codable, Equatable, Sendable {
+    let attachmentKind: VLMVisualInputAttachmentKind
+    let mediaRef: String
+    let longEdgePx: Int
+    let exifStripped: Bool
+    let redactionApplied: Bool
+    let redactionNotes: [String]
+
+    func validate() -> [VLMEvidenceViolation] {
+        var violations: [VLMEvidenceViolation] = []
+
+        if mediaRef.isEmpty || longEdgePx <= 0 || longEdgePx > 1024 || !exifStripped || !redactionApplied {
+            violations.append(.privacyTierMismatch)
+        }
+
+        return violations
+    }
+}
+
+struct VLMGroundedEntity: Codable, Equatable, Sendable {
+    let entityRef: String
+    let kind: VLMEntityKind
+    let role: TargetEntityRole
+    let region: NormalizedRect?
+    let detectorLabel: String?
+    let detectorConfidence: Double?
+    let displayLabelCandidate: String
+    let displayLabelConfidence: Double
+}
+
+struct SemanticTipDraftContext: Codable, Equatable, Sendable {
+    let draftId: String
+    let tipType: SemanticTipType?
+    let actionType: SemanticActionType
+    let actionFrame: SemanticActionFrame
+    let targetEntityRef: String?
+    let targetEntityKind: VLMEntityKind
+    let targetEntityDisplayLabel: String
+    let linkedIssueIds: [String]
+    let linkedStrengthIds: [String]
+    let linkedActionIds: [String]
+    let priorityBand: SemanticTipPriorityBand?
+}
+
+struct NeuralEvidenceScoreSummary: Codable, Equatable, Sendable {
+    let headId: EvidenceHeadId
+    let score: Double?
+    let confidence: Double
+    let status: EvidenceHeadStatus
+}
+
+struct NeuralEvidenceSummary: Codable, Equatable, Sendable {
+    let schemaVersion: String
+    let availableHeadIds: [EvidenceHeadId]
+    let unavailableHeadIds: [EvidenceHeadId]
+    let notableScores: [NeuralEvidenceScoreSummary]
+}
+
+struct VLMVisualEvidenceLocalContext: Codable, Equatable, Sendable {
+    let frameFeatureSnapshotExcerpt: [String: String]
+    let sceneSemantics: SceneSemanticsReport
+    let critique: CritiqueReport
+    let recommendationPlan: RecommendationPlan
+    let semanticTipDrafts: [SemanticTipDraftContext]
+    let groundedEntities: [VLMGroundedEntity]
+    let localNeuralEvidenceSummary: NeuralEvidenceSummary?
+}
+
+struct VLMAllowedSemanticCatalog: Codable, Equatable, Sendable {
+    let catalogVersion: String
+    let allowedEvidenceDimensions: [VLMVisualEvidenceDimension]
+    let allowedVisualProblemTypes: [VisualProblemType]
+    let allowedVisualStrengthTypes: [VisualStrengthType]
+    let allowedSemanticActionTypes: [SemanticActionType]
+    let allowedGroundedObjectDisplayLabels: [String]
+    let allowedGenericDisplayLabels: [String]
+
+    static let prS01 = VLMAllowedSemanticCatalog(
+        catalogVersion: "PR-S01-2026-05-04",
+        allowedEvidenceDimensions: VLMVisualEvidenceDimension.allCases,
+        allowedVisualProblemTypes: VisualProblemType.allCases,
+        allowedVisualStrengthTypes: VisualStrengthType.allCases,
+        allowedSemanticActionTypes: SemanticActionType.allCases,
+        allowedGroundedObjectDisplayLabels: Array(SemanticDisplayLabelPolicy.groundedObjectLabels).sorted(),
+        allowedGenericDisplayLabels: Array(
+            SemanticDisplayLabelPolicy.personLabels
+                .union(SemanticDisplayLabelPolicy.genericObjectLabels)
+                .union(SemanticDisplayLabelPolicy.relationLabels)
+                .union(["кадр", "свет"])
+        ).sorted()
+    )
+}
+
+struct VLMVisualEvidenceConstraints: Codable, Equatable, Sendable {
+    let maxObservations: Int
+    let maxRelations: Int
+    let maxSuggestedActionIds: Int
+    let maxExplanationChars: Int
+    let allowMoodPreservation: Bool
+    let requireEntityGroundingForSpecificLabels: Bool
+    let failClosedOnUnknownIds: Bool
+
+    static let `default` = VLMVisualEvidenceConstraints(
+        maxObservations: 8,
+        maxRelations: 6,
+        maxSuggestedActionIds: 4,
+        maxExplanationChars: 600,
+        allowMoodPreservation: true,
+        requireEntityGroundingForSpecificLabels: true,
+        failClosedOnUnknownIds: true
+    )
+}
+
+struct VLMVisualEvidenceCorrelation: Codable, Equatable, Sendable {
+    let localCritiqueSummaryId: String
+    let localPlanSummaryId: String?
+    let semanticCatalogVersion: String
+    let offloadingSchemaVersion: String?
+    let providerConfigVersion: String
+    let sessionEphemeralId: String?
+}
+
+struct VLMVisualEvidenceRequest: Codable, Equatable, Sendable {
+    let schemaVersion: VLMEvidenceSchemaVersion
+    let requestId: String
+    let frameId: String
+    let mode: AnalysisMode
+    let locale: String
+    let privacyTier: VLMPrivacyTier
+    let trigger: VLMTrigger?
+    let visualInput: VLMVisualInput?
+    let localContext: VLMVisualEvidenceLocalContext
+    let allowedCatalog: VLMAllowedSemanticCatalog
+    let constraints: VLMVisualEvidenceConstraints
+    let correlation: VLMVisualEvidenceCorrelation
+
+    func validate() -> [VLMEvidenceViolation] {
+        var violations: [VLMEvidenceViolation] = []
+
+        if requestId.isEmpty || frameId.isEmpty || localContext.critique.frameId != frameId || localContext.recommendationPlan.frameId != frameId {
+            violations.append(.requestMismatch)
+        }
+
+        if mode != .pause || localContext.sceneSemantics.mode != .pause || localContext.critique.mode != .pause || localContext.recommendationPlan.mode != .pause {
+            violations.append(.modeNotPause)
+        }
+
+        if constraints.maxObservations < 0 || constraints.maxRelations < 0 || constraints.maxSuggestedActionIds < 0 || constraints.maxExplanationChars < 0 {
+            violations.append(.requestMismatch)
+        }
+
+        switch privacyTier {
+        case .structuredOnly:
+            if visualInput != nil {
+                violations.append(.privacyTierMismatch)
+            }
+        case .redactedVisual:
+            guard let visualInput else {
+                violations.append(.privacyTierMismatch)
+                break
+            }
+            violations.append(contentsOf: visualInput.validate())
+        }
+
+        return Array(Set(violations)).sortedByRawValue()
+    }
+}
+
+struct VLMVisualEvidenceObservation: Codable, Equatable, Sendable {
+    let observationId: String
+    let dimension: VLMVisualEvidenceDimension
+    let polarity: VLMEvidencePolarity
+    let score: Double
+    let confidence: Double
+    let uncertaintyReasons: [VLMUncertaintyReason]
+    let primaryEntityRef: String?
+    let secondaryEntityRef: String?
+    let visualProblemType: VisualProblemType?
+    let visualStrengthType: VisualStrengthType?
+    let supportedIssueIds: [String]
+    let supportedStrengthIds: [String]
+    let suggestedActionIds: [SemanticActionType]
+    let evidenceNote: String?
+}
+
+struct VLMEntityRelation: Codable, Equatable, Sendable {
+    let relationId: String
+    let sourceEntityRef: String
+    let targetEntityRef: String?
+    let relationType: VLMEntityRelationType
+    let dimension: VLMVisualEvidenceDimension
+    let score: Double
+    let confidence: Double
+    let uncertaintyReasons: [VLMUncertaintyReason]
+    let supportedObservationIds: [String]
+}
+
+struct VLMSecondaryExplanation: Codable, Equatable, Sendable {
+    let language: String
+    let summary: String
+    let caveats: [String]
+}
+
+struct VLMEvidenceSafetyReport: Codable, Equatable, Sendable {
+    let passed: Bool
+    let violations: [VLMEvidenceViolation]
+}
+
+struct VLMEvidenceDiagnostics: Codable, Equatable, Sendable {
+    let latencyMs: Int?
+    let providerModelFamily: String?
+    let providerModelVersion: String?
+    let promptVersion: String
+    let privacyTier: VLMPrivacyTier
+    let fallbackReason: String?
+}
+
+struct VLMVisualEvidenceResponse: Codable, Equatable, Sendable {
+    let schemaVersion: VLMEvidenceSchemaVersion
+    let requestId: String
+    let frameId: String
+    let mode: AnalysisMode
+    let providerId: String
+    let status: VLMResponseStatus
+    let primaryEntityRef: String?
+    let primaryEntityKind: VLMEntityKind
+    let primaryEntityDisplayLabelCandidate: String
+    let primaryEntityLabelConfidence: Double
+    let secondaryEntityRef: String?
+    let secondaryEntityKind: VLMEntityKind?
+    let secondaryEntityDisplayLabelCandidate: String?
+    let secondaryEntityLabelConfidence: Double?
+    let observations: [VLMVisualEvidenceObservation]
+    let relations: [VLMEntityRelation]
+    let suggestedActionIds: [SemanticActionType]
+    let explanation: VLMSecondaryExplanation?
+    let safety: VLMEvidenceSafetyReport
+    let diagnostics: VLMEvidenceDiagnostics
+
+    func validate(against request: VLMVisualEvidenceRequest) -> VLMEvidenceValidationResult {
+        VLMVisualEvidenceValidator(request: request, response: self).validate()
+    }
+}
+
+enum VLMEvidenceFallback: String, Codable, CaseIterable, Sendable {
+    case useValidatedEvidence = "use_validated_evidence"
+    case deterministicOnly = "deterministic_only"
+    case deterministicWithGenericLabels = "deterministic_with_generic_labels"
+}
+
+struct VLMEvidenceValidationResult: Codable, Equatable, Sendable {
+    let requestId: String
+    let frameId: String
+    let accepted: Bool
+    let acceptedObservations: [VLMVisualEvidenceObservation]
+    let acceptedRelations: [VLMEntityRelation]
+    let acceptedSuggestedActionIds: [SemanticActionType]
+    let acceptedPrimaryLabel: String
+    let acceptedSecondaryLabel: String?
+    let violations: [VLMEvidenceViolation]
+    let fallback: VLMEvidenceFallback
+}
+
+private struct VLMVisualEvidenceValidator {
+    let request: VLMVisualEvidenceRequest
+    let response: VLMVisualEvidenceResponse
+
+    func validate() -> VLMEvidenceValidationResult {
+        var violations = request.validate()
+        var hardReject = !violations.isEmpty
+
+        if response.requestId != request.requestId || response.frameId != request.frameId || response.schemaVersion != request.schemaVersion {
+            violations.append(.requestMismatch)
+            hardReject = true
+        }
+
+        if response.mode != .pause || response.mode != request.mode {
+            violations.append(.modeNotPause)
+            hardReject = true
+        }
+
+        if response.diagnostics.privacyTier != request.privacyTier {
+            violations.append(.privacyTierMismatch)
+            hardReject = true
+        }
+
+        if response.status != .completed {
+            hardReject = true
+        }
+
+        if !response.safety.passed {
+            violations.append(contentsOf: response.safety.violations)
+            hardReject = true
+        }
+
+        if response.explanation?.summary.count ?? 0 > request.constraints.maxExplanationChars {
+            violations.append(.outputTooLong)
+        }
+
+        let allowedActions = Set(request.allowedCatalog.allowedSemanticActionTypes)
+        let responseActionSet = Set(response.suggestedActionIds)
+        if !responseActionSet.isSubset(of: allowedActions) {
+            violations.append(.unknownActionId)
+            hardReject = true
+        }
+
+        if response.suggestedActionIds.count > request.constraints.maxSuggestedActionIds {
+            violations.append(.outputTooLong)
+            hardReject = true
+        }
+
+        if responseActionSet.contains(.keepCurrentSetup) && responseActionSet.contains(where: { $0 != .keepCurrentSetup }) {
+            violations.append(.contradictoryKeepAndCorrect)
+            hardReject = true
+        }
+
+        let groundedEntityRefs = Set(request.localContext.groundedEntities.map(\.entityRef))
+        if let primaryEntityRef = response.primaryEntityRef, !groundedEntityRefs.contains(primaryEntityRef) {
+            violations.append(.unknownEntityRef)
+            hardReject = true
+        }
+        if let secondaryEntityRef = response.secondaryEntityRef, !groundedEntityRefs.contains(secondaryEntityRef) {
+            violations.append(.unknownEntityRef)
+            hardReject = true
+        }
+
+        let labelResult = validateLabels(knownEntityRefs: groundedEntityRefs)
+        violations.append(contentsOf: labelResult.violations)
+
+        if response.observations.count > request.constraints.maxObservations || response.relations.count > request.constraints.maxRelations {
+            violations.append(.outputTooLong)
+        }
+
+        if hardReject {
+            return result(
+                accepted: false,
+                observations: [],
+                relations: [],
+                suggestedActionIds: [],
+                primaryLabel: labelResult.primaryLabel,
+                secondaryLabel: labelResult.secondaryLabel,
+                violations: violations,
+                fallback: .deterministicOnly
+            )
+        }
+
+        let acceptedObservations = validateObservations(violations: &violations, allowedActions: allowedActions, groundedEntityRefs: groundedEntityRefs)
+        let acceptedObservationIds = Set(acceptedObservations.map(\.observationId))
+        let acceptedRelations = validateRelations(violations: &violations,
+                                                  groundedEntityRefs: groundedEntityRefs,
+                                                  acceptedObservationIds: acceptedObservationIds)
+
+        if acceptedObservations.isEmpty {
+            return result(
+                accepted: false,
+                observations: [],
+                relations: [],
+                suggestedActionIds: [],
+                primaryLabel: labelResult.primaryLabel,
+                secondaryLabel: labelResult.secondaryLabel,
+                violations: violations,
+                fallback: .deterministicOnly
+            )
+        }
+
+        let fallback: VLMEvidenceFallback = labelResult.requiresGenericFallback ? .deterministicWithGenericLabels : .useValidatedEvidence
+        return result(
+            accepted: true,
+            observations: acceptedObservations,
+            relations: acceptedRelations,
+            suggestedActionIds: response.suggestedActionIds,
+            primaryLabel: labelResult.primaryLabel,
+            secondaryLabel: labelResult.secondaryLabel,
+            violations: violations,
+            fallback: fallback
+        )
+    }
+
+    private func validateLabels(knownEntityRefs: Set<String>) -> (primaryLabel: String, secondaryLabel: String?, requiresGenericFallback: Bool, violations: [VLMEvidenceViolation]) {
+        var violations: [VLMEvidenceViolation] = []
+        var requiresGenericFallback = false
+
+        let primary = acceptedLabel(
+            candidate: response.primaryEntityDisplayLabelCandidate,
+            confidence: response.primaryEntityLabelConfidence,
+            entityRef: response.primaryEntityRef,
+            kind: response.primaryEntityKind,
+            role: .primarySubject,
+            knownEntityRefs: knownEntityRefs,
+            violations: &violations,
+            requiresGenericFallback: &requiresGenericFallback
+        )
+
+        let secondary: String?
+        if let secondaryCandidate = response.secondaryEntityDisplayLabelCandidate,
+           let secondaryKind = response.secondaryEntityKind {
+            secondary = acceptedLabel(
+                candidate: secondaryCandidate,
+                confidence: response.secondaryEntityLabelConfidence ?? 0.0,
+                entityRef: response.secondaryEntityRef,
+                kind: secondaryKind,
+                role: .distractingObject,
+                knownEntityRefs: knownEntityRefs,
+                violations: &violations,
+                requiresGenericFallback: &requiresGenericFallback
+            )
+        } else {
+            secondary = nil
+        }
+
+        return (primary, secondary, requiresGenericFallback, violations)
+    }
+
+    private func acceptedLabel(candidate: String,
+                               confidence: Double,
+                               entityRef: String?,
+                               kind: VLMEntityKind,
+                               role: TargetEntityRole,
+                               knownEntityRefs: Set<String>,
+                               violations: inout [VLMEvidenceViolation],
+                               requiresGenericFallback: inout Bool) -> String {
+        let normalized = candidate.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let targetKind = kind.targetEntityKind
+        let generic = SemanticDisplayLabelPolicy.displayLabel(
+            entityKind: targetKind,
+            role: role,
+            groundedLabel: nil,
+            confidence: 0.0
+        )
+
+        guard isAllowedDisplayLabelByContract(normalized) else {
+            violations.append(.unsafeSpecificLabel)
+            requiresGenericFallback = true
+            return generic
+        }
+
+        if request.allowedCatalog.allowedGroundedObjectDisplayLabels.contains(normalized) {
+            let isGrounded = entityRef.map { knownEntityRefs.contains($0) } ?? false
+            let matchesStructuredOnlySource = request.privacyTier == .redactedVisual || request.localContext.groundedEntities.contains {
+                $0.entityRef == entityRef && normalizeDisplayLabel($0.displayLabelCandidate) == normalized
+            }
+
+            if confidence < 0.75 || !isGrounded || !matchesStructuredOnlySource {
+                violations.append(isGrounded ? .unsafeSpecificLabel : .labelWithoutGrounding)
+                requiresGenericFallback = true
+                return generic
+            }
+        }
+
+        return normalized
+    }
+
+    private func isAllowedDisplayLabelByContract(_ label: String) -> Bool {
+        SemanticDisplayLabelPolicy.isAllowedDisplayLabel(label)
+            && (
+                request.allowedCatalog.allowedGenericDisplayLabels.contains(label)
+                || request.allowedCatalog.allowedGroundedObjectDisplayLabels.contains(label)
+            )
+    }
+
+    private func normalizeDisplayLabel(_ label: String) -> String {
+        label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func validateObservations(violations: inout [VLMEvidenceViolation],
+                                      allowedActions: Set<SemanticActionType>,
+                                      groundedEntityRefs: Set<String>) -> [VLMVisualEvidenceObservation] {
+        let issueIds = Set(request.localContext.critique.issues.map(\.id))
+        let strengthIds = Set(request.localContext.critique.strengths.map(\.id))
+        var seenObservationIds: Set<String> = []
+
+        return response.observations.prefix(request.constraints.maxObservations).compactMap { observation in
+            var isValid = true
+
+            if observation.observationId.isEmpty || seenObservationIds.contains(observation.observationId) {
+                isValid = false
+            }
+            seenObservationIds.insert(observation.observationId)
+
+            if !request.allowedCatalog.allowedEvidenceDimensions.contains(observation.dimension) {
+                violations.append(.unknownDimension)
+                isValid = false
+            }
+
+            if !isUnitRange(observation.score) || !isUnitRange(observation.confidence) {
+                violations.append(.outputTooLong)
+                isValid = false
+            }
+
+            if observation.confidence < 0.45 && observation.uncertaintyReasons.isEmpty {
+                isValid = false
+            }
+
+            if let primaryEntityRef = observation.primaryEntityRef, !groundedEntityRefs.contains(primaryEntityRef) {
+                violations.append(.unknownEntityRef)
+                isValid = false
+            }
+
+            if let secondaryEntityRef = observation.secondaryEntityRef, !groundedEntityRefs.contains(secondaryEntityRef) {
+                violations.append(.unknownEntityRef)
+                isValid = false
+            }
+
+            switch observation.polarity {
+            case .supportsProblem:
+                if observation.visualProblemType == nil || !observation.supportedStrengthIds.isEmpty {
+                    violations.append(.unknownProblemType)
+                    isValid = false
+                }
+            case .supportsStrength:
+                if observation.visualStrengthType == nil || !observation.supportedIssueIds.isEmpty {
+                    violations.append(.unknownStrengthType)
+                    isValid = false
+                }
+            case .neutralContext:
+                break
+            }
+
+            if let visualProblemType = observation.visualProblemType,
+               !request.allowedCatalog.allowedVisualProblemTypes.contains(visualProblemType) {
+                violations.append(.unknownProblemType)
+                isValid = false
+            }
+
+            if let visualStrengthType = observation.visualStrengthType,
+               !request.allowedCatalog.allowedVisualStrengthTypes.contains(visualStrengthType) {
+                violations.append(.unknownStrengthType)
+                isValid = false
+            }
+
+            if observation.supportedIssueIds.contains(where: { !issueIds.contains($0) }) {
+                violations.append(.unknownIssueId)
+                isValid = false
+            }
+
+            if observation.supportedStrengthIds.contains(where: { !strengthIds.contains($0) }) {
+                violations.append(.unknownStrengthId)
+                isValid = false
+            }
+
+            if !Set(observation.suggestedActionIds).isSubset(of: allowedActions)
+                || !Set(observation.suggestedActionIds).isSubset(of: Set(response.suggestedActionIds)) {
+                violations.append(.unknownActionId)
+                isValid = false
+            }
+
+            return isValid ? observation : nil
+        }
+    }
+
+    private func validateRelations(violations: inout [VLMEvidenceViolation],
+                                   groundedEntityRefs: Set<String>,
+                                   acceptedObservationIds: Set<String>) -> [VLMEntityRelation] {
+        var seenRelationIds: Set<String> = []
+
+        return response.relations.prefix(request.constraints.maxRelations).compactMap { relation in
+            var isValid = true
+
+            if relation.relationId.isEmpty || seenRelationIds.contains(relation.relationId) {
+                isValid = false
+            }
+            seenRelationIds.insert(relation.relationId)
+
+            if !groundedEntityRefs.contains(relation.sourceEntityRef) {
+                violations.append(.unknownEntityRef)
+                isValid = false
+            }
+
+            if let targetEntityRef = relation.targetEntityRef, !groundedEntityRefs.contains(targetEntityRef) {
+                violations.append(.unknownEntityRef)
+                isValid = false
+            }
+
+            if !request.allowedCatalog.allowedEvidenceDimensions.contains(relation.dimension) {
+                violations.append(.unknownDimension)
+                isValid = false
+            }
+
+            if !isUnitRange(relation.score) || !isUnitRange(relation.confidence) {
+                violations.append(.outputTooLong)
+                isValid = false
+            }
+
+            if relation.supportedObservationIds.isEmpty || relation.supportedObservationIds.contains(where: { !acceptedObservationIds.contains($0) }) {
+                isValid = false
+            }
+
+            return isValid ? relation : nil
+        }
+    }
+
+    private func result(accepted: Bool,
+                        observations: [VLMVisualEvidenceObservation],
+                        relations: [VLMEntityRelation],
+                        suggestedActionIds: [SemanticActionType],
+                        primaryLabel: String,
+                        secondaryLabel: String?,
+                        violations: [VLMEvidenceViolation],
+                        fallback: VLMEvidenceFallback) -> VLMEvidenceValidationResult {
+        VLMEvidenceValidationResult(
+            requestId: request.requestId,
+            frameId: request.frameId,
+            accepted: accepted,
+            acceptedObservations: observations,
+            acceptedRelations: relations,
+            acceptedSuggestedActionIds: suggestedActionIds,
+            acceptedPrimaryLabel: primaryLabel,
+            acceptedSecondaryLabel: secondaryLabel,
+            violations: Array(Set(violations)).sortedByRawValue(),
+            fallback: fallback
+        )
+    }
+
+    private func isUnitRange(_ value: Double) -> Bool {
+        value.isFinite && value >= 0.0 && value <= 1.0
+    }
+}
+
+private extension VLMEntityKind {
+    var targetEntityKind: TargetEntityKind {
+        switch self {
+        case .person:
+            return .person
+        case .face:
+            return .face
+        case .object:
+            return .object
+        case .prop:
+            return .prop
+        case .backgroundArea:
+            return .backgroundArea
+        case .lightSource:
+            return .lightSource
+        case .frame:
+            return .frame
+        case .unknown:
+            return .unknown
+        }
+    }
+}
+
+private extension Array where Element == VLMEvidenceViolation {
+    func sortedByRawValue() -> [VLMEvidenceViolation] {
+        sorted { $0.rawValue < $1.rawValue }
     }
 }

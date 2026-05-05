@@ -881,3 +881,60 @@ Done definition:
 - есть system metrics for mobile;
 - есть ablation story;
 - есть demo-ready before/after explanation.
+
+## Semantic Screen Tip Track
+
+## Track 18. Semantic Tip Taxonomy and Screen Guidance
+
+Задачи:
+- зафиксировать closed catalog semantic tips;
+- связать findings и actions с коротким live/pause copy;
+- определить positive tip path;
+- подготовить bounded bridge для future `VLM` semantic evidence.
+
+Done definition:
+- есть deterministic mapping `evidence -> issue/strength -> tip -> copy`;
+- catalog остается закрытым и actionable;
+- positive и corrective tips не конфликтуют;
+- будущий `VLM` не может invent-ить новые tip/action ids.
+
+## Semantic Screen Tip PR Pipeline
+
+### PR-S01. Semantic Tip Taxonomy and Action Catalog
+
+Цель:
+- ввести source-of-truth catalog экранных semantic tips.
+
+Скоуп:
+- `docs/cameraanalysis/*`
+- optional contract-safe types в `Models/CameraAnalysis/*`
+- mapping/contract tests
+
+Артефакт:
+- closed `SemanticTipType` / `SemanticActionType` catalog
+- `VisualProblemType` / `VisualStrengthType`
+- copy templates and priority policy
+- зафиксированный source-of-truth doc: [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md)
+
+Зависимости:
+- `PR-007`, `PR-008`
+- compatibility target: `PR-H02`, `PR-H06`, `PR-H09`
+
+### PR-S02. VLM Visual Semantic Evidence Contract
+
+Цель:
+- описать machine-validated semantic evidence handoff от `VLM`/remote critic без free-form decision source.
+
+Скоуп:
+- `docs/cameraanalysis/*`
+- optional schema/types/tests
+
+Артефакт:
+- request/response contract
+- allowed semantic evidence fields
+- allowed `suggestedActionIds`, совместимые с `PR-S01`
+- зафиксированный source-of-truth doc: [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md)
+
+Зависимости:
+- `PR-S01`
+- `PR-H12` для offloading compatibility

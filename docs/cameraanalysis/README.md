@@ -41,6 +41,11 @@
 - hybrid eval harness для `PR-H14` зафиксирован в [23-hybrid-eval-harness.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/23-hybrid-eval-harness.md)
 - agent prompts для hybrid stage добавлены в [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md)
 
+Если хочется перейти к этапу `semantic screen tips`:
+- closed catalog semantic tips для `PR-S01` зафиксирован в [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md)
+- VLM visual semantic evidence contract для `PR-S02` зафиксирован в [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md)
+- prompts для semantic stage добавлены в [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md)
+
 ## Главная идея
 
 Для `camera analysis v1` нельзя делать ставку только на:
@@ -85,6 +90,8 @@
 - [21-hybrid-fusion-layer.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/21-hybrid-fusion-layer.md): source-of-truth bounded fusion, weighting and calibration policy для `PR-H09`
 - [22-offloading-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/22-offloading-contract.md): source-of-truth gated offloading contract для `PR-H12`
 - [23-hybrid-eval-harness.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/23-hybrid-eval-harness.md): source-of-truth hybrid eval harness, ablation compare и mobile/explainability gates для `PR-H14`
+- [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md): source-of-truth semantic tip taxonomy, action catalog и screen-tip copy contract для `PR-S01`
+- [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md): source-of-truth VLM visual semantic evidence request/response contract для `PR-S02`
 - [camera-analysis-requirements-draft.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-requirements-draft.md): требования и продуктовые решения
 - [camera-analysis-v1-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-v1-architecture.md): подробная архитектура
 - [11-implementation-backlog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/11-implementation-backlog.md): tracks и PR-пайплайн

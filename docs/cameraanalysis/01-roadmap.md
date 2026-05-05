@@ -214,6 +214,25 @@ PR wave:
 - `PR-H15 hybrid runtime telemetry`
 - `PR-H16 thesis demo bundle`
 
+## Phase 9. Semantic Screen Tips
+
+Цель:
+- превратить deterministic/hybrid findings в короткие entity-aware экранные подсказки и подготовить bounded VLM evidence path.
+
+Задачи:
+- зафиксировать closed semantic tip/action catalog;
+- определить VLM visual evidence request/response contract;
+- запретить VLM invent-ить новые ids, labels и final verdict;
+- сохранить deterministic-only fallback для `live` и `pause`.
+
+Артефакты:
+- semantic tip taxonomy source-of-truth inside [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md)
+- VLM visual semantic evidence source-of-truth inside [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md)
+
+PR wave:
+- `PR-S01 semantic tip taxonomy and action catalog`
+- `PR-S02 VLM visual semantic evidence contract`
+
 ## Рекомендуемый порядок реализации
 
 1. `PR-001`
@@ -247,6 +266,8 @@ PR wave:
 29. `PR-H14`
 30. `PR-H15`
 31. `PR-H16`
+32. `PR-S01`
+33. `PR-S02`
 
 ## Что можно запускать параллельно
 
@@ -257,6 +278,7 @@ PR wave:
 - `PR-H03` + частично `PR-H04`
 - `PR-H10` + `PR-H12` после стабилизации fusion contract
 - `PR-H15` + `PR-H16` после появления первых hybrid eval outputs
+- `PR-S02` после `PR-S01` и offloading contract `PR-H12`
 
 ## Что нельзя делать раньше времени
 
