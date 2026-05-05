@@ -223,15 +223,23 @@ PR wave:
 - зафиксировать closed semantic tip/action catalog;
 - определить VLM visual evidence request/response contract;
 - запретить VLM invent-ить новые ids, labels и final verdict;
+- собрать teacher-reviewed dataset loop для semantic tips;
 - сохранить deterministic-only fallback для `live` и `pause`.
 
 Артефакты:
 - semantic tip taxonomy source-of-truth inside [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md)
 - VLM visual semantic evidence source-of-truth inside [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md)
+- pause VLM provider prototype source-of-truth inside [27-pause-vlm-evidence-provider-prototype.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/27-pause-vlm-evidence-provider-prototype.md)
+- semantic tip dataset source-of-truth inside [28-vlm-labeled-semantic-tip-dataset.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/28-vlm-labeled-semantic-tip-dataset.md)
+- on-device semantic distillation source-of-truth inside [29-on-device-semantic-evidence-distillation-plan.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/29-on-device-semantic-evidence-distillation-plan.md)
 
 PR wave:
 - `PR-S01 semantic tip taxonomy and action catalog`
 - `PR-S02 VLM visual semantic evidence contract`
+- `PR-S03 pause VLM evidence provider prototype`
+- `PR-S04 semantic fusion and tip planner`
+- `PR-S06 VLM-labeled semantic tip dataset`
+- `PR-S07 on-device semantic evidence distillation plan`
 
 ## Рекомендуемый порядок реализации
 
@@ -268,6 +276,10 @@ PR wave:
 31. `PR-H16`
 32. `PR-S01`
 33. `PR-S02`
+34. `PR-S03`
+35. `PR-S04`
+36. `PR-S06`
+37. `PR-S07`
 
 ## Что можно запускать параллельно
 
@@ -279,6 +291,8 @@ PR wave:
 - `PR-H10` + `PR-H12` после стабилизации fusion contract
 - `PR-H15` + `PR-H16` после появления первых hybrid eval outputs
 - `PR-S02` после `PR-S01` и offloading contract `PR-H12`
+- `PR-S06` после `PR-S02` и `PR-S04`, когда teacher outputs уже можно сравнивать с bounded semantic planner
+- `PR-S07` после `PR-S06` и при готовых mobile/eval assumptions из `PR-H05`, `PR-H07`, `PR-H14`
 
 ## Что нельзя делать раньше времени
 

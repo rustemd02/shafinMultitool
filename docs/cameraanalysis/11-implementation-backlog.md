@@ -939,6 +939,31 @@ Done definition:
 - `PR-S01`
 - `PR-H12` для offloading compatibility
 
+### PR-S03. Pause VLM Evidence Provider Prototype
+
+Цель:
+- реализовать отключаемый `pause-only` prototype provider layer для runtime handoff по контракту `PR-S02` без ломки deterministic baseline.
+
+Скоуп:
+- `docs/cameraanalysis/*`
+- `Services/Reasoning/*` или новый соседний `Services/VisualEvidence/*`
+- `Services/Pipeline/AnalysisPipeline.swift`
+- `Models/CameraAnalysis/*`
+- `shafinMultitoolTests/*CameraAnalysis*`
+
+Артефакт:
+- `VisualSemanticEvidenceProvider` protocol/facade
+- `MockVLMVisualEvidenceProvider`
+- optional `RemoteVLMVisualEvidenceProvider` placeholder (non-mandatory)
+- pause-only wiring `deterministic -> provider -> validation -> planner`
+- timeout/cancel/fallback policy + telemetry
+- зафиксированный source-of-truth doc: [27-pause-vlm-evidence-provider-prototype.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/27-pause-vlm-evidence-provider-prototype.md)
+
+Зависимости:
+- `PR-S02`
+- `PR-H12` (privacy/offloading boundaries)
+- compatibility target: `PR-S04`, `PR-H14`
+
 ### PR-S04. Semantic Fusion and Tip Planner
 
 Цель:
@@ -960,5 +985,84 @@ Done definition:
 Зависимости:
 - `PR-S01`
 - `PR-S02`
+- `PR-S03`
 - `PR-008`
 - compatibility target: `PR-H09`, `PR-009`, `PR-010`
+
+## Track 19. Semantic Tip Teacher Dataset
+
+Задачи:
+- собрать teacher-reviewed dataset loop для semantic tips;
+- хранить deterministic baseline рядом с VLM evidence;
+- фиксировать entity-aware target labels и human overrides;
+- экспортировать hard cases без raw private images по умолчанию;
+- связать reviewed labels с eval и будущей distillation.
+
+Done definition:
+- есть schema для `record -> teacher submission -> reviewed final tip`;
+- provenance/privacy поля обязательны и проверяемы;
+- `VLM` suggestion не становится gold без review;
+- starter fixtures покрывают camera/subject/object/light/wait cases;
+- reviewed labels можно проектировать в eval и distillation-ready targets.
+
+### PR-S06. VLM-Labeled Semantic Tip Dataset
+
+Цель:
+- подготовить dataset loop, где `VLM` используется как teacher для semantic tips, а final labels проходят human review.
+
+Скоуп:
+- `docs/cameraanalysis/*`
+- `docs/cameraanalysis/eval/*` для fixtures/templates
+- без app runtime changes
+
+Артефакт:
+- record/review schema для semantic tip dataset
+- hard-case export/import contract
+- starter synthetic/demo fixtures
+- QA checklist and eval compatibility note
+- зафиксированный source-of-truth doc: [28-vlm-labeled-semantic-tip-dataset.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/28-vlm-labeled-semantic-tip-dataset.md)
+
+Зависимости:
+- `PR-S01`
+- `PR-S02`
+- `PR-S04`
+- compatibility target: `PR-H14`, `PR-S07`
+
+## Track 20. On-Device Semantic Distillation
+
+Задачи:
+- перенести часть `pause` semantic evidence с `VLM teacher` на компактную локальную модель;
+- дистиллировать только structured evidence heads, а не финальный текст;
+- сохранить entity-aware target selection без device-side name generation;
+- встроить локальный semantic path в mobile-first eval и fallback discipline.
+
+Done definition:
+- есть source-of-truth plan по distillation targets, loss, Core ML path и rollout;
+- reviewed semantic tip dataset проектируется в trainable targets без свободного текста;
+- planner остается финальным decision layer;
+- локальный distilled path можно сравнить с `deterministic_only` и `pause VLM teacher` по quality и mobile metrics.
+
+### PR-S07. On-Device Semantic Evidence Distillation Plan
+
+Цель:
+- спроектировать путь `teacher VLM -> reviewed dataset -> compact on-device semantic evidence model -> deterministic semantic tip planner`.
+
+Скоуп:
+- `docs/cameraanalysis/*`
+- optional offline training/eval notes under `docs/cameraanalysis/eval/*`
+- без app runtime/UI изменений в рамках design-этапа
+
+Артефакт:
+- distillation target bundle
+- training label projection rules
+- loss and model assumptions
+- Core ML conversion path
+- latency/memory/eval/fallback plan
+- зафиксированный source-of-truth doc: [29-on-device-semantic-evidence-distillation-plan.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/29-on-device-semantic-evidence-distillation-plan.md)
+
+Зависимости:
+- `PR-S01`
+- `PR-S02`
+- `PR-S04`
+- `PR-S06`
+- compatibility target: `PR-H05`, `PR-H07`, `PR-H14`

@@ -1433,6 +1433,7 @@ final class AnalysisPipeline: ObservableObject {
     private let recommendationPlanner = RecommendationPlanner()
     private let semanticTipPlanner = SemanticTipPlanner()
     private let pauseReasoningCoordinator: PauseReasoningCoordinator
+    private let visualSemanticEvidenceCoordinator: VisualSemanticEvidenceCoordinator
     private let neuralEvidenceService: NeuralEvidenceInferenceService?
     private let thermalGovernor: ThermalGovernor
     private let neuralHeavyModelsEnabledProvider: () -> Bool
@@ -1481,10 +1482,12 @@ final class AnalysisPipeline: ObservableObject {
     private let maxOverlayHz: Double = 8.0
 
     init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider(),
+         visualEvidenceProvider: VisualSemanticEvidenceProvider? = VisualSemanticEvidenceProviderFactory.makeDefaultProvider(),
          neuralEvidenceService: NeuralEvidenceInferenceService? = NeuralEvidenceInferenceService.makeDefault(),
          thermalGovernor: ThermalGovernor = ThermalGovernor(),
          neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true }) {
         self.pauseReasoningCoordinator = PauseReasoningCoordinator(provider: reasoningProvider)
+        self.visualSemanticEvidenceCoordinator = VisualSemanticEvidenceCoordinator(provider: visualEvidenceProvider)
         self.neuralEvidenceService = neuralEvidenceService
         self.thermalGovernor = thermalGovernor
         self.neuralHeavyModelsEnabledProvider = neuralHeavyModelsEnabledProvider
@@ -2126,13 +2129,27 @@ final class AnalysisPipeline: ObservableObject {
 
                     let critique = fusionOutput.critique
                     let plan = self.recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+                    let visualEvidenceResult = await self.resolvePauseVisualEvidence(
+                        snapshot: snapshot,
+                        semantics: semantics,
+                        critique: critique,
+                        plan: plan,
+                        neuralOutcome: pauseNeuralOutcome
+                    )
+                    let stillCurrentAfterEvidence = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
+                    guard stillCurrentAfterEvidence else { return }
+                    let validatedVisualEvidence = self.logAndExtractValidatedVisualEvidence(
+                        visualEvidenceResult,
+                        frameId: snapshot.frameId
+                    )
                     let semanticTips = self.semanticTipPlanner.plan(
                         input: SemanticTipPlannerInput(
                             frameId: snapshot.frameId,
                             mode: .pause,
                             critique: critique,
                             recommendationPlan: plan,
-                            semantics: semantics
+                            semantics: semantics,
+                            validatedEvidence: validatedVisualEvidence
                         )
                     )
                     let structuredDecision = self.structuredPathDecision(
@@ -2594,6 +2611,439 @@ final class AnalysisPipeline: ObservableObject {
                 providerConfigVersion: providerConfigVersion
             )
         )
+    }
+
+    private func resolvePauseVisualEvidence(snapshot: FrameFeatureSnapshot,
+                                            semantics: SceneSemanticsReport,
+                                            critique: CritiqueReport,
+                                            plan: RecommendationPlan,
+                                            neuralOutcome: NeuralEvidenceRecordedOutcome?) async -> VisualEvidenceCoordinatorResult {
+        let request = makePauseVisualEvidenceRequest(
+            snapshot: snapshot,
+            semantics: semantics,
+            critique: critique,
+            plan: plan,
+            neuralOutcome: neuralOutcome
+        )
+        return await visualSemanticEvidenceCoordinator.fetchEvidence(request: request)
+    }
+
+    private func makePauseVisualEvidenceRequest(snapshot: FrameFeatureSnapshot,
+                                                semantics: SceneSemanticsReport,
+                                                critique: CritiqueReport,
+                                                plan: RecommendationPlan,
+                                                neuralOutcome: NeuralEvidenceRecordedOutcome?) -> VLMVisualEvidenceRequest {
+        let nowMs = Int(Date().timeIntervalSince1970 * 1000)
+        let requestId = "vlm_evd_\(snapshot.frameId)_\(nowMs)"
+        let providerConfigVersion = ProcessInfo.processInfo.environment["CAMERA_VLM_VISUAL_EVIDENCE_PROVIDER"] ?? "disabled"
+        let allowRedactedVisual = isEnabledEnvironmentFlag("CAMERA_VLM_VISUAL_EVIDENCE_ALLOW_VISUAL_INPUT")
+        let configuredPrivacyTier = ProcessInfo.processInfo.environment["CAMERA_VLM_VISUAL_EVIDENCE_PRIVACY_TIER"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let useRedactedVisual = allowRedactedVisual && configuredPrivacyTier == VLMPrivacyTier.redactedVisual.rawValue
+        let privacyTier: VLMPrivacyTier = useRedactedVisual ? .redactedVisual : .structuredOnly
+        let visualInput: VLMVisualInput? = useRedactedVisual
+            ? VLMVisualInput(
+                attachmentKind: .redactedStill,
+                mediaRef: "redacted://\(snapshot.frameId)",
+                longEdgePx: 768,
+                exifStripped: true,
+                redactionApplied: true,
+                redactionNotes: ["subject_only_redacted_still"]
+            )
+            : nil
+        let trigger: VLMTrigger = useRedactedVisual ? .explicitUserRequest : .ambiguousLocalCase
+        let localContext = VLMVisualEvidenceLocalContext(
+            frameFeatureSnapshotExcerpt: makeFrameFeatureSnapshotExcerpt(snapshot: snapshot),
+            sceneSemantics: semantics,
+            critique: critique,
+            recommendationPlan: plan,
+            semanticTipDrafts: makeSemanticTipDrafts(critique: critique, plan: plan, semantics: semantics),
+            groundedEntities: makeGroundedEntities(snapshot: snapshot, semantics: semantics, critique: critique),
+            localNeuralEvidenceSummary: makeNeuralEvidenceSummary(from: neuralOutcome)
+        )
+
+        return VLMVisualEvidenceRequest(
+            schemaVersion: .s1,
+            requestId: requestId,
+            frameId: snapshot.frameId,
+            mode: .pause,
+            locale: Locale.current.identifier,
+            privacyTier: privacyTier,
+            trigger: trigger,
+            visualInput: visualInput,
+            localContext: localContext,
+            allowedCatalog: .prS01,
+            constraints: .default,
+            correlation: VLMVisualEvidenceCorrelation(
+                localCritiqueSummaryId: critique.summary.id,
+                localPlanSummaryId: plan.primaryAction?.id,
+                semanticCatalogVersion: VLMAllowedSemanticCatalog.prS01.catalogVersion,
+                offloadingSchemaVersion: "h12",
+                providerConfigVersion: providerConfigVersion,
+                sessionEphemeralId: "pause-\(snapshot.frameId)"
+            )
+        )
+    }
+
+    private func makeFrameFeatureSnapshotExcerpt(snapshot: FrameFeatureSnapshot) -> [String: String] {
+        [
+            "mode": snapshot.mode.rawValue,
+            "scene_subject_kind": snapshot.subjectSignals.faceDetected ? "face" : (snapshot.subjectSignals.personDetected ? "person" : "object_or_unknown"),
+            "subject_area_ratio": String(format: "%.3f", snapshot.composition.subjectAreaRatio),
+            "edge_pressure": String(format: "%.3f", abs(snapshot.composition.horizontalOffset)),
+            "backlight_index": String(format: "%.3f", snapshot.lighting.backlightIndex),
+            "object_count": "\(snapshot.objects.totalCount)"
+        ]
+    }
+
+    private func makeSemanticTipDrafts(critique: CritiqueReport,
+                                       plan: RecommendationPlan,
+                                       semantics: SceneSemanticsReport) -> [SemanticTipDraftContext] {
+        let issuesById = Dictionary(uniqueKeysWithValues: critique.issues.map { ($0.id, $0) })
+        let actions = [plan.primaryAction].compactMap { $0 } + plan.secondaryActions + plan.deferredActions
+
+        return actions.enumerated().map { index, action in
+            let issue = action.linkedIssueIds.first.flatMap { issuesById[$0] }
+            let semanticActionType = semanticActionType(for: action.actionType)
+            let target = defaultDraftTarget(for: action, issue: issue, semantics: semantics)
+            let label = SemanticDisplayLabelPolicy.displayLabel(
+                entityKind: target.kind,
+                role: target.role,
+                groundedLabel: nil,
+                confidence: 0.0
+            )
+
+            return SemanticTipDraftContext(
+                draftId: "draft_\(plan.mode.rawValue)_\(index)_\(semanticActionType.rawValue)",
+                tipType: nil,
+                actionType: semanticActionType,
+                actionFrame: semanticActionFrame(for: semanticActionType),
+                targetEntityRef: target.entityRef,
+                targetEntityKind: vlmEntityKind(for: target.kind),
+                targetEntityDisplayLabel: label,
+                linkedIssueIds: action.linkedIssueIds,
+                linkedStrengthIds: [],
+                linkedActionIds: [action.id],
+                priorityBand: nil
+            )
+        }
+    }
+
+    private func defaultDraftTarget(for action: RecommendationAction,
+                                    issue: FrameIssue?,
+                                    semantics: SceneSemanticsReport) -> (kind: TargetEntityKind, role: TargetEntityRole, entityRef: String?) {
+        switch action.actionType {
+        case .moveFrameLeft, .moveFrameRight, .moveFrameUp, .moveFrameDown, .changeAngle:
+            if issue?.type == .backgroundCompetesWithSubject || issue?.type == .frameVisuallyOverloaded {
+                return (.backgroundArea, .backgroundZone, "ent-background")
+            }
+            return (.frame, .wholeFrame, "ent-frame")
+        case .increaseSubjectSize:
+            let kind = targetEntityKind(for: semantics.primarySubject.kind)
+            return (kind, .primarySubject, "ent-primary-subject")
+        case .reduceBackgroundDistractions:
+            return (.backgroundArea, .backgroundZone, "ent-background")
+        case .improveFrontLight:
+            return (.lightSource, .lightTarget, "ent-light")
+        case .levelHorizon:
+            return (.frame, .wholeFrame, "ent-frame")
+        case .leaveFrameAsIs:
+            return (.frame, .wholeFrame, "ent-frame")
+        }
+    }
+
+    private func makeGroundedEntities(snapshot: FrameFeatureSnapshot,
+                                      semantics: SceneSemanticsReport,
+                                      critique: CritiqueReport) -> [VLMGroundedEntity] {
+        var entities: [VLMGroundedEntity] = []
+
+        let subjectKind = targetEntityKind(for: semantics.primarySubject.kind)
+        let subjectLabel = SemanticDisplayLabelPolicy.displayLabel(
+            entityKind: subjectKind,
+            role: .primarySubject,
+            groundedLabel: nil,
+            confidence: semantics.primarySubject.confidence
+        )
+        entities.append(
+            VLMGroundedEntity(
+                entityRef: "ent-primary-subject",
+                kind: vlmEntityKind(for: subjectKind),
+                role: .primarySubject,
+                region: semantics.primarySubject.region,
+                detectorLabel: semantics.primarySubject.label,
+                detectorConfidence: semantics.primarySubject.confidence,
+                displayLabelCandidate: subjectLabel,
+                displayLabelConfidence: semantics.primarySubject.confidence
+            )
+        )
+
+        if let objectLabel = snapshot.subjectSignals.topObjectLabel {
+            let groundedLabel = groundedObjectLabelCandidate(from: objectLabel)
+            let objectConfidence = snapshot.subjectSignals.topObjectConfidence ?? 0.60
+            let displayLabel = SemanticDisplayLabelPolicy.displayLabel(
+                entityKind: .object,
+                role: .foregroundObject,
+                groundedLabel: groundedLabel,
+                confidence: objectConfidence
+            )
+
+            entities.append(
+                VLMGroundedEntity(
+                    entityRef: "ent-top-object",
+                    kind: .object,
+                    role: .foregroundObject,
+                    region: nil,
+                    detectorLabel: objectLabel,
+                    detectorConfidence: objectConfidence,
+                    displayLabelCandidate: displayLabel,
+                    displayLabelConfidence: objectConfidence
+                )
+            )
+        }
+
+        if critique.issues.contains(where: { $0.type == .backgroundCompetesWithSubject || $0.type == .frameVisuallyOverloaded }) {
+            entities.append(
+                VLMGroundedEntity(
+                    entityRef: "ent-background",
+                    kind: .backgroundArea,
+                    role: .backgroundZone,
+                    region: nil,
+                    detectorLabel: "background",
+                    detectorConfidence: 0.70,
+                    displayLabelCandidate: "фон",
+                    displayLabelConfidence: 0.70
+                )
+            )
+        }
+
+        if critique.issues.contains(where: { $0.type == .backlightHidesSubject }) {
+            entities.append(
+                VLMGroundedEntity(
+                    entityRef: "ent-light",
+                    kind: .lightSource,
+                    role: .lightTarget,
+                    region: nil,
+                    detectorLabel: "light_source",
+                    detectorConfidence: 0.60,
+                    displayLabelCandidate: "свет",
+                    displayLabelConfidence: 0.60
+                )
+            )
+        }
+
+        var seen: Set<String> = []
+        return entities.filter { entity in
+            if seen.contains(entity.entityRef) {
+                return false
+            }
+            seen.insert(entity.entityRef)
+            return true
+        }
+    }
+
+    private func makeNeuralEvidenceSummary(from outcome: NeuralEvidenceRecordedOutcome?) -> NeuralEvidenceSummary? {
+        guard let snapshot = outcome?.snapshot else { return nil }
+        let available = snapshot.headOutputs
+            .filter { $0.payload.status == .available }
+            .map(\.headId)
+        let unavailable = snapshot.headOutputs
+            .filter { $0.payload.status == .unavailable }
+            .map(\.headId)
+
+        let notableScores = snapshot.headOutputs.compactMap { entry -> NeuralEvidenceScoreSummary? in
+            switch entry.payload {
+            case let .scalar(payload):
+                guard payload.status == .available else { return nil }
+                return NeuralEvidenceScoreSummary(
+                    headId: payload.headId,
+                    score: payload.score,
+                    confidence: payload.confidence,
+                    status: payload.status
+                )
+            case let .categorical(payload):
+                guard payload.status == .available else { return nil }
+                return NeuralEvidenceScoreSummary(
+                    headId: payload.headId,
+                    score: payload.affinities.map(\.score).max(),
+                    confidence: payload.confidence,
+                    status: payload.status
+                )
+            }
+        }
+        .sorted { lhs, rhs in
+            if lhs.confidence != rhs.confidence {
+                return lhs.confidence > rhs.confidence
+            }
+            return lhs.headId.rawValue < rhs.headId.rawValue
+        }
+
+        return NeuralEvidenceSummary(
+            schemaVersion: snapshot.schemaVersion,
+            availableHeadIds: available,
+            unavailableHeadIds: unavailable,
+            notableScores: Array(notableScores.prefix(4))
+        )
+    }
+
+    private func logAndExtractValidatedVisualEvidence(_ result: VisualEvidenceCoordinatorResult,
+                                                      frameId: String) -> VLMEvidenceValidationResult? {
+        switch result {
+        case let .accepted(validation, diagnostics):
+            os_log(
+                "visual_evidence.accepted frame=%{public}@ reason=%{public}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .debug,
+                frameId,
+                diagnostics.fallbackReason ?? "ok"
+            )
+            return validation
+        case let .skipped(reason, diagnostics):
+            let event = reason == "provider_unavailable"
+                ? "visual_evidence.skipped.unavailable"
+                : (reason == "policy_blocked" ? "visual_evidence.skipped.policy_blocked" : "visual_evidence.skipped")
+            os_log(
+                "%{public}@ frame=%{public}@ reason=%{public}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .debug,
+                event,
+                frameId,
+                diagnostics.fallbackReason ?? reason
+            )
+            return nil
+        case let .failed(reason, diagnostics):
+            let event: String
+            let logType: OSLogType
+            if reason == "timeout" {
+                event = "visual_evidence.fail.timeout"
+                logType = .error
+            } else if reason == "canceled_due_to_state_change" {
+                event = "visual_evidence.cancel.pause_exit"
+                logType = .debug
+            } else {
+                event = "visual_evidence.fail.runtime"
+                logType = .error
+            }
+            os_log(
+                "%{public}@ frame=%{public}@ reason=%{public}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: logType,
+                event,
+                frameId,
+                diagnostics.fallbackReason ?? reason
+            )
+            return nil
+        case let .rejected(violations, diagnostics):
+            let event = violations.contains(.modeNotPause)
+                ? "visual_evidence.policy_violation.mode_not_pause"
+                : "visual_evidence.fail.validation"
+            os_log(
+                "%{public}@ frame=%{public}@ violations=%{public}@ reason=%{public}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .debug,
+                event,
+                frameId,
+                violations.map(\.rawValue).joined(separator: ","),
+                diagnostics.fallbackReason ?? "validation_failed"
+            )
+            return nil
+        }
+    }
+
+    private func semanticActionType(for actionType: ActionTypeV1) -> SemanticActionType {
+        switch actionType {
+        case .moveFrameLeft:
+            return .shiftFrameLeft
+        case .moveFrameRight:
+            return .shiftFrameRight
+        case .moveFrameUp:
+            return .shiftFrameUp
+        case .moveFrameDown:
+            return .shiftFrameDown
+        case .increaseSubjectSize:
+            return .stepCloser
+        case .reduceBackgroundDistractions:
+            return .simplifyBackground
+        case .changeAngle:
+            return .changeCameraAngle
+        case .improveFrontLight:
+            return .addFrontFillLight
+        case .levelHorizon:
+            return .levelHorizon
+        case .leaveFrameAsIs:
+            return .keepCurrentSetup
+        }
+    }
+
+    private func semanticActionFrame(for actionType: SemanticActionType) -> SemanticActionFrame {
+        switch actionType {
+        case .moveSubjectLeft, .moveSubjectRight, .moveSubjectAwayFromBackground, .rotateSubjectTowardLight:
+            return .moveSubject
+        case .moveObjectLeft, .moveObjectRight, .moveObjectForward, .moveObjectBack, .removeDistractingObject, .repositionPropForBalance:
+            return .moveObject
+        case .addFrontFillLight, .addBackgroundLight, .removeBackgroundHotspot:
+            return .adjustLight
+        case .waitForBackgroundClearance:
+            return .wait
+        default:
+            return .moveCamera
+        }
+    }
+
+    private func targetEntityKind(for subjectKind: SubjectKind) -> TargetEntityKind {
+        switch subjectKind {
+        case .face:
+            return .face
+        case .person, .group:
+            return .person
+        case .object:
+            return .object
+        case .unknown:
+            return .unknown
+        }
+    }
+
+    private func vlmEntityKind(for targetKind: TargetEntityKind) -> VLMEntityKind {
+        switch targetKind {
+        case .person:
+            return .person
+        case .face:
+            return .face
+        case .object:
+            return .object
+        case .prop:
+            return .prop
+        case .backgroundArea:
+            return .backgroundArea
+        case .lightSource:
+            return .lightSource
+        case .frame:
+            return .frame
+        case .unknown:
+            return .unknown
+        }
+    }
+
+    private func groundedObjectLabelCandidate(from detectorLabel: String) -> String? {
+        let normalized = detectorLabel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.contains("vase") { return "ваза" }
+        if normalized.contains("flower") { return "цветок" }
+        if normalized.contains("book") { return "книга" }
+        if normalized.contains("cup") || normalized.contains("mug") { return "чашка" }
+        if normalized.contains("bottle") { return "бутылка" }
+        if normalized.contains("lamp") { return "лампа" }
+        if normalized.contains("chair") { return "стул" }
+        if normalized.contains("phone") { return "телефон" }
+        return nil
+    }
+
+    private func isEnabledEnvironmentFlag(_ key: String) -> Bool {
+        guard let rawValue = ProcessInfo.processInfo.environment[key]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() else {
+            return false
+        }
+        return rawValue == "1" || rawValue == "true" || rawValue == "yes" || rawValue == "on"
     }
 
     private func schedulePauseReasoningRefinement(request: ReasoningRequest, revision: Int) {
@@ -3860,6 +4310,24 @@ extension AnalysisPipeline {
 
     func testingSchedulePauseReasoningRefinement(request: ReasoningRequest, revision: Int) {
         schedulePauseReasoningRefinement(request: request, revision: revision)
+    }
+
+    func testingBuildPauseVisualEvidenceRequest(snapshot: FrameFeatureSnapshot,
+                                                semantics: SceneSemanticsReport,
+                                                critique: CritiqueReport,
+                                                plan: RecommendationPlan,
+                                                neuralOutcome: NeuralEvidenceRecordedOutcome?) -> VLMVisualEvidenceRequest {
+        makePauseVisualEvidenceRequest(
+            snapshot: snapshot,
+            semantics: semantics,
+            critique: critique,
+            plan: plan,
+            neuralOutcome: neuralOutcome
+        )
+    }
+
+    func testingResolvePauseVisualEvidence(request: VLMVisualEvidenceRequest) async -> VisualEvidenceCoordinatorResult {
+        await visualSemanticEvidenceCoordinator.fetchEvidence(request: request)
     }
 
     @MainActor

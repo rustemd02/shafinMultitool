@@ -2154,3 +2154,40 @@
 - `docs/cameraanalysis/08-ui-integration.md` (design verify addendum по readiness/risks для PR-S05)
 
 ---
+
+## [2026-05-05 13:52] - [Camera Analysis Semantic Tips: Prompt 21/24/25, PR-S03/PR-S06/PR-S07]
+
+### Суть изменений
+- Для `Prompt 21` закрыт runtime-мост между уже зафиксированным VLM evidence contract (`PR-S02`) и semantic planner: добавлены `VisualSemanticEvidenceProvider`, `VisualSemanticEvidenceCoordinator`, timeout/cancel/fail-closed outcome model, factory-конфигурация провайдера и `pause-only` wiring в `AnalysisPipeline`.
+- В `AnalysisPipeline` реализована сборка `VLMVisualEvidenceRequest` из deterministic pause bundle (`snapshot + semantics + critique + plan + optional neural summary`) и безопасная передача `validatedEvidence` в `SemanticTipPlanner` только после локальной валидации, без использования visual provider на `live` path.
+- Для `Prompt 21` добавлены targeted tests на `provider_unavailable`, `mode_not_pause`, validation reject, timeout и pipeline-level integration, что превращает `PR-S03` из чисто архитектурного разрыва в исполнимый prototype с доказуемым deterministic fallback.
+- Для `Prompt 24` зафиксирован source-of-truth teacher-reviewed dataset loop (`PR-S06`) и добавлен практический tooling-слой: schema-aware validator, export/import hard-case bundle logic, summary helpers, demo JSONL fixtures и unit tests для privacy/export/review invariants.
+- Для `Prompt 25` оформлен и доведен до `design verify` distillation plan (`PR-S07`): выделены дистиллируемые semantic evidence heads, правила проекции reviewed labels в train targets, loss composition, mobile backbone assumptions, отдельный runtime envelope `DistilledSemanticEvidenceSnapshot`, compare matrix и rollback/fallback policy.
+- Обновлены `README`, roadmap и implementation backlog, чтобы `PR-S03`, `PR-S06`, `PR-S07` стали явными артефактами semantic-stage и получили корректную dependency chain относительно `PR-S02`, `PR-S04`, `PR-H05`, `PR-H07`, `PR-H14`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** После фиксации semantic tip taxonomy и VLM evidence contract оставались три системных пробела. Во-первых, не было строго bounded runtime-слоя, который бы подключал visual evidence к `pause`-анализу, не ломая deterministic baseline. Во-вторых, отсутствовал воспроизводимый dataset loop, в котором teacher-VLM переставал бы быть источником истины и превращался в проверяемый источник proposal-ов. В-третьих, не было плана, как перенести semantic signal с тяжелого teacher-контура на компактную локальную модель без device-side генерации свободного текста.
+- **Решение:** Архитектура была замкнута тремя согласованными артефактами. `PR-S03` вводит fail-closed coordinator между pause pipeline и optional VLM provider: provider работает только в `pause`, проходит локальную request/response validation и при любом timeout/invalid/unavailable возвращает управление deterministic planner-у. `PR-S06` формализует teacher-review dataset loop: рядом с deterministic baseline хранятся VLM proposal, human-reviewed final tip, privacy/provenance поля и hard-case exchange policy. `PR-S07` превращает этот reviewed loop в distillation-ready research plan: локальная модель учится предсказывать не текст совета, а compact semantic evidence heads (`dimensionState`, `relationType`, `labelConfidenceClass`, `actionFrameChoice`, `keepCurrentSetupAffinity`), а окончательный пользовательский совет по-прежнему materialize-ится template-based planner-ом.
+- **Детали:**
+  - В `PR-S03` критичным стало не просто наличие async-вызова провайдера, а формализация его статусов: `skipped / accepted / rejected / failed`. Это позволяет явно отделить policy block, валидационный reject и runtime timeout, что важно для explainability и последующего eval/telemetry.
+  - Сборка `VLMVisualEvidenceRequest` в `AnalysisPipeline` использует локальные anchors (`FrameFeatureSnapshot`, `SceneSemanticsReport`, `CritiqueReport`, `RecommendationPlan`, grounded entities, optional neural summary) и тем самым не допускает прямого "сырых картинок -> финальный совет". VLM получает уже структурированный локальный контекст, а planner принимает только `validatedEvidence`.
+  - В `PR-S06` dataset policy фиксирует принцип `teacher is not gold`: accepted/edited/rejected review outcomes становятся отдельными supervised сигналами. Это снимает методологическую проблему бесконтрольного использования VLM-ответов в качестве ground truth и делает semantic-tip dataset пригодным и для offline eval, и для distillation.
+  - Python tooling для `PR-S06` реализует machine-checkable ограничения: допустимые catalogs action/tip families, запрет `vlm_structured_copy` label source в `structured_only`, контроль export status для runtime hard cases и conflict-aware import/export bundles. Это переводит набор demo/curated cases из ad hoc JSON-файлов в повторяемый экспериментальный контур.
+  - В `PR-S07` важнейшим решением стало явное отделение distilled local envelope (`DistilledSemanticEvidenceSnapshot`) от `VLMVisualEvidenceResponse`. Такое разделение предотвращает скрытое смешение remote-teacher semantics и local distilled semantics, то есть сохраняет чистую границу между источником supervision и источником runtime inference.
+  - Distillation plan сознательно запрещает переносить на устройство свободный текст, final `SemanticTipType` и object-name generation. Вместо этого дистиллируются только bounded structured heads, а конкретный label (`цветок`, `ваза`) materialize-ится лишь при наличии local grounding и safe confidence policy. Это соответствует mobile-first thesis: вычислительно дорогой open-ended reasoning остается вне critical on-device path, а explainable decision layer остается deterministic.
+
+### Ключевые файлы
+- `docs/cameraanalysis/27-pause-vlm-evidence-provider-prototype.md` (source-of-truth design verify для `Prompt 21` / `PR-S03`)
+- `shafinMultitool/Multitool2Module/Services/Reasoning/VisualSemanticEvidenceCoordinator.swift` (provider protocol, coordinator, timeout/fallback outcome model)
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (pause-only wiring `deterministic -> request -> validatedEvidence -> planner`)
+- `shafinMultitoolTests/VisualSemanticEvidenceCoordinatorTests.swift` (targeted tests для provider unavailable / reject / timeout / pipeline integration)
+- `docs/cameraanalysis/28-vlm-labeled-semantic-tip-dataset.md` (source-of-truth schema и review loop для `Prompt 24` / `PR-S06`)
+- `docs/cameraanalysis/eval/semantic_tip_dataset_tools.py` (validator, summary, hard-case export/import tooling для semantic tip dataset)
+- `docs/cameraanalysis/eval/tests/test_semantic_tip_dataset_tools.py` (unit tests privacy/export/review invariants для `PR-S06`)
+- `docs/cameraanalysis/eval/semantic_tip_dataset_demo_cases.jsonl` (starter synthetic/demo fixtures для semantic tip dataset)
+- `docs/cameraanalysis/29-on-device-semantic-evidence-distillation-plan.md` (source-of-truth design + design verify для `Prompt 25` / `PR-S07`)
+- `docs/cameraanalysis/01-roadmap.md` (roadmap registration и порядок запуска `PR-S03`, `PR-S06`, `PR-S07`)
+- `docs/cameraanalysis/11-implementation-backlog.md` (Track 19/20, dependency graph и DoD для semantic dataset/distillation)
+- `docs/cameraanalysis/README.md` (индексация новых source-of-truth документов semantic-stage)
+
+---
