@@ -2439,13 +2439,13 @@ final class AnalysisPipeline: ObservableObject {
                 frameId: candidate.frameId,
                 text: candidate.text,
                 confidence: candidate.confidence,
-                actionType: current.actionType,
-                actionId: current.actionId ?? candidate.actionId,
-                linkedIssueIds: current.linkedIssueIds.isEmpty ? candidate.linkedIssueIds : current.linkedIssueIds,
-                summaryId: candidate.summaryId ?? current.summaryId,
-                traceRootIds: candidate.traceRootIds.isEmpty ? current.traceRootIds : candidate.traceRootIds,
-                targetRegion: current.targetRegion,
-                overlayHint: current.overlayHint,
+                actionType: candidate.actionType,
+                actionId: candidate.actionId,
+                linkedIssueIds: candidate.linkedIssueIds,
+                summaryId: candidate.summaryId,
+                traceRootIds: candidate.traceRootIds,
+                targetRegion: candidate.targetRegion,
+                overlayHint: candidate.overlayHint,
                 isFallback: candidate.isFallback,
                 expandedVerdict: candidate.expandedVerdict
             )
@@ -3838,6 +3838,12 @@ extension AnalysisPipeline {
             structuredAvailable: structuredAvailable,
             now: now
         )
+    }
+
+    @MainActor
+    func testingApplyLiveHintCandidate(_ candidate: LiveHintPresentation?,
+                                       now: Date = Date()) {
+        applyLiveHint(candidate: candidate, now: now)
     }
 
     @MainActor

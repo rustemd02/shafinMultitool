@@ -356,6 +356,71 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         }
     }
 
+    func testTextOnlyLiveRefreshKeepsStableIdentityButUpdatesCurrentPayload() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let initial = LiveHintPresentation(
+            id: "lh_live_action_moveFrameLeft_subjectTooCloseToEdge_0.62_0.16_0.24_0.48",
+            frameId: "frame-1",
+            text: "Сместите кадр чуть левее.",
+            confidence: 0.61,
+            actionType: .moveFrameLeft,
+            actionId: "act_frame_1",
+            linkedIssueIds: ["iss_1"],
+            summaryId: "summary_frame_1",
+            traceRootIds: ["trace_frame_1"],
+            targetRegion: NormalizedRect(x: 0.68, y: 0.16, width: 0.24, height: 0.48),
+            overlayHint: OverlayHint(id: "ovh_frame_1", kind: .arrow, targetRegion: nil, direction: .left),
+            isFallback: false,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: "Кадр требует правки.",
+                supportingText: "Главный объект упирается в край.",
+                actionText: "Сместите кадр чуть левее.",
+                fallbackUsed: false
+            )
+        )
+        let refreshed = LiveHintPresentation(
+            id: "lh_live_action_moveFrameLeft_subjectTooCloseToEdge_0.22_0.16_0.22_0.44",
+            frameId: "frame-2",
+            text: "Сместите героя чуть левее.",
+            confidence: 0.66,
+            actionType: .moveFrameLeft,
+            actionId: "act_frame_2",
+            linkedIssueIds: ["iss_2"],
+            summaryId: "summary_frame_2",
+            traceRootIds: ["trace_frame_2"],
+            targetRegion: NormalizedRect(x: 0.22, y: 0.16, width: 0.22, height: 0.44),
+            overlayHint: OverlayHint(id: "ovh_frame_2", kind: .arrow, targetRegion: nil, direction: .left),
+            isFallback: false,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: "Кадр требует правки.",
+                supportingText: "Герой потерял воздух слева.",
+                actionText: "Сместите героя чуть левее.",
+                fallbackUsed: false
+            )
+        )
+
+        await MainActor.run {
+            pipeline.testingApplyLiveHintCandidate(
+                initial,
+                now: Date(timeIntervalSince1970: 1_768_500_400)
+            )
+            pipeline.testingApplyLiveHintCandidate(
+                refreshed,
+                now: Date(timeIntervalSince1970: 1_768_500_700)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.id, initial.id)
+            XCTAssertEqual(pipeline.currentLiveHint?.frameId, refreshed.frameId)
+            XCTAssertEqual(pipeline.currentLiveHint?.actionId, refreshed.actionId)
+            XCTAssertEqual(pipeline.currentLiveHint?.linkedIssueIds, refreshed.linkedIssueIds)
+            XCTAssertEqual(pipeline.currentLiveHint?.targetRegion, refreshed.targetRegion)
+            XCTAssertEqual(pipeline.currentLiveHint?.overlayHint?.id, refreshed.overlayHint?.id)
+            XCTAssertEqual(pipeline.currentLiveHint?.text, refreshed.text)
+        }
+    }
+
     private func makeCritique(frameId: String, verdict: FrameVerdict) -> CritiqueReport {
         CritiqueReport(
             frameId: frameId,

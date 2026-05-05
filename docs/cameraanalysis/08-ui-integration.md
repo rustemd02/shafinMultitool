@@ -1,6 +1,6 @@
 # 08. UI Integration (PR-009/PR-010/PR-011)
 
-Статус: design spec (source-of-truth)
+Статус: design spec + design verify addendum for `PR-S05` (source-of-truth)
 
 Дата: 2026-04-20
 
@@ -420,3 +420,38 @@ Design считается готовым, если:
 - anti-flicker policy задана конкретными условиями переключения;
 - определен mapping `RecommendationAction/OverlayHint -> overlay UI`;
 - перечислены verification steps и UI state notes для implement-фазы.
+
+## PR-S05 Design Verify Addendum
+
+Дата проверки: 2026-05-05
+
+Проверка выполнена против:
+- Prompt 23 в [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md);
+- semantic tip contracts в [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md);
+- planner/fusion policy в [26-semantic-tip-fusion-and-planner.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/26-semantic-tip-fusion-and-planner.md);
+- текущей runtime wiring в `AnalysisPipeline.swift`, `CameraViewModel.swift`, `OverlayView.swift`, `SuggestionChip.swift`, `SuggestionListView.swift`.
+
+### Что было подтверждено
+
+- `live` и `pause` уже сидят на одном structured source path (`LiveHintPresentation`, `PauseCritiquePresentation`, `OverlayAnnotationPresentation`) с сохраненным legacy fallback;
+- tap-to-expand для live tip не требует прямого вызова `VLM` и использует уже собранный presentation payload;
+- structured overlay annotations и legacy arrows разведены так, чтобы fallback не ломал текущий camera flow;
+- entity-aware copy приходит в UI через `SemanticTipCandidate.liveText/pauseText`, а не через сырые internal ids.
+
+### Исправленные расхождения
+
+- anti-flicker text-only refresh теперь сохраняет стабильный `liveHint.id`, но обновляет актуальные `actionId`, `linkedIssueIds`, `targetRegion`, `overlayHint` и trace payload текущего кадра;
+- pause card в degraded structured path теперь показывает fallback banner и legacy backup block, как требуется этим документом и Prompt 23;
+- pause UI теперь может показывать semantic tips в reason/action форме поверх существующего critique payload, без переписывания pipeline contracts;
+- live/pause tips получили базовые accessibility labels/hints вместо немаркированного интерактивного текста.
+
+### Residual risks
+
+- качество object-aware копии в `live` все еще зависит от устойчивости grounding upstream; при низкой confidence корректная деградация уже есть, но copy richness будет ограниченной;
+- скриншоты и device-level visual QA остаются обязательными для проверки плотности overlay на small-screen iPhone;
+- если будущий reasoning refine начнет менять не только текст, а и target geometry, нужно отдельно проверить, что pause card и overlay не расходятся по `frameId`.
+
+### Readiness verdict
+
+`PR-S05` готов к implement/verify циклу без blocking contradictions.
+Оставшиеся риски относятся к визуальной доводке и manual QA, а не к отсутствующим контрактным решениям.

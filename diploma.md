@@ -101,6 +101,7 @@
 
 ---
 
+
 ## [2026-05-04 20:10] - [Camera Analysis v1 + Hybrid Eval: фиксирование результатов implement verify]
 
 ### Суть изменений
@@ -2127,5 +2128,29 @@
 - `docs/cameraanalysis/README.md` (индексация новых source-of-truth документов)
 - `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (`PR-S01` и `PR-S02` Swift domain contracts, validators, catalog constants)
 - `shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift` (contract tests для semantic tips и VLM visual evidence validation)
+
+---
+
+## [2026-05-05 12:28] - [Camera Analysis Prompt 22/23: implement verify PR-S04/PR-S05]
+
+### Суть изменений
+- Выполнен цикл `implement verify` для связки `Prompt 22 (PR-S04)` и `Prompt 23 (PR-S05)` с фокусом на production-UI path semantic tips.
+- Для `PR-S05` доработан live/pause presentation слой: стабильный live hint при anti-flicker refresh, expanded tap-поведение, pause semantic reason/action блоки, empty/good-frame состояние, degraded banner и legacy backup список.
+- Усилена accessibility-поверхность semantic tips: добавлены user-facing labels/hints для live chip и fallback suggestions.
+- Добавлен regression test на критичный сценарий text-only refresh: identity hint сохраняется, но payload (`actionId`, `linkedIssueIds`, `targetRegion`, `overlayHint`) обновляется до текущего кадра.
+- Проведена проверка согласованности с `PR-S04`: UI-путь использует существующий deterministic/semantic planner output без прямого runtime-вызова VLM из tap-handler и без показа internal ids пользователю.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Даже при наличии semantic planner (`PR-S04`) UX мог терять объяснимость и консистентность на последнем шаге delivery в UI: при anti-flicker обновлении оставались stale action payload, в pause режиме не было явного empty state, а degraded structured path не всегда прозрачно объяснял fallback поведение.
+- **Решение:** В presentation-слое введён более строгий state contract: live hint сохраняет стабильный визуальный identity для anti-flicker, но синхронно обновляет domain payload текущего кадра; pause card материализует reason/action tips, good/empty состояния и fallback-баннер с legacy backup, сохраняя explainable continuity.
+- **Детали:** Архитектурно это замыкает цепочку `PR-S04 -> PR-S05`: planner формирует bounded semantic candidates, а UI отображает их без semantic drift и без утраты trace-linked контекста при коротких колебаниях confidence. Такой split снижает риск contradictory tips и повышает воспроизводимость пользовательских рекомендаций при live/pause переключениях.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (исправление text-only refresh ветки live hint + debug helper для теста)
+- `shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift` (проброс legacy backup suggestions в pause card)
+- `shafinMultitool/Multitool2Module/UI/Overlay/SuggestionChip.swift` (accessibility labels/hints и user-facing fallback badge)
+- `shafinMultitool/Multitool2Module/UI/Overlay/SuggestionListView.swift` (semantic pause tips, degraded banner, empty state, accessibility fallback list)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (регрессионный тест стабильного identity при обновляемом payload)
+- `docs/cameraanalysis/08-ui-integration.md` (design verify addendum по readiness/risks для PR-S05)
 
 ---

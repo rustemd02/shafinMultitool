@@ -99,7 +99,10 @@ struct OverlayView: View {
                     // Режим предпросмотра: список всех советов
                     if viewModel.isPaused {
                         if let pauseCritique = viewModel.pauseCritique {
-                            PauseCritiqueCardView(critique: pauseCritique)
+                            PauseCritiqueCardView(
+                                critique: pauseCritique,
+                                legacySuggestions: viewModel.previewSuggestions
+                            )
                                 .padding(.bottom, 24)
                                 .frame(maxHeight: .infinity, alignment: .bottom)
                         } else {

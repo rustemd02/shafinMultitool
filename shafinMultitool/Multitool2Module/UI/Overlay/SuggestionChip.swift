@@ -120,7 +120,7 @@ struct LiveHintChipView: View {
             )
             .overlay(alignment: .topTrailing) {
                 if liveHint?.isFallback == true {
-                    Text("fallback")
+                    Text("резерв")
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -139,8 +139,12 @@ struct LiveHintChipView: View {
                 content
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(displayText ?? "Подсказка кадра")
+            .accessibilityHint(isExpanded ? "Свернуть подробное объяснение." : "Открыть подробное объяснение.")
         } else {
             content
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(displayText ?? "Подсказка кадра")
         }
     }
 
