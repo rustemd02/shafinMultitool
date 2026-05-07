@@ -352,8 +352,8 @@ struct FrameCritiqueEngine {
         let sceneSensitivity: Double =
             (semantics.sceneType == .dialogueCloseup || semantics.sceneType == .singleCharacterMedium) ? 1.0 : 0.75
         var raw = clamp01((tilt / 8.0) * sceneSensitivity)
-        if snapshot.horizon.confidence < 0.30 {
-            raw = raw * 0.60
+        if snapshot.horizon.confidence < 0.45 {
+            raw = 0
         }
         let confidence = clamp01(snapshot.horizon.confidence)
         let evidence = [

@@ -59,13 +59,10 @@ private struct ZoomButton: View {
             ZoomControlView(
                 availableLenses: [.ultraWide, .wide, .telephoto2x, .telephoto3x],
                 currentLens: .wide,
-                onLensChange: { lens in
-                    print("Selected: \(lens.displayName)")
-                }
+                onLensChange: { _ in }
             )
             .padding(.bottom, 40)
         }
     }
 }
-
 

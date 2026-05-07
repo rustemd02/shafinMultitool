@@ -60,13 +60,17 @@ final class DETRDetector {
             throw NSError(domain: "DETRDetector", code: 1, userInfo: [NSLocalizedDescriptionKey: "DETR model not found in bundle"])
         }
 
-        os_log("✅ DETR: Model found at %{public}@", log: OSLog(subsystem: "com.multitool2.detr", category: "Init"), type: .info, url.path)
+        if CameraLog.modelLifecycle {
+            os_log("✅ DETR: Model found at %{public}@", log: OSLog(subsystem: "com.multitool2.detr", category: "Init"), type: .debug, url.path)
+        }
 
         let coreMLModel = try MLModel(contentsOf: url, configuration: config)
         model = try VNCoreMLModel(for: coreMLModel)
 
-        os_log("✅ DETR: Model loaded successfully",
-               log: OSLog(subsystem: "com.multitool2.detr", category: "Init"), type: .info)
+        if CameraLog.modelLifecycle {
+            os_log("✅ DETR: Model loaded successfully",
+                   log: OSLog(subsystem: "com.multitool2.detr", category: "Init"), type: .debug)
+        }
     }
 
     func detect(pixelBuffer: CVPixelBuffer,
@@ -76,7 +80,9 @@ final class DETRDetector {
             guard let self = self else { return }
 
             self.detectionCount += 1
-            os_log("🔍 DETR: Starting detection #%d", log: self.log, type: .info, self.detectionCount)
+            if CameraLog.detr {
+                os_log("🔍 DETR: Starting detection #%d", log: self.log, type: .debug, self.detectionCount)
+            }
 
             let startTime = CACurrentMediaTime()
 
@@ -92,19 +98,25 @@ final class DETRDetector {
                 guard let results = request.results,
                       let observation = results.first as? VNCoreMLFeatureValueObservation,
                       let multiArray = observation.featureValue.multiArrayValue else {
-                    os_log("⚠️ DETR: No semantic predictions in results (%.0fms)",
-                           log: self.log, type: .info, elapsed * 1000)
+                    if CameraLog.detr {
+                        os_log("⚠️ DETR: No semantic predictions in results (%.0fms)",
+                               log: self.log, type: .debug, elapsed * 1000)
+                    }
                     completion([])
                     return
                 }
 
-                os_log("🎯 DETR: Processing semantic segmentation map (%.0fms)",
-                       log: self.log, type: .info, elapsed * 1000)
+                if CameraLog.detr {
+                    os_log("🎯 DETR: Processing semantic segmentation map (%.0fms)",
+                           log: self.log, type: .debug, elapsed * 1000)
+                }
 
                 // Обработка semantic segmentation map и извлечение bounding boxes
                 let detections = self.extractDetections(from: multiArray)
 
-                os_log("✅ DETR: Returning %d detections", log: self.log, type: .info, detections.count)
+                if CameraLog.detr {
+                    os_log("✅ DETR: Returning %d detections", log: self.log, type: .debug, detections.count)
+                }
                 completion(detections)
             }
             request.imageCropAndScaleOption = .scaleFill
@@ -131,7 +143,9 @@ final class DETRDetector {
         let height = shape[0]
         let width = shape[1]
 
-        os_log("📊 DETR: Segmentation map size: %dx%d", log: self.log, type: .info, width, height)
+        if CameraLog.detr {
+            os_log("📊 DETR: Segmentation map size: %dx%d", log: self.log, type: .debug, width, height)
+        }
 
         // Подсчет пикселей для каждого класса
         var classCounts: [Int: Int] = [:]
@@ -200,9 +214,11 @@ final class DETRDetector {
 
             detections.append(detection)
 
-            os_log("  ✓ %{public}@ pixels=%d conf=%.2f bbox=(%.2f,%.2f,%.2f,%.2f)",
-                   log: self.log, type: .info,
-                   labels[classId], count, confidence, x, y, w, h)
+            if CameraLog.detr {
+                os_log("  ✓ %{public}@ pixels=%d conf=%.2f bbox=(%.2f,%.2f,%.2f,%.2f)",
+                       log: self.log, type: .debug,
+                       labels[classId], count, confidence, x, y, w, h)
+            }
         }
 
         // Сортируем по confidence

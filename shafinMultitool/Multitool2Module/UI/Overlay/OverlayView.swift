@@ -72,7 +72,7 @@ struct OverlayView: View {
                     )
                     
                     // Стрелки-помощники
-                    if !viewModel.isPaused {
+                    if !viewModel.isPaused, viewModel.liveHint?.isFallback == true {
                         let hasStructuredArrow = viewModel.overlayAnnotations.contains(where: { $0.kind == .arrow })
                         if !hasStructuredArrow {
                             let (directions, magnitude) = DirectionArrows.directions(
@@ -85,12 +85,12 @@ struct OverlayView: View {
                         }
                     }
                     
-                    // Live hint: новый structured path с fallback на legacy suggestion.
-                    if !viewModel.isPaused {
-                        LiveHintChipView(liveHint: viewModel.liveHint,
-                                         fallbackSuggestion: viewModel.legacySuggestion,
+                    // Live hint: показываем только стабилизированный structured/fallback-кандидат из pipeline.
+                    if !viewModel.isPaused, let liveHint = viewModel.liveHint {
+                        LiveHintChipView(liveHint: liveHint,
+                                         fallbackSuggestion: nil,
                                          boundingBox: liveHintBoundingBox(
-                                            for: viewModel.liveHint,
+                                            for: liveHint,
                                             fallback: overlay.primaryBoundingBox
                                          ),
                                          canvasSize: size)

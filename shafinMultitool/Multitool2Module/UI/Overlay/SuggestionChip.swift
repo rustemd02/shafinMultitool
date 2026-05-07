@@ -17,38 +17,23 @@ struct SuggestionChipView: View {
             if let suggestion {
                 Text(suggestion.text)
                     .font(.headline.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
+                    .frame(width: chipWidth, alignment: .leading)
                     .background(.ultraThinMaterial, in: Capsule())
                     .shadow(radius: 6)
-                    .padding(placementInsets)
-                    .frame(maxWidth: .infinity, alignment: chipAlignment)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .padding(.top, 24)
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: suggestion?.id)
     }
 
-    private var chipAlignment: Alignment {
-        guard let boundingBox else { return .top }
-        return boundingBox.midX > 0.5 ? .topLeading : .topTrailing
-    }
-
-    private var placementInsets: EdgeInsets {
-        guard let boundingBox else { return EdgeInsets(top: 24, leading: 24, bottom: 0, trailing: 24) }
-        let converted = convert(boundingBox: boundingBox)
-        let top = max(24, converted.minY - 48)
-        let leading = max(24, converted.minX)
-        let trailing = max(24, canvasSize.width - converted.maxX)
-        return EdgeInsets(top: top, leading: leading, bottom: 0, trailing: trailing)
-    }
-
-    private func convert(boundingBox: CGRect) -> CGRect {
-        let width = boundingBox.width * canvasSize.width
-        let height = boundingBox.height * canvasSize.height
-        let x = boundingBox.minX * canvasSize.width
-        let y = (1 - boundingBox.maxY) * canvasSize.height
-        return CGRect(x: x, y: y, width: width, height: height)
+    private var chipWidth: CGFloat {
+        min(360, max(160, canvasSize.width - 48))
     }
 }
 
@@ -71,25 +56,15 @@ struct LiveHintChipView: View {
         expandedVerdict != nil
     }
 
-    private var hintIdentity: String {
-        if let liveHint {
-            return liveHint.id
-        }
-        if let fallbackSuggestion {
-            return fallbackSuggestion.id.uuidString
-        }
-        return "no_hint"
-    }
-
     var body: some View {
         VStack {
             if let displayText {
                 hintBody(text: displayText)
             }
         }
-        .id(hintIdentity)
-        .animation(.easeInOut(duration: 0.2), value: hintIdentity)
-        .animation(.easeInOut(duration: 0.2), value: isExpanded)
+        .padding(.top, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.easeInOut(duration: 0.18), value: isExpanded)
     }
 
     @ViewBuilder
@@ -98,6 +73,8 @@ struct LiveHintChipView: View {
             HStack(alignment: .top, spacing: 10) {
                 Text(text)
                     .font(.headline.weight(.semibold))
+                    .lineLimit(isExpanded ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if canExpand {
@@ -112,27 +89,26 @@ struct LiveHintChipView: View {
                 LiveExpandedVerdictContent(expandedVerdict: expandedVerdict)
             }
         }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(
-                .ultraThinMaterial,
-                in: RoundedRectangle(cornerRadius: isExpanded ? 18 : 28, style: .continuous)
-            )
-            .overlay(alignment: .topTrailing) {
-                if liveHint?.isFallback == true {
-                    Text("резерв")
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.yellow.opacity(0.9), in: Capsule())
-                        .offset(x: 6, y: -10)
-                }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(width: chipWidth, alignment: .leading)
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: isExpanded ? 18 : 28, style: .continuous)
+        )
+        .overlay(alignment: .topTrailing) {
+            if liveHint?.isFallback == true {
+                Text("резерв")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.yellow.opacity(0.9), in: Capsule())
+                    .offset(x: 6, y: -10)
             }
-            .shadow(radius: 6)
-            .contentShape(Rectangle())
-            .padding(placementInsets)
-            .frame(maxWidth: .infinity, alignment: chipAlignment)
-            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+        .shadow(radius: 6)
+        .contentShape(Rectangle())
+        .transition(.opacity)
 
         if canExpand {
             Button(action: { isExpanded.toggle() }) {
@@ -148,26 +124,11 @@ struct LiveHintChipView: View {
         }
     }
 
-    private var chipAlignment: Alignment {
-        guard let boundingBox else { return .top }
-        return boundingBox.midX > 0.5 ? .topLeading : .topTrailing
-    }
-
-    private var placementInsets: EdgeInsets {
-        guard let boundingBox else { return EdgeInsets(top: 24, leading: 24, bottom: 0, trailing: 24) }
-        let converted = convert(boundingBox: boundingBox)
-        let top = max(24, converted.minY - 48)
-        let leading = max(24, converted.minX)
-        let trailing = max(24, canvasSize.width - converted.maxX)
-        return EdgeInsets(top: top, leading: leading, bottom: 0, trailing: trailing)
-    }
-
-    private func convert(boundingBox: CGRect) -> CGRect {
-        let width = boundingBox.width * canvasSize.width
-        let height = boundingBox.height * canvasSize.height
-        let x = boundingBox.minX * canvasSize.width
-        let y = (1 - boundingBox.maxY) * canvasSize.height
-        return CGRect(x: x, y: y, width: width, height: height)
+    private var chipWidth: CGFloat {
+        if isExpanded {
+            return min(420, max(180, canvasSize.width - 32))
+        }
+        return min(360, max(160, canvasSize.width - 48))
     }
 }
 

@@ -26,6 +26,7 @@ final class HorizonEstimator {
                   orientation: CGImagePropertyOrientation,
                   isStable: Bool) -> (angle: CGFloat, confidence: CGFloat) {
         let rollFromMotion = motionManager.deviceMotion?.attitude.roll ?? 0
+        let rollDegrees = normalizeAngleDegrees(rollFromMotion * 180 / .pi)
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
                                             orientation: orientation,
@@ -33,8 +34,14 @@ final class HorizonEstimator {
         do {
             try handler.perform([request])
             if let observation = request.results?.first {
-                let angleDegrees = Double(observation.angle * 180 / .pi)
-                let blended = 0.7 * angleDegrees + 0.3 * (rollFromMotion * 180 / .pi)
+                let angleDegrees = normalizeAngleDegrees(Double(observation.angle * 180 / .pi))
+                let disagreement = abs(angleDegrees - rollDegrees)
+                if disagreement > 12, abs(rollDegrees) < 5 {
+                    return stableMotionFallback(rollDegrees: rollDegrees, confidence: 0.12, isStable: isStable)
+                }
+
+                let agreementConfidence = max(0.0, 1.0 - (disagreement / 18.0))
+                let blended = 0.2 * angleDegrees + 0.8 * rollDegrees
                 let k = filter.update(measurement: blended)
                 let smoothed = ema.addSample(k)
 
@@ -52,14 +59,31 @@ final class HorizonEstimator {
                 lastOutputDegrees = output
                 lastUpdateTime = now
 
-                return (angle: CGFloat(output), confidence: CGFloat(observation.confidence))
+                let confidence = min(Double(observation.confidence), agreementConfidence)
+                return (angle: CGFloat(output), confidence: CGFloat(confidence))
             }
         } catch {
-            return (angle: CGFloat(rollFromMotion * 180 / .pi), confidence: 0.1)
+            return stableMotionFallback(rollDegrees: rollDegrees, confidence: 0.1, isStable: isStable)
         }
 
-        return (angle: CGFloat(rollFromMotion * 180 / .pi), confidence: 0.1)
+        return stableMotionFallback(rollDegrees: rollDegrees, confidence: 0.1, isStable: isStable)
+    }
+
+    private func stableMotionFallback(rollDegrees: Double,
+                                      confidence: Double,
+                                      isStable: Bool) -> (angle: CGFloat, confidence: CGFloat) {
+        let now = CACurrentMediaTime()
+        lastUpdateTime = now
+        let output = isStable && abs(rollDegrees) < 1.5 ? 0 : rollDegrees
+        lastOutputDegrees = output
+        return (angle: CGFloat(output), confidence: CGFloat(confidence))
+    }
+
+    private func normalizeAngleDegrees(_ degrees: Double) -> Double {
+        var value = degrees
+        while value > 90 { value -= 180 }
+        while value < -90 { value += 180 }
+        return value
     }
 }
-
 

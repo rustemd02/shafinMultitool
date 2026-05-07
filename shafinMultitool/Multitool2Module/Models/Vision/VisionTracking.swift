@@ -40,7 +40,7 @@ final class VisionTracking {
         var saliencyCenter: CGPoint?
         
         frameCount += 1
-        let shouldLog = frameCount % 30 == 0 // Логируем каждые 30 кадров (~2 сек при 15 FPS)
+        let shouldLog = CameraLog.vision && frameCount % 30 == 0
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
                                             orientation: orientation,
@@ -50,10 +50,10 @@ final class VisionTracking {
 
             if let faces = faceRequest.results as? [VNFaceObservation] {
                 if shouldLog {
-                    os_log("👤 Vision: %d faces found", log: log, type: .info, faces.count)
+                    os_log("👤 Vision: %d faces found", log: log, type: .debug, faces.count)
                     for (i, face) in faces.enumerated() {
                         os_log("  Face %d: bbox=(%.2f,%.2f,%.2f,%.2f) conf=%.2f", 
-                               log: log, type: .info, i,
+                               log: log, type: .debug, i,
                                face.boundingBox.origin.x, face.boundingBox.origin.y,
                                face.boundingBox.size.width, face.boundingBox.size.height,
                                face.confidence)
@@ -66,7 +66,7 @@ final class VisionTracking {
                 }
                 lastObservation = faces.first
             } else if shouldLog {
-                os_log("👤 Vision: No faces detected", log: log, type: .info)
+                os_log("👤 Vision: No faces detected", log: log, type: .debug)
             }
 
             if let humans = humanRequest.results as? [VNDetectedObjectObservation] {
@@ -74,7 +74,7 @@ final class VisionTracking {
                     !results.contains { $0.boundingBox.intersects(human.boundingBox) }
                 }
                 if shouldLog {
-                    os_log("🚶 Vision: %d humans (filtered: %d)", log: log, type: .info, humans.count, filtered.count)
+                    os_log("🚶 Vision: %d humans (filtered: %d)", log: log, type: .debug, humans.count, filtered.count)
                 }
                 results += filtered.map { obs in
                     TrackedSubject(boundingBox: obs.boundingBox,
@@ -97,7 +97,7 @@ final class VisionTracking {
                         saliencyCenter = prev
                         if shouldLog {
                             os_log("🎯 Saliency: within deadband, keeping prev (%.3f,%.3f)", 
-                                   log: log, type: .info, prev.x, prev.y)
+                                   log: log, type: .debug, prev.x, prev.y)
                         }
                     } else {
                         let newX = prev.x * (1 - saliencyAlpha) + rawCenter.x * saliencyAlpha
@@ -107,7 +107,7 @@ final class VisionTracking {
                         saliencyCenter = smoothed
                         if shouldLog {
                             os_log("🎯 Saliency: raw=(%.3f,%.3f) smoothed=(%.3f,%.3f) dist=%.4f", 
-                                   log: log, type: .info,
+                                   log: log, type: .debug,
                                    rawCenter.x, rawCenter.y, smoothed.x, smoothed.y, distance)
                         }
                     }
@@ -116,11 +116,11 @@ final class VisionTracking {
                     saliencyCenter = rawCenter
                     if shouldLog {
                         os_log("🎯 Saliency: initial center (%.3f,%.3f)", 
-                               log: log, type: .info, rawCenter.x, rawCenter.y)
+                               log: log, type: .debug, rawCenter.x, rawCenter.y)
                     }
                 }
             } else if shouldLog {
-                os_log("🎯 Saliency: No salient objects found", log: log, type: .info)
+                os_log("🎯 Saliency: No salient objects found", log: log, type: .debug)
             }
         } catch {
             os_log("❌ Vision error: %{public}@", log: log, type: .error, error.localizedDescription)
@@ -132,5 +132,4 @@ final class VisionTracking {
         return VisionTrackingResult(subjects: results, saliencyCenter: saliencyCenter, faceCount: faces, personCount: persons)
     }
 }
-
 

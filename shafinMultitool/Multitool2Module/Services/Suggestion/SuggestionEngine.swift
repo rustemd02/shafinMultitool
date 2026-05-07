@@ -58,10 +58,12 @@ enum MotionState {
 final class SuggestionEngine {
     struct Configuration {
         var horizonThresholdDegrees: CGFloat = 2.5
-        var compositionOffsetThreshold: CGFloat = 0.15 // Горизонтальный кадр: более мягкий порог
+        var horizonConfidenceThreshold: CGFloat = 0.65
+        var compositionOffsetThreshold: CGFloat = 0.30
         var backlightThreshold: CGFloat = 0.35
         var shakeThreshold: CGFloat = 0.65
         var cooldownPerKind: TimeInterval = 5.0 // Увеличен для меньшего мелькания
+        var globalSwitchCooldown: TimeInterval = 7.0
         var displayDuration: TimeInterval = 4.5
         var activationWindowCount: Int = 3
         var deactivationWindowCount: Int = 2
@@ -71,6 +73,8 @@ final class SuggestionEngine {
     private var history: [SuggestionType: Date] = [:]
     private var activationCounters: [SuggestionType: Int] = [:]
     private var deactivationCounters: [SuggestionType: Int] = [:]
+    private var lastPublishedAt: Date = .distantPast
+    private var lastPublishedType: SuggestionType?
     private let log = OSLog(subsystem: "com.multitool2.suggestions", category: "SuggestionEngine")
     private var logCounter = 0
 
@@ -130,13 +134,13 @@ final class SuggestionEngine {
 
     func nextSuggestion(from features: CoachingFeatures, timestamp: Date = Date()) -> Suggestion? {
         logCounter += 1
-        let shouldLog = logCounter % 20 == 0 // Логируем каждые 20 вызовов
+        let shouldLog = CameraLog.suggestions && logCounter % 20 == 0
         
         // Если камера движется - скрываем подсказки (пользователь пытается исправить проблему)
         if features.motion.state != .still {
             if shouldLog {
                 os_log("💡 Suggestions: Hidden (camera moving, state=%{public}@)", 
-                       log: log, type: .info, String(describing: features.motion.state))
+                       log: log, type: .debug, String(describing: features.motion.state))
             }
             return nil
         }
@@ -186,40 +190,56 @@ final class SuggestionEngine {
         if shouldLog {
             // Детальная диагностика почему какие-то подсказки не срабатывают
             os_log("💡 Features values: horizon=%.2f°(conf=%.2f) exposure=%.2f backlight=%.2f h_offset=%.2f v_offset=%.2f",
-                   log: log, type: .info,
+                   log: log, type: .debug,
                    features.horizon.angle, features.horizon.confidence,
                    features.lighting.exposureBiasHint, features.lighting.backlightIndex,
                    features.composition.horizontalOffset, features.composition.verticalOffset)
             
             let candidateTypes = candidates.map { "\($0.type)" }.joined(separator: ", ")
             os_log("💡 Candidates: [%{public}@] motion=%{public}@", 
-                   log: log, type: .info, candidateTypes, String(describing: features.motion.state))
+                   log: log, type: .debug, candidateTypes, String(describing: features.motion.state))
         }
 
         let eligible = filterByCooldown(candidates: candidates, timestamp: timestamp)
         
         if shouldLog && eligible.count != candidates.count {
             let eligibleTypes = eligible.map { "\($0.type)" }.joined(separator: ", ")
-            os_log("💡 After cooldown: [%{public}@]", log: log, type: .info, eligibleTypes)
+            os_log("💡 After cooldown: [%{public}@]", log: log, type: .debug, eligibleTypes)
         }
         
         guard let pick = selectSuggestion(eligible) else {
             updateCounters(for: candidates.map { $0.type }, activated: false)
             if shouldLog {
-                os_log("💡 No suggestion selected", log: log, type: .info)
+                os_log("💡 No suggestion selected", log: log, type: .debug)
             }
             return nil
         }
 
         activationCounters[pick.type, default: 0] += 1
-        if activationCounters[pick.type, default: 0] >= configuration.activationWindowCount {
-            history[pick.type] = timestamp
-            activationCounters[pick.type] = 0
-            
+        for type in candidates.map(\.type) where type != pick.type {
+            activationCounters[type] = 0
+        }
+
+        guard activationCounters[pick.type, default: 0] >= configuration.activationWindowCount else {
             if shouldLog {
-                os_log("💡 Selected: %{public}@ - \"%{public}@\"", 
-                       log: log, type: .info, String(describing: pick.type), pick.text)
+                os_log("💡 Stabilizing: %{public}@ (%d/%d)",
+                       log: log,
+                       type: .debug,
+                       String(describing: pick.type),
+                       activationCounters[pick.type, default: 0],
+                       configuration.activationWindowCount)
             }
+            return nil
+        }
+
+        history[pick.type] = timestamp
+        lastPublishedAt = timestamp
+        lastPublishedType = pick.type
+        activationCounters[pick.type] = 0
+
+        if shouldLog {
+            os_log("💡 Selected: %{public}@ - \"%{public}@\"",
+                   log: log, type: .debug, String(describing: pick.type), pick.text)
         }
         return pick
     }
@@ -240,7 +260,10 @@ final class SuggestionEngine {
     private func filterByCooldown(candidates: [Suggestion], timestamp: Date) -> [Suggestion] {
         candidates.filter { candidate in
             let lastShown = history[candidate.type] ?? .distantPast
-            return timestamp.timeIntervalSince(lastShown) >= configuration.cooldownPerKind
+            let kindAllowed = timestamp.timeIntervalSince(lastShown) >= configuration.cooldownPerKind
+            let switchAllowed = candidate.type == lastPublishedType ||
+                timestamp.timeIntervalSince(lastPublishedAt) >= configuration.globalSwitchCooldown
+            return kindAllowed && switchAllowed
         }
     }
 
@@ -255,7 +278,9 @@ final class SuggestionEngine {
 
     private func horizonSuggestion(from features: CoachingFeatures) -> String? {
         let angle = features.horizon.angle
+        guard features.horizon.confidence >= configuration.horizonConfidenceThreshold else { return nil }
         guard abs(angle) >= configuration.horizonThresholdDegrees else { return nil }
+        guard abs(angle) <= 35 else { return nil }
         
         if angle > 0 {
             return "Камеру ровнее (↺)"
@@ -267,9 +292,12 @@ final class SuggestionEngine {
     private func compositionSuggestion(from features: CoachingFeatures) -> String? {
         let horizontal = features.composition.horizontalOffset
         let vertical = features.composition.verticalOffset
+        let threshold = features.subject.count > 1
+            ? max(configuration.compositionOffsetThreshold, 0.45)
+            : configuration.compositionOffsetThreshold
         
         // Горизонтальный кадр: приоритет левее/правее
-        if abs(horizontal) >= configuration.compositionOffsetThreshold {
+        if abs(horizontal) >= threshold {
             let direction = horizontal > 0 ? "правее" : "левее"
             
             // Контекстные фразы в стиле Camera Coach
@@ -288,7 +316,7 @@ final class SuggestionEngine {
         }
         
         // Вертикальная коррекция (редкая для ландшафта)
-        if abs(vertical) >= configuration.compositionOffsetThreshold * 1.3 {
+        if abs(vertical) >= threshold * 1.3 {
             let direction = vertical > 0 ? "ниже" : "выше"
             return "Камеру чуть \(direction)"
         }
@@ -366,6 +394,9 @@ final class SuggestionEngine {
 
     private func lensSuggestion(from features: CoachingFeatures) -> String? {
         guard let lens = features.lensRecommendation else { return nil }
+        guard features.subject.count <= 1 else { return nil }
+        guard features.composition.subjectAreaRatio > 0,
+              features.composition.subjectAreaRatio < 0.10 else { return nil }
         if features.subject.isFace || features.subject.isPerson {
             return "Поставь \(lens)x"
         }
@@ -379,5 +410,3 @@ private extension String {
         String(format: self, locale: Locale.current, arguments: values)
     }
 }
-
-

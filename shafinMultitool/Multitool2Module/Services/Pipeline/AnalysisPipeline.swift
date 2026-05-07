@@ -1466,6 +1466,8 @@ final class AnalysisPipeline: ObservableObject {
     private var lastDETRRequest: Date = .distantPast
     private var lowFrameCount: Int = 0
     private var liveHintShownAt: Date = .distantPast
+    private var liveHintExpiresAt: Date = .distantPast
+    private var lastLiveMotionBecameUnstableAt: Date?
     private var lastOverlayPublishAt: Date = .distantPast
     private var pauseAnalysisRevision: Int = 0
     private var pauseReasoningTask: Task<Void, Never>?
@@ -1474,11 +1476,15 @@ final class AnalysisPipeline: ObservableObject {
     private var lastRefinedPauseFrameId: String?
     private var currentPauseTraceBundle: ExplainabilityTraceBundle?
     private var currentLiveFusionTraceBundle: ExplainabilityTraceBundle?
+    private var liveHintDecisionLogCounter = 0
+    private var lastLiveHintDecisionLogKey: String?
 
     private var suggestionCancellable: AnyCancellable?
-    private let minLiveHintHold: TimeInterval = 1.2
-    private let liveHintConfidenceDelta: Double = 0.12
-    private let liveHintTextOnlyConfidenceDelta: Double = 0.08
+    private let minLiveHintHold: TimeInterval = 5.0
+    private let liveHintDisplayDuration: TimeInterval = 8.0
+    private let liveHintMotionHideGrace: TimeInterval = 0.8
+    private let liveHintConfidenceDelta: Double = 0.28
+    private let liveHintTextOnlyConfidenceDelta: Double = 0.06
     private let maxOverlayHz: Double = 8.0
 
     init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider(),
@@ -1623,7 +1629,7 @@ final class AnalysisPipeline: ObservableObject {
         Telemetry.shared.recordLatency(label: "Vision", duration: visionLatency)
         Telemetry.shared.setActiveModule("Vision", active: false)
 
-        let bestSubject = trackingResult.subjects.sorted { $0.confidence > $1.confidence }.first
+        let primarySubject = primaryVisionSubject(from: trackingResult)
         
         let horizonStart = CACurrentMediaTime()
         Telemetry.shared.setActiveModule("Horizon", active: true)
@@ -1634,7 +1640,7 @@ final class AnalysisPipeline: ObservableObject {
         Telemetry.shared.recordLatency(label: "Horizon", duration: horizonLatency)
         Telemetry.shared.setActiveModule("Horizon", active: false)
 
-        let saliencyBalance = computeSaliencyBalance(from: bestSubject?.boundingBox ?? .zero,
+        let saliencyBalance = computeSaliencyBalance(from: primarySubject?.boundingBox ?? .zero,
                                                     saliencyCenter: trackingResult.saliencyCenter)
         let measurementTime = Date()
         let visionSubjectsPayload = trackingResult.subjects.map {
@@ -1652,14 +1658,15 @@ final class AnalysisPipeline: ObservableObject {
             features.motion.shakeLevel = CGFloat(context.shakeLevel)
             features.motion.state = context.motionState
             self.lastFrameWasStable = context.isStable
-            if let subject = bestSubject {
+            if let subject = primarySubject {
                 features.composition = self.compositionFeatures(from: subject.boundingBox)
                 features.composition.saliencyLeftRightBalance = saliencyBalance
                 features.composition.subjectAreaRatio = subject.boundingBox.width * subject.boundingBox.height
                 features.lensRecommendation = self.lensRecommendation(for: subject.boundingBox)
+                features.subject.objectName = nil
                 features.subject.isFace = subject.isFace
                 features.subject.isPerson = true
-                features.subject.count = trackingResult.personCount
+                features.subject.count = max(trackingResult.faceCount, trackingResult.personCount)
             } else if let sCenter = trackingResult.saliencyCenter {
                 features.composition = self.compositionFeatures(fromSaliency: sCenter)
                 features.subject.isFace = false
@@ -1700,7 +1707,7 @@ final class AnalysisPipeline: ObservableObject {
         Telemetry.shared.setCameraStable(context.isStable, shakeLevel: context.shakeLevel)
 
         Task { @MainActor in
-            self.overlayState = OverlayState(primaryBoundingBox: bestSubject?.boundingBox,
+            self.overlayState = OverlayState(primaryBoundingBox: primarySubject?.boundingBox,
                                              horizonAngle: horizon.angle,
                                              horizonConfidence: horizon.confidence,
                                              saliencyBalance: saliencyBalance)
@@ -1708,6 +1715,47 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         Telemetry.shared.recordFrameProcessed()
+    }
+
+    private func primaryVisionSubject(from trackingResult: VisionTrackingResult) -> TrackedSubject? {
+        let faces = trackingResult.subjects
+            .filter { $0.isFace && $0.confidence >= 0.62 }
+            .sorted { $0.confidence > $1.confidence }
+
+        if faces.count >= 2 {
+            let groupedFaces = Array(faces.prefix(4))
+            let groupedBox = unionBoundingBox(groupedFaces.map(\.boundingBox))
+            let confidence = groupedFaces.map(\.confidence).max() ?? faces[0].confidence
+            return TrackedSubject(
+                boundingBox: groupedBox,
+                confidence: confidence,
+                isFace: true
+            )
+        }
+
+        return trackingResult.subjects.sorted { lhs, rhs in
+            if lhs.isFace != rhs.isFace {
+                return lhs.isFace && !rhs.isFace
+            }
+            return lhs.confidence > rhs.confidence
+        }.first
+    }
+
+    private func unionBoundingBox(_ boxes: [CGRect]) -> CGRect {
+        guard let first = boxes.first else { return .zero }
+        let union = boxes.dropFirst().reduce(first) { partialResult, box in
+            partialResult.union(box)
+        }
+        let minX = CGFloat(clamp01(Double(union.minX)))
+        let minY = CGFloat(clamp01(Double(union.minY)))
+        let maxX = CGFloat(clamp01(Double(union.maxX)))
+        let maxY = CGFloat(clamp01(Double(union.maxY)))
+        return CGRect(
+            x: minX,
+            y: minY,
+            width: max(0, maxX - minX),
+            height: max(0, maxY - minY)
+        )
     }
 
     private func performMedium(context: FrameContext) {
@@ -1751,21 +1799,22 @@ final class AnalysisPipeline: ObservableObject {
         let timeSinceLastDETR = now.timeIntervalSince(lastDETRRequest)
         let hasDetector = detrDetector != nil
 
-        // Логируем каждые 30 фреймов (~2 сек)
-        if lowFrameCount % 30 == 0 {
+        if CameraLog.detr, lowFrameCount % 30 == 0 {
             os_log("🔥 DETR: time=%.1fs (need>0.5) detector=%d",
                    log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                   type: .info,
-                   timeSinceLastDETR, hasDetector)
+                   type: .debug,
+                   timeSinceLastDETR, hasDetector ? 1 : 0)
         }
 
         // Запускаем DETR каждые 0.5 сек
         if timeSinceLastDETR > 0.5,
            let detector = detrDetector {
 
-            os_log("🚀 DETR: Starting detection...",
-                   log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                   type: .info)
+            if CameraLog.detr {
+                os_log("🚀 DETR: Starting detection...",
+                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                       type: .debug)
+            }
 
             lastDETRRequest = now
             let detrStart = CACurrentMediaTime()
@@ -1777,40 +1826,63 @@ final class AnalysisPipeline: ObservableObject {
                 Telemetry.shared.recordLatency(label: "DETR", duration: detrLatency)
                 Telemetry.shared.setActiveModule("DETR", active: false)
 
-                os_log("✅ DETR callback: %d detections received in %.0fms",
-                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                       type: .info, detections.count, detrLatency * 1000)
+                if CameraLog.detr {
+                    os_log("✅ DETR callback: %d detections received in %.0fms",
+                           log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                           type: .debug, detections.count, detrLatency * 1000)
+                }
 
                 guard let self else { return }
 
-                // Берём объект с максимальной confidence
-                let sortedDetections = self.sortedDetectionsForPriority(detections)
-                if let top = sortedDetections.first {
-                    os_log("🎯 DETR PRIORITY: Using %{public}@ (conf=%.2f) for composition",
-                           log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                           type: .info, top.label, top.confidence)
+                let priorityDetections = self.compositionPriorityDetections(detections)
+                if let top = priorityDetections.first {
+                    var didUseDetrSubject = false
 
                     self.updateFeatures { features in
+                        let measurementTime = Date()
+                        self.debugData.detrDetections = detections
+                        self.debugData.detrMeasuredAt = measurementTime
+                        self.latestDetrSample = self.makeDetrFeatureSample(
+                            from: detections,
+                            measuredAt: measurementTime
+                        )
+
+                        guard !self.shouldPreserveVisionSubjectForLiveDetr(features) else { return }
+
+                        didUseDetrSubject = true
                         features.composition = self.compositionFeatures(from: top.boundingBox)
                         features.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
                         features.subject.objectName = top.label
                         features.subject.isFace = (top.label.lowercased() == "person")
                         features.subject.isPerson = (top.label.lowercased() == "person")
                         features.subject.count = detections.count
-                        let measurementTime = Date()
-                        self.debugData.detrDetections = detections
-                        self.debugData.detrMeasuredAt = measurementTime
-                        self.latestDetrSample = self.makeDetrFeatureSample(
-                            from: detections,
-                            measuredAt: measurementTime
-                        )
                     }
+                    let didUseDetrSubjectSnapshot = didUseDetrSubject
                     Task { @MainActor in
-                        self.overlayState.primaryBoundingBox = top.boundingBox
+                        if didUseDetrSubjectSnapshot {
+                            if CameraLog.detr {
+                                os_log("🎯 DETR PRIORITY: Using %{public}@ (conf=%.2f) for composition",
+                                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                                       type: .debug, top.label, top.confidence)
+                            }
+                            self.overlayState.primaryBoundingBox = top.boundingBox
+                        } else {
+                            if CameraLog.detr {
+                                os_log("🎯 DETR PRIORITY: Keeping Vision subject over %{public}@",
+                                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                                       type: .debug, top.label)
+                            }
+                        }
                         await self.emitSuggestion()
                     }
                 } else {
-                    self.updateFeatures { _ in
+                    if CameraLog.detr {
+                        os_log("🎯 DETR PRIORITY: No foreground subject for composition",
+                               log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                               type: .debug)
+                    }
+                    var shouldClearDetrOverlay = false
+                    self.updateFeatures { features in
                         let measurementTime = Date()
                         self.debugData.detrDetections = detections
                         self.debugData.detrMeasuredAt = measurementTime
@@ -1818,6 +1890,23 @@ final class AnalysisPipeline: ObservableObject {
                             from: detections,
                             measuredAt: measurementTime
                         )
+
+                        guard !self.shouldPreserveVisionSubjectForLiveDetr(features) else { return }
+
+                        shouldClearDetrOverlay = true
+                        if let saliencyCenter = self.debugData.saliencyCenter {
+                            features.composition = self.compositionFeatures(fromSaliency: saliencyCenter)
+                        }
+                        features.composition.subjectAreaRatio = 0
+                        features.subject.objectName = nil
+                        features.subject.count = 0
+                    }
+                    let shouldClearDetrOverlaySnapshot = shouldClearDetrOverlay
+                    Task { @MainActor in
+                        if shouldClearDetrOverlaySnapshot {
+                            self.overlayState.primaryBoundingBox = nil
+                        }
+                        await self.emitSuggestion()
                     }
                 }
             }
@@ -1835,9 +1924,11 @@ final class AnalysisPipeline: ObservableObject {
                 Telemetry.shared.setActiveModule("Aesthetic", active: false)
 
                 guard let self, let score else { return }
-                os_log("🎨 Aesthetic score: %.2f (in %.0fms)",
-                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                       type: .info, score, aestheticLatency * 1000)
+                if CameraLog.detr {
+                    os_log("🎨 Aesthetic score: %.2f (in %.0fms)",
+                           log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                           type: .debug, score, aestheticLatency * 1000)
+                }
 
                 // Обновляем Debug Overlay
                 Telemetry.shared.setAestheticScore(score)
@@ -1860,24 +1951,43 @@ final class AnalysisPipeline: ObservableObject {
         let now = Date()
         let localFeatures = featureQueue.sync { features }
         
-        // Если камера движется - немедленно убираем подсказку
         if localFeatures.motion.state != .still {
-            if currentSuggestion != nil {
-                os_log("🚫 Hiding suggestion (camera %{public}@)", 
-                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                       type: .info, String(describing: localFeatures.motion.state))
+            if lastLiveMotionBecameUnstableAt == nil {
+                lastLiveMotionBecameUnstableAt = now
+            }
+
+            let unstableDuration = now.timeIntervalSince(lastLiveMotionBecameUnstableAt ?? now)
+            guard unstableDuration >= liveHintMotionHideGrace else {
+                return
+            }
+
+            if currentSuggestion != nil || currentLiveHint != nil {
+                if CameraLog.liveHintDecisions {
+                    os_log("🚫 Hiding suggestion (camera %{public}@)",
+                           log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                           type: .debug, String(describing: localFeatures.motion.state))
+                }
                 currentSuggestion = nil
             }
             currentLiveHint = nil
+            liveHintExpiresAt = .distantPast
             currentLiveFusionTraceBundle = nil
             publishOverlayAnnotations([], now: now)
             return
         }
+        lastLiveMotionBecameUnstableAt = nil
         
-        if let pick = suggestionEngine.nextSuggestion(from: localFeatures) {
-            currentSuggestion = pick
-            suggestionExpiry = now.addingTimeInterval(pick.ttl)
-            Telemetry.shared.recordSuggestion(pick)
+        if currentSuggestion != nil, now <= suggestionExpiry {
+            // Keep the legacy fallback stable while it is alive; liveHint decides whether it is visible.
+        } else if let pick = suggestionEngine.nextSuggestion(from: localFeatures) {
+            if currentSuggestion?.type == pick.type,
+               currentSuggestion?.text == pick.text {
+                suggestionExpiry = now.addingTimeInterval(pick.ttl)
+            } else {
+                currentSuggestion = pick
+                suggestionExpiry = now.addingTimeInterval(pick.ttl)
+                Telemetry.shared.recordSuggestion(pick)
+            }
         } else {
             // Нет новой подсказки — удерживаем прежнюю до TTL
             if now > suggestionExpiry {
@@ -1947,7 +2057,8 @@ final class AnalysisPipeline: ObservableObject {
             features: localFeatures,
             mode: .live,
             legacySuggestions: currentSuggestion.map { [$0] } ?? [],
-            forceLegacyOnly: !structuredDecision.isAvailable
+            forceLegacyOnly: !structuredDecision.isAvailable,
+            liveHint: currentLiveHint
         )
         publishOverlayAnnotations(annotations, now: now)
     }
@@ -1968,6 +2079,14 @@ final class AnalysisPipeline: ObservableObject {
             semanticFallbackUsed: semanticTips.fallbackUsed,
             legacySuggestion: legacySuggestion,
             forceLegacyFallback: !structuredAvailable
+        )
+        logLiveHintDecision(
+            candidate: hintCandidate,
+            legacySuggestion: legacySuggestion,
+            semanticTip: semanticTips.livePrimaryTip,
+            structuredAvailable: structuredAvailable,
+            critique: critique,
+            plan: plan
         )
         applyLiveHint(candidate: hintCandidate, now: now)
     }
@@ -1996,6 +2115,9 @@ final class AnalysisPipeline: ObservableObject {
     func clearLivePresentationState() {
         DispatchQueue.main.async {
             self.currentLiveHint = nil
+            self.liveHintShownAt = .distantPast
+            self.liveHintExpiresAt = .distantPast
+            self.lastLiveMotionBecameUnstableAt = nil
         }
         currentLiveFusionTraceBundle = nil
     }
@@ -2043,7 +2165,7 @@ final class AnalysisPipeline: ObservableObject {
                         localDebugData.detrDetections = detections
                         localDebugData.detrMeasuredAt = measuredAt
                         if shouldUpdateLegacySubjectFromDetr,
-                           let top = self.sortedDetectionsForPriority(detections).first {
+                           let top = self.compositionPriorityDetections(detections).first {
                             localFeatures.composition = self.compositionFeatures(from: top.boundingBox)
                             localFeatures.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
                             localFeatures.subject.objectName = top.label
@@ -2239,7 +2361,14 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         if let semanticTip,
-           let linkedAction = linkedAction(for: semanticTip, plan: plan) {
+           let linkedAction = linkedAction(for: semanticTip, plan: plan),
+           isLiveWorthySemanticTip(
+                semanticTip,
+                linkedAction: linkedAction,
+                critique: critique,
+                plan: plan,
+                fallbackUsed: fallbackUsed
+           ) {
             let targetRegion = linkedAction.targetRegion ?? firstIssueRegion(linkedIssueIds: semanticTip.linkedIssueIds, critique: critique)
             return LiveHintPresentation(
                 id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
@@ -2264,7 +2393,9 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
-        if let semanticTip, critique.verdict == .good {
+        if let semanticTip,
+           critique.verdict == .good,
+           shouldShowLivePositiveConfirmation(critique: critique, plan: plan) {
             return LiveHintPresentation(
                 id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
                 frameId: frameId,
@@ -2288,7 +2419,8 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
-        if let primaryAction = plan.primaryAction {
+        if let primaryAction = plan.primaryAction,
+           isLiveWorthyPrimaryAction(primaryAction, critique: critique, plan: plan) {
             let linkedIssueTypes = critique.issues
                 .filter { primaryAction.linkedIssueIds.contains($0.id) }
                 .map(\.type.rawValue)
@@ -2321,7 +2453,8 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
-        if critique.verdict == .good {
+        if critique.verdict == .good,
+           shouldShowLivePositiveConfirmation(critique: critique, plan: plan) {
             let strengthTypes = critique.strengths.prefix(3).map(\.type.rawValue).sorted().joined(separator: "+")
             let normalizedSummary = normalizeSummaryKey(critique.summary.shortVerdict)
             let id = "lh_live_summary_\(normalizedSummary)_\(strengthTypes.isEmpty ? "none" : strengthTypes)"
@@ -2357,11 +2490,117 @@ final class AnalysisPipeline: ObservableObject {
         )
     }
 
+    private func isLiveWorthySemanticTip(_ semanticTip: SemanticTipCandidate,
+                                         linkedAction: RecommendationAction,
+                                         critique: CritiqueReport,
+                                         plan: RecommendationPlan,
+                                         fallbackUsed: Bool) -> Bool {
+        switch semanticTip.priorityBand {
+        case .primaryCorrective:
+            if fallbackUsed && !isStableLiveAction(linkedAction.actionType) {
+                return false
+            }
+            return isLiveWorthyPrimaryAction(linkedAction, critique: critique, plan: plan)
+        case .positiveConfirmation:
+            return shouldShowLivePositiveConfirmation(critique: critique, plan: plan)
+        case .secondaryCorrective, .contextualCorrective, .timingCorrective:
+            return false
+        }
+    }
+
+    private func isLiveWorthyPrimaryAction(_ action: RecommendationAction,
+                                           critique: CritiqueReport,
+                                           plan: RecommendationPlan) -> Bool {
+        if action.actionType == .leaveFrameAsIs {
+            return shouldShowLivePositiveConfirmation(critique: critique, plan: plan)
+        }
+
+        guard critique.verdict != .good,
+              plan.planConfidence >= 0.70,
+              critique.verdictConfidence >= 0.64 else {
+            return false
+        }
+
+        let issueScore = strongestIssueScore(for: action, critique: critique)
+        switch action.actionType {
+        case .improveFrontLight, .levelHorizon:
+            return issueScore >= 0.68
+        case .moveFrameLeft, .moveFrameRight, .moveFrameUp, .moveFrameDown:
+            return issueScore >= 0.84 && plan.planConfidence >= 0.76
+        case .increaseSubjectSize, .reduceBackgroundDistractions, .changeAngle:
+            return issueScore >= 0.90 && plan.planConfidence >= 0.82
+        case .leaveFrameAsIs:
+            return shouldShowLivePositiveConfirmation(critique: critique, plan: plan)
+        }
+    }
+
+    private func isStableLiveAction(_ actionType: ActionTypeV1) -> Bool {
+        actionType == .improveFrontLight || actionType == .levelHorizon || actionType == .leaveFrameAsIs
+    }
+
+    private func strongestIssueScore(for action: RecommendationAction,
+                                     critique: CritiqueReport) -> Double {
+        let linkedIssues = critique.issues.filter { action.linkedIssueIds.contains($0.id) }
+        let scopedIssues = linkedIssues.isEmpty ? critique.issues : linkedIssues
+        return scopedIssues
+            .map { issue in
+                (issue.severity * 0.65) + (issue.confidence * 0.35)
+            }
+            .max() ?? 0
+    }
+
+    private func shouldShowLivePositiveConfirmation(critique: CritiqueReport,
+                                                    plan: RecommendationPlan) -> Bool {
+        critique.verdict == .good &&
+            critique.verdictConfidence >= 0.76 &&
+            plan.planConfidence >= 0.72
+    }
+
+    @MainActor
+    private func logLiveHintDecision(candidate: LiveHintPresentation?,
+                                     legacySuggestion: Suggestion?,
+                                     semanticTip: SemanticTipCandidate?,
+                                     structuredAvailable: Bool,
+                                     critique: CritiqueReport,
+                                     plan: RecommendationPlan) {
+        guard CameraLog.liveHintDecisions else { return }
+        liveHintDecisionLogCounter += 1
+        let candidateKey = candidate?.id ?? "none"
+        let legacyKey = legacySuggestion.map { "\($0.type):\($0.text)" } ?? "none"
+        let semanticKey = semanticTip.map { semanticTipPlanner.stableKey(for: $0) } ?? "none"
+        let primaryActionKey = plan.primaryAction?.actionType.rawValue ?? "none"
+        let logKey = [
+            candidateKey,
+            legacyKey,
+            semanticKey,
+            primaryActionKey,
+            "\(structuredAvailable)"
+        ].joined(separator: "|")
+
+        guard logKey != lastLiveHintDecisionLogKey || liveHintDecisionLogCounter % 20 == 0 else { return }
+        lastLiveHintDecisionLogKey = logKey
+
+        os_log(
+            "💬 LiveHint decision selected=%{public}@ legacy=%{public}@ semantic=%{public}@ structured=%{public}@ verdict=%{public}@ conf=%.2f plan=%.2f action=%{public}@",
+            log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+            type: .info,
+            candidate?.text ?? "none",
+            legacyKey,
+            semanticKey,
+            String(structuredAvailable),
+            critique.verdict.rawValue,
+            critique.verdictConfidence,
+            plan.planConfidence,
+            primaryActionKey
+        )
+    }
+
     private func makeLegacyLiveHint(frameId: String,
                                     critique: CritiqueReport,
                                     plan: RecommendationPlan,
                                     legacySuggestion: Suggestion?) -> LiveHintPresentation? {
         guard let legacySuggestion else { return nil }
+        guard isLiveWorthyLegacySuggestion(legacySuggestion) else { return nil }
         return LiveHintPresentation(
             id: "lh_live_legacy_\(legacySuggestion.type.rawValue)",
             frameId: frameId,
@@ -2383,6 +2622,17 @@ final class AnalysisPipeline: ObservableObject {
                 fallbackUsed: true
             )
         )
+    }
+
+    private func isLiveWorthyLegacySuggestion(_ suggestion: Suggestion) -> Bool {
+        switch suggestion.type {
+        case .horizon, .exposure:
+            return suggestion.priority == .critical
+        case .lighting, .composition:
+            return suggestion.priority != .optional
+        case .lens, .other:
+            return false
+        }
     }
 
     private func makeLiveExpandedVerdictPresentation(critique: CritiqueReport,
@@ -2432,11 +2682,14 @@ final class AnalysisPipeline: ObservableObject {
     private func applyLiveHint(candidate: LiveHintPresentation?, now: Date) {
         guard let candidate else {
             if currentLiveHint != nil,
-               now.timeIntervalSince(liveHintShownAt) >= minLiveHintHold {
+               now.timeIntervalSince(liveHintShownAt) >= minLiveHintHold,
+               now >= liveHintExpiresAt {
                 currentLiveHint = nil
                 liveHintShownAt = now
+                liveHintExpiresAt = .distantPast
             } else if currentLiveHint == nil {
                 liveHintShownAt = now
+                liveHintExpiresAt = .distantPast
             }
             return
         }
@@ -2444,6 +2697,7 @@ final class AnalysisPipeline: ObservableObject {
         guard let current = currentLiveHint else {
             currentLiveHint = candidate
             liveHintShownAt = now
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
             return
         }
 
@@ -2466,11 +2720,13 @@ final class AnalysisPipeline: ObservableObject {
                 isFallback: candidate.isFallback,
                 expandedVerdict: candidate.expandedVerdict
             )
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
             return
         }
 
         if current.id == candidate.id {
             currentLiveHint = candidate
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
             return
         }
 
@@ -2479,6 +2735,7 @@ final class AnalysisPipeline: ObservableObject {
         if holdExpired || confidenceBoost >= liveHintConfidenceDelta {
             currentLiveHint = candidate
             liveHintShownAt = now
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
         }
     }
 
@@ -2510,11 +2767,11 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
-        let semanticActionRows = semanticTips.prefix(4).compactMap { tip -> PauseActionRow? in
+        let semanticActionRows = semanticTips.prefix(4).enumerated().compactMap { index, tip -> PauseActionRow? in
             guard critique.verdict != .good else { return nil }
             guard let action = linkedAction(for: tip, plan: plan) else { return nil }
             return PauseActionRow(
-                actionId: action.id,
+                actionId: "\(action.id)_semantic_\(semanticTipPlanner.stableKey(for: tip))_\(index)",
                 actionType: action.actionType,
                 priority: action.priority,
                 linkedIssueIds: tip.linkedIssueIds,
@@ -3513,8 +3770,31 @@ final class AnalysisPipeline: ObservableObject {
                                         features: CoachingFeatures,
                                         mode: AnalysisMode,
                                         legacySuggestions: [Suggestion],
-                                        forceLegacyOnly: Bool = false) -> [OverlayAnnotationPresentation] {
+                                        forceLegacyOnly: Bool = false,
+                                        liveHint: LiveHintPresentation? = nil) -> [OverlayAnnotationPresentation] {
         var annotations: [OverlayAnnotationPresentation] = []
+
+        if mode == .live {
+            guard let liveHint else { return [] }
+            if let actionId = liveHint.actionId,
+               let action = allPlanActions(plan).first(where: { $0.id == actionId }),
+               let annotation = makeActionAnnotation(frameId: frameId, action: action, critique: critique, mode: mode) {
+                return [annotation]
+            }
+            if liveHint.isFallback {
+                return legacySuggestions.prefix(1).enumerated().compactMap { index, suggestion in
+                    makeLegacyAnnotation(
+                        frameId: frameId,
+                        suggestion: suggestion,
+                        index: index,
+                        features: features,
+                        mode: mode,
+                        safeDirectionArrowsOnly: true
+                    )
+                }
+            }
+            return []
+        }
 
         if !forceLegacyOnly {
             let actions = [plan.primaryAction].compactMap { $0 } + Array(plan.secondaryActions.prefix(2))
@@ -4235,6 +4515,103 @@ final class AnalysisPipeline: ObservableObject {
             }
             return lhs.boundingBox.midY < rhs.boundingBox.midY
         }
+    }
+
+    private func compositionPriorityDetections(_ detections: [DETRDetection]) -> [DETRDetection] {
+        detections
+            .filter(isUsableCompositionSubject)
+            .stableSorted { lhs, rhs in
+                let lhsScore = compositionSubjectScore(lhs)
+                let rhsScore = compositionSubjectScore(rhs)
+                if lhsScore != rhsScore {
+                    return lhsScore > rhsScore
+                }
+                if lhs.confidence != rhs.confidence {
+                    return lhs.confidence > rhs.confidence
+                }
+                let lhsArea = lhs.boundingBox.width * lhs.boundingBox.height
+                let rhsArea = rhs.boundingBox.width * rhs.boundingBox.height
+                if lhsArea != rhsArea {
+                    return lhsArea < rhsArea
+                }
+                return lhs.label < rhs.label
+            }
+    }
+
+    private func shouldPreserveVisionSubjectForLiveDetr(_ features: CoachingFeatures) -> Bool {
+        guard features.subject.isFace || features.subject.isPerson else { return false }
+        return features.subject.count > 0 && features.composition.subjectAreaRatio >= 0.002
+    }
+
+    private func isUsableCompositionSubject(_ detection: DETRDetection) -> Bool {
+        let label = detection.label.lowercased()
+        let area = detection.boundingBox.width * detection.boundingBox.height
+        guard detection.confidence >= 0.18 else { return false }
+        guard area >= 0.01, area <= 0.72 else { return false }
+        guard !backgroundLikeDetrLabels.contains(label) else { return false }
+        if label.contains("(other)") || label.hasPrefix("wall") || label.hasPrefix("floor") || label.hasPrefix("window") {
+            return false
+        }
+        return true
+    }
+
+    private func compositionSubjectScore(_ detection: DETRDetection) -> Double {
+        let area = Double(detection.boundingBox.width * detection.boundingBox.height)
+        let preferredAreaPenalty = abs(area - 0.18)
+        let labelBonus = foregroundDetrLabels.contains(detection.label.lowercased()) ? 0.25 : 0.0
+        return Double(detection.confidence) + labelBonus - preferredAreaPenalty
+    }
+
+    private var backgroundLikeDetrLabels: Set<String> {
+        [
+            "sky (other)",
+            "wall (other)",
+            "wall (wood)",
+            "wall (brick)",
+            "wall (stone)",
+            "wall (tile)",
+            "floor (other)",
+            "floor (wood)",
+            "ceiling",
+            "door",
+            "window (other)",
+            "window (blind)",
+            "table",
+            "dining table",
+            "fence",
+            "pavement",
+            "grass",
+            "dirt",
+            "sea",
+            "river",
+            "water (other)",
+            "mountain",
+            "building (other)"
+        ]
+    }
+
+    private var foregroundDetrLabels: Set<String> {
+        [
+            "person",
+            "laptop",
+            "keyboard",
+            "cell phone",
+            "book",
+            "cup",
+            "bottle",
+            "vase",
+            "potted plant",
+            "chair",
+            "sofa",
+            "backpack",
+            "handbag",
+            "suitcase",
+            "bicycle",
+            "car",
+            "motorcycle",
+            "clock",
+            "wine glass"
+        ]
     }
 }
 

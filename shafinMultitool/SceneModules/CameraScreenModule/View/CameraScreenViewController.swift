@@ -135,7 +135,6 @@ class CameraScreenViewController: UIViewController {
         thermalGovernor.onBudgetChange = { [weak self] budget in
             guard let self = self else { return }
             self.visionThrottleInterval = 1.0 / budget.visionFrequency
-            print("🔥 Thermal budget changed: Vision at \(budget.visionFrequency) FPS")
             CameraService.shared.updateAuxiliaryTargetFPS(Int(budget.visionFrequency.rounded(.toNearestOrAwayFromZero)))
         }
     }
@@ -1137,5 +1136,4 @@ extension CameraScreenViewController: UIPickerViewDelegate {
         self.fetchSettingsButtonValues()
     }
 }
-
 

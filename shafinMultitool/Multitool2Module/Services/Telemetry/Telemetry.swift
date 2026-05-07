@@ -11,6 +11,16 @@ import QuartzCore
 import Combine
 import UIKit
 
+enum CameraLog {
+    static let fps = false
+    static let suggestions = false
+    static let motion = false
+    static let vision = false
+    static let detr = false
+    static let modelLifecycle = false
+    static let liveHintDecisions = true
+}
+
 final class Telemetry: ObservableObject {
     static let shared = Telemetry()
 
@@ -59,7 +69,9 @@ final class Telemetry: ObservableObject {
             
             if now - self.lastFPSUpdate >= 1.0 {
                 let fps = Double(self.frameCount) / (now - self.lastFPSUpdate)
-                os_log("Pipeline FPS: %.2f", log: self.log, type: .info, fps)
+                if CameraLog.fps {
+                    os_log("Pipeline FPS: %.2f", log: self.log, type: .debug, fps)
+                }
                 
                 DispatchQueue.main.async {
                     self.metrics.pipelineFPS = fps
@@ -100,8 +112,8 @@ final class Telemetry: ObservableObject {
     }
 
     func recordSuggestion(_ suggestion: Suggestion?) {
-        guard let suggestion else { return }
-        os_log("Suggestion: %{public}@ [%{public}@]", log: log, type: .info, suggestion.text, String(describing: suggestion.type))
+        guard CameraLog.suggestions, let suggestion else { return }
+        os_log("Suggestion: %{public}@ [%{public}@]", log: log, type: .debug, suggestion.text, String(describing: suggestion.type))
     }
     
     func setHeavyModelsEnabled(_ enabled: Bool) {
@@ -143,5 +155,4 @@ final class Telemetry: ObservableObject {
         }
     }
 }
-
 
