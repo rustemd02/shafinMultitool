@@ -59,6 +59,20 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             fh.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
+def _model_family_dir(model_id: str) -> str:
+    if model_id.startswith("dataset_v6"):
+        return "v6"
+    if model_id.startswith("dataset_v7"):
+        return "v7"
+    if model_id.startswith("base_"):
+        return "base"
+    return "other"
+
+
+def _prediction_path(output_dir: Path, model_id: str, seed: int) -> Path:
+    return output_dir / _model_family_dir(model_id) / f"{model_id}_seed{seed}.jsonl"
+
+
 def _norm_base_url(base_url: str) -> str:
     normalized = base_url.strip().rstrip("/")
     return normalized
@@ -704,7 +718,7 @@ def main() -> int:
     for model_id in model_ids:
         serving_model = _model_name_for(model_id, model_map)
         for seed in seeds:
-            out_path = output_dir / f"{model_id}_seed{seed}.jsonl"
+            out_path = _prediction_path(output_dir, model_id, seed)
             if args.resume and out_path.exists():
                 print(f"[predict] skip existing: {out_path}")
                 continue

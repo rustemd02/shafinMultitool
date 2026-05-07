@@ -37,10 +37,20 @@
 
 Конкретные run-артефакты и исследовательские прогоны лучше хранить в:
 - [`docs/SGv7pipeline/runs/...`](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs)
+- [`docs/SGv8pipeline/runs/...`](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs)
+- [`docs/SGv9pipeline/runs/...`](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs)
+
+Prediction exports внутри `experiments/sc_benchmark` разложены по семействам:
+- `predictions_real_v1_export/base/`
+- `predictions_real_v1_export/v6/`
+- `predictions_real_v1_export/v7/`
+- `workspace/predictions_oracle_v1/base/`
+- `workspace/predictions_oracle_v1/v6/`
+- `workspace/predictions_oracle_v1/v7/`
 
 Практическое правило:
 - если файл нужен как reusable benchmark infrastructure, его место в `experiments/sc_benchmark`
-- если это результат конкретного прогона модели, Colab export, benchmark result, manual review pack или corpus attempt, его место в `docs/SGv7pipeline/runs/...`
+- если это результат конкретного прогона модели, Colab export, benchmark result, manual review pack или corpus attempt, его место в `docs/SGv{N}pipeline/runs/...` соответствующей версии
 
 ## Базовый запуск
 

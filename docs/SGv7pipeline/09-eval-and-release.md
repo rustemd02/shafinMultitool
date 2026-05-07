@@ -230,9 +230,9 @@
 - `dataset_v9_event_sft` (slot-first `event table -> compile`)
 
 Источник артефактов:
-- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
-- [model_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/model_slice_summary.csv)
-- [event_slice_summary.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json)
+- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
+- [model_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/model_slice_summary.csv)
+- [event_slice_summary.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json)
 
 ### Compiled-slice (end_to_end)
 
@@ -281,11 +281,11 @@ Gold-based semantic accuracy:
 - `dataset_v8_plan_orpo_iter1`
 
 Источник артефактов:
-- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
-- [runs_scored.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv)
-- [pairwise_compare.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv)
-- [v8_plan_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv)
-- [slice_reason_codes.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/slice_reason_codes.csv)
+- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
+- [runs_scored.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/runs_scored.csv)
+- [pairwise_compare.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/pairwise_compare.csv)
+- [v8_plan_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/v8_plan_slice_summary.csv)
+- [slice_reason_codes.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/slice_reason_codes.csv)
 
 ### Короткий вывод
 

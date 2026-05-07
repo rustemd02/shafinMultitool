@@ -3,15 +3,15 @@
 Этот набор документов описывает новый пайплайн подготовки датасета и дообучения локальной `qwen 1.5B` для Scene Generator.
 
 Для `v8` internal planner/compiler foundation вынесен отдельно:
-- runtime/data contracts: [v8/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8)
-- `CIR -> ScenePlanIR` projection: [projection.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/projection.py)
-- deterministic `ScenePlanIR -> SceneScript`: [compiler.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/compiler.py)
-- plan dataset entrypoint: [01_build_v8_plan_dataset.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/01_build_v8_plan_dataset.py)
-- plan slice eval entrypoint: [02_score_v8_plan_slice.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/02_score_v8_plan_slice.py)
-- subtask dataset entrypoint: [03_build_v8_subtask_datasets.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/03_build_v8_subtask_datasets.py)
-- plan preference entrypoint: [04_build_v8_plan_preference_dataset.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/04_build_v8_plan_preference_dataset.py)
-- critic rank entrypoint: [05_build_v8_critic_rank_dataset.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/05_build_v8_critic_rank_dataset.py)
-- eval artifacts entrypoint: [06_build_v8_eval_artifacts.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/v8/06_build_v8_eval_artifacts.py)
+- runtime/data contracts: [v8/](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8)
+- `CIR -> ScenePlanIR` projection: [projection.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/projection.py)
+- deterministic `ScenePlanIR -> SceneScript`: [compiler.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/compiler.py)
+- plan dataset entrypoint: [01_build_v8_plan_dataset.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/01_build_v8_plan_dataset.py)
+- plan slice eval entrypoint: [02_score_v8_plan_slice.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/02_score_v8_plan_slice.py)
+- subtask dataset entrypoint: [03_build_v8_subtask_datasets.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/03_build_v8_subtask_datasets.py)
+- plan preference entrypoint: [04_build_v8_plan_preference_dataset.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/04_build_v8_plan_preference_dataset.py)
+- critic rank entrypoint: [05_build_v8_critic_rank_dataset.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/05_build_v8_critic_rank_dataset.py)
+- eval artifacts entrypoint: [06_build_v8_eval_artifacts.py](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/v8/06_build_v8_eval_artifacts.py)
 
 Цель:
 - повысить точность генерации JSON

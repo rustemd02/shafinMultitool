@@ -10,22 +10,22 @@
     {
       "id": "base_qwen3_1_7b",
       "name": "Base Qwen3-1.7B",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/base_qwen3_1_7b_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/base/base_qwen3_1_7b_seed{seed}.jsonl"
     },
     {
       "id": "dataset_v7",
       "name": "Fine-tuned on generate_dataset_v7",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/dataset_v7_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/v7/dataset_v7_seed{seed}.jsonl"
     },
     {
       "id": "dataset_v7_orpo_iter1",
       "name": "Fine-tuned on generate_dataset_v7 + ORPO iter1",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/dataset_v7_orpo_iter1_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/v7/dataset_v7_orpo_iter1_seed{seed}.jsonl"
     },
     {
       "id": "dataset_v7_orpo_iter2",
       "name": "Fine-tuned on generate_dataset_v7 + ORPO iter2",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/dataset_v7_orpo_iter2_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/predictions_real_v1_export/v7/dataset_v7_orpo_iter2_seed{seed}.jsonl"
     }
   ],
   "pairs": [

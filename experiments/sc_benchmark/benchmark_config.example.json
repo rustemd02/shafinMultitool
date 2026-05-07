@@ -7,23 +7,23 @@
     {
       "id": "base_qwen3_1_7b",
       "name": "Base Qwen3-1.7B",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/base_qwen3_1_7b_seed{seed}.jsonl",
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/base/base_qwen3_1_7b_seed{seed}.jsonl",
       "v8_plan_case_results_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/v8_plan_case_results/base_qwen3_1_7b_seed{seed}.jsonl"
     },
     {
       "id": "dataset_v6",
       "name": "Fine-tuned on generate_dataset_v6",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v6_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/v6/dataset_v6_seed{seed}.jsonl"
     },
     {
       "id": "dataset_v7",
       "name": "Fine-tuned on generate_dataset_v7",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v7_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/v7/dataset_v7_seed{seed}.jsonl"
     },
     {
       "id": "dataset_v7_orpo",
       "name": "Fine-tuned on generate_dataset_v7 + ORPO",
-      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/dataset_v7_orpo_seed{seed}.jsonl"
+      "predictions_path_template": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_oracle_v1/v7/dataset_v7_orpo_seed{seed}.jsonl"
     }
   ],
   "pairs": [

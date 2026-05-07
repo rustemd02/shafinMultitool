@@ -50,6 +50,20 @@ MODEL_NAME_HINTS = {
 }
 
 
+def _model_family_dir(model_id: str) -> str:
+    if model_id.startswith("dataset_v6"):
+        return "v6"
+    if model_id.startswith("dataset_v7"):
+        return "v7"
+    if model_id.startswith("base_"):
+        return "base"
+    return "other"
+
+
+def _prediction_path(predictions_root: Path, model_id: str, seed_template: str) -> Path:
+    return predictions_root / _model_family_dir(model_id) / f"{model_id}_seed{seed_template}.jsonl"
+
+
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as fh:
@@ -534,12 +548,10 @@ def main() -> int:
     # Oracle predictions (SMOKE ONLY): gold target copied as predicted_script for each model+seed.
     model_ids = [item.strip() for item in args.models.split(",") if item.strip()]
     seeds = [int(item.strip()) for item in args.seeds.split(",") if item.strip()]
-    preds_dir.mkdir(parents=True, exist_ok=True)
-
     predictions_rows = [{"eval_case_id": case["eval_case_id"], "predicted_script": case["gold_target_json"]} for case in eval_cases]
     for model_id in model_ids:
         for seed in seeds:
-            _write_jsonl(preds_dir / f"{model_id}_seed{seed}.jsonl", predictions_rows)
+            _write_jsonl(_prediction_path(preds_dir, model_id, str(seed)), predictions_rows)
 
     config = {
         "eval_bundle_dir": str(bundle_dir),
@@ -550,7 +562,7 @@ def main() -> int:
             {
                 "id": model_id,
                 "name": MODEL_NAME_HINTS.get(model_id, model_id),
-                "predictions_path_template": str(preds_dir / f"{model_id}_seed{{seed}}.jsonl"),
+                "predictions_path_template": str(_prediction_path(preds_dir, model_id, "{seed}")),
             }
             for model_id in model_ids
         ],
@@ -566,7 +578,7 @@ def main() -> int:
         "models": [
             {
                 **model_payload,
-                "predictions_path_template": str(real_preds_dir / f"{model_payload['id']}_seed{{seed}}.jsonl"),
+                "predictions_path_template": str(_prediction_path(real_preds_dir, str(model_payload["id"]), "{seed}")),
             }
             for model_payload in config["models"]
         ],
