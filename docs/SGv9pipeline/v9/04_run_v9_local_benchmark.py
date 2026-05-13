@@ -120,6 +120,8 @@ def _build_benchmark_config(
     seed: int,
     eval_seed: int,
     config_path: Path,
+    current_model_id: str,
+    current_model_name: str,
     compiled_prediction_name: str,
     event_case_name: str,
 ) -> None:
@@ -148,16 +150,16 @@ def _build_benchmark_config(
                 ),
             },
             {
-                "id": "dataset_v9_event_sft",
-                "name": "V9 slot-event SFT",
+                "id": current_model_id,
+                "name": current_model_name,
                 "predictions_path_template": str(run_root / f"eval_artifacts/{compiled_prediction_name}"),
                 "v8_plan_case_results_path_template": str(run_root / f"eval_artifacts/{event_case_name}"),
             },
         ],
         "pairs": [
             ["dataset_v8_plan_orpo_iter1", "dataset_v7_orpo_iter2"],
-            ["dataset_v9_event_sft", "dataset_v8_plan_orpo_iter1"],
-            ["dataset_v9_event_sft", "dataset_v7_orpo_iter2"],
+            [current_model_id, "dataset_v8_plan_orpo_iter1"],
+            [current_model_id, "dataset_v7_orpo_iter2"],
         ],
     }
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,6 +187,8 @@ def main() -> None:
     parser.add_argument("--event-predictions-jsonl", required=True, type=Path)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval-seed", type=int, default=20260430)
+    parser.add_argument("--model-id", type=str, default="dataset_v9_event_sft")
+    parser.add_argument("--model-name", type=str, default="V9 slot-event SFT")
     parser.add_argument("--clean-output", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
@@ -195,11 +199,13 @@ def main() -> None:
     eval_artifacts_dir = run_root / "eval_artifacts"
     output_dir = run_root / "benchmark_results_seed42"
     config_path = run_root / "benchmark_config.v9.seed42.json"
+    model_id = args.model_id.strip()
+    model_name = args.model_name.strip() or model_id
 
     eval_artifacts_dir.mkdir(parents=True, exist_ok=True)
-    event_case_name = f"dataset_v9_event_sft_seed{args.seed}.event_case_results.jsonl"
-    compiled_name = f"dataset_v9_event_sft_seed{args.seed}.compiled_predictions.jsonl"
-    summary_name = f"dataset_v9_event_sft_seed{args.seed}.event_slice_summary.json"
+    event_case_name = f"{model_id}_seed{args.seed}.event_case_results.jsonl"
+    compiled_name = f"{model_id}_seed{args.seed}.compiled_predictions.jsonl"
+    summary_name = f"{model_id}_seed{args.seed}.event_slice_summary.json"
 
     build_cli = repo_root / "docs/SGv9pipeline/v9/03_build_v9_eval_artifacts.py"
     _run(
@@ -226,6 +232,8 @@ def main() -> None:
         seed=args.seed,
         eval_seed=args.eval_seed,
         config_path=config_path,
+        current_model_id=model_id,
+        current_model_name=model_name,
         compiled_prediction_name=compiled_name,
         event_case_name=event_case_name,
     )
@@ -247,11 +255,11 @@ def main() -> None:
         ]
     )
 
-    live_vs_offline_gap_report = eval_artifacts_dir / f"dataset_v9_event_sft_seed{args.seed}.live_vs_offline_gap.json"
+    live_vs_offline_gap_report = eval_artifacts_dir / f"{model_id}_seed{args.seed}.live_vs_offline_gap.json"
     _build_live_vs_offline_gap_report(
         model_slice_summary_csv=output_dir / "aggregate/model_slice_summary.csv",
         output_path=live_vs_offline_gap_report,
-        model_id="dataset_v9_event_sft",
+        model_id=model_id,
     )
 
     print("v9 benchmark completed")

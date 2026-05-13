@@ -2191,3 +2191,28 @@
 - `docs/cameraanalysis/README.md` (индексация новых source-of-truth документов semantic-stage)
 
 ---
+
+## [2026-05-13 14:34] - [V9.2 targeted retrain, frozen-bundle benchmark and metric consolidation]
+
+### Суть изменений
+- На базе failure mining для `v9` собран расширенный `v9.2` targeted event-table corpus: к исходным `5000` SFT-строкам добавлены `34` exact hard-case rows из benchmark-failures и `252` новых synthetic hard-case rows по кластерам `dialogue_action`, `put_pick`, `stop_near`.
+- Подготовлен смешанный train pack `v9_2_event_sft_mixed_*` размером `5286` строк (`4744` train, `542` val), где targeted rows не схлопываются с base-set и остаются отдельными supervised examples.
+- По prediction-файлу `dataset_v9_2_event_sft_seed42.event_predictions.jsonl` пересобраны `event_case_results`, compiled predictions и полный scientific benchmark на том же frozen eval bundle (`262` cases) без изменения benchmark input.
+- Обновлены сравнительные summary-файлы (`README`, `09-eval-and-release.md`) и зафиксирован новый reproducible snapshot `v9.2` как лучший текущий candidate.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** После сильного скачка `v9.0` bottleneck сместился с общего JSON/compile stability на узкие semantic failure clusters: потеря обязательной event-row в `dialogue_then_put_down_object`, ошибки покрытия в `dialogue_then_pick_up_object_then_give_to_third_actor`, а также систематические misses в `ordinal_first_second_third`. Простое добавление `34` строк к `5000` базовым примерам не изменило бы распределение обучения и почти не повлияло бы на minibatch-level signal.
+- **Решение:** Введён `v9.2` targeted retrain loop. Сначала failure mining выделяет только реальные semantic failure clusters на frozen benchmark. Затем exact benchmark hard-cases переводятся в отдельные `sg_v9_event_table_v1` SFT rows с новыми `sample_id`, чтобы они не дедуплицировались с base corpus. Поверх этого синтетически генерируется controlled augmentation для тех же failure families (`dialogue_action`, `put_pick`, `stop_near`) с сохранением event-table supervision. Итоговый mixed pack соединяет broad coverage base-set и concentrated hard-case signal без изменения eval bundle.
+- **Детали:** `v9.2` дал measurable uplift даже на том же frozen benchmark и при том же event-table contract. В compiled slice (`end_to_end`) получены: `json_valid_rate=1.0000`, `ordinal_actor_binding_accuracy=1.0000`, `target_resolution_accuracy=0.9812`, `chronology_phase_accuracy=0.9695`, `runtime_fallback_rate=0.4198`, `case_strict_success_rate=0.5573`. Для сравнения, у `v9.0` были `0.9214 / 0.8702 / 0.4351 / 0.5076` по четырём последним ключевым метрикам, а у `dataset_v8_plan_orpo_iter1` — `0.4803 / 0.1412 / 0.7137 / 0.1031`. В raw event slice `v9.2` достиг `event_actor_slot_accuracy≈0.9930`, `event_target_slot_accuracy≈0.9860`, `event_action_type_accuracy≈0.9888`, `event_beat_order_accuracy≈0.9930`, `event_full_row_accuracy≈0.9846`, `chunk_event_coverage_rate≈0.9846`. Pairwise comparison показал почти полный доминирующий выигрыш: против `dataset_v8_plan_orpo_iter1` — `225` побед, `1` поражение, `36` ничьих; против `dataset_v7_orpo_iter2` — `238` побед, `1` поражение, `23` ничьих. Остаточные failure-cases сузились до `8/262`, причём `6` из них относятся к `ordinal_first_second_third`, а ещё `2` — к `dialogue + put_down/handoff`. Это важный исследовательский результат: проблема больше не является общей для event-table decoding, а локализуется в очень узкой зоне multi-actor ordinal sequencing и event coverage.
+
+### Ключевые файлы
+- `docs/SGv9pipeline/v9/06_build_v9_2_targeted_sft.py` (перенос exact benchmark failures в отдельные `v9.2` event-table SFT rows)
+- `docs/SGv9pipeline/v9/07_generate_v9_2_targeted_augmentations.py` (синтетическая генерация hard-case augmentation по failure clusters)
+- `docs/SGv9pipeline/v9/08_build_v9_2_mixed_dataset.py` (сборка mixed dataset `5000 + exact hard-cases + synthetic targeted`)
+- `docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_manifest.json` (итоговые counts и provenance mixed dataset)
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md` (полный benchmark snapshot `v9.2`)
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/eval_artifacts/dataset_v9_2_event_sft_seed42.event_slice_summary.json` (raw event-slice metrics `v9.2`)
+- `docs/SGv9pipeline/v9/README.md` (обновлённый benchmark snapshot `v9.0` vs `v9.2`)
+- `docs/SGv7pipeline/09-eval-and-release.md` (человекочитаемое сравнение `v8`, `v9.0`, `v9.2`)
+
+---

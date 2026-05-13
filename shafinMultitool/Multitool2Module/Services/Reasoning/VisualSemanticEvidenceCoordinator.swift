@@ -23,7 +23,7 @@ enum VisualSemanticEvidenceProviderFactory {
         case "mock":
             return MockVLMVisualEvidenceProvider()
         case "remote":
-            return RemoteVLMVisualEvidenceProvider()
+            return RemoteVLMVisualEvidenceProvider.makeFromEnvironment()
         default:
             return nil
         }
@@ -204,7 +204,7 @@ actor VisualSemanticEvidenceCoordinator {
 }
 
 private enum RemoteVLMVisualEvidenceProviderError: Error {
-    case notImplemented
+    case invalidResponse
 }
 
 actor RemoteVLMVisualEvidenceProvider: VisualSemanticEvidenceProvider {
@@ -215,8 +215,47 @@ actor RemoteVLMVisualEvidenceProvider: VisualSemanticEvidenceProvider {
         supportsPrivacyTiers: [.structuredOnly, .redactedVisual]
     )
 
+    private let endpoint: URL
+    private let apiKey: String?
+    private let session: URLSession
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(endpoint: URL, apiKey: String? = nil, session: URLSession = .shared) {
+        self.endpoint = endpoint
+        self.apiKey = apiKey
+        self.session = session
+    }
+
+    static func makeFromEnvironment() -> RemoteVLMVisualEvidenceProvider? {
+        guard let rawEndpoint = ProcessInfo.processInfo.environment["CAMERA_VLM_VISUAL_EVIDENCE_ENDPOINT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              let endpoint = URL(string: rawEndpoint),
+              !rawEndpoint.isEmpty else {
+            return nil
+        }
+        let rawApiKey = ProcessInfo.processInfo.environment["CAMERA_VLM_VISUAL_EVIDENCE_API_KEY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let apiKey = rawApiKey?.isEmpty == false ? rawApiKey : nil
+        return RemoteVLMVisualEvidenceProvider(endpoint: endpoint, apiKey: apiKey)
+    }
+
     func fetchVisualEvidence(request: VLMVisualEvidenceRequest) async throws -> VLMVisualEvidenceResponse {
-        throw RemoteVLMVisualEvidenceProviderError.notImplemented
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let apiKey {
+            urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = try encoder.encode(request)
+
+        let (data, response) = try await session.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
+            throw RemoteVLMVisualEvidenceProviderError.invalidResponse
+        }
+        return try decoder.decode(VLMVisualEvidenceResponse.self, from: data)
     }
 }
 

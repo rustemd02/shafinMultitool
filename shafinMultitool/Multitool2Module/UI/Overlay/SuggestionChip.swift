@@ -70,6 +70,10 @@ struct LiveHintChipView: View {
     @ViewBuilder
     private func hintBody(text: String) -> some View {
         let content = VStack(alignment: .leading, spacing: 10) {
+            if let confidence = liveHint?.confidencePresentation {
+                LiveConfidenceBadge(confidence: confidence)
+            }
+
             HStack(alignment: .top, spacing: 10) {
                 Text(text)
                     .font(.headline.weight(.semibold))
@@ -129,6 +133,40 @@ struct LiveHintChipView: View {
             return min(420, max(180, canvasSize.width - 32))
         }
         return min(360, max(160, canvasSize.width - 48))
+    }
+}
+
+private struct LiveConfidenceBadge: View {
+    let confidence: ConfidencePresentation
+
+    var body: some View {
+        Text("Уверенность \(confidence.label)")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(toneColor.opacity(0.72), in: Capsule())
+            .accessibilityLabel(confidence.accessibilityText)
+    }
+
+    private var toneColor: Color {
+        switch confidence.tone {
+        case .high:
+            return .green
+        case .medium:
+            return .orange
+        case .low:
+            return .yellow
+        }
+    }
+
+    private var foregroundColor: Color {
+        switch confidence.tone {
+        case .low:
+            return .black.opacity(0.82)
+        case .high, .medium:
+            return .white.opacity(0.95)
+        }
     }
 }
 

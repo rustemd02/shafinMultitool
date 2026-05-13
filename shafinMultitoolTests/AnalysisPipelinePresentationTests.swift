@@ -105,6 +105,108 @@ final class AnalysisPipelinePauseSnapshotTests: XCTestCase {
 }
 
 final class AnalysisPipelinePresentationTests: XCTestCase {
+    func testConfidencePresentationMapsUserFacingBands() {
+        XCTAssertEqual(ConfidencePresentation.make(0.91).label, "высокая")
+        XCTAssertEqual(ConfidencePresentation.make(0.91).percent, 91)
+        XCTAssertEqual(ConfidencePresentation.make(0.64).label, "средняя")
+        XCTAssertEqual(ConfidencePresentation.make(0.31).label, "низкая")
+        XCTAssertEqual(ConfidencePresentation.make(1.42).percent, 100)
+        XCTAssertEqual(ConfidencePresentation.make(-0.4).percent, 0)
+    }
+
+    func testPauseActionConfidenceIsCappedByPlanAndLinkedIssue() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let critique = makeCritique(frameId: "pause-confidence", verdict: .mixed)
+        let action = RecommendationAction(
+            id: "act_1",
+            actionType: .moveFrameLeft,
+            priority: 1,
+            targetRegion: nil,
+            linkedIssueIds: ["iss_1"],
+            expectedOutcome: "Сместите камеру левее.",
+            guardrail: ActionGuardrail(requiresStillCamera: true, minConfidence: 0.4, suppressWhenMoving: true),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .live,
+            inputVerdict: critique.verdict,
+            primaryAction: action,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.80
+        )
+
+        let confidence = pipeline.testingPauseActionConfidence(action: action, plan: plan, critique: critique)
+
+        XCTAssertEqual(confidence, 0.80, accuracy: 0.0001)
+    }
+
+    func testPauseActionConfidenceCanUseSemanticTipIssueScope() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let critique = makeCritiqueWithTwoIssues(frameId: "pause-semantic-confidence")
+        let action = RecommendationAction(
+            id: "act_1",
+            actionType: .moveFrameLeft,
+            priority: 1,
+            targetRegion: nil,
+            linkedIssueIds: ["iss_high"],
+            expectedOutcome: "Сместите камеру левее.",
+            guardrail: ActionGuardrail(requiresStillCamera: true, minConfidence: 0.4, suppressWhenMoving: true),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: action,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.90
+        )
+
+        let confidence = pipeline.testingPauseActionConfidence(
+            action: action,
+            plan: plan,
+            critique: critique,
+            linkedIssueIds: ["iss_low"]
+        )
+
+        XCTAssertEqual(confidence, 0.50, accuracy: 0.0001)
+    }
+
+    func testLiveActionConfidenceDoesNotUseOptimisticMaximum() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let critique = makeCritique(frameId: "live-confidence", verdict: .mixed)
+        let action = RecommendationAction(
+            id: "act_1",
+            actionType: .moveFrameLeft,
+            priority: 1,
+            targetRegion: nil,
+            linkedIssueIds: ["iss_1"],
+            expectedOutcome: "Сместите камеру левее.",
+            guardrail: ActionGuardrail(requiresStillCamera: true, minConfidence: 0.4, suppressWhenMoving: true),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .live,
+            inputVerdict: critique.verdict,
+            primaryAction: action,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.95
+        )
+
+        let confidence = pipeline.testingLiveActionConfidence(action: action, plan: plan, critique: critique)
+
+        XCTAssertEqual(confidence, critique.verdictConfidence, accuracy: 0.0001)
+        XCTAssertLessThan(confidence, plan.planConfidence)
+    }
+
     func testPipelineStoresRecordedNeuralEvidenceOutcome() async {
         let service = NeuralEvidenceInferenceService(
             configuration: makeEnabledNeuralConfiguration(),
@@ -453,6 +555,46 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                 shortVerdict: verdict == .good ? "Кадр работает." : "Кадр требует правки.",
                 whyGood: verdict == .good ? "Фокус и баланс читаются уверенно." : nil,
                 whyProblematic: verdict == .good ? nil : "Баланс нарушен, главный объект тесно прижат к краю."
+            ),
+            traceRefs: ["trace_\(frameId)"],
+            fallbackUsed: false
+        )
+    }
+
+    private func makeCritiqueWithTwoIssues(frameId: String) -> CritiqueReport {
+        CritiqueReport(
+            frameId: frameId,
+            mode: .pause,
+            verdict: .mixed,
+            verdictConfidence: 0.88,
+            strengths: [],
+            issues: [
+                FrameIssue(
+                    id: "iss_high",
+                    type: .subjectTooCloseToEdge,
+                    severity: 0.80,
+                    confidence: 0.95,
+                    rationale: "Сильная проблема композиции.",
+                    evidence: [EvidenceRef(source: .snapshot, key: "composition.edge", value: "high")],
+                    affectedRegion: nil,
+                    suggestedFixTypes: [.reframing]
+                ),
+                FrameIssue(
+                    id: "iss_low",
+                    type: .backgroundCompetesWithSubject,
+                    severity: 0.60,
+                    confidence: 0.40,
+                    rationale: "Фон может спорить с субъектом.",
+                    evidence: [EvidenceRef(source: .snapshot, key: "background.competition", value: "medium")],
+                    affectedRegion: nil,
+                    suggestedFixTypes: [.declutter]
+                )
+            ],
+            summary: CritiqueSummary(
+                id: "summary_\(frameId)",
+                shortVerdict: "Кадр требует проверки.",
+                whyGood: nil,
+                whyProblematic: "Есть несколько проблем разной уверенности."
             ),
             traceRefs: ["trace_\(frameId)"],
             fallbackUsed: false

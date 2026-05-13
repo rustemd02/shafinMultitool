@@ -865,6 +865,7 @@ actor PauseReasoningCoordinator {
                 actionId: item.actionId,
                 actionType: item.actionType,
                 priority: item.priority,
+                confidence: item.confidence,
                 linkedIssueIds: item.linkedIssueIds,
                 expectedOutcome: patch.actionRationaleByActionId[item.actionId] ?? item.expectedOutcome,
                 targetRegion: item.targetRegion,
@@ -876,6 +877,7 @@ actor PauseReasoningCoordinator {
         return PauseCritiquePresentation(
             frameId: draft.frameId,
             verdict: draft.verdict,
+            verdictConfidence: draft.verdictConfidence,
             summaryId: draft.summaryId,
             shortVerdict: patch.shortVerdictOverride ?? draft.shortVerdict,
             whyGood: draft.whyGood,

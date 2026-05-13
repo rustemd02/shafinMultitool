@@ -1,0 +1,3 @@
+model_id,seed,baseline_model_id,gate_pass,blocking_reasons,balanced_score
+dataset_v7_orpo_iter2,42,dataset_v8_plan_orpo_iter1,False,raw::target_improved;raw::chronology_improved;raw::action_improved;raw::strict_improved;raw::fallback_reduced;end_to_end::parse_non_regression_vs_raw;end_to_end::chronology_improved_vs_raw,-109.75782179437309
+dataset_v9_2_event_sft,42,dataset_v8_plan_orpo_iter1,False,end_to_end::target_improved_vs_raw;end_to_end::chronology_improved_vs_raw;end_to_end::action_improved_vs_raw;end_to_end::fallback_reduced_vs_raw,229.38163830276505

@@ -55,6 +55,52 @@ struct LiveExpandedVerdictPresentation: Equatable, Sendable {
     let fallbackUsed: Bool
 }
 
+enum ConfidenceTone: String, Equatable, Sendable {
+    case high
+    case medium
+    case low
+}
+
+struct ConfidencePresentation: Equatable, Sendable {
+    let value: Double
+    let percent: Int
+    let label: String
+    let tone: ConfidenceTone
+
+    var shortText: String {
+        "\(label) · \(percent)%"
+    }
+
+    var accessibilityText: String {
+        "Уверенность \(label), \(percent) процентов"
+    }
+
+    static func make(_ rawValue: Double) -> ConfidencePresentation {
+        let value = min(1.0, max(0.0, rawValue))
+        let percent = Int((value * 100.0).rounded())
+        let tone: ConfidenceTone
+        let label: String
+        switch value {
+        case 0.75...:
+            tone = .high
+            label = "высокая"
+        case 0.55..<0.75:
+            tone = .medium
+            label = "средняя"
+        default:
+            tone = .low
+            label = "низкая"
+        }
+        return ConfidencePresentation(value: value, percent: percent, label: label, tone: tone)
+    }
+}
+
+extension LiveHintPresentation {
+    var confidencePresentation: ConfidencePresentation {
+        ConfidencePresentation.make(confidence)
+    }
+}
+
 struct PauseStrengthRow: Equatable, Sendable {
     let strengthId: String
     let type: StrengthTypeV1
@@ -79,6 +125,7 @@ struct PauseActionRow: Equatable, Sendable {
     let actionId: String
     let actionType: ActionTypeV1
     let priority: Int
+    let confidence: Double
     let linkedIssueIds: [String]
     let expectedOutcome: String
     let targetRegion: NormalizedRect?
@@ -89,6 +136,7 @@ struct PauseActionRow: Equatable, Sendable {
 struct PauseCritiquePresentation: Equatable, Sendable {
     let frameId: String
     let verdict: FrameVerdict
+    let verdictConfidence: Double
     let summaryId: String
     let shortVerdict: String
     let whyGood: String?
@@ -2374,7 +2422,7 @@ final class AnalysisPipeline: ObservableObject {
                 id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
                 frameId: frameId,
                 text: semanticTip.liveText,
-                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                confidence: liveActionConfidence(for: linkedAction, plan: plan, critique: critique),
                 actionType: linkedAction.actionType,
                 actionId: linkedAction.id,
                 linkedIssueIds: semanticTip.linkedIssueIds,
@@ -2400,7 +2448,7 @@ final class AnalysisPipeline: ObservableObject {
                 id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
                 frameId: frameId,
                 text: semanticTip.liveText,
-                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                confidence: livePositiveConfidence(plan: plan, critique: critique),
                 actionType: .leaveFrameAsIs,
                 actionId: nil,
                 linkedIssueIds: [],
@@ -2434,7 +2482,7 @@ final class AnalysisPipeline: ObservableObject {
                 id: id,
                 frameId: frameId,
                 text: text,
-                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                confidence: liveActionConfidence(for: primaryAction, plan: plan, critique: critique),
                 actionType: primaryAction.actionType,
                 actionId: primaryAction.id,
                 linkedIssueIds: primaryAction.linkedIssueIds,
@@ -2463,7 +2511,7 @@ final class AnalysisPipeline: ObservableObject {
                 id: id,
                 frameId: frameId,
                 text: noChangeText,
-                confidence: max(plan.planConfidence, critique.verdictConfidence),
+                confidence: livePositiveConfidence(plan: plan, critique: critique),
                 actionType: .leaveFrameAsIs,
                 actionId: nil,
                 linkedIssueIds: [],
@@ -2554,6 +2602,17 @@ final class AnalysisPipeline: ObservableObject {
         critique.verdict == .good &&
             critique.verdictConfidence >= 0.76 &&
             plan.planConfidence >= 0.72
+    }
+
+    private func liveActionConfidence(for action: RecommendationAction,
+                                      plan: RecommendationPlan,
+                                      critique: CritiqueReport) -> Double {
+        min(critique.verdictConfidence, pauseActionConfidence(for: action, plan: plan, critique: critique))
+    }
+
+    private func livePositiveConfidence(plan: RecommendationPlan,
+                                        critique: CritiqueReport) -> Double {
+        min(plan.planConfidence, critique.verdictConfidence)
     }
 
     @MainActor
@@ -2774,6 +2833,12 @@ final class AnalysisPipeline: ObservableObject {
                 actionId: "\(action.id)_semantic_\(semanticTipPlanner.stableKey(for: tip))_\(index)",
                 actionType: action.actionType,
                 priority: action.priority,
+                confidence: pauseActionConfidence(
+                    for: action,
+                    plan: plan,
+                    critique: critique,
+                    linkedIssueIds: tip.linkedIssueIds
+                ),
                 linkedIssueIds: tip.linkedIssueIds,
                 expectedOutcome: tip.pauseText,
                 targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: tip.linkedIssueIds, critique: critique),
@@ -2791,6 +2856,7 @@ final class AnalysisPipeline: ObservableObject {
                     actionId: action.id,
                     actionType: action.actionType,
                     priority: action.priority,
+                    confidence: pauseActionConfidence(for: action, plan: plan, critique: critique),
                     linkedIssueIds: action.linkedIssueIds,
                     expectedOutcome: action.expectedOutcome,
                     targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: action.linkedIssueIds, critique: critique),
@@ -2823,6 +2889,7 @@ final class AnalysisPipeline: ObservableObject {
         return PauseCritiquePresentation(
             frameId: critique.frameId,
             verdict: critique.verdict,
+            verdictConfidence: critique.verdictConfidence,
             summaryId: critique.summary.id,
             shortVerdict: critique.summary.shortVerdict,
             whyGood: critique.summary.whyGood,
@@ -2835,6 +2902,19 @@ final class AnalysisPipeline: ObservableObject {
             traceRootIds: critique.traceRefs,
             fallbackUsed: fallbackUsed
         )
+    }
+
+    private func pauseActionConfidence(for action: RecommendationAction,
+                                       plan: RecommendationPlan,
+                                       critique: CritiqueReport,
+                                       linkedIssueIds: [String]? = nil) -> Double {
+        let issueIds = linkedIssueIds ?? action.linkedIssueIds
+        let linkedIssueConfidence = critique.issues
+            .filter { issueIds.contains($0.id) }
+            .map(\.confidence)
+            .max()
+        let dependencyConfidence = linkedIssueConfidence ?? critique.verdictConfidence
+        return min(1.0, max(0.0, min(plan.planConfidence, dependencyConfidence + 0.10)))
     }
 
     @MainActor
@@ -3418,6 +3498,7 @@ final class AnalysisPipeline: ObservableObject {
                 actionId: row.actionId,
                 actionType: row.actionType,
                 priority: row.priority,
+                confidence: row.confidence,
                 linkedIssueIds: row.linkedIssueIds,
                 expectedOutcome: refinedActionOutcomes[row.actionId] ?? row.expectedOutcome,
                 targetRegion: row.targetRegion,
@@ -3429,6 +3510,7 @@ final class AnalysisPipeline: ObservableObject {
         return PauseCritiquePresentation(
             frameId: current.frameId,
             verdict: current.verdict,
+            verdictConfidence: current.verdictConfidence,
             summaryId: current.summaryId,
             shortVerdict: refined.shortVerdict,
             whyGood: refined.whyGood ?? current.whyGood,
@@ -4762,6 +4844,19 @@ extension AnalysisPipeline {
             neuralSnapshot: neuralSnapshot,
             fusionOutput: fusionOutput
         )
+    }
+
+    func testingPauseActionConfidence(action: RecommendationAction,
+                                      plan: RecommendationPlan,
+                                      critique: CritiqueReport,
+                                      linkedIssueIds: [String]? = nil) -> Double {
+        pauseActionConfidence(for: action, plan: plan, critique: critique, linkedIssueIds: linkedIssueIds)
+    }
+
+    func testingLiveActionConfidence(action: RecommendationAction,
+                                     plan: RecommendationPlan,
+                                     critique: CritiqueReport) -> Double {
+        liveActionConfidence(for: action, plan: plan, critique: critique)
     }
 
     var testingHasPauseReasoningTask: Bool {

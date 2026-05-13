@@ -36,7 +36,9 @@ Canonical flow:
 
 ## Benchmark Snapshot (seed 42)
 
-Compiled-slice metrics (same frozen eval bundle, `262` cases). Values are decimals in `[0..1]`:
+Compiled-slice metrics (same frozen eval bundle, `262` cases). Values are decimals in `[0..1]`.
+
+### Baseline snapshot (`v9.0`)
 
 - `dataset_v7_orpo_iter2` (model_only):
   - `json_valid_rate=0.9504`, `target_resolution_accuracy=0.1128`, `chronology_phase_accuracy=0.0840`, `case_strict_success_rate=0.0344`
@@ -45,14 +47,40 @@ Compiled-slice metrics (same frozen eval bundle, `262` cases). Values are decima
 - `dataset_v9_event_sft` (end_to_end, slot-event):
   - `json_valid_rate=1.0000`, `ordinal_actor_binding_accuracy=1.0000`, `target_resolution_accuracy=0.9214`, `chronology_phase_accuracy=0.8702`, `case_strict_success_rate=0.5076`
 
+### Updated snapshot (`v9.2` checkpoint, report label still `dataset_v9_event_sft`)
+
+The `v9.2` checkpoint was evaluated on the same frozen bundle via:
+
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md`
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/benchmark_results_seed42/aggregate/model_slice_summary.csv`
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/eval_artifacts/dataset_v9_2_event_sft_seed42.event_slice_summary.json`
+
+Compiled slice:
+
+- `json_valid_rate=1.0000`
+- `ordinal_actor_binding_accuracy=1.0000`
+- `target_resolution_accuracy=0.9812`
+- `chronology_phase_accuracy=0.9695`
+- `action_recall=0.9846`
+- `runtime_fallback_rate=0.4198`
+- `case_strict_success_rate=0.5573`
+
+Pairwise:
+
+- vs `dataset_v8_plan_orpo_iter1`: `225` wins, `1` loss, `36` ties
+- vs `dataset_v7_orpo_iter2`: `238` wins, `1` loss, `23` ties
+
 V9 raw event-table metrics (event slice, gold-based semantic accuracy + structural pass):
 
 - structural:
   - `event_parse_rate=1.0000`, `event_schema_valid_rate=1.0000`
 - semantic:
-  - `event_actor_slot_accuracy≈0.9691`, `event_target_slot_accuracy≈0.9439`, `event_action_type_accuracy≈0.9621`, `event_beat_order_accuracy≈0.9677`
+  - `event_actor_slot_accuracy≈0.9930`, `event_target_slot_accuracy≈0.9860`, `event_action_type_accuracy≈0.9888`, `event_beat_order_accuracy≈0.9930`
+  - `event_full_row_accuracy≈0.9846`, `chunk_event_coverage_rate≈0.9846`
 
 Artifacts:
 
 - `docs/SGv9pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/model_slice_summary.csv`
 - `docs/SGv9pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json`
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md`
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/eval_artifacts/dataset_v9_2_event_sft_seed42.event_slice_summary.json`

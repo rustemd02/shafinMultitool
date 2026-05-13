@@ -229,10 +229,15 @@
 - `dataset_v8_plan_orpo_iter1` (post-hotfix `plan -> compile`)
 - `dataset_v9_event_sft` (slot-first `event table -> compile`)
 
-Источник артефактов:
+Источник baseline-артефактов (`v9.0`):
 - [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md)
 - [model_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/benchmark_results_seed42/aggregate/model_slice_summary.csv)
 - [event_slice_summary.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/eval_artifacts/dataset_v9_event_sft_seed42.event_slice_summary.json)
+
+Источник обновлённого checkpoint-а `v9.2`:
+- [scientific_report.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md)
+- [model_slice_summary.csv](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/benchmark_results_seed42/aggregate/model_slice_summary.csv)
+- [event_slice_summary.json](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/eval_artifacts/dataset_v9_2_event_sft_seed42.event_slice_summary.json)
 
 ### Compiled-slice (end_to_end)
 
@@ -250,10 +255,18 @@
   - `chronology_phase_accuracy=0.8702`
   - `runtime_fallback_rate=0.4351`
   - `case_strict_success_rate=0.5076`
+- `dataset_v9_2_event_sft` (в aggregate report пока проходит под legacy model id `dataset_v9_event_sft`):
+  - `json_valid_rate=1.0000`
+  - `ordinal_actor_binding_accuracy=1.0000`
+  - `target_resolution_accuracy=0.9812`
+  - `chronology_phase_accuracy=0.9695`
+  - `runtime_fallback_rate=0.4198`
+  - `case_strict_success_rate=0.5573`
 
 Интерпретация:
 - `v9` снимает основную причину integrity regressions: модель больше не отвечает за сборку beats/refs в “плане сцены”, а выбирает семантику в контролируемом IR.
 - `v8` остаётся полезным fallback/A-B baseline, но его bottleneck — `plan integrity` (binding/beat integrity), что прямо отражается в `strict_success` и runtime fallback.
+- `v9.2` подтверждает, что bottleneck уже сузился: вместо общего structural failure остались единичные ошибки на `ordinal_first_second_third` и `dialogue + handoff/put_down` кейсах.
 
 ### Event-slice (raw event table, V9-specific)
 
@@ -262,13 +275,13 @@ Structural pass:
 - `event_schema_valid_rate=1.0000`
 
 Gold-based semantic accuracy:
-- `event_actor_slot_accuracy≈0.9691`
-- `event_target_slot_accuracy≈0.9439`
-- `event_action_type_accuracy≈0.9621`
-- `event_beat_order_accuracy≈0.9677`
+- `v9.0`: `event_actor_slot_accuracy≈0.9691`, `event_target_slot_accuracy≈0.9439`, `event_action_type_accuracy≈0.9621`, `event_beat_order_accuracy≈0.9677`
+- `v9.2`: `event_actor_slot_accuracy≈0.9930`, `event_target_slot_accuracy≈0.9860`, `event_action_type_accuracy≈0.9888`, `event_beat_order_accuracy≈0.9930`
+- `v9.2`: `event_full_row_accuracy≈0.9846`, `chunk_event_coverage_rate≈0.9846`
 
 Практический вывод:
 - В release gate для `v9` обязательны оба слоя: compiled-slice (end-to-end пригодность) и event-slice (семантическая точность IR до компиляции).
+- `v9.2` уже не просто structural upgrade над `v8`, а новый лучший semantic candidate на том же frozen bundle.
 - family-specific integrity на `open_then_pick_up`, `give_to_third_actor`, `ordinal`, `three_beat`
 - и только потом новый prep-export и новый `iter3` corpus build
 

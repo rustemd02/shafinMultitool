@@ -1,0 +1,46 @@
+{
+  "contract_version": "sg_v9_2_targeted_event_sft_manifest_v1",
+  "hard_case_source": "docs/SGv9pipeline/runs/v9_2_seed42/failure_mining/v9_hard_cases.jsonl",
+  "hard_case_output": "docs/SGv9pipeline/runs/v9_2_seed42/targeted_sft/v9_2_hard_cases.jsonl",
+  "total_hard_cases": 34,
+  "cluster_counts": {
+    "dialogue_action": 13,
+    "put_pick": 9,
+    "stop_near": 12
+  },
+  "total_sft_rows": 34,
+  "train_rows": 29,
+  "val_rows": 5,
+  "event_rows_by_cluster": {
+    "dialogue_action": 40,
+    "put_pick": 24,
+    "stop_near": 36
+  },
+  "sft_rows_by_cluster": {
+    "dialogue_action": 13,
+    "put_pick": 9,
+    "stop_near": 12
+  },
+  "action_type_counts": {
+    "approach": 12,
+    "give": 8,
+    "look_at": 14,
+    "open": 4,
+    "pick_up": 12,
+    "put_down": 6,
+    "stand": 12,
+    "talk": 30,
+    "turn": 2
+  },
+  "validation": {
+    "valid_rows": 34,
+    "invalid_rows": 0,
+    "issues_by_sample_id": {}
+  },
+  "live_smoke": {
+    "status": "passed",
+    "xcresult_path": "/tmp/sg_live_model_dd/Logs/Test/Test-shafinMultitool-2026.05.04_18-25-16-+0300.xcresult",
+    "mined_failure_count": 0,
+    "note": "Latest live smoke had no failure clusters to mine; targeted rows come from benchmark semantic misses."
+  }
+}

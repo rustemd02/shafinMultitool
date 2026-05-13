@@ -53,23 +53,15 @@ struct PauseCritiqueCardView: View {
         let title: String
         let reason: String
         let action: String?
+        let confidence: Double
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(critique.shortVerdict)
-                    .font(.headline.weight(.semibold))
-                Spacer()
-                Text(critique.verdict == .good ? "GOOD" : "REVIEW")
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.2), in: Capsule())
-            }
-            .accessibilityElement(children: .combine)
+        VStack(alignment: .leading, spacing: 12) {
+            header
 
             if let summaryText {
+                sectionTitle("Почему")
                 Text(summaryText)
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.92))
@@ -79,42 +71,28 @@ struct PauseCritiqueCardView: View {
             }
 
             if !tipRows.isEmpty {
-                sectionTitle(critique.verdict == .good ? "Что сохранить" : "Семантические советы")
+                sectionTitle(critique.verdict == .good ? "Что сохранить" : "Что сделать")
                 ForEach(tipRows) { row in
                     PauseTipRowView(row: row)
                 }
+            } else if let noChangeRationale {
+                sectionTitle("Что сделать")
+                PauseTipRowView(
+                    row: PauseTipRow(
+                        id: "no_change",
+                        title: "Оставить кадр",
+                        reason: critique.shortVerdict,
+                        action: noChangeRationale,
+                        confidence: critique.verdictConfidence
+                    )
+                )
             }
 
-            if !critique.strengths.isEmpty {
-                sectionTitle("Почему кадр работает")
-                ForEach(Array(critique.strengths.prefix(2)), id: \.strengthId) { item in
-                    Text("• \(item.rationale)")
-                        .font(.subheadline)
-                        .accessibilityElement(children: .combine)
+            if !evidenceRows.isEmpty {
+                sectionTitle("На чём основано")
+                ForEach(evidenceRows) { row in
+                    PauseEvidenceRowView(row: row)
                 }
-            }
-
-            if !critique.issues.isEmpty, critique.verdict != .good {
-                sectionTitle("Что мешает")
-                ForEach(Array(critique.issues.prefix(3)), id: \.issueId) { item in
-                    Text("• \(item.rationale)")
-                        .font(.subheadline)
-                        .accessibilityElement(children: .combine)
-                }
-            }
-
-            if !critique.actions.isEmpty, tipRows.isEmpty {
-                sectionTitle("Что делать")
-                ForEach(Array(critique.actions.prefix(3)), id: \.actionId) { item in
-                    Text("• \(item.expectedOutcome)")
-                        .font(.subheadline.weight(.medium))
-                        .accessibilityElement(children: .combine)
-                }
-            } else if let noChangeRationale, tipRows.isEmpty {
-                sectionTitle("Что делать")
-                Text("• \(noChangeRationale)")
-                    .font(.subheadline.weight(.medium))
-                    .accessibilityElement(children: .combine)
             }
 
             if showEmptyState {
@@ -143,6 +121,25 @@ struct PauseCritiqueCardView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Text(critique.shortVerdict)
+                    .font(.headline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(critique.verdict == .good ? "GOOD" : "REVIEW")
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.2), in: Capsule())
+            }
+            ConfidenceBadgeView(confidence: .make(critique.verdictConfidence), showsPercent: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
@@ -164,7 +161,6 @@ struct PauseCritiqueCardView: View {
 
     private var showEmptyState: Bool {
         tipRows.isEmpty
-            && critique.actions.isEmpty
             && critique.issues.isEmpty
             && critique.strengths.isEmpty
             && noChangeRationale == nil
@@ -177,7 +173,8 @@ struct PauseCritiqueCardView: View {
                     id: "strength_\(strength.strengthId)",
                     title: "Сильная сторона",
                     reason: strength.rationale,
-                    action: noChangeRationale
+                    action: noChangeRationale,
+                    confidence: strength.confidence
                 )
             }
             if !strengthRows.isEmpty {
@@ -189,7 +186,8 @@ struct PauseCritiqueCardView: View {
                         id: "good_frame",
                         title: "Кадр готов",
                         reason: nonEmpty(critique.whyGood) ?? critique.shortVerdict,
-                        action: noChangeRationale
+                        action: noChangeRationale,
+                        confidence: critique.verdictConfidence
                     )
                 ]
             }
@@ -201,9 +199,37 @@ struct PauseCritiqueCardView: View {
                 id: action.actionId,
                 title: "Совет \(action.priority)",
                 reason: reasonText(for: action),
-                action: nonEmpty(action.expectedOutcome)
+                action: nonEmpty(action.expectedOutcome),
+                confidence: action.confidence
             )
         }
+    }
+
+    fileprivate struct EvidenceRow: Identifiable {
+        let id: String
+        let label: String
+        let text: String
+        let confidence: Double
+    }
+
+    private var evidenceRows: [EvidenceRow] {
+        let issueRows = critique.issues.prefix(3).map { issue in
+            EvidenceRow(
+                id: "issue_\(issue.issueId)",
+                label: "Что мешает",
+                text: issue.rationale,
+                confidence: issue.confidence
+            )
+        }
+        let strengthRows = critique.strengths.prefix(2).map { strength in
+            EvidenceRow(
+                id: "strength_\(strength.strengthId)",
+                label: "Что работает",
+                text: strength.rationale,
+                confidence: strength.confidence
+            )
+        }
+        return Array(issueRows + strengthRows)
     }
 
     private var fallbackBanner: some View {
@@ -235,9 +261,14 @@ private struct PauseTipRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(row.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.8))
+            HStack(alignment: .center, spacing: 8) {
+                Text(row.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                ConfidenceBadgeView(confidence: .make(row.confidence), showsPercent: true)
+            }
 
             Text(row.reason)
                 .font(.subheadline)
@@ -255,5 +286,66 @@ private struct PauseTipRowView: View {
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct PauseEvidenceRowView: View {
+    let row: PauseCritiqueCardView.EvidenceRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(row.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                ConfidenceBadgeView(confidence: .make(row.confidence), showsPercent: true)
+            }
+
+            Text(row.text)
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ConfidenceBadgeView: View {
+    let confidence: ConfidencePresentation
+    let showsPercent: Bool
+
+    var body: some View {
+        Text(showsPercent ? confidence.shortText : confidence.label)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(toneColor.opacity(0.70), in: Capsule())
+            .accessibilityLabel(confidence.accessibilityText)
+    }
+
+    private var toneColor: Color {
+        switch confidence.tone {
+        case .high:
+            return .green
+        case .medium:
+            return .orange
+        case .low:
+            return .yellow
+        }
+    }
+
+    private var foregroundColor: Color {
+        switch confidence.tone {
+        case .low:
+            return .black.opacity(0.82)
+        case .high, .medium:
+            return .white.opacity(0.96)
+        }
     }
 }
