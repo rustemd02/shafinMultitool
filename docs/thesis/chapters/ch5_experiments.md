@@ -1,5 +1,5 @@
 ---
-chapter: 4_experiments
+chapter: 5_experiments
 status: new
 target_pages: 10-14
 depends_on_claims:
@@ -19,7 +19,7 @@ depends_on_litreview_sections:
 last_verified_commit: 02bdf3ae0b711ed5e0b7a640cbf808196d304b62
 ---
 
-# Chapter 4. Experiments
+# Chapter 5. Experiments
 
 ## Purpose
 
@@ -41,10 +41,10 @@ Present experimental evidence from frozen benchmark/eval artifacts and clearly s
 
 | Use | IDs |
 |---|---|
-| SG metrics | EV-MET-001, EV-MET-002, EV-MET-003, EV-MET-004 |
+| SG metrics | EV-MET-001, EV-MET-002, EV-MET-003, EV-MET-004, EV-MET-005, EV-MET-006, EV-MET-007 |
 | Live smoke | EV-LIVE-001, EV-LIVE-002 |
 | Camera Analysis | EV-CA-EVAL-001, EV-CA-EVAL-002 |
-| Limitations | EV-LIM-001, CL-LIM-002 |
+| Limitations | EV-LIM-001, CL-LIM-002, CL-LIM-005 |
 
 ## Litreview links
 
@@ -58,11 +58,11 @@ Present experimental evidence from frozen benchmark/eval artifacts and clearly s
 
 | Placeholder | Content |
 |---|---|
-| Table 4.1 | Scene Generator metric definitions. |
-| Table 4.2 | Base/v6/v7/v8/v9 comparison. |
-| Table 4.3 | V9 event raw metrics. |
-| Table 4.4 | Camera Analysis deterministic comparison. |
-| Table 4.5 | Limitations and validity threats. |
+| Table 5.1 | Scene Generator metric definitions. |
+| Table 5.2 | Base/v6/v7/v8/v9 comparison. |
+| Table 5.3 | V9/V9.3 event raw metrics and acceptance gate. |
+| Table 5.4 | Camera Analysis deterministic comparison. |
+| Table 5.5 | Limitations and validity threats. |
 
 ## TODO
 

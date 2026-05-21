@@ -1,0 +1,24 @@
+{
+  "contract_version": "sg_v9_3_mixed_event_dataset_manifest_v1",
+  "all_rows": 5564,
+  "train_rows": 4730,
+  "val_rows": 834,
+  "seed": 42,
+  "val_fraction": 0.15,
+  "inputs": {
+    "base_all": "docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl",
+    "exact_targeted_all": "docs/SGv9pipeline/runs/v9_3_seed42/exact_targeted_sft/v9_3_event_sft_targeted_all.jsonl",
+    "augmented_all": "docs/SGv9pipeline/runs/v9_3_seed42/augmented_targeted/v9_3_augmented_event_sft_all.jsonl"
+  },
+  "input_row_counts": {
+    "base_all": 5286,
+    "exact_targeted_all": 8,
+    "augmented_all": 270
+  },
+  "targeted_row_counts": {
+    "v9_2_targeted_in_base": 286,
+    "v9_3_exact_targeted": 8,
+    "v9_3_augmented_targeted": 270,
+    "v9_3_total": 278
+  }
+}

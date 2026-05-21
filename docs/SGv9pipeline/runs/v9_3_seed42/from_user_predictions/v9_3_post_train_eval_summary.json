@@ -1,0 +1,88 @@
+{
+  "predictions": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/dataset_v9_3_event_sft_seed42.event_predictions.jsonl",
+  "run_root": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions",
+  "model_id": "dataset_v9_3_event_sft",
+  "scientific_report": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md",
+  "set_metrics": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/benchmark_results_seed42/reports/dataset_v9_3_event_sft/seed_42/set_metrics.json",
+  "acceptance": {
+    "pass": true,
+    "checks": [
+      {
+        "metric": "case_strict_success_rate",
+        "value": 0.9961832061068703,
+        "operator": ">=",
+        "threshold": 0.65,
+        "pass": true
+      },
+      {
+        "metric": "target_resolution_accuracy",
+        "value": 0.9982905982905983,
+        "operator": ">=",
+        "threshold": 0.99,
+        "pass": true
+      },
+      {
+        "metric": "chronology_phase_accuracy",
+        "value": 0.9961832061068703,
+        "operator": ">=",
+        "threshold": 0.985,
+        "pass": true
+      },
+      {
+        "metric": "action_recall",
+        "value": 0.9985974754558204,
+        "operator": ">=",
+        "threshold": 0.99,
+        "pass": true
+      },
+      {
+        "metric": "runtime_fallback_rate",
+        "value": 0.0,
+        "operator": "<=",
+        "threshold": 0.25,
+        "pass": true
+      }
+    ]
+  },
+  "failure_mining_manifest": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/post_benchmark_failure_mining/v9_hard_case_manifest.json",
+  "demo_parity_status": "passed",
+  "demo_parity_results": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/demo_parity_validation/demo_parity_results.json",
+  "failure_mining": {
+    "cluster_counts": {
+      "dialogue_action": 1
+    },
+    "total": 1
+  },
+  "demo_parity": {
+    "compiled_predictions": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/eval_artifacts/dataset_v9_3_event_sft_seed42.compiled_predictions.jsonl",
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "results": [
+      {
+        "name": "dialogue_put_down",
+        "eval_case_id": "syn-0030::dialogue_then_put_down_object__base__s895761__deabe8d2",
+        "pass": true,
+        "failed_checks": [],
+        "prediction_action_count": 2,
+        "prediction_beat_count": 2
+      },
+      {
+        "name": "three_actor_give",
+        "eval_case_id": "rt-0001::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s225349__eea4feb1",
+        "pass": true,
+        "failed_checks": [],
+        "prediction_action_count": 4,
+        "prediction_beat_count": 3
+      },
+      {
+        "name": "three_actor_ordinal_status",
+        "eval_case_id": "hard-0021::ordinal_first_second_third__base__s186111__fc469b85",
+        "pass": true,
+        "failed_checks": [],
+        "prediction_action_count": 3,
+        "prediction_beat_count": 1
+      }
+    ]
+  }
+}

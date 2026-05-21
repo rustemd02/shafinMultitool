@@ -1,0 +1,13 @@
+{
+  "contract_version": "sg_v9_3_augmented_targeted_manifest_v1",
+  "generated_rows": 270,
+  "train_rows": 230,
+  "val_rows": 40,
+  "cluster_counts": {
+    "dialogue_put_down": 70,
+    "three_actor_give": 100,
+    "three_actor_ordinal_status": 100
+  },
+  "source": "synthetic_targeted_augmentation_from_policy_corrected_failures",
+  "validation_errors": []
+}

@@ -16,7 +16,7 @@ SYSTEM_PROMPT = "Ты SceneScript parser. Верни только валидны
 _THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?</think>", flags=re.IGNORECASE | re.DOTALL)
 _THINK_OPEN_RE = re.compile(r"<think\b[^>]*>", flags=re.IGNORECASE)
 _THINK_CLOSE_RE = re.compile(r"</think>", flags=re.IGNORECASE)
-_TARGET_REQUIRED_ACTIONS = {"approach", "stop", "stand", "passby", "pass_by", "pass-by"}
+_TARGET_REQUIRED_ACTIONS = {"approach", "stop", "passby", "pass_by", "pass-by"}
 _LEGACY_BEAT_FIELDS = {
     "type",
     "action",

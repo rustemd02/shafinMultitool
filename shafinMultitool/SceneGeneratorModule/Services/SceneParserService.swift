@@ -407,7 +407,7 @@ final class SceneParserService {
 
         let llmHasDanglingTargets = llmScript.actions.contains { action in
             switch action.type {
-            case .approach, .stop, .stand, .passBy:
+            case .approach, .stop, .passBy:
                 return action.target == nil
             default:
                 return false
@@ -415,7 +415,7 @@ final class SceneParserService {
         }
         let ruleHasDanglingTargets = ruleScript.actions.contains { action in
             switch action.type {
-            case .approach, .stop, .stand, .passBy:
+            case .approach, .stop, .passBy:
                 return action.target == nil
             default:
                 return false
@@ -715,7 +715,7 @@ final class SceneParserService {
 
     private func requiresObjectTarget(_ actionType: SceneAction.ActionType) -> Bool {
         switch actionType {
-        case .approach, .stop, .stand, .passBy, .lookAt, .pickUp, .putDown, .open, .close:
+        case .approach, .stop, .passBy, .lookAt, .pickUp, .putDown, .open, .close:
             return true
         default:
             return false

@@ -1,0 +1,32 @@
+{
+  "compiled_predictions": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/eval_artifacts/dataset_v9_3_event_sft_seed42.compiled_predictions.jsonl",
+  "total": 3,
+  "passed": 3,
+  "failed": 0,
+  "results": [
+    {
+      "name": "dialogue_put_down",
+      "eval_case_id": "syn-0030::dialogue_then_put_down_object__base__s895761__deabe8d2",
+      "pass": true,
+      "failed_checks": [],
+      "prediction_action_count": 2,
+      "prediction_beat_count": 2
+    },
+    {
+      "name": "three_actor_give",
+      "eval_case_id": "rt-0001::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s225349__eea4feb1",
+      "pass": true,
+      "failed_checks": [],
+      "prediction_action_count": 4,
+      "prediction_beat_count": 3
+    },
+    {
+      "name": "three_actor_ordinal_status",
+      "eval_case_id": "hard-0021::ordinal_first_second_third__base__s186111__fc469b85",
+      "pass": true,
+      "failed_checks": [],
+      "prediction_action_count": 3,
+      "prediction_beat_count": 1
+    }
+  ]
+}

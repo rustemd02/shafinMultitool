@@ -1,5 +1,5 @@
 ---
-chapter: 5_conclusion
+chapter: 6_conclusion
 status: new
 target_pages: 5-7
 depends_on_claims:
@@ -14,7 +14,7 @@ depends_on_litreview_sections:
 last_verified_commit: 02bdf3ae0b711ed5e0b7a640cbf808196d304b62
 ---
 
-# Chapter 5. Conclusion
+# Chapter 6. Conclusion
 
 ## Purpose
 
@@ -48,13 +48,13 @@ Summarize verified contributions, honestly state limitations and connect the pro
 
 | Placeholder | Content |
 |---|---|
-| Table 5.1 | Tasks -> outcomes -> evidence IDs. |
-| Table 5.2 | Limitations -> mitigation/future work. |
+| Table 6.1 | Tasks -> outcomes -> evidence IDs. |
+| Table 6.2 | Limitations -> mitigation/future work. |
 
 ## TODO
 
 | TODO | Status |
 |---|---|
-| Write only after chapters 2-4 claims are verified. | todo |
+| Write only after chapters 2-5 claims are verified. | todo |
 | Keep montage limitation explicit. | always |
 | Avoid introducing new metrics in conclusion. | always |

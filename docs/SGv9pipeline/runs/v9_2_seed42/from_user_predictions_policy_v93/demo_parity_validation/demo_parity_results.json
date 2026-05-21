@@ -1,0 +1,44 @@
+{
+  "compiled_predictions": "docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions_policy_v93/eval_artifacts/dataset_v9_2_event_sft_policy_v93_seed42.compiled_predictions.jsonl",
+  "total": 3,
+  "passed": 0,
+  "failed": 3,
+  "results": [
+    {
+      "name": "dialogue_put_down",
+      "eval_case_id": "syn-0030::dialogue_then_put_down_object__base__s895761__deabe8d2",
+      "pass": false,
+      "failed_checks": [
+        "actor_2_puts_down_to_object_2",
+        "put_down_after_dialogue"
+      ],
+      "prediction_action_count": 1,
+      "prediction_beat_count": 1
+    },
+    {
+      "name": "three_actor_give",
+      "eval_case_id": "rt-0001::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s225349__eea4feb1",
+      "pass": false,
+      "failed_checks": [
+        "actor_1_talks_to_actor_2",
+        "actor_2_talks_to_actor_1",
+        "actor_2_picks_up_object_1",
+        "actor_2_gives_to_actor_3",
+        "give_preserves_holding_object_1",
+        "three_phase_order"
+      ],
+      "prediction_action_count": 1,
+      "prediction_beat_count": 1
+    },
+    {
+      "name": "three_actor_ordinal_status",
+      "eval_case_id": "hard-0021::ordinal_first_second_third__base__s186111__fc469b85",
+      "pass": false,
+      "failed_checks": [
+        "actor_2_looks_at_actor_1"
+      ],
+      "prediction_action_count": 3,
+      "prediction_beat_count": 1
+    }
+  ]
+}

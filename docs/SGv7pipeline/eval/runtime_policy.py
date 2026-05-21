@@ -12,7 +12,8 @@ class RuntimePolicyDecision:
     signals: dict[str, Any]
 
 
-TARGET_REQUIRED_ACTIONS = {"approach", "stop", "stand", "passby", "pass_by", "pass-by"}
+TARGET_REQUIRED_ACTIONS = {"approach", "stop", "passby", "pass_by", "pass-by"}
+CRITICAL_MIN_CONFIDENCE = 0.45
 
 
 def _normalize_action_type(value: Any) -> str:
@@ -191,6 +192,6 @@ def replay_runtime_policy(
         if rule_object_count > 0:
             return RuntimePolicyDecision("merge", "fallback_partial", "new_dangling_targets_with_merge_available", signals)
         return RuntimePolicyDecision("reject", "fallback_full", "new_dangling_targets", signals)
-    if pred_confidence + 0.05 < rule_confidence:
-        return RuntimePolicyDecision("reject", "fallback_full", "pred_confidence_below_rule", signals)
+    if pred_confidence < CRITICAL_MIN_CONFIDENCE:
+        return RuntimePolicyDecision("reject", "fallback_full", "pred_confidence_critically_low", signals)
     return RuntimePolicyDecision("accept", "llm_only", "accepted_by_mirror_policy", signals)

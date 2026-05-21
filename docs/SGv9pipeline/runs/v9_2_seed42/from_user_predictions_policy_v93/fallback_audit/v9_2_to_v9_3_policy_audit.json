@@ -1,0 +1,44 @@
+{
+  "old": {
+    "cases": 262,
+    "runtime_decisions": {
+      "reject": 110,
+      "accept": 152
+    },
+    "runtime_reasons": {
+      "pred_confidence_below_rule": 109,
+      "accepted_by_mirror_policy": 152,
+      "action_count_below_rule": 1
+    },
+    "schema_valid": 159,
+    "case_strict_success": 146,
+    "semantic_all_pass": 254,
+    "semantic_all_pass_but_rejected": 108
+  },
+  "new": {
+    "cases": 262,
+    "runtime_decisions": {
+      "accept": 261,
+      "reject": 1
+    },
+    "runtime_reasons": {
+      "accepted_by_mirror_policy": 261,
+      "action_count_below_rule": 1
+    },
+    "schema_valid": 262,
+    "case_strict_success": 254,
+    "semantic_all_pass": 254,
+    "semantic_all_pass_but_rejected": 0
+  },
+  "schema_invalid_due_to_targetless_stand_cases": 103,
+  "remaining_non_strict_cases_after_policy_fix": [
+    "syn-0030::dialogue_then_put_down_object__base__s895761__deabe8d2",
+    "hard-0021::ordinal_first_second_third__base__s186111__fc469b85",
+    "hard-0031::ordinal_first_second_third__base__s273779__ade20c14",
+    "hard-0039::ordinal_first_second_third__base__s432755__bdefbf8d",
+    "hard-0064::ordinal_first_second_third__base__s715625__f19c8451",
+    "hard-0065::ordinal_first_second_third__base__s720754__d5a760e4",
+    "hard-0080::ordinal_first_second_third__base__s914834__e5f83825",
+    "rt-0001::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s225349__eea4feb1"
+  ]
+}

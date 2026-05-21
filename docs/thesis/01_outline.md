@@ -18,18 +18,21 @@ Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
 
 | Глава/раздел | Статус | Объём | Источник | Evidence/Claim IDs | Таблицы/диаграммы |
 |---|---|---:|---|---|---|
-| Вводный архитектурный блок без выделения подпункта | new | 1-2 стр. | `litreview`, `diploma.md`, `docs` | CL-BR-001, CL-ARCH-001 | Общая схема системы и поток данных между модулями. |
-| 2.1. Архитектура модуля генерации структурированного представления сцены | new | 4-5 стр. | `diploma.md`, `code`, `docs/SGv*` | EV-ARCH-001, EV-SG7-001, EV-SG8-001, EV-SG9-001 | Диаграмма Scene Generator runtime/data flow. |
-| 2.2. Архитектура модуля анализа кадра и формирования рекомендаций | new | 4-5 стр. | `code`, `docs/cameraanalysis` | EV-CA-001, EV-CA-002 | Pipeline diagram: snapshot -> semantics -> critique -> planner. |
+| Глава 2. Архитектура программного решения | draft | 3-5 стр. | `litreview`, `diploma.md`, `docs`, `code` | CL-BR-001, CL-BR-002, CL-BR-003, CL-ARCH-001 | Общая схема системы и поток данных между двумя функциональными модулями. |
 
-## 3. Реализация программного решения
+## 3. Модуль генерации структурированного представления сцены
 
 | Глава/раздел | Статус | Объём | Источник | Evidence/Claim IDs | Таблицы/диаграммы |
 |---|---|---:|---|---|---|
-| 3.1. Реализация модуля генерации структурированного представления сцены | new | 8-10 стр. | `code`, `docs/SGv*`, `tests` | EV-IMPL-001, EV-SG7-002, EV-SG8-002, EV-SG9-002, EV-BUNDLE-001 | Таблица Swift/Python modules for Scene Generator. |
-| 3.2. Реализация модуля анализа кадра и формирования рекомендаций | new | 6-8 стр. | `code`, `docs/cameraanalysis`, `tests` | EV-CA-001, EV-CA-002, EV-CA-003 | Camera Analysis implementation pipeline. |
+| Глава 3. Модуль генерации структурированного представления сцены | new | 10-14 стр. | `code`, `docs/SGv*`, `tests`, `diploma.md` | EV-IMPL-001, EV-SG7-002, EV-SG8-002, EV-SG9-002, EV-BUNDLE-001, EV-LLM-001, EV-GBNF-001 | Таблица Swift/Python modules for Scene Generator; V9 event table verification/compile pipeline. |
 
-## 4. Экспериментальная часть
+## 4. Модуль анализа кадра и формирования рекомендаций
+
+| Глава/раздел | Статус | Объём | Источник | Evidence/Claim IDs | Таблицы/диаграммы |
+|---|---|---:|---|---|---|
+| Глава 4. Модуль анализа кадра и формирования рекомендаций | new | 8-12 стр. | `code`, `docs/cameraanalysis`, `tests` | EV-CA-001, EV-CA-002, EV-CA-003 | Camera Analysis implementation pipeline; contracts and explainability trace table. |
+
+## 5. Экспериментальная часть
 
 | Глава/раздел | Статус | Объём | Источник | Evidence/Claim IDs | Таблицы/диаграммы |
 |---|---|---:|---|---|---|
@@ -38,7 +41,7 @@ Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
 | Live smoke and limitations | new | 2-3 стр. | `diploma.md`, tests | EV-LIVE-001, EV-LIVE-002 | Таблица positive/negative live evidence. |
 | Оценка Camera Analysis | new | 3-4 стр. | `docs/cameraanalysis/eval/out_*` | EV-CA-EVAL-001, EV-CA-EVAL-002 | Таблица deterministic vs legacy and hybrid gates. |
 
-## 5. Заключение
+## 6. Заключение
 
 | Глава/раздел | Статус | Объём | Источник | Evidence/Claim IDs | Таблицы/диаграммы |
 |---|---|---:|---|---|---|
@@ -51,8 +54,9 @@ Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
 | Блок | Страницы |
 |---|---:|
 | Теория из litreview | 24-31 |
-| Bridge sections | 5-8 |
-| Архитектура и реализация | 23-29 |
+| Bridge/architecture sections | 4-6 |
+| Модуль генерации сцены | 10-14 |
+| Модуль анализа кадра | 8-12 |
 | Эксперименты | 10-14 |
 | Заключение | 5-7 |
 | Итого | 60-70 |

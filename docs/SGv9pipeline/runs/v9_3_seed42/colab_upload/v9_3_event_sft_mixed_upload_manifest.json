@@ -1,0 +1,33 @@
+{
+  "artifact": "v9_3_event_sft_mixed_upload.zip",
+  "path": "docs/SGv9pipeline/runs/v9_3_seed42/colab_upload/v9_3_event_sft_mixed_upload.zip",
+  "size_bytes": 2098311,
+  "sha256": "c57e83c839e3ce84a5963e91a141801ab0506f7c00d3b856e5732699e617b297",
+  "entry_count": 4,
+  "entries": [
+    {
+      "name": "mixed_event_sft/v9_3_event_sft_mixed_manifest.json",
+      "size": 775,
+      "compressed_size": 294,
+      "sha256": "eacf98ff0de5f55fb896844b0e437c874b67cac1aaf715331f4c8e34b5d2c3a2"
+    },
+    {
+      "name": "mixed_event_sft/v9_3_event_sft_mixed_all.jsonl",
+      "size": 25568695,
+      "compressed_size": 720452,
+      "sha256": "781f1736c5286443b63d90fbd16ebbc949cb9a5a1d283b2cda157a1491731f96"
+    },
+    {
+      "name": "mixed_event_sft/v9_3_event_sft_mixed_val.jsonl",
+      "size": 3830210,
+      "compressed_size": 206937,
+      "sha256": "bbda64782ea89ac2c3314ca08145ac2c3007b3e5a7422955b268468191f383d1"
+    },
+    {
+      "name": "mixed_event_sft/v9_3_event_sft_mixed_train.jsonl",
+      "size": 21738485,
+      "compressed_size": 1169554,
+      "sha256": "cd9da8ca1581c422433381df589d01a08588299004bc3da65c11090c2ce00ab9"
+    }
+  ]
+}

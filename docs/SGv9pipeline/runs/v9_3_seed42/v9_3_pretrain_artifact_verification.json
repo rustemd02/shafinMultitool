@@ -1,0 +1,21 @@
+{
+  "run_root": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42",
+  "pass": true,
+  "failures": [],
+  "manifest": {
+    "all_rows": 5564,
+    "train_rows": 4730,
+    "val_rows": 834,
+    "targeted_row_counts": {
+      "v9_2_targeted_in_base": 286,
+      "v9_3_exact_targeted": 8,
+      "v9_3_augmented_targeted": 270,
+      "v9_3_total": 278
+    }
+  },
+  "zip": {
+    "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/colab_upload/v9_3_event_sft_mixed_upload.zip",
+    "sha256": "c57e83c839e3ce84a5963e91a141801ab0506f7c00d3b856e5732699e617b297",
+    "entry_count": 4
+  }
+}

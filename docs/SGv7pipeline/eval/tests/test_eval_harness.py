@@ -373,6 +373,81 @@ class TestEvalHarness(unittest.TestCase):
         self.assertFalse(case_result["schema_valid"])
         self.assertEqual(schema_valid_rate, 0.0)
 
+    def test_targetless_stand_is_schema_valid(self) -> None:
+        case = _eval_case("stand-case", "hard_heldout", "tier_b_deterministic_canonical")
+        stand_script = {
+            "actors": [{"id": "actor_1"}, {"id": "actor_2"}],
+            "objects": [{"id": "object_marked_ab12"}],
+            "beats": [
+                {
+                    "id": "beat_1",
+                    "actions": [{"actorId": "actor_1", "type": "stand"}],
+                },
+                {
+                    "id": "beat_2",
+                    "actions": [{"actorId": "actor_1", "type": "stop", "target": "object_marked_ab12"}],
+                },
+            ],
+        }
+
+        scored = score_cases(
+            ScoreCasesRequest(
+                checkpoint_id="candidate",
+                cases=[case],
+                predicted_by_case={"stand-case": stand_script},
+                runtime_policy_snapshot={},
+            )
+        )
+
+        self.assertTrue(scored["case_results"][0]["schema_valid"])
+
+    def test_runtime_policy_does_not_reject_safe_script_for_relative_confidence_gap(self) -> None:
+        case = _eval_case("confidence-case", "hard_heldout", "tier_b_deterministic_canonical")
+        case["runtime_policy_inputs"] = {
+            "rule_confidence": 1.0,
+            "rule_object_count": 0,
+            "rule_action_count": 2,
+            "rule_has_dangling_targets": False,
+            "rule_matched_marked_object_count": 0,
+            "mentioned_marked_object_ids": [],
+        }
+        case["eval_expectations"] = {
+            "expected_marked_object_ids": [],
+            "expected_ordinal_bindings": {"first": "actor_1", "second": "actor_2"},
+            "expected_action_units": [
+                {"beat_index": 1, "actor_id": "actor_1", "action_type": "talk", "target_id": "actor_2"},
+                {"beat_index": 1, "actor_id": "actor_2", "action_type": "talk", "target_id": "actor_1"},
+            ],
+            "expected_phase_sequence": [],
+            "critical_eval_tags": [],
+        }
+        safe_script = {
+            "actors": [{"id": "actor_1"}, {"id": "actor_2"}],
+            "objects": [],
+            "beats": [
+                {
+                    "id": "beat_1",
+                    "actions": [
+                        {"actorId": "actor_1", "type": "talk", "target": "actor_2"},
+                        {"actorId": "actor_2", "type": "talk", "target": "actor_1"},
+                    ],
+                }
+            ],
+        }
+
+        scored = score_cases(
+            ScoreCasesRequest(
+                checkpoint_id="candidate",
+                cases=[case],
+                predicted_by_case={"confidence-case": safe_script},
+                runtime_policy_snapshot={},
+            )
+        )
+
+        case_result = scored["case_results"][0]
+        self.assertEqual(case_result["runtime_policy_decision"], "accept")
+        self.assertEqual(case_result["diagnostics"]["runtime_policy_reason"], "accepted_by_mirror_policy")
+
 
 if __name__ == "__main__":
     unittest.main()

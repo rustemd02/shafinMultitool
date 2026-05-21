@@ -1,0 +1,73 @@
+{
+  "slice": "local_event_raw",
+  "overall": {
+    "case_count": 262,
+    "semantic_row_total": 713
+  },
+  "structural": {
+    "event_parse_rate": 1.0,
+    "event_schema_valid_rate": 1.0,
+    "event_actor_slot_structural_pass_rate": 1.0,
+    "event_target_slot_structural_pass_rate": 1.0,
+    "event_action_type_structural_pass_rate": 0.9809160305343512,
+    "event_beat_order_structural_pass_rate": 1.0,
+    "patch_success_rate": 0.019083969465648856,
+    "compiler_repair_rate": 0.019083969465648856
+  },
+  "semantic": {
+    "event_actor_slot_accuracy": 0.9929873772791024,
+    "event_target_slot_accuracy": 0.9859747545582047,
+    "event_action_type_accuracy": 0.9887798036465638,
+    "event_beat_order_accuracy": 0.9929873772791024,
+    "event_full_row_accuracy": 0.9845722300140253
+  },
+  "degradation": {
+    "targetless_event_repaired_rate": 0.0,
+    "unknown_slot_blocked_rate": 0.0,
+    "dropped_event_row_rate": 0.0,
+    "targetless_event_repaired_count": 0,
+    "unknown_slot_blocked_count": 0,
+    "dropped_event_rows_total": 0,
+    "input_event_rows_total": 714
+  },
+  "metrics": {
+    "overall": {
+      "case_count": 262,
+      "semantic_row_total": 713
+    },
+    "structural": {
+      "event_parse_rate": 1.0,
+      "event_schema_valid_rate": 1.0,
+      "event_actor_slot_structural_pass_rate": 1.0,
+      "event_target_slot_structural_pass_rate": 1.0,
+      "event_action_type_structural_pass_rate": 0.9809160305343512,
+      "event_beat_order_structural_pass_rate": 1.0,
+      "patch_success_rate": 0.019083969465648856,
+      "compiler_repair_rate": 0.019083969465648856
+    },
+    "semantic": {
+      "event_actor_slot_accuracy": 0.9929873772791024,
+      "event_target_slot_accuracy": 0.9859747545582047,
+      "event_action_type_accuracy": 0.9887798036465638,
+      "event_beat_order_accuracy": 0.9929873772791024,
+      "event_full_row_accuracy": 0.9845722300140253
+    },
+    "chunk": {
+      "chunk_event_coverage_rate": 0.9845722300140253,
+      "cross_chunk_actor_continuity": null,
+      "cross_chunk_object_continuity": null,
+      "pronoun_resolution_after_chunk": null,
+      "stitch_no_duplicate_actor_rate": null,
+      "playback_intent_success_rate": null
+    },
+    "degradation": {
+      "targetless_event_repaired_rate": 0.0,
+      "unknown_slot_blocked_rate": 0.0,
+      "dropped_event_row_rate": 0.0,
+      "targetless_event_repaired_count": 0,
+      "unknown_slot_blocked_count": 0,
+      "dropped_event_rows_total": 0,
+      "input_event_rows_total": 714
+    }
+  }
+}

@@ -101,6 +101,43 @@
 
 ---
 
+## [2026-05-13 15:02] - [V9.3 fallback audit, runtime-policy correction and next targeted train pack]
+
+### Суть изменений
+- Проведён отдельный audit причины высокого `runtime_fallback_rate` у `dataset_v9_2_event_sft`: проблема оказалась в основном не модельной, а связанной со stale mirror runtime-policy/scorer.
+- Найдены два системных источника ложного fallback: `stand` ошибочно считался action type с обязательным `target`, а `pred_confidence_below_rule` отвергал компактные, но семантически корректные V9 outputs из-за сравнения с rule-parser confidence.
+- В `docs/SGv7pipeline/eval/runtime_policy.py` и benchmark export helper удалено требование target для `stand`; relative confidence reject заменён на guard только для критически низкой confidence.
+- В legacy Swift fallback policy (`SceneParserService`) также удалено требование target для `stand`, чтобы live/runtime диагностика не расходилась с corrected benchmark mirror.
+- На тех же frozen V9.2 predictions пересчитан benchmark в policy-corrected режиме: `schema_valid_rate` поднялся до `1.0000`, `runtime_fallback_rate` снизился до `0.0038`, `case_strict_success_rate` поднялся до `0.9695` при неизменных model predictions.
+- Собран V9.3 targeted train pack для следующего retrain: `5564` mixed rows (`4730` train, `834` val), включая `8` exact remaining failure rows и `270` новых synthetic targeted rows по кластерам `dialogue+put_down`, `three_actor_give`, `three_actor_ordinal_status`.
+- Подготовлен Colab/benchmark runbook и upload zip `v9_3_event_sft_mixed_upload.zip`.
+- Для upload zip зафиксирован manifest/checksum: SHA-256 `c57e83c839e3ce84a5963e91a141801ab0506f7c00d3b856e5732699e617b297`, внутри `mixed_event_sft` train/val/all/manifest.
+- Добавлен pretrain verifier для локальной проверки V9.3 artifacts перед Colab; текущий результат `pass=true`, `5564` total rows, `278` V9.3 targeted rows, zip SHA совпадает.
+- Добавлен non-AR demo-parity checker, который проверяет не просто JSON/метрики, а конкретный playback intent для канонических сценариев; на policy-corrected V9.2 он ожидаемо падает `0/3`, фиксируя оставшийся целевой gap для V9.3.
+- Добавлен post-train wrapper, который после появления свежего `dataset_v9_3_event_sft_seed42.event_predictions.jsonl` одной командой запускает benchmark, failure mining, demo-parity validation и acceptance gate по целевым V9.3 метрикам.
+- Acceptance gate покрыт unit-тестами: pass при достижении всех порогов, fail при regression по target/chronology/action/fallback и fail-closed при отсутствующих метриках.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Предыдущая интерпретация `runtime_fallback_rate=0.4198` могла привести к неверному исследовательскому выводу, будто V9.2 модель часто требует fallback. Фактический разбор показал, что `108` семантически успешных кейсов отвергались старой policy из-за относительного confidence gap, а `103` schema-invalid cases были вызваны неправильным target requirement для `stand`.
+- **Решение:** Метрики были разделены на реальные semantic misses и ложные runtime-policy rejects. После исправления mirror policy V9.2 predictions почти полностью проходят runtime gate без изменения модели: `runtime_fallback_rate=0.0038`, `case_strict_success_rate=0.9695`. Это показывает, что основной bottleneck сместился с fallback eradication на последние `8` semantic misses.
+- **Детали:** Оставшиеся реальные failures локализованы в узких сценариях: `dialogue_then_put_down_object`, `ordinal_first_second_third` и `dialogue_then_pick_up_object_then_give_to_third_actor`. Поэтому V9.3 dataset не расширяет случайно весь корпус, а добавляет targeted signal именно под эти failure families. Это делает следующий retrain проверяемым экспериментом: если V9.3 не улучшит `target_resolution`, `chronology` и `action_recall`, причина будет уже в model capacity/training, а не в scorer noise.
+
+### Ключевые файлы
+- `docs/SGv7pipeline/eval/runtime_policy.py` (исправление target-required actions и confidence fallback policy)
+- `experiments/sc_benchmark/generate_predictions_from_endpoint.py` (синхронизация schema helper: `stand` без target валиден)
+- `shafinMultitool/SceneGeneratorModule/Services/SceneParserService.swift` (синхронизация legacy runtime fallback policy: `stand` не dangling target)
+- `docs/SGv7pipeline/eval/tests/test_eval_harness.py` (regression tests для targetless `stand` и confidence-gap accept)
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions_policy_v93/fallback_audit/v9_2_to_v9_3_policy_audit.md` (fallback root-cause audit)
+- `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions_policy_v93/benchmark_results_seed42/aggregate/scientific_report.md` (policy-corrected replay benchmark)
+- `docs/SGv9pipeline/v9/09_build_v9_3_targeted_sft.py` (exact remaining failure rows -> V9.3 targeted SFT)
+- `docs/SGv9pipeline/v9/10_generate_v9_3_targeted_augmentations.py` (synthetic targeted rows for remaining failure families)
+- `docs/SGv9pipeline/v9/11_build_v9_3_mixed_dataset.py` (mixed V9.3 train/val/all builder)
+- `docs/SGv9pipeline/v9/12_validate_v9_demo_parity.py` (non-AR demo-parity checker для canonical intent cases)
+- `docs/SGv9pipeline/v9/13_run_v9_3_post_train_eval.py` (post-train wrapper: benchmark + mining + parity)
+- `docs/SGv9pipeline/v9/14_verify_v9_3_pretrain_artifacts.py` (pretrain verifier для dataset/zip/checksum artifacts)
+- `docs/SGv9pipeline/v9/tests/test_v9_post_train_eval.py` (unit tests для V9.3 acceptance gate)
+- `docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_manifest.json` (V9.3 dataset counts/provenance)
+- `docs/SGv9pipeline/runs/v9_3_seed42/V9_3_TRAIN_BENCH_RUNBOOK.md` (next train/benchmark procedure)
 
 ## [2026-05-04 20:10] - [Camera Analysis v1 + Hybrid Eval: фиксирование результатов implement verify]
 
@@ -2214,5 +2251,37 @@
 - `docs/SGv9pipeline/runs/v9_2_seed42/from_user_predictions/eval_artifacts/dataset_v9_2_event_sft_seed42.event_slice_summary.json` (raw event-slice metrics `v9.2`)
 - `docs/SGv9pipeline/v9/README.md` (обновлённый benchmark snapshot `v9.0` vs `v9.2`)
 - `docs/SGv7pipeline/09-eval-and-release.md` (человекочитаемое сравнение `v8`, `v9.0`, `v9.2`)
+
+---
+
+## [2026-05-13 16:48] - [V9.3 successor benchmark, fallback eradication gate and demo parity]
+
+### Суть изменений
+- Получен и обработан свежий prediction-файл `dataset_v9_3_event_sft_seed42.event_predictions.jsonl` после targeted retrain V9.3.
+- Выполнен post-train wrapper `docs/SGv9pipeline/v9/13_run_v9_3_post_train_eval.py`, который одной командой прогнал frozen-bundle benchmark, pairwise compare, failure mining, non-AR demo-parity и acceptance gate.
+- V9.3 прошёл все целевые метрики: `case_strict_success_rate=0.9962`, `target_resolution_accuracy=0.9983`, `chronology_phase_accuracy=0.9962`, `action_recall=0.9986`, `runtime_fallback_rate=0.0000`.
+- Pairwise сравнение стало полностью доминирующим: против `dataset_v8_plan_orpo_iter1` — `224` победы, `0` поражений, `38` ничьих; против `dataset_v7_orpo_iter2` — `240` побед, `0` поражений, `22` ничьих.
+- Non-AR demo-parity validation прошла `3/3` на канонических intent-кейсах: `dialogue_put_down`, `three_actor_give`, `three_actor_ordinal_status`.
+- Post-benchmark failure mining оставил только `1` hard case в кластере `dialogue_action`, то есть остаточная ошибка стала точечной, а не системной.
+- Обновлены исследовательские артефакты: V9 README, V9.3 goal audit, thesis evidence map, claim registry, model eval snapshot и chronological log.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** До V9.3 высокий `runtime_fallback_rate` у V9.2 можно было ошибочно интерпретировать как фундаментальное ограничение маленькой локальной модели. Аудит показал, что значительная часть fallback была вызвана stale scorer/runtime policy: targetless `stand` ошибочно считался schema failure, а semantically valid cases отвергались относительным confidence rule.
+- **Решение:** Проблема была разделена на два слоя: ложные runtime-policy rejects и реальные semantic misses. Для первого слоя исправлена mirror policy в Python scorer/export и legacy Swift fallback target policy. Для второго слоя собран targeted V9.3 SFT pack на остаточных failure families, после чего свежая successor-модель была проверена на том же frozen eval bundle без изменения benchmark input.
+- **Детали:** Ключевой результат V9.3 состоит не только в росте метрик, а в проверке причинно-следственной цепочки: `slot-event contract -> deterministic compiler -> policy hardening -> targeted hard-case SFT -> benchmark/demo parity`. На frozen bundle runtime fallback снизился до `0.0000`, strict success вырос до `0.9962`, а raw event-table slice показал `event_target_slot_accuracy=1.0000`, `event_action_type_accuracy=1.0000`, `event_beat_order_accuracy=1.0000`, `chunk_event_coverage_rate=0.9986`. При этом вывод нельзя формулировать как абсолютную безошибочность: failure mining всё ещё фиксирует `1` residual `dialogue_action` case, поэтому корректная формулировка для диссертации — “почти полное прохождение заданного frozen benchmark и demo-parity с явно зафиксированным остаточным hard case”.
+
+### Ключевые файлы
+- `experiments/sc_benchmark/dataset_v9_3_event_sft_seed42.event_predictions.jsonl` (fresh V9.3 predictions после targeted retrain)
+- `docs/SGv9pipeline/v9/13_run_v9_3_post_train_eval.py` (post-train wrapper: benchmark + mining + demo-parity + acceptance gate)
+- `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/v9_3_post_train_eval_summary.json` (итоговый acceptance summary)
+- `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md` (научный benchmark report и pairwise сравнение)
+- `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/eval_artifacts/dataset_v9_3_event_sft_seed42.event_slice_summary.json` (raw event-table semantic metrics)
+- `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/demo_parity_validation/demo_parity_results.json` (non-AR demo-parity `3/3`)
+- `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/post_benchmark_failure_mining/v9_hard_case_manifest.json` (остаточный hard-case mining)
+- `docs/SGv9pipeline/runs/v9_3_seed42/V9_3_GOAL_AUDIT.md` (completion audit по V9.3 goal)
+- `docs/SGv9pipeline/v9/README.md` (обновлённый V9.3 benchmark snapshot)
+- `docs/thesis/03_evidence_map.md` (новый evidence item `EV-MET-007`)
+- `docs/thesis/04_claim_registry.md` (новые/обновлённые claims `CL-MET-012`, `CL-LIM-005`)
+- `docs/thesis/snapshots/model_eval_snapshot.md` (обновлённый model evaluation snapshot)
 
 ---
