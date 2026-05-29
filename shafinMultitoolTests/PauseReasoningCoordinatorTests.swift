@@ -26,7 +26,10 @@ final class PauseReasoningCoordinatorTests: XCTestCase {
         switch result {
         case let .refined(presentation, _, diagnostics):
             XCTAssertEqual(presentation.frameId, request.frameId)
-            XCTAssertEqual(presentation.shortVerdict, "Обновленный вердикт без смены класса решения.")
+            XCTAssertEqual(
+                presentation.shortVerdict,
+                "Кадр рабочий, но фон отвлекает внимание: обновленный вердикт без смены класса решения."
+            )
             XCTAssertTrue(presentation.strengths.first?.rationale.contains("уточнение") == true)
             XCTAssertTrue(presentation.issues.first?.rationale.contains("уточнение") == true)
             XCTAssertTrue(presentation.actions.first?.expectedOutcome.contains("уточнение") == true)
@@ -346,7 +349,7 @@ private actor ValidStubProvider: ReasoningProvider {
             frameId: request.frameId,
             providerId: providerId,
             textPatch: PauseTextPatch(
-                shortVerdictOverride: "Обновленный вердикт без смены класса решения.",
+                shortVerdictOverride: "Кадр рабочий, но фон отвлекает внимание: обновленный вердикт без смены класса решения.",
                 whyGoodByStrengthId: ["str_1": "Хорошее разделение объекта и фона (уточнение)."],
                 whyProblematicByIssueId: ["iss_1": "Фон спорит с объектом (уточнение)."],
                 actionRationaleByActionId: ["act_1": "Сместите камеру влево и проверьте читаемость (уточнение)."],
@@ -851,6 +854,7 @@ private func makeRequest(providerConfigVersion: String,
             PauseActionRow(
                 actionId: action.id,
                 actionType: action.actionType,
+                semanticActionType: action.actionType.semanticActionType,
                 priority: action.priority,
                 confidence: min(plan.planConfidence, issue.confidence + 0.10),
                 linkedIssueIds: action.linkedIssueIds,

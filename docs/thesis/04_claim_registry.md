@@ -1,6 +1,6 @@
 # Claim Registry
 
-Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
+Last verified commit: `6e33b14d9cb001c38cdd1271bbbc56863392212e` plus dirty working-tree evidence updates on 2026-05-23.
 
 | Claim ID | Утверждение | Тип | Источник подтверждения | Где использовать | Статус |
 |---|---|---|---|---|---|
@@ -34,6 +34,8 @@ Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
 | CL-MET-008 | V9 live smoke later succeeded as `1/1 passed` after runtime hardening. | metric | `diploma.md` entry 2026-05-04 | ch5 | partially_verified |
 | CL-CA-001 | Camera Analysis v1 deterministic candidate improved issue/action/strength/fallback/explainability metrics vs legacy and got release status `pass`. | experiment | `docs/cameraanalysis/eval/out_v1/compare_report.json` | ch4, ch5 | verified |
 | CL-CA-002 | Camera hybrid smoke cannot support final neural uplift claim because verdict is `mobile_blocked` and pause_execute_success_rate is `0.0`. | limitation | `docs/cameraanalysis/eval/out_hybrid_example/ablation_summary.json`, `mobile_system_metrics.json` | ch4, ch5, ch6 | verified |
+| CL-CA-003 | Semantic Camera Analysis has an eval bridge for a 107-image silver dataset, including candidate output schema, live/pause row merge logic and DEBUG real-runtime still-image replay. Latest measured accuracy after the `R21a` slice is closed on this silver still replay but still limited as product evidence (`pass_rate=1.000000`, `expected_action_hit_rate=1.000000`, `future_action_hit_rate=1.000000`, `forbidden_action_violation_rate=0.000000`, `good_frame_preservation_rate=1.000000`, `positive_confirmation_rate=1.000000`, `confidence_band_accuracy=1.000000`). The R21a demo pack also pins 8 repeatable user-facing semantic scenarios for keep, reframe, step back/closer, light, background, hotspot/horizon and current generic object-balance actions. The R03j/R03k comparison supports the claim that technical quality must be fused without displacing grounded semantic advice; R06/R08 support conservative good-frame and hotspot mapping claims; rejected R09a/R11e/R12a show that broad confidence/keep/darkness rules regress behavior; accepted R09b/R10a/R12b/R13a/R14a/R15a/R16a/R17a/R18a/R19b/R20a/R21a show that bounded confidence, contextual object/weak-subject, low-key keep, live/pause merge, residual action/future projection and observability-grounded confidence calibrations can improve strict replay metrics without hurting good-frame preservation. This claim supports the measurement pipeline, current silver still-replay calibration and demo-hardening, not final live-camera product readiness. | implementation/limitation | EV-CA-EVAL-003 | ch4, ch5, ch6 | partially_verified |
+| CL-CA-004 | Current Camera Analysis UI includes a decision-trace layer: for a live/pause result it can show the verdict, confidence, reason lines, evidence rows, selected semantic actions, pipeline signals, fallback/assumptions and trace ids behind the displayed advice. The overlay also avoids silent/blocked UX states by showing a live waiting status and an explicit pause-card `Продолжить` action. This is an implementation/defense-demo claim, not proof of causal model correctness or arbitrary live-camera readiness. | implementation/limitation | EV-CA-004 | ch4, ch5, defense demo | verified |
 | CL-LIM-001 | Full automated editing pipeline is not implemented in the current production runtime. | limitation | repository map, absence of montage module, litreview alignment | ch6 | partially_verified |
 | CL-LIM-002 | Metrics from seed42 frozen eval bundle should not be generalized as universal model quality without additional seeds and live parity artifacts. | limitation | benchmark setup fields and single-seed reports | ch5, ch6 | verified |
 | CL-LIM-004 | V9.3 policy-corrected metrics are a replay/scorer result on frozen predictions; final model-quality claims require retraining, fresh V9.3 predictions and demo-parity evidence. | limitation | EV-MET-005, EV-MET-006, EV-MET-007 | ch5, ch6 | obsolete |
@@ -44,3 +46,9 @@ Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
 | CL-CONTR-003 | The project demonstrates an explainable critique architecture for camera analysis with measurable deterministic uplift over legacy suggestions. | contribution | EV-CA-EVAL-001 | ch5, conclusion | verified |
 | CL-NEEDS-001 | Exact final page allocation after integrating litreview into diploma template is not known. | limitation | no template/source provided | planning | needs_source |
 | CL-NEEDS-002 | Final bibliography compliance with university style is not verified. | litreview_claim | no style guide/source provided | final editing | needs_source |
+
+## Master Sync Notes
+
+| Claim ID | Утверждение | Тип | Источник подтверждения | Где использовать | Статус |
+|---|---|---|---|---|---|
+| CL-MASTER-SYNC-2026-05-29 | Локальные chapter-файлы синхронизированы с актуальным master-файлом `/Users/unterlantas/Downloads/ДИССЕР.md`; это техническая синхронизация текста, а не новая проверка всех научных утверждений и источников. | sync_note | EV-MASTER-SYNC-2026-05-29 | all synced local chapters | verified |

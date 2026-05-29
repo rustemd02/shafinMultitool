@@ -740,7 +740,7 @@ actor PauseReasoningCoordinator {
 
     private func detectLowFaithfulness(patch: PauseTextPatch,
                                        request: ReasoningRequest) -> Bool {
-        let certaintySensitiveWords = ["точно", "однозначно", "гарантированно", "безошибочно", "идеально"]
+        let certaintySensitiveWords = ["точно", "однозначн", "гарантированн", "безошибочн", "идеальн"]
         let confidence = request.critique.verdictConfidence
 
         let strengthSources = Dictionary(uniqueKeysWithValues: request.pausePresentationDraft.strengths.map { ($0.strengthId, $0.rationale) })
@@ -749,6 +749,12 @@ actor PauseReasoningCoordinator {
 
         if let candidate = patch.shortVerdictOverride,
            hasLowOverlap(source: request.pausePresentationDraft.shortVerdict, candidate: candidate) {
+            return true
+        }
+
+        if let candidate = patch.shortVerdictOverride,
+           request.critique.verdict != .good,
+           containsCertaintySensitiveWord(candidate, markers: certaintySensitiveWords) {
             return true
         }
 
@@ -786,12 +792,17 @@ actor PauseReasoningCoordinator {
             let normalized = allTexts
                 .compactMap { $0?.lowercased() }
                 .joined(separator: " ")
-            if certaintySensitiveWords.contains(where: { normalized.contains($0) }) {
+            if containsCertaintySensitiveWord(normalized, markers: certaintySensitiveWords) {
                 return true
             }
         }
 
         return false
+    }
+
+    private func containsCertaintySensitiveWord(_ text: String, markers: [String]) -> Bool {
+        let normalized = text.lowercased()
+        return markers.contains { normalized.contains($0) }
     }
 
     private func hasLowOverlap(source: String, candidate: String) -> Bool {
@@ -864,6 +875,7 @@ actor PauseReasoningCoordinator {
             PauseActionRow(
                 actionId: item.actionId,
                 actionType: item.actionType,
+                semanticActionType: item.semanticActionType,
                 priority: item.priority,
                 confidence: item.confidence,
                 linkedIssueIds: item.linkedIssueIds,

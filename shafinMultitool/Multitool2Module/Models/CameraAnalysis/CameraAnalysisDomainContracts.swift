@@ -73,6 +73,77 @@ enum TechnicalFlag: String, Codable, Sendable {
     case lowSceneConfidence = "low_scene_confidence"
 }
 
+enum TechnicalQualityIssueType: String, Codable, Sendable {
+    case motionBlur = "motion_blur"
+    case defocus
+    case overexposure
+    case underexposure
+    case noise
+    case occlusion
+    case lensSmudge = "lens_smudge"
+}
+
+enum TechnicalQualityActionType: String, Codable, Sendable {
+    case stabilizeCamera = "stabilize_camera"
+    case refocusSubject = "refocus_subject"
+    case reduceExposure = "reduce_exposure"
+    case increaseExposure = "increase_exposure"
+    case avoidOcclusion = "avoid_occlusion"
+    case cleanLens = "clean_lens"
+    case reduceIsoNoise = "reduce_iso_noise"
+}
+
+struct TechnicalQualityIssueSignal: Codable, Equatable, Sendable {
+    let type: TechnicalQualityIssueType
+    let actionType: TechnicalQualityActionType
+    let confidence: Double
+    let severity: Double
+    let isDominant: Bool
+
+    init(type: TechnicalQualityIssueType,
+         actionType: TechnicalQualityActionType,
+         confidence: Double,
+         severity: Double,
+         isDominant: Bool = false) {
+        self.type = type
+        self.actionType = actionType
+        self.confidence = Self.clamp01(confidence)
+        self.severity = Self.clamp01(severity)
+        self.isDominant = isDominant
+    }
+
+    private static func clamp01(_ value: Double) -> Double {
+        min(1.0, max(0.0, value))
+    }
+}
+
+struct TechnicalQualitySignal: Codable, Equatable, Sendable {
+    let issues: [TechnicalQualityIssueSignal]
+
+    init(issues: [TechnicalQualityIssueSignal]) {
+        self.issues = issues
+    }
+
+    var futureActionIds: [String] {
+        uniqueActionIds(issues.map { $0.actionType.rawValue })
+    }
+
+    var dominantFutureActionIds: [String] {
+        uniqueActionIds(issues.filter(\.isDominant).map { $0.actionType.rawValue })
+    }
+
+    static let empty = TechnicalQualitySignal(issues: [])
+
+    private func uniqueActionIds(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for value in values where seen.insert(value).inserted {
+            result.append(value)
+        }
+        return result
+    }
+}
+
 enum SubjectKind: String, Codable, Sendable {
     case face
     case person

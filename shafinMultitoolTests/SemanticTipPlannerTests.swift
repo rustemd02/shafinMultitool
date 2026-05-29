@@ -58,7 +58,7 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(output.livePrimaryTip?.linkedIssueIds, ["issue-look-space"])
     }
 
-    func testPausePlannerLocalizesFaceContourConflictWithValidatedVLMEntity() {
+    func testPausePlannerLocalizesFaceContourConflictWithValidatedVLMEntity() throws {
         let critique = makeCritique(
             frameId: "frame-face-conflict",
             mode: .pause,
@@ -160,7 +160,7 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(primary.liveText, "Убери вазу от лица.")
     }
 
-    func testPlannerFallsBackToGenericObjectLabelWithoutGrounding() {
+    func testPlannerFallsBackToGenericObjectLabelWithoutGrounding() throws {
         let critique = makeCritique(
             frameId: "frame-object-edge",
             mode: .pause,
@@ -188,7 +188,7 @@ final class SemanticTipPlannerTests: XCTestCase {
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.72, y: 0.22, width: 0.20, height: 0.22),
                 linkedIssueIds: ["issue-object-edge"],
-                expectedOutcome: "legacy",
+                expectedOutcome: "Сдвинь предмет левее.",
                 guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
                 overlayHint: nil
             ),
@@ -265,6 +265,108 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(output.livePrimaryTip?.summaryId, critique.summary.id)
     }
 
+    func testWeakNoClearFocusDoesNotInventStepCloserOrSimplifyBackground() {
+        let critique = makeCritique(
+            frameId: "frame-weak-no-focus",
+            mode: .pause,
+            verdict: .mixed,
+            issues: [
+                FrameIssue(
+                    id: "issue-weak-no-focus",
+                    type: .sceneHasNoClearFocus,
+                    severity: 0.52,
+                    confidence: 0.58,
+                    rationale: "Центр внимания не до конца очевиден.",
+                    evidence: [EvidenceRef(source: .semantics, key: "dominance.focusCompetitionScore", value: "0.52", confidence: 0.58)],
+                    affectedRegion: nil,
+                    suggestedFixTypes: [.reframing]
+                )
+            ]
+        )
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: RecommendationAction(
+                id: "action-weak-no-focus",
+                actionType: .increaseSubjectSize,
+                priority: 1,
+                targetRegion: nil,
+                linkedIssueIds: ["issue-weak-no-focus"],
+                expectedOutcome: "legacy",
+                guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
+                overlayHint: nil
+            ),
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.60
+        )
+
+        let output = planner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: critique.frameId,
+                mode: .pause,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .person)
+            )
+        )
+
+        XCTAssertTrue(output.pauseExpandedTips.isEmpty)
+    }
+
+    func testStrongNoClearFocusStillProducesCorrectiveTip() {
+        let critique = makeCritique(
+            frameId: "frame-strong-no-focus",
+            mode: .pause,
+            verdict: .mixed,
+            issues: [
+                FrameIssue(
+                    id: "issue-strong-no-focus",
+                    type: .sceneHasNoClearFocus,
+                    severity: 0.74,
+                    confidence: 0.78,
+                    rationale: "В кадре нет устойчивого центра внимания.",
+                    evidence: [EvidenceRef(source: .semantics, key: "dominance.focusCompetitionScore", value: "0.82", confidence: 0.78)],
+                    affectedRegion: nil,
+                    suggestedFixTypes: [.reframing]
+                )
+            ]
+        )
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: RecommendationAction(
+                id: "action-strong-no-focus",
+                actionType: .increaseSubjectSize,
+                priority: 1,
+                targetRegion: nil,
+                linkedIssueIds: ["issue-strong-no-focus"],
+                expectedOutcome: "legacy",
+                guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
+                overlayHint: nil
+            ),
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.78
+        )
+
+        let output = planner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: critique.frameId,
+                mode: .pause,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .person)
+            )
+        )
+
+        XCTAssertEqual(output.pauseExpandedTips.first?.tipType, .clarifyMainSubjectFocus)
+    }
+
     func testPipelineLivePresentationUsesSemanticTipCopy() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(
@@ -275,8 +377,8 @@ final class SemanticTipPlannerTests: XCTestCase {
                 FrameIssue(
                     id: "issue-look-space",
                     type: .insufficientLookSpace,
-                    severity: 0.71,
-                    confidence: 0.83,
+                    severity: 0.90,
+                    confidence: 0.88,
                     rationale: "По направлению взгляда тесно.",
                     evidence: [EvidenceRef(source: .semantics, key: "readability.lookSpaceAdequate", value: "false", confidence: 0.83)],
                     affectedRegion: NormalizedRect(x: 0.62, y: 0.18, width: 0.24, height: 0.44),
@@ -301,7 +403,7 @@ final class SemanticTipPlannerTests: XCTestCase {
             secondaryActions: [],
             deferredActions: [],
             noChangeRationale: nil,
-            planConfidence: 0.81
+            planConfidence: 0.88
         )
 
         await MainActor.run {
@@ -331,8 +433,8 @@ final class SemanticTipPlannerTests: XCTestCase {
                 FrameIssue(
                     id: "issue-object-edge",
                     type: .subjectTooCloseToEdge,
-                    severity: 0.65,
-                    confidence: 0.75,
+                    severity: 0.90,
+                    confidence: 0.88,
                     rationale: "Главный объект зажат у края.",
                     evidence: [EvidenceRef(source: .semantics, key: "readability.edgePressureScore", value: "0.75", confidence: 0.75)],
                     affectedRegion: NormalizedRect(x: 0.72, y: 0.22, width: 0.20, height: 0.22),
@@ -350,14 +452,14 @@ final class SemanticTipPlannerTests: XCTestCase {
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.72, y: 0.22, width: 0.20, height: 0.22),
                 linkedIssueIds: ["issue-object-edge"],
-                expectedOutcome: "legacy",
+                expectedOutcome: "Сдвинь предмет левее.",
                 guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
                 overlayHint: nil
             ),
             secondaryActions: [],
             deferredActions: [],
             noChangeRationale: nil,
-            planConfidence: 0.74
+            planConfidence: 0.88
         )
 
         await MainActor.run {

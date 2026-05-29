@@ -12,6 +12,7 @@ import UIKit
 struct OverlayView: View {
     @ObservedObject var viewModel: CameraViewModel
     let cameraManager: CameraManager
+    @State private var decisionTrace: DecisionTracePresentation?
 
     var body: some View {
         ZStack {
@@ -22,24 +23,14 @@ struct OverlayView: View {
             GeometryReader { proxy in
                 let size = proxy.size
                 let overlay = viewModel.overlayState
+                let ux = CameraOverlayUXPresentation.make(
+                    isPaused: viewModel.isPaused,
+                    liveHint: viewModel.liveHint,
+                    pauseCritique: viewModel.pauseCritique,
+                    previewSuggestions: viewModel.previewSuggestions
+                )
 
                 ZStack(alignment: .center) {
-                    // Кнопка паузы/продолжения
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Button(action: { viewModel.togglePause() }) {
-                                Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                                    .foregroundColor(.black)
-                                    .padding(10)
-                                    .background(Color.white.opacity(0.9), in: Circle())
-                            }
-                            .padding(.top, 16)
-                            .padding(.trailing, 16)
-                        }
-                        Spacer()
-                    }
-
                     // Правило третей (тонкие линии)
                     if !viewModel.debugMode {
                         ThirdsGridOverlay()
@@ -95,19 +86,38 @@ struct OverlayView: View {
                                          ),
                                          canvasSize: size)
                     }
+
+                    if !viewModel.isPaused, ux.showsLiveWaitingHint {
+                        LiveAnalysisStatusChip(
+                            title: ux.liveWaitingTitle ?? "Анализ кадра активен",
+                            message: ux.liveWaitingBody ?? "Подсказка появится при уверенном сигнале."
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, viewModel.availableLenses.isEmpty ? 32 : 86)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    }
                     
                     // Режим предпросмотра: список всех советов
                     if viewModel.isPaused {
                         if let pauseCritique = viewModel.pauseCritique {
                             PauseCritiqueCardView(
                                 critique: pauseCritique,
-                                legacySuggestions: viewModel.previewSuggestions
+                                legacySuggestions: viewModel.previewSuggestions,
+                                maxHeight: pausePanelMaxHeight(for: size),
+                                onContinue: resumeFromPause,
+                                onExplain: ux.canShowDecisionTrace ? showDecisionTrace : nil
                             )
                                 .padding(.bottom, 24)
                                 .frame(maxHeight: .infinity, alignment: .bottom)
                         } else {
-                            SuggestionListView(suggestions: viewModel.previewSuggestions)
-                                .padding(.bottom, 40)
+                            PauseStatusPanelView(
+                                title: ux.pausePanelTitle ?? "Анализирую кадр",
+                                message: ux.pausePanelBody ?? "Можно продолжить и попробовать другой ракурс.",
+                                suggestions: viewModel.previewSuggestions,
+                                maxHeight: pausePanelMaxHeight(for: size),
+                                onContinue: resumeFromPause
+                            )
+                                .padding(.bottom, 24)
                                 .frame(maxHeight: .infinity, alignment: .bottom)
                         }
                     }
@@ -129,6 +139,9 @@ struct OverlayView: View {
                             .padding(.bottom, 32)
                         }
                     }
+
+                    topControls(ux: ux)
+                        .zIndex(20)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -141,6 +154,78 @@ struct OverlayView: View {
             startUIFPSMonitoring()
         }
         .onDisappear { viewModel.stop() }
+        .sheet(item: $decisionTrace) { trace in
+            DecisionTraceView(trace: trace)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var canShowDecisionTrace: Bool {
+        CameraOverlayUXPresentation.make(
+            isPaused: viewModel.isPaused,
+            liveHint: viewModel.liveHint,
+            pauseCritique: viewModel.pauseCritique,
+            previewSuggestions: viewModel.previewSuggestions
+        ).canShowDecisionTrace
+    }
+
+    @ViewBuilder
+    private func topControls(ux: CameraOverlayUXPresentation) -> some View {
+        VStack {
+            HStack(alignment: .top) {
+                if ux.canShowDecisionTrace {
+                    Button(action: showDecisionTrace) {
+                        Label("Почему?", systemImage: "questionmark.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.black.opacity(0.88))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .background(Color.white.opacity(0.92), in: Capsule())
+                    }
+                    .accessibilityLabel("Показать почему приложение приняло решение")
+                }
+
+                Spacer()
+
+                Button(action: { viewModel.togglePause() }) {
+                    Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
+                        .foregroundColor(.black.opacity(0.88))
+                        .padding(10)
+                        .background(Color.white.opacity(0.92), in: Circle())
+                }
+                .accessibilityLabel(viewModel.isPaused ? "Продолжить анализировать кадр" : "Поставить кадр на паузу для разбора")
+            }
+            .padding(.top, 16)
+            .padding(.horizontal, 16)
+
+            Spacer()
+        }
+    }
+
+    private func resumeFromPause() {
+        guard viewModel.isPaused else { return }
+        decisionTrace = nil
+        viewModel.togglePause()
+    }
+
+    private func pausePanelMaxHeight(for size: CGSize) -> CGFloat {
+        max(260, size.height * 0.58)
+    }
+
+    private func showDecisionTrace() {
+        decisionTrace = DecisionTracePresentation.current(
+            liveHint: viewModel.liveHint,
+            pauseCritique: viewModel.pauseCritique,
+            isPaused: viewModel.isPaused,
+            overlayAnnotations: viewModel.overlayAnnotations,
+            debugSignals: DecisionTraceDebugSignals.make(
+                features: viewModel.features,
+                detrDetections: viewModel.detrDetections,
+                visionSubjects: viewModel.visionSubjects,
+                saliencyCenter: viewModel.saliencyCenter
+            )
+        )
     }
 
     private func startUIFPSMonitoring() {
@@ -204,6 +289,37 @@ private struct StructuredOverlayAnnotationsView: View {
         case .up: return .up
         case .down: return .down
         }
+    }
+}
+
+private struct LiveAnalysisStatusChip: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.92))
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.96))
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.84))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityValue(message)
     }
 }
 

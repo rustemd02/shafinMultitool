@@ -89,6 +89,15 @@ struct FrameCritiqueEngine {
                                                       semantics: normalizedSemantics,
                                                       issues: issueEntries.map(\.issue),
                                                       strengths: strengthEntries.map(\.strength))
+        if shouldPreferPositiveConfirmationForSoftFindings(
+            verdict: verdict,
+            verdictConfidence: verdictConfidence,
+            issues: issueEntries.map(\.issue),
+            strengths: strengthEntries.map(\.strength)
+        ) {
+            verdict = .good
+            verdictConfidence = max(verdictConfidence, 0.75)
+        }
 
         if degraded {
             strengthEntries = []
@@ -151,8 +160,24 @@ struct FrameCritiqueEngine {
 
     private func issueSubjectTooCloseToEdge(snapshot: FrameFeatureSnapshot,
                                             semantics: SceneSemanticsReport) -> IssueCandidate {
-        let raw = clamp01((0.70 * semantics.readability.edgePressureScore)
+        var raw = clamp01((0.70 * semantics.readability.edgePressureScore)
                           + (0.30 * abs(snapshot.composition.horizontalOffset)))
+        if hasWeakEstablishingObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw = 0
+        }
+        if hasReadableBackgroundLikeObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw = 0
+        }
+        if hasAestheticIntentionalEdgeComposition(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.35
+        }
+        if preservesIntentionalComposition(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.55
+        }
+        if snapshot.composition.subjectAreaRatio >= 0.18,
+           semantics.readability.subjectReadable {
+            raw *= 0.80
+        }
         let confidence = clamp01((0.60 * semantics.primarySubject.confidence)
                                  + (0.40 * (snapshot.sources.vision.confidence ?? 0.0)))
         let evidence = [
@@ -177,7 +202,19 @@ struct FrameCritiqueEngine {
                                                 semantics: SceneSemanticsReport) -> IssueCandidate {
         let areaPenalty = clamp01((0.10 - snapshot.composition.subjectAreaRatio) / 0.10)
         let sepPenalty = clamp01(1.0 - semantics.readability.separationScore)
-        let raw = clamp01((0.45 * areaPenalty) + (0.35 * sepPenalty) + (0.20 * (1.0 - semantics.primarySubject.confidence)))
+        var raw = clamp01((0.45 * areaPenalty) + (0.35 * sepPenalty) + (0.20 * (1.0 - semantics.primarySubject.confidence)))
+        if hasAestheticWeakSceneAnchor(snapshot: snapshot, semantics: semantics) {
+            raw = 0
+        }
+        if hasWeakEstablishingObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw = 0
+        }
+        if hasReadableBackgroundLikeObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw = 0
+        }
+        if preservesIntentionalComposition(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.45
+        }
         let confidence = clamp01((0.50 * semantics.primarySubject.confidence)
                                  + (0.30 * (snapshot.sources.vision.confidence ?? 0.0))
                                  + (0.20 * (snapshot.sources.detr.confidence ?? 0.0)))
@@ -202,9 +239,18 @@ struct FrameCritiqueEngine {
     private func issueBackgroundCompetesWithSubject(snapshot: FrameFeatureSnapshot,
                                                     semantics: SceneSemanticsReport) -> IssueCandidate {
         let focusPenalty = semantics.dominance.hasClearFocus ? 0.0 : 0.20
-        let raw = clamp01((0.55 * semantics.dominance.focusCompetitionScore)
+        var raw = clamp01((0.55 * semantics.dominance.focusCompetitionScore)
                           + (0.35 * semantics.dominance.backgroundClutterScore)
                           + (0.10 * focusPenalty))
+        if preservesIntentionalComposition(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.65
+        }
+        if hasWeakEstablishingObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.35
+        }
+        if hasReadableBackgroundLikeObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.45
+        }
         let confidence = clamp01((0.55 * semantics.sceneTypeConfidence)
                                  + (0.45 * (snapshot.sources.detr.confidence ?? 0.0)))
         let evidence = [
@@ -268,8 +314,18 @@ struct FrameCritiqueEngine {
         let exposurePenalty = snapshot.lighting.exposureBiasHint < 0 ? clamp01(abs(snapshot.lighting.exposureBiasHint) / 0.40) : 0.0
         let sepPenalty = clamp01(1.0 - semantics.readability.separationScore)
         let personBoost = (semantics.primarySubject.kind == .face || semantics.primarySubject.kind == .person) ? 0.08 : 0.0
-        let raw = clamp01((0.45 * backlightScore) + (0.30 * exposurePenalty) + (0.25 * sepPenalty) + personBoost)
-        let confidence = clamp01((0.65 * (snapshot.sources.lighting.confidence ?? 0.0))
+        var raw = clamp01((0.45 * backlightScore) + (0.30 * exposurePenalty) + (0.25 * sepPenalty) + personBoost)
+        if treatsBacklightAsReadableStyle(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.45
+        }
+        if hasAestheticWeakSceneAnchor(snapshot: snapshot, semantics: semantics) {
+            raw = 0
+        }
+        if hasWeakEstablishingObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.35
+        }
+        let lightingConfidence = sourceConfidence(snapshot.sources.lighting, defaultWhenAvailable: 0.70)
+        let confidence = clamp01((0.65 * lightingConfidence)
                                  + (0.35 * semantics.primarySubject.confidence))
         let evidence = [
             evidence(.snapshot, "snapshot.lighting.backlightIndex", snapshot.lighting.backlightIndex),
@@ -292,13 +348,25 @@ struct FrameCritiqueEngine {
     private func issueSceneHasNoClearFocus(snapshot: FrameFeatureSnapshot,
                                            semantics: SceneSemanticsReport) -> IssueCandidate {
         let ambiguityBoost = hasAmbiguity(.multipleSubjectsSimilarConfidence, in: semantics.ambiguities) ? 0.15 : 0.0
-        let raw: Double
+        var raw: Double
         if semantics.dominance.hasClearFocus {
             raw = 0
         } else {
             raw = clamp01((0.60 * semantics.dominance.focusCompetitionScore)
                           + (0.30 * (1.0 - semantics.primarySubject.confidence))
                           + ambiguityBoost)
+            if hasAestheticWeakSceneAnchor(snapshot: snapshot, semantics: semantics) {
+                raw = 0
+            }
+            if hasWeakEstablishingObjectAnchor(snapshot: snapshot, semantics: semantics) {
+                raw = 0
+            }
+            if hasReadableBackgroundLikeObjectAnchor(snapshot: snapshot, semantics: semantics) {
+                raw = 0
+            }
+            if hasReadableAnchoredSubject(snapshot: snapshot, semantics: semantics) {
+                raw *= 0.45
+            }
         }
         let confidence = clamp01((0.55 * semantics.sceneTypeConfidence)
                                  + (0.45 * semantics.primarySubject.confidence))
@@ -325,7 +393,17 @@ struct FrameCritiqueEngine {
         let densityScore = clamp01(Double(snapshot.objects.totalCount) / 8.0)
         let clutterCore = clamp01((0.65 * semantics.dominance.backgroundClutterScore) + (0.35 * densityScore))
         let scenePenalty = semantics.sceneType == .establishingLikeFrame ? 0.15 : 0.0
-        let raw = clamp01(clutterCore - scenePenalty)
+        var raw = clamp01(clutterCore - scenePenalty)
+        if hasAestheticWeakSceneAnchor(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.35
+        }
+        if hasReadableBackgroundLikeObjectAnchor(snapshot: snapshot, semantics: semantics) {
+            raw *= 0.35
+        }
+        if preservesIntentionalComposition(snapshot: snapshot, semantics: semantics),
+           snapshot.subjectSignals.personCount <= 1 {
+            raw *= 0.82
+        }
         let confidence = clamp01((0.50 * semantics.sceneTypeConfidence)
                                  + (0.50 * (snapshot.sources.detr.confidence ?? 0.0)))
         let evidence = [
@@ -409,7 +487,8 @@ struct FrameCritiqueEngine {
     private func strengthGoodLightEmphasis(snapshot: FrameFeatureSnapshot,
                                            semantics: SceneSemanticsReport) -> StrengthCandidate {
         let score = clamp01((0.55 * (1.0 - snapshot.lighting.backlightIndex)) + (0.45 * semantics.readability.separationScore))
-        let confidence = clamp01((0.70 * (snapshot.sources.lighting.confidence ?? 0.0)) + (0.30 * semantics.sceneTypeConfidence))
+        let lightingConfidence = sourceConfidence(snapshot.sources.lighting, defaultWhenAvailable: 0.70)
+        let confidence = clamp01((0.70 * lightingConfidence) + (0.30 * semantics.sceneTypeConfidence))
         let evidence = [
             evidence(.snapshot, "snapshot.lighting.backlightIndex", snapshot.lighting.backlightIndex),
             evidence(.semantics, "semantics.readability.separationScore", semantics.readability.separationScore)
@@ -613,6 +692,123 @@ struct FrameCritiqueEngine {
         type == .subjectTooCloseToEdge || type == .insufficientLookSpace
     }
 
+    private func preservesIntentionalComposition(snapshot: FrameFeatureSnapshot,
+                                                 semantics: SceneSemanticsReport) -> Bool {
+        hasReadableAnchoredSubject(snapshot: snapshot, semantics: semantics) &&
+            (semantics.dominance.hasClearFocus || semantics.dominance.focusCompetitionScore <= 0.58)
+    }
+
+    private func hasReadableAnchoredSubject(snapshot: FrameFeatureSnapshot,
+                                            semantics: SceneSemanticsReport) -> Bool {
+        hasReadableSemanticAnchor(semantics) &&
+            semantics.readability.lookSpaceAdequate != false &&
+            semantics.dominance.focusCompetitionScore <= 0.65 &&
+            semantics.dominance.backgroundClutterScore <= 0.78 &&
+            !snapshot.technicalFlags.contains(.lowSubjectConfidence)
+    }
+
+    private func hasReadableSemanticAnchor(_ semantics: SceneSemanticsReport) -> Bool {
+        semantics.primarySubject.kind != .unknown &&
+            semantics.readability.subjectReadable &&
+            semantics.readability.separationScore >= 0.45 &&
+            semantics.primarySubject.confidence >= 0.55
+    }
+
+    private func treatsBacklightAsReadableStyle(snapshot: FrameFeatureSnapshot,
+                                                semantics: SceneSemanticsReport) -> Bool {
+        guard hasReadableAnchoredSubject(snapshot: snapshot, semantics: semantics) else {
+            return false
+        }
+        if semantics.sceneType == .moodyBacklitSubject {
+            return true
+        }
+        return snapshot.lighting.backlightIndex <= 0.72 &&
+            semantics.readability.separationScore >= 0.52 &&
+            snapshot.lighting.exposureBiasHint > -0.55
+    }
+
+    private func hasWeakEstablishingObjectAnchor(snapshot: FrameFeatureSnapshot,
+                                                 semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.sceneType == .establishingLikeFrame else { return false }
+        guard semantics.primarySubject.kind == .object || semantics.primarySubject.kind == .unknown else { return false }
+        guard semantics.primarySubject.confidence < 0.35 else { return false }
+        guard !snapshot.subjectSignals.personDetected && snapshot.subjectSignals.personCount == 0 else { return false }
+        guard snapshot.composition.subjectAreaRatio <= 0.09 else { return false }
+        guard semantics.dominance.focusCompetitionScore <= 0.65,
+              semantics.dominance.backgroundClutterScore <= 0.70 else {
+            return false
+        }
+        return semantics.readability.subjectReadable || semantics.readability.separationScore >= 0.50
+    }
+
+    private func hasAestheticWeakSceneAnchor(snapshot: FrameFeatureSnapshot,
+                                             semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.sceneType == .establishingLikeFrame else { return false }
+        guard semantics.primarySubject.kind == .object || semantics.primarySubject.kind == .unknown else { return false }
+        guard semantics.primarySubject.confidence < 0.35 else { return false }
+        guard !snapshot.subjectSignals.personDetected && snapshot.subjectSignals.personCount == 0 else { return false }
+        guard snapshot.composition.subjectAreaRatio <= 0.09 else { return false }
+        guard (snapshot.aesthetics.score ?? 0) >= 0.42 else { return false }
+        guard snapshot.objects.totalCount <= 5 else { return false }
+        return semantics.dominance.focusCompetitionScore <= 0.65 &&
+            semantics.dominance.backgroundClutterScore <= 0.60
+    }
+
+    private func hasAestheticIntentionalEdgeComposition(snapshot: FrameFeatureSnapshot,
+                                                        semantics: SceneSemanticsReport) -> Bool {
+        guard (snapshot.aesthetics.score ?? 0) >= 0.42 else { return false }
+        guard semantics.primarySubject.kind != .unknown else { return false }
+        guard semantics.primarySubject.confidence >= 0.50 else { return false }
+        guard semantics.readability.subjectReadable else { return false }
+        guard semantics.readability.lookSpaceAdequate != false else { return false }
+        guard snapshot.composition.subjectAreaRatio >= 0.10 else { return false }
+        guard abs(snapshot.composition.horizontalOffset) <= 0.65 else { return false }
+        return semantics.readability.separationScore >= 0.62 &&
+            semantics.dominance.focusCompetitionScore <= 0.45 &&
+            semantics.dominance.backgroundClutterScore <= 0.45
+    }
+
+    private func hasReadableBackgroundLikeObjectAnchor(snapshot: FrameFeatureSnapshot,
+                                                       semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.primarySubject.kind == .object else { return false }
+        guard !snapshot.subjectSignals.personDetected && snapshot.subjectSignals.personCount == 0 else { return false }
+        guard semantics.readability.subjectReadable else { return false }
+        guard semantics.primarySubject.confidence >= 0.50 else { return false }
+        guard snapshot.composition.subjectAreaRatio >= 0.08 else { return false }
+        guard semantics.readability.lookSpaceAdequate != false else { return false }
+        guard semantics.readability.separationScore >= 0.58 else { return false }
+        guard semantics.dominance.focusCompetitionScore <= 0.50 else { return false }
+
+        let labels = [semantics.primarySubject.label, snapshot.subjectSignals.topObjectLabel]
+            .compactMap { $0 }
+        return labels.contains(where: isBackgroundLikeObjectLabel)
+    }
+
+    private func isBackgroundLikeObjectLabel(_ label: String) -> Bool {
+        let tokens = Set(
+            label
+                .lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }
+        )
+        let backgroundTokens: Set<String> = [
+            "background",
+            "building",
+            "ceiling",
+            "curtain",
+            "door",
+            "fence",
+            "floor",
+            "mirror",
+            "sky",
+            "snow",
+            "stairs",
+            "wall",
+            "window"
+        ]
+        return !tokens.isDisjoint(with: backgroundTokens)
+    }
+
     private func isDegraded(snapshot: FrameFeatureSnapshot) -> Bool {
         snapshot.technicalFlags.contains(.lowSceneConfidence)
     }
@@ -637,6 +833,19 @@ struct FrameCritiqueEngine {
 
     private func normalizedSemantics(_ semantics: SceneSemanticsReport) -> SceneSemanticsReport {
         guard semantics.dominance.hasClearFocus && semantics.dominance.backgroundClutterScore > 0.55 else {
+            return semantics
+        }
+        if hasReadableSemanticAnchor(semantics),
+           semantics.readability.lookSpaceAdequate != false,
+           semantics.dominance.focusCompetitionScore <= 0.62,
+           semantics.dominance.backgroundClutterScore <= 0.72 {
+            return semantics
+        }
+        let shouldInvalidateFocus =
+            !hasReadableSemanticAnchor(semantics) ||
+            semantics.dominance.focusCompetitionScore > 0.58 ||
+            semantics.dominance.backgroundClutterScore > 0.72
+        guard shouldInvalidateFocus else {
             return semantics
         }
         return SceneSemanticsReport(
@@ -664,7 +873,7 @@ struct FrameCritiqueEngine {
         if maxIssueSeverity >= 0.72 || highIssueCount >= 2 {
             return .needsFix
         }
-        if issues.isEmpty || (maxIssueSeverity < 0.45 && strongStrengthCount >= 2) {
+        if issues.isEmpty || (maxIssueSeverity < 0.55 && strongStrengthCount >= 2) {
             return .good
         }
         return .mixed
@@ -674,13 +883,109 @@ struct FrameCritiqueEngine {
                                        semantics: SceneSemanticsReport,
                                        issues: [FrameIssue],
                                        strengths: [FrameStrength]) -> Double {
+        let visionConfidence = sourceConfidence(snapshot.sources.vision, defaultWhenAvailable: 0.60)
+        let lightingConfidence = sourceConfidence(snapshot.sources.lighting, defaultWhenAvailable: 0.70)
+        let aestheticConfidence = sourceConfidence(snapshot.sources.aesthetic, defaultWhenAvailable: 0.65)
         let signalSupport = clamp01(
-            (0.40 * (snapshot.sources.vision.confidence ?? 0.0))
-            + (0.30 * (snapshot.sources.lighting.confidence ?? 0.0))
-            + (0.30 * semantics.sceneTypeConfidence)
+            (0.35 * visionConfidence)
+            + (0.25 * lightingConfidence)
+            + (0.20 * semantics.sceneTypeConfidence)
+            + (0.20 * aestheticConfidence)
         )
-        let consistency = clamp01(1.0 - (Double(abs(strengths.count - issues.count)) / 6.0))
-        return clamp01((0.65 * signalSupport) + (0.35 * consistency))
+        let findingSupport: Double
+        if issues.isEmpty, strengths.isEmpty {
+            findingSupport = 0.50
+        } else if issues.isEmpty {
+            findingSupport = clamp01(0.72 + (0.06 * Double(min(strengths.count, 4))))
+        } else if strengths.isEmpty {
+            findingSupport = clamp01(0.68 + (0.06 * Double(min(issues.count, 4))))
+        } else {
+            let findingCount = Double(issues.count + strengths.count)
+            let conflictRatio = Double(min(issues.count, strengths.count)) / findingCount
+            findingSupport = clamp01(0.82 - (0.30 * conflictRatio))
+        }
+        return clamp01((0.70 * signalSupport) + (0.30 * findingSupport))
+    }
+
+    private func shouldPreferPositiveConfirmationForSoftFindings(verdict: FrameVerdict,
+                                                                 verdictConfidence: Double,
+                                                                 issues: [FrameIssue],
+                                                                 strengths: [FrameStrength]) -> Bool {
+        guard verdict == .mixed,
+              !issues.isEmpty else {
+            return false
+        }
+        let maxSeverity = issues.map(\.severity).max() ?? 0
+        guard maxSeverity < CritiqueReport.criticalIssueThreshold else {
+            return false
+        }
+
+        if hasStylePreservingStrength(strengths, issues: issues),
+           issues.allSatisfy(isSoftStyleIssue),
+           verdictConfidence < 0.82 {
+            return true
+        }
+
+        guard verdictConfidence < 0.69 else {
+            return false
+        }
+        guard issues.allSatisfy(isSoftAmbiguousIssue) else {
+            return false
+        }
+
+        if !strengths.isEmpty {
+            return true
+        }
+
+        let maxConfidence = issues.map(\.confidence).max() ?? 0
+        return maxSeverity < 0.66 && maxConfidence < 0.70
+    }
+
+    private func hasStylePreservingStrength(_ strengths: [FrameStrength], issues: [FrameIssue]) -> Bool {
+        if strengths.contains(where: { strength in
+            strength.confidence >= 0.70
+                && strength.type == .clearFocusHierarchy
+        }) {
+            return true
+        }
+
+        let hasBalancedComposition = strengths.contains { strength in
+            strength.confidence >= 0.70 && strength.type == .balancedCompositionForScene
+        }
+        let hasReadableLightingStyleConflict = issues.contains { issue in
+            issue.type == .backlightHidesSubject
+        }
+        return hasBalancedComposition && hasReadableLightingStyleConflict
+    }
+
+    private func isSoftStyleIssue(_ issue: FrameIssue) -> Bool {
+        switch issue.type {
+        case .sceneHasNoClearFocus,
+             .subjectNotProminentEnough,
+             .backlightHidesSubject,
+             .backgroundCompetesWithSubject,
+             .frameVisuallyOverloaded:
+            return true
+        case .subjectTooCloseToEdge,
+             .insufficientLookSpace,
+             .horizonDistracts:
+            return false
+        }
+    }
+
+    private func isSoftAmbiguousIssue(_ issue: FrameIssue) -> Bool {
+        switch issue.type {
+        case .sceneHasNoClearFocus,
+             .subjectNotProminentEnough,
+             .backlightHidesSubject:
+            return true
+        case .subjectTooCloseToEdge,
+             .insufficientLookSpace,
+             .backgroundCompetesWithSubject,
+             .frameVisuallyOverloaded,
+             .horizonDistracts:
+            return false
+        }
     }
 
     private func makeIssue(index: Int,
@@ -744,6 +1049,13 @@ struct FrameCritiqueEngine {
 
     private func hasAmbiguity(_ type: AmbiguityType, in ambiguities: [SemanticsAmbiguity]) -> Bool {
         ambiguities.contains { $0.type == type }
+    }
+
+    private func sourceConfidence(_ source: SourceState, defaultWhenAvailable: Double) -> Double {
+        if let confidence = source.confidence {
+            return confidence
+        }
+        return source.available ? defaultWhenAvailable : 0.0
     }
 
     private func format(_ value: Double) -> String {

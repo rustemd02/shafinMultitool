@@ -371,6 +371,9 @@ struct SemanticTipPlanner {
     private func shouldInclude(definition: SemanticTipDefinition,
                                issue: FrameIssue,
                                evidence: SemanticPlannerEvidence) -> Bool {
+        if issue.type == .sceneHasNoClearFocus && !isConfidentNoClearFocusIssue(issue) {
+            return false
+        }
         let isLightingTip = definition.actionFrame == .adjustLight || definition.tipType == .turnSubjectTowardLight
         if isLightingTip && issue.confidence < 0.45 {
             return false
@@ -379,6 +382,10 @@ struct SemanticTipPlanner {
             return false
         }
         return true
+    }
+
+    private func isConfidentNoClearFocusIssue(_ issue: FrameIssue) -> Bool {
+        issue.severity >= 0.62 && issue.confidence >= 0.68
     }
 
     private func resolvedProblemType(for definition: SemanticTipDefinition,
@@ -819,7 +826,8 @@ struct SemanticTipPlanner {
         case .moveObjectRightForBalance:
             return ("Сдвинь \(target) правее.", "\(target.capitalized) перегружает левую часть кадра. Сдвинь \(target) правее.")
         case .removeObjectFromFaceContour:
-            return ("Убери \(target) от лица.", "\(target.capitalized) заходит на контур лица. Убери \(target) в сторону.")
+            let accusativeTarget = accusativeObjectLabel(target)
+            return ("Убери \(accusativeTarget) от лица.", "\(target.capitalized) заходит на контур лица. Убери \(accusativeTarget) в сторону.")
         case .removeDistractingProp:
             return ("Убери \(target) из кадра.", "\(target.capitalized) спорит с главным объектом. Убери \(target) из кадра.")
         case .rebalancePropLayout:
@@ -843,6 +851,30 @@ struct SemanticTipPlanner {
         case .keepSubjectSeparation, .keepLightDirection, .keepFocusHierarchy, .keepHorizonStability, .keepDepthReadability, .keepObjectBalance, .keepFrameAsIs:
             return positiveCopyTemplate(for: tipType, target: target, summary: .init(id: "", shortVerdict: "Кадр уже читается хорошо."))
         }
+    }
+
+    private func accusativeObjectLabel(_ label: String) -> String {
+        let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let dictionary: [String: String] = [
+            "ваза": "вазу",
+            "лампа": "лампу",
+            "бутылка": "бутылку",
+            "чашка": "чашку",
+            "кружка": "кружку",
+            "тарелка": "тарелку",
+            "книга": "книгу",
+            "сумка": "сумку"
+        ]
+        if let mapped = dictionary[normalized] {
+            return mapped
+        }
+        if normalized.hasSuffix("ка") {
+            return String(normalized.dropLast()) + "у"
+        }
+        if normalized.hasSuffix("а") {
+            return String(normalized.dropLast()) + "у"
+        }
+        return label
     }
 
     private func positiveCopyTemplate(for tipType: SemanticTipType,

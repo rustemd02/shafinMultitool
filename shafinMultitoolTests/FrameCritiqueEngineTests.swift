@@ -41,7 +41,7 @@ final class FrameCritiqueEngineTests: XCTestCase {
     func testBacklightIssueSuppressesContradictoryGoodLightStrength() {
         let snapshot = makeSnapshot(
             composition: .init(horizontalOffset: 0.02, verticalOffset: 0.0, subjectAreaRatio: 0.20, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0),
-            lighting: .init(exposureBiasHint: -0.40, backlightIndex: 0.55, keyToFillRatio: 1.2)
+            lighting: .init(exposureBiasHint: -0.40, backlightIndex: 0.85, keyToFillRatio: 1.2)
         )
         let semantics = makeSemantics(
             frameId: snapshot.frameId,
@@ -51,13 +51,342 @@ final class FrameCritiqueEngineTests: XCTestCase {
             primaryKind: .person,
             primaryConfidence: 0.90,
             dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.18, backgroundClutterScore: 0.22),
-            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.12, separationScore: 0.90)
+            readability: .init(subjectReadable: false, lookSpaceAdequate: true, edgePressureScore: 0.12, separationScore: 0.32)
         )
 
         let report = engine.analyze(snapshot: snapshot, semantics: semantics)
 
         XCTAssertTrue(report.issues.contains(where: { $0.type == .backlightHidesSubject }))
         XCTAssertFalse(report.strengths.contains(where: { $0.type == .goodLightEmphasis }))
+    }
+
+    func testReadableCinematicClutterDoesNotBecomeNoFocusOrStepCloser() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.18, verticalOffset: 0.0, subjectAreaRatio: 0.04, saliencyLeftRightBalance: 0.12, saliencyTopBottomBalance: 0.08),
+            lighting: .init(exposureBiasHint: -0.10, backlightIndex: 0.32, keyToFillRatio: 1.0),
+            horizon: .init(angleDegrees: 0.8, confidence: 0.84),
+            objects: .init(totalCount: 6, topKLabels: ["person", "lamp", "table", "window"])
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.80,
+            primaryKind: .person,
+            primaryConfidence: 0.78,
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.42, backgroundClutterScore: 0.62),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.32, separationScore: 0.64)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .sceneHasNoClearFocus }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .subjectNotProminentEnough }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .backgroundCompetesWithSubject }))
+    }
+
+    func testReadableMoodyBacklightDoesNotDemandFrontFill() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.08, verticalOffset: 0.0, subjectAreaRatio: 0.16, saliencyLeftRightBalance: 0.04, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.35, backlightIndex: 0.68, keyToFillRatio: nil),
+            objects: .init(totalCount: 3, topKLabels: ["person", "lamp", "background"])
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .moodyBacklitSubject,
+            sceneTypeConfidence: 0.80,
+            primaryKind: .person,
+            primaryConfidence: 0.82,
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.33, backgroundClutterScore: 0.35),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.18, separationScore: 0.58)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .backlightHidesSubject }))
+        XCTAssertNotEqual(report.verdict, .needsFix)
+    }
+
+    func testSoftAmbiguousSemanticIssuesPreferPositiveConfirmation() {
+        let snapshot = makeSnapshot(
+            sources: .init(
+                vision: .init(available: true, freshnessMs: 45, confidence: 0.62),
+                horizon: .init(available: true, freshnessMs: 35, confidence: 0.70),
+                lighting: .init(available: true, freshnessMs: 55, confidence: 0.58),
+                detr: .init(available: true, freshnessMs: 700, confidence: 0.54),
+                aesthetic: .init(available: true, freshnessMs: 1200, confidence: 0.60)
+            ),
+            composition: .init(horizontalOffset: 0.12, verticalOffset: 0.0, subjectAreaRatio: 0.07, saliencyLeftRightBalance: 0.08, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.24, backlightIndex: 0.62, keyToFillRatio: nil),
+            objects: .init(totalCount: 2, topKLabels: ["person", "lamp"])
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.58,
+            primaryKind: .person,
+            primaryConfidence: 0.63,
+            dominance: .init(hasClearFocus: false, focusCompetitionScore: 0.35, backgroundClutterScore: 0.30),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.24, separationScore: 0.43),
+            ambiguities: [.init(type: .multipleSubjectsSimilarConfidence, note: "soft competing candidates", candidateIds: ["candidate_a", "candidate_b"])]
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertEqual(
+            report.verdict,
+            .good,
+            "confidence=\(report.verdictConfidence) issues=\(report.issues.map { "\($0.type.rawValue):\($0.severity):\($0.confidence)" }) strengths=\(report.strengths.map { "\($0.type.rawValue):\($0.confidence)" })"
+        )
+        XCTAssertGreaterThanOrEqual(report.verdictConfidence, 0.75)
+        XCTAssertFalse(report.issues.contains(where: { issue in
+            issue.type == .subjectTooCloseToEdge
+                || issue.type == .backgroundCompetesWithSubject
+                || issue.type == .frameVisuallyOverloaded
+        }))
+    }
+
+    func testBalancedReadableScenePreservesIntentDespiteSoftBackgroundIssues() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.06, verticalOffset: 0.0, subjectAreaRatio: 0.12, saliencyLeftRightBalance: 0.02, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.08, backlightIndex: 0.28, keyToFillRatio: 1.2),
+            horizon: .init(angleDegrees: 0.4, confidence: 0.86),
+            objects: .init(totalCount: 5, topKLabels: ["person", "lamp", "table", "window", "chair"])
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.78,
+            primaryKind: .person,
+            primaryConfidence: 0.80,
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.62, backgroundClutterScore: 0.72),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.18, separationScore: 0.66)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertEqual(
+            report.verdict,
+            .good,
+            "confidence=\(report.verdictConfidence) issues=\(report.issues.map { "\($0.type.rawValue):\($0.severity):\($0.confidence)" }) strengths=\(report.strengths.map { "\($0.type.rawValue):\($0.confidence)" })"
+        )
+        XCTAssertTrue(report.strengths.contains(where: { $0.type == .balancedCompositionForScene }))
+        XCTAssertTrue(report.issues.allSatisfy { issue in
+            issue.severity < CritiqueReport.criticalIssueThreshold
+        })
+    }
+
+    func testWeakObjectAnchorInEstablishingFrameDoesNotInventSubjectCorrections() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: -0.19, verticalOffset: 0.0, subjectAreaRatio: 0.046, saliencyLeftRightBalance: 0.03, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.60, backlightIndex: 0.13, keyToFillRatio: nil),
+            horizon: .init(angleDegrees: 0.0, confidence: 0.10),
+            objects: .init(totalCount: 2, topKLabels: ["book", "lamp"]),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "book",
+                topObjectConfidence: 0.31,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            )
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .establishingLikeFrame,
+            sceneTypeConfidence: 0.58,
+            primaryKind: .object,
+            primaryConfidence: 0.28,
+            dominance: .init(hasClearFocus: false, focusCompetitionScore: 0.46, backgroundClutterScore: 0.36),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: nil, edgePressureScore: 0.50, separationScore: 0.52)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .sceneHasNoClearFocus }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .subjectTooCloseToEdge }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .subjectNotProminentEnough }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .backlightHidesSubject }))
+        XCTAssertEqual(report.verdict, .good)
+    }
+
+    func testAestheticWeakEstablishingAnchorDoesNotBecomeVisualOverload() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: -0.10, verticalOffset: 0.0, subjectAreaRatio: 0.047, saliencyLeftRightBalance: 0.02, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.12, backlightIndex: 0.02, keyToFillRatio: nil),
+            horizon: .init(angleDegrees: 0.0, confidence: 0.10),
+            objects: .init(totalCount: 5, topKLabels: ["stage prop", "lamp", "chair", "wall", "book"]),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "stage prop",
+                topObjectConfidence: 0.25,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            ),
+            aesthetics: .init(score: 0.45, scoreConfidence: 0.70)
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .establishingLikeFrame,
+            sceneTypeConfidence: 0.58,
+            primaryKind: .object,
+            primaryConfidence: 0.25,
+            dominance: .init(hasClearFocus: false, focusCompetitionScore: 0.62, backgroundClutterScore: 0.56),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: nil, edgePressureScore: 0.42, separationScore: 0.47)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .frameVisuallyOverloaded }))
+        XCTAssertEqual(report.verdict, .good)
+    }
+
+    func testAestheticUnknownLowClutterFrameDoesNotInventFrontFill() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.0, verticalOffset: 0.0, subjectAreaRatio: 0.0, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -1.30, backlightIndex: 0.18, keyToFillRatio: nil),
+            horizon: .init(angleDegrees: 0.0, confidence: 0.10),
+            objects: .init(totalCount: 1, topKLabels: ["background"]),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: nil,
+                topObjectConfidence: nil,
+                primaryCandidateRegion: nil,
+                primaryCandidateConfidence: nil
+            ),
+            aesthetics: .init(score: 0.44, scoreConfidence: 0.70)
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .establishingLikeFrame,
+            sceneTypeConfidence: 0.58,
+            primaryKind: .unknown,
+            primaryConfidence: 0.0,
+            dominance: .init(hasClearFocus: false, focusCompetitionScore: 0.55, backgroundClutterScore: 0.11),
+            readability: .init(subjectReadable: false, lookSpaceAdequate: nil, edgePressureScore: 0.20, separationScore: 0.48)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .sceneHasNoClearFocus }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .backlightHidesSubject }))
+        XCTAssertEqual(report.verdict, .good)
+    }
+
+    func testReadableAestheticObjectEdgeCanBeIntentionalComposition() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.42, verticalOffset: 0.0, subjectAreaRatio: 0.124, saliencyLeftRightBalance: 0.24, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: 0.18, backlightIndex: 0.0, keyToFillRatio: nil),
+            horizon: .init(angleDegrees: 0.0, confidence: 0.88),
+            objects: .init(totalCount: 3, topKLabels: ["car", "street", "building"]),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "car",
+                topObjectConfidence: 0.54,
+                primaryCandidateRegion: .init(x: 0.60, y: 0.42, width: 0.22, height: 0.22),
+                primaryCandidateConfidence: 0.54
+            ),
+            aesthetics: .init(score: 0.43, scoreConfidence: 0.70)
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .objectInsert,
+            sceneTypeConfidence: 0.72,
+            primaryKind: .object,
+            primaryConfidence: 0.54,
+            dominance: .init(hasClearFocus: false, focusCompetitionScore: 0.38, backgroundClutterScore: 0.36),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: nil, edgePressureScore: 0.72, separationScore: 0.67)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .subjectTooCloseToEdge }))
+        XCTAssertEqual(report.verdict, .good)
+    }
+
+    func testReadableBackgroundLikeObjectAnchorDoesNotBecomeSubjectCorrection() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.24, verticalOffset: 0.0, subjectAreaRatio: 0.145, saliencyLeftRightBalance: 0.20, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -1.16, backlightIndex: 0.0, keyToFillRatio: nil),
+            horizon: .init(angleDegrees: 0.0, confidence: 0.10),
+            objects: .init(totalCount: 6, topKLabels: ["curtain", "stairs", "person", "wall", "floor"]),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "curtain",
+                topObjectConfidence: 0.75,
+                primaryCandidateRegion: .init(x: 0.52, y: 0.10, width: 0.20, height: 0.72),
+                primaryCandidateConfidence: 0.75
+            ),
+            aesthetics: .init(score: 0.37, scoreConfidence: 0.70)
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .objectInsert,
+            sceneTypeConfidence: 0.76,
+            primaryKind: .object,
+            primaryLabel: "curtain",
+            primaryConfidence: 0.75,
+            dominance: .init(hasClearFocus: false, focusCompetitionScore: 0.43, backgroundClutterScore: 0.79),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: nil, edgePressureScore: 0.50, separationScore: 0.61),
+            ambiguities: [.init(type: .multipleSubjectsSimilarConfidence, note: "background object selected over human group", candidateIds: ["curtain", "person"])]
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .frameVisuallyOverloaded }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .subjectTooCloseToEdge }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .sceneHasNoClearFocus }))
+        XCTAssertEqual(report.verdict, .good)
+    }
+
+    func testMultiPersonVisualOverloadDoesNotBecomePositiveConfirmation() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.06, verticalOffset: 0.0, subjectAreaRatio: 0.12, saliencyLeftRightBalance: 0.02, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.08, backlightIndex: 0.28, keyToFillRatio: 1.2),
+            horizon: .init(angleDegrees: 0.4, confidence: 0.86),
+            objects: .init(totalCount: 6, topKLabels: ["person", "lamp", "table", "window", "chair", "shelf"]),
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 4,
+                topObjectLabel: "person",
+                topObjectConfidence: 0.8,
+                primaryCandidateRegion: .init(x: 0.32, y: 0.2, width: 0.30, height: 0.52),
+                primaryCandidateConfidence: 0.9
+            )
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.78,
+            primaryKind: .group,
+            primaryConfidence: 0.80,
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.62, backgroundClutterScore: 0.72),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.18, separationScore: 0.66)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertNotEqual(report.verdict, .good)
+        XCTAssertTrue(report.issues.contains(where: { $0.type == .frameVisuallyOverloaded }))
     }
 
     func testGoldenCenteredReadablePortraitProducesGood() {
@@ -86,6 +415,74 @@ final class FrameCritiqueEngineTests: XCTestCase {
         XCTAssertTrue(report.strengths.contains(where: { $0.type == .clearFocusHierarchy }))
     }
 
+    func testReadableIntentionalEdgeCompositionDoesNotBecomeCorrection() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.62, verticalOffset: 0.0, subjectAreaRatio: 0.22, saliencyLeftRightBalance: 0.58, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: -0.04, backlightIndex: 0.18, keyToFillRatio: 1.2),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.82,
+            primaryKind: .person,
+            primaryConfidence: 0.88,
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.20, backgroundClutterScore: 0.25),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.82, separationScore: 0.78)
+        )
+
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+
+        XCTAssertEqual(report.verdict, .good)
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .subjectTooCloseToEdge }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .subjectNotProminentEnough }))
+        XCTAssertFalse(report.issues.contains(where: { $0.type == .backgroundCompetesWithSubject }))
+    }
+
+    func testAvailableLightingAndAestheticSourcesSupportConfidenceEvenWithoutBaseConfidence() {
+        let snapshot = makeSnapshot(
+            composition: .init(horizontalOffset: 0.02, verticalOffset: 0.0, subjectAreaRatio: 0.20, saliencyLeftRightBalance: 0.02, saliencyTopBottomBalance: 0.0),
+            lighting: .init(exposureBiasHint: 0.0, backlightIndex: 0.16, keyToFillRatio: 1.2),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        let sourceAdjustedSnapshot = FrameFeatureSnapshot(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            capturedAt: snapshot.capturedAt,
+            sources: .init(
+                vision: .init(available: true, freshnessMs: 30, confidence: 0.84),
+                horizon: .init(available: true, freshnessMs: 25, confidence: 0.86),
+                lighting: .init(available: true, freshnessMs: 40, confidence: nil),
+                detr: .init(available: true, freshnessMs: 600, confidence: 0.72),
+                aesthetic: .init(available: true, freshnessMs: 1200, confidence: nil)
+            ),
+            composition: snapshot.composition,
+            subjectSignals: snapshot.subjectSignals,
+            horizon: snapshot.horizon,
+            lighting: snapshot.lighting,
+            motion: snapshot.motion,
+            aesthetics: snapshot.aesthetics,
+            objects: snapshot.objects,
+            technicalFlags: snapshot.technicalFlags
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId,
+            mode: snapshot.mode,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.82,
+            primaryKind: .person,
+            primaryConfidence: 0.88,
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.16, backgroundClutterScore: 0.22),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.12, separationScore: 0.82)
+        )
+
+        let report = engine.analyze(snapshot: sourceAdjustedSnapshot, semantics: semantics)
+
+        XCTAssertEqual(report.verdict, .good)
+        XCTAssertGreaterThanOrEqual(report.verdictConfidence, 0.62)
+    }
+
     func testGoldenClutteredWeakSubjectProducesExpectedIssueSet() {
         let snapshot = makeSnapshot(
             composition: .init(horizontalOffset: 0.45, verticalOffset: 0.0, subjectAreaRatio: 0.05, saliencyLeftRightBalance: 0.42, saliencyTopBottomBalance: 0.35),
@@ -111,10 +508,10 @@ final class FrameCritiqueEngineTests: XCTestCase {
         XCTAssertTrue(types.contains(.frameVisuallyOverloaded))
     }
 
-    func testHorizonDistractsThresholdAtConfidencePointThree() {
+    func testHorizonDistractsRequiresReliableHorizonSignal() {
         let baseSnapshot = makeSnapshot(
             composition: .init(horizontalOffset: 0.0, verticalOffset: 0.0, subjectAreaRatio: 0.2, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0),
-            horizon: .init(angleDegrees: 8.0, confidence: 0.29)
+            horizon: .init(angleDegrees: 8.0, confidence: 0.44)
         )
         let semantics = makeSemantics(frameId: baseSnapshot.frameId, mode: baseSnapshot.mode)
 
@@ -123,7 +520,7 @@ final class FrameCritiqueEngineTests: XCTestCase {
 
         let highSnapshot = makeSnapshot(
             composition: .init(horizontalOffset: 0.0, verticalOffset: 0.0, subjectAreaRatio: 0.2, saliencyLeftRightBalance: 0.0, saliencyTopBottomBalance: 0.0),
-            horizon: .init(angleDegrees: 8.0, confidence: 0.30)
+            horizon: .init(angleDegrees: 8.0, confidence: 0.46)
         )
         let highConfidence = engine.analyze(snapshot: highSnapshot, semantics: semantics)
         XCTAssertTrue(highConfidence.issues.contains(where: { $0.type == .horizonDistracts }))
@@ -534,6 +931,13 @@ private extension FrameCritiqueEngineTests {
         frameId: String = "f-crit-1",
         mode: AnalysisMode = .pause,
         technicalFlags: [TechnicalFlag] = [],
+        sources: FeatureSourceStatus = .init(
+            vision: .init(available: true, freshnessMs: 30, confidence: 0.88),
+            horizon: .init(available: true, freshnessMs: 25, confidence: 0.86),
+            lighting: .init(available: true, freshnessMs: 40, confidence: 0.84),
+            detr: .init(available: true, freshnessMs: 600, confidence: 0.80),
+            aesthetic: .init(available: true, freshnessMs: 1200, confidence: 0.7)
+        ),
         composition: FrameFeatureSnapshot.CompositionFeatures = .init(
             horizontalOffset: 0.18,
             verticalOffset: 0.0,
@@ -543,33 +947,29 @@ private extension FrameCritiqueEngineTests {
         ),
         lighting: FrameFeatureSnapshot.LightingFeatures = .init(exposureBiasHint: -0.05, backlightIndex: 0.35, keyToFillRatio: 1.1),
         horizon: FrameFeatureSnapshot.HorizonFeatures = .init(angleDegrees: 1.2, confidence: 0.86),
-        objects: FrameFeatureSnapshot.ObjectDetectionsSummary = .init(totalCount: 3, topKLabels: ["person", "chair", "screen"])
+        objects: FrameFeatureSnapshot.ObjectDetectionsSummary = .init(totalCount: 3, topKLabels: ["person", "chair", "screen"]),
+        subjectSignals: FrameFeatureSnapshot.SubjectSignals = .init(
+            faceDetected: true,
+            personDetected: true,
+            personCount: 1,
+            topObjectLabel: "person",
+            topObjectConfidence: 0.8,
+            primaryCandidateRegion: .init(x: 0.32, y: 0.2, width: 0.30, height: 0.52),
+            primaryCandidateConfidence: 0.9
+        ),
+        aesthetics: FrameFeatureSnapshot.AestheticFeatures = .init(score: 0.65, scoreConfidence: 0.74)
     ) -> FrameFeatureSnapshot {
         FrameFeatureSnapshot(
             frameId: frameId,
             mode: mode,
             capturedAt: Date(timeIntervalSince1970: 1_768_100_000),
-            sources: .init(
-                vision: .init(available: true, freshnessMs: 30, confidence: 0.88),
-                horizon: .init(available: true, freshnessMs: 25, confidence: 0.86),
-                lighting: .init(available: true, freshnessMs: 40, confidence: 0.84),
-                detr: .init(available: true, freshnessMs: 600, confidence: 0.80),
-                aesthetic: .init(available: true, freshnessMs: 1200, confidence: 0.7)
-            ),
+            sources: sources,
             composition: composition,
-            subjectSignals: .init(
-                faceDetected: true,
-                personDetected: true,
-                personCount: 1,
-                topObjectLabel: "person",
-                topObjectConfidence: 0.8,
-                primaryCandidateRegion: .init(x: 0.32, y: 0.2, width: 0.30, height: 0.52),
-                primaryCandidateConfidence: 0.9
-            ),
+            subjectSignals: subjectSignals,
             horizon: horizon,
             lighting: lighting,
             motion: .init(state: mode == .live ? .moving : .still, shakeLevel: mode == .live ? 0.4 : 0.1),
-            aesthetics: .init(score: 0.65, scoreConfidence: 0.74),
+            aesthetics: aesthetics,
             objects: objects,
             technicalFlags: technicalFlags
         )
@@ -581,6 +981,7 @@ private extension FrameCritiqueEngineTests {
         sceneType: SceneTypeV1 = .singleCharacterMedium,
         sceneTypeConfidence: Double = 0.82,
         primaryKind: SubjectKind = .person,
+        primaryLabel: String? = nil,
         primaryConfidence: Double = 0.88,
         dominance: SceneSemanticsReport.VisualDominanceState = .init(hasClearFocus: true, focusCompetitionScore: 0.2, backgroundClutterScore: 0.3),
         readability: SceneSemanticsReport.SemanticReadabilityState = .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.22, separationScore: 0.76),
@@ -593,7 +994,7 @@ private extension FrameCritiqueEngineTests {
             sceneTypeConfidence: sceneTypeConfidence,
             primarySubject: .init(
                 kind: primaryKind,
-                label: primaryKind == .object ? "object" : nil,
+                label: primaryLabel ?? (primaryKind == .object ? "object" : nil),
                 region: primaryKind == .unknown ? nil : .init(x: 0.32, y: 0.2, width: 0.30, height: 0.52),
                 confidence: primaryConfidence,
                 competingCandidates: []

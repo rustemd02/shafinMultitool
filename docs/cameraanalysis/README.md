@@ -11,6 +11,10 @@
 ## Как читать
 
 Если хочется общего понимания, начинайте с:
+- [30-semantic-camera-source-of-truth.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/30-semantic-camera-source-of-truth.md)
+- [31-dataset-eval-implementation-plan.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/31-dataset-eval-implementation-plan.md)
+- [32-semantic-eval-output-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/32-semantic-eval-output-contract.md)
+- [33-semantic-current-baseline-findings.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/33-semantic-current-baseline-findings.md)
 - [00-overview.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/00-overview.md)
 - [01-roadmap.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/01-roadmap.md)
 - [03-domain-contracts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/03-domain-contracts.md)
@@ -42,6 +46,10 @@
 - agent prompts для hybrid stage добавлены в [12-agent-prompts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/12-agent-prompts.md)
 
 Если хочется перейти к этапу `semantic screen tips`:
+- canonical product/research source-of-truth для следующего этапа зафиксирован в [30-semantic-camera-source-of-truth.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/30-semantic-camera-source-of-truth.md)
+- dataset/eval execution plan для следующего этапа зафиксирован в [31-dataset-eval-implementation-plan.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/31-dataset-eval-implementation-plan.md)
+- semantic eval output contract для dataset/baseline проверки зафиксирован в [32-semantic-eval-output-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/32-semantic-eval-output-contract.md)
+- current real-runtime baseline findings и следующий ranked PR backlog зафиксированы в [33-semantic-current-baseline-findings.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/33-semantic-current-baseline-findings.md)
 - closed catalog semantic tips для `PR-S01` зафиксирован в [24-semantic-tip-taxonomy-and-action-catalog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md)
 - VLM visual semantic evidence contract для `PR-S02` зафиксирован в [25-vlm-visual-semantic-evidence-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md)
 - pause VLM evidence provider prototype для `PR-S03` зафиксирован в [27-pause-vlm-evidence-provider-prototype.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/27-pause-vlm-evidence-provider-prototype.md)
@@ -60,6 +68,7 @@
 - fast low-level сигналы работают локально и часто;
 - semantic critique строится поверх структурированных признаков;
 - explanation всегда восстанавливается до цепочки `observation -> interpretation -> recommendation`;
+- текущий app UI может показывать эту цепочку через sheet `Почему?`: verdict/confidence, evidence, semantic action ids, pipeline signals, fallback/assumptions и trace ids;
 - тяжелый reasoning включается в первую очередь в `pause`;
 - live остается быстрым, стабильным и пригодным для мобильного устройства.
 
@@ -100,6 +109,10 @@
 - [26-semantic-tip-fusion-and-planner.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/26-semantic-tip-fusion-and-planner.md): source-of-truth semantic tip planner, bounded VLM rerank policy и live/pause tip selection contract для `PR-S04`
 - [28-vlm-labeled-semantic-tip-dataset.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/28-vlm-labeled-semantic-tip-dataset.md): source-of-truth teacher-reviewed semantic tip dataset schema, hard-case exchange и starter fixtures для `PR-S06`
 - [29-on-device-semantic-evidence-distillation-plan.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/29-on-device-semantic-evidence-distillation-plan.md): source-of-truth distillation plan от `VLM teacher` к компактной on-device semantic evidence model для `PR-S07`
+- [30-semantic-camera-source-of-truth.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/30-semantic-camera-source-of-truth.md): canonical product/research source-of-truth для следующего этапа semantic camera analysis
+- [31-dataset-eval-implementation-plan.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/31-dataset-eval-implementation-plan.md): implementation-ready plan для dataset freeze, semantic eval, good-frame preservation gates и technical quality gates
+- [32-semantic-eval-output-contract.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/32-semantic-eval-output-contract.md): JSONL-контракт candidate outputs для проверки подсказок на dataset/eval
+- [33-semantic-current-baseline-findings.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/33-semantic-current-baseline-findings.md): current real-runtime baseline, gaps and next ranked implementation PRs
 - [camera-analysis-requirements-draft.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-requirements-draft.md): требования и продуктовые решения
 - [camera-analysis-v1-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/camera-analysis-v1-architecture.md): подробная архитектура
 - [11-implementation-backlog.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/11-implementation-backlog.md): tracks и PR-пайплайн

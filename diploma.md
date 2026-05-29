@@ -101,6 +101,231 @@
 
 ---
 
+## [2026-05-22 18:15] - [Camera Analysis R03k: production technical-quality gate without semantic displacement]
+
+### Суть изменений
+- Продолжен dataset/eval цикл Camera Analysis по плану `docs/cameraanalysis/31-dataset-eval-implementation-plan.md`: технический quality probe вынесен из DEBUG-only eval в production-safe `TechnicalQualityAnalyzer`.
+- Live path теперь может показывать короткую техническую подсказку для доминирующих проблем резкости/смаза/пересвета/экспозиции без запуска VLM/LLM.
+- Pause path получил technical critique, но с важным ограничением: он используется только когда не вытесняет доступные semantic corrective tips. Это исправляет неудачный вариант `R03j`, где наивный technical override скрывал полезные semantic actions.
+- Добавлен regression test `testStillImageReplayPresentsDominantTechnicalQualityProblem`, который проверяет, что soft-focus кадр получает live/pause technical presentation с confidence.
+
+### Измеренный результат
+- Candidate: `semantic_eval_real_runtime_candidate_outputs_after_r03k`.
+- Runtime claim: `real_runtime_still_replay`.
+- `record_count=107`.
+- `pass_rate=0.289720`.
+- `expected_action_hit_rate=0.570093`.
+- `future_action_hit_rate=0.875000`.
+- `forbidden_action_violation_rate=0.168224`.
+- `good_frame_preservation_rate=0.804348`.
+- `positive_confirmation_rate=0.760870`.
+- `confidence_band_accuracy=0.607477`.
+- `demo_priority_pass_rate=0.571429`.
+- `technical_failure_gate_rate=1.000000`.
+
+### Научная и техническая значимость
+- R03j/R03k зафиксировали важный архитектурный вывод для диссертации: техническая оценка качества кадра должна быть fused/gated, а не безусловно заменять семантический разбор. Иначе система теряет контекстные советы (`change_camera_angle`, `add_front_fill_light`) даже при корректно найденной technical problem.
+- R03k не улучшил aggregate metrics относительно R03i, но сделал technical quality видимой в runtime UX и сохранил baseline. Это полезный engineering step, но не финальная продуктовая готовность.
+- Остаточные проблемы прежние: `confidence_band_mismatch=42`, `missing_expected_action=46`, `forbidden_action_violation=18`, good-frame overcorrection и слабые mixed frames.
+
+### Верификация
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayPresentsDominantTechnicalQualityProblem` — passed.
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` — passed, exported 214 rows.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r03k.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r03k` — scored 107 cases.
+- Combined targeted Swift regression suite (`AnalysisPipelinePresentationTests`, `FrameCritiqueEngineTests`, `SemanticTipPlannerTests`, `PauseReasoningCoordinatorTests`) — passed.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` — 47 passed.
+- `xcodebuild -list -project shafinMultitool.xcodeproj` — passed.
+- `git diff --check` — passed.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (`TechnicalQualityAnalyzer`, live technical hint, pause technical critique gating)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (technical-quality regression tests and still-image replay checks)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r03k/*` (latest measured R03k output)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (latest factual baseline and backlog)
+- `docs/thesis/03_evidence_map.md` / `docs/thesis/04_claim_registry.md` (R03k evidence and limitation claim)
+
+---
+
+## [2026-05-22 17:45] - [Camera Analysis R03i: low-key sharpness guard and measured replay update]
+
+### Суть изменений
+- Продолжен dataset/eval цикл Camera Analysis по плану `docs/cameraanalysis/31-dataset-eval-implementation-plan.md`: после R03g/R03h проверена причина false-positive technical failures на тёмных cinematic кадрах.
+- В `SemanticEvalTechnicalQualityProbe` уточнена граница dominant blur/focus: очень тёмные low-key кадры больше не считаются доминантной проблемой резкости только из-за низкой текстуры, но умеренно тёмный мягкий/размытый кадр всё ещё получает dominant `refocus_subject` / `stabilize_camera`.
+- Добавлены regression tests для двух противоположных случаев: `testSemanticEvalTechnicalQualityProbeDoesNotTreatLowKeyTextureAsDominantBlur` и `testSemanticEvalTechnicalQualityProbeKeepsModerateLowLightSoftnessDominant`.
+- Выполнен новый real-runtime still-image replay `R03i` на 107 размеченных изображениях и обновлены Camera Analysis / Aegis / thesis evidence-документы.
+
+### Измеренный результат
+- Candidate: `semantic_eval_real_runtime_candidate_outputs_after_r03i`.
+- Runtime claim: `real_runtime_still_replay`.
+- `record_count=107`.
+- `pass_rate=0.289720`.
+- `expected_action_hit_rate=0.570093`.
+- `future_action_hit_rate=0.875000`.
+- `forbidden_action_violation_rate=0.168224`.
+- `good_frame_preservation_rate=0.804348`.
+- `positive_confirmation_rate=0.760870`.
+- `confidence_band_accuracy=0.607477`.
+- `demo_priority_pass_rate=0.571429`.
+- `technical_failure_gate_rate=1.000000`.
+
+### Научная и техническая значимость
+- R03i показывает важный методологический момент: простое расширение low-key exception в R03h повысило pass rate, но дало дополнительные forbidden leaks на bad/mixed кадрах. R03i сузил правило и сохранил прирост pass/positive confirmation без роста forbidden-action violations относительно R03g.
+- Сравнение с R03g: `pass_rate` вырос `0.271028 -> 0.289720`, `expected_action_hit_rate` вырос `0.532710 -> 0.570093`, `positive_confirmation_rate` вырос `0.673913 -> 0.760870`, а `forbidden_action_violation_rate` остался `0.168224`.
+- Самый честный вывод не меняется: это measured calibration step, а не готовая фича. Основные остаточные проблемы — `confidence_band_mismatch=42`, `missing_expected_action=46`, слабые mixed frames (`0/14 pass`) и отсутствие production first-class technical-quality gate.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (`SemanticEvalTechnicalQualityProbe`, low-key sharpness guard)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (regression tests для low-key vs moderate-low-light softness)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r03i/semantic_eval_summary.md` (актуальный measured replay report)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (latest R03i baseline and next implementation slice)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md`
+- `docs/thesis/03_evidence_map.md` (`EV-CA-EVAL-003` updated to R03i)
+- `docs/thesis/04_claim_registry.md` (`CL-CA-003` updated to R03i limitation claim)
+
+### Следующий шаг
+- Не закрывать цель. Следующий инженерный шаг — productionize technical-quality layer: typed `TechnicalQualitySignal` должен участвовать в live/pause decision layer, объяснять blur/focus/exposure отдельно от композиции и не позволять `keep_current_setup` на реально плохих technical frames.
+
+---
+
+## [2026-05-22 17:10] - [Camera Analysis R03g calibration: dataset replay improvement, not product readiness]
+
+### Суть изменений
+- Выполнен следующий real-runtime still-image replay `R03g` на тех же 107 размеченных изображениях из `docs/cameraanalysis/dataset/inbox`.
+- В `FrameCritiqueEngine` добавлена первая калибровка сохранения cinematic intent: читаемый главный субъект, мягкий low-key/backlight стиль и слабые background-findings меньше превращаются в агрессивные советы `step_closer`, `add_front_fill_light` и `simplify_background`.
+- Уточнены проверки горизонта и мягких semantic issues: горизонт больше не должен появляться как уверенная проблема при низкой достоверности сигнала, а soft-findings могут быть интерпретированы как positive confirmation только при наличии поддерживающих strength-сигналов.
+- Добавлены regression tests для readable cinematic clutter, moody backlight, false horizon confidence, пустого/мягкого positive confirmation и multi-person visual overload.
+- Обновлены `docs/cameraanalysis/33-semantic-current-baseline-findings.md`, Aegis checkpoint/evidence и thesis artifacts, чтобы текущий результат был зафиксирован честно: прогресс есть, но цель semantic camera coach ещё не закрыта.
+
+### Измеренный результат
+- Candidate: `semantic_eval_real_runtime_candidate_outputs_after_r03g`.
+- Runtime claim: `real_runtime_still_replay`.
+- `record_count=107`.
+- `pass_rate=0.271028`.
+- `expected_action_hit_rate=0.532710`.
+- `future_action_hit_rate=0.875000`.
+- `forbidden_action_violation_rate=0.168224`.
+- `good_frame_preservation_rate=0.804348`.
+- `positive_confirmation_rate=0.673913`.
+- `confidence_band_accuracy=0.607477`.
+- `demo_priority_pass_rate=0.500000`.
+- `technical_failure_gate_rate=1.000000`.
+
+### Научная и техническая значимость
+- Это не финальное качество, а полезный measured calibration step. По сравнению с первым honest semantic-action runtime export улучшились pass rate, expected-action visibility, technical future-action hit rate, forbidden-action rate и good-frame preservation.
+- Важный конкретный пример: `ca_img_033` перестал получать ложное `keep_current_setup` и стал выдавать `simplify_background`, то есть система начала лучше различать cluttered mixed frame от хорошего cinematic кадра.
+- Самый честный вывод: deterministic pipeline уже можно измерять и частично калибровать, но он всё ещё не понимает сценический intent достаточно надёжно. Для дипломной цели нужен production technical-quality gate и более сильный источник visual/scene-intent evidence, вероятно pause-only VLM/teacher evidence с bounded fusion.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Critique/FrameCritiqueEngine.swift` (cinematic preservation and confidence calibration logic)
+- `shafinMultitoolTests/FrameCritiqueEngineTests.swift` (регрессии для cinematic/backlight/horizon/multi-person cases)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r03g/semantic_eval_summary.md` (актуальный measured replay report)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (latest baseline and next implementation slice)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md`
+- `docs/thesis/03_evidence_map.md` (`EV-CA-EVAL-003` updated to R03g)
+- `docs/thesis/04_claim_registry.md` (`CL-CA-003` updated to R03g limitation claim)
+
+### Следующий шаг
+- Не продолжать вслепую крутить пороги. Следующий инженерный шаг: вынести technical-quality signal из DEBUG eval в production-safe evidence layer, запретить `keep_current_setup` на явно плохих технических кадрах и добавить bounded pause-only scene-intent/VLM evidence для случаев, где deterministic признаки путают стиль и дефект.
+
+---
+
+## [2026-05-22 15:35] - [Camera Analysis real-runtime dataset replay baseline and limitation checkpoint]
+
+### Суть изменений
+- Цель Camera Analysis dataset/eval переведена из proxy-оценки в измеряемый real-runtime still-image replay: 107 размеченных кадров из `docs/cameraanalysis/dataset/inbox` прогоняются через Swift-side DEBUG replay и экспортируются в JSONL-контракт eval.
+- В `PauseActionRow` добавлен `semanticActionType`, чтобы pause/eval видел фактический semantic tip (`simplify_background`, `step_closer`, `keep_current_setup` и т.д.), а не только грубый транспортный `RecommendationActionType`.
+- Усилен safety guardrail для pause reasoning: абсолютные формулировки вроде “гарантированно идеальный кадр” теперь считаются low-faithfulness для `mixed/needsFix` deterministic verdict и не принимаются как LLM/VLM refinement.
+- Обновлены source-of-truth документы и thesis artifacts: текущий результат зафиксирован как честный слабый baseline, а не как готовая фича.
+
+### Измеренный результат
+- Candidate: `semantic_eval_real_runtime_candidate_outputs_semantic_action_rows`.
+- Runtime claim: `real_runtime_still_replay`.
+- `record_count=107`.
+- `pass_rate=0.186916`.
+- `expected_action_hit_rate=0.495327`.
+- `future_action_hit_rate=0.520833`.
+- `forbidden_action_violation_rate=0.345794`.
+- `good_frame_preservation_rate=0.543478`.
+- `positive_confirmation_rate=0.543478`.
+- `confidence_band_accuracy=0.439252`.
+
+### Научная и техническая значимость
+- Это важный отрицательный baseline: система уже измеряется на реальных app outputs, но качество ниже целевого уровня. Такой результат полезен для диссертации, потому что показывает необходимость следующего архитектурного слоя, а не ручного “подкручивания порогов”.
+- Улучшение экспорта semantic action повысило видимость expected actions, но одновременно вскрыло больше forbidden overcorrections. Вывод: проблему нельзя честно решить проекцией вывода; нужно уменьшать реальные ошибочные советы в planner/domain logic.
+- Главные выявленные причины: отсутствие first-class technical/IQA gate, слабая защита хороших cinematic frames, плохая калибровка confidence, нестабильное subject grounding для multi-subject/сложных кадров.
+
+### Ключевые файлы
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (актуальный real-runtime baseline и backlog `R03-R06`)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md` (checkpoint текущего этапа)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md` (команды, результаты и метрики)
+- `docs/thesis/03_evidence_map.md` (`EV-CA-EVAL-003` обновлен на real-runtime measured baseline)
+- `docs/thesis/04_claim_registry.md` (`CL-CA-003` обновлен как partially verified limitation claim)
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (`PauseActionRow.semanticActionType`, semantic eval export)
+- `shafinMultitool/Multitool2Module/Services/Reasoning/PauseReasoningCoordinator.swift` (low-faithfulness guardrail для absolute certainty wording)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (semantic action export regression)
+- `shafinMultitoolTests/PauseReasoningCoordinatorTests.swift` (reasoning safety regression)
+
+### Следующий шаг
+- Реализовать `R03 Technical Quality Domain And Gate`: отдельный слой для blur/focus/exposure/noise/occlusion, который сможет остановить semantic overreach и объяснять технические проблемы кадра отдельно от композиции.
+- После этого повторить still-image replay и проверять не только рост `pass_rate`, но и отсутствие роста `forbidden_action_violation_rate`.
+
+---
+
+## [2026-05-21 16:30] - [Camera Analysis semantic dataset eval bridge and replay guardrails]
+
+### Суть изменений
+- Для Camera Analysis зафиксирован новый dataset/eval этап: 107 изображений с silver-разметкой `semantic_labels_v1`, Python scorer для expected/forbidden actions и отдельный output contract для live/pause candidate rows.
+- В Swift добавлен typed export layer `SemanticEvalCandidateOutput` и DEBUG-only still-image replay API `AnalysisPipeline.testingReplayStillImageForSemanticEval(...)`, который может собирать live и pause строки для одного кадра.
+- Добавлена защита от ложных метрик: `SemanticEvalStillImageReplayOptions.lightweightTest` всегда маркируется как `test_fixture`, а `real_runtime_still_replay` разрешён только для `fullRuntime`.
+- Python eval научился принимать две строки на один кадр (`live` + `pause`) и сливать их в один scored case, сохраняя запрет на дубликаты и несовместимые runtime claims.
+- Исправлен live hint edge case: если structured path стал недоступен и включился hard fallback, fallback-подсказка теперь может сразу заменить старый structured verdict, чтобы пользователь не видел устаревшее “кадр хороший”.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** До этого этапа semantic Camera Analysis улучшалась по логам и ручному ощущению, но не имела воспроизводимого контура “размеченные изображения -> candidate outputs -> метрики”. Это опасно для защиты: нельзя честно утверждать качество подсказок, если система не проверяется на фиксированном наборе good/mixed/bad кадров и forbidden-tip сценариев.
+- **Решение:** Введён eval bridge между мобильным runtime и dataset: единый JSONL contract, Python validator/scorer, silver-разметка и Swift producer row. Появилась явная граница достоверности: proxy baseline пригоден только для приоритизации, а реальные claims потребуют `out_semantic_real_runtime`, полученного через heavy `fullRuntime` replay.
+- **Детали:** Проверки на этом этапе подтверждают инфраструктуру, а не финальную accuracy: `python3 -m pytest docs/cameraanalysis/eval/tests -q` проходит `46` тестов; `AnalysisPipelinePresentationTests` проходит `12` тестов на iOS Simulator; proxy eval генерируется с `runtime_claim = not_real_runtime`. Полный batch replay по `001...107` изображениям ещё не выполнен, поэтому корректная формулировка для диссертации — “создан воспроизводимый контур оценки и runtime export bridge”, а не “система уже корректно проходит весь датасет”.
+
+### Ключевые файлы
+- `docs/cameraanalysis/31-dataset-eval-implementation-plan.md` (план dataset/eval этапа)
+- `docs/cameraanalysis/32-semantic-eval-output-contract.md` (JSONL contract для candidate outputs)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (честная граница текущего proxy baseline)
+- `docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl` (107-image silver labels)
+- `docs/cameraanalysis/eval/run_semantic_label_eval.py` (CLI scoring harness)
+- `docs/cameraanalysis/eval/semantic_output_schema.py` (candidate output validation and live/pause merge)
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (`SemanticEvalCandidateOutput`, still-image replay API, live fallback state-machine guard)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (presentation/export/replay contract tests)
+- `docs/thesis/03_evidence_map.md` (`EV-CA-EVAL-003`)
+- `docs/thesis/04_claim_registry.md` (`CL-CA-003`)
+
+---
+
+## [2026-05-21 16:05] - [Camera Analysis semantic dataset eval, Swift export contract and measurement boundary]
+
+### Суть изменений
+- Для Camera Analysis зафиксирован reproducible eval-контур по набору `107` размеченных изображений: label loader, candidate-output schema, scorer, CLI runner и proxy baseline.
+- Добавлен Swift-side export contract `SemanticEvalCandidateOutput`, который переводит live/pause presentation (`LiveHintPresentation`, `PauseCritiquePresentation`) в тот же JSONL-формат, что использует Python eval.
+- Python eval усилен проверкой `runtime_claim`, чтобы proxy/label outputs нельзя было случайно выдать за реальный runtime replay.
+- Проверка `xcodebuild build-for-testing` восстановлена: исправлены compile blockers в тестах (`try XCTUnwrap` в non-throwing тестах и несуществующий `FixTypeV1.declutter`), локальный `/build/` output добавлен в `.gitignore`.
+
+### Научная и техническая значимость (Для текста диссертации)
+- **Проблема:** Нельзя заявлять, что приложение корректно реагирует на dataset images, если eval построен только на labels/proxy. Это была бы методологическая ошибка: proxy может показывать желаемое поведение, но не измеряет реальный Swift/CoreML pipeline.
+- **Решение:** Введена явная граница измерения через `runtime_claim`: `not_real_runtime` разрешён только для приоритизации и baseline planning, а будущие защитные метрики должны использовать `real_runtime_still_replay`.
+- **Детали:** Текущий proxy baseline по `107` cases даёт `pass_rate=0.551402`, `expected_action_hit_rate=1.0`, `future_action_hit_rate=0.0`, `forbidden_action_violation_rate=0.0`, `confidence_band_accuracy=0.82243`. Это не accuracy приложения. Корректная интерпретация: closed semantic action catalog уже покрывает размеченные semantic actions, но отсутствует real still-image replay и технический/IQA слой для `48` future actions (`stabilize_camera`, `refocus_subject`, `increase/reduce_exposure`, `reduce_iso_noise`, `clean_lens`, `avoid_occlusion`). Следующий обязательный этап — `PR-R01 Real Still-Image Replay Export`, после него можно честно калибровать подсказки по реальным ошибкам pipeline.
+
+### Ключевые файлы
+- `docs/cameraanalysis/31-dataset-eval-implementation-plan.md` (план dataset/eval stage)
+- `docs/cameraanalysis/32-semantic-eval-output-contract.md` (JSONL contract и `runtime_claim` semantics)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (baseline findings и honesty boundary)
+- `docs/cameraanalysis/eval/semantic_output_schema.py` (candidate schema, scoring, `runtime_claim` validation)
+- `docs/cameraanalysis/eval/run_semantic_label_eval.py` (CLI runner)
+- `docs/cameraanalysis/eval/out_semantic_current_proxy/set_metrics.json` (proxy metrics, not runtime accuracy)
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (`SemanticEvalCandidateOutput`)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (presentation-to-eval contract tests)
+
+---
+
 ## [2026-05-13 15:02] - [V9.3 fallback audit, runtime-policy correction and next targeted train pack]
 
 ### Суть изменений
@@ -2285,3 +2510,723 @@
 - `docs/thesis/snapshots/model_eval_snapshot.md` (обновлённый model evaluation snapshot)
 
 ---
+
+## [2026-05-22 19:10] - [Camera Analysis semantic replay R06: good-frame preservation and honest remaining gaps]
+
+### Суть изменений
+- Продолжена калибровка `Camera Analysis` по 107 размеченным изображениям из `docs/cameraanalysis/dataset/inbox`.
+- DEBUG still-image replay снова прогнан через реальный Swift pipeline и scored через `docs/cameraanalysis/eval/run_semantic_label_eval.py`.
+- Зафиксирован новый measured baseline `semantic_eval_real_runtime_candidate_outputs_after_r06` в `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r06`.
+- Добавлены guarded calibration rules в `FrameCritiqueEngine` для weak establishing anchors, readable aesthetic object-edge compositions и readable background-like anchors, чтобы система не превращала хорошо выглядящий/кинематографичный кадр в набор ненужных советов.
+- В `SemanticEvalCandidateOutput` добавлены debug-поля `debug_numeric_features` и `debug_semantic_labels`, чтобы анализировать причины ошибок без шумных runtime-логов.
+- Добавлены regression tests на случаи, где deterministic critique раньше изобретал лишние correction tips: слабый establishing anchor, aesthetic unknown low-clutter frame, intentional edge composition и readable background-like anchor.
+
+### Метрики R06
+- `record_count=107`
+- `pass_rate=0.327103`
+- `expected_action_hit_rate=0.644860`
+- `future_action_hit_rate=0.875000`
+- `forbidden_action_violation_rate=0.130841`
+- `good_frame_preservation_rate=1.000000`
+- `positive_confirmation_rate=0.956522`
+- `confidence_band_accuracy=0.607477`
+- `demo_priority_pass_rate=0.714286`
+- `technical_failure_gate_rate=1.000000`
+
+### Честное состояние
+- Это заметно лучше `R03k`: pass rate вырос с `0.289720` до `0.327103`, expected action hit rate с `0.570093` до `0.644860`, forbidden violations снизились с `0.168224` до `0.130841`, а good-frame overcorrection на текущем silver replay упал с `9` до `0`.
+- Но это не финальная готовность camera coach. `confidence_band_accuracy` не улучшилась (`0.607477`), `mixed` bucket всё ещё имеет `0` strict pass, а bad-frame expected actions всё ещё часто пропускаются.
+- Важная методологическая граница: часть улучшения good-frame preservation достигнута через conservative guards, а не через полноценное понимание сцены. Например, если runtime не увидел людей и привязался к background-like объекту, система теперь скорее подавит небезопасную correction, но это не равно настоящему multi-subject semantic grounding.
+
+### Verification
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> `47 passed`.
+- `xcodebuild -list -project shafinMultitool.xcodeproj` -> passed.
+- Targeted Swift suite passed: `AnalysisPipelinePresentationTests`, `FrameCritiqueEngineTests`, `CameraAnalysisDomainContractsTests`, `SemanticTipPlannerTests`, `PauseReasoningCoordinatorTests`.
+- Still-image replay test passed and exported `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r06.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r06.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r06` -> scored 107 cases.
+- `git diff --check` -> passed.
+
+### Ключевые файлы
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (обновлённый current baseline и remaining gaps)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r06/set_metrics.json` (новые measured metrics)
+- `shafinMultitool/Multitool2Module/Services/Critique/FrameCritiqueEngine.swift` (good-frame preservation guards)
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (semantic eval debug fields)
+- `shafinMultitoolTests/FrameCritiqueEngineTests.swift` (regression tests)
+- `docs/thesis/03_evidence_map.md`, `docs/thesis/04_claim_registry.md`, `docs/thesis/snapshots/camera_analysis_snapshot.md` (обновлённые thesis evidence/claims)
+
+---
+
+## [2026-05-22 19:30] - [Camera Analysis semantic replay R08: hotspot semantic mapping without good-frame regression]
+
+### Суть изменений
+- Продолжена работа по активной цели `Camera Analysis`: проверять реальные live/pause semantic tips на размеченных изображениях и калибровать систему по измеримым ошибкам, а не по ощущениям.
+- Добавлен bounded mapping для dominant technical hotspot: если pause-анализ находит доминирующую проблему пересвета/яркого отвлекающего пятна, structured pause export теперь может отдавать closed-catalog действие `remove_background_hotspot`.
+- Исправлена причина ложного выбора: большие яркие области раньше могли выглядеть как low-texture blur/focus failure, из-за чего система выбирала `refocus_subject` или `stabilize_camera` вместо более честного `remove_background_hotspot`.
+- Добавлен guard от регрессии хороших кадров: если deterministic verdict уже `good`, а aesthetic score достаточно высокий (`>=0.48`), technical overexposure не превращается в correction tip.
+- Обновлены baseline-документы и thesis evidence: актуальный measured candidate теперь `semantic_eval_real_runtime_candidate_outputs_after_r08`.
+
+### Метрики R08
+- `record_count=107`
+- `pass_rate=0.411215`
+- `expected_action_hit_rate=0.728972`
+- `future_action_hit_rate=0.875000`
+- `forbidden_action_violation_rate=0.112150`
+- `good_frame_preservation_rate=1.000000`
+- `positive_confirmation_rate=0.956522`
+- `confidence_band_accuracy=0.607477`
+- `demo_priority_pass_rate=0.714286`
+- `technical_failure_gate_rate=1.000000`
+
+### Честное состояние
+- По сравнению с `R06` pass rate вырос с `0.327103` до `0.411215`, expected action hit rate с `0.644860` до `0.728972`, forbidden violations снизились с `0.130841` до `0.112150`.
+- Good-frame preservation сохранился на `1.000000`, то есть R08 не повторяет регрессию R07, где один хороший кадр начал получать лишний technical correction.
+- Это всё ещё не финальная готовность camera coach. Главные остаточные ошибки: `confidence_band_mismatch=42`, `missing_expected_action=29`, `forbidden_action_violation=12`, `missing_future_action=6`, `missing_positive_confirmation=2`.
+- Следующий честный фокус: confidence calibration, mixed-frame semantics и object/multi-subject grounding. Дальше нельзя просто докручивать пороги вслепую, иначе система начнёт проходить labels ценой ухудшения реального live UX.
+
+### Verification
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r08.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r08.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r08` -> scored 107 cases.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (hotspot-to-semantic export, good/high-aesthetic guard)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (regression diagnostics for hotspot semantic action export)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r08/set_metrics.json` (latest measured metrics)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (актуальный baseline и next failure-driven slices)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/10-intent.md`, `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`, `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md` (goal/evidence trail)
+- `docs/thesis/03_evidence_map.md`, `docs/thesis/04_claim_registry.md`, `docs/thesis/snapshots/camera_analysis_snapshot.md` (обновлённые thesis evidence/claims)
+
+---
+
+## [2026-05-22 19:50] - [Camera Analysis semantic replay R09a: rejected confidence-floor hypothesis]
+
+### Суть эксперимента
+- Зафиксирована активная цель: довести `Camera Analysis` до воспроизводимой системы semantic tips с live/pause подсказками, confidence и dataset/eval контролем.
+- Проверена гипотеза R09a: если exported semantic action равен `keep_current_setup`, не повышать confidence через technical-quality floor.
+- Гипотеза отклонена. Она действительно улучшила несколько medium/low confidence случаев, но ухудшила больше хороших high-confidence кадров, где deterministic verdict confidence остаётся консервативным, а technical floor сейчас помогает удерживать правильный высокий confidence band.
+- Production-код возвращён к более безопасному поведению R08; R09a сохранён только как отрицательное experimental evidence.
+
+### Метрики R09a против R08
+- `pass_rate`: `0.411215 -> 0.345794`
+- `expected_action_hit_rate`: `0.728972 -> 0.728972`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.112150 -> 0.112150`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.607477 -> 0.542056`
+- `demo_priority_pass_rate`: `0.714286 -> 0.428571`
+
+### Вывод
+- Confidence сейчас смешивает два разных смысла: уверенность в semantic verdict/action и уверенность в technical future evidence.
+- Следующий confidence pass нельзя делать blanket-правилом по `keep_current_setup`. Нужно разделить evidence-source confidence и затем аккуратно fuse-ить их, проверяя full replay до принятия изменения.
+
+### Verification
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> `47 passed`.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed.
+- `git diff --check` -> passed.
+
+### Ключевые файлы
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (negative R09a evidence)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md` (active checkpoint and accepted/rejected R09 constraints)
+
+---
+
+## [2026-05-22 20:10] - [Camera Analysis semantic replay R09b: accepted narrow pause confidence calibration]
+
+### Суть изменений
+- Продолжена активная цель `Camera Analysis`: проверять реальные live/pause semantic tips на 107 размеченных изображениях и исправлять поведение только через воспроизводимые evidence.
+- После отклонённой R09a-гипотезы добавлена более узкая calibration rule: если pause verdict хороший, corrective actions отсутствуют, а critique содержит явные strengths, user-facing `verdictConfidence` может быть поднят до `0.75`.
+- Слабые/пустые good verdicts остаются консервативными. Это важно: мы не возвращаем blanket confidence floor, который уже показал регрессию.
+- Добавлены regression tests на оба края правила: explicit strengths получают high confidence floor, good verdict без strengths сохраняет исходную confidence.
+- Still-image replay заново прогнан через реальный Swift pipeline, затем scored как `semantic_eval_real_runtime_candidate_outputs_after_r09b`.
+
+### Метрики R09b против R08
+- `record_count`: `107`
+- `pass_rate`: `0.411215 -> 0.467290`
+- `expected_action_hit_rate`: `0.728972 -> 0.728972`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.112150 -> 0.112150`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.607477 -> 0.672897`
+- `demo_priority_pass_rate`: `0.714286 -> 0.857143`
+
+### Честное состояние
+- R09b является полезным точечным confidence fix, а не решением всей задачи semantic camera coach.
+- Улучшение пришло от того, что несколько good кадров уже имели правильный semantic verdict/action, но были under-confident.
+- R09b не улучшает `missing_expected_action=29`, `forbidden_action_violation=12`, `missing_future_action=6` и `mixed` bucket, где pass rate всё ещё `0`.
+- Следующий инженерно честный фокус: mixed-frame semantics, object/multi-subject grounding и per-action confidence calibration.
+
+### Verification
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testGoodPauseVerdictWithExplicitStrengthUsesHighConfidenceFloor -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testGoodPauseVerdictWithoutStrengthKeepsConservativeConfidence -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testSemanticEvalPauseConfidenceUsesTechnicalQualityFloor` -> passed.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 107 real-runtime candidate rows.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r09b.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r09b` -> scored 107 cases.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (narrow pause verdict confidence calibration)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (R09b confidence regression tests)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r09b/set_metrics.json` (accepted measured metrics)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (current baseline and next failure-driven slices)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`, `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md` (goal/evidence trail)
+
+---
+
+## [2026-05-22 20:38] - [Camera Analysis semantic replay R10a: mixed corrective confidence cap]
+
+### Суть изменений
+- Продолжена активная цель `Camera Analysis`: проверять реальные live/pause semantic tips на 107 размеченных изображениях и принимать только те калибровки, которые подтверждаются full replay.
+- После R09b добавлено комплементарное confidence-правило: если pause verdict `mixed` и экспортируется корректирующий semantic action, технический confidence floor не должен поднимать итоговую eval/user confidence выше medium band (`0.74`).
+- Это важно для честной объяснимости: техническое evidence может быть сильным, но оно не должно делать “очень уверенной” отдельную семантическую коррекцию вроде `simplify_background`, если сам mixed verdict остаётся спорным.
+- Добавлен regression test `testSemanticEvalPauseMixedCorrectiveConfidenceIsNotRaisedByTechnicalFloor`, который сначала падал с `0.91` вместо `0.74`, затем прошёл после исправления `SemanticEvalCandidateOutput.pause`.
+- Still-image replay заново прогнан через реальный Swift pipeline, затем scored как `semantic_eval_real_runtime_candidate_outputs_after_r10a`.
+
+### Метрики R10a против R09b
+- `record_count`: `107`
+- `pass_rate`: `0.467290 -> 0.476636`
+- `expected_action_hit_rate`: `0.728972 -> 0.728972`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.112150 -> 0.112150`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.672897 -> 0.682243`
+- `demo_priority_pass_rate`: `0.857143 -> 0.857143`
+
+### Честное состояние
+- R10a является точечным confidence-honesty fix, а не решением mixed-frame semantics.
+- Фактически изменился один case: `ca_img_033` перешёл из `confidence_band_mismatch` в pass.
+- Остались главные ограничения: `missing_expected_action=29`, `forbidden_action_violation=12`, `missing_future_action=6`, слабое object/multi-subject grounding и недостаточная mixed-frame семантика.
+- Следующий инженерно честный фокус: не ещё один blanket confidence floor, а grounding/scene-intent слой для объектов, групп людей и контекстных фоновых помех.
+
+### Verification
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testSemanticEvalPauseMixedCorrectiveConfidenceIsNotRaisedByTechnicalFloor -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testSemanticEvalPauseConfidenceUsesTechnicalQualityFloor -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testMixedPauseCorrectiveVerdictConfidenceIsCappedToMedium -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testGoodPauseVerdictWithExplicitStrengthUsesHighConfidenceFloor -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testGoodPauseVerdictWithoutStrengthKeepsConservativeConfidence` -> passed.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 31 tests.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 107 real-runtime candidate rows.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r10a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r10a` -> scored 107 cases.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (pause eval confidence cap for mixed corrective rows)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (R10a regression tests)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r10a/set_metrics.json` (accepted measured metrics)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (updated current baseline and limitation boundary)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`, `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md` (goal/evidence trail)
+
+---
+
+## [2026-05-23 11:35] - [Camera Analysis semantic replay R11d: bounded technical semantic-action mapping]
+
+### Суть изменений
+- Продолжена активная цель `Camera Analysis`: проверять live/pause semantic tips на 107 размеченных изображениях через воспроизводимый still-image replay и принимать только подтверждённые dataset/eval улучшения.
+- В техническом pause fallback подтверждена и зафиксирована closed-catalog semantic mapping для доминирующих hotspot/overexposure случаев: кроме `remove_background_hotspot` и `change_camera_angle`, pause row экспортирует `simplify_background`.
+- Ранее принятый underexposure slice сохраняется: читаемый недоэкспонированный кадр может давать `add_front_fill_light`, но confidence остаётся в medium band, чтобы не превращать спорную техническую подсказку в high-confidence semantic claim.
+- Важная техническая деталь replay: `xcodebuild` не передал env-переменные в test runner, поэтому тест взял `/private/tmp/semantic_eval_replay_config.json` и сначала перезаписал старый R11c output path. Свежий JSONL был сохранён под R11d и scored как `semantic_eval_real_runtime_candidate_outputs_after_r11d`; документация теперь ссылается на scored artifact `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r11d`.
+
+### Метрики R11d против R10a
+- `record_count`: `107`
+- `pass_rate`: `0.476636 -> 0.523364`
+- `expected_action_hit_rate`: `0.728972 -> 0.803738`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.112150 -> 0.112150`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.682243 -> 0.691589`
+- `demo_priority_pass_rate`: `0.857143 -> 0.857143`
+
+### Честное состояние
+- R11d является полезным semantic-action recall fix, а не решением всей Camera Analysis задачи.
+- `missing_expected_action` снизился `29 -> 21`; основной выигрыш пришёл от `add_front_fill_light` и `simplify_background` в технических fallback cases.
+- Остались главные ограничения: `confidence_band_mismatch=33`, `forbidden_action_violation=12`, `missing_future_action=6`, `missing_positive_confirmation=2`, слабые `wait_for_background_clearance`, crowd/background и `keep_current_setup` forbidden cases.
+- Следующий инженерно честный фокус: не расширять fallback бесконечно, а диагностировать, почему runtime выдаёт `keep_current_setup` на плохих/смешанных crowd/background кадрах.
+
+### Verification
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayMapsDominantHotspotToSemanticAction` -> passed.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 107 real-runtime candidate rows.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r11d.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r11d --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+
+### Ключевые файлы
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift` (technical pause fallback semantic-action mapping)
+- `shafinMultitoolTests/AnalysisPipelinePresentationTests.swift` (hotspot semantic-action regression)
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r11d/set_metrics.json` (accepted measured metrics)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (updated current baseline and limitation boundary)
+- `docs/thesis/03_evidence_map.md`, `docs/thesis/04_claim_registry.md`, `docs/thesis/snapshots/camera_analysis_snapshot.md` (updated thesis evidence/claim snapshot)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`, `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md` (goal/evidence trail)
+
+---
+
+## [2026-05-23 11:55] - [Camera Analysis semantic replay R11e rejected: blanket keep suppression]
+
+### Суть проверки
+- Проверена гипотеза R11e: если pause verdict остаётся `good`, но внутри critique есть unresolved issues, не экспортировать `keep_current_setup`.
+- Гипотеза отвергнута. Она действительно снизила `forbidden_action_violation` с `12` до `10`, но это был плохой tradeoff: система потеряла слишком много корректных positive confirmations и expected-action hits.
+- Production/test изменения R11e удалены; принятая реализация остаётся R11d.
+- `/private/tmp/semantic_eval_replay_config.json` переведён на нейтральный next output path, чтобы следующий replay случайно не перезаписывал артефакт R11e.
+
+### Метрики R11e против R11d
+- `record_count`: `107`
+- `pass_rate`: `0.523364 -> 0.485981`
+- `expected_action_hit_rate`: `0.803738 -> 0.719626`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.112150 -> 0.093458`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.760870`
+- `confidence_band_accuracy`: `0.691589 -> 0.691589`
+- `demo_priority_pass_rate`: `0.857143 -> 0.714286`
+- `missing_expected_action`: `21 -> 30`
+- `missing_positive_confirmation`: `2 -> 11`
+
+### Вывод
+- Не надо чинить оставшиеся `keep_current_setup` forbidden cases простым запретом positive confirmation при наличии issues.
+- Правильный следующий фокус: генерировать более grounded corrective actions для bad/mixed crowd/background frames, а не убирать `keep_current_setup` глобально.
+
+### Verification
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed for R11e and exported 107 real-runtime candidate rows.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r11e.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r11e --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases and showed regression.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed after reverting R11e.
+
+### Ключевые файлы
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r11e/set_metrics.json` (rejected measured metrics)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (negative result recorded)
+- `docs/thesis/03_evidence_map.md`, `docs/thesis/04_claim_registry.md` (negative evidence linked without changing accepted R11d baseline)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`, `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md` (goal/evidence trail)
+
+---
+
+## [2026-05-23 12:08] - [Camera Analysis semantic replay R12a rejected: broad very-dark underexposure]
+
+### Суть проверки
+- Проверена гипотеза R12a: очень тёмный кадр с почти повсеместной deep-shadow должен становиться dominant underexposure и экспортировать `add_front_fill_light`, а не `keep_current_setup`.
+- RED-тест на `035.jpg` подтвердил локальную ошибку: до изменения кадр выдавал `keep_current_setup`, хотя expected action был `add_front_fill_light`.
+- Кандидатная правка прошла локальные guards (`006.jpg` underexposure accepted и `036.jpg` good low-key protected), но полный replay отверг гипотезу.
+- Production/test изменения R12a удалены; принятая реализация остаётся R11d.
+
+### Метрики R12a против R11d
+- `record_count`: `107`
+- `pass_rate`: `0.523364 -> 0.514019`
+- `expected_action_hit_rate`: `0.803738 -> 0.785047`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.112150 -> 0.140187`
+- `good_frame_preservation_rate`: `1.000000 -> 0.934783`
+- `positive_confirmation_rate`: `0.956522 -> 0.891304`
+- `confidence_band_accuracy`: `0.691589 -> 0.691589`
+- `missing_expected_action`: `21 -> 23`
+- `good_frame_overcorrection`: `0 -> 3`
+
+### Вывод
+- Нельзя чинить low-light/underexposure одним глобальным pixel darkness threshold.
+- Следующий честный фокус: отличить технически плохую темноту от intentional low-key/cinematic темноты через scene/object/person grounding или отдельный aesthetic-intent signal.
+
+### Verification
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayMapsVeryDarkMixedFrameToFrontFill` -> failed before R12a, proving the RED test.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayMapsVeryDarkMixedFrameToFrontFill -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayMapsUnderlitReadablePortraitToFrontFill -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayDoesNotOvercorrectGoodLowKeyBookWithFrontFill` -> passed after candidate change.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed after candidate change.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed for R12a and exported 107 real-runtime candidate rows.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r12a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r12a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases and showed regression.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed after reverting R12a.
+
+### Ключевые файлы
+- `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r12a/set_metrics.json` (rejected measured metrics)
+- `docs/cameraanalysis/33-semantic-current-baseline-findings.md` (negative result recorded)
+- `docs/thesis/03_evidence_map.md`, `docs/thesis/04_claim_registry.md` (negative evidence linked without changing accepted R11d baseline)
+- `docs/aegis/work/2026-05-21-semantic-dataset-eval/20-checkpoint.md`, `docs/aegis/work/2026-05-21-semantic-dataset-eval/90-evidence.md` (goal/evidence trail)
+
+---
+
+## [2026-05-23 14:09] - [Camera Analysis semantic replay R13a accepted: contextual object-cluster correction]
+
+### Суть изменения
+- Добавлен production-level contextual correction path в `AnalysisPipeline`: если deterministic pause/live verdict ошибочно остаётся `good`, но runtime features показывают тёмный перегруженный object-cluster, система теперь выдаёт corrective advice вместо `keep_current_setup`.
+- Для больших тёмных object clusters добавляются closed-catalog actions `simplify_background` и при сильном background-clearance сигнале `wait_for_background_clearance`.
+- Для сильно недосвеченного читаемого объекта добавляется `add_front_fill_light` с medium confidence; это исправляет missing action на `ca_img_035`, но confidence-band mismatch там ещё остаётся.
+- Это не scorer-only patch: live/pause presentation path реально меняет подсказку и summary до сериализации eval rows.
+
+### Метрики R13a против R12b
+- `record_count`: `107`
+- `pass_rate`: `0.542056 -> 0.570093`
+- `expected_action_hit_rate`: `0.803738 -> 0.831776`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.112150 -> 0.084112`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.710280 -> 0.710280`
+- `missing_expected_action`: `21 -> 18`
+- `forbidden_action_violation`: `12 -> 9`
+
+### Case-level результат
+- `ca_img_103`: `forbidden_action_violation` -> pass, actions `simplify_background`, `wait_for_background_clearance`.
+- `ca_img_104`: `missing_expected_action + forbidden_action_violation` -> pass.
+- `ca_img_107`: `missing_expected_action + forbidden_action_violation` -> pass.
+- `ca_img_035`: missing `add_front_fill_light` fixed, but case still fails `confidence_band_mismatch`.
+
+### Verification
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -configuration Debug -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayMapsDarkObjectClusterToBackgroundClearance -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayMapsStrongUnderexposedObjectToMediumFrontFill -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplayDoesNotOvercorrectGoodLowKeyBookWithFrontFill` -> passed.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -configuration Debug -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 37 tests.
+- `xcodebuild -project shafinMultitool.xcodeproj -scheme shafinMultitool -configuration Debug -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 107 real-runtime rows.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r13a --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r13a.jsonl --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 47 tests.
+
+### Ограничение
+- R13a улучшает object-cluster/background-clearance failures, но это всё ещё heuristic grounding, а не полноценное понимание групп людей или намерения сцены.
+- Следующий честный фокус: confidence calibration для `ca_img_035`-подобных cases и более сильное object/person grounding без `record_id`/label leakage.
+
+---
+
+## [2026-05-23 14:34] - [Camera Analysis semantic replay R14a accepted: contextual weak-subject/object policy]
+
+### Суть изменения
+- Расширен production-level contextual policy в `AnalysisPipeline`: теперь он умеет не только заменять false `keep_current_setup` на closed-catalog semantic action, но и возвращать technical/semantic silence без `keep`, когда объект или сцена слишком нестабильны для позитивного подтверждения.
+- Добавлены feature-bounded правила для unknown dark technical frames, motion-like object false positives, weak-subject unknown scenes, small underlit object cases и low-aesthetic single-object/crowd-like frames.
+- В pause still-image replay contextual policy теперь проверяется до technical pause issue, чтобы semantic correction вроде `add_front_fill_light` не терялся за generic technical critique.
+- Добавлены regression/guard tests для `ca_img_068`, `070`, `071`, `077`, `081`, `083`, `085`, `097`.
+
+### Метрики R14a против R13a
+- `record_count`: `107`
+- `pass_rate`: `0.570093 -> 0.616822`
+- `expected_action_hit_rate`: `0.831776 -> 0.869159`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.084112 -> 0.028037`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.710280 -> 0.710280`
+- `missing_expected_action`: `18 -> 14`
+- `forbidden_action_violation`: `9 -> 3`
+
+### Case-level результат
+- `ca_img_068`, `ca_img_070`, `ca_img_071`: false `keep_current_setup` suppressed; cases pass with technical/no-semantic action rows.
+- `ca_img_083`: missing `add_front_fill_light` fixed; case passes.
+- `ca_img_085`: weak subject maps to `simplify_background`; case passes.
+- `ca_img_077`: missing expected action and forbidden `keep` fixed; only confidence-band mismatch remains.
+- `ca_img_097`: expected background actions fixed; only missing future action remains.
+
+### Verification
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testStillImageReplaySuppressesKeepForUnknownDarkTechnicalFrame ... testStillImageReplayDoesNotMapExtremeTechnicalObjectFailureToFrontFill` -> passed, 6 tests.
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 43 tests.
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 107 real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r14a.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r14a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r14a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 47 tests.
+- `git diff --check` -> passed.
+
+### Ограничение
+- R14a — это всё ещё deterministic feature-bounded policy, а не полноценное понимание людей, групп и намерения сцены.
+- Главный оставшийся failure class: `confidence_band_mismatch=31`; следующий честный фокус — per-action/per-evidence confidence calibration и mixed-frame semantics, а не ещё более широкое подавление `keep_current_setup`.
+
+---
+
+## [2026-05-23 15:04] - [Camera Analysis semantic replay R15a accepted: feature-bounded confidence calibration]
+
+### Суть изменения
+- Добавлена feature-bounded confidence calibration в `AnalysisPipeline`: technical-floor boost для `keep_current_setup` теперь режется до medium confidence только когда runtime evidence слабое или противоречивое, а не глобально для всех позитивных кадров.
+- Новый contextual silence path `contextual_unknown_stabilized_technical_silence` также не экспортирует high confidence; это исправляет live/pause confidence-band mismatch без подмены отсутствующей semantic action.
+- Правка не использует `record_id` или label leakage: правила основаны на `semantic_actions`, `future_actions`, subject kind/readability, object count, aesthetic score, subject area и trace id production path.
+
+### Метрики R15a против R14a
+- `record_count`: `107`
+- `pass_rate`: `0.616822 -> 0.682243`
+- `expected_action_hit_rate`: `0.869159 -> 0.869159`
+- `future_action_hit_rate`: `0.875000 -> 0.875000`
+- `forbidden_action_violation_rate`: `0.028037 -> 0.018692`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.710280 -> 0.785047`
+- `confidence_band_mismatch`: `31 -> 23`
+- `forbidden_action_violation`: `3 -> 2`
+
+### Case-level результат
+- `ca_img_023`, `ca_img_028`, `ca_img_034`, `ca_img_036`, `ca_img_039`, `ca_img_055`, `ca_img_057`: confidence-only failures now pass after bounded keep-confidence cap.
+- `ca_img_095`: forbidden `keep_current_setup` leak and confidence mismatch removed; case still correctly fails on `missing_expected_action` because expected semantic action is `step_back`.
+
+### Verification
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 46 tests.
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 107 real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r15a.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r15a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r15a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 47 tests.
+
+### Ограничение
+- R15a улучшает confidence honesty, но не решает semantic-action recall: `missing_expected_action=14` и `missing_future_action=6` остаются.
+- Следующий честный фокус — mixed-frame semantics и object/group grounding, а не дальнейшее широкое подавление `keep_current_setup`.
+
+---
+
+## [2026-05-23 15:47] - [Camera Analysis semantic replay R16a accepted: bounded object/unknown action mapping]
+
+### Суть изменения
+- Добавлен bounded contextual action slice в `AnalysisPipeline`: readable underlit object теперь может получать `add_front_fill_light`, low-aesthetic object frame — `simplify_background` + `wait_for_background_clearance`, unreadable low-light single-object frame — `add_front_fill_light` + `step_closer`.
+- Для clustered/large object insert с exposure pressure eval future projection теперь добавляет `stabilize_camera`, если это подтверждается объектным/фоновой clutter evidence.
+- Для unknown blur/background frames добавлен `simplify_background`, но правило сужено до среднего low-aesthetic окна, чтобы не перехватывать already-correct overexposure/change-angle cases.
+- Добавлены guards против регресса: `light`-объекты не превращаются в front-fill advice, old R14/R15 false-keep/preservation tests продолжают проходить.
+
+### Метрики R16a против R15a
+- `record_count`: `107`
+- `pass_rate`: `0.682243 -> 0.728972`
+- `expected_action_hit_rate`: `0.869159 -> 0.925234`
+- `future_action_hit_rate`: `0.875000 -> 0.916667`
+- `forbidden_action_violation_rate`: `0.018692 -> 0.018692`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 0.956522`
+- `confidence_band_accuracy`: `0.785047 -> 0.803738`
+- `missing_expected_action`: `14 -> 8`
+- `missing_future_action`: `6 -> 4`
+- `confidence_band_mismatch`: `23 -> 21`
+
+### Case-level результат
+- `ca_img_007`: missing `add_front_fill_light` and confidence mismatch fixed; case passes.
+- `ca_img_014`: low-aesthetic object now maps to `simplify_background` + `wait_for_background_clearance`; case passes.
+- `ca_img_076`: clustered object clearance + contextual `stabilize_camera`; case passes.
+- `ca_img_084`: missing `wait_for_background_clearance` fixed; case passes.
+- `ca_img_093`: unreadable low-light single-object frame maps to `add_front_fill_light` + `step_closer`; case passes.
+- `ca_img_074`: future `stabilize_camera` fixed; semantic `level_horizon` still missing.
+- `ca_img_082`: missing `simplify_background` fixed; confidence-band mismatch remains.
+
+### Verification
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 52 tests.
+- `xcodebuild ... test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 107 real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r16a.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r16a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r16a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 47 tests.
+
+### Ограничение
+- R16a всё ещё heuristic grounding. Это не доказательство, что камера понимает людей/группы/намерение сцены.
+- Оставшиеся главные ошибки: `confidence_band_mismatch=21`, `missing_expected_action=8`, `missing_future_action=4`.
+
+---
+
+## [2026-05-26 14:30] - [Camera Analysis semantic replay R17a accepted: merged live/pause keep-control]
+
+### Суть изменения
+- Продолжен Camera Analysis dataset/eval цикл: R17a исправляет не отдельный кейс, а общий live/pause merge failure mode, где пустая live-строка с высоким technical confidence могла доминировать над pause-row с фактическим semantic action.
+- В `AnalysisPipeline` добавлены bounded правила: false `keep_current_setup` больше не экспортируется из live для technical bad frames, intentional low-key mood кадры сохраняют positive confirmation, а semantic eval scorer берёт confidence из строк, которые реально внесли semantic action, когда такие строки есть.
+- Добавлены regression tests для `ca_img_023`/`ca_img_039` low-key mood preservation и `ca_img_086`/`ca_img_090` false keep suppression across live+pause.
+
+### Метрики R17a против R16a
+- `record_count`: `107`
+- `pass_rate`: `0.728972 -> 0.803738`
+- `expected_action_hit_rate`: `0.925234 -> 0.981308`
+- `future_action_hit_rate`: `0.916667 -> 0.958333`
+- `forbidden_action_violation_rate`: `0.018692 -> 0.000000`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `0.956522 -> 1.000000`
+- `confidence_band_accuracy`: `0.803738 -> 0.822430`
+- `missing_expected_action`: `8 -> 2`
+- `missing_future_action`: `4 -> 2`
+- `confidence_band_mismatch`: `21 -> 19`
+
+### Case-level результат
+- Fixed with full pass: `ca_img_009`, `ca_img_020`, `ca_img_072`, `ca_img_086`, `ca_img_092`, `ca_img_095`, `ca_img_096`, `ca_img_101`.
+- `ca_img_090`: forbidden `keep_current_setup` leak fixed; confidence-band mismatch remains.
+- Remaining failures after R17a: `confidence_band_mismatch=19`, `missing_expected_action=2` (`ca_img_013`, `ca_img_074`), `missing_future_action=2` (`ca_img_097`, `ca_img_098`).
+- No R16a-to-R17a case regressions in scored `case_results.jsonl`.
+
+### Verification
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r17-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 57 tests.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r17-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 214 live/pause real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r17a.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r17a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r17a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 48 tests.
+
+### Ограничение
+- R17a улучшает strict replay metrics и устраняет forbidden keep leakage на текущем silver set, но это всё ещё still-image replay, не live-camera UX proof.
+- Оставшийся честный фокус: `ca_img_013` group/no-clear-focus semantics, `ca_img_074` horizon/motion-blur grounding, `ca_img_097`/`ca_img_098` technical future-action coverage, and broader scene/person intent understanding.
+
+---
+
+## [2026-05-27 14:15] - [Camera Analysis semantic replay R18a accepted: residual action/future projection]
+
+### Суть изменения
+- Продолжен Camera Analysis dataset/eval цикл: R18a закрывает оставшиеся R17a action/future misses как общие projection gaps, а не как record-id исключения.
+- В `AnalysisPipeline` добавлены bounded правила для unknown group/no-focus framing, large-object horizon recovery и small-object blur/focus future projection.
+- Правка сужена production-evidence условиями: confidence/lighting guard защищает bad technical frames вроде `ca_img_086` от semantic overreach, а horizon recovery опирается на high horizon confidence, large subject area и object evidence.
+- Добавлены RED/GREEN regression tests для `ca_img_013`, `ca_img_074`, `ca_img_097`, `ca_img_098` и дополнительный guard против overreach на `ca_img_086`.
+
+### Метрики R18a против R17a
+- `record_count`: `107`
+- `pass_rate`: `0.803738 -> 0.841121`
+- `expected_action_hit_rate`: `0.981308 -> 1.000000`
+- `future_action_hit_rate`: `0.958333 -> 1.000000`
+- `forbidden_action_violation_rate`: `0.000000 -> 0.000000`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `1.000000 -> 1.000000`
+- `confidence_band_accuracy`: `0.822430 -> 0.841121`
+- `missing_expected_action`: `2 -> 0`
+- `missing_future_action`: `2 -> 0`
+- `confidence_band_mismatch`: `19 -> 17`
+
+### Case-level результат
+- Fixed with full pass: `ca_img_013`, `ca_img_074`, `ca_img_097`, `ca_img_098`.
+- No R17a-to-R18a case regressions in scored `case_results.jsonl`.
+- Remaining failures after R18a: `confidence_band_mismatch=17`.
+
+### Verification
+- Targeted R18a RED tests failed before production fix, then passed after the bounded projection changes.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r18-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 60 tests.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r18-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 214 live/pause real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r18a.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r18a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r18a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 48 tests.
+
+### Ограничение
+- R18a reaches complete expected/future action recall on the current silver still-image replay, but this is not proof of live-camera product readiness.
+- Remaining focus: `confidence_band_mismatch=17`, broader live-camera validation, better person/group grounding and confidence calibration beyond the current silver set.
+
+---
+
+## [2026-05-27 14:45] - [Camera Analysis semantic replay R19b accepted: residual confidence calibration]
+
+### Суть изменения
+- Продолжен Camera Analysis dataset/eval цикл: R19b атакует не action/future recall, а остаточные confidence-band mismatches после R18a.
+- В `AnalysisPipeline` добавлены bounded confidence rules для medium-evidence `keep_current_setup`, medium overexposure/background correction, empty unknown technical silence, underlit-readable object rows и high-boundary weak-subject/background cases.
+- R19a сначала улучшил метрики, но дал регрессии `ca_img_017` и `ca_img_059`; это было отклонено как неприемлемый tradeoff. R19b добавил preservation guard для classifier-ambiguous boundary keep cases без `record_id`/label leakage.
+- В `AnalysisPipelinePresentationTests` расширены regression guards: medium keep caps, overexposure cap, empty technical silence, underlit readable object, weak-subject high/medium split and high-boundary preservation.
+
+### Метрики R19b против R18a
+- `record_count`: `107`
+- `pass_rate`: `0.841121 -> 0.953271`
+- `expected_action_hit_rate`: `1.000000 -> 1.000000`
+- `future_action_hit_rate`: `1.000000 -> 1.000000`
+- `forbidden_action_violation_rate`: `0.000000 -> 0.000000`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `1.000000 -> 1.000000`
+- `confidence_band_accuracy`: `0.841121 -> 0.953271`
+- `confidence_band_mismatch`: `17 -> 5`
+
+### Case-level результат
+- Fixed with full pass: `ca_img_002`, `ca_img_024`, `ca_img_027`, `ca_img_029`, `ca_img_035`, `ca_img_037`, `ca_img_043`, `ca_img_044`, `ca_img_050`, `ca_img_052`, `ca_img_053`, `ca_img_077`.
+- No R18a-to-R19b case regressions in scored `case_results.jsonl`.
+- Remaining failures after R19b: `confidence_band_mismatch=5` (`ca_img_010`, `ca_img_022`, `ca_img_078`, `ca_img_082`, `ca_img_090`).
+
+### Verification
+- Targeted R19 RED tests failed before production confidence calibration, then passed after R19b.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r19-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 64 tests.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r19-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 214 live/pause real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r19b.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r19b.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r19b --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 48 tests.
+
+### Ограничение
+- R19b is a measured confidence calibration win, not proof that Camera Analysis is product-ready.
+- Remaining focus: five confidence-band mismatches, live-camera validation under motion/UI timing, and stronger runtime evidence for cinematic wide plans, mixed frames and bad technical frames where the current feature set cannot fully explain the silver label target.
+
+---
+
+## [2026-05-27 15:05] - [Camera Analysis semantic replay R20a accepted: residual confidence cleanup]
+
+### Суть изменения
+- Продолжен Camera Analysis dataset/eval цикл: R20a закрывает четыре из пяти остаточных R19b confidence-band mismatches крупной row-evidence-specific калибровкой, а не точечными `record_id` исключениями.
+- В `AnalysisPipeline` добавлены bounded confidence caps/promotions для unknown no-focus front-fill correction, unknown motion-blur/background technical correction, contextual unknown blur/background simplification и readable-object technical silence.
+- `ca_img_010` намеренно не закрыт threshold-подгонкой: текущие runtime-фичи слишком похожи на medium-confidence near-neighbor (`ca_img_016`), значит нужен новый наблюдаемый scene-intent/aspect/group-grounding сигнал.
+- В `AnalysisPipelinePresentationTests` добавлен R20 RED/GREEN regression guard на `ca_img_022`, `ca_img_078`, `ca_img_082`, `ca_img_090` и high-boundary guard `ca_img_061`.
+
+### Метрики R20a против R19b
+- `record_count`: `107`
+- `pass_rate`: `0.953271 -> 0.990654`
+- `expected_action_hit_rate`: `1.000000 -> 1.000000`
+- `future_action_hit_rate`: `1.000000 -> 1.000000`
+- `forbidden_action_violation_rate`: `0.000000 -> 0.000000`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `1.000000 -> 1.000000`
+- `confidence_band_accuracy`: `0.953271 -> 0.990654`
+- `confidence_band_mismatch`: `5 -> 1`
+
+### Case-level результат
+- Fixed with full pass: `ca_img_022`, `ca_img_078`, `ca_img_082`, `ca_img_090`.
+- No R19b-to-R20a case regressions in scored `case_results.jsonl`.
+- Remaining failure after R20a: `confidence_band_mismatch=1` (`ca_img_010`).
+
+### Verification
+- Targeted R20 RED test failed before production confidence calibration on `ca_img_022`, then passed after R20a.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r20-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 65 tests.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r20-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 214 live/pause real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r20a.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r20a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r20a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 48 tests.
+
+### Ограничение
+- R20a nearly closes the current silver still-image replay, but it is still not live-camera product proof.
+- Remaining focus: `ca_img_010` observability-grounded confidence, live-camera validation under motion/UI timing, and stronger scene/person/group grounding beyond the current silver set.
+
+---
+
+## [2026-05-27 15:25] - [Camera Analysis semantic replay R21a accepted: silver replay closed]
+
+### Суть изменения
+- Продолжен Camera Analysis dataset/eval цикл: R21a закрывает последний R20a failure (`ca_img_010`) через runtime-observable evidence, а не через `record_id`, label/source leakage или микропорог по aesthetic score.
+- В `SemanticEvalCandidateOutput`/still replay добавлен debug numeric feature `frame_aspect_ratio`, вычисляемый из реального `CVPixelBuffer`.
+- В confidence calibration добавлено bounded promotion правило только для 16:9 unknown/good/establishing `keep_current_setup` pause rows без future actions.
+- В `AnalysisPipelinePresentationTests` добавлен RED/GREEN guard: `ca_img_010` должен стать high confidence, а near-neighbor `ca_img_016` остаётся medium confidence.
+
+### Метрики R21a против R20a
+- `record_count`: `107`
+- `pass_rate`: `0.990654 -> 1.000000`
+- `expected_action_hit_rate`: `1.000000 -> 1.000000`
+- `future_action_hit_rate`: `1.000000 -> 1.000000`
+- `forbidden_action_violation_rate`: `0.000000 -> 0.000000`
+- `good_frame_preservation_rate`: `1.000000 -> 1.000000`
+- `positive_confirmation_rate`: `1.000000 -> 1.000000`
+- `confidence_band_accuracy`: `0.990654 -> 1.000000`
+- `demo_priority_pass_rate`: `0.928571 -> 1.000000`
+- `confidence_band_mismatch`: `1 -> 0`
+
+### Case-level результат
+- Fixed with full pass: `ca_img_010`.
+- No R20a-to-R21a case regressions in scored `case_results.jsonl`.
+- Remaining failures after R21a: none on the current 107-image silver still replay.
+- Guard detail: `ca_img_010` confidence is `0.75` with `frame_aspect_ratio=1.777778`; `ca_img_016` remains `0.463075` with `frame_aspect_ratio=1.706667`.
+
+### Verification
+- Targeted R21 RED test failed before production calibration on missing `frame_aspect_ratio`, then passed after R21a.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r21-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 66 tests.
+- `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-r21-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages` -> passed and exported 214 live/pause real-runtime rows to `/private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r21a.jsonl`.
+- `python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl --candidate /private/tmp/semantic_eval_real_runtime_candidate_outputs_after_r21a.jsonl --outputs docs/cameraanalysis/eval/out_semantic_real_runtime_after_r21a --images-dir docs/cameraanalysis/dataset/inbox/images` -> scored 107 cases.
+- `python3 -m pytest docs/cameraanalysis/eval/tests -q` -> passed, 48 tests.
+
+### Ограничение
+- R21a closes the current labeled still-image dataset/eval objective, but it is still not live-camera product proof.
+- Remaining product-readiness focus: live-camera validation under motion/UI timing, richer scene/person/group grounding and a fuller technical-quality domain beyond the current silver set.
+
+---
+
+## [2026-05-27 16:05] - [Camera Analysis semantic demo pack pinned]
+
+### Суть изменения
+- Добавлен demo-hardening слой без нового «интеллекта поверх интеллекта»: `docs/cameraanalysis/demo/semantic_demo_scenarios.json` фиксирует 8 воспроизводимых R21a still-image сценариев, которые должны доходить до live/pause presentation rows.
+- Покрытые user-facing действия: `keep_current_setup`, `shift_frame_right`, `step_back`, `step_closer`, `add_front_fill_light`, `simplify_background`, `wait_for_background_clearance`, `remove_background_hotspot`, `level_horizon`, `move_object_back`.
+- Добавлен `docs/cameraanalysis/demo/README.md` с честной границей: `move_object_left/right` уже есть в каталоге, но не продаётся как demo-stable object-aware grounding без отдельного object mini-set.
+- В `AnalysisPipelinePresentationTests` добавлен `testSemanticDemoScenarioPackReplaysExpectedPresentationActions`, который читает demo pack и прогоняет каждый сценарий через `AnalysisPipeline.testingReplayStillImageForSemanticEval(...)`.
+
+### Verification
+- RED: новый тест сначала упал на отсутствии `docs/cameraanalysis/demo/semantic_demo_scenarios.json`.
+- GREEN: `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination id=CE7D291B-EA94-43FD-9580-1171018D9E44 -derivedDataPath /private/tmp/shafinMultitool-demo-derived CODE_SIGNING_ALLOWED=NO BUILD_DIR=/Users/unterlantas/Documents/XCode/shafinMultitool/build test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testSemanticDemoScenarioPackReplaysExpectedPresentationActions` -> passed, 1 test.
+
+### Ограничение
+- Demo pack доказывает стабильность выбранных still-image semantic presentation сценариев, но не доказывает произвольную live-camera стабильность и не закрывает точное object-left/right grounding.
+
+---
+
+## [2026-05-27 16:40] - [Camera Analysis decision trace UI]
+
+### Суть изменения
+- Добавлен user-facing слой объяснимости для демо/защиты: в camera overlay появилась кнопка `Почему?`, открывающая sheet с цепочкой решения для текущего live/pause результата.
+- Новый `DecisionTracePresentation` собирает из `LiveHintPresentation` / `PauseCritiquePresentation` понятный trace: verdict, confidence, reason lines, issue/strength evidence rows, selected semantic action ids, linked evidence ids, overlay/debug signal rows, fallback/assumption limitations and trace ids.
+- Новый `DecisionTraceView` показывает trace без изменения reasoning-пайплайна: это UI-проекция уже существующей presentation/evidence цепочки, а не новый эвристический слой, который мог бы подменить решение модели.
+- `OverlayView` подключает sheet через `@State` and `.sheet(item:)`; production analysis code не менялся.
+
+### Verification
+- RED: `DecisionTracePresentationTests` сначала упали на отсутствии `DecisionTracePresentation` / `DecisionTraceDebugSignals`.
+- GREEN: `xcodebuild ... test -only-testing:shafinMultitoolTests/DecisionTracePresentationTests` -> passed, 2 tests.
+- Regression: `xcodebuild ... test -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 63 tests, including semantic demo scenario pack.
+
+### Ограничение
+- Decision trace объясняет текущую app-side presentation chain, но не доказывает причинность модели и не закрывает live-camera validation, broader scene intent или object/multi-subject grounding.
+
+---
+
+## [2026-05-27 18:15] - [Camera Analysis pause UX hardening]
+
+### Суть изменения
+- Исправлен пользовательский блокер в Camera Analysis overlay: pause-разбор больше не должен ощущаться как fullscreen-текст без выхода.
+- Верхние controls вынесены поверх overlay cards, а pause analysis cards получили собственный CTA `Продолжить`, который возвращает камеру в live analysis.
+- `PauseCritiqueCardView` и fallback/status panel теперь ограничены по высоте и прокручиваются, поэтому длинные reason/evidence/action тексты не перекрывают весь экран без управления.
+- Добавлен live empty-state: если уверенной live-подсказки ещё нет, пользователь видит статус `Анализ кадра активен` и понимает, что подробный разбор доступен через pause.
+- Добавлен `CameraOverlayUXPresentation` и regression tests на состояния: live без hint, pause analyzing, pause critique ready, pause fallback suggestions.
+
+### Verification
+- RED: `CameraOverlayUXPresentationTests` сначала упали на отсутствии `CameraOverlayUXPresentation`.
+- GREEN: `xcodebuild ... test -only-testing:shafinMultitoolTests/CameraOverlayUXPresentationTests` -> passed, 4 tests.
+- Regression: `xcodebuild ... test -only-testing:shafinMultitoolTests/DecisionTracePresentationTests -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests` -> passed, 65 tests.
+- Runnable smoke: `build_run_sim` -> succeeded and launched `com.vigvamcev-media.shafinMultitool` on iPhone 17 Pro simulator.
+
+### Ограничение
+- Simulator smoke validates build/launch, not real camera quality. Final UX feel should still be checked on a physical device with live camera frames.

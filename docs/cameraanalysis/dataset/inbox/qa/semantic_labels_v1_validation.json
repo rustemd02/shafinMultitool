@@ -1,0 +1,61 @@
+{
+  "status": "passed",
+  "record_count": 107,
+  "quality_counts": {
+    "good": 46,
+    "mixed": 14,
+    "bad": 47
+  },
+  "confidence_counts": {
+    "high": 73,
+    "medium": 31,
+    "low": 3
+  },
+  "source_counts": {
+    "curated_user_inbox": 57,
+    "public_iqa_bad_tail": 50
+  },
+  "demo_priority_count": 14,
+  "expected_action_counts": {
+    "keep_current_setup": 46,
+    "simplify_background": 13,
+    "shift_frame_right": 2,
+    "add_front_fill_light": 7,
+    "wait_for_background_clearance": 6,
+    "add_background_light": 1,
+    "remove_background_hotspot": 10,
+    "change_camera_angle": 4,
+    "level_horizon": 1,
+    "step_closer": 4,
+    "step_back": 2
+  },
+  "future_action_counts": {
+    "stabilize_camera": 30,
+    "refocus_subject": 14,
+    "reduce_exposure": 18,
+    "avoid_occlusion": 2,
+    "increase_exposure": 8,
+    "reduce_iso_noise": 7,
+    "clean_lens": 1
+  },
+  "technical_defect_counts": {
+    "background_clutter": 3,
+    "low_light": 5,
+    "no_clear_focus": 5,
+    "motion_blur": 30,
+    "defocus": 14,
+    "hotspot": 2,
+    "overexposure": 18,
+    "no_clear_subject": 5,
+    "occlusion": 2,
+    "clutter": 1,
+    "underexposure": 8,
+    "horizon": 1,
+    "flash": 1,
+    "subject_too_small": 1,
+    "color_cast": 1,
+    "low_contrast": 1
+  },
+  "live_text_specificity_pass": "passed",
+  "good_live_texts_changed_to_specific": 15
+}

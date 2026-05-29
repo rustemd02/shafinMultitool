@@ -47,6 +47,21 @@ struct SuggestionListView: View {
 struct PauseCritiqueCardView: View {
     let critique: PauseCritiquePresentation
     let legacySuggestions: [Suggestion]
+    let maxHeight: CGFloat?
+    let onContinue: (() -> Void)?
+    let onExplain: (() -> Void)?
+
+    init(critique: PauseCritiquePresentation,
+         legacySuggestions: [Suggestion],
+         maxHeight: CGFloat? = nil,
+         onContinue: (() -> Void)? = nil,
+         onExplain: (() -> Void)? = nil) {
+        self.critique = critique
+        self.legacySuggestions = legacySuggestions
+        self.maxHeight = maxHeight
+        self.onContinue = onContinue
+        self.onExplain = onExplain
+    }
 
     fileprivate struct PauseTipRow: Identifiable {
         let id: String
@@ -57,68 +72,88 @@ struct PauseCritiqueCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-
-            if let summaryText {
-                sectionTitle("Почему")
-                Text(summaryText)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.92))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("Объяснение")
-                    .accessibilityValue(summaryText)
-            }
-
-            if !tipRows.isEmpty {
-                sectionTitle(critique.verdict == .good ? "Что сохранить" : "Что сделать")
-                ForEach(tipRows) { row in
-                    PauseTipRowView(row: row)
+        VStack(spacing: 0) {
+            ScrollView(showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 12) {
+                    content
                 }
-            } else if let noChangeRationale {
-                sectionTitle("Что сделать")
-                PauseTipRowView(
-                    row: PauseTipRow(
-                        id: "no_change",
-                        title: "Оставить кадр",
-                        reason: critique.shortVerdict,
-                        action: noChangeRationale,
-                        confidence: critique.verdictConfidence
-                    )
+                .padding(16)
+            }
+            .frame(maxHeight: maxHeight)
+
+            if onContinue != nil || onExplain != nil {
+                Divider()
+                    .overlay(Color.white.opacity(0.18))
+                PausePanelActionBar(
+                    primaryTitle: "Продолжить",
+                    onContinue: onContinue,
+                    onExplain: onExplain
                 )
             }
-
-            if !evidenceRows.isEmpty {
-                sectionTitle("На чём основано")
-                ForEach(evidenceRows) { row in
-                    PauseEvidenceRowView(row: row)
-                }
-            }
-
-            if showEmptyState {
-                sectionTitle("Состояние кадра")
-                Text("Пока нет новых рекомендаций. Попробуй слегка изменить ракурс и остановить кадр снова.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.9))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("Нет новых рекомендаций")
-                    .accessibilityValue("Измени ракурс и попробуй еще раз.")
-            }
-
-            if critique.fallbackUsed {
-                fallbackBanner
-            }
-
-            if critique.fallbackUsed, !legacySuggestions.isEmpty {
-                sectionTitle("Резервные подсказки")
-                SuggestionListView(suggestions: Array(legacySuggestions.prefix(3)))
-            }
         }
-        .padding(16)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 16)
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        header
+
+        if let summaryText {
+            sectionTitle("Почему")
+            Text(summaryText)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Объяснение")
+                .accessibilityValue(summaryText)
+        }
+
+        if !tipRows.isEmpty {
+            sectionTitle(critique.verdict == .good ? "Что сохранить" : "Что сделать")
+            ForEach(tipRows) { row in
+                PauseTipRowView(row: row)
+            }
+        } else if let noChangeRationale {
+            sectionTitle("Что сделать")
+            PauseTipRowView(
+                row: PauseTipRow(
+                    id: "no_change",
+                    title: "Оставить кадр",
+                    reason: critique.shortVerdict,
+                    action: noChangeRationale,
+                    confidence: critique.verdictConfidence
+                )
+            )
+        }
+
+        if !evidenceRows.isEmpty {
+            sectionTitle("На чём основано")
+            ForEach(evidenceRows) { row in
+                PauseEvidenceRowView(row: row)
+            }
+        }
+
+        if showEmptyState {
+            sectionTitle("Состояние кадра")
+            Text("Пока нет новых рекомендаций. Попробуй слегка изменить ракурс и остановить кадр снова.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Нет новых рекомендаций")
+                .accessibilityValue("Измени ракурс и попробуй еще раз.")
+        }
+
+        if critique.fallbackUsed {
+            fallbackBanner
+        }
+
+        if critique.fallbackUsed, !legacySuggestions.isEmpty {
+            sectionTitle("Резервные подсказки")
+            SuggestionListView(suggestions: Array(legacySuggestions.prefix(3)))
+        }
     }
 
     private var header: some View {
@@ -253,6 +288,109 @@ struct PauseCritiqueCardView: View {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+struct PauseStatusPanelView: View {
+    let title: String
+    let message: String
+    let suggestions: [Suggestion]
+    let maxHeight: CGFloat?
+    let onContinue: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(.white)
+                            .opacity(suggestions.isEmpty ? 1 : 0)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(title)
+                                .font(.headline.weight(.semibold))
+                            Text(message)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if !suggestions.isEmpty {
+                        SuggestionListView(suggestions: suggestions)
+                            .padding(.horizontal, -16)
+                    }
+                }
+                .padding(16)
+            }
+            .frame(maxHeight: maxHeight)
+
+            Divider()
+                .overlay(Color.white.opacity(0.18))
+            PausePanelActionBar(
+                primaryTitle: "Продолжить",
+                onContinue: onContinue,
+                onExplain: nil
+            )
+        }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 16)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct PausePanelActionBar: View {
+    let primaryTitle: String
+    let onContinue: (() -> Void)?
+    let onExplain: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let onExplain {
+                Button(action: onExplain) {
+                    Label("Почему?", systemImage: "questionmark.circle.fill")
+                }
+                .buttonStyle(PausePanelSecondaryButtonStyle())
+                .accessibilityLabel("Показать объяснение решения")
+            }
+
+            Spacer(minLength: 8)
+
+            if let onContinue {
+                Button(action: onContinue) {
+                    Label(primaryTitle, systemImage: "play.fill")
+                }
+                .buttonStyle(PausePanelPrimaryButtonStyle())
+                .accessibilityLabel("Продолжить анализировать кадр")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+private struct PausePanelPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.black.opacity(configuration.isPressed ? 0.62 : 0.9))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(configuration.isPressed ? 0.74 : 0.92), in: Capsule())
+    }
+}
+
+private struct PausePanelSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.65 : 0.96))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.16), in: Capsule())
     }
 }
 

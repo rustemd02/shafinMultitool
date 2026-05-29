@@ -2392,6 +2392,54 @@ final class FeatureSnapshotAggregatorTests: XCTestCase {
         XCTAssertEqual(s1.objects.topKLabels, s2.objects.topKLabels)
     }
 
+    func testDetrBackgroundSegmentsDoNotInflateObjectSummary() {
+        let aggregator = FeatureSnapshotAggregator()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_260)
+        let input = makeInput(
+            capturedAt: capturedAt,
+            detr: makeDetrSample(
+                measuredAt: capturedAt,
+                baseConfidence: 1.0,
+                detections: [
+                    .init(boundingBox: CGRect(x: 0.0, y: 0.0, width: 1.0, height: 1.0), label: "wall (other)", confidence: 1.0),
+                    .init(boundingBox: CGRect(x: 0.0, y: 0.0, width: 1.0, height: 0.82), label: "paper", confidence: 1.0),
+                    .init(boundingBox: CGRect(x: 0.42, y: 0.40, width: 0.16, height: 0.20), label: "cup", confidence: 0.62)
+                ]
+            )
+        )
+
+        let snapshot = aggregator.makeSnapshot(from: input)
+
+        XCTAssertEqual(snapshot.objects.totalCount, 1)
+        XCTAssertEqual(snapshot.objects.topKLabels, ["cup"])
+        XCTAssertEqual(snapshot.subjectSignals.topObjectLabel, "cup")
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateRegion?.x, 0.42)
+    }
+
+    func testFullFrameBackgroundOnlyDetrDoesNotBecomePrimarySubject() {
+        let aggregator = FeatureSnapshotAggregator()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_270)
+        let input = makeInput(
+            capturedAt: capturedAt,
+            detr: makeDetrSample(
+                measuredAt: capturedAt,
+                baseConfidence: 1.0,
+                detections: [
+                    .init(boundingBox: CGRect(x: 0.0, y: 0.0, width: 1.0, height: 1.0), label: "sky (other)", confidence: 1.0),
+                    .init(boundingBox: CGRect(x: 0.0, y: 0.0, width: 0.98, height: 0.74), label: "building (other)", confidence: 0.92)
+                ]
+            )
+        )
+
+        let snapshot = aggregator.makeSnapshot(from: input)
+
+        XCTAssertTrue(snapshot.sources.detr.available)
+        XCTAssertNil(snapshot.subjectSignals.topObjectLabel)
+        XCTAssertNil(snapshot.subjectSignals.primaryCandidateRegion)
+        XCTAssertEqual(snapshot.objects.totalCount, 0)
+        XCTAssertTrue(snapshot.technicalFlags.contains(.lowSubjectConfidence))
+    }
+
     func testEmptyInputUsesDefaultsAndComputesDeterministicFlags() {
         let aggregator = FeatureSnapshotAggregator()
         let capturedAt = Date(timeIntervalSince1970: 1_776_000_300)

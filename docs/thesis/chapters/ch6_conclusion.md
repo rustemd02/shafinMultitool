@@ -1,60 +1,20 @@
 ---
-chapter: 6_conclusion
-status: new
-target_pages: 5-7
-depends_on_claims:
-  - CL-CONTR-001
-  - CL-CONTR-002
-  - CL-CONTR-003
-  - CL-LIM-001
-  - CL-LIM-002
-  - CL-LIM-003
-depends_on_litreview_sections:
-  - Заключение
-last_verified_commit: 02bdf3ae0b711ed5e0b7a640cbf808196d304b62
+status: synced_from_master
+source: /Users/unterlantas/Downloads/ДИССЕР.md
+last_synced: 2026-05-29
+chapter: conclusion
 ---
 
-# Chapter 6. Conclusion
+# **Заключение** {#заключение}
 
-## Purpose
+В результате выполнения выпускной квалификационной работы была достигнута цель по разработке программного обеспечения для оптимизации процессов видеопроизводства с помощью технологий дополненной реальности и алгоритмов распознавания речи.  
+Для достижения поставленной цели были выполнены следующие задачи:
 
-Summarize verified contributions, honestly state limitations and connect the prototype back to the practical gap identified in the litreview.
+* произведена разработка функционала создания и пользовательской настройки анимированных трехмерных раскадровок;  
+* создана математическая модель с использованием метрики Евклида для динамического вычисления скорости перемещения трехмерных моделей в нескольких режимах;  
+* реализована возможность сохранения и загрузки контейнера элементов трехмерного окружения, настроек записи, загруженного сценария, для чего применяются механизмы конвертации информации о моделях в примитивные типы данных;  
+* реализован механизм перехвата кадра у фреймворка дополненной реальности до этапа наложения трехмерной графики с параллельным вычислением временных меток каждого кадра, работающий одновременно с этим механизм записи аудиопотока и механизм последующей синхронизации видео- и аудиодорожек для формирования итогового видеофайла с сохранением его в галерею устройства;  
+* реализованы механизмы отслеживания положения головы человека в кадре и качества картинки на предмет возможного расфокуса, основанные на применении технологий компьютерного зрения;  
+* была произведена разработка механизмов работы с загруженным в приложение сценарием, включая алгоритм сериализации сплошного текста для наглядного вывода его на экран, а также компонентов транскрибирования речи, захваченной с аудиопотока микрофона устройства, и последующего сравнения расшифрованной речи с текстом сценария.
 
-## Proposed sections
-
-1. Completion of research tasks.
-2. Technical contributions.
-3. Experimental results summary.
-4. Limitations.
-5. Future work.
-
-## Claims and evidence
-
-| Use | IDs |
-|---|---|
-| Contributions | CL-CONTR-001, CL-CONTR-002, CL-CONTR-003 |
-| Limitations | CL-LIM-001, CL-LIM-002, CL-LIM-003, CL-CA-002 |
-| Future work | CL-NEEDS-001, CL-NEEDS-002, EV-LIM-001 |
-
-## Litreview links
-
-| Litreview conclusion | Dissertation conclusion |
-|---|---|
-| No integrated mobile solutions | Prototype partially addresses integration for preproduction and shooting. |
-| Quality/performance tradeoff | Structured contracts and deterministic layers improve reliability but do not remove mobile constraints. |
-| Need explainable models | Camera Analysis provides verified deterministic explainability baseline; hybrid path remains future work. |
-
-## Tables/figures placeholders
-
-| Placeholder | Content |
-|---|---|
-| Table 6.1 | Tasks -> outcomes -> evidence IDs. |
-| Table 6.2 | Limitations -> mitigation/future work. |
-
-## TODO
-
-| TODO | Status |
-|---|---|
-| Write only after chapters 2-5 claims are verified. | todo |
-| Keep montage limitation explicit. | always |
-| Avoid introducing new metrics in conclusion. | always |
+	Результаты данной выпускной квалификационной работы опубликованы в открытом доступе в репозитории GitLab и доступны по ссылке: https://git.kpfu.ru/RusFDavletshin/shafinMultitool.
