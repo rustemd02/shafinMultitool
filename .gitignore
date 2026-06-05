@@ -6,6 +6,9 @@ llama.cpp/
 /models
 /.derivedData
 /build/
+/.cursor/
+/codex/
+__pycache__/
 *.pyc
 .DS_Store
 
