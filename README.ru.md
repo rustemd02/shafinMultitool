@@ -229,11 +229,12 @@ xcodebuild -list -workspace shafinMultitool.xcworkspace -json
 </details>
 
 <details>
-<summary>🧾 Корень проекта (корневые артефакты)</summary>
+<summary>🧾 Выбранные артефакты репозитория</summary>
 
 - `generate_dataset_v7.py` — canonical SG v7 entrypoint для SceneScript-проекции.
 - `generate_dataset_v2.py`, `generate_dataset_v6.py` — более старые пайплайны/референсы.
-- `LLAMA_CPP_INTEGRATION.md` — базовые шаги интеграции.
+- [`docs/integrations/llama-cpp-integration.md`](docs/integrations/llama-cpp-integration.md) — базовые шаги интеграции.
+- [`data/legacy/dataset_finetune.jsonl`](data/legacy/dataset_finetune.jsonl), [`data/legacy/dataset_finetune_v2.jsonl`](data/legacy/dataset_finetune_v2.jsonl) — старые обучающие корпуса.
 - `Podfile`, `Podfile.lock`, `Frameworks/` (`llama.xcframework`).
 
 </details>

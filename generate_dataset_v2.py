@@ -14,6 +14,7 @@ import json
 import os
 import random
 import hashlib
+from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, field_validator
 from openai import OpenAI
@@ -102,7 +103,7 @@ class SceneScriptV2(BaseModel):
 # ─────────────────────────────
 
 TARGET_COUNT = 2000
-OUTPUT_FILE = "dataset_finetune_v2.jsonl"
+OUTPUT_FILE = Path(__file__).resolve().parent / "data" / "legacy" / "dataset_finetune_v2.jsonl"
 MODEL = "gpt-5.4-nano"
 
 # Допустимые типы действий для валидации и промпта

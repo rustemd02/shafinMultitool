@@ -1356,7 +1356,7 @@
 
 ### Ключевые файлы
 - `generate_dataset.py` (Пайплайн генерации с OpenAI API)
-- `dataset_finetune.jsonl` (Итоговый обучающий датасет ShareGPT/ChatML)
+- [`data/legacy/dataset_finetune.jsonl`](data/legacy/dataset_finetune.jsonl) (Итоговый обучающий датасет ShareGPT/ChatML)
 
 ---
 
@@ -1443,7 +1443,7 @@
 ### Ключевые файлы
 - `SceneGeneratorModule/Models/SceneScript.swift` (ActionType.talk, dialogue field)
 - `generate_dataset_v2.py` (Strict whitelists, Pydantic validators, balanced weights)
-- `dataset_finetune_v2.jsonl` (Обновленный обучающий датасет с диалогами)
+- [`data/legacy/dataset_finetune_v2.jsonl`](data/legacy/dataset_finetune_v2.jsonl) (Обновленный обучающий датасет с диалогами)
 
 ---
 

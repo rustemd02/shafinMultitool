@@ -231,11 +231,12 @@ xcodebuild -list -workspace shafinMultitool.xcworkspace -json
 </details>
 
 <details>
-<summary>🧾 Repository root artifacts</summary>
+<summary>🧾 Selected repository artifacts</summary>
 
 - `generate_dataset_v7.py` — canonical SceneScript entrypoint for SGv7.
 - `generate_dataset_v2.py`, `generate_dataset_v6.py` — legacy/reference pipelines.
-- `LLAMA_CPP_INTEGRATION.md` — llama integration notes.
+- [`docs/integrations/llama-cpp-integration.md`](docs/integrations/llama-cpp-integration.md) — llama integration notes.
+- [`data/legacy/dataset_finetune.jsonl`](data/legacy/dataset_finetune.jsonl), [`data/legacy/dataset_finetune_v2.jsonl`](data/legacy/dataset_finetune_v2.jsonl) — legacy training corpora.
 - `Podfile`, `Podfile.lock`, `Frameworks/` (`llama.xcframework`).
 
 </details>
