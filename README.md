@@ -17,6 +17,8 @@
 ![CoreML](https://img.shields.io/badge/ML-CoreML-FF6F00)
 ![Tests](https://img.shields.io/badge/Tests-~180%2B-4EAA25)
 
+**Shafin Multitool is for beginner filmmakers:** it helps you quickly draft scene boards from text (shot/shotlist planning) and get explainable camera analysis while rehearsing shots.
+
 ---
 
 <a id="-overview"></a>
@@ -364,4 +366,3 @@ python3 docs/uml/generate_swift_uml.py \
   4. Update docs when claims/benchmarks change.
 
 ---
-

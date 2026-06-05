@@ -18,6 +18,8 @@
 ![CoreML](https://img.shields.io/badge/ML-CoreML-FF6F00)
 ![Tests](https://img.shields.io/badge/Tests-~180%2B-4EAA25)
 
+**Shafin Multitool — проект для начинающих киноделов:** помогает быстро делать раскадровки на основе сценария и разбираться с камерой через объяснимый анализ кадров.
+
 ---
 
 ## 📌 Быстрый взгляд
