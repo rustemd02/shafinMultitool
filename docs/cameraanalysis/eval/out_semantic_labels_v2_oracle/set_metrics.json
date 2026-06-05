@@ -1,0 +1,17 @@
+{
+  "candidate_id": "oracle_projection",
+  "runtime_claim": "label_oracle",
+  "set_metrics": {
+    "confidence_band_accuracy": 1.0,
+    "demo_priority_pass_rate": 1.0,
+    "expected_action_hit_rate": 1.0,
+    "failure_counts": {},
+    "forbidden_action_violation_rate": 0.0,
+    "future_action_hit_rate": 1.0,
+    "good_frame_preservation_rate": 1.0,
+    "pass_rate": 1.0,
+    "positive_confirmation_rate": 1.0,
+    "record_count": 207,
+    "technical_failure_gate_rate": 1.0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "candidate_id": "semantic_eval_real_runtime_candidate_outputs_v2_minus15_appletv_good",
+  "runtime_claim": "real_runtime_still_replay",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.911458,
+    "demo_priority_pass_rate": 0.547619,
+    "expected_action_hit_rate": 0.760417,
+    "failure_counts": {
+      "confidence_band_mismatch": 17,
+      "forbidden_action_violation": 39,
+      "good_frame_overcorrection": 12,
+      "missing_expected_action": 46,
+      "missing_future_action": 12,
+      "missing_positive_confirmation": 12,
+      "semantic_overreach_on_technical_failure": 1
+    },
+    "forbidden_action_violation_rate": 0.203125,
+    "future_action_hit_rate": 0.848101,
+    "good_frame_preservation_rate": 0.851852,
+    "pass_rate": 0.723958,
+    "positive_confirmation_rate": 0.851852,
+    "record_count": 192,
+    "technical_failure_gate_rate": 0.962963
+  }
+}

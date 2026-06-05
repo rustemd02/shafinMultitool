@@ -1624,6 +1624,391 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testStillImageReplayPreservesCinematicEstablishingDespiteTechnicalFuture() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [("ca_img_112", "112.jpg"), ("ca_img_127", "127.jpg")] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_225),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.simplifyBackground.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.removeBackgroundHotspot.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)"
+            )
+        }
+    }
+
+    @MainActor
+    func testStillImageReplayMapsSyntheticHotspotToCorrectiveSemanticActions() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        let result = await pipeline.testingReplayStillImageForSemanticEval(
+            recordId: "ca_img_179",
+            filename: "179.jpg",
+            pixelBuffer: try makeDatasetPixelBuffer(named: "179.jpg"),
+            orientation: .up,
+            capturedAt: Date(timeIntervalSince1970: 1_768_500_226),
+            options: .fullRuntime
+        )
+
+        XCTAssertTrue(
+            result.pauseRow.semanticActions.contains(SemanticActionType.removeBackgroundHotspot.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+        XCTAssertTrue(
+            result.pauseRow.semanticActions.contains(SemanticActionType.changeCameraAngle.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+        XCTAssertTrue(
+            result.pauseRow.futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+        XCTAssertFalse(
+            result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+    }
+
+    @MainActor
+    func testStillImageReplayMapsSyntheticEdgeCutoffToStepBackAndOcclusionFuture() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        let result = await pipeline.testingReplayStillImageForSemanticEval(
+            recordId: "ca_img_184",
+            filename: "184.jpg",
+            pixelBuffer: try makeDatasetPixelBuffer(named: "184.jpg"),
+            orientation: .up,
+            capturedAt: Date(timeIntervalSince1970: 1_768_500_227),
+            options: .fullRuntime
+        )
+
+        XCTAssertTrue(result.pauseRow.semanticActions.contains(SemanticActionType.stepBack.rawValue))
+        XCTAssertTrue(result.pauseRow.semanticActions.contains(SemanticActionType.shiftFrameRight.rawValue))
+        XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.avoidOcclusion.rawValue))
+        XCTAssertFalse(result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue))
+    }
+
+    @MainActor
+    func testStillImageReplayMapsSyntheticUnderexposureToFrontFillAndSubjectRotation() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        let result = await pipeline.testingReplayStillImageForSemanticEval(
+            recordId: "ca_img_180",
+            filename: "180.jpg",
+            pixelBuffer: try makeDatasetPixelBuffer(named: "180.jpg"),
+            orientation: .up,
+            capturedAt: Date(timeIntervalSince1970: 1_768_500_228),
+            options: .fullRuntime
+        )
+
+        XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue))
+        XCTAssertFalse(result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue))
+    }
+
+    @MainActor
+    func testStillImageReplayMapsUnknownSyntheticUnderexposureAndOcclusionToLightingAndCleanup() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        let result = await pipeline.testingReplayStillImageForSemanticEval(
+            recordId: "ca_img_168",
+            filename: "168.jpg",
+            pixelBuffer: try makeDatasetPixelBuffer(named: "168.jpg"),
+            orientation: .up,
+            capturedAt: Date(timeIntervalSince1970: 1_768_500_228),
+            options: .fullRuntime
+        )
+
+        XCTAssertTrue(
+            result.pauseRow.semanticActions.contains(SemanticActionType.addFrontFillLight.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+        XCTAssertTrue(
+            result.pauseRow.semanticActions.contains(SemanticActionType.changeCameraAngle.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+        XCTAssertFalse(
+            result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+    }
+
+    @MainActor
+    func testStillImageReplayKeepsSyntheticMotionBlurTechnicalOnly() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [("ca_img_181", "181.jpg"), ("ca_img_189", "189.jpg")] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_229),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue), "recordId=\(recordId)")
+            XCTAssertTrue(result.pauseRow.semanticActions.isEmpty, "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)")
+            XCTAssertFalse(result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue), "recordId=\(recordId)")
+        }
+    }
+
+    @MainActor
+    func testStillImageReplayMapsSyntheticSmallSubjectToStepCloser() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [("ca_img_182", "182.jpg"), ("ca_img_206", "206.jpg")] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_230),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.stepCloser.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)"
+            )
+        }
+    }
+
+    @MainActor
+    func testStillImageReplaySuppressesPreservationForReadableSyntheticSmallSubject() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        let result = await pipeline.testingReplayStillImageForSemanticEval(
+            recordId: "ca_img_190",
+            filename: "190.jpg",
+            pixelBuffer: try makeDatasetPixelBuffer(named: "190.jpg"),
+            orientation: .up,
+            capturedAt: Date(timeIntervalSince1970: 1_768_500_230),
+            options: .fullRuntime
+        )
+
+        XCTAssertTrue(
+            result.pauseRow.semanticActions.contains(SemanticActionType.stepCloser.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+        XCTAssertFalse(
+            result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
+        )
+    }
+
+    @MainActor
+    func testStillImageReplayMapsSyntheticClutterToSemanticCleanup() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [("ca_img_183", "183.jpg")] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_231),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.simplifyBackground.rawValue) ||
+                    result.pauseRow.semanticActions.contains(SemanticActionType.removeDistractingObject.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)"
+            )
+        }
+    }
+
+    @MainActor
+    func testStillImageReplayMapsSyntheticCrookedFramesToLevelHorizon() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [("ca_img_194", "194.jpg"), ("ca_img_202", "202.jpg")] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_232),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.levelHorizon.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)"
+            )
+        }
+    }
+
+    @MainActor
+    func testStillImageReplayMapsUnknownSyntheticUnderexposureToLightingAdvice() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [("ca_img_188", "188.jpg"), ("ca_img_204", "204.jpg")] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_233),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.addFrontFillLight.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
+            )
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.rotateSubjectTowardLight.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)"
+            )
+        }
+    }
+
+    @MainActor
+    func testStillImageReplayPreservesNarrativeEstablishingFramesWithKeepCurrentSetup() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [
+            ("ca_img_003", "003.jpg"),
+            ("ca_img_015", "015.jpeg"),
+            ("ca_img_125", "125.jpg"),
+            ("ca_img_127", "127.jpg"),
+            ("ca_img_132", "132.jpg")
+        ] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_234),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
+            )
+            XCTAssertGreaterThanOrEqual(result.pauseRow.confidence, 0.75, "recordId=\(recordId)")
+        }
+    }
+
+    @MainActor
+    func testStillImageReplayDoesNotOvercorrectCinematicGoodObjectInsertFrames() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [
+            ("ca_img_035", "035.jpg"),
+            ("ca_img_109", "109.jpg"),
+            ("ca_img_123", "123.jpg"),
+            ("ca_img_131", "131.jpg"),
+            ("ca_img_135", "135.jpg")
+        ] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_235),
+                options: .fullRuntime
+            )
+
+            XCTAssertTrue(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.removeBackgroundHotspot.rawValue) ||
+                    result.pauseRow.semanticActions.contains(SemanticActionType.simplifyBackground.rawValue) ||
+                    result.pauseRow.semanticActions.contains(SemanticActionType.stepBack.rawValue) ||
+                    result.pauseRow.semanticActions.contains(SemanticActionType.stepCloser.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions)"
+            )
+        }
+    }
+
+    @MainActor
     func testStillImageReplayMapsDistanceAndColorCastSemanticFailures() async throws {
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,
@@ -2712,6 +3097,15 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
             case deleteAfterRead = "delete_after_read"
         }
 
+        private enum LegacyCodingKeys: String, CodingKey {
+            case labelsPath
+            case imagesRootPath
+            case outputPath
+            case runtime
+            case limit
+            case deleteAfterRead
+        }
+
         init(labelsPath: String,
              imagesRootPath: String,
              outputPath: String,
@@ -2728,12 +3122,20 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            labelsPath = try container.decode(String.self, forKey: .labelsPath)
-            imagesRootPath = try container.decode(String.self, forKey: .imagesRootPath)
-            outputPath = try container.decode(String.self, forKey: .outputPath)
+            let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            labelsPath = try container.decodeIfPresent(String.self, forKey: .labelsPath)
+                ?? legacyContainer.decode(String.self, forKey: .labelsPath)
+            imagesRootPath = try container.decodeIfPresent(String.self, forKey: .imagesRootPath)
+                ?? legacyContainer.decode(String.self, forKey: .imagesRootPath)
+            outputPath = try container.decodeIfPresent(String.self, forKey: .outputPath)
+                ?? legacyContainer.decode(String.self, forKey: .outputPath)
             runtime = try container.decodeIfPresent(String.self, forKey: .runtime)
+                ?? legacyContainer.decodeIfPresent(String.self, forKey: .runtime)
             limit = try container.decodeIfPresent(Int.self, forKey: .limit)
-            deleteAfterRead = try container.decodeIfPresent(Bool.self, forKey: .deleteAfterRead) ?? true
+                ?? legacyContainer.decodeIfPresent(Int.self, forKey: .limit)
+            deleteAfterRead = try container.decodeIfPresent(Bool.self, forKey: .deleteAfterRead)
+                ?? legacyContainer.decodeIfPresent(Bool.self, forKey: .deleteAfterRead)
+                ?? true
         }
     }
 
@@ -2752,6 +3154,7 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
         guard let config = try loadReplayConfig() else {
             throw XCTSkip("Set env config or write /private/tmp/semantic_eval_replay_config.json to export semantic still-image replay rows.")
         }
+        print("Semantic eval replay config output path: \(config.outputPath)")
 
         let labels = try loadLabels(path: config.labelsPath)
         let limit = config.limit
@@ -2785,6 +3188,11 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
             withIntermediateDirectories: true
         )
         try writeRows(rows, to: outputURL)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: outputURL.path),
+            "Expected semantic eval export at \(outputURL.path)"
+        )
+        print("Semantic eval replay exported \(rows.count) rows to \(outputURL.path)")
 
         XCTAssertEqual(rows.count, selectedLabels.count * 2)
         if options.runtimeClaim == .realRuntimeStillReplay {
@@ -2809,11 +3217,24 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
             )
         }
 
-        let configPath = env["SEMANTIC_EVAL_CONFIG"] ?? "/private/tmp/semantic_eval_replay_config.json"
-        let configURL = URL(fileURLWithPath: configPath)
-        guard FileManager.default.fileExists(atPath: configURL.path) else {
+        let fileManager = FileManager.default
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let repositoryConfigPath = repositoryRoot
+            .appendingPathComponent("docs/cameraanalysis/eval/semantic_eval_replay_config.json")
+            .path
+        let configCandidates: [String] = [
+            env["SEMANTIC_EVAL_CONFIG"],
+            "/private/tmp/semantic_eval_replay_config.json",
+            fileManager.currentDirectoryPath + "/docs/cameraanalysis/eval/semantic_eval_replay_config.json",
+            repositoryConfigPath
+        ].compactMap { $0 }
+        guard let configPath = configCandidates.first(where: { fileManager.fileExists(atPath: $0) }) else {
             return nil
         }
+        let configURL = URL(fileURLWithPath: configPath)
+        print("Semantic eval replay config path: \(configURL.path)")
         let config = try JSONDecoder().decode(
             SemanticEvalReplayConfig.self,
             from: Data(contentsOf: configURL)

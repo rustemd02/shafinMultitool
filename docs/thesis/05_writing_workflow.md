@@ -10,6 +10,17 @@ Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
 4. A litreview claim must stay `litreview_claim` unless a separate bibliography check verifies it.
 5. If source is missing, mark `needs_source`; do not invent.
 
+## Chapter 4 math and visual requirements
+
+When drafting chapter 4 (`Механизмы анализа изображения`) and its subsections, include mathematical formulas that are actually used or directly reflected in the project implementation. Do not invent formulas for cosmetic density. Prefer formulas for normalized coordinates, bounding-box area, composition offsets, saliency smoothing, luminance, lighting indices, exposure bias, motion magnitude, `shakeLevel`, EMA/Kalman smoothing, confidence/freshness normalization and rule-score aggregation when the corresponding code/docs are present in the context packet.
+
+For chapter 4 drafts, explicitly mark good insertion points for:
+- formulas (`[Формула: ...]`);
+- figures/diagrams (`[Рисунок: ...]`);
+- tables (`[Таблица: ...]`).
+
+Primary formula sources for Camera Analysis include `AnalysisPipeline.swift`, `CameraAnalysisDomainContracts.swift`, `LightingEstimator.swift`, `HorizonEstimator.swift`, `MotionGate.swift`, `EMA.swift`, `KalmanFilter.swift` and `FrameCritiqueEngine.swift`.
+
 ## Recommended order
 
 | Step | Output | Tool/persona |

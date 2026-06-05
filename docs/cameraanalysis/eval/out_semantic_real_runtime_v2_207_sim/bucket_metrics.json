@@ -1,0 +1,2526 @@
+{
+  "bucket_metrics": {
+    "eval_tags": {
+      "abstract": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 2,
+        "technical_failure_gate_rate": 1.0
+      },
+      "apple_tv_press": {
+        "confidence_band_accuracy": 0.68,
+        "expected_action_hit_rate": 0.56,
+        "failure_counts": {
+          "confidence_band_mismatch": 16,
+          "forbidden_action_violation": 8,
+          "good_frame_overcorrection": 9,
+          "missing_expected_action": 22,
+          "missing_positive_confirmation": 22
+        },
+        "forbidden_action_violation_rate": 0.16,
+        "good_frame_preservation_rate": 0.82,
+        "pass_rate": 0.4,
+        "positive_confirmation_rate": 0.56,
+        "record_count": 50,
+        "technical_failure_gate_rate": null
+      },
+      "architecture": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "avoid_overcorrection": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "avoid_too_dark_false_positive": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "background_clutter": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.428571,
+        "failure_counts": {
+          "forbidden_action_violation": 2,
+          "missing_expected_action": 4
+        },
+        "forbidden_action_violation_rate": 0.285714,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.428571,
+        "positive_confirmation_rate": null,
+        "record_count": 7,
+        "technical_failure_gate_rate": null
+      },
+      "background_competition": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "background_texture": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "backlight": {
+        "confidence_band_accuracy": 0.75,
+        "expected_action_hit_rate": 0.25,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 3
+        },
+        "forbidden_action_violation_rate": 0.25,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.25,
+        "positive_confirmation_rate": null,
+        "record_count": 4,
+        "technical_failure_gate_rate": null
+      },
+      "backlight_style": {
+        "confidence_band_accuracy": 0.333333,
+        "expected_action_hit_rate": 0.666667,
+        "failure_counts": {
+          "confidence_band_mismatch": 2,
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.333333,
+        "good_frame_preservation_rate": 0.666667,
+        "pass_rate": 0.333333,
+        "positive_confirmation_rate": 0.666667,
+        "record_count": 3,
+        "technical_failure_gate_rate": null
+      },
+      "bad_crop": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "bad_headroom": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "black_white": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 4,
+        "technical_failure_gate_rate": null
+      },
+      "branches": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "cinematic": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "cinematic_depth": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "cinematic_preservation": {
+        "confidence_band_accuracy": 0.68,
+        "expected_action_hit_rate": 0.56,
+        "failure_counts": {
+          "confidence_band_mismatch": 16,
+          "forbidden_action_violation": 8,
+          "good_frame_overcorrection": 9,
+          "missing_expected_action": 22,
+          "missing_positive_confirmation": 22
+        },
+        "forbidden_action_violation_rate": 0.16,
+        "good_frame_preservation_rate": 0.82,
+        "pass_rate": 0.4,
+        "positive_confirmation_rate": 0.56,
+        "record_count": 50,
+        "technical_failure_gate_rate": null
+      },
+      "club": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "clutter": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "confidence_band_mismatch": 3,
+          "forbidden_action_violation": 2,
+          "missing_expected_action": 3,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.333333,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.166667,
+        "positive_confirmation_rate": null,
+        "record_count": 6,
+        "technical_failure_gate_rate": null
+      },
+      "color_cast": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "composition": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "crooked_horizon": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 2,
+          "forbidden_action_violation": 4,
+          "missing_expected_action": 4
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 4,
+        "technical_failure_gate_rate": null
+      },
+      "crowd": {
+        "confidence_band_accuracy": 0.714286,
+        "expected_action_hit_rate": 0.571429,
+        "failure_counts": {
+          "confidence_band_mismatch": 2,
+          "forbidden_action_violation": 3,
+          "missing_expected_action": 3,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.428571,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.571429,
+        "positive_confirmation_rate": null,
+        "record_count": 7,
+        "technical_failure_gate_rate": null
+      },
+      "defocus": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 7,
+        "technical_failure_gate_rate": 1.0
+      },
+      "demo_good_backlight": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_cinematic": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 4,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_composition": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_group": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_light": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_low_key": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_negative_space": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_object": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "demo_good_portrait": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "depth": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "dialogue": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "edge_cutoff": {
+        "confidence_band_accuracy": 0.692308,
+        "expected_action_hit_rate": 0.076923,
+        "failure_counts": {
+          "confidence_band_mismatch": 4,
+          "forbidden_action_violation": 10,
+          "missing_expected_action": 12,
+          "missing_future_action": 9
+        },
+        "forbidden_action_violation_rate": 0.769231,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.076923,
+        "positive_confirmation_rate": null,
+        "record_count": 13,
+        "technical_failure_gate_rate": null
+      },
+      "edge_pressure": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "empty_space": {
+        "confidence_band_accuracy": 0.8,
+        "expected_action_hit_rate": 0.4,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 3,
+          "missing_expected_action": 3,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.6,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.4,
+        "positive_confirmation_rate": null,
+        "record_count": 5,
+        "technical_failure_gate_rate": null
+      },
+      "establishing": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "flash": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "foreground_bars": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "foreground_obstruction": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.333333,
+        "failure_counts": {
+          "confidence_band_mismatch": 3,
+          "forbidden_action_violation": 3,
+          "missing_expected_action": 4,
+          "missing_future_action": 3
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 6,
+        "technical_failure_gate_rate": null
+      },
+      "framing": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "glare": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "group_subject": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 15,
+        "technical_failure_gate_rate": null
+      },
+      "headroom": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 2,
+          "missing_expected_action": 2,
+          "missing_future_action": 2
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "horizon": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "hotspot": {
+        "confidence_band_accuracy": 0.9,
+        "expected_action_hit_rate": 0.6,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 3,
+          "missing_expected_action": 4,
+          "missing_future_action": 2
+        },
+        "forbidden_action_violation_rate": 0.3,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.6,
+        "positive_confirmation_rate": null,
+        "record_count": 10,
+        "technical_failure_gate_rate": 1.0
+      },
+      "imagegen_bad": {
+        "confidence_band_accuracy": 0.7,
+        "expected_action_hit_rate": 0.25,
+        "failure_counts": {
+          "confidence_band_mismatch": 6,
+          "forbidden_action_violation": 12,
+          "missing_expected_action": 15,
+          "missing_future_action": 7
+        },
+        "forbidden_action_violation_rate": 0.6,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.15,
+        "positive_confirmation_rate": null,
+        "record_count": 20,
+        "technical_failure_gate_rate": null
+      },
+      "imagegen_bad_v1": {
+        "confidence_band_accuracy": 0.7,
+        "expected_action_hit_rate": 0.25,
+        "failure_counts": {
+          "confidence_band_mismatch": 6,
+          "forbidden_action_violation": 12,
+          "missing_expected_action": 15,
+          "missing_future_action": 7
+        },
+        "forbidden_action_violation_rate": 0.6,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.15,
+        "positive_confirmation_rate": null,
+        "record_count": 20,
+        "technical_failure_gate_rate": null
+      },
+      "interior": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 6,
+        "technical_failure_gate_rate": null
+      },
+      "landscape": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 5,
+        "technical_failure_gate_rate": 1.0
+      },
+      "light_separation": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "low_confidence_silence": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 3,
+        "technical_failure_gate_rate": 1.0
+      },
+      "low_contrast": {
+        "confidence_band_accuracy": 0.25,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 3,
+          "missing_future_action": 2
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.25,
+        "positive_confirmation_rate": null,
+        "record_count": 4,
+        "technical_failure_gate_rate": 1.0
+      },
+      "low_key": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 9,
+        "technical_failure_gate_rate": null
+      },
+      "low_key_style": {
+        "confidence_band_accuracy": 0.363636,
+        "expected_action_hit_rate": 0.363636,
+        "failure_counts": {
+          "confidence_band_mismatch": 7,
+          "missing_expected_action": 7,
+          "missing_positive_confirmation": 7
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.090909,
+        "positive_confirmation_rate": 0.363636,
+        "record_count": 11,
+        "technical_failure_gate_rate": null
+      },
+      "low_light": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.555556,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 4
+        },
+        "forbidden_action_violation_rate": 0.111111,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.555556,
+        "positive_confirmation_rate": null,
+        "record_count": 9,
+        "technical_failure_gate_rate": null
+      },
+      "low_readability": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "motion_blur": {
+        "confidence_band_accuracy": 0.789474,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 4,
+          "forbidden_action_violation": 2,
+          "missing_future_action": 2,
+          "semantic_overreach_on_technical_failure": 1
+        },
+        "forbidden_action_violation_rate": 0.105263,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.789474,
+        "positive_confirmation_rate": null,
+        "record_count": 19,
+        "technical_failure_gate_rate": 0.923077
+      },
+      "neon": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "night": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 4,
+        "technical_failure_gate_rate": 1.0
+      },
+      "no_clear_focus": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 5,
+        "technical_failure_gate_rate": null
+      },
+      "no_clear_subject": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 5,
+        "technical_failure_gate_rate": 1.0
+      },
+      "noise": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 3,
+          "missing_future_action": 2
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 3,
+        "technical_failure_gate_rate": 1.0
+      },
+      "object": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 5,
+        "technical_failure_gate_rate": 1.0
+      },
+      "object_and_person": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "object_light": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "object_still_life": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 3,
+        "technical_failure_gate_rate": null
+      },
+      "occlusion": {
+        "confidence_band_accuracy": 0.888889,
+        "expected_action_hit_rate": 0.222222,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 4,
+          "missing_expected_action": 7,
+          "missing_future_action": 6
+        },
+        "forbidden_action_violation_rate": 0.444444,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.222222,
+        "positive_confirmation_rate": null,
+        "record_count": 9,
+        "technical_failure_gate_rate": 1.0
+      },
+      "outdoor": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "overexposure": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.823529,
+        "failure_counts": {
+          "forbidden_action_violation": 2,
+          "missing_expected_action": 3,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.117647,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.823529,
+        "positive_confirmation_rate": null,
+        "record_count": 17,
+        "technical_failure_gate_rate": 1.0
+      },
+      "paired_variant": {
+        "confidence_band_accuracy": 0.666667,
+        "expected_action_hit_rate": 0.266667,
+        "failure_counts": {
+          "confidence_band_mismatch": 10,
+          "forbidden_action_violation": 15,
+          "missing_expected_action": 22,
+          "missing_future_action": 8,
+          "semantic_overreach_on_technical_failure": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.033333,
+        "positive_confirmation_rate": null,
+        "record_count": 30,
+        "technical_failure_gate_rate": 0.857143
+      },
+      "parent_108": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_109": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_110": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_111": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_112": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_113": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_114": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_115": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_116": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_117": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_118": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_119": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_120": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_121": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_122": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_123": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_124": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_125": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_126": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_127": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_128": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_129": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_130": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_131": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": 1.0
+      },
+      "parent_132": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_133": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_134": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_135": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": 1.0
+      },
+      "parent_136": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_137": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_138": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_139": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": 1.0
+      },
+      "parent_140": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_141": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_142": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_143": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": 1.0
+      },
+      "parent_144": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_145": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_146": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_147": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "semantic_overreach_on_technical_failure": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": 0.0
+      },
+      "parent_148": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_149": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_150": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_151": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": 1.0
+      },
+      "parent_152": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_153": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_154": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_155": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": 1.0
+      },
+      "parent_156": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_157": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_bad-monkey": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_coda": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_constellation": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": 0.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_criminal-record": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_dark-matter": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_defending-jacob": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_f1": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_fingernails": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_for-all-mankind": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_foundation": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_hijack": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_home-before-dark": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_invasion": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_lessons-in-chemistry": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_luck": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_lucky": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": 0.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_masters-of-the-air": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_monarch-legacy-of-monsters": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 2,
+          "missing_positive_confirmation": 2
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_pachinko": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_pluribus": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_expected_action": 2,
+          "missing_positive_confirmation": 2
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_presumed-innocent": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 2,
+          "missing_positive_confirmation": 2
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_see": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "confidence_band_mismatch": 2,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_severance": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_shrinking": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_silo": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "missing_expected_action": 2,
+          "missing_positive_confirmation": 2
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_slow-horses": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_sugar": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_ted-lasso": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_the-last-frontier": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_the-morning-show": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_the-studio": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "parent_source_trying": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "party": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "person": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "pet": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 2,
+        "technical_failure_gate_rate": 1.0
+      },
+      "portrait": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.928571,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1
+        },
+        "forbidden_action_violation_rate": 0.071429,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.928571,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 14,
+        "technical_failure_gate_rate": 1.0
+      },
+      "presentation": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "silhouette": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "spotlight": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "stage": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 9,
+        "technical_failure_gate_rate": null
+      },
+      "street": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 7,
+        "technical_failure_gate_rate": 1.0
+      },
+      "street_night": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 5,
+        "technical_failure_gate_rate": null
+      },
+      "stylized_color": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "stylized_or_low_key": {
+        "confidence_band_accuracy": 0.285714,
+        "expected_action_hit_rate": 0.428571,
+        "failure_counts": {
+          "confidence_band_mismatch": 10,
+          "forbidden_action_violation": 2,
+          "good_frame_overcorrection": 2,
+          "missing_expected_action": 8,
+          "missing_positive_confirmation": 8
+        },
+        "forbidden_action_violation_rate": 0.142857,
+        "good_frame_preservation_rate": 0.857143,
+        "pass_rate": 0.071429,
+        "positive_confirmation_rate": 0.428571,
+        "record_count": 14,
+        "technical_failure_gate_rate": null
+      },
+      "stylized_scale": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "confidence_band_mismatch": 2,
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 2,
+          "missing_positive_confirmation": 2
+        },
+        "forbidden_action_violation_rate": 0.25,
+        "good_frame_preservation_rate": 0.75,
+        "pass_rate": 0.25,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 4,
+        "technical_failure_gate_rate": null
+      },
+      "subject_too_small": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.142857,
+        "failure_counts": {
+          "forbidden_action_violation": 4,
+          "missing_expected_action": 6
+        },
+        "forbidden_action_violation_rate": 0.571429,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.142857,
+        "positive_confirmation_rate": null,
+        "record_count": 7,
+        "technical_failure_gate_rate": null
+      },
+      "subject_visibility": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "synthetic_bad": {
+        "confidence_band_accuracy": 0.666667,
+        "expected_action_hit_rate": 0.266667,
+        "failure_counts": {
+          "confidence_band_mismatch": 10,
+          "forbidden_action_violation": 15,
+          "missing_expected_action": 22,
+          "missing_future_action": 8,
+          "semantic_overreach_on_technical_failure": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.033333,
+        "positive_confirmation_rate": null,
+        "record_count": 30,
+        "technical_failure_gate_rate": 0.857143
+      },
+      "technical_gate": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 7,
+          "forbidden_action_violation": 2,
+          "missing_future_action": 4,
+          "semantic_overreach_on_technical_failure": 1
+        },
+        "forbidden_action_violation_rate": 0.285714,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 7,
+        "technical_failure_gate_rate": 0.857143
+      },
+      "text_like_graphic": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 1,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "tilt": {
+        "confidence_band_accuracy": 0.5,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 2,
+          "missing_expected_action": 2,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": null,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "underexposure": {
+        "confidence_band_accuracy": 0.923077,
+        "expected_action_hit_rate": 0.538462,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 2,
+          "missing_expected_action": 6
+        },
+        "forbidden_action_violation_rate": 0.153846,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.538462,
+        "positive_confirmation_rate": null,
+        "record_count": 13,
+        "technical_failure_gate_rate": 1.0
+      },
+      "warm_high_contrast": {
+        "confidence_band_accuracy": 0.0,
+        "expected_action_hit_rate": 0.0,
+        "failure_counts": {
+          "confidence_band_mismatch": 1,
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 1.0,
+        "good_frame_preservation_rate": 0.0,
+        "pass_rate": 0.0,
+        "positive_confirmation_rate": 0.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "wide": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      },
+      "wide_environmental_frame": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 0.5,
+        "failure_counts": {
+          "forbidden_action_violation": 1,
+          "good_frame_overcorrection": 1,
+          "missing_expected_action": 1,
+          "missing_positive_confirmation": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": 0.5,
+        "pass_rate": 0.5,
+        "positive_confirmation_rate": 0.5,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "wide_negative_space": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 2,
+        "technical_failure_gate_rate": null
+      },
+      "wide_space": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 1,
+        "technical_failure_gate_rate": null
+      }
+    },
+    "quality_label": {
+      "bad": {
+        "confidence_band_accuracy": 0.835052,
+        "expected_action_hit_rate": 0.618557,
+        "failure_counts": {
+          "confidence_band_mismatch": 16,
+          "forbidden_action_violation": 27,
+          "missing_expected_action": 37,
+          "missing_future_action": 15,
+          "semantic_overreach_on_technical_failure": 1
+        },
+        "forbidden_action_violation_rate": 0.278351,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.525773,
+        "positive_confirmation_rate": null,
+        "record_count": 97,
+        "technical_failure_gate_rate": 0.961538
+      },
+      "good": {
+        "confidence_band_accuracy": 0.833333,
+        "expected_action_hit_rate": 0.770833,
+        "failure_counts": {
+          "confidence_band_mismatch": 16,
+          "forbidden_action_violation": 8,
+          "good_frame_overcorrection": 9,
+          "missing_expected_action": 22,
+          "missing_positive_confirmation": 22
+        },
+        "forbidden_action_violation_rate": 0.083333,
+        "good_frame_preservation_rate": 0.90625,
+        "pass_rate": 0.6875,
+        "positive_confirmation_rate": 0.770833,
+        "record_count": 96,
+        "technical_failure_gate_rate": null
+      },
+      "mixed": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 14,
+        "technical_failure_gate_rate": 1.0
+      }
+    },
+    "source_bucket": {
+      "curated_user_inbox": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": 1.0,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": 1.0,
+        "record_count": 57,
+        "technical_failure_gate_rate": 1.0
+      },
+      "imagegen_bad_candidate": {
+        "confidence_band_accuracy": 0.7,
+        "expected_action_hit_rate": 0.25,
+        "failure_counts": {
+          "confidence_band_mismatch": 6,
+          "forbidden_action_violation": 12,
+          "missing_expected_action": 15,
+          "missing_future_action": 7
+        },
+        "forbidden_action_violation_rate": 0.6,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.15,
+        "positive_confirmation_rate": null,
+        "record_count": 20,
+        "technical_failure_gate_rate": null
+      },
+      "official_promo_cinematic_preservation": {
+        "confidence_band_accuracy": 0.68,
+        "expected_action_hit_rate": 0.56,
+        "failure_counts": {
+          "confidence_band_mismatch": 16,
+          "forbidden_action_violation": 8,
+          "good_frame_overcorrection": 9,
+          "missing_expected_action": 22,
+          "missing_positive_confirmation": 22
+        },
+        "forbidden_action_violation_rate": 0.16,
+        "good_frame_preservation_rate": 0.82,
+        "pass_rate": 0.4,
+        "positive_confirmation_rate": 0.56,
+        "record_count": 50,
+        "technical_failure_gate_rate": null
+      },
+      "public_iqa_bad_tail": {
+        "confidence_band_accuracy": 1.0,
+        "expected_action_hit_rate": 1.0,
+        "failure_counts": {},
+        "forbidden_action_violation_rate": 0.0,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 1.0,
+        "positive_confirmation_rate": null,
+        "record_count": 50,
+        "technical_failure_gate_rate": 1.0
+      },
+      "synthetic_bad_paired_apple_tv_press": {
+        "confidence_band_accuracy": 0.666667,
+        "expected_action_hit_rate": 0.266667,
+        "failure_counts": {
+          "confidence_band_mismatch": 10,
+          "forbidden_action_violation": 15,
+          "missing_expected_action": 22,
+          "missing_future_action": 8,
+          "semantic_overreach_on_technical_failure": 1
+        },
+        "forbidden_action_violation_rate": 0.5,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.033333,
+        "positive_confirmation_rate": null,
+        "record_count": 30,
+        "technical_failure_gate_rate": 0.857143
+      }
+    }
+  },
+  "candidate_id": "semantic_eval_real_runtime_candidate_outputs_v2_207_sim"
+}

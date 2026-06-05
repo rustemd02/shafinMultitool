@@ -1,0 +1,20 @@
+{
+  "candidate_id": "proxy_current_limitations",
+  "runtime_claim": "not_real_runtime",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.874396,
+    "demo_priority_pass_rate": 0.717391,
+    "expected_action_hit_rate": 1.0,
+    "failure_counts": {
+      "confidence_band_mismatch": 26,
+      "missing_future_action": 79
+    },
+    "forbidden_action_violation_rate": 0.0,
+    "future_action_hit_rate": 0.0,
+    "good_frame_preservation_rate": 1.0,
+    "pass_rate": 0.618357,
+    "positive_confirmation_rate": 1.0,
+    "record_count": 207,
+    "technical_failure_gate_rate": 1.0
+  }
+}

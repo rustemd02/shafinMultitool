@@ -1,0 +1,149 @@
+[
+  {
+    "pair_id": "hero_walk",
+    "role": "good",
+    "filename": "hero_walk_good_cinematic.jpg",
+    "label": "good_cinematic_hero_walk",
+    "expected_actions": [
+      "keep_current_setup"
+    ],
+    "notes": [
+      "level horizon",
+      "clear subject hierarchy",
+      "controlled light",
+      "clean background"
+    ],
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/actionable_non_dialogue_pairs/hero_walk_good_cinematic.jpg",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a59260a88196b88f81ef4a7dc58b.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "01868040cf956d1b6048918e45b3f8ab655f19b2738ae3fd6890d81c2f4804ec",
+    "created_at": "2026-06-04",
+    "intended_use": "paired_actionable_camera_analysis_demo"
+  },
+  {
+    "pair_id": "hero_walk",
+    "role": "bad",
+    "filename": "hero_walk_bad_flat_phone.jpg",
+    "label": "bad_flat_phone_hero_walk",
+    "expected_actions": [
+      "level_horizon",
+      "step_closer",
+      "simplify_background",
+      "wait_for_background_clearance",
+      "remove_background_hotspot"
+    ],
+    "notes": [
+      "crooked frame",
+      "subjects too small",
+      "busy background",
+      "foreground scooter",
+      "blown lamp"
+    ],
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/actionable_non_dialogue_pairs/hero_walk_bad_flat_phone.jpg",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a5dccd448196882739bcd2378d4d.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "725b8edc4be2a56695c5237d4627cc8f9ca41cbd9ce824a1f81cb50aadd2273f",
+    "created_at": "2026-06-04",
+    "intended_use": "paired_actionable_camera_analysis_demo"
+  },
+  {
+    "pair_id": "room_entry",
+    "role": "good",
+    "filename": "room_entry_good_cinematic.jpg",
+    "label": "good_cinematic_room_entry",
+    "expected_actions": [
+      "keep_current_setup"
+    ],
+    "notes": [
+      "clean doorway framing",
+      "readable face",
+      "good headroom",
+      "controlled motivated light"
+    ],
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/actionable_non_dialogue_pairs/room_entry_good_cinematic.jpg",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a61e66888196b9eae940480419c4.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "193d551da95e9201a03f34e9f6028d2c546fcc9a9422392df00c9c8085fce395",
+    "created_at": "2026-06-04",
+    "intended_use": "paired_actionable_camera_analysis_demo"
+  },
+  {
+    "pair_id": "room_entry",
+    "role": "bad",
+    "filename": "room_entry_bad_flat_phone.jpg",
+    "label": "bad_flat_phone_room_entry",
+    "expected_actions": [
+      "add_front_fill_light",
+      "remove_background_hotspot",
+      "shift_frame_right",
+      "step_back",
+      "simplify_background"
+    ],
+    "notes": [
+      "face underexposed",
+      "blown ceiling light",
+      "subject cut by edge",
+      "empty wall",
+      "hallway clutter"
+    ],
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/actionable_non_dialogue_pairs/room_entry_bad_flat_phone.jpg",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a66431c881969aa0aa4eade4f79a.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "974195257bc988769f0adb180f961a2ffd61c0c2bce4009e149b1866d929ae3f",
+    "created_at": "2026-06-04",
+    "intended_use": "paired_actionable_camera_analysis_demo"
+  },
+  {
+    "pair_id": "clue_object",
+    "role": "good",
+    "filename": "clue_object_good_cinematic.jpg",
+    "label": "good_cinematic_clue_object",
+    "expected_actions": [
+      "keep_current_setup"
+    ],
+    "notes": [
+      "clear object focus",
+      "clean table",
+      "shaped side light",
+      "controlled depth"
+    ],
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/actionable_non_dialogue_pairs/clue_object_good_cinematic.jpg",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a6b266148196a3009466657cd5db.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "fdcb7996c02e28bc9f9f23299a00c90a1a1836adc66e330ead3048d014e3e862",
+    "created_at": "2026-06-04",
+    "intended_use": "paired_actionable_camera_analysis_demo"
+  },
+  {
+    "pair_id": "clue_object",
+    "role": "bad",
+    "filename": "clue_object_bad_flat_phone.jpg",
+    "label": "bad_flat_phone_clue_object",
+    "expected_actions": [
+      "step_closer",
+      "remove_distracting_object",
+      "simplify_background",
+      "shift_frame_left",
+      "remove_background_hotspot"
+    ],
+    "notes": [
+      "important object tiny",
+      "table clutter",
+      "foreground mug",
+      "flat ceiling light",
+      "hotspot reflection"
+    ],
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/actionable_non_dialogue_pairs/clue_object_bad_flat_phone.jpg",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a70bd2888196811360e0ee0fe001.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "e254a316784087f02667ed2cb16496ca0850d7947aac981ac1c5ea8cd5eeedf8",
+    "created_at": "2026-06-04",
+    "intended_use": "paired_actionable_camera_analysis_demo"
+  }
+]

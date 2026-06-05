@@ -25,15 +25,29 @@ Date: 2026-05-21.
 ```text
 docs/cameraanalysis/dataset/inbox/images/
   001...107
+  108...157  # unlabeled Apple TV Press trailer-poster candidates, not in semantic_labels_v1 yet
+  158...177  # imagegen synthetic bad stress cases, separate from semantic_labels_v1
+  178...207  # deterministic Python synthetic bad stress cases, separate from semantic_labels_v1
   images_manifest.csv
   images_manifest.jsonl
+  apple_tv_press_trailer_sources_108_157.jsonl
+  imagegen_bad_sources_158_177.jsonl
   semantic_labels_v1.jsonl
   semantic_labels_v1.csv
   semantic_labels_v1_summary.md
+  semantic_labels_imagegen_bad_v1.jsonl
+  semantic_labels_imagegen_bad_v1.csv
+  semantic_labels_imagegen_bad_v1_summary.md
+  semantic_labels_synthetic_bad_v1.jsonl
+  semantic_labels_synthetic_bad_v1.csv
+  semantic_labels_synthetic_bad_v1_summary.md
   qa/
     contact_sheet_001_036.jpg
     contact_sheet_037_072.jpg
     contact_sheet_073_107.jpg
+    contact_sheet_108_157.jpg
+    contact_sheet_158_177_imagegen_bad.jpg
+    contact_sheet_178_207_synthetic_bad.jpg
     semantic_labels_v1_validation.json
 ```
 
@@ -50,10 +64,38 @@ Current first-pass label set:
   - `public_iqa_bad_tail`: 50;
 - demo-priority records: 14.
 
+Unlabeled expansion candidate set:
+
+- total records: 50;
+- image range: `108...157`;
+- source bucket: official Apple TV Press trailer-poster/still candidates;
+- label status: not part of `semantic_labels_v1` until reviewed.
+
+Synthetic bad stress set:
+
+- total records: 20;
+- image range: `158...177`;
+- source bucket: imagegen synthetic bad candidates derived from Apple TV Press frames `108...127`;
+- label file: `semantic_labels_imagegen_bad_v1.jsonl`;
+- purpose: demo and eval stress cases where the system should explain visible composition problems, not merely classify an image as good or bad;
+- boundary: not part of `semantic_labels_v1`, not human-gold, and not an organic camera-capture benchmark.
+
+Deterministic synthetic bad stress set:
+
+- total records: 30;
+- image range: `178...207`;
+- source bucket: deterministic Python degradations derived from Apple TV Press frames `128...157`;
+- label file: `semantic_labels_synthetic_bad_v1.jsonl`;
+- purpose: auditable recipe-level stress cases for horizon, hotspot, underexposure, blur, small subject, clutter, edge cutoff and low-contrast/noise behavior;
+- boundary: not part of `semantic_labels_v1`, not human-gold, and not an organic camera-capture benchmark.
+
 Important boundary:
 
 - `semantic_labels_v1` is AI first pass, not final human-gold;
-- every record currently has `review_status = ai_first_pass_needs_human_review`;
+- `semantic_labels_imagegen_bad_v1` is synthetic first pass, not final human-gold;
+- every `semantic_labels_v1` record currently has `review_status = ai_first_pass_needs_human_review`;
+- every `semantic_labels_imagegen_bad_v1` record currently has `review_status = imagegen_synthetic_needs_human_review`;
+- every `semantic_labels_synthetic_bad_v1` record currently has `review_status = synthetic_recipe_needs_human_spot_check`;
 - labels are still useful as bootstrap eval and calibration data.
 
 ## 2. Immediate Decisions

@@ -1,0 +1,25 @@
+{
+  "candidate_id": "semantic_eval_real_runtime_candidate_outputs_v2_207_sim",
+  "runtime_claim": "real_runtime_still_replay",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.845411,
+    "demo_priority_pass_rate": 0.5,
+    "expected_action_hit_rate": 0.714976,
+    "failure_counts": {
+      "confidence_band_mismatch": 32,
+      "forbidden_action_violation": 35,
+      "good_frame_overcorrection": 9,
+      "missing_expected_action": 59,
+      "missing_future_action": 15,
+      "missing_positive_confirmation": 22,
+      "semantic_overreach_on_technical_failure": 1
+    },
+    "forbidden_action_violation_rate": 0.169082,
+    "future_action_hit_rate": 0.810127,
+    "good_frame_preservation_rate": 0.90625,
+    "pass_rate": 0.63285,
+    "positive_confirmation_rate": 0.770833,
+    "record_count": 207,
+    "technical_failure_gate_rate": 0.962963
+  }
+}

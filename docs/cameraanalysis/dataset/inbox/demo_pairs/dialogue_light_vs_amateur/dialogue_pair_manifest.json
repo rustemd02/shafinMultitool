@@ -1,0 +1,24 @@
+[
+  {
+    "filename": "dialogue_good_cinematic.jpg",
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/dialogue_light_vs_amateur/dialogue_good_cinematic.jpg",
+    "label": "good_cinematic_dialogue",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a1c4a6fc81968887910e86e179e7.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "9f40edb153c97f0ee9cd4b2b72b6c2cf6397311bec92cfd9db87d58792f39859",
+    "created_at": "2026-06-04",
+    "intended_use": "side_by_side_camera_analysis_demo"
+  },
+  {
+    "filename": "dialogue_bad_amateur_tv.jpg",
+    "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/dialogue_light_vs_amateur/dialogue_bad_amateur_tv.jpg",
+    "label": "bad_amateur_tv_dialogue",
+    "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a207e53c8196af8629b99986e2eb.png",
+    "width": 1960,
+    "height": 1104,
+    "sha256": "cd1978837f068cad2f0f11fbc92d1d0163e283fb49962a960ccf95888e08c700",
+    "created_at": "2026-06-04",
+    "intended_use": "side_by_side_camera_analysis_demo"
+  }
+]

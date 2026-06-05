@@ -1,0 +1,20 @@
+{
+  "filename": "dialogue_bad_flat_phone_amateur.jpg",
+  "path": "docs/cameraanalysis/dataset/inbox/demo_pairs/dialogue_light_vs_amateur/dialogue_bad_flat_phone_amateur.jpg",
+  "label": "bad_flat_phone_amateur_dialogue",
+  "generated_source_path": "/Users/unterlantas/.codex/generated_images/019da6e8-3b2f-77a3-9e9c-0d7ab3389191/ig_0287a93fde076ba0016a21a47307008196b7514b66b8457b43.png",
+  "width": 1960,
+  "height": 1104,
+  "sha256": "46c6c8d1c1a016a6ae9556ac510d881aec03c39446c54ac4b12c5edd0cae7538",
+  "created_at": "2026-06-04",
+  "intended_use": "flat_amateur_dialogue_bad_example",
+  "expected_visible_problems": [
+    "flat overhead light",
+    "greenish white balance",
+    "no depth separation",
+    "subjects too close to wall",
+    "household clutter",
+    "crooked phone framing",
+    "unclear production design"
+  ]
+}

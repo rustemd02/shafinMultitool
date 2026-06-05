@@ -1,0 +1,7 @@
+{
+  "labelsPath": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/dataset/inbox/semantic_labels_v2_minus15_appletv_good_minus8_subtle_bad.jsonl",
+  "imagesRootPath": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/dataset/inbox/images",
+  "outputPath": "/private/tmp/semantic_eval_real_runtime_candidate_outputs_v2_minus15_appletv_good_minus8_subtle_bad.jsonl",
+  "runtime": "real_runtime_still_replay",
+  "deleteAfterRead": false
+}

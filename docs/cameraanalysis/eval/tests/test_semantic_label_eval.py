@@ -165,6 +165,34 @@ def test_oracle_outputs_pass_real_semantic_labels() -> None:
     assert report["set_metrics"]["good_frame_preservation_rate"] == 1.0
 
 
+def test_oracle_outputs_pass_imagegen_bad_semantic_labels() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    labels_path = repo_root / "docs/cameraanalysis/dataset/inbox/semantic_labels_imagegen_bad_v1.jsonl"
+
+    records = load_semantic_label_records(labels_path)
+    cases = normalize_semantic_label_cases(records)
+    outputs = build_oracle_candidate_outputs(cases)
+    report = score_semantic_candidate_outputs(cases, outputs)
+
+    assert report["set_metrics"]["record_count"] == 20
+    assert report["set_metrics"]["expected_action_hit_rate"] == 1.0
+    assert report["set_metrics"]["forbidden_action_violation_rate"] == 0.0
+
+
+def test_oracle_outputs_pass_synthetic_bad_semantic_labels() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    labels_path = repo_root / "docs/cameraanalysis/dataset/inbox/semantic_labels_synthetic_bad_v1.jsonl"
+
+    records = load_semantic_label_records(labels_path)
+    cases = normalize_semantic_label_cases(records)
+    outputs = build_oracle_candidate_outputs(cases)
+    report = score_semantic_candidate_outputs(cases, outputs)
+
+    assert report["set_metrics"]["record_count"] == 30
+    assert report["set_metrics"]["expected_action_hit_rate"] == 1.0
+    assert report["set_metrics"]["forbidden_action_violation_rate"] == 0.0
+
+
 def test_bad_candidate_fails_real_semantic_labels() -> None:
     repo_root = Path(__file__).resolve().parents[4]
     labels_path = repo_root / "docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl"

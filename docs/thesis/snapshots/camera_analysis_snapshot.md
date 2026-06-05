@@ -1,6 +1,6 @@
 # Camera Analysis Snapshot
 
-Last verified commit: `6e33b14d9cb001c38cdd1271bbbc56863392212e` plus dirty working-tree evidence updates on 2026-05-23.
+Last verified commit: `6e33b14d9cb001c38cdd1271bbbc56863392212e` plus dirty working-tree evidence updates on 2026-06-04.
 
 ## Pipeline scope
 
@@ -66,28 +66,42 @@ Current semantic-tip work adds a dataset/eval bridge and a measured DEBUG real-r
 | Artifact | Current status |
 |---|---|
 | `semantic_labels_v1.jsonl` | 107-image silver label set with good/mixed/bad, expected live/pause actions, forbidden actions and confidence targets. |
+| `semantic_labels_v2.jsonl` | 207-record benchmark-ready silver/first-pass still-image label bundle: 96 good, 14 mixed, 97 bad records. It adds 50 cinematic-preservation Apple TV Press frames, 20 imagegen bad stress cases and 30 deterministic synthetic bad paired variants. |
+| `semantic_labels_cinematic_preservation_v1.jsonl` | 50 first-pass good-frame labels for deliberate cinematic/stylized frames (`108...157`); intended to test overcorrection avoidance, not aesthetic scoring. |
 | Python eval | Validates labels, validates candidate outputs, merges separate `live` and `pause` rows and produces set/bucket reports. |
 | Swift producer | `SemanticEvalCandidateOutput` serializes live/pause presentation rows into the eval contract. |
 | Still-image replay | DEBUG API `testingReplayStillImageForSemanticEval(...)` can replay one still image and export rows. |
 | Demo semantic pack | `docs/cameraanalysis/demo/semantic_demo_scenarios.json` pins 8 replayable demo cases for keep, reframe, step back/closer, light, background, hotspot/horizon and current generic object-balance actions. |
 | Runtime claim guardrail | `lightweightTest` cannot claim real runtime; only `fullRuntime` may emit `real_runtime_still_replay`. |
 
-Latest measured candidate: `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r21a`.
+Latest measured candidate: `docs/cameraanalysis/eval/out_semantic_real_runtime_v2_207_sim`.
 
 | Metric | Value |
 |---|---:|
-| `record_count` | 107 |
-| `pass_rate` | 1.000000 |
-| `expected_action_hit_rate` | 1.000000 |
-| `future_action_hit_rate` | 1.000000 |
-| `forbidden_action_violation_rate` | 0.000000 |
-| `good_frame_preservation_rate` | 1.000000 |
-| `positive_confirmation_rate` | 1.000000 |
-| `confidence_band_accuracy` | 1.000000 |
-| `demo_priority_pass_rate` | 1.000000 |
-| `technical_failure_gate_rate` | 1.000000 |
+| `record_count` | 207 |
+| `pass_rate` | 0.632850 |
+| `expected_action_hit_rate` | 0.714976 |
+| `future_action_hit_rate` | 0.810127 |
+| `forbidden_action_violation_rate` | 0.169082 |
+| `good_frame_preservation_rate` | 0.906250 |
+| `positive_confirmation_rate` | 0.770833 |
+| `confidence_band_accuracy` | 0.845411 |
+| `demo_priority_pass_rate` | 0.500000 |
+| `technical_failure_gate_rate` | 0.962963 |
 
-Honesty boundary: this is stronger evidence than the old proxy baseline because it replays the app-side Swift pipeline over the 107-image silver set. It is still not final dissertation performance evidence: live camera motion, UI timing, broader datasets, object/multi-subject grounding and scene-intent confidence remain open. The latest R21a slice adds runtime-observable `frame_aspect_ratio` evidence after R18a completed expected-action/future-action recall and R19b/R20a reduced confidence failures. It preserves forbidden-action control, good-frame preservation and positive confirmations. The current silver still replay has no strict failures, and the demo pack pins 8 user-facing semantic scenarios, but this must be described as still-image dataset/eval and demo-hardening evidence, not live-camera product readiness.
+The previous closed result on `docs/cameraanalysis/eval/out_semantic_real_runtime_after_r21a` remains valid for the original 107-image silver subset and should be reported as a historical closed-subset result, not as the full benchmark result after dataset extension.
+
+Measured source-bucket breakdown from `out_semantic_real_runtime_v2_207_sim/bucket_metrics.json`:
+
+| Source bucket | `record_count` | `pass_rate` | Key observation |
+|---|---:|---:|---|
+| `curated_user_inbox` | 57 | 1.000000 | Original curated cases remain fully closed. |
+| `public_iqa_bad_tail` | 50 | 1.000000 | Original bad-tail slice remains fully closed. |
+| `official_promo_cinematic_preservation` | 50 | 0.400000 | Main regression on deliberate cinematic/stylized good frames; `good_frame_preservation_rate=0.820000`, `positive_confirmation_rate=0.560000`. |
+| `imagegen_bad_candidate` | 20 | 0.150000 | Strong weakness on synthetic semantic stress; `forbidden_action_violation_rate=0.600000`. |
+| `synthetic_bad_paired_apple_tv_press` | 30 | 0.033333 | Hardest slice; `expected_action_hit_rate=0.266667`, `technical_failure_gate_rate=0.857143`. |
+
+Honesty boundary: this is stronger evidence than proxy or oracle smoke because it replays the app-side Swift pipeline over all 207 images and then scores live/pause rows with the same Python eval harness. It is still not final dissertation performance evidence: labels remain silver/first-pass, the run is still-image replay rather than live-camera UX, and broader human-reviewed generalization is not yet proven.
 
 Decision-trace UI boundary: the `Почему?` sheet demonstrates explainability of the current presentation chain, not independent causal proof. It is appropriate for demo/defense because it exposes the internal verdict/evidence/action/signal/trace structure, but it still depends on the upstream live/pause analysis quality and the same product-readiness gaps above.
 

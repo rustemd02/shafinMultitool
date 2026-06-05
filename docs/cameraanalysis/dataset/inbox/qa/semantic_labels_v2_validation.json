@@ -1,0 +1,62 @@
+{
+  "status": "passed",
+  "record_count": 207,
+  "image_count": 207,
+  "number_range": {
+    "min": 1,
+    "max": 207
+  },
+  "missing_image_numbers": [],
+  "labels_without_images": [],
+  "images_without_labels": [],
+  "duplicate_label_filenames": [],
+  "quality_counts": {
+    "good": 96,
+    "mixed": 14,
+    "bad": 97
+  },
+  "source_bucket_counts": {
+    "curated_user_inbox": 57,
+    "public_iqa_bad_tail": 50,
+    "official_promo_cinematic_preservation": 50,
+    "imagegen_bad_candidate": 20,
+    "synthetic_bad_paired_apple_tv_press": 30
+  },
+  "review_status_counts": {
+    "ai_first_pass_needs_human_review": 107,
+    "cinematic_preservation_ai_first_pass_needs_human_review": 50,
+    "imagegen_synthetic_needs_human_review": 20,
+    "synthetic_recipe_needs_human_spot_check": 30
+  },
+  "expected_action_counts": {
+    "keep_current_setup": 96,
+    "simplify_background": 24,
+    "shift_frame_right": 8,
+    "add_front_fill_light": 15,
+    "wait_for_background_clearance": 10,
+    "add_background_light": 1,
+    "remove_background_hotspot": 18,
+    "change_camera_angle": 15,
+    "level_horizon": 5,
+    "step_closer": 14,
+    "step_back": 12,
+    "remove_distracting_object": 11,
+    "shift_frame_left": 4,
+    "rotate_subject_toward_light": 6,
+    "shift_frame_up": 1,
+    "move_subject_away_from_background": 1,
+    "shift_frame_down": 1,
+    "move_subject_left": 1
+  },
+  "future_action_counts": {
+    "stabilize_camera": 34,
+    "refocus_subject": 14,
+    "reduce_exposure": 26,
+    "avoid_occlusion": 12,
+    "increase_exposure": 18,
+    "reduce_iso_noise": 10,
+    "clean_lens": 1
+  },
+  "demo_priority_count": 46,
+  "benchmark_readiness": "schema_ready_silver_first_pass; human review required before gold claims"
+}
