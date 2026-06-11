@@ -1,6 +1,6 @@
 # Camera Analysis Snapshot
 
-Last verified commit: `6e33b14d9cb001c38cdd1271bbbc56863392212e` plus dirty working-tree evidence updates on 2026-06-04.
+Last verified commit: `6e33b14d9cb001c38cdd1271bbbc56863392212e` plus dirty working-tree evidence updates on 2026-06-05.
 
 ## Pipeline scope
 
@@ -102,6 +102,63 @@ Measured source-bucket breakdown from `out_semantic_real_runtime_v2_207_sim/buck
 | `synthetic_bad_paired_apple_tv_press` | 30 | 0.033333 | Hardest slice; `expected_action_hit_rate=0.266667`, `technical_failure_gate_rate=0.857143`. |
 
 Honesty boundary: this is stronger evidence than proxy or oracle smoke because it replays the app-side Swift pipeline over all 207 images and then scores live/pause rows with the same Python eval harness. It is still not final dissertation performance evidence: labels remain silver/first-pass, the run is still-image replay rather than live-camera UX, and broader human-reviewed generalization is not yet proven.
+
+Visual-audit follow-up: a second, more demo-oriented audited subset now exists at `docs/cameraanalysis/dataset/inbox/semantic_labels_v2_minus15_appletv_good_minus8_subtle_bad_minus10_weak_synthetic.jsonl`. It removes 10 visually weak or misleading synthetic/imagegen negatives after manual frame review, then rescored the same runtime outputs on the remaining 174 records.
+
+Latest visually audited demo subset: `docs/cameraanalysis/eval/out_semantic_real_runtime_v2_minus15_appletv_good_minus8_subtle_bad_minus10_weak_synthetic`.
+
+| Metric | Value |
+|---|---:|
+| `record_count` | 174 |
+| `pass_rate` | 0.752874 |
+| `expected_action_hit_rate` | 0.804598 |
+| `forbidden_action_violation_rate` | 0.132184 |
+| `good_frame_preservation_rate` | 0.864198 |
+| `positive_confirmation_rate` | 0.827160 |
+| `confidence_band_accuracy` | 0.902299 |
+| `demo_priority_pass_rate` | 0.648649 |
+| `technical_failure_gate_rate` | 0.954545 |
+
+Measured source-bucket breakdown on the audited subset:
+
+| Source bucket | `record_count` | `pass_rate` | Key observation |
+|---|---:|---:|---|
+| `curated_user_inbox` | 57 | 0.912281 | Original curated slice stays strong. |
+| `public_iqa_bad_tail` | 50 | 0.960000 | Original bad-tail slice stays strong. |
+| `official_promo_cinematic_preservation` | 35 | 0.600000 | Good-frame preservation remains the main non-synthetic bottleneck. |
+| `imagegen_bad_candidate` | 15 | 0.266667 | Improved after removing ambiguous imagegen negatives, but still weak. |
+| `synthetic_bad_paired_apple_tv_press` | 17 | 0.352941 | Improved after removing weak/false synthetic negatives, but still not closed. |
+
+Boundary for thesis wording: this audited subset is appropriate for an honest demo/evaluation slice after manual label review. It must not be presented as the replacement for the full stress benchmark or as proof that the runtime generalizes to all synthetic/cinematic cases.
+
+Regenerated bad-bucket follow-up: the ambiguous synthetic/imagegen negatives were replaced with a visually stronger 174-record bundle at `docs/cameraanalysis/dataset/inbox/semantic_labels_v2_minus15_appletv_good_minus8_subtle_bad_minus10_weak_synthetic_regen_bad_v1.jsonl`. It keeps the audited good/cinematic slices, removes the old bad buckets, and adds explicit `ca_img_208...ca_img_239` anti-examples for foreground obstruction, edge cutoff, clutter, hotspot/backlight, underexposure and tiny-subject failure modes.
+
+Latest regenerated bad-bucket replay: `docs/cameraanalysis/eval/out_semantic_real_runtime_v2_regen_bad_v1`.
+
+| Metric | Value |
+|---|---:|
+| `record_count` | 174 |
+| `pass_rate` | 0.850575 |
+| `expected_action_hit_rate` | 0.908046 |
+| `future_action_hit_rate` | 0.943662 |
+| `forbidden_action_violation_rate` | 0.028736 |
+| `good_frame_preservation_rate` | 0.987654 |
+| `positive_confirmation_rate` | 0.987654 |
+| `confidence_band_accuracy` | 0.925287 |
+| `demo_priority_pass_rate` | 0.685185 |
+| `technical_failure_gate_rate` | 1.000000 |
+
+Measured regenerated source-bucket breakdown:
+
+| Source bucket | `record_count` | `pass_rate` | Key observation |
+|---|---:|---:|---|
+| `curated_user_inbox` | 57 | 0.929825 | Original curated subset remains strong, with no forbidden-action violations. |
+| `public_iqa_bad_tail` | 50 | 0.960000 | Original public bad-tail subset remains strong. |
+| `official_promo_cinematic_preservation` | 35 | 0.885714 | Guarded promo/cinematic preservation is now mostly closed; remaining failures are one unresolved unknown-wide frame and confidence calibration. |
+| `imagegen_bad_candidate` | 15 | 0.600000 | Generated bad-image bucket now clears the demo gate, but remains below original curated/public slices. |
+| `synthetic_bad_paired_apple_tv_press` | 17 | 0.411765 | Synthetic bad paired bucket now clears the demo gate after contextual runtime hardening, but remains the hardest source bucket. |
+
+Interpretation boundary: the regenerated set is visually clearer and more useful for defense/demo stress testing, and the latest runtime hardening passes the planned still-image replay gates (`overall pass_rate >= 0.80`, `forbidden_action_violation_rate <= 0.08`, `good_frame_preservation_rate >= 0.92`, `synthetic_bad_paired_apple_tv_press >= 0.40`). It is still silver-label still-image evidence: the generated bad buckets are improved rather than closed, one ambiguous unknown-wide promo frame remains unresolved by current runtime features, and live-camera UX/generalization still requires separate validation.
 
 Decision-trace UI boundary: the `Почему?` sheet demonstrates explainability of the current presentation chain, not independent causal proof. It is appropriate for demo/defense because it exposes the internal verdict/evidence/action/signal/trace structure, but it still depends on the upstream live/pause analysis quality and the same product-readiness gaps above.
 

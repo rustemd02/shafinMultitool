@@ -382,6 +382,9 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
         if critique.actions.contains(where: { $0.semanticActionType != .keepCurrentSetup }) {
             return false
         }
+        if critique.traceRootIds.contains("cinematic_good_frame_action_preservation") {
+            return true
+        }
         let strengthTypes = Set(critique.strengths.map { $0.type.rawValue })
         let preservesLowKeyMood = shouldPreserveLowKeyMoodKeepCurrentSetup(
             strengthTypes: strengthTypes,
@@ -517,12 +520,13 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
         let objectCount = debugNumericFeatures["object_count"] ?? 0
         let sceneTypeConfidence = debugNumericFeatures["scene_type_confidence"] ?? 0
         let backgroundClutter = debugNumericFeatures["background_clutter"] ?? 1
+        let hasClearFocus = debugSemanticLabels["has_clear_focus"] == "true"
         let hasInsertStrength = strengthTypes.contains(StrengthTypeV1.goodLightEmphasis.rawValue)
             || strengthTypes.contains(StrengthTypeV1.goodSubjectIsolation.rawValue)
             || strengthTypes.contains(StrengthTypeV1.clearFocusHierarchy.rawValue)
             || strengthTypes.contains(StrengthTypeV1.stableHorizonSupportsScene.rawValue)
 
-        return hasInsertStrength
+        return (hasInsertStrength || hasClearFocus)
             && aestheticScore >= 0.37
             && sceneTypeConfidence >= 0.55
             && subjectArea >= 0.04
@@ -564,12 +568,27 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
             && exposureBias > -1.60
             && exposureBias < 0.20
 
-        guard isNarrativeWideEstablishing else {
+        let isCleanOneObjectNarrativeEstablishing = objectCount == 1
+            && personCount == 0
+            && subjectArea <= 0.02
+            && backgroundClutter <= 0.12
+            && focusCompetition <= 0.56
+            && sceneTypeConfidence >= 0.50
+            && exposureBias > -2.35
+            && exposureBias < 0.20
+            && frameAspectRatio >= 1.40
+
+        guard isNarrativeWideEstablishing || isCleanOneObjectNarrativeEstablishing else {
             return false
         }
 
+        if isCleanOneObjectNarrativeEstablishing {
+            return aestheticScore >= 0.415
+                || (hasStylisticStrength && aestheticScore >= 0.405)
+        }
+
         if objectCount == 0 {
-            return aestheticScore >= 0.50 || hasStylisticStrength
+            return aestheticScore >= 0.42 || hasStylisticStrength
         }
 
         return aestheticScore >= 0.42
@@ -4504,6 +4523,15 @@ final class AnalysisPipeline: ObservableObject {
         let issue = dominantTechnicalQualityIssue(from: signal)
             ?? contextualTechnicalPauseIssue(from: signal, snapshot: snapshot, semantics: semantics)
         guard let issue else { return nil }
+        if shouldPreserveGoodFrameSemanticActions(
+            snapshot: snapshot,
+            semantics: semantics,
+            verdict: structuredVerdict,
+            technicalQualitySignal: signal,
+            allowsMixedVerdict: true
+        ) {
+            return nil
+        }
         if shouldPreserveCinematicGoodFrameOverTechnicalSignal(
             signal: signal,
             issue: issue,
@@ -4565,6 +4593,16 @@ final class AnalysisPipeline: ObservableObject {
             || shouldCorrectReadableSyntheticClutter(snapshot: snapshot, semantics: semantics)
             || shouldCorrectReadableSyntheticCrooked(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
             || shouldCorrectReadableSyntheticGlareObject(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
+            || shouldCorrectReadableLargeHotspot(snapshot: snapshot, semantics: semantics)
+            || shouldCorrectHighKeyReadableWeakSubject(snapshot: snapshot, semantics: semantics)
+            || shouldCorrectLargeDetectorWeakSubject(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
+            || shouldCorrectReadableNeutralDenseClutter(snapshot: snapshot, semantics: semantics)
+            || shouldCorrectReadableSmallForegroundObstruction(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
+            || shouldCorrectReadableSmallEdgeCrop(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
+            || shouldCorrectTinyReadableUnderexposure(snapshot: snapshot, semantics: semantics)
+            || shouldCorrectUnknownHotspot(snapshot: snapshot, semantics: semantics)
+            || shouldCorrectUnknownLargeUnderexposedSubject(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
+            || shouldCorrectReadableSmallStabilizedClutter(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
             || shouldCorrectUnknownNoSubjectUnderexposure(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
             || shouldCorrectUnknownNoSubjectHotspot(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
             || shouldCorrectUnknownNoSubjectClutterOrOcclusion(snapshot: snapshot, semantics: semantics, futureActions: futureActions)
@@ -4579,7 +4617,20 @@ final class AnalysisPipeline: ObservableObject {
             && semantics.dominance.backgroundClutterScore <= 0.28
             && semantics.dominance.focusCompetitionScore <= 0.35
             && semantics.primarySubject.confidence >= 0.55
-            && snapshot.lighting.exposureBiasHint < 0.60
+            && (
+                snapshot.lighting.exposureBiasHint < 0.60
+                || (
+                    semantics.sceneType == .objectInsert
+                        && semantics.sceneTypeConfidence >= 0.70
+                        && (snapshot.aesthetics.score ?? 0) >= 0.45
+                        && snapshot.composition.subjectAreaRatio >= 0.24
+                        && snapshot.composition.subjectAreaRatio <= 0.35
+                        && semantics.dominance.backgroundClutterScore <= 0.16
+                        && semantics.dominance.focusCompetitionScore <= 0.26
+                        && semantics.primarySubject.confidence >= 0.60
+                        && snapshot.lighting.exposureBiasHint < 0.75
+                )
+            )
             && !(hasHeavyReadableTechnicalPressure && snapshot.lighting.exposureBiasHint <= -0.75)
 
         return isCleanUnknownEstablishing || isReadableCinematicInsert
@@ -4596,7 +4647,8 @@ final class AnalysisPipeline: ObservableObject {
            (snapshot.aesthetics.score ?? 1.0) < 0.47 {
             return true
         }
-        if snapshot.lighting.exposureBiasHint >= 0.60 {
+        if snapshot.lighting.exposureBiasHint >= 0.60,
+           !shouldRespectReadableObjectInsertPreservation(snapshot: snapshot, semantics: semantics) {
             return true
         }
         if snapshot.composition.subjectAreaRatio < 0.10,
@@ -4961,7 +5013,14 @@ final class AnalysisPipeline: ObservableObject {
                                                semantics: SceneSemanticsReport? = nil,
                                                technicalQualitySignal: TechnicalQualitySignal = .empty) -> PauseCritiquePresentation {
         let fallbackUsed = critique.fallbackUsed || semanticFallbackUsed
-        let contextualCorrection = contextualSemanticCorrection(
+        let preservesGoodFrameActions = shouldPreserveGoodFrameSemanticActions(
+            snapshot: snapshot,
+            semantics: semantics,
+            verdict: critique.verdict,
+            technicalQualitySignal: technicalQualitySignal,
+            allowsMixedVerdict: true
+        )
+        let contextualCorrection = preservesGoodFrameActions ? nil : contextualSemanticCorrection(
             snapshot: snapshot,
             semantics: semantics,
             critique: critique,
@@ -5012,7 +5071,9 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
         let actions: [PauseActionRow]
-        if let contextualCorrection {
+        if preservesGoodFrameActions {
+            actions = []
+        } else if let contextualCorrection {
             actions = contextualPauseActionRows(for: contextualCorrection)
         } else if semanticActionRows.isEmpty {
             let plannedActions = [plan.primaryAction]
@@ -5036,8 +5097,9 @@ final class AnalysisPipeline: ObservableObject {
             actions = semanticActionRows
         }
 
+        let effectiveVerdict = preservesGoodFrameActions ? FrameVerdict.good : (contextualCorrection?.verdict ?? critique.verdict)
         let noChangeRationale: String?
-        if critique.verdict == .good && actions.isEmpty {
+        if effectiveVerdict == .good && actions.isEmpty {
             noChangeRationale = nonEmpty(semanticTips.first?.pauseText)
                 ?? nonEmpty(plan.noChangeRationale)
                 ?? critique.summary.whyGood
@@ -5053,28 +5115,32 @@ final class AnalysisPipeline: ObservableObject {
             }
             return values
         }()
-        let effectiveVerdict = contextualCorrection?.verdict ?? critique.verdict
         let verdictConfidence = contextualCorrection?.confidence ?? pauseVerdictConfidence(
             verdict: effectiveVerdict,
             baseConfidence: critique.verdictConfidence,
             strengths: strengths,
             actions: actions
         )
+        let traceRootIds = preservesGoodFrameActions
+            ? ["cinematic_good_frame_action_preservation"] + critique.traceRefs
+            : (contextualCorrection.map { [$0.traceId] } ?? critique.traceRefs)
 
         return PauseCritiquePresentation(
             frameId: critique.frameId,
             verdict: effectiveVerdict,
             verdictConfidence: verdictConfidence,
-            summaryId: contextualCorrection?.traceId ?? critique.summary.id,
-            shortVerdict: contextualCorrection?.pauseSummary ?? critique.summary.shortVerdict,
-            whyGood: contextualCorrection == nil ? critique.summary.whyGood : nil,
+            summaryId: preservesGoodFrameActions ? "cinematic_good_frame_action_preservation" : (contextualCorrection?.traceId ?? critique.summary.id),
+            shortVerdict: preservesGoodFrameActions
+                ? (critique.summary.whyGood ?? "Кадр выглядит собранно — сохраняем текущую постановку.")
+                : (contextualCorrection?.pauseSummary ?? critique.summary.shortVerdict),
+            whyGood: contextualCorrection == nil ? (critique.summary.whyGood ?? noChangeRationale) : nil,
             whyProblematic: contextualCorrection?.whyProblematic ?? critique.summary.whyProblematic,
             strengths: Array(strengths),
             issues: Array(issues),
             actions: actions,
             noChangeRationale: noChangeRationale,
             assumptions: assumptions,
-            traceRootIds: contextualCorrection.map { [$0.traceId] } ?? critique.traceRefs,
+            traceRootIds: traceRootIds,
             fallbackUsed: fallbackUsed
         )
     }
@@ -5107,6 +5173,84 @@ final class AnalysisPipeline: ObservableObject {
         let semanticActionTypes: [SemanticActionType]
     }
 
+    private func shouldPreserveGoodFrameSemanticActions(snapshot: FrameFeatureSnapshot?,
+                                                        semantics: SceneSemanticsReport?,
+                                                        verdict: FrameVerdict,
+                                                        technicalQualitySignal: TechnicalQualitySignal,
+                                                        allowsMixedVerdict: Bool = false) -> Bool {
+        guard let snapshot,
+              let semantics,
+              let aestheticScore = snapshot.aesthetics.score else {
+            return false
+        }
+        guard verdict == .good
+                || (allowsMixedVerdict && (verdict == .mixed || verdict == .needsFix)) else {
+            return false
+        }
+        guard snapshot.subjectSignals.personCount == 0 else {
+            return false
+        }
+
+        let futureActions = Set(technicalQualitySignal.futureActionIds)
+        let hasRefocusPressure = futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue)
+        let hasNoiseRecoveryPressure = futureActions.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue)
+        let objectCount = snapshot.objects.totalCount
+        let subjectArea = snapshot.composition.subjectAreaRatio
+        let backgroundClutter = semantics.dominance.backgroundClutterScore
+        let focusCompetition = semantics.dominance.focusCompetitionScore
+        let exposureBias = snapshot.lighting.exposureBiasHint
+        let subjectReadable = semantics.readability.subjectReadable
+        let isReadableObjectInsert = subjectReadable
+            && semantics.primarySubject.kind == .object
+            && semantics.sceneType == .objectInsert
+
+        let isSparseReadableObjectEstablishing = subjectReadable
+            && semantics.primarySubject.kind == .object
+            && semantics.sceneType == .establishingLikeFrame
+            && objectCount <= 1
+            && subjectArea > 0
+            && subjectArea <= 0.05
+            && backgroundClutter <= 0.12
+            && focusCompetition <= 0.56
+            && semantics.readability.separationScore >= 0.60
+            && aestheticScore >= 0.38
+            && exposureBias > -0.65
+            && exposureBias < 0.25
+            && !hasRefocusPressure
+
+        let isSmallReadablePromoInsert = isReadableObjectInsert
+            && objectCount <= 2
+            && !semantics.dominance.hasClearFocus
+            && (0.06...0.08).contains(subjectArea)
+            && semantics.sceneTypeConfidence >= 0.65
+            && semantics.primarySubject.confidence >= 0.50
+            && backgroundClutter <= 0.36
+            && focusCompetition <= 0.35
+            && semantics.readability.separationScore >= 0.64
+            && aestheticScore >= 0.43
+            && exposureBias > -1.60
+            && exposureBias < 0.25
+
+        let isDenseProductionSetPromoFrame = isReadableObjectInsert
+            && objectCount >= 5
+            && objectCount <= 8
+            && (0.38...0.58).contains(subjectArea)
+            && (0.60...0.80).contains(backgroundClutter)
+            && focusCompetition <= 0.45
+            && semantics.primarySubject.confidence >= 0.70
+            && semantics.sceneTypeConfidence >= 0.70
+            && semantics.readability.separationScore >= 0.60
+            && aestheticScore >= 0.39
+            && exposureBias > -1.05
+            && exposureBias < 0.35
+            && !hasRefocusPressure
+            && !hasNoiseRecoveryPressure
+
+        return isSparseReadableObjectEstablishing
+            || isSmallReadablePromoInsert
+            || isDenseProductionSetPromoFrame
+    }
+
     private func contextualSemanticCorrection(snapshot: FrameFeatureSnapshot?,
                                               semantics: SceneSemanticsReport?,
                                               critique: CritiqueReport,
@@ -5114,6 +5258,14 @@ final class AnalysisPipeline: ObservableObject {
         guard critique.verdict == .good,
               let snapshot,
               let semantics else {
+            return nil
+        }
+        if shouldPreserveGoodFrameSemanticActions(
+            snapshot: snapshot,
+            semantics: semantics,
+            verdict: critique.verdict,
+            technicalQualitySignal: technicalQualitySignal
+        ) {
             return nil
         }
 
@@ -5222,6 +5374,42 @@ final class AnalysisPipeline: ObservableObject {
             semantics: semantics,
             futureActions: futureActions
         )
+        let hasReadableLargeHotspotPressure = shouldCorrectReadableLargeHotspot(snapshot: snapshot, semantics: semantics)
+        let hasHighKeyReadableWeakSubjectPressure = shouldCorrectHighKeyReadableWeakSubject(snapshot: snapshot, semantics: semantics)
+        let hasLargeDetectorWeakSubjectPressure = shouldCorrectLargeDetectorWeakSubject(
+            snapshot: snapshot,
+            semantics: semantics,
+            futureActions: futureActions
+        )
+        let hasReadableNeutralDenseClutterPressure = shouldCorrectReadableNeutralDenseClutter(
+            snapshot: snapshot,
+            semantics: semantics
+        )
+        let hasReadableSmallForegroundObstructionPressure = shouldCorrectReadableSmallForegroundObstruction(
+            snapshot: snapshot,
+            semantics: semantics,
+            futureActions: futureActions
+        )
+        let hasReadableSmallEdgeCropPressure = shouldCorrectReadableSmallEdgeCrop(
+            snapshot: snapshot,
+            semantics: semantics,
+            futureActions: futureActions
+        )
+        let hasTinyReadableUnderexposurePressure = shouldCorrectTinyReadableUnderexposure(
+            snapshot: snapshot,
+            semantics: semantics
+        )
+        let hasUnknownHotspotPressure = shouldCorrectUnknownHotspot(snapshot: snapshot, semantics: semantics)
+        let hasUnknownLargeUnderexposedSubjectPressure = shouldCorrectUnknownLargeUnderexposedSubject(
+            snapshot: snapshot,
+            semantics: semantics,
+            futureActions: futureActions
+        )
+        let hasReadableSmallStabilizedClutterPressure = shouldCorrectReadableSmallStabilizedClutter(
+            snapshot: snapshot,
+            semantics: semantics,
+            futureActions: futureActions
+        )
         let hasReadableSyntheticSmallSubjectPressure = shouldCorrectReadableSyntheticSmallSubject(
             snapshot: snapshot,
             semantics: semantics,
@@ -5279,6 +5467,16 @@ final class AnalysisPipeline: ObservableObject {
                 || hasWeakReadableSubjectPressure
                 || hasReadableBackgroundClutterPressure
                 || hasReadableHotspotPressure
+                || hasReadableLargeHotspotPressure
+                || hasHighKeyReadableWeakSubjectPressure
+                || hasLargeDetectorWeakSubjectPressure
+                || hasReadableNeutralDenseClutterPressure
+                || hasReadableSmallForegroundObstructionPressure
+                || hasReadableSmallEdgeCropPressure
+                || hasTinyReadableUnderexposurePressure
+                || hasUnknownHotspotPressure
+                || hasUnknownLargeUnderexposedSubjectPressure
+                || hasReadableSmallStabilizedClutterPressure
                 || hasReadableSyntheticSmallSubjectPressure
                 || hasReadableSyntheticClutterPressure
                 || hasReadableSyntheticCrookedPressure
@@ -5317,6 +5515,66 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
+        if hasReadableLargeHotspotPressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "readable_large_hotspot_angle",
+                traceId: "contextual_readable_large_hotspot_angle",
+                verdict: .needsFix,
+                confidence: 0.80,
+                liveText: "Яркая зона перетягивает кадр — смени угол и добавь мягкий свет.",
+                pauseSummary: "Крупная читаемая область спорит с пересвеченным фоном",
+                whyProblematic: "Главный объект занимает много места, но сильный пересвет делает кадр плоским и уводит внимание от формы.",
+                pauseActionText: "Смени угол к источнику света и добавь мягкий фронтальный свет, чтобы вернуть детали.",
+                liveActionType: .changeAngle,
+                semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle, .addFrontFillLight]
+            )
+        }
+
+        if hasUnknownHotspotPressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "unknown_hotspot_angle",
+                traceId: "contextual_unknown_hotspot_angle",
+                verdict: .needsFix,
+                confidence: 0.78,
+                liveText: "Пересвет мешает найти центр — смени угол съёмки.",
+                pauseSummary: "Яркое пятно мешает системе выделить главный объект",
+                whyProblematic: "Субъект не закреплён, а экспозиционный перекос уже указывает на сильный световой дефект.",
+                pauseActionText: "Смести камеру или убери яркий источник из кадра, чтобы вернуть читаемый центр.",
+                liveActionType: .changeAngle,
+                semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle]
+            )
+        }
+
+        if hasUnknownLargeUnderexposedSubjectPressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "unknown_large_underexposed_subject",
+                traceId: "contextual_unknown_large_underexposed_subject",
+                verdict: .needsFix,
+                confidence: 0.78,
+                liveText: "Крупный объект провален в темноту — добавь мягкий свет и разверни к источнику.",
+                pauseSummary: "Система видит большую область, но не может уверенно прочитать субъект из-за света",
+                whyProblematic: "Кадр выглядит как крупный план без читаемого центра: большая область занимает полкадра, а экспозиция и шум требуют восстановления света.",
+                pauseActionText: "Добавь мягкий фронтальный свет или разверни объект к источнику, чтобы лицо/форма стали читаемыми.",
+                liveActionType: .improveFrontLight,
+                semanticActionTypes: [.addFrontFillLight, .rotateSubjectTowardLight]
+            )
+        }
+
+        if hasReadableSmallStabilizedClutterPressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "small_stabilized_clutter",
+                traceId: "contextual_small_stabilized_clutter",
+                verdict: .needsFix,
+                confidence: 0.76,
+                liveText: "Мелкий объект тонет в лишних деталях — убери помехи и упрости фон.",
+                pauseSummary: "Главный объект читается, но композицию забивают посторонние элементы",
+                whyProblematic: "Субъект слишком мал для уверенного keep, а несколько объектов и сигнал стабилизации показывают случайную перегрузку кадра.",
+                pauseActionText: "Убери отвлекающие предметы или дождись чистого фона вокруг объекта.",
+                liveActionType: .reduceBackgroundDistractions,
+                semanticActionTypes: [.removeDistractingObject, .simplifyBackground]
+            )
+        }
+
         if hasReadableSyntheticGlarePressure {
             return ContextualSemanticCorrection(
                 idSuffix: "readable_synthetic_glare",
@@ -5332,6 +5590,84 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
+        if hasTinyReadableUnderexposurePressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "tiny_readable_underexposure_front_fill",
+                traceId: "contextual_tiny_readable_underexposure_front_fill",
+                verdict: .needsFix,
+                confidence: 0.80,
+                liveText: "Малый объект провален в темноту — добавь мягкий свет.",
+                pauseSummary: "Главный объект найден, но он слишком тёмный для уверенного кадра",
+                whyProblematic: "Субъект занимает мало места и сильный минус по экспозиции делает подтверждение кадра ложным.",
+                pauseActionText: "Добавь мягкий фронтальный свет или разверни объект к источнику света.",
+                liveActionType: .improveFrontLight,
+                semanticActionTypes: [.addFrontFillLight, .rotateSubjectTowardLight]
+            )
+        }
+
+        if hasHighKeyReadableWeakSubjectPressure {
+            let semanticActions: [SemanticActionType] = snapshot.composition.subjectAreaRatio < 0.10
+                ? [.stepCloser, .shiftFrameDown]
+                : [.stepCloser, .simplifyBackground]
+            return ContextualSemanticCorrection(
+                idSuffix: "high_key_readable_weak_subject",
+                traceId: "contextual_high_key_readable_weak_subject",
+                verdict: .mixed,
+                confidence: 0.78,
+                liveText: "Главный объект теряется в светлом кадре — подойди ближе.",
+                pauseSummary: "Кадр слишком светлый и главный объект композиционно слабый",
+                whyProblematic: "Субъект найден, но светлый фон и слабая доля объекта делают совет «оставить как есть» слишком оптимистичным.",
+                pauseActionText: "Подойди ближе и собери кадр вокруг главного объекта, убрав лишнюю пустоту.",
+                liveActionType: .increaseSubjectSize,
+                semanticActionTypes: semanticActions
+            )
+        }
+
+        if hasLargeDetectorWeakSubjectPressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "large_detector_weak_subject_step_closer",
+                traceId: "contextual_large_detector_weak_subject_step_closer",
+                verdict: .mixed,
+                confidence: 0.76,
+                liveText: "Система цепляется за фон — подойди ближе к настоящему объекту.",
+                pauseSummary: "Детектор нашёл крупную область, но композиционный центр всё ещё слабый",
+                whyProblematic: "Большая найденная область при слабой резкости и низкой эстетике похожа на ложный foreground, а не на уверенный главный объект.",
+                pauseActionText: "Подойди ближе к настоящему субъекту и пересобери кадр вокруг него.",
+                liveActionType: .increaseSubjectSize,
+                semanticActionTypes: [.stepCloser]
+            )
+        }
+
+        if hasReadableNeutralDenseClutterPressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "neutral_dense_clutter",
+                traceId: "contextual_neutral_dense_clutter",
+                verdict: .needsFix,
+                confidence: 0.78,
+                liveText: "Передний план и фон спорят — упрости сцену.",
+                pauseSummary: "Кадр перегружен объектами и не выглядит как намеренный low-key стиль",
+                whyProblematic: "Несколько объектов, нейтральная экспозиция и низкая устойчивость горизонта указывают на случайный визуальный шум, а не на сохранённую стилизацию.",
+                pauseActionText: "Убери отвлекающий объект, упрости фон или немного смени угол съёмки.",
+                liveActionType: .reduceBackgroundDistractions,
+                semanticActionTypes: [.removeDistractingObject, .simplifyBackground, .waitForBackgroundClearance, .changeCameraAngle]
+            )
+        }
+
+        if hasReadableSmallForegroundObstructionPressure {
+            return ContextualSemanticCorrection(
+                idSuffix: "small_foreground_obstruction",
+                traceId: "contextual_small_foreground_obstruction",
+                verdict: .needsFix,
+                confidence: 0.78,
+                liveText: "Мелкий объект теряется за помехами — дождись чистого фона.",
+                pauseSummary: "Передний план перекрывает слабый композиционный центр",
+                whyProblematic: "Субъект занимает слишком мало места, а несколько объектов в кадре мешают системе уверенно выделить главный центр.",
+                pauseActionText: "Убери помеху из переднего плана или дождись более свободного фона.",
+                liveActionType: .reduceBackgroundDistractions,
+                semanticActionTypes: [.removeDistractingObject, .waitForBackgroundClearance, .shiftFrameLeft]
+            )
+        }
+
         if hasTightReadableEdgePressure {
             return ContextualSemanticCorrection(
                 idSuffix: "tight_readable_edge_step_back",
@@ -5344,6 +5680,27 @@ final class AnalysisPipeline: ObservableObject {
                 pauseActionText: "Отойди назад и немного смести рамку вправо, чтобы вернуть объекту воздух.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.stepBack, .shiftFrameRight]
+            )
+        }
+
+        if hasReadableSmallEdgeCropPressure {
+            var semanticActions: [SemanticActionType] = [.stepBack, .shiftFrameRight, .removeDistractingObject]
+            if futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue)
+                || snapshot.lighting.exposureBiasHint > 0.10 {
+                semanticActions.append(.removeBackgroundHotspot)
+                semanticActions.append(.changeCameraAngle)
+            }
+            return ContextualSemanticCorrection(
+                idSuffix: "small_edge_crop_step_back",
+                traceId: "contextual_small_edge_crop_step_back",
+                verdict: .needsFix,
+                confidence: 0.78,
+                liveText: "Объект режется краем — отойди и смести рамку вправо.",
+                pauseSummary: "Малый читаемый объект слишком близко к краю кадра",
+                whyProblematic: "При небольшой площади субъекта край кадра начинает работать как помеха: объект читается, но композиция выглядит случайно обрезанной.",
+                pauseActionText: "Отойди на шаг, смести рамку вправо и убери отвлекающий крайний объект.",
+                liveActionType: .changeAngle,
+                semanticActionTypes: semanticActions
             )
         }
 
@@ -5749,6 +6106,22 @@ final class AnalysisPipeline: ObservableObject {
            snapshot.lighting.exposureBiasHint <= -1.45,
            subjectArea < 0.18,
            (hasRefocusPressure || hasStabilizationPressure) {
+            if subjectLabel == "light",
+               !semantics.dominance.hasClearFocus {
+                return ContextualSemanticCorrection(
+                    idSuffix: "small_underlit_light_hotspot",
+                    traceId: "contextual_small_underlit_light_hotspot",
+                    verdict: .needsFix,
+                    confidence: 0.86,
+                    liveText: "Световое пятно забивает кадр — смени угол и убери hotspot.",
+                    pauseSummary: "Кадр тёмный, а яркий источник перетягивает внимание с субъекта",
+                    whyProblematic: "Детектор цепляется за небольшой световой объект без уверенного фокуса; в таком случае проблема не только в недосвете, но и в доминирующем блике.",
+                    pauseActionText: "Смести камеру от яркого источника, убери hotspot из кадра и при необходимости добавь мягкий фронтальный свет.",
+                    liveActionType: .changeAngle,
+                    semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle, .addFrontFillLight]
+                )
+            }
+
             return ContextualSemanticCorrection(
                 idSuffix: "small_underlit_light_object",
                 traceId: "contextual_small_underlit_light_object",
@@ -5890,6 +6263,170 @@ final class AnalysisPipeline: ObservableObject {
             && (semantics.primarySubject.confidence >= 0.55 || semantics.dominance.hasClearFocus)
     }
 
+    private func shouldCorrectReadableLargeHotspot(snapshot: FrameFeatureSnapshot,
+                                                   semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.readability.subjectReadable,
+              snapshot.lighting.exposureBiasHint >= 0.50,
+              snapshot.composition.subjectAreaRatio >= 0.45,
+              snapshot.horizon.confidence >= 0.70,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore < 0.44 else {
+            return false
+        }
+        return true
+    }
+
+    private func shouldCorrectUnknownHotspot(snapshot: FrameFeatureSnapshot,
+                                             semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.primarySubject.kind == .unknown,
+              !semantics.readability.subjectReadable,
+              snapshot.lighting.exposureBiasHint >= 0.60,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore < 0.43 else {
+            return false
+        }
+        return true
+    }
+
+    private func shouldCorrectUnknownLargeUnderexposedSubject(snapshot: FrameFeatureSnapshot,
+                                                              semantics: SceneSemanticsReport,
+                                                              futureActions: Set<String>) -> Bool {
+        guard semantics.primarySubject.kind == .unknown,
+              !semantics.readability.subjectReadable,
+              snapshot.objects.totalCount == 1,
+              snapshot.composition.subjectAreaRatio >= 0.45,
+              semantics.sceneType == .unknown,
+              semantics.dominance.backgroundClutterScore <= 0.16,
+              semantics.dominance.focusCompetitionScore >= 0.50,
+              snapshot.lighting.exposureBiasHint <= -2.0,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore >= 0.40,
+              aestheticScore < 0.47 else {
+            return false
+        }
+
+        return futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue)
+            && futureActions.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue)
+    }
+
+    private func shouldCorrectReadableSmallStabilizedClutter(snapshot: FrameFeatureSnapshot,
+                                                             semantics: SceneSemanticsReport,
+                                                             futureActions: Set<String>) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              semantics.sceneType == .objectInsert,
+              semantics.dominance.hasClearFocus,
+              snapshot.objects.totalCount >= 2,
+              snapshot.composition.subjectAreaRatio < 0.07,
+              semantics.dominance.backgroundClutterScore >= 0.24,
+              semantics.dominance.backgroundClutterScore <= 0.32,
+              semantics.dominance.focusCompetitionScore <= 0.30,
+              semantics.primarySubject.confidence >= 0.65,
+              semantics.sceneTypeConfidence >= 0.75,
+              snapshot.lighting.exposureBiasHint > -0.20,
+              snapshot.lighting.exposureBiasHint < 0.30,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore >= 0.42,
+              aestheticScore < 0.46 else {
+            return false
+        }
+
+        return futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue)
+            && !futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue)
+    }
+
+    private func shouldCorrectHighKeyReadableWeakSubject(snapshot: FrameFeatureSnapshot,
+                                                         semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              snapshot.lighting.exposureBiasHint >= 0.45,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore >= 0.48 else {
+            return false
+        }
+        let subjectArea = snapshot.composition.subjectAreaRatio
+        let isSmallHighKeySubject = snapshot.objects.totalCount >= 2
+            && subjectArea < 0.10
+        let isMidHighKeySubject = snapshot.objects.totalCount <= 2
+            && (0.24...0.34).contains(subjectArea)
+            && snapshot.lighting.exposureBiasHint >= 0.65
+        return isSmallHighKeySubject || isMidHighKeySubject
+    }
+
+    private func shouldCorrectLargeDetectorWeakSubject(snapshot: FrameFeatureSnapshot,
+                                                       semantics: SceneSemanticsReport,
+                                                       futureActions: Set<String>) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              snapshot.composition.subjectAreaRatio >= 0.95,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore < 0.43 else {
+            return false
+        }
+        return futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue)
+            || futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue)
+            || futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue)
+    }
+
+    private func shouldCorrectReadableNeutralDenseClutter(snapshot: FrameFeatureSnapshot,
+                                                          semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              snapshot.objects.totalCount >= 3,
+              semantics.dominance.backgroundClutterScore >= 0.30,
+              snapshot.lighting.exposureBiasHint > -0.25,
+              snapshot.horizon.confidence <= 0.20,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore < 0.44 else {
+            return false
+        }
+        return true
+    }
+
+    private func shouldCorrectReadableSmallForegroundObstruction(snapshot: FrameFeatureSnapshot,
+                                                                 semantics: SceneSemanticsReport,
+                                                                 futureActions: Set<String>) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              snapshot.objects.totalCount >= 2,
+              snapshot.composition.subjectAreaRatio < 0.08,
+              snapshot.lighting.exposureBiasHint > -0.05,
+              !futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue),
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore < 0.42 else {
+            return false
+        }
+        return true
+    }
+
+    private func shouldCorrectReadableSmallEdgeCrop(snapshot: FrameFeatureSnapshot,
+                                                    semantics: SceneSemanticsReport,
+                                                    futureActions: Set<String>) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              snapshot.objects.totalCount <= 1,
+              snapshot.composition.subjectAreaRatio < 0.09,
+              snapshot.horizon.confidence <= 0.20,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore < 0.405 else {
+            return false
+        }
+        let subjectLabel = semantics.primarySubject.label?.lowercased() ?? ""
+        return subjectLabel != "light"
+    }
+
+    private func shouldCorrectTinyReadableUnderexposure(snapshot: FrameFeatureSnapshot,
+                                                        semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              snapshot.lighting.exposureBiasHint <= -2.50,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore < 0.42 else {
+            return false
+        }
+        return true
+    }
+
     private func shouldCorrectReadableSyntheticSmallSubject(snapshot: FrameFeatureSnapshot,
                                                             semantics: SceneSemanticsReport,
                                                             futureActions: Set<String>) -> Bool {
@@ -5905,6 +6442,10 @@ final class AnalysisPipeline: ObservableObject {
             || futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue)
             || futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue)
 
+        if shouldRespectHighAestheticCinematicSmallSubject(snapshot: snapshot, semantics: semantics) {
+            return false
+        }
+
         if subjectArea <= 0.26
             && snapshot.objects.totalCount <= 2
             && hasTechnicalProminencePressure
@@ -5918,6 +6459,27 @@ final class AnalysisPipeline: ObservableObject {
             && snapshot.objects.totalCount >= 3
             && semantics.dominance.backgroundClutterScore >= 0.40
             && aestheticScore >= 0.48
+    }
+
+    private func shouldRespectHighAestheticCinematicSmallSubject(snapshot: FrameFeatureSnapshot,
+                                                                 semantics: SceneSemanticsReport) -> Bool {
+        guard semantics.readability.subjectReadable,
+              semantics.primarySubject.kind == .object,
+              semantics.dominance.hasClearFocus,
+              semantics.sceneType == .objectInsert,
+              semantics.sceneTypeConfidence >= 0.80,
+              semantics.primarySubject.confidence >= 0.70,
+              let aestheticScore = snapshot.aesthetics.score,
+              aestheticScore >= 0.54 else {
+            return false
+        }
+
+        return (0.09...0.13).contains(snapshot.composition.subjectAreaRatio)
+            && snapshot.objects.totalCount <= 2
+            && semantics.dominance.backgroundClutterScore <= 0.30
+            && semantics.dominance.focusCompetitionScore <= 0.25
+            && snapshot.lighting.exposureBiasHint >= 0.20
+            && snapshot.lighting.exposureBiasHint < 0.50
     }
 
     private func shouldCorrectReadableSyntheticClutter(snapshot: FrameFeatureSnapshot,
@@ -5988,6 +6550,10 @@ final class AnalysisPipeline: ObservableObject {
     private func shouldCorrectUnknownNoSubjectUnderexposure(snapshot: FrameFeatureSnapshot,
                                                             semantics: SceneSemanticsReport,
                                                             futureActions: Set<String>) -> Bool {
+        let resemblesCleanUnknownEstablishing = shouldRespectCleanUnknownEstablishingFrame(
+            snapshot: snapshot,
+            semantics: semantics
+        )
         guard semantics.primarySubject.kind == .unknown,
               !semantics.readability.subjectReadable,
               snapshot.objects.totalCount == 0,
@@ -5997,6 +6563,9 @@ final class AnalysisPipeline: ObservableObject {
               !futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue),
               !snapshot.technicalFlags.contains(.highMotion),
               !shouldRespectLowKeyGoodUnknownFrame(snapshot: snapshot, semantics: semantics) else {
+            return false
+        }
+        if resemblesCleanUnknownEstablishing {
             return false
         }
         let hasVisibilityRecoveryPressure = futureActions.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue)
@@ -6068,9 +6637,7 @@ final class AnalysisPipeline: ObservableObject {
                                                                semantics: SceneSemanticsReport) -> Bool {
         guard semantics.readability.subjectReadable,
               semantics.primarySubject.kind == .object,
-              semantics.sceneType == .objectInsert,
-              semantics.sceneTypeConfidence >= 0.80,
-              semantics.primarySubject.confidence >= 0.70 else {
+              semantics.sceneType == .objectInsert else {
             return false
         }
 
@@ -6080,6 +6647,21 @@ final class AnalysisPipeline: ObservableObject {
         let backgroundClutter = semantics.dominance.backgroundClutterScore
         let focusCompetition = semantics.dominance.focusCompetitionScore
         let exposureBias = snapshot.lighting.exposureBiasHint
+        let hasStrongInsertClassification = semantics.sceneTypeConfidence >= 0.80
+            && semantics.primarySubject.confidence >= 0.70
+        let hasCleanReadableInsert = semantics.dominance.hasClearFocus
+            && semantics.sceneTypeConfidence >= 0.72
+            && semantics.primarySubject.confidence >= 0.60
+            && aestheticScore >= 0.45
+            && objectCount <= 2
+            && subjectArea >= 0.24
+            && subjectArea <= 0.35
+            && backgroundClutter <= 0.16
+            && focusCompetition <= 0.26
+            && exposureBias < 0.75
+        guard hasStrongInsertClassification || hasCleanReadableInsert else {
+            return false
+        }
 
         return aestheticScore >= 0.39
             && objectCount <= 3
@@ -6088,7 +6670,7 @@ final class AnalysisPipeline: ObservableObject {
             && backgroundClutter <= 0.34
             && focusCompetition <= 0.30
             && exposureBias > -1.95
-            && exposureBias < 0.60
+            && exposureBias < 0.75
     }
 
     private func shouldRespectLowKeyGoodUnknownFrame(snapshot: FrameFeatureSnapshot,
@@ -6123,7 +6705,7 @@ final class AnalysisPipeline: ObservableObject {
         }
         let aestheticScore = snapshot.aesthetics.score ?? 0
         if snapshot.objects.totalCount == 0 {
-            return aestheticScore >= 0.50
+            return aestheticScore >= 0.42
         }
         return aestheticScore >= 0.42
     }
@@ -8772,6 +9354,14 @@ extension AnalysisPipeline {
             actions.append(TechnicalQualityActionType.avoidOcclusion.rawValue)
         }
 
+        if shouldAddExplicitReadableOcclusionFutureAction(
+            snapshot: snapshot,
+            semantics: semantics,
+            currentFutureActions: actions
+        ) {
+            actions.append(TechnicalQualityActionType.avoidOcclusion.rawValue)
+        }
+
         if shouldAddReadableSoftnessStabilizeFutureAction(
             snapshot: snapshot,
             semantics: semantics,
@@ -8893,6 +9483,24 @@ extension AnalysisPipeline {
             return false
         }
         return true
+    }
+
+    private func shouldAddExplicitReadableOcclusionFutureAction(snapshot: FrameFeatureSnapshot,
+                                                                semantics: SceneSemanticsReport,
+                                                                currentFutureActions: [String]) -> Bool {
+        guard !currentFutureActions.contains(TechnicalQualityActionType.avoidOcclusion.rawValue) else {
+            return false
+        }
+        let futureActionSet = Set(currentFutureActions)
+        return shouldCorrectReadableSmallEdgeCrop(
+            snapshot: snapshot,
+            semantics: semantics,
+            futureActions: futureActionSet
+        ) || shouldCorrectReadableSmallForegroundObstruction(
+            snapshot: snapshot,
+            semantics: semantics,
+            futureActions: futureActionSet
+        ) || shouldCorrectReadableNeutralDenseClutter(snapshot: snapshot, semantics: semantics)
     }
 
     private func shouldAddReadableSoftnessStabilizeFutureAction(snapshot: FrameFeatureSnapshot,

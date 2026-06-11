@@ -1,0 +1,25 @@
+{
+  "candidate_id": "semantic_eval_candidate_outputs_preserve_r1",
+  "runtime_claim": "real_runtime_still_replay",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.902299,
+    "demo_priority_pass_rate": 0.648649,
+    "expected_action_hit_rate": 0.821839,
+    "failure_counts": {
+      "confidence_band_mismatch": 17,
+      "forbidden_action_violation": 23,
+      "good_frame_overcorrection": 7,
+      "missing_expected_action": 31,
+      "missing_future_action": 5,
+      "missing_positive_confirmation": 9,
+      "semantic_overreach_on_technical_failure": 1
+    },
+    "forbidden_action_violation_rate": 0.132184,
+    "future_action_hit_rate": 0.928571,
+    "good_frame_preservation_rate": 0.91358,
+    "pass_rate": 0.764368,
+    "positive_confirmation_rate": 0.888889,
+    "record_count": 174,
+    "technical_failure_gate_rate": 0.954545
+  }
+}

@@ -1,7 +1,7 @@
 ---
-status: draft_scene_generator_experiments
+status: needs_update
 chapter: experiments
-scope: SceneGeneratorModule only
+scope: SceneGeneratorModule only; Camera Analysis eval artifacts added separately and chapter structure needs decision
 last_updated: 2026-06-04
 ---
 

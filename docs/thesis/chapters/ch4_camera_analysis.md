@@ -1,8 +1,8 @@
 ---
-status: user_ch4_fixed
+status: needs_update
 source: /Users/unterlantas/Downloads/ДИССЕР.md
 last_synced: 2026-05-29
-last_updated: 2026-06-04
+last_updated: 2026-06-05
 chapter: 4_camera_analysis
 ---
 

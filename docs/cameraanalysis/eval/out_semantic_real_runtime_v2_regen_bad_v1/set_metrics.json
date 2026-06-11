@@ -1,0 +1,24 @@
+{
+  "candidate_id": "candidate_outputs_raw",
+  "runtime_claim": "real_runtime_still_replay",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.925287,
+    "demo_priority_pass_rate": 0.685185,
+    "expected_action_hit_rate": 0.908046,
+    "failure_counts": {
+      "confidence_band_mismatch": 13,
+      "forbidden_action_violation": 5,
+      "good_frame_overcorrection": 1,
+      "missing_expected_action": 16,
+      "missing_future_action": 4,
+      "missing_positive_confirmation": 1
+    },
+    "forbidden_action_violation_rate": 0.028736,
+    "future_action_hit_rate": 0.943662,
+    "good_frame_preservation_rate": 0.987654,
+    "pass_rate": 0.850575,
+    "positive_confirmation_rate": 0.987654,
+    "record_count": 174,
+    "technical_failure_gate_rate": 1.0
+  }
+}
