@@ -1,0 +1,166 @@
+{
+  "full": [
+    {
+      "framePaths": [
+        "images/001.jpg",
+        "images/002.jpg",
+        "images/003.jpg"
+      ],
+      "id": "clip_dialogue_a",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/004.jpg",
+        "images/005.jpg",
+        "images/006.jpg"
+      ],
+      "id": "clip_portrait_b",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/007.jpg",
+        "images/008.jpg",
+        "images/009.jpg"
+      ],
+      "id": "clip_group_c",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/010.jpg",
+        "images/011.jpeg",
+        "images/012.jpeg"
+      ],
+      "id": "clip_stage_d",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/012.jpeg",
+        "images/011.jpeg",
+        "images/010.jpg"
+      ],
+      "id": "clip_stage_reverse",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/009.jpg",
+        "images/008.jpg",
+        "images/007.jpg"
+      ],
+      "id": "clip_group_reverse",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/006.jpg",
+        "images/005.jpg",
+        "images/004.jpg"
+      ],
+      "id": "clip_portrait_reverse",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/003.jpg",
+        "images/002.jpg",
+        "images/001.jpg"
+      ],
+      "id": "clip_dialogue_reverse",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/001.jpg",
+        "images/003.jpg",
+        "images/005.jpg"
+      ],
+      "id": "clip_mix_e",
+      "interFrameDelayMs": 200,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/002.jpg",
+        "images/004.jpg",
+        "images/006.jpg"
+      ],
+      "id": "clip_mix_f",
+      "interFrameDelayMs": 200,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/007.jpg",
+        "images/009.jpg",
+        "images/011.jpeg"
+      ],
+      "id": "clip_mix_g",
+      "interFrameDelayMs": 200,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/008.jpg",
+        "images/010.jpg",
+        "images/012.jpeg"
+      ],
+      "id": "clip_mix_h",
+      "interFrameDelayMs": 200,
+      "mode": "live"
+    }
+  ],
+  "quick": [
+    {
+      "framePaths": [
+        "images/001.jpg",
+        "images/002.jpg",
+        "images/003.jpg"
+      ],
+      "id": "clip_dialogue_a",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/004.jpg",
+        "images/005.jpg",
+        "images/006.jpg"
+      ],
+      "id": "clip_portrait_b",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/007.jpg",
+        "images/008.jpg",
+        "images/009.jpg"
+      ],
+      "id": "clip_group_c",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    },
+    {
+      "framePaths": [
+        "images/010.jpg",
+        "images/011.jpeg",
+        "images/012.jpeg"
+      ],
+      "id": "clip_stage_d",
+      "interFrameDelayMs": 180,
+      "mode": "live"
+    }
+  ]
+}

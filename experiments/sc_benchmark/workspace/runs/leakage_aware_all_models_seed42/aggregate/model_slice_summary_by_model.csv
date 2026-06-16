@@ -1,0 +1,11 @@
+model_id,slice,seed_count,json_valid_rate.mean,json_valid_rate.std,schema_valid_rate.mean,schema_valid_rate.std,ordinal_actor_binding_accuracy.mean,ordinal_actor_binding_accuracy.std,target_resolution_accuracy.mean,target_resolution_accuracy.std,chronology_phase_accuracy.mean,chronology_phase_accuracy.std,action_recall.mean,action_recall.std,runtime_fallback_rate.mean,runtime_fallback_rate.std,case_strict_success_rate.mean,case_strict_success_rate.std
+dataset_v8_plan_orpo_iter1,end_to_end,1,0.9428571428571428,0.0,0.9428571428571428,0.0,0.8385093167701864,0.0,0.4103448275862069,0.0,0.14285714285714285,0.0,0.41076487252124644,0.0,0.4714285714285714,0.0,0.14285714285714285,0.0
+dataset_v8_plan_orpo_iter1,model_only,1,0.9428571428571428,0.0,0.9428571428571428,0.0,0.8385093167701864,0.0,0.4103448275862069,0.0,0.14285714285714285,0.0,0.41076487252124644,0.0,0.4714285714285714,0.0,0.14285714285714285,0.0
+dataset_v8_plan_sft,end_to_end,1,0.9285714285714286,0.0,0.9285714285714286,0.0,0.8322981366459627,0.0,0.4,0.0,0.14285714285714285,0.0,0.39660056657223797,0.0,0.4785714285714286,0.0,0.14285714285714285,0.0
+dataset_v8_plan_sft,model_only,1,0.9285714285714286,0.0,0.9285714285714286,0.0,0.8322981366459627,0.0,0.4,0.0,0.14285714285714285,0.0,0.39660056657223797,0.0,0.4785714285714286,0.0,0.14285714285714285,0.0
+dataset_v9_2_event_sft_policy_v93,end_to_end,1,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0
+dataset_v9_2_event_sft_policy_v93,model_only,1,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0
+dataset_v9_3_event_sft,end_to_end,1,1.0,0.0,1.0,0.0,1.0,0.0,0.996551724137931,0.0,0.9928571428571429,0.0,0.9971671388101983,0.0,0.0,0.0,0.9928571428571429,0.0
+dataset_v9_3_event_sft,model_only,1,1.0,0.0,1.0,0.0,1.0,0.0,0.996551724137931,0.0,0.9928571428571429,0.0,0.9971671388101983,0.0,0.0,0.0,0.9928571428571429,0.0
+dataset_v9_event_sft,end_to_end,1,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0
+dataset_v9_event_sft,model_only,1,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0

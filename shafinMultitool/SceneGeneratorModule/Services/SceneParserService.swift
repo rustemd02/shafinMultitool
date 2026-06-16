@@ -48,6 +48,7 @@ final class SceneParserService {
     private(set) var lastChunkState: SceneChunkState?
     private(set) var lastDocumentState: ScriptDocumentState?
     private(set) var lastBundleResult: SceneBundleParsingResult?
+    private(set) var lastExecutionTrace: SceneExecutionTrace?
 
     private init() {}
 
@@ -176,13 +177,17 @@ final class SceneParserService {
         _ description: String,
         markedObjects: [MarkedObject] = [],
         mode: SceneBundleParseMode = .full,
-        previousState: ScriptDocumentState? = nil
+        previousState: ScriptDocumentState? = nil,
+        executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
+        executionSupport: SceneGeneratorExecutionSupport = .live
     ) async -> SceneBundleParsingResult {
         let result = await bundlePipeline.parse(
             description: description,
             markedObjects: markedObjects,
             mode: mode,
-            previousState: previousState
+            previousState: previousState,
+            executionPolicy: executionPolicy,
+            executionSupport: executionSupport
         ) { [weak self] text, markers, state in
             self?.ruleBasedParse(text, markedObjects: markers)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
@@ -196,13 +201,17 @@ final class SceneParserService {
         _ description: String,
         markedObjects: [MarkedObject] = [],
         mode: SceneBundleParseMode = .full,
-        previousState: ScriptDocumentState? = nil
+        previousState: ScriptDocumentState? = nil,
+        executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
+        executionSupport: SceneGeneratorExecutionSupport = .live
     ) async -> SceneBundleParsingResult {
         let result = await bundlePipeline.parseAsync(
             description: description,
             markedObjects: markedObjects,
             mode: mode,
-            previousState: previousState
+            previousState: previousState,
+            executionPolicy: executionPolicy,
+            executionSupport: executionSupport
         ) { [weak self] text, markers, _ in
             self?.ruleBasedParse(text, markedObjects: markers)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
@@ -240,6 +249,7 @@ final class SceneParserService {
         lastChunkState = nil
         lastDocumentState = nil
         lastBundleResult = nil
+        lastExecutionTrace = nil
         remoteOffloadEnabled = false
         remotePlanProvider = nil
     }
@@ -315,6 +325,7 @@ final class SceneParserService {
 
     private func updateBundleContext(with result: SceneBundleParsingResult, fallbackLocationName: String?) {
         lastBundleResult = result
+        lastExecutionTrace = result.executionTrace
         lastDocumentState = result.documentState
         if let activeSceneID = result.activeSceneId,
            let stitchState = result.documentState.stitchStates.first(where: { $0.sceneID == activeSceneID }) {

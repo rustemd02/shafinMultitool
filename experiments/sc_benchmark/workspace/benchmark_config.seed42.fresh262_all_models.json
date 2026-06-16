@@ -1,0 +1,99 @@
+{
+  "eval_bundle_dir": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/eval_bundle_v2_fresh262_all_models",
+  "eval_seed": 20260615,
+  "seeds": [
+    42
+  ],
+  "checkpoint_id_template": "{model_id}_seed{seed}",
+  "models": [
+    {
+      "id": "base_qwen3_1_7b",
+      "name": "Base Qwen3-1.7B",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/base_qwen3_1_7b/seed_42.jsonl"
+    },
+    {
+      "id": "dataset_v7",
+      "name": "SG v7 direct SceneScript",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v7/seed_42.jsonl"
+    },
+    {
+      "id": "dataset_v7_orpo_iter1",
+      "name": "SG v7 ORPO iter1",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v7_orpo_iter1/seed_42.jsonl"
+    },
+    {
+      "id": "dataset_v7_orpo_iter2",
+      "name": "SG v7 ORPO iter2",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v7_orpo_iter2/seed_42.jsonl"
+    },
+    {
+      "id": "dataset_v8_plan_sft",
+      "name": "SG v8 ScenePlanIR SFT",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v8_plan_sft/seed_42.jsonl"
+    },
+    {
+      "id": "dataset_v8_plan_orpo_iter1",
+      "name": "SG v8 ScenePlanIR ORPO iter1",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v8_plan_orpo_iter1/seed_42.jsonl"
+    },
+    {
+      "id": "dataset_v9_event_sft",
+      "name": "SG v9.0 slot/event SFT",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v9_event_sft/seed_42.jsonl"
+    },
+    {
+      "id": "dataset_v9_2_event_sft_policy_v93",
+      "name": "SG v9.2 frozen predictions with V9.3 policy replay",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v9_2_event_sft_policy_v93/seed_42.jsonl",
+      "comparison_role": "policy_replay_reference"
+    },
+    {
+      "id": "dataset_v9_3_event_sft",
+      "name": "SG v9.3 slot/event successor",
+      "predictions_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/predictions_fresh262_all_models/dataset_v9_3_event_sft/seed_42.jsonl"
+    }
+  ],
+  "pairs": [
+    [
+      "dataset_v7",
+      "base_qwen3_1_7b"
+    ],
+    [
+      "dataset_v7_orpo_iter1",
+      "dataset_v7"
+    ],
+    [
+      "dataset_v7_orpo_iter2",
+      "dataset_v7_orpo_iter1"
+    ],
+    [
+      "dataset_v8_plan_sft",
+      "dataset_v7_orpo_iter2"
+    ],
+    [
+      "dataset_v8_plan_orpo_iter1",
+      "dataset_v8_plan_sft"
+    ],
+    [
+      "dataset_v9_event_sft",
+      "dataset_v8_plan_orpo_iter1"
+    ],
+    [
+      "dataset_v9_2_event_sft_policy_v93",
+      "dataset_v9_event_sft"
+    ],
+    [
+      "dataset_v9_3_event_sft",
+      "dataset_v9_event_sft"
+    ],
+    [
+      "dataset_v9_3_event_sft",
+      "dataset_v8_plan_orpo_iter1"
+    ],
+    [
+      "dataset_v9_3_event_sft",
+      "dataset_v7_orpo_iter2"
+    ]
+  ],
+  "note": "Predictions for fresh262 bundle must be regenerated before benchmark execution."
+}

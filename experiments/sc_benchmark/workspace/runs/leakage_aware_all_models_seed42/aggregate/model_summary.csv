@@ -1,0 +1,10 @@
+model_id,seed_count,overall.json_valid_rate.mean,overall.json_valid_rate.std,hard_heldout.chronology_phase_accuracy.mean,hard_heldout.chronology_phase_accuracy.std,real_runtime.runtime_fallback_rate.mean,real_runtime.runtime_fallback_rate.std,overall.case_strict_success_rate.mean,overall.case_strict_success_rate.std
+base_qwen3_1_7b,1,0.4714285714285714,0.0,0.0,0.0,1.0,0.0,0.0,0.0
+dataset_v7,1,0.9928571428571429,0.0,0.0,0.0,1.0,0.0,0.02142857142857143,0.0
+dataset_v7_orpo_iter1,1,0.95,0.0,0.0,0.0,1.0,0.0,0.02857142857142857,0.0
+dataset_v7_orpo_iter2,1,0.95,0.0,0.0,0.0,1.0,0.0,0.02142857142857143,0.0
+dataset_v8_plan_orpo_iter1,1,0.9428571428571428,0.0,0.047619047619047616,0.0,0.0,0.0,0.14285714285714285,0.0
+dataset_v8_plan_sft,1,0.9285714285714286,0.0,0.06349206349206349,0.0,0.0,0.0,0.14285714285714285,0.0
+dataset_v9_2_event_sft_policy_v93,1,1.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0
+dataset_v9_3_event_sft,1,1.0,0.0,0.9841269841269841,0.0,0.0,0.0,0.9928571428571429,0.0
+dataset_v9_event_sft,1,1.0,0.0,1.0,0.0,0.0,0.0,1.0,0.0

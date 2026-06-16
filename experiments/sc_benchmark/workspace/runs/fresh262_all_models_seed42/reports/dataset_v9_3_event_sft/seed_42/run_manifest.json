@@ -1,0 +1,122 @@
+{
+  "bucket_case_counts": {
+    "exact_marker_identity_cases": 140,
+    "marked_object_morphology": 140,
+    "ordinal_cases": 130,
+    "reviewed_merge_cases": 0,
+    "same_type_markers": 90,
+    "three_beat_cases": 38,
+    "unsupported_action_cases": 15
+  },
+  "contract_summary": {
+    "contract_version": "sg_v7_contract_v1",
+    "snapshot_hashes": {
+      "decoding_config_snapshot.json": "6349599b952d29a3c512f864c7c91421973bf7106272da23b80665cfd8fd2e57",
+      "grammar_constraint_snapshot.json": "db246071fe0fb256d283714e88d93f61d1b724619bc22b320372369d72095563",
+      "normalization_policy_snapshot.json": "b43833ae7cc773510d24dfaa0e924fd6ed0d0c1bce698e12f4cb7db6215d41b4",
+      "prompt_contract_snapshot.json": "7fb178540f85a29dfbdbff98dee849c78ec18b2f6c6db7deabe7d18198373c43",
+      "runtime_policy_snapshot.json": "a27d06e7a30d1165f03f35023230d0740fdfaa5b6d2de0dbbcd1c22284e5a64b"
+    },
+    "snapshot_meta": {
+      "decoding_config_snapshot.json": {
+        "generated_at": "2026-06-15T15:37:02.982441+00:00",
+        "max_output_tokens": 4096,
+        "snapshot_id": "sgv7_decoding_v1",
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "grammar_constraint_snapshot.json": {
+        "generated_at": "2026-06-15T15:37:02.982441+00:00",
+        "grammar_family": "SceneScript JSON schema",
+        "snapshot_id": "sgv7_grammar_constraint_v1"
+      },
+      "normalization_policy_snapshot.json": {
+        "generated_at": "2026-06-15T15:37:02.982441+00:00",
+        "snapshot_id": "sgv7_normalization_policy_v1",
+        "source_text_normalization": "strict_whitespace_and_noise_filters"
+      },
+      "prompt_contract_snapshot.json": {
+        "contract_version": "sg_v7_contract_v1",
+        "generated_at": "2026-06-15T15:37:02.982441+00:00",
+        "note": "Frozen prompt contract snapshot for scientific benchmark eval_bundle_v1.",
+        "snapshot_id": "sgv7_prompt_contract_v1"
+      },
+      "runtime_policy_snapshot.json": {
+        "confidence_model": {
+          "action_weight": 0.05,
+          "actor_weight": 0.1,
+          "base": 0.5,
+          "max_action_bonus": 5,
+          "max_actor_bonus": 3,
+          "max_object_bonus": 5,
+          "missing_action_penalty": 0.1,
+          "object_weight": 0.05
+        },
+        "generated_at": "2026-06-15T15:37:02.982441+00:00",
+        "snapshot_id": "sgv7_runtime_policy_mirror_v1"
+      }
+    }
+  },
+  "overall_metrics": {
+    "case_count": 262,
+    "metrics": {
+      "action_recall": 0.9874301675977654,
+      "average_target_length": 799.8167938931298,
+      "beat_count_accuracy": 1.0,
+      "canonical_parse_rate": 1.0,
+      "case_strict_success_rate": 0.9656488549618321,
+      "chronology_phase_accuracy": 0.9656488549618321,
+      "dangling_target_rate": 0.0,
+      "described_action_precision": 1.0,
+      "exact_marked_object_id_accuracy": 1.0,
+      "json_valid_rate": 1.0,
+      "llm_accept_rate": 1.0,
+      "llm_merge_rate": 0.0,
+      "llm_reject_rate": 0.0,
+      "marked_object_recall": 1.0,
+      "ordinal_actor_binding_accuracy": 1.0,
+      "prediction_action_count_mean": 2.732824427480916,
+      "prediction_beat_count_mean": 1.6641221374045803,
+      "runtime_fallback_rate": 0.0,
+      "schema_valid_rate": 1.0,
+      "target_resolution_accuracy": 0.9850249584026622
+    },
+    "supports": {
+      "actions_expected": 716,
+      "beat_cases": 262,
+      "cases": 262,
+      "chronology_cases": 262,
+      "marked_refs": 230,
+      "ordinal_refs": 571,
+      "policy_cases": 262,
+      "required_target_actions": 200,
+      "target_actions": 601
+    },
+    "top_failure_clusters": [
+      {
+        "cluster_id": "synthetic_heldout::pass::none",
+        "count": 74
+      },
+      {
+        "cluster_id": "real_runtime::pass::exact_marker_identity_cases",
+        "count": 56
+      },
+      {
+        "cluster_id": "hard_heldout::pass::exact_marker_identity_cases",
+        "count": 49
+      }
+    ]
+  },
+  "run_metadata": {
+    "bundle_id": "sg_fresh262_eval_bundle_v2",
+    "bundle_version": "eval_bundle_v2_fresh262_all_models",
+    "checkpoint_id": "dataset_v9_3_event_sft_seed42",
+    "contract_version": "sg_v7_contract_v1",
+    "decoding_snapshot_hash": "6349599b952d29a3c512f864c7c91421973bf7106272da23b80665cfd8fd2e57",
+    "grammar_snapshot_hash": "db246071fe0fb256d283714e88d93f61d1b724619bc22b320372369d72095563",
+    "normalization_snapshot_hash": "b43833ae7cc773510d24dfaa0e924fd6ed0d0c1bce698e12f4cb7db6215d41b4",
+    "prompt_snapshot_hash": "7fb178540f85a29dfbdbff98dee849c78ec18b2f6c6db7deabe7d18198373c43",
+    "runtime_policy_snapshot_hash": "a27d06e7a30d1165f03f35023230d0740fdfaa5b6d2de0dbbcd1c22284e5a64b",
+    "seed": 20260615
+  }
+}

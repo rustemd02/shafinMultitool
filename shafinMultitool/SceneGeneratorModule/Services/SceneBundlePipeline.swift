@@ -17,6 +17,31 @@ struct RawSceneChunkSegment {
     var metadata: SceneTopLevelMetadata
 }
 
+private struct SceneChunkExecutionCheckpointPayload: Codable {
+    var sceneID: String
+    var chunkID: String
+    var chunkIndex: Int
+    var sourceText: String
+    var reasonCodes: [String]
+    var usedFallbackPlanner: Bool
+    var usedLegacyPlanBridge: Bool
+    var snapshot: SceneExecutionResourceSnapshot?
+    var chunk: SceneChunk
+    var diagnostics: SceneChunkDiagnostics
+}
+
+private struct SceneFinalExecutionCheckpointPayload: Codable {
+    var executionMode: String
+    var activeSceneID: String?
+    var sceneCount: Int
+    var chunkCount: Int
+    var checkpointCount: Int
+    var diagnostics: [String]
+    var activeSceneScript: SceneScript?
+    var bundleScript: SceneBundleScript
+    var chunkDiagnostics: [SceneChunkDiagnostics]
+}
+
 final class ScriptNormalizer {
     private let headingDetector = SceneMetadataExtractor()
     private let speakerCueRegex = try? NSRegularExpression(pattern: #"^[A-ZА-Я0-9][A-ZА-Я0-9 \-_.]{1,40}:?$"#)
@@ -187,6 +212,9 @@ final class ScriptNormalizer {
         previousNonBlankKind: NormalizedScriptUnitKind?,
         screenTextMode: Bool
     ) -> NormalizedScriptUnitKind {
+        if isSceneHeadingPrefix(line) {
+            return .sceneHeading
+        }
         if headingDetector.extract(description: line).sceneHeading != nil {
             return .sceneHeading
         }
@@ -212,6 +240,15 @@ final class ScriptNormalizer {
         return .actionLine
     }
 
+    private func isSceneHeadingPrefix(_ line: String) -> Bool {
+        let normalized = line.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return [
+            "INT", "INT.", "EXT", "EXT.", "INT/EXT", "INT/EXT.",
+            "ИНТ", "ИНТ.", "ЭКСТ", "ЭКСТ.", "ИНТ/ЭКСТ", "ИНТ/ЭКСТ.",
+            "НАТ", "НАТ."
+        ].contains(normalized)
+    }
+
     private func isLikelyScreenText(_ line: String) -> Bool {
         guard !line.contains(":") else { return false }
         guard line.count <= 80 else { return false }
@@ -227,9 +264,7 @@ final class SceneBoundaryDetector {
         originalText: String,
         metadataExtractor: SceneMetadataExtractor
     ) -> [ScriptSceneCandidate] {
-        let headingIndices = units.enumerated().compactMap { index, unit in
-            unit.kind == .sceneHeading ? index : nil
-        }
+        let headingIndices = mergedHeadingStartIndices(in: units)
 
         if headingIndices.isEmpty {
             let trimmed = originalText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -315,6 +350,36 @@ final class SceneBoundaryDetector {
         }
 
         return scenes
+    }
+
+    private func mergedHeadingStartIndices(in units: [NormalizedScriptUnit]) -> [Int] {
+        var result: [Int] = []
+        var skipped: Set<Int> = []
+
+        for (index, unit) in units.enumerated() {
+            guard unit.kind == .sceneHeading, !skipped.contains(index) else { continue }
+            result.append(index)
+
+            guard isSceneHeadingPrefix(unit.text) else { continue }
+            var lookahead = index + 1
+            while lookahead < units.count && units[lookahead].kind == .blank {
+                lookahead += 1
+            }
+            if lookahead < units.count, units[lookahead].kind == .sceneHeading {
+                skipped.insert(lookahead)
+            }
+        }
+
+        return result
+    }
+
+    private func isSceneHeadingPrefix(_ text: String) -> Bool {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return [
+            "INT", "INT.", "EXT", "EXT.", "INT/EXT", "INT/EXT.",
+            "ИНТ", "ИНТ.", "ЭКСТ", "ЭКСТ.", "ИНТ/ЭКСТ", "ИНТ/ЭКСТ.",
+            "НАТ", "НАТ."
+        ].contains(normalized)
     }
 
     private func appendSceneCandidate(
@@ -1776,6 +1841,8 @@ final class SceneBundlePipeline {
         markedObjects: [MarkedObject],
         mode: SceneBundleParseMode,
         previousState: ScriptDocumentState?,
+        executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
+        executionSupport: SceneGeneratorExecutionSupport = .live,
         fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult
     ) async -> SceneBundleParsingResult {
         let workload = makeWorkload(description: description, mode: mode, previousState: previousState)
@@ -1783,6 +1850,8 @@ final class SceneBundlePipeline {
             workload,
             markedObjects: markedObjects,
             previousState: previousState,
+            executionPolicy: executionPolicy,
+            executionSupport: executionSupport,
             fallbackPlanner: fallbackPlanner,
             asyncPlanner: { [localProvider] text, markers, anchors, state in
                 await localProvider.generatePlanAsync(description: text, markedObjects: markers, anchors: anchors, state: state)
@@ -1795,6 +1864,8 @@ final class SceneBundlePipeline {
         markedObjects: [MarkedObject],
         mode: SceneBundleParseMode,
         previousState: ScriptDocumentState?,
+        executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
+        executionSupport: SceneGeneratorExecutionSupport = .live,
         fallbackPlanner: @escaping (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult
     ) async -> SceneBundleParsingResult {
         let workload = makeWorkload(description: description, mode: mode, previousState: previousState)
@@ -1802,6 +1873,8 @@ final class SceneBundlePipeline {
             workload,
             markedObjects: markedObjects,
             previousState: previousState,
+            executionPolicy: executionPolicy,
+            executionSupport: executionSupport,
             fallbackPlanner: fallbackPlanner,
             asyncPlanner: { [localProvider] text, markers, anchors, state in
                 await localProvider.generatePlanAsync(description: text, markedObjects: markers, anchors: anchors, state: state)
@@ -1813,6 +1886,8 @@ final class SceneBundlePipeline {
         _ workload: SceneBundleWorkload,
         markedObjects: [MarkedObject],
         previousState: ScriptDocumentState?,
+        executionPolicy: SceneGeneratorMobileExecutionPolicy?,
+        executionSupport: SceneGeneratorExecutionSupport,
         fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult,
         asyncPlanner: ((_ text: String, _ markers: [MarkedObject], _ anchors: SourceAnchorBundle, _ state: SceneChunkState?) async -> ScenePlanProviderResult?)?
     ) async -> SceneBundleParsingResult {
@@ -1820,6 +1895,7 @@ final class SceneBundlePipeline {
         var sceneEntries = workload.reusedSceneEntries
         var allChunks: [SceneChunk] = workload.reusedChunks
         var chunkDiagnostics: [SceneChunkDiagnostics] = workload.reusedChunkDiagnostics
+        var executionTrace = executionPolicy.map { SceneExecutionTrace(executionMode: $0.mode, policy: $0) }
 
         for scene in workload.pendingScenes {
             if scene.isMontage {
@@ -1827,9 +1903,54 @@ final class SceneBundlePipeline {
             }
             var sceneState = workload.seedState(for: scene, previousState: previousState)
             var sceneChunks: [SceneChunk] = []
-            let rawSegments = segmenter.segment(scene: scene, units: workload.units)
+            let rawSegments = segments(for: scene, units: workload.units, executionPolicy: executionPolicy)
 
             for rawSegment in rawSegments {
+                let preChunkSnapshot = executionPolicy.map { _ in executionSupport.makeSnapshot() }
+                if let policy = executionPolicy, let snapshot = preChunkSnapshot {
+                    switch snapshot.thermalState {
+                    case .serious where policy.mode == .chunkedThermalAware:
+                        appendExecutionEvent(
+                            trace: &executionTrace,
+                            kind: .thermalCooldownStarted,
+                            sceneID: scene.id,
+                            chunkID: rawSegment.chunkID,
+                            chunkIndex: rawSegment.chunkIndex,
+                            snapshot: snapshot,
+                            cooldownMs: policy.cooldownOnSeriousMs
+                        )
+                        await executionSupport.sleep(policy.cooldownOnSeriousMs)
+                        appendExecutionEvent(
+                            trace: &executionTrace,
+                            kind: .thermalCooldownFinished,
+                            sceneID: scene.id,
+                            chunkID: rawSegment.chunkID,
+                            chunkIndex: rawSegment.chunkIndex,
+                            snapshot: executionSupport.makeSnapshot(),
+                            cooldownMs: policy.cooldownOnSeriousMs
+                        )
+                    case .critical:
+                        appendExecutionEvent(
+                            trace: &executionTrace,
+                            kind: .criticalTelemetryObserved,
+                            sceneID: scene.id,
+                            chunkID: rawSegment.chunkID,
+                            chunkIndex: rawSegment.chunkIndex,
+                            snapshot: snapshot,
+                            cooldownMs: policy.cooldownOnCriticalMs,
+                            note: "critical_is_telemetry_only"
+                        )
+                    default:
+                        appendExecutionEvent(
+                            trace: &executionTrace,
+                            kind: .thermalContinue,
+                            sceneID: scene.id,
+                            chunkID: rawSegment.chunkID,
+                            chunkIndex: rawSegment.chunkIndex,
+                            snapshot: snapshot
+                        )
+                    }
+                }
                 let segmentUnits = unitsIntersecting(rawSegment.sourceRange, units: workload.units)
                 let anchors = chunkAnchorExtractor.extract(
                     sourceText: rawSegment.sourceText,
@@ -1838,16 +1959,31 @@ final class SceneBundlePipeline {
                 )
                 let registrySnapshot = registryProjector.project(from: sceneState)
                 let chunkState = registryProjector.chunkState(from: registrySnapshot, sceneID: scene.id, metadata: scene.metadata)
-                let providerResult: ScenePlanProviderResult?
-                if let asyncPlanner {
-                    providerResult = await asyncPlanner(rawSegment.sourceText, markedObjects, anchors.sourceBundle, chunkState)
-                } else {
-                    providerResult = localProvider.generatePlan(
-                        description: rawSegment.sourceText,
-                        markedObjects: markedObjects,
-                        anchors: anchors.sourceBundle,
-                        state: chunkState
+                let maxAttempts = max(executionPolicy?.maxChunkAttempts ?? 1, 1)
+                var providerResult: ScenePlanProviderResult?
+                for attempt in 0..<maxAttempts {
+                    appendExecutionEvent(
+                        trace: &executionTrace,
+                        kind: .chunkStarted,
+                        sceneID: scene.id,
+                        chunkID: rawSegment.chunkID,
+                        chunkIndex: rawSegment.chunkIndex,
+                        snapshot: executionPolicy == nil ? nil : executionSupport.makeSnapshot(),
+                        note: attempt > 0 ? "retry_attempt_\(attempt)" : nil
                     )
+                    if let asyncPlanner {
+                        providerResult = await asyncPlanner(rawSegment.sourceText, markedObjects, anchors.sourceBundle, chunkState)
+                    } else {
+                        providerResult = localProvider.generatePlan(
+                            description: rawSegment.sourceText,
+                            markedObjects: markedObjects,
+                            anchors: anchors.sourceBundle,
+                            state: chunkState
+                        )
+                    }
+                    if providerResult != nil {
+                        break
+                    }
                 }
 
                 let draft = makeDraft(
@@ -1860,22 +1996,69 @@ final class SceneBundlePipeline {
                     chunkState: chunkState,
                     fallbackPlanner: fallbackPlanner
                 )
+                if draft.usedFallbackPlanner {
+                    appendExecutionEvent(
+                        trace: &executionTrace,
+                        kind: .chunkFailed,
+                        sceneID: scene.id,
+                        chunkID: rawSegment.chunkID,
+                        chunkIndex: rawSegment.chunkIndex,
+                        snapshot: executionPolicy == nil ? nil : executionSupport.makeSnapshot(),
+                        note: "fallback_planner_used"
+                    )
+                }
                 let canonicalChunk = canonicalizer.canonicalize(draft: draft, stitchState: sceneState)
                 sceneState = stitcher.apply(chunk: canonicalChunk, to: sceneState)
                 sceneChunks.append(canonicalChunk)
                 allChunks.append(canonicalChunk)
-                chunkDiagnostics.append(
-                    SceneChunkDiagnostics(
+                let chunkDiagnostic = SceneChunkDiagnostics(
+                    sceneID: canonicalChunk.sceneID,
+                    chunkID: canonicalChunk.chunkID,
+                    chunkIndex: canonicalChunk.chunkIndex,
+                    reasonCodes: canonicalChunk.reasonCodes,
+                    unresolvedRefs: canonicalChunk.deferredRefs.map(\.id),
+                    anchors: canonicalChunk.anchors,
+                    usedFallbackPlanner: canonicalChunk.usedFallbackPlanner,
+                    usedLegacyPlanBridge: canonicalChunk.usedLegacyPlanBridge
+                )
+                chunkDiagnostics.append(chunkDiagnostic)
+                appendExecutionEvent(
+                    trace: &executionTrace,
+                    kind: .chunkCompleted,
+                    sceneID: scene.id,
+                    chunkID: canonicalChunk.chunkID,
+                    chunkIndex: canonicalChunk.chunkIndex,
+                    snapshot: executionPolicy == nil ? nil : executionSupport.makeSnapshot()
+                )
+                if let policy = executionPolicy,
+                   policy.mode == .chunkedThermalAware,
+                   policy.checkpointEnabled,
+                   let fileName = writeChunkCheckpoint(
+                    chunk: canonicalChunk,
+                    diagnostics: chunkDiagnostic,
+                    snapshot: executionPolicy == nil ? nil : executionSupport.makeSnapshot(),
+                    support: executionSupport
+                   ) {
+                    executionTrace?.checkpoints.append(
+                        SceneExecutionCheckpoint(
+                            fileName: fileName,
+                            stage: "chunk",
+                            sceneID: canonicalChunk.sceneID,
+                            chunkID: canonicalChunk.chunkID,
+                            chunkIndex: canonicalChunk.chunkIndex,
+                            timestamp: executionSupport.now()
+                        )
+                    )
+                    appendExecutionEvent(
+                        trace: &executionTrace,
+                        kind: .checkpointWritten,
                         sceneID: canonicalChunk.sceneID,
                         chunkID: canonicalChunk.chunkID,
                         chunkIndex: canonicalChunk.chunkIndex,
-                        reasonCodes: canonicalChunk.reasonCodes,
-                        unresolvedRefs: canonicalChunk.deferredRefs.map(\.id),
-                        anchors: canonicalChunk.anchors,
-                        usedFallbackPlanner: canonicalChunk.usedFallbackPlanner,
-                        usedLegacyPlanBridge: canonicalChunk.usedLegacyPlanBridge
+                        snapshot: executionPolicy == nil ? nil : executionSupport.makeSnapshot(),
+                        checkpointFileName: fileName
                     )
-                )
+                }
             }
 
             guard let finalizedState = sceneState else { continue }
@@ -2030,6 +2213,39 @@ final class SceneBundlePipeline {
             activeSceneIndex: bundlePlan.activeSceneIndex,
             visualOverlays: workload.visualOverlays
         )
+        if let policy = executionPolicy, policy.checkpointEnabled,
+           let fileName = writeFinalCheckpoint(
+            activeSceneID: renderableSceneEntries.indices.contains(bundlePlan.activeSceneIndex) ? renderableSceneEntries[bundlePlan.activeSceneIndex].sceneID : nil,
+            sceneCount: renderableSceneEntries.count,
+            chunkCount: allChunks.count,
+            diagnostics: diagnostics.notes,
+            executionMode: policy.mode,
+            existingCheckpointCount: executionTrace?.checkpoints.count ?? 0,
+            activeSceneScript: bundleScript.activeSceneScript,
+            bundleScript: bundleScript,
+            chunkDiagnostics: chunkDiagnostics,
+            support: executionSupport
+           ) {
+            executionTrace?.checkpoints.append(
+                SceneExecutionCheckpoint(
+                    fileName: fileName,
+                    stage: "final_result",
+                    sceneID: renderableSceneEntries.indices.contains(bundlePlan.activeSceneIndex) ? renderableSceneEntries[bundlePlan.activeSceneIndex].sceneID : nil,
+                    chunkID: nil,
+                    chunkIndex: nil,
+                    timestamp: executionSupport.now()
+                )
+            )
+            appendExecutionEvent(
+                trace: &executionTrace,
+                kind: .checkpointWritten,
+                sceneID: renderableSceneEntries.indices.contains(bundlePlan.activeSceneIndex) ? renderableSceneEntries[bundlePlan.activeSceneIndex].sceneID : nil,
+                chunkID: nil,
+                chunkIndex: nil,
+                snapshot: executionPolicy == nil ? nil : executionSupport.makeSnapshot(),
+                checkpointFileName: fileName
+            )
+        }
 
         return SceneBundleParsingResult(
             bundleScript: bundleScript,
@@ -2049,7 +2265,8 @@ final class SceneBundlePipeline {
                     return lhs.chunkIndex < rhs.chunkIndex
                 }
                 return lhs.sceneID < rhs.sceneID
-            }
+            },
+            executionTrace: executionTrace
         )
     }
 
@@ -2057,6 +2274,8 @@ final class SceneBundlePipeline {
         _ workload: SceneBundleWorkload,
         markedObjects: [MarkedObject],
         previousState: ScriptDocumentState?,
+        executionPolicy: SceneGeneratorMobileExecutionPolicy?,
+        executionSupport: SceneGeneratorExecutionSupport,
         fallbackPlanner: @escaping (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult,
         asyncPlanner: ((_ text: String, _ markers: [MarkedObject], _ anchors: SourceAnchorBundle, _ state: SceneChunkState?) async -> ScenePlanProviderResult?)?
     ) -> SceneBundleParsingResult {
@@ -2067,6 +2286,8 @@ final class SceneBundlePipeline {
                 workload,
                 markedObjects: markedObjects,
                 previousState: previousState,
+                executionPolicy: executionPolicy,
+                executionSupport: executionSupport,
                 fallbackPlanner: fallbackPlanner,
                 asyncPlanner: asyncPlanner
             )
@@ -3055,8 +3276,125 @@ final class SceneBundlePipeline {
             visualOverlays: [],
             documentState: documentState,
             diagnostics: .empty,
-            chunkDiagnostics: []
+            chunkDiagnostics: [],
+            executionTrace: nil
         )
+    }
+
+    private func segments(
+        for scene: ScriptSceneCandidate,
+        units: [NormalizedScriptUnit],
+        executionPolicy: SceneGeneratorMobileExecutionPolicy?
+    ) -> [RawSceneChunkSegment] {
+        guard executionPolicy?.mode == .monolithic else {
+            return segmenter.segment(scene: scene, units: units)
+        }
+        return [
+            RawSceneChunkSegment(
+                sceneID: scene.id,
+                sceneIndex: scene.sceneIndex,
+                chunkID: "\(scene.id)_monolithic",
+                chunkIndex: 0,
+                sourceText: scene.sourceText,
+                sourceRange: scene.sourceRange,
+                metadata: scene.metadata
+            ),
+        ]
+    }
+
+    private func appendExecutionEvent(
+        trace: inout SceneExecutionTrace?,
+        kind: SceneExecutionEventKind,
+        sceneID: String?,
+        chunkID: String?,
+        chunkIndex: Int?,
+        snapshot: SceneExecutionResourceSnapshot? = nil,
+        cooldownMs: Int? = nil,
+        checkpointFileName: String? = nil,
+        note: String? = nil
+    ) {
+        guard var currentTrace = trace else { return }
+        currentTrace.events.append(
+            SceneExecutionEvent(
+                timestamp: snapshot?.timestamp ?? Date(),
+                kind: kind,
+                sceneID: sceneID,
+                chunkID: chunkID,
+                chunkIndex: chunkIndex,
+                snapshot: snapshot,
+                cooldownMs: cooldownMs,
+                checkpointFileName: checkpointFileName,
+                note: note
+            )
+        )
+        trace = currentTrace
+    }
+
+    private func writeChunkCheckpoint(
+        chunk: SceneChunk,
+        diagnostics: SceneChunkDiagnostics,
+        snapshot: SceneExecutionResourceSnapshot?,
+        support: SceneGeneratorExecutionSupport
+    ) -> String? {
+        let fileName = "chunk_\(String(format: "%03d", chunk.chunkIndex + 1))_\(sanitizedCheckpointIdentifier(chunk.chunkID)).json"
+        let payload = SceneChunkExecutionCheckpointPayload(
+            sceneID: chunk.sceneID,
+            chunkID: chunk.chunkID,
+            chunkIndex: chunk.chunkIndex,
+            sourceText: chunk.sourceText,
+            reasonCodes: chunk.reasonCodes,
+            usedFallbackPlanner: chunk.usedFallbackPlanner,
+            usedLegacyPlanBridge: chunk.usedLegacyPlanBridge,
+            snapshot: snapshot,
+            chunk: chunk,
+            diagnostics: diagnostics
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(payload) else { return nil }
+        try? support.writeCheckpoint(fileName, data)
+        return fileName
+    }
+
+    private func writeFinalCheckpoint(
+        activeSceneID: String?,
+        sceneCount: Int,
+        chunkCount: Int,
+        diagnostics: [String],
+        executionMode: SceneGeneratorExecutionMode,
+        existingCheckpointCount: Int,
+        activeSceneScript: SceneScript?,
+        bundleScript: SceneBundleScript,
+        chunkDiagnostics: [SceneChunkDiagnostics],
+        support: SceneGeneratorExecutionSupport
+    ) -> String? {
+        let fileName = executionMode == .monolithic ? "scene_monolithic_result.json" : "scene_chunked_result.json"
+        let payload = SceneFinalExecutionCheckpointPayload(
+            executionMode: executionMode.rawValue,
+            activeSceneID: activeSceneID,
+            sceneCount: sceneCount,
+            chunkCount: chunkCount,
+            checkpointCount: existingCheckpointCount + 1,
+            diagnostics: diagnostics,
+            activeSceneScript: activeSceneScript,
+            bundleScript: bundleScript,
+            chunkDiagnostics: chunkDiagnostics
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(payload) else { return nil }
+        try? support.writeCheckpoint(fileName, data)
+        return fileName
+    }
+
+    private func sanitizedCheckpointIdentifier(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let scalarView = value.unicodeScalars.map { scalar -> String in
+            allowed.contains(scalar) ? String(scalar) : "_"
+        }
+        return scalarView.joined()
     }
 
     private func makeWorkload(description: String, mode: SceneBundleParseMode, previousState: ScriptDocumentState?) -> SceneBundleWorkload {

@@ -1,0 +1,8 @@
+{
+  "full_labels_file": "camera_full_labels.jsonl",
+  "guided_live_manifest": "guided_live_scenarios.json",
+  "id": "camera_device_benchmark_pack_v1",
+  "images_root": "images",
+  "live_sequences_manifest": "live_sequences.json",
+  "quick_labels_file": "camera_quick_labels.jsonl"
+}

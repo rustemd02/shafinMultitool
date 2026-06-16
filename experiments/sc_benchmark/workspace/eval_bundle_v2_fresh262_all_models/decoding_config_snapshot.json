@@ -1,0 +1,7 @@
+{
+  "snapshot_id": "sgv7_decoding_v1",
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "max_output_tokens": 4096,
+  "generated_at": "2026-06-15T15:37:02.982441+00:00"
+}

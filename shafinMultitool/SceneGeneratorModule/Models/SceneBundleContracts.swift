@@ -320,4 +320,5 @@ struct SceneBundleParsingResult: Equatable {
     var documentState: ScriptDocumentState
     var diagnostics: ParsingDiagnostics
     var chunkDiagnostics: [SceneChunkDiagnostics]
+    var executionTrace: SceneExecutionTrace?
 }

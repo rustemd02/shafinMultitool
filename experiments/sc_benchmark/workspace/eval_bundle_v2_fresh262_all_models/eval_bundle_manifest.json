@@ -1,0 +1,55 @@
+{
+  "bundle_id": "sg_fresh262_eval_bundle_v2",
+  "bundle_version": "eval_bundle_v2_fresh262_all_models",
+  "contract_version": "sg_v7_contract_v1",
+  "created_at": "2026-06-15T15:37:02.983630+00:00",
+  "required_contract_snapshots": [
+    "prompt_contract_snapshot.json",
+    "decoding_config_snapshot.json",
+    "grammar_constraint_snapshot.json",
+    "normalization_policy_snapshot.json",
+    "runtime_policy_snapshot.json"
+  ],
+  "expected_snapshot_hashes": {
+    "prompt_contract_snapshot.json": "7fb178540f85a29dfbdbff98dee849c78ec18b2f6c6db7deabe7d18198373c43",
+    "decoding_config_snapshot.json": "6349599b952d29a3c512f864c7c91421973bf7106272da23b80665cfd8fd2e57",
+    "grammar_constraint_snapshot.json": "db246071fe0fb256d283714e88d93f61d1b724619bc22b320372369d72095563",
+    "normalization_policy_snapshot.json": "b43833ae7cc773510d24dfaa0e924fd6ed0d0c1bce698e12f4cb7db6215d41b4",
+    "runtime_policy_snapshot.json": "a27d06e7a30d1165f03f35023230d0740fdfaa5b6d2de0dbbcd1c22284e5a64b"
+  },
+  "set_counts": {
+    "synthetic_heldout": 109,
+    "hard_heldout": 89,
+    "real_runtime": 64
+  },
+  "required_metrics": [
+    "json_valid_rate",
+    "marked_object_recall",
+    "exact_marked_object_id_accuracy",
+    "beat_count_accuracy",
+    "action_recall",
+    "described_action_precision",
+    "dangling_target_rate",
+    "ordinal_actor_binding_accuracy",
+    "target_resolution_accuracy",
+    "chronology_phase_accuracy",
+    "llm_accept_rate",
+    "llm_merge_rate",
+    "llm_reject_rate",
+    "runtime_fallback_rate"
+  ],
+  "provenance": {
+    "methodology_version": "strict_fresh262_refresh_v1",
+    "core_seed": 20260615,
+    "hard_seed": 20260616,
+    "core_generate": 320,
+    "hard_generate": 280,
+    "strict_match_policy": [
+      "sample_id",
+      "source_text",
+      "normalized_source_hash",
+      "graph_family_key_with_short_hash_normalization"
+    ],
+    "runtime_slice_note": "real_runtime set is a synthetic runtime-proxy refresh because no unused leakage-safe runtime pool remained."
+  }
+}

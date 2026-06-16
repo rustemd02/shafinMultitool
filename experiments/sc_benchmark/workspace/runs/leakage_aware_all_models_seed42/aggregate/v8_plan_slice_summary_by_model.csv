@@ -1,0 +1,3 @@
+model_id,slice,seed_count,plan_parse_rate.mean,plan_parse_rate.std,plan_reference_binding_accuracy.mean,plan_reference_binding_accuracy.std,plan_beat_integrity_accuracy.mean,plan_beat_integrity_accuracy.std
+dataset_v8_plan_orpo_iter1,local_plan_raw,1,0.9580152671755725,0.0,0.7595419847328244,0.0,0.2786259541984733,0.0
+dataset_v8_plan_sft,local_plan_raw,1,0.9580152671755725,0.0,0.7633587786259542,0.0,0.2748091603053435,0.0

@@ -28,6 +28,8 @@ actor LlamaContext {
     private var vocab: OpaquePointer
     private var sampling: UnsafeMutablePointer<llama_sampler>
     private var batch: llama_batch
+    private let batchCapacity: Int
+    private let contextWindow: Int
     private var tokensList: [llama_token]
     private var temporaryInvalidCChars: [CChar]
     
@@ -45,11 +47,19 @@ actor LlamaContext {
     
     // MARK: - Initialization
     
-    private init(model: OpaquePointer, context: OpaquePointer, temperature: Float = 0.1, grammarStr: String? = nil) {
+    private init(
+        model: OpaquePointer,
+        context: OpaquePointer,
+        contextWindow: Int,
+        temperature: Float = 0.1,
+        grammarStr: String? = nil
+    ) {
         self.model = model
         self.context = context
         self.tokensList = []
-        self.batch = llama_batch_init(4096, 0, 1)
+        self.batchCapacity = max(1, contextWindow)
+        self.contextWindow = max(1, contextWindow)
+        self.batch = llama_batch_init(Int32(self.batchCapacity), 0, 1)
         self.temporaryInvalidCChars = []
         self.vocab = llama_model_get_vocab(model)
         
@@ -124,7 +134,13 @@ actor LlamaContext {
         }
         
         print("✅ [LLM] Модель загружена успешно")
-        return LlamaContext(model: model, context: context, temperature: temperature, grammarStr: grammarStr)
+        return LlamaContext(
+            model: model,
+            context: context,
+            contextWindow: Int(ctxParams.n_ctx),
+            temperature: temperature,
+            grammarStr: grammarStr
+        )
     }
     
     // MARK: - Public API
@@ -181,7 +197,7 @@ actor LlamaContext {
     
     private func completionInit(text: String) {
         isDone = false
-        tokensList = tokenize(text: text, addBos: true)
+        tokensList = truncatePromptTokensIfNeeded(tokenize(text: text, addBos: true))
         temporaryInvalidCChars = []
         generatedTokens = 0
         stopReason = nil
@@ -192,18 +208,24 @@ actor LlamaContext {
         llama_memory_clear(llama_get_memory(context), true)
 
         llama_batch_clear(&batch)
-        
-        for (i, token) in tokensList.enumerated() {
-            llama_batch_add(&batch, token, Int32(i), [0], false)
+
+        var promptIndex = 0
+        while promptIndex < tokensList.count {
+            llama_batch_clear(&batch)
+            let upperBound = min(promptIndex + batchCapacity, tokensList.count)
+            for tokenIndex in promptIndex..<upperBound {
+                let token = tokensList[tokenIndex]
+                let needsLogits = tokenIndex == tokensList.index(before: tokensList.endIndex)
+                llama_batch_add(&batch, token, Int32(tokenIndex), [0], needsLogits)
+            }
+            if llama_decode(context, batch) != 0 {
+                print("❌ [LLM] llama_decode() failed при инициализации")
+                break
+            }
+            promptIndex = upperBound
         }
-        // Помечаем последний токен для вычисления logits
-        batch.logits[Int(batch.n_tokens) - 1] = 1
-        
-        if llama_decode(context, batch) != 0 {
-            print("❌ [LLM] llama_decode() failed при инициализации")
-        }
-        
-        nCur = batch.n_tokens
+
+        nCur = Int32(tokensList.count)
     }
     
     private func completionLoop() -> String {
@@ -286,6 +308,19 @@ actor LlamaContext {
         tokens.deallocate()
         
         return swiftTokens
+    }
+
+    private func truncatePromptTokensIfNeeded(_ tokens: [llama_token]) -> [llama_token] {
+        let reservedForGeneration = max(1, Int(maxTokens))
+        let promptCapacity = max(1, contextWindow - reservedForGeneration)
+        guard tokens.count > promptCapacity else { return tokens }
+
+        let suffixCount = max(1, promptCapacity - 1)
+        let bosToken = llama_vocab_bos(vocab)
+        if let first = tokens.first, first == bosToken {
+            return [first] + Array(tokens.suffix(suffixCount))
+        }
+        return Array(tokens.suffix(promptCapacity))
     }
     
     private func tokenToPiece(token: llama_token) -> [CChar] {

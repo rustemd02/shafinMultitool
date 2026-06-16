@@ -1,0 +1,200 @@
+{
+  "overall": {
+    "case_count": 140,
+    "metrics": {
+      "action_recall": 1.0,
+      "average_target_length": 774.7785714285715,
+      "beat_count_accuracy": 1.0,
+      "canonical_parse_rate": 1.0,
+      "case_strict_success_rate": 1.0,
+      "chronology_phase_accuracy": 1.0,
+      "dangling_target_rate": 0.0,
+      "described_action_precision": 1.0,
+      "exact_marked_object_id_accuracy": 1.0,
+      "json_valid_rate": 1.0,
+      "llm_accept_rate": 1.0,
+      "llm_merge_rate": 0.0,
+      "llm_reject_rate": 0.0,
+      "marked_object_recall": 1.0,
+      "ordinal_actor_binding_accuracy": 1.0,
+      "prediction_action_count_mean": 2.5214285714285714,
+      "prediction_beat_count_mean": 1.4428571428571428,
+      "runtime_fallback_rate": 0.0,
+      "schema_valid_rate": 1.0,
+      "target_resolution_accuracy": 1.0
+    },
+    "supports": {
+      "actions_expected": 353,
+      "beat_cases": 140,
+      "cases": 140,
+      "chronology_cases": 140,
+      "marked_refs": 24,
+      "ordinal_refs": 322,
+      "policy_cases": 140,
+      "required_target_actions": 63,
+      "target_actions": 290
+    },
+    "top_failure_clusters": [
+      {
+        "cluster_id": "synthetic_heldout::pass::none",
+        "count": 60
+      },
+      {
+        "cluster_id": "hard_heldout::pass::ordinal_cases",
+        "count": 55
+      },
+      {
+        "cluster_id": "real_runtime::pass::exact_marker_identity_cases",
+        "count": 12
+      }
+    ]
+  },
+  "run_metadata": {
+    "bundle_id": "sgv7_eval_bundle_v1__leakage_aware_all_models",
+    "bundle_version": "eval_bundle_v1_leakage_aware_all_models",
+    "checkpoint_id": "dataset_v9_event_sft_seed42",
+    "contract_version": "sg_v7_contract_v1",
+    "decoding_snapshot_hash": "f9779b62a87f9d0c163c51a41bf61e8c23e2223699acdbbf5f7ebba2bbc5d246",
+    "grammar_snapshot_hash": "a1f2fc00a384faa69e8177cf9077b50b7e0086cba8f35abbf6fde9ad47af4945",
+    "normalization_snapshot_hash": "678bdc22303cae685242a0356ccfddcefb3207d99d05909f80199a6670cf9f71",
+    "prompt_snapshot_hash": "6b8fbd0d86cbf3ca09d36516a7e8ec22a96c14b9badde3bdae113dc91a7f940b",
+    "runtime_policy_snapshot_hash": "75374ebdf4fa5bf39a9a21543ad6e96fa4d53318d07e25c6ce68411311c19335",
+    "seed": 20260419
+  },
+  "sets": {
+    "hard_heldout": {
+      "case_count": 63,
+      "metrics": {
+        "action_recall": 1.0,
+        "average_target_length": 888.4285714285714,
+        "beat_count_accuracy": 1.0,
+        "canonical_parse_rate": 1.0,
+        "case_strict_success_rate": 1.0,
+        "chronology_phase_accuracy": 1.0,
+        "dangling_target_rate": 0.0,
+        "described_action_precision": 1.0,
+        "exact_marked_object_id_accuracy": 0.0,
+        "json_valid_rate": 1.0,
+        "llm_accept_rate": 1.0,
+        "llm_merge_rate": 0.0,
+        "llm_reject_rate": 0.0,
+        "marked_object_recall": 0.0,
+        "ordinal_actor_binding_accuracy": 1.0,
+        "prediction_action_count_mean": 3.0634920634920637,
+        "prediction_beat_count_mean": 1.3174603174603174,
+        "runtime_fallback_rate": 0.0,
+        "schema_valid_rate": 1.0,
+        "target_resolution_accuracy": 1.0
+      },
+      "supports": {
+        "actions_expected": 193,
+        "beat_cases": 63,
+        "cases": 63,
+        "chronology_cases": 63,
+        "marked_refs": 0,
+        "ordinal_refs": 189,
+        "policy_cases": 63,
+        "required_target_actions": 51,
+        "target_actions": 142
+      },
+      "top_failure_clusters": [
+        {
+          "cluster_id": "hard_heldout::pass::ordinal_cases",
+          "count": 55
+        },
+        {
+          "cluster_id": "hard_heldout::pass::three_beat_cases",
+          "count": 8
+        }
+      ]
+    },
+    "real_runtime": {
+      "case_count": 17,
+      "metrics": {
+        "action_recall": 1.0,
+        "average_target_length": 743.8823529411765,
+        "beat_count_accuracy": 1.0,
+        "canonical_parse_rate": 1.0,
+        "case_strict_success_rate": 1.0,
+        "chronology_phase_accuracy": 1.0,
+        "dangling_target_rate": 0.0,
+        "described_action_precision": 1.0,
+        "exact_marked_object_id_accuracy": 1.0,
+        "json_valid_rate": 1.0,
+        "llm_accept_rate": 1.0,
+        "llm_merge_rate": 0.0,
+        "llm_reject_rate": 0.0,
+        "marked_object_recall": 1.0,
+        "ordinal_actor_binding_accuracy": 1.0,
+        "prediction_action_count_mean": 2.0,
+        "prediction_beat_count_mean": 1.2941176470588236,
+        "runtime_fallback_rate": 0.0,
+        "schema_valid_rate": 1.0,
+        "target_resolution_accuracy": 1.0
+      },
+      "supports": {
+        "actions_expected": 34,
+        "beat_cases": 17,
+        "cases": 17,
+        "chronology_cases": 17,
+        "marked_refs": 24,
+        "ordinal_refs": 39,
+        "policy_cases": 17,
+        "required_target_actions": 12,
+        "target_actions": 22
+      },
+      "top_failure_clusters": [
+        {
+          "cluster_id": "real_runtime::pass::exact_marker_identity_cases",
+          "count": 12
+        },
+        {
+          "cluster_id": "real_runtime::pass::ordinal_cases",
+          "count": 5
+        }
+      ]
+    },
+    "synthetic_heldout": {
+      "case_count": 60,
+      "metrics": {
+        "action_recall": 1.0,
+        "average_target_length": 664.2,
+        "beat_count_accuracy": 1.0,
+        "canonical_parse_rate": 1.0,
+        "case_strict_success_rate": 1.0,
+        "chronology_phase_accuracy": 1.0,
+        "dangling_target_rate": 0.0,
+        "described_action_precision": 1.0,
+        "exact_marked_object_id_accuracy": 0.0,
+        "json_valid_rate": 1.0,
+        "llm_accept_rate": 1.0,
+        "llm_merge_rate": 0.0,
+        "llm_reject_rate": 0.0,
+        "marked_object_recall": 0.0,
+        "ordinal_actor_binding_accuracy": 1.0,
+        "prediction_action_count_mean": 2.1,
+        "prediction_beat_count_mean": 1.6166666666666667,
+        "runtime_fallback_rate": 0.0,
+        "schema_valid_rate": 1.0,
+        "target_resolution_accuracy": 1.0
+      },
+      "supports": {
+        "actions_expected": 126,
+        "beat_cases": 60,
+        "cases": 60,
+        "chronology_cases": 60,
+        "marked_refs": 0,
+        "ordinal_refs": 94,
+        "policy_cases": 60,
+        "required_target_actions": 0,
+        "target_actions": 126
+      },
+      "top_failure_clusters": [
+        {
+          "cluster_id": "synthetic_heldout::pass::none",
+          "count": 60
+        }
+      ]
+    }
+  }
+}

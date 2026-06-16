@@ -2,7 +2,7 @@
 status: needs_update
 chapter: experiments
 scope: SceneGeneratorModule only; Camera Analysis eval artifacts added separately and chapter structure needs decision
-last_updated: 2026-06-04
+last_updated: 2026-06-15
 ---
 
 # 5. Эксперименты
@@ -26,7 +26,18 @@ last_updated: 2026-06-04
 | Runtime behavior | `runtime_fallback` | Доля случаев, где runtime вынужден отклонить результат и перейти к fallback; ниже лучше. |
 | End-to-end strictness | `strict_success` | Доля случаев, где выполнены ключевые структурные, семантические и runtime-условия. |
 
-Важное ограничение методики: большая таблица в разделе 5.2 является эволюционным сравнением поколений, а не единым однородным leaderboard. Между `v6`, `v7`, `v8` и `v9final` менялись контракт вывода, промежуточное представление и runtime/scorer policy. Поэтому в таблице явно указаны контекст и источник каждой строки. Строго сопоставимый срез, где строки оценены в одном финальном benchmark context, вынесен отдельно в раздел 5.3.
+Важное ограничение методики: большая таблица в разделе 5.2 является эволюционным сравнением поколений, а не единым однородным leaderboard. Между `v6`, `v7`, `v8` и `v9final` менялись контракт вывода, промежуточное представление, compiler behavior и runtime/scorer policy. Поэтому эту таблицу нельзя просто переименовать в «модель против модели».
+
+Дополнительная перепроверка train/eval overlap показала еще одно ограничение: часть поздних `v8`, `v9.2` и `v9.3` train-corpus строк пересекается с frozen eval bundle либо по explicit origin case id, либо по точному `source_text`, либо по общему `graph_family_key`. В результате не существует одной таблицы, которая одновременно была бы:
+
+1. кросс-поколенной;
+2. полностью leakage-free;
+3. репрезентативной для исходного 262-case difficulty mix.
+
+Поэтому в главе используются два дополняющих друг друга среза:
+
+1. раздел 5.2 — эволюционная таблица по полному 262-case bundle, полезная для инженерной истории и анализа архитектурного перехода;
+2. раздел 5.3 — leakage-aware holdout для более честного формата «model vs model», но уже на существенно более узком и более легком подмножестве.
 
 При чтении benchmark reports также нельзя смешивать `Model Summary` and `Slice Summary`. В `Model Summary` поле `real_runtime.runtime_fallback_rate` относится к подмножеству `real_runtime`, а в таблицах этой главы используется overall/end-to-end `runtime_fallback_rate`, поскольку он соответствует полной 262-case оценке.
 
@@ -65,6 +76,8 @@ last_updated: 2026-06-04
 | `v8` | `docs/SGv8pipeline/runs/v8_0_seed42/benchmark_results_seed42/aggregate/scientific_report.md` |
 | `v9final` | `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md`, `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/v9_3_post_train_eval_summary.json` |
 
+После overlap-аудита эту таблицу корректно читать именно как историю развития инженерного решения. Она показывает, как менялось качество вместе с изменением контракта, compiler/runtime policy и targeted hard-case data, но не доказывает, что один только новый чекпойнт модели обязательно доминирует над всеми предыдущими при строго одинаковых условиях.
+
 Отдельно важно зафиксировать legacy-результат `v6`. На собственном старом контракте `v6` имел `json_parse_rate=100.00%`, `schema_valid_rate=55.02%`, `actor_count_match_rate=81.34%` and `action_count_match_rate=35.41%` на 209 случаях. Однако при проверке на SG v7 contract этот же подход почти полностью проваливает структурные и runtime-метрики. Это не означает, что `v6` был "плохой моделью" в абсолютном смысле; это показывает, что рост требований к контракту сделал прямую генерацию финального JSON недостаточной.
 
 ### 5.2.2. Интерпретация эволюционной таблицы
@@ -75,27 +88,53 @@ last_updated: 2026-06-04
 
 `v9final` переносит модельный вывод еще ближе к компактному semantic table: акторы, объекты, действия и порядок событий становятся явными слотами. На frozen seed42 benchmark fresh `dataset_v9_3_event_sft` достигает `strict_success=99.62%`, `target_resolution=99.83%`, `chronology=99.62%`, `action_recall=99.86%` and `runtime_fallback=0.00%`. Поэтому главный экспериментальный вывод состоит в том, что прирост качества связан не только с дообучением, но и с изменением формы задачи: от свободной генерации JSON к ограниченному slot/event contract with deterministic verification and compilation.
 
-## 5.3. Строго сопоставимый срез на финальном frozen benchmark
+## 5.3. Строгий anti-leakage refresh для честного формата «model vs model»
 
-Чтобы отделить историческую эволюцию от более строгого сравнения, ниже приведен срез из финального V9.3 benchmark context. В нем `dataset_v7_orpo_iter2`, `dataset_v8_plan_orpo_iter1` and `dataset_v9_3_event_sft` оценены на одном frozen seed42 bundle and final scorer/runtime policy.
+После первоначального leakage-aware анализа был добавлен более строгий normalized matching. Он считает пересечением не только exact `source_text` и exact `graph_family_key`, но и:
 
-| Модель | `json_valid` | `schema_valid` | `ordinal_binding` | `target_resolution` | `chronology` | `action_recall` | `strict_success` | `runtime_fallback` |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `dataset_v7_orpo_iter2` | 59.16 | 59.16 | 52.60 | 12.82 | 3.44 | 12.06 | 3.44 | 50.76 |
-| `dataset_v8_plan_orpo_iter1` | 95.04 | 95.04 | 83.85 | 48.03 | 14.12 | 47.41 | 14.12 | 39.31 |
-| `dataset_v9_3_event_sft` | 100.00 | 100.00 | 100.00 | 99.83 | 99.62 | 99.86 | 99.62 | 0.00 |
+1. exact `sample_id`;
+2. `normalized_source_hash`;
+3. `graph_family_key` с short-hash normalization, когда full family key и его короткий граф-хэш считаются одним family anchor.
 
-Источник: `docs/SGv9pipeline/runs/v9_3_seed42/from_user_predictions/benchmark_results_seed42/aggregate/scientific_report.md`.
+Под этим более строгим правилом исходный `eval_bundle_v1` удерживает уже не `140`, а `0` leakage-safe случаев из `262`: все historical benchmark cases пересекаются с checked train corpora по `sample_id` и `graph_family_key`, а часть дополнительно совпадает по surface-text/hash. Значит промежуточный `clean140` нельзя оставлять как финальную «честную» таблицу.
 
-Pairwise comparison in the same report:
+### 5.3.1. Как выглядел benchmark раньше и как выглядит сейчас
 
-| Candidate | Baseline | Wins | Baseline wins | Ties | `sign_test_pvalue` | Delta `json_valid`, pp | Delta `chronology`, pp |
-|---|---|---:|---:|---:|---:|---:|---:|
-| `dataset_v8_plan_orpo_iter1` | `dataset_v7_orpo_iter2` | 149 | 84 | 29 | 0.000025 | 0.000 | +5.725 |
-| `dataset_v9_3_event_sft` | `dataset_v8_plan_orpo_iter1` | 224 | 0 | 38 | 0.000000 | +4.962 | +85.496 |
-| `dataset_v9_3_event_sft` | `dataset_v7_orpo_iter2` | 240 | 0 | 22 | 0.000000 | +4.962 | +91.221 |
+| Срез | `N` | Leakage status | Состав | Для чего пригоден | Текущий статус метрик |
+|---|---:|---|---|---|---|
+| `full262` | 262 | contaminated under strict normalized matching | historical frozen bundle: `109/89/64` | Эволюционная инженерная траектория и сравнение архитектурных поколений на исходном frozen benchmark | Метрики есть и остаются валидными как historical full-bundle trajectory |
+| `clean140` | 140 | intermediate, superseded | retained subset after earlier lenient audit: `60/63/17` | Промежуточная попытка fairer all-model slice | Метрики есть, но этот slice больше не считается финальным honest model-vs-model benchmark |
+| `fresh262` | 262 | strict clean | newly generated bundle: `109 synthetic_heldout`, `89 hard_heldout`, `64 real_runtime` proxy | Новый честный cross-generation rerun без train/eval overlap | Prediction rerun еще не выполнен, поэтому финальных fresh262 model metrics пока нет |
 
-Эта таблица является более сильным основанием для утверждения, что `v9final` лучше предыдущих архитектурных вариантов на данном frozen benchmark. В отличие от большой эволюционной таблицы, здесь сравнение происходит в одном оценочном контексте.
+Здесь важно различать два вопроса:
+
+1. «Какими были measured numbers на frozen historical benchmark?» — на это отвечает section 5.2.
+2. «Как получить максимально честный model-vs-model benchmark без leakage?» — на это теперь отвечает `fresh262`, а не `clean140`.
+
+### 5.3.2. Почему `N=262` снова стало возможным
+
+Раньше казалось, что честный all-model compare неизбежно должен схлопнуться до `140`, потому что overlap cases нужно просто выкинуть. Строгий audit показал более неприятную, но более полезную правду: внутренние historical резервуары (`sft_val`, `preference_val`, `accepted_*`, `runtime_preference_candidates`) тоже сидят на train-family overlap. Поэтому корректное решение — не отрезать старый bundle до бесконечности, а materialize-ить новый.
+
+Новый `fresh262` bundle строится так:
+
+1. materialize fresh SG v7 `core` graphs;
+2. materialize fresh SG v7 `hard` graphs;
+3. generate fresh heuristic source variants;
+4. reject any candidate that overlaps checked train corpora by strict normalized policy;
+5. сохранить исходные bucket counts `109/89/64`;
+6. rebuild `real_runtime` slice as synthetic runtime proxies, потому что leakage-safe unused real-runtime reserve внутри historical SG v7 pools больше не осталось.
+
+Именно поэтому `N=262` теперь возвращается, но не через reuse старых кейсов, а через полный refresh eval bundle.
+
+### 5.3.3. Что это меняет для интерпретации результатов
+
+Из этого следуют три методологических вывода.
+
+1. Полная таблица 5.2 остается корректной как historical engineering trajectory. Она показывает реальный путь `v7 -> v8 -> v9`, включая пользу constrained intermediate contracts, compiler/runtime hardening и targeted hard-case training.
+2. Промежуточный `clean140` надо трактовать как exploratory artifact. Его нельзя больше использовать как главный аргумент о «честном» сравнении моделей, потому что stricter matching показал, что исходный bundle целиком contaminated и требует полного refresh.
+3. Новый честный model-vs-model answer теперь привязан не к старым `140` метрикам, а к будущему rerun на `fresh262`. Без regenerated predictions для всех сравниваемых checkpoints любые попытки заполнить новую master-table числами были бы методологически нечестными.
+
+Иными словами, section 5.3 в текущей версии работы фиксирует не финальные fresh262 model numbers, а исправление самой benchmark methodology: старый frozen bundle больше нельзя выдавать за leakage-free cross-generation test, а новый strict refresh bundle уже подготовлен и готов к полному rerun.
 
 ## 5.4. Диагностика промежуточных представлений
 
@@ -147,14 +186,18 @@ Fresh `v9final` затем проверялся уже как новый success
 ## 5.6. Угрозы валидности
 
 1. Сравнение проводится на frozen seed42 bundle. Это хорошо для воспроизводимости, но не заменяет проверку на дополнительных seeds and external datasets.
-2. Большая таблица включает разные поколения output contract. Она показывает эволюцию инженерного решения, но не должна читаться как единый homogeneous leaderboard.
-3. Legacy `v6` metrics on its own contract and SG v7 stress-test metrics answer different questions. Их можно обсуждать рядом, но нельзя считать прямым A/B.
-4. Policy replay V9.2 demonstrates scorer/runtime alignment; it is not a retrained checkpoint result.
-5. `v9final` имеет очень высокие метрики на benchmark, но failure mining still records one hard case. Поэтому нельзя писать, что Scene Generator полностью решает задачу генерации структурированных сцен.
-6. Live-smoke данные из `diploma.md` полезны как инженерная история, но для финального доказательства качества лучше опираться на frozen benchmark artifacts and attach live parity logs separately before defense.
+2. Большая таблица 5.2 включает разные поколения output contract. Она показывает эволюцию инженерного решения, но не должна читаться как единый homogeneous leaderboard.
+3. Leakage-aware holdout из раздела 5.3 честнее в смысле train/eval overlap, но он materially easier than the original benchmark: из 64 `real_runtime` cases остается только 17, а многие поздние targeted hard/runtime families исключаются полностью.
+4. Поэтому в этой работе нет одной универсальной «идеальной» таблицы. Полный 262-case bundle лучше отражает исходную трудность задачи, а 140-case clean holdout лучше отвечает на узкий вопрос о более честном model-vs-model сравнении.
+5. Legacy `v6` metrics on its own contract and SG v7 stress-test metrics answer different questions. Их можно обсуждать рядом, но нельзя считать прямым A/B.
+6. Policy replay V9.2 demonstrates scorer/runtime alignment; it is not a retrained checkpoint result.
+7. `v9final` имеет очень высокие метрики на benchmark, но failure mining still records one hard case, а leakage-aware holdout показывает one retained hard-case miss for fresh V9.3. Поэтому нельзя писать, что Scene Generator полностью решает задачу генерации структурированных сцен.
+8. Live-smoke данные из `diploma.md` полезны как инженерная история, но для финального доказательства качества лучше опираться на frozen benchmark artifacts and attach live parity logs separately before defense.
 
 ## 5.7. Выводы
 
-Эксперименты показывают, что главный прирост качества Scene Generator достигается при изменении формы модельной задачи. Direct generation of final `SceneScript` gives high structural fragility and high runtime fallback. SG v7 stabilizes JSON/schema behavior through graph-first data and validators, but remains weak on semantic recovery. SG v8 improves target and action recovery by moving to `ScenePlanIR`, but still leaves enough ambiguity to produce schema/runtime failures. SG v9final reaches near-complete strict success on the frozen benchmark because the model outputs a compact event table, while deterministic verifier and compiler own the final runtime contract.
+Эксперименты показывают, что главный прирост качества Scene Generator достигается при изменении формы модельной задачи. Direct generation of final `SceneScript` gives high structural fragility and high runtime fallback. SG v7 stabilizes JSON/schema behavior through graph-first data and validators, but remains weak on semantic recovery. SG v8 improves target and action recovery by moving to `ScenePlanIR`, but still leaves enough ambiguity to produce schema/runtime failures. SG v9-family reaches near-complete strict success on the frozen benchmark because the model outputs a compact event table, while deterministic verifier and compiler own the final runtime contract.
 
-Таким образом, экспериментальная часть подтверждает архитектурную гипотезу работы: для мобильного сценарного генератора надежность повышается не только за счет fine-tuning, but by designing a constrained intermediate representation that makes model errors observable, recoverable and checkable before runtime use.
+При этом честная итоговая интерпретация должна быть двухслойной. Полная 262-case таблица подтверждает архитектурную гипотезу о пользе constrained intermediate representation, compiler and policy hardening на реальном инженерном trajectory. Leakage-aware 140-case holdout показывает более строгую model-vs-model картину: cross-generation progress `v7 -> v8 -> v9` сохраняется, но внутри поздней V9 family retained clean slice уже не подтверждает narrative о безусловном доминировании fresh V9.3 checkpoint над V9.0.
+
+Таким образом, экспериментальная часть подтверждает архитектурную гипотезу работы: для мобильного сценарного генератора надежность повышается не только за счет fine-tuning, but by designing a constrained intermediate representation that makes model errors observable, recoverable and checkable before runtime use. Одновременно перепроверка метрик показывает, что финальные диссертационные claims должны разделять architecture-level progress, policy alignment and pure checkpoint-vs-checkpoint evidence, rather than conflating them into one oversimplified leaderboard.

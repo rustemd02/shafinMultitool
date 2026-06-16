@@ -23,6 +23,17 @@ Values are from available repository artifacts. Percent values from markdown rep
 | live smoke v8 | Real GGUF v8 live smoke: `passed=0/12`, runtime about 808 seconds, model loaded. | `diploma.md` entry 2026-04-26 | partially_verified; attach xcresult before final defense |
 | live smoke v9 | V9 runtime hardening entry reports `SceneV8PipelineTests/testLiveLocalModelDatasetSampledCases()` `1/1 passed`, no failures. | `diploma.md` entry 2026-05-04 | partially_verified; attach xcresult before final defense |
 
+## Strict refresh audit
+
+The earlier `clean140` holdout is now treated as an intermediate artifact, not the final honest benchmark slice. After stricter normalized matching by `sample_id`, exact `source_text`, `normalized_source_hash`, and `graph_family_key` with short-hash normalization, the historical `eval_bundle_v1` retains `0/262` leakage-safe cases.
+
+| Artifact | Current verified statement | Source | Status |
+|---|---|---|---|
+| Historical `eval_bundle_v1` | Under strict matching it retains `0/262`; all 262 cases overlap the checked train corpora by `sample_id` and `graph_family_key`, with 95 direct source-text collisions and 89 normalized-source-hash collisions. | `experiments/sc_benchmark/workspace/eval_bundle_v2_fresh262_all_models/strict_overlap_audit.json` | verified |
+| Intermediate `clean140` slice | The 140-case all-model holdout remains useful as an intermediate methodological probe, but it is superseded and should not be presented as the final honest model-vs-model slice. | `experiments/sc_benchmark/workspace/eval_bundle_v1_leakage_aware_all_models/leakage_audit.json`, `experiments/sc_benchmark/workspace/runs/leakage_aware_all_models_seed42/aggregate/scientific_report.md` | obsolete as final slice |
+| Strict `fresh262` bundle | A new fully refreshed bundle preserves `N=262` with `109 synthetic_heldout`, `89 hard_heldout`, `64 real_runtime`; under the same strict audit it retains `262/262` cases. The `real_runtime` slice is rebuilt as synthetic runtime proxies because no unused leakage-safe runtime reserve remained inside the historical SG v7 pools. | `experiments/sc_benchmark/workspace/eval_bundle_v2_fresh262_all_models/eval_bundle_manifest.json`, `experiments/sc_benchmark/workspace/eval_bundle_v2_fresh262_all_models/strict_overlap_audit.json` | verified |
+| Fresh262 metrics | No honest cross-model metrics are recorded yet for `fresh262`, because every compared model needs regenerated predictions on the new bundle. Historical prediction exports from `eval_bundle_v1` cannot be reused. | `experiments/sc_benchmark/workspace/benchmark_config.seed42.fresh262_all_models.json`, `experiments/sc_benchmark/workspace/fresh262_rerun_instructions.md` | pending rerun |
+
 ## V9 raw event-table metrics
 
 | Metric | Value | Source |
@@ -43,6 +54,7 @@ Values are from available repository artifacts. Percent values from markdown rep
 | Potential claim | Why unsafe | Status |
 |---|---|---|
 | “V9 is universally better than all earlier models.” | Evidence is seed42 frozen eval and specific live smoke, not broad production distribution. | needs_source |
+| “V9.3 is strictly better than V9.0 in a pure model-vs-model sense.” | Full-bundle gain is real for the 262-case benchmark context, but the leakage-aware 140-case all-model holdout does not support strict dominance: V9.0 is perfect there, while V9.3 misses one hard three-beat case. | verified |
 | “Hybrid Camera Analysis neural evidence improves quality.” | Current hybrid smoke is `mobile_blocked`; deterministic v1 is verified. | needs_source |
 | “Chunk-native continuity is quantitatively solved.” | V9 event summary has null cross-chunk continuity metrics. | needs_source |
 | “V9.3 trained model reaches the policy-replay metrics.” | Fresh V9.3 predictions exceed the V9.3 acceptance gate, but still leave 1 mined `dialogue_action` hard case; phrase as measured benchmark result, not universal correctness. | verified |

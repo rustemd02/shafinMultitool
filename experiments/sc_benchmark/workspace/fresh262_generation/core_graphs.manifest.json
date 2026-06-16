@@ -1,0 +1,71 @@
+{
+  "build_request": {
+    "difficulty_bucket": "core",
+    "fail_on_duplicates": false,
+    "include_variants": null,
+    "output_jsonl": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/fresh262_generation/core_graphs.jsonl",
+    "output_manifest": "/Users/unterlantas/Documents/XCode/shafinMultitool/experiments/sc_benchmark/workspace/fresh262_generation/core_graphs.manifest.json",
+    "pattern_names": null,
+    "refill_budget": 3,
+    "seed": 20260615,
+    "total_records": 320
+  },
+  "build_seed": 20260615,
+  "cir_version": "sg_v7_cir_v1",
+  "complexity_counts": {
+    "M": 196,
+    "S": 124
+  },
+  "contract_version": "sg_v7_contract_v1",
+  "dedup_group_counts": {
+    "dialogue_only|base|dialogue_exchange|2|marked=0|unmarked=0|talk,talk": 22,
+    "dialogue_only|dialogue_mix|dialogue_exchange|2|marked=0|unmarked=0|talk,talk": 4,
+    "dialogue_then_put_down_object|base|dialogue_exchange,putdown_object|2|marked=0|unmarked=2|talk,put_down": 24,
+    "dialogue_then_put_down_object|dialogue_mix|dialogue_exchange,putdown_object|2|marked=0|unmarked=2|talk,put_down": 2,
+    "dialogue_then_small_action|base|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,look_at": 5,
+    "dialogue_then_small_action|base|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,turn": 13,
+    "dialogue_then_small_action|dialogue_mix|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,look_at": 2,
+    "dialogue_then_small_action|dialogue_mix|dialogue_exchange,small_followup_action|2|marked=0|unmarked=0|talk,talk,turn": 1,
+    "enter_then_put_down_object|base|single_action,putdown_object|1|marked=0|unmarked=2|enter,put_down": 21,
+    "open_then_pick_up_object|base|open_object,pickup_object|1|marked=0|unmarked=2|open,pick_up": 34,
+    "ordinal_first_second|base|approach_object|2|marked=0|unmarked=1|approach,look_at": 39,
+    "pick_up_then_put_down_object|base|pickup_object,putdown_object|1|marked=0|unmarked=2|pick_up,put_down": 34,
+    "toward_each_other_then_pass_by_marked_object|base|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 15,
+    "toward_each_other_then_pass_by_marked_object|morphology_stress|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 18,
+    "toward_each_other_then_pass_by_marked_object|ordinal_stress|toward_each_other,pass_by_object|2|marked=1|unmarked=0|walk,walk,pass_by,pass_by": 5,
+    "toward_each_other_then_stop_near_marked_object|base|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 18,
+    "toward_each_other_then_stop_near_marked_object|morphology_stress|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 15,
+    "toward_each_other_then_stop_near_marked_object|ordinal_stress|toward_each_other,stop_near_object|2|marked=1|unmarked=0|walk,walk,stop,stop": 10,
+    "toward_each_other|base|toward_each_other|2|marked=0|unmarked=0|walk,walk": 10,
+    "toward_each_other|ordinal_stress|toward_each_other|2|marked=0|unmarked=0|walk,walk": 7,
+    "unsupported_action_described_action|base|single_action|1|marked=0|unmarked=1|described_action": 21
+  },
+  "difficulty_bucket": "core",
+  "duplicate_drop_count": 1,
+  "emitted_total_records": 320,
+  "generator_name": "sg_v7_graph_generator_v1",
+  "pattern_counts": {
+    "dialogue_only": 26,
+    "dialogue_then_put_down_object": 26,
+    "dialogue_then_small_action": 21,
+    "enter_then_put_down_object": 21,
+    "open_then_pick_up_object": 34,
+    "ordinal_first_second": 39,
+    "pick_up_then_put_down_object": 34,
+    "toward_each_other": 17,
+    "toward_each_other_then_pass_by_marked_object": 38,
+    "toward_each_other_then_stop_near_marked_object": 43,
+    "unsupported_action_described_action": 21
+  },
+  "pattern_registry_version": "sg_v7_pattern_library_v1",
+  "refill_attempt_count": 18,
+  "rejected_by_budget": 17,
+  "rejected_by_duplicate": 1,
+  "requested_total_records": 320,
+  "variant_counts": {
+    "base": 256,
+    "dialogue_mix": 9,
+    "morphology_stress": 33,
+    "ordinal_stress": 22
+  }
+}

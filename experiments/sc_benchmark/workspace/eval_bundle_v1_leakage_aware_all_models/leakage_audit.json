@@ -1,0 +1,4209 @@
+{
+  "methodology_version": "leakage_aware_eval_bundle_v1",
+  "matching_policy": {
+    "exclude_if_any": [
+      "direct_origin_eval_case_id",
+      "exact_source_text",
+      "graph_family_key"
+    ],
+    "purpose": "Construct a conservative clean holdout for cross-generation Scene Generator comparison. Family-level matches are treated as leakage because source texts are often paraphrased over a shared semantic graph."
+  },
+  "corpora_checked": [
+    {
+      "corpus_id": "v7_sft_train",
+      "description": "SG v7 direct SceneScript SFT train corpus",
+      "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl",
+      "output_contract": "sg_v7_contract_v1",
+      "note": "Shared SFT base for direct SceneScript v7/v7_orpo checkpoints.",
+      "row_count": 2090,
+      "matched_eval_case_count": 42,
+      "direct_origin_hits": 0,
+      "source_text_hits": 5,
+      "graph_family_hits": 37
+    },
+    {
+      "corpus_id": "v7_pref_train",
+      "description": "SG v7 ORPO preference train corpus",
+      "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/preference_train.jsonl",
+      "output_contract": "preference_pairs",
+      "note": "Checked for overlap because v7_orpo checkpoints depend on this corpus.",
+      "row_count": 1088,
+      "matched_eval_case_count": 0,
+      "direct_origin_hits": 0,
+      "source_text_hits": 0,
+      "graph_family_hits": 0
+    },
+    {
+      "corpus_id": "v8_plan_sft_all",
+      "description": "SG v8 ScenePlanIR SFT corpus",
+      "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl",
+      "output_contract": "sg_v8_plan_ir_v1",
+      "note": "Core SFT data for v8 plan checkpoints.",
+      "row_count": 5000,
+      "matched_eval_case_count": 8,
+      "direct_origin_hits": 0,
+      "source_text_hits": 8,
+      "graph_family_hits": 0
+    },
+    {
+      "corpus_id": "v8_plan_pref_all",
+      "description": "SG v8 preference corpus",
+      "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl",
+      "output_contract": "preference_pairs",
+      "note": "Preference data used by v8 ORPO training.",
+      "row_count": 52,
+      "matched_eval_case_count": 52,
+      "direct_origin_hits": 0,
+      "source_text_hits": 52,
+      "graph_family_hits": 52
+    },
+    {
+      "corpus_id": "v9_0_event_sft_all",
+      "description": "SG v9.0 slot/event SFT corpus",
+      "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl",
+      "output_contract": "sg_v9_event_table_v1",
+      "note": "Initial slot/event training data for v9.0 event_sft.",
+      "row_count": 5000,
+      "matched_eval_case_count": 8,
+      "direct_origin_hits": 0,
+      "source_text_hits": 8,
+      "graph_family_hits": 0
+    },
+    {
+      "corpus_id": "v9_2_mixed_all",
+      "description": "SG v9.2 mixed slot/event SFT corpus",
+      "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl",
+      "output_contract": "sg_v9_event_table_v1",
+      "note": "Contains targeted hard cases and explicit origin links back to the eval bundle.",
+      "row_count": 5286,
+      "matched_eval_case_count": 42,
+      "direct_origin_hits": 34,
+      "source_text_hits": 42,
+      "graph_family_hits": 0
+    },
+    {
+      "corpus_id": "v9_3_mixed_all",
+      "description": "SG v9.3 mixed slot/event SFT corpus",
+      "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl",
+      "output_contract": "sg_v9_event_table_v1",
+      "note": "Fresh successor dataset; also checked for direct and family-level overlap.",
+      "row_count": 5564,
+      "matched_eval_case_count": 42,
+      "direct_origin_hits": 42,
+      "source_text_hits": 50,
+      "graph_family_hits": 0
+    }
+  ],
+  "total_eval_case_count": 262,
+  "excluded_eval_case_count": 122,
+  "retained_eval_case_count": 140,
+  "total_by_set": {
+    "synthetic_heldout": 109,
+    "hard_heldout": 89,
+    "real_runtime": 64
+  },
+  "excluded_by_set": {
+    "hard_heldout": 26,
+    "real_runtime": 47,
+    "synthetic_heldout": 49
+  },
+  "retained_by_set": {
+    "hard_heldout": 63,
+    "real_runtime": 17,
+    "synthetic_heldout": 60
+  },
+  "excluded_eval_case_ids": [
+    "hard-0001::dialogue_then_pick_up_object_then_give_to_third_actor__base__s171671__d41a7c27",
+    "hard-0002::dialogue_then_pick_up_object_then_give_to_third_actor__base__s298839__c7243fc5",
+    "hard-0005::dialogue_then_pick_up_object_then_give_to_third_actor__base__s606141__c8f04a4e",
+    "hard-0012::first_pick_up_object_then_give_to_third_actor__base__s634288__d9ac04a7",
+    "hard-0015::ordinal_first_second_third__base__s116959__c4c92424",
+    "hard-0021::ordinal_first_second_third__base__s186111__fc469b85",
+    "hard-0025::ordinal_first_second_third__base__s225288__f30390f6",
+    "hard-0031::ordinal_first_second_third__base__s273779__ade20c14",
+    "hard-0032::ordinal_first_second_third__base__s341372__e63bdf3b",
+    "hard-0034::ordinal_first_second_third__base__s387924__ccc517f6",
+    "hard-0038::ordinal_first_second_third__base__s430476__bf090eb5",
+    "hard-0039::ordinal_first_second_third__base__s432755__bdefbf8d",
+    "hard-0046::ordinal_first_second_third__base__s518537__bece05c6",
+    "hard-0047::ordinal_first_second_third__base__s522460__b8f9e541",
+    "hard-0053::ordinal_first_second_third__base__s631170__f8404064",
+    "hard-0054::ordinal_first_second_third__base__s631780__c0f82f72",
+    "hard-0060::ordinal_first_second_third__base__s692375__b766aad3",
+    "hard-0064::ordinal_first_second_third__base__s715625__f19c8451",
+    "hard-0065::ordinal_first_second_third__base__s720754__d5a760e4",
+    "hard-0066::ordinal_first_second_third__base__s731303__f1e71a0a",
+    "hard-0073::ordinal_first_second_third__base__s820831__a7e913b6",
+    "hard-0074::ordinal_first_second_third__base__s826__c658bcfa",
+    "hard-0077::ordinal_first_second_third__base__s896396__cb99509f",
+    "hard-0079::ordinal_first_second_third__base__s913978__c1eef78e",
+    "hard-0080::ordinal_first_second_third__base__s914834__e5f83825",
+    "hard-0084::ordinal_first_second_third__base__s946581__ce1eba66",
+    "rt-0001::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s225349__eea4feb1",
+    "rt-0002::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s259337__fbcdba3e",
+    "rt-0003::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s348800__f1a807d3",
+    "rt-0004::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s714428__f336cc0d",
+    "rt-0005::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s714515__f4505539",
+    "rt-0011::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s126801__3e1287c3",
+    "rt-0012::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s251999__be0c055f",
+    "rt-0013::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s309429__8f006a74",
+    "rt-0014::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s554651__3664317c",
+    "rt-0017::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s798558__83381487",
+    "rt-0018::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s858502__f7199d21",
+    "rt-0020::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s995375__da5caf85",
+    "rt-0021::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s229063__915ae7b2",
+    "rt-0024::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s418956__40b48dde",
+    "rt-0025::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s483483__0b007819",
+    "rt-0026::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s641015__8d37f723",
+    "rt-0027::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s68889__a94eadd0",
+    "rt-0028::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s753766__1b8bb4ef",
+    "rt-0031::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s919944__bf4b6829",
+    "rt-0037::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s811871__a1ffd5f2",
+    "rt-0038::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s894608__0781ce8f",
+    "rt-0039::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s97020__017f3f18",
+    "rt-0040::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s973636__a4d6179e",
+    "rt-0041::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s176230__c6d21c65",
+    "rt-0042::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s231967__8755721d",
+    "rt-0043::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s265681__d540ffb7",
+    "rt-0044::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s380916__8c1280c9",
+    "rt-0045::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s584993__59c650ae",
+    "rt-0046::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s769626__813a3d88",
+    "rt-0047::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s166329__0f07b8d3",
+    "rt-0048::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s66304__a1315fe1",
+    "rt-0049::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s681324__64a04b4e",
+    "rt-0050::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s756661__7b252c22",
+    "rt-0051::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s843712__fed49f57",
+    "rt-0052::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s869681__3ca6b275",
+    "rt-0053::pref-rtf-rejected-toward_each_other_then_pass_by_object_then_second_runs__base__s138656__64472e80",
+    "rt-0054::pref-rtf-rejected-toward_each_other_then_pass_by_object_then_second_runs__morphology_stress__s729014__fc43c86c",
+    "rt-0055::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s325645__8c7616ec",
+    "rt-0056::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s417313__28b20f08",
+    "rt-0057::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s817271__6ae767ad",
+    "rt-0058::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s870060__74da1dcc",
+    "rt-0059::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s92555__274c7cfd",
+    "rt-0060::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s168941__3fb2f2cc",
+    "rt-0061::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s411832__6bc3d544",
+    "rt-0062::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s620819__7b5b62e2",
+    "rt-0063::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s673886__e902a237",
+    "rt-0064::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s996940__f0446de6",
+    "syn-0001::dialogue_only__base__s132974__ea389ae8",
+    "syn-0002::dialogue_only__base__s225434__e6452f5b",
+    "syn-0003::dialogue_only__base__s376965__fba71cfa",
+    "syn-0004::dialogue_only__base__s422226__f73951d0",
+    "syn-0006::dialogue_only__base__s504369__f2a75c9e",
+    "syn-0007::dialogue_only__base__s542485__f3b391fb",
+    "syn-0010::dialogue_only__base__s671269__df487700",
+    "syn-0013::dialogue_only__base__s856024__fcc56eec",
+    "syn-0016::dialogue_only__dialogue_mix__s371730__e3f7e039",
+    "syn-0018::dialogue_only__dialogue_mix__s888292__e74ae47f",
+    "syn-0019::dialogue_only__dialogue_mix__s962720__d8fd2d37",
+    "syn-0020::dialogue_only__dialogue_mix__s996802__dbdde46d",
+    "syn-0022::dialogue_then_put_down_object__base__s286107__f9267e76",
+    "syn-0025::dialogue_then_put_down_object__base__s501654__eef23003",
+    "syn-0026::dialogue_then_put_down_object__base__s572445__dfa6a9ce",
+    "syn-0027::dialogue_then_put_down_object__base__s59337__fe117d88",
+    "syn-0028::dialogue_then_put_down_object__base__s684734__dc3fe2ad",
+    "syn-0030::dialogue_then_put_down_object__base__s895761__deabe8d2",
+    "syn-0032::dialogue_then_small_action__base__s180213__f7a20f8f",
+    "syn-0034::dialogue_then_small_action__base__s270164__e2842cf1",
+    "syn-0035::dialogue_then_small_action__base__s406088__f10ffe43",
+    "syn-0038::dialogue_then_small_action__base__s737884__f55b7818",
+    "syn-0039::dialogue_then_small_action__base__s737949__e0da2ce9",
+    "syn-0041::dialogue_then_small_action__base__s958661__f8737ff5",
+    "syn-0044::enter_then_put_down_object__base__s705661__ed407337",
+    "syn-0046::open_then_pick_up_object__base__s124198__e6607a05",
+    "syn-0051::open_then_pick_up_object__base__s330844__e4088118",
+    "syn-0052::open_then_pick_up_object__base__s344788__f13538e5",
+    "syn-0054::open_then_pick_up_object__base__s349689__f546fd91",
+    "syn-0055::open_then_pick_up_object__base__s379160__e0d987f5",
+    "syn-0056::open_then_pick_up_object__base__s387853__e700ebc8",
+    "syn-0057::open_then_pick_up_object__base__s436330__e1d86aac",
+    "syn-0059::open_then_pick_up_object__base__s529033__d9734244",
+    "syn-0060::open_then_pick_up_object__base__s547736__de7d3be3",
+    "syn-0061::open_then_pick_up_object__base__s55376__e8cb7ef3",
+    "syn-0064::open_then_pick_up_object__base__s618358__f8e5ee55",
+    "syn-0067::open_then_pick_up_object__base__s622544__fa2834ad",
+    "syn-0068::open_then_pick_up_object__base__s693857__ebb8aae0",
+    "syn-0069::open_then_pick_up_object__base__s71175__daaff249",
+    "syn-0072::open_then_pick_up_object__base__s752858__de187edf",
+    "syn-0075::open_then_pick_up_object__base__s814168__eba753ee",
+    "syn-0076::open_then_pick_up_object__base__s825716__ea9dcc40",
+    "syn-0077::open_then_pick_up_object__base__s835471__db31c6db",
+    "syn-0078::open_then_pick_up_object__base__s872691__fd6ed56f",
+    "syn-0081::open_then_pick_up_object__base__s997146__eb77a795",
+    "syn-0093::toward_each_other__base__s323390__e4bcecd8",
+    "syn-0094::toward_each_other__base__s431051__e944197c",
+    "syn-0095::toward_each_other__base__s601534__fc7f70bd",
+    "syn-0109::toward_each_other__ordinal_stress__s971322__e584f42d"
+  ],
+  "excluded_eval_cases": [
+    {
+      "eval_case_id": "hard-0001::dialogue_then_pick_up_object_then_give_to_third_actor__base__s171671__d41a7c27",
+      "eval_set": "hard_heldout",
+      "source_text": "Дима говорит: «Передай конверт третьему», а Алина отвечает: «Хорошо, передам». Потом второй берёт письмо и передаёт его Лизе — письмо в итоге получает третий.",
+      "graph_family_key": "d41a7c27e2e6c3da",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5009,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5009,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5009,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5009,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0002::dialogue_then_pick_up_object_then_give_to_third_actor__base__s298839__c7243fc5",
+      "eval_set": "hard_heldout",
+      "source_text": "Илья говорит «Отдай бейдж третьему», Руслан отвечает «Хорошо, передам», затем второй актер берёт бейдж и передаёт его Павлу, который и есть третий",
+      "graph_family_key": "c7243fc5a48f8cea",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5010,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5010,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5010,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5010,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0005::dialogue_then_pick_up_object_then_give_to_third_actor__base__s606141__c8f04a4e",
+      "eval_set": "hard_heldout",
+      "source_text": "АЛИНА говорит: «Отдай конверт третьему», Вика отвечает: «Хорошо, передам»; потом второй берёт письмо и передаёт его Свете, чтобы его получил третий.",
+      "graph_family_key": "c8f04a4e80fbe571",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5011,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5011,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5011,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5011,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0012::first_pick_up_object_then_give_to_third_actor__base__s634288__d9ac04a7",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актёр берёт письмо и потом передаёт его Соне, чтобы в итоге письмо получил третий актёр.",
+      "graph_family_key": "d9ac04a7671c6de6",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 30,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 30,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0015::ordinal_first_second_third__base__s116959__c4c92424",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый подходит к лавке, второй актёр смотрит на первого, третий актёр остаётся у колонны",
+      "graph_family_key": "c4c92424aaf1595b",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 31,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 31,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0021::ordinal_first_second_third__base__s186111__fc469b85",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актер подходит к шкафу, второй держится рядом, а третий остаётся у киоска",
+      "graph_family_key": "fc469b859359f3d4",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5023,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5023,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5023,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5023,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5288,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5288,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 3,
+        "exact_source_text": 3
+      }
+    },
+    {
+      "eval_case_id": "hard-0025::ordinal_first_second_third__base__s225288__f30390f6",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актёр подходит к монитору, второй актер смотрит на первого, а третий остаётся у колонны",
+      "graph_family_key": "f30390f6c6bd61fd",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 32,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 32,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0031::ordinal_first_second_third__base__s273779__ade20c14",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актер подходит к шкафу, а второй смотрит на него, третий всё это время держится у двери",
+      "graph_family_key": "ade20c142824882c",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5024,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5024,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5024,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5024,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5289,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5289,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 3,
+        "exact_source_text": 3
+      }
+    },
+    {
+      "eval_case_id": "hard-0032::ordinal_first_second_third__base__s341372__e63bdf3b",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актер подходит к монитору, второй держится рядом и следит за ним, третий ждёт у стены",
+      "graph_family_key": "e63bdf3b4d4e30b7",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5025,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5025,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5025,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5025,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0034::ordinal_first_second_third__base__s387924__ccc517f6",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актер подходит к столу, второй смотрит на него, а третий держится возле окна",
+      "graph_family_key": "ccc517f6e4cc6252",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 33,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 33,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5026,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5026,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5026,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5026,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 3,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 3,
+        "graph_family_key": 1,
+        "direct_origin_eval_case_id": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0038::ordinal_first_second_third__base__s430476__bf090eb5",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актёр подходит к панели. Второй актер смотрит на первого. Третий остаётся у колонны",
+      "graph_family_key": "bf090eb5981a3812",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 34,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 34,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0039::ordinal_first_second_third__base__s432755__bdefbf8d",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актер подходит к терминалу, второй смотрит на него, а третий держится у колонны",
+      "graph_family_key": "bdefbf8d2dda87a7",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 35,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 35,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5027,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5027,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5027,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5027,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5290,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5290,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 3,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4,
+        "graph_family_key": 1,
+        "direct_origin_eval_case_id": 3
+      }
+    },
+    {
+      "eval_case_id": "hard-0046::ordinal_first_second_third__base__s518537__bece05c6",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актер подходит к монитору, второй следит за первым, а третий всё время ждёт у окна",
+      "graph_family_key": "bece05c614c218a2",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 36,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 36,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0047::ordinal_first_second_third__base__s522460__b8f9e541",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актёр подходит к монитору, второй актер смотрит на первого, а третий держится у окна",
+      "graph_family_key": "b8f9e5418eb8a2a4",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 37,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 37,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0053::ordinal_first_second_third__base__s631170__f8404064",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актер подошёл к стойке, второй смотрит за ним, а третий всё ещё ждёт возле шкафа",
+      "graph_family_key": "f84040642592cfd8",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 38,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 38,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0054::ordinal_first_second_third__base__s631780__c0f82f72",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актер подходит к стулу, второй смотрит на первого, а третий держится возле стены",
+      "graph_family_key": "c0f82f724403f9ce",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 39,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 39,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0060::ordinal_first_second_third__base__s692375__b766aad3",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый подходит к панели. Второй актёр стоит и смотрит на первого, а третий актёр остаётся у колонны",
+      "graph_family_key": "b766aad30ba76f8e",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5028,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5028,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5028,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5028,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0064::ordinal_first_second_third__base__s715625__f19c8451",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актёр подходит к шкафу, второй актер смотрит на него, а третий остаётся у окна",
+      "graph_family_key": "f19c84519590b9d9",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5029,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5029,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5029,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5029,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5291,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5291,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 3,
+        "exact_source_text": 3
+      }
+    },
+    {
+      "eval_case_id": "hard-0065::ordinal_first_second_third__base__s720754__d5a760e4",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый подходит к стулу, второй актёр и третий актёр остаются на своих местах возле двери",
+      "graph_family_key": "d5a760e444846ea8",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5030,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5030,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5030,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5030,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5292,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5292,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 3,
+        "exact_source_text": 3
+      }
+    },
+    {
+      "eval_case_id": "hard-0066::ordinal_first_second_third__base__s731303__f1e71a0a",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актер подходит к монитору, второй просто следит за первым, а третий ждёт у полки",
+      "graph_family_key": "f1e71a0a97ee3d09",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 40,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 40,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0073::ordinal_first_second_third__base__s820831__a7e913b6",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актер подходит к столу, второй следит за первым, а третий ждёт у двери",
+      "graph_family_key": "a7e913b64da916e0",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 41,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 41,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0074::ordinal_first_second_third__base__s826__c658bcfa",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый актер подходит к столу, второй следует за первым, а третий ждёт у двери",
+      "graph_family_key": "c658bcfa04f5f15d",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5031,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5031,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5031,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5031,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0077::ordinal_first_second_third__base__s896396__cb99509f",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актер подходит к монитору, второй смотрит на первого, а третий остаётся возле полки",
+      "graph_family_key": "cb99509f0491a4e8",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 42,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 42,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "hard-0079::ordinal_first_second_third__base__s913978__c1eef78e",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актёр подходит к монитору, второй актер смотрит на него, а третий остаётся у колонна",
+      "graph_family_key": "c1eef78e84c94626",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 43,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 43,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5032,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5032,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5032,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5032,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 3,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 3,
+        "graph_family_key": 1,
+        "direct_origin_eval_case_id": 2
+      }
+    },
+    {
+      "eval_case_id": "hard-0080::ordinal_first_second_third__base__s914834__e5f83825",
+      "eval_set": "hard_heldout",
+      "source_text": "Первый подходит к панели, второй актёр следует за ним, а третий актёр ждёт у колонны",
+      "graph_family_key": "e5f83825ddccf6a2",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5033,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5033,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5033,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5033,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5293,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5293,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 3,
+        "exact_source_text": 3
+      }
+    },
+    {
+      "eval_case_id": "hard-0084::ordinal_first_second_third__base__s946581__ce1eba66",
+      "eval_set": "hard_heldout",
+      "source_text": "Сначала первый актёр подходит к стулу, второй актёр остаётся смотреть на него, а третий актёр держится возле окна.",
+      "graph_family_key": "ce1eba66a4e4efa3",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5034,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5034,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5034,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5034,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "rt-0001::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s225349__eea4feb1",
+      "eval_set": "real_runtime",
+      "source_text": "Дима говорит: «Отдай блокнот третьему», а Лиза отвечает: «Принял, передам». Потом второй берёт блокнот и передаёт его Борису — в итоге блокнот получает именно третий.",
+      "graph_family_key": "eea4feb1def2e2bd",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5012,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5012,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5012,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5012,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5294,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5294,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 3,
+        "exact_source_text": 3
+      }
+    },
+    {
+      "eval_case_id": "rt-0002::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s259337__fbcdba3e",
+      "eval_set": "real_runtime",
+      "source_text": "Третий: тИМУР: Отдай бейдж третьему. МИЛА: Принял, передам. Мила берёт бейдж и передаёт его третьему.",
+      "graph_family_key": "fbcdba3eb6de9014",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5020,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5020,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5020,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5020,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "rt-0003::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s348800__f1a807d3",
+      "eval_set": "real_runtime",
+      "source_text": "Третий: иЛЬЯ: Передай бейдж третьему. КАТЯ: Принял, передам. Катя берёт бейдж и передаёт его третьему.",
+      "graph_family_key": "f1a807d3a7bc35b7",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5021,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5021,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5021,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5021,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "rt-0004::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s714428__f336cc0d",
+      "eval_set": "real_runtime",
+      "source_text": "Третий: яНА: Передай папку третьему. ДАРЬЯ: Принял, передам. Дарья берёт папку и передаёт её третьему.",
+      "graph_family_key": "f336cc0deeccdd39",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 44,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 44,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5022,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5022,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5022,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5022,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 3,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 3,
+        "graph_family_key": 1,
+        "direct_origin_eval_case_id": 2
+      }
+    },
+    {
+      "eval_case_id": "rt-0005::pref-rtf-rejected-dialogue_then_pick_up_object_then_give_to_third_actor__base__s714515__f4505539",
+      "eval_set": "real_runtime",
+      "source_text": "Катя говорит: «Передай планшет третьему сейчас», Вика отвечает: «Принял, передам». Потом второй берёт планшет, и второй передаёт планшет Роме, чтобы он получил его как третий.",
+      "graph_family_key": "f4505539d1369a19",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5013,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5013,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5013,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5013,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "rt-0011::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s126801__3e1287c3",
+      "eval_set": "real_runtime",
+      "source_text": "Первый подошёл к правому киоску, а второй остался возле левого киоска.",
+      "graph_family_key": "ee8393a9778af70b",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 620,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0012::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s251999__be0c055f",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр направляется к левому стеллажу, а второй актёр остаётся у правого стеллажа.",
+      "graph_family_key": "f73259a3319c30db",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 637,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0013::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s309429__8f006a74",
+      "eval_set": "real_runtime",
+      "source_text": "Первый Павел подошёл к левому столу, а второй актёр Таня осталась у правого стола",
+      "graph_family_key": "e975f25df48429c8",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 645,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0014::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s554651__3664317c",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр подходит к левому терминалу, а второй актёр так и остаётся у правого терминала.",
+      "graph_family_key": "f8097d9ce7ea194d",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "exact_source_text",
+          "row_index": 679,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0017::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s798558__83381487",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актер подходит к правому столу, а второй остаётся у левого стола, возле стол",
+      "graph_family_key": "ed7ea8ac979fd309",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 722,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0018::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s858502__f7199d21",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр Стас подходит к правому стулу, а второй актёр Нина остаётся у левого стула.",
+      "graph_family_key": "e7ec2e1783fc046b",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 729,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0020::pref-rtf-rejected-same_type_two_marked_objects__same_type_marker_stress__s995375__da5caf85",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр Дима подходит к правому стулу, а второй актёр Рома останавливается у левого стула.",
+      "graph_family_key": "fe3b62d8cd7d4785",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 742,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0021::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s229063__915ae7b2",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр Вика направляется к правому монитору, а второй актёр Яна остаётся у левого монитора.",
+      "graph_family_key": "f78432ca1ae868eb",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 759,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0024::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s418956__40b48dde",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр направляется к правому шкафу, а второй актер остаётся у левого шкафа",
+      "graph_family_key": "ea980eda4b693870",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 787,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0025::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s483483__0b007819",
+      "eval_set": "real_runtime",
+      "source_text": "Марина, первый подходит к левому стулу, а второй актёр остаётся у правого стула",
+      "graph_family_key": "fe0feb74e3a7f245",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 799,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0026::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s641015__8d37f723",
+      "eval_set": "real_runtime",
+      "source_text": "Первый подходит к левому терминалу, а второй актёр остаётся у правого терминала",
+      "graph_family_key": "e9d5a689a20321b3",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "exact_source_text",
+          "row_index": 652,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0027::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s68889__a94eadd0",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актер подходит к левому монитору, а второй остаётся у правого монитора",
+      "graph_family_key": "f6a15cbb0f291b74",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 831,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0028::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s753766__1b8bb4ef",
+      "eval_set": "real_runtime",
+      "source_text": "Первый подходит к левому киоску, а второй актёр остаётся у правого киоска",
+      "graph_family_key": "fd13324aeb3c8a59",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "exact_source_text",
+          "row_index": 623,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0031::pref-rtf-rejected-same_type_two_marked_objects_left_right__same_type_marker_stress__s919944__bf4b6829",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр Егор подходит к правому монитору, а второй актёр Ира остаётся у левого монитора",
+      "graph_family_key": "f59452248d5e3c3e",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 858,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0037::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s811871__a1ffd5f2",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр подходит к ближнему терминалу, а второй актёр остаётся у дальнего терминала.",
+      "graph_family_key": "eb4a10ec4a3f8e3d",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "exact_source_text",
+          "row_index": 868,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0038::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s894608__0781ce8f",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр подходит к дальнему монитору, а второй остаётся у ближнего монитора.",
+      "graph_family_key": "fd56baefaa4b90ae",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "exact_source_text",
+          "row_index": 901,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 45,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 45,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 2,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0039::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s97020__017f3f18",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр Егор подходит к дальнему терминалу, а второй актёр Соня остаётся у ближнего терминала.",
+      "graph_family_key": "ecbdf51efba75bcd",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 932,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0040::pref-rtf-rejected-same_type_two_marked_objects_near_far__same_type_marker_stress__s973636__a4d6179e",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр подходит к ближнему стеллажу, а второй актер остаётся у дальнего стеллажа",
+      "graph_family_key": "ff5e67cd339a775d",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 933,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0041::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s176230__c6d21c65",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый и второй актёры не спеша идут навстречу друг другу, затем оба проходят мимо колонны, и в конце второй начинает бежать",
+      "graph_family_key": "eadd3dd117ddd7d4",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1256,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0042::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s231967__8755721d",
+      "eval_set": "real_runtime",
+      "source_text": "Оба актёра идут навстречу друг другу, затем оба проходят мимо терминала, и в конце второй актер начинает бежать",
+      "graph_family_key": "f823d543656fbbc5",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1266,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0043::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s265681__d540ffb7",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый и второй актёр идут навстречу друг другу, потом оба проходят мимо рабочего компьютера, а затем второй начинает бежать.",
+      "graph_family_key": "ef80005ce0270dd6",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1268,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0044::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s380916__8c1280c9",
+      "eval_set": "real_runtime",
+      "source_text": "Оба актёра идут навстречу друг другу, затем оба проходят мимо окна, а второй начинает бежать.",
+      "graph_family_key": "e674bc13d465f4b4",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1282,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0045::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s584993__59c650ae",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр и второй актёр идут навстречу друг другу, потом оба проходят мимо стеллажа, и в самом конце второй актер начинает бежать",
+      "graph_family_key": "edbae33ed04bbec9",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1300,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0046::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__base__s769626__813a3d88",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр и второй актёр идут навстречу друг другу, оба проходят мимо плаката, и после этого второй актер начинает бежать",
+      "graph_family_key": "fee3bea8e2e8ec51",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1313,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0047::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s166329__0f07b8d3",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый актёр и второй актёр идут навстречу друг другу, потом оба проходят мимо тележки, и в конце второй начинает бежать.",
+      "graph_family_key": "eb880c4a7755e1be",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1352,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0048::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s66304__a1315fe1",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый актер и второй актёр идут навстречу друг другу, затем оба проходят мимо лавки, и второй начинает бежать",
+      "graph_family_key": "f86d8b0245b21aa3",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1393,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0049::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s681324__64a04b4e",
+      "eval_set": "real_runtime",
+      "source_text": "первый и второй актёры идут навстречу друг другу, потом оба проходят мимо экрана, и в конце второй начинает бежать",
+      "graph_family_key": "ede0bab3697b1dc2",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1396,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 46,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 46,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "graph_family_key": 2,
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0050::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s756661__7b252c22",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый актёр и второй актёр идут навстречу друг другу, потом оба проходят возле стеллажа, а затем второй начинает бежать.",
+      "graph_family_key": "f36317e3a43bb0d6",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1405,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0051::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s843712__fed49f57",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый и второй актёры идут навстречу друг другу, затем оба проходят мимо стойки, и в конце второй начинает бежать.",
+      "graph_family_key": "fda44bafe0200b8e",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1420,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 47,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 47,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "graph_family_key": 2,
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0052::pref-rtf-rejected-toward_each_other_then_pass_by_marked_object_then_second_runs__morphology_stress__s869681__3ca6b275",
+      "eval_set": "real_runtime",
+      "source_text": "Первый и второй актёр идут навстречу друг другу, потом оба проходят возле стеллажа, а в конце второй начинает бежать.",
+      "graph_family_key": "eb164dca3b38a294",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1426,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0053::pref-rtf-rejected-toward_each_other_then_pass_by_object_then_second_runs__base__s138656__64472e80",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый актёр и второй актёр идут навстречу друг другу, потом оба проходят мимо шкафа, и в самом конце второй актер начинает бежать",
+      "graph_family_key": "eb6ca78fa4a51131",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1446,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0054::pref-rtf-rejected-toward_each_other_then_pass_by_object_then_second_runs__morphology_stress__s729014__fc43c86c",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актер и второй актёр идут навстречу друг другу, потом оба проходят возле экрана, а в конце второй начинает бежать",
+      "graph_family_key": "ea7146a8b2b326af",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1586,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0055::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s325645__8c7616ec",
+      "eval_set": "real_runtime",
+      "source_text": "Оба актёра идут навстречу друг другу, затем первый актер и второй останавливаются у окна, после чего второй начинает бежать",
+      "graph_family_key": "fd69af8e64943ea3",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1927,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 48,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 48,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "graph_family_key": 2,
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0056::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s417313__28b20f08",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый и второй актёры идут навстречу друг другу, потом оба останавливаются у панели, и после этого второй начинает бежать",
+      "graph_family_key": "f9065092e59f775f",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1940,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0057::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s817271__6ae767ad",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый актёр и второй актёр не спеша идут навстречу друг другу, затем оба останавливаются у тележки, после этого второй начинает бежать.",
+      "graph_family_key": "ef90c9eacf4dd415",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1981,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0058::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s870060__74da1dcc",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актёр и второй актёр идут навстречу друг другу, затем оба останавливаются у колонны, и после остановки второй актер начинает бежать",
+      "graph_family_key": "f928f06beddce32c",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1989,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 49,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 49,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "graph_family_key": 2,
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0059::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__base__s92555__274c7cfd",
+      "eval_set": "real_runtime",
+      "source_text": "Первый и второй актёр идут навстречу друг другу, потом оба останавливаются у терминала, и второй начинает бежать.",
+      "graph_family_key": "f26452b1fc0f0cd6",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 1998,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0060::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s168941__3fb2f2cc",
+      "eval_set": "real_runtime",
+      "source_text": "первый и второй актёры идут навстречу друг другу, потом оба останавливаются у экрана, и в конце второй начинает бежать",
+      "graph_family_key": "ee88971b1ab86463",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 2010,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0061::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s411832__6bc3d544",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый актер и второй актёр идут навстречу друг другу, затем оба останавливаются рядом с лампой, после чего второй начинает бежать",
+      "graph_family_key": "f1722ba1d4388390",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 2036,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 50,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 50,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "graph_family_key": 2,
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0062::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s620819__7b5b62e2",
+      "eval_set": "real_runtime",
+      "source_text": "Первый актер и второй актёр идут навстречу друг другу, затем оба останавливаются у терминала, а в конце второй начинает бежать",
+      "graph_family_key": "fcf3d7ea71672b8d",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 2053,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 51,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 51,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "graph_family_key": 2,
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0063::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s673886__e902a237",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый актёр и второй актёр идут навстречу друг другу, потом оба останавливаются у терминала, и в конце второй актер начинает бежать",
+      "graph_family_key": "f8d35542e036c479",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 2060,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 52,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 52,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v7_sft_train",
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "graph_family_key": 2,
+        "exact_source_text": 1
+      }
+    },
+    {
+      "eval_case_id": "rt-0064::pref-rtf-rejected-toward_each_other_then_stop_near_marked_object_then_second_runs__morphology_stress__s996940__f0446de6",
+      "eval_set": "real_runtime",
+      "source_text": "Сначала первый и второй актёры быстро идут навстречу друг другу, потом оба останавливаются около компа, а затем второй начинает бежать.",
+      "graph_family_key": "f89cebb6ee43e42c",
+      "overlaps": [
+        {
+          "corpus_id": "v7_sft_train",
+          "reason": "graph_family_key",
+          "row_index": 2089,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv7pipeline/runs/sgv7_full_20260417/final/dataset/sft_train.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v7_sft_train"
+      ],
+      "reason_counts": {
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0001::dialogue_only__base__s132974__ea389ae8",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Егор: Я уже отправил архив. Макс: Тогда посмотри архив.",
+      "graph_family_key": "ea389ae8206ec42a",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 1,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 1,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0002::dialogue_only__base__s225434__e6452f5b",
+      "eval_set": "synthetic_heldout",
+      "source_text": "ИРА: Я уже переслала документ. ЯНА: Тогда покажи документ.",
+      "graph_family_key": "e6452f5b4ff5a096",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 33,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 33,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 33,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 33,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 4,
+      "overlap_corpus_ids": [
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4
+      }
+    },
+    {
+      "eval_case_id": "syn-0003::dialogue_only__base__s376965__fba71cfa",
+      "eval_set": "synthetic_heldout",
+      "source_text": "РУСЛАН: Я уже переслал документ. ЛИЗА: Тогда проверь документ.",
+      "graph_family_key": "fba71cfaf6910e4d",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 57,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 2,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 2,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 57,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 57,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 57,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 5,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all",
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 5,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0004::dialogue_only__base__s422226__f73951d0",
+      "eval_set": "synthetic_heldout",
+      "source_text": "БОРИС: Я уже переслал заметку. АННА: Тогда посмотри заметку.",
+      "graph_family_key": "f73951d06e78fa9f",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 68,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 68,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 68,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 68,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 4,
+      "overlap_corpus_ids": [
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4
+      }
+    },
+    {
+      "eval_case_id": "syn-0006::dialogue_only__base__s504369__f2a75c9e",
+      "eval_set": "synthetic_heldout",
+      "source_text": "РОМА: Я уже загрузил черновик. ОЛЕГ: Тогда покажи черновик.",
+      "graph_family_key": "f2a75c9ecea228ee",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 84,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 84,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 84,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 84,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 4,
+      "overlap_corpus_ids": [
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4
+      }
+    },
+    {
+      "eval_case_id": "syn-0007::dialogue_only__base__s542485__f3b391fb",
+      "eval_set": "synthetic_heldout",
+      "source_text": "СТАС: Я уже загрузил презентацию. МАКС: Тогда проверь презентацию.",
+      "graph_family_key": "f3b391fb2d57b898",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 87,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 87,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 87,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 87,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 4,
+      "overlap_corpus_ids": [
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4
+      }
+    },
+    {
+      "eval_case_id": "syn-0010::dialogue_only__base__s671269__df487700",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актер: «Я уже подготовила заметку». Второй: «Тогда посмотри заметку»",
+      "graph_family_key": "df487700ec066db2",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 3,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 3,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0013::dialogue_only__base__s856024__fcc56eec",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Руслан: Я уже скинул сводку. Таня: Тогда открой сводку.",
+      "graph_family_key": "fcc56eec59fe028d",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 4,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 4,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0016::dialogue_only__dialogue_mix__s371730__e3f7e039",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Егор: Я уже кинул сводку, открой. Юля: Окей, покажи мне сводку.",
+      "graph_family_key": "e3f7e039ef3882fe",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 5,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 5,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0018::dialogue_only__dialogue_mix__s888292__e74ae47f",
+      "eval_set": "synthetic_heldout",
+      "source_text": "АЛИНА: Я уже кинула презентацию, открой. СТАС: Окей, покажи мне презентацию.",
+      "graph_family_key": "e74ae47f2f9cf8b7",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 196,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 196,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 196,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 196,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 4,
+      "overlap_corpus_ids": [
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4
+      }
+    },
+    {
+      "eval_case_id": "syn-0019::dialogue_only__dialogue_mix__s962720__d8fd2d37",
+      "eval_set": "synthetic_heldout",
+      "source_text": "МАРАТ: Я уже всё отправил: вложение. ДАРЬЯ: Хорошо, давай откроем вложение.",
+      "graph_family_key": "d8fd2d37cbd9e544",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 199,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 199,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 199,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 199,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 4,
+      "overlap_corpus_ids": [
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4
+      }
+    },
+    {
+      "eval_case_id": "syn-0020::dialogue_only__dialogue_mix__s996802__dbdde46d",
+      "eval_set": "synthetic_heldout",
+      "source_text": "АННА: Я уже отправила презентацию, смотри. КАТЯ: Тогда проверь презентацию и покажи.",
+      "graph_family_key": "dbdde46d7b73b438",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 200,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_sft/v8_plan_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_0_event_sft_all",
+          "reason": "exact_source_text",
+          "row_index": 200,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_0_seed42/event_sft/v9_event_sft_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 200,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 200,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 4,
+      "overlap_corpus_ids": [
+        "v8_plan_sft_all",
+        "v9_0_event_sft_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 4
+      }
+    },
+    {
+      "eval_case_id": "syn-0022::dialogue_then_put_down_object__base__s286107__f9267e76",
+      "eval_set": "synthetic_heldout",
+      "source_text": "первый актёр, Глеб: «Оставь конверт здесь, потом подпишем», второй актер кладёт конверт на полку",
+      "graph_family_key": "f9267e7683f3eb67",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5001,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5001,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5001,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5001,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0025::dialogue_then_put_down_object__base__s501654__eef23003",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актер говорит: «Положи коробку сюда, потом разберём», после чего второй кладёт коробку на лавку",
+      "graph_family_key": "eef2300356779cd1",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5002,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5002,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5002,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5002,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0026::dialogue_then_put_down_object__base__s572445__dfa6a9ce",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Тимур говорит: «Оставь конверт здесь, потом подпишем», а первый актер кладёт конверт на стойку",
+      "graph_family_key": "dfa6a9ce4f68f47b",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5003,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5003,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5003,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5003,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0027::dialogue_then_put_down_object__base__s59337__fe117d88",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Егор говорит: «Положи коробку сюда, потом разберём», и первый актер кладёт коробку на подоконник",
+      "graph_family_key": "fe117d8842bfa309",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5004,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5004,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5004,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5004,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0028::dialogue_then_put_down_object__base__s684734__dc3fe2ad",
+      "eval_set": "synthetic_heldout",
+      "source_text": "первый актер (Олег): Оставь конверт здесь, потом подпишем — и второй кладёт конверт на стол",
+      "graph_family_key": "dc3fe2adc32419ad",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5014,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5014,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5014,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5014,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0030::dialogue_then_put_down_object__base__s895761__deabe8d2",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Яна: Оставь конверт здесь, потом подпишем, а второй актер кладёт конверт на стул",
+      "graph_family_key": "deabe8d26db29232",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5015,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5015,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5015,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5015,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5287,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5287,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 3,
+        "exact_source_text": 3
+      }
+    },
+    {
+      "eval_case_id": "syn-0032::dialogue_then_small_action__base__s180213__f7a20f8f",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый говорит: «Я уже приложил отчёт». Второй актёр отвечает: «Тогда быстро проверь отчёт», после чего второй актёр поворачивается к первому актёру",
+      "graph_family_key": "f7a20f8f7031af0c",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5005,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5005,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5005,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5005,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0034::dialogue_then_small_action__base__s270164__e2842cf1",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Марина говорит: «Я уже приложила сводку», Макс отвечает: «Тогда покажи сводку», и после этого Макс поворачивается к Марине.",
+      "graph_family_key": "e2842cf1dc4c11e3",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 6,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 6,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0035::dialogue_then_small_action__base__s406088__f10ffe43",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Лиза уже загрузила файл, Борис говорит: «Тогда посмотри файл», а потом Борис смотрит на Лизу.",
+      "graph_family_key": "f10ffe4351a01575",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5006,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5006,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5006,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5006,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0038::dialogue_then_small_action__base__s737884__f55b7818",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Юля уже переслала сводку, Ира отвечает: тогда быстро проверь сводку; после этого Ира поворачивается к Юле.",
+      "graph_family_key": "f55b781809ebc2d5",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5007,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5007,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5007,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5007,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0039::dialogue_then_small_action__base__s737949__e0da2ce9",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Марина: «Я уже подготовила заметку». Марат: «Тогда открой заметку». Потом Марина смотрит на Марата.",
+      "graph_family_key": "e0da2ce963a71cbf",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 7,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 7,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0041::dialogue_then_small_action__base__s958661__f8737ff5",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Юля уже подготовила вложение, а Яна говорит: «Тогда быстро проверь вложение»; после этого Яна смотрит на Юлю.",
+      "graph_family_key": "f8737ff587458764",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5008,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5008,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5008,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5008,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0044::enter_then_put_down_object__base__s705661__ed407337",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Лиза входит, затем первый кладёт пакет на стол.",
+      "graph_family_key": "ed4073376a6f21f3",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 8,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 8,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0046::open_then_pick_up_object__base__s124198__e6607a05",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает кейс, затем берёт планшет",
+      "graph_family_key": "e6607a05507452b6",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 9,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 9,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0051::open_then_pick_up_object__base__s330844__e4088118",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает тумбу, а потом берёт папку",
+      "graph_family_key": "e4088118a6253fe6",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 10,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 10,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0052::open_then_pick_up_object__base__s344788__f13538e5",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актёр сначала открывает кейс, а потом берёт из него флешку.",
+      "graph_family_key": "f13538e5900f3300",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 11,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 11,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0054::open_then_pick_up_object__base__s349689__f546fd91",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актер открывает шкаф, затем первый берёт флешку изнутри шкафа",
+      "graph_family_key": "f546fd912561de5f",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 12,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 12,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0055::open_then_pick_up_object__base__s379160__e0d987f5",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает тумбу, а потом берёт бейдж",
+      "graph_family_key": "e0d987f5120b0a6e",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 13,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 13,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0056::open_then_pick_up_object__base__s387853__e700ebc8",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый открывает тумбу, затем берёт планшет",
+      "graph_family_key": "e700ebc834614a40",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 14,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 14,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0057::open_then_pick_up_object__base__s436330__e1d86aac",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает коробку, а затем берёт блокнот",
+      "graph_family_key": "e1d86aacaec63ae3",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5016,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5016,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5016,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5016,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0059::open_then_pick_up_object__base__s529033__d9734244",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает полку, затем берёт флешку",
+      "graph_family_key": "d97342447e166f36",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5017,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5017,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5017,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5017,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0060::open_then_pick_up_object__base__s547736__de7d3be3",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает ящик, затем берёт телефон",
+      "graph_family_key": "de7d3be3329aa4c6",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 15,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 15,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0061::open_then_pick_up_object__base__s55376__e8cb7ef3",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актёр сначала открывает кейс, а затем берёт письмо.",
+      "graph_family_key": "e8cb7ef321b76857",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 16,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 16,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0064::open_then_pick_up_object__base__s618358__f8e5ee55",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актёр сначала открывает тумбу, а затем берёт блокнот.",
+      "graph_family_key": "f8e5ee5506b3c21b",
+      "overlaps": [
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5018,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5018,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5018,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5018,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 2,
+      "overlap_corpus_ids": [
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "direct_origin_eval_case_id": 2,
+        "exact_source_text": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0067::open_then_pick_up_object__base__s622544__fa2834ad",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает коробку, а затем берёт из неё письмо",
+      "graph_family_key": "fa2834ad61bf21bd",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 17,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 17,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0068::open_then_pick_up_object__base__s693857__ebb8aae0",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актёр сначала открывает кейс, а потом берёт бейдж.",
+      "graph_family_key": "ebb8aae02ab65fc1",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 18,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 18,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0069::open_then_pick_up_object__base__s71175__daaff249",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актёр сначала открывает полку, потом берёт бейдж.",
+      "graph_family_key": "daaff2490d4528dd",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 19,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 19,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0072::open_then_pick_up_object__base__s752858__de187edf",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актёр открывает полку, а затем первый актер берёт флешку",
+      "graph_family_key": "de187edfa2c3f943",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 20,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 20,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0075::open_then_pick_up_object__base__s814168__eba753ee",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает полку, а затем берёт бейдж",
+      "graph_family_key": "eba753ee14485138",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 21,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 21,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0076::open_then_pick_up_object__base__s825716__ea9dcc40",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый открывает кейс, а потом берёт блокнот",
+      "graph_family_key": "ea9dcc406411152c",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 22,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 22,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0077::open_then_pick_up_object__base__s835471__db31c6db",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает тумбу, затем берёт телефон",
+      "graph_family_key": "db31c6dbc4638d52",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 23,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 23,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0078::open_then_pick_up_object__base__s872691__fd6ed56f",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый актёр сначала открывает коробку, а потом берёт письмо.",
+      "graph_family_key": "fd6ed56f35096663",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 24,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 24,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0081::open_then_pick_up_object__base__s997146__eb77a795",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Первый сначала открывает полку, а затем берёт блокнот",
+      "graph_family_key": "eb77a795475585ec",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 25,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 25,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5019,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_2_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5019,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_2_seed42/mixed_event_sft/v9_2_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "direct_origin_eval_case_id",
+          "row_index": 5019,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        },
+        {
+          "corpus_id": "v9_3_mixed_all",
+          "reason": "exact_source_text",
+          "row_index": 5019,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv9pipeline/runs/v9_3_seed42/mixed_event_sft/v9_3_event_sft_mixed_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 3,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all",
+        "v9_2_mixed_all",
+        "v9_3_mixed_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 3,
+        "graph_family_key": 1,
+        "direct_origin_eval_case_id": 2
+      }
+    },
+    {
+      "eval_case_id": "syn-0093::toward_each_other__base__s323390__e4bcecd8",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Сначала первый и второй актёр идут навстречу друг другу, симметрично двигаясь друг к другу",
+      "graph_family_key": "e4bcecd88d5921ef",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 26,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 26,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0094::toward_each_other__base__s431051__e944197c",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Сначала первый и второй актёр идут навстречу друг другу, симметрично двигаясь в сторону друг друга",
+      "graph_family_key": "e944197cb204ee94",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 27,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 27,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0095::toward_each_other__base__s601534__fc7f70bd",
+      "eval_set": "synthetic_heldout",
+      "source_text": "первый и второй актёр не спеша идут навстречу друг другу, симметрично по движению",
+      "graph_family_key": "fc7f70bd0fe805b0",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 28,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 28,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    },
+    {
+      "eval_case_id": "syn-0109::toward_each_other__ordinal_stress__s971322__e584f42d",
+      "eval_set": "synthetic_heldout",
+      "source_text": "Сначала первый и второй актёр идут навстречу друг другу, двигаясь симметрично",
+      "graph_family_key": "e584f42de6179752",
+      "overlaps": [
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "exact_source_text",
+          "row_index": 29,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        },
+        {
+          "corpus_id": "v8_plan_pref_all",
+          "reason": "graph_family_key",
+          "row_index": 29,
+          "corpus_path": "/Users/unterlantas/Documents/XCode/shafinMultitool/docs/SGv8pipeline/runs/v8_0_seed42/plan_preference_iter2_vs_v7/v8_plan_preference_all.jsonl"
+        }
+      ],
+      "overlap_corpus_count": 1,
+      "overlap_corpus_ids": [
+        "v8_plan_pref_all"
+      ],
+      "reason_counts": {
+        "exact_source_text": 1,
+        "graph_family_key": 1
+      }
+    }
+  ]
+}

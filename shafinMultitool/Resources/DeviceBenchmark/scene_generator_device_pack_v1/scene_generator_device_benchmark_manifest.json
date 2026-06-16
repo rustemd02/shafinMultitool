@@ -1,0 +1,9 @@
+{
+  "core_source_file": "core_accepted_source.jsonl",
+  "default_full_case_limit": 64,
+  "default_quick_case_limit": 12,
+  "id": "scene_generator_device_pack_v1",
+  "hard_source_file": "hard_accepted_source.jsonl",
+  "seed_full": 20260616,
+  "seed_quick": 20260615
+}

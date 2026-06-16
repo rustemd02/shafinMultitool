@@ -13,12 +13,15 @@ final class SceneBundlePipelineTests: XCTestCase {
     private final class StubLocalProvider: LocalScenePlanProvider {
         let result: ScenePlanProviderResult?
         let eventProvider: ((String, [MarkedObject], SourceAnchorBundle, SceneChunkState?, SceneV9SlotCatalog) -> SceneV9EventProviderResult?)?
+        private var asyncResults: [ScenePlanProviderResult?]
 
         init(
             result: ScenePlanProviderResult?,
+            asyncResults: [ScenePlanProviderResult?] = [],
             eventProvider: ((String, [MarkedObject], SourceAnchorBundle, SceneChunkState?, SceneV9SlotCatalog) -> SceneV9EventProviderResult?)? = nil
         ) {
             self.result = result
+            self.asyncResults = asyncResults
             self.eventProvider = eventProvider
         }
 
@@ -28,7 +31,7 @@ final class SceneBundlePipelineTests: XCTestCase {
             anchors: SourceAnchorBundle,
             state: SceneChunkState?
         ) -> ScenePlanProviderResult? {
-            result
+            return result
         }
 
         func generatePlanAsync(
@@ -37,7 +40,10 @@ final class SceneBundlePipelineTests: XCTestCase {
             anchors: SourceAnchorBundle,
             state: SceneChunkState?
         ) async -> ScenePlanProviderResult? {
-            result
+            if !asyncResults.isEmpty {
+                return asyncResults.removeFirst()
+            }
+            return result
         }
 
         func generateEventTable(
@@ -48,6 +54,41 @@ final class SceneBundlePipelineTests: XCTestCase {
             slotCatalog: SceneV9SlotCatalog
         ) -> SceneV9EventProviderResult? {
             eventProvider?(description, markedObjects, anchors, state, slotCatalog)
+        }
+    }
+
+    private final class ExecutionSupportProbe {
+        private var snapshots: [SceneExecutionResourceSnapshot]
+        private let fallbackSnapshot: SceneExecutionResourceSnapshot
+        private(set) var sleepCalls: [Int] = []
+        private(set) var checkpoints: [String: Data] = [:]
+
+        init(snapshots: [SceneExecutionResourceSnapshot]) {
+            self.snapshots = snapshots
+            self.fallbackSnapshot = snapshots.last ?? SceneExecutionResourceSnapshot(
+                timestamp: Date(),
+                thermalState: .nominal,
+                batteryLevel: 1.0,
+                memoryMB: 128
+            )
+        }
+
+        func makeSupport() -> SceneGeneratorExecutionSupport {
+            SceneGeneratorExecutionSupport(
+                makeSnapshot: { [self] in
+                    if snapshots.isEmpty {
+                        return fallbackSnapshot
+                    }
+                    return snapshots.removeFirst()
+                },
+                sleep: { [self] milliseconds in
+                    sleepCalls.append(milliseconds)
+                },
+                writeCheckpoint: { [self] fileName, data in
+                    checkpoints[fileName] = data
+                },
+                now: { Date() }
+            )
         }
     }
 
@@ -84,6 +125,187 @@ final class SceneBundlePipelineTests: XCTestCase {
             localProvider: StubLocalProvider(result: result, eventProvider: eventProvider),
             planCompiler: ScenePlanCompiler()
         )
+    }
+
+    private func simpleProviderResult() -> ScenePlanProviderResult {
+        ScenePlanProviderResult(
+            plan: ScenePlanIR(
+                actors: [.init(ref: "first", type: .human)],
+                objects: [.init(ref: "object_box", type: .generic, relativePosition: .center, name: "коробка")],
+                beats: [
+                    .init(
+                        ref: "beat_1",
+                        actions: [
+                            .init(
+                                actorRef: "first",
+                                type: .pickUp,
+                                targetRef: "object_box",
+                                resultingPose: .standing,
+                                holdingObjectRef: "object_box",
+                                sourceText: "актёр берёт коробку"
+                            ),
+                        ]
+                    ),
+                ],
+                spatialRelations: [],
+                referenceBindings: .init(actorBindings: ["first": "actor_1"])
+            ),
+            usedLegacySceneScriptBridge: false
+        )
+    }
+
+    func testMonolithicExecutionWritesOnlyFinalCheckpoint() async throws {
+        let pipeline = makeBundlePipeline(result: simpleProviderResult())
+        let supportProbe = ExecutionSupportProbe(
+            snapshots: Array(
+                repeating: SceneExecutionResourceSnapshot(
+                    timestamp: Date(),
+                    thermalState: .nominal,
+                    batteryLevel: 0.9,
+                    memoryMB: 128
+                ),
+                count: 8
+            )
+        )
+        let description = """
+        Первый актёр берёт коробку.
+        Затем он держит коробку.
+        Потом он ставит коробку на стол.
+        """
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: .full,
+            previousState: nil,
+            executionPolicy: SceneGeneratorMobileExecutionPolicy(
+                mode: .monolithic,
+                cooldownOnSeriousMs: 25,
+                cooldownOnCriticalMs: 40,
+                maxChunkAttempts: 1,
+                checkpointEnabled: true
+            ),
+            executionSupport: supportProbe.makeSupport()
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        XCTAssertNotNil(result.activeSceneScript)
+        XCTAssertEqual(result.executionTrace?.executionMode.rawValue, SceneGeneratorExecutionMode.monolithic.rawValue)
+        XCTAssertTrue(supportProbe.checkpoints.keys.contains("scene_monolithic_result.json"))
+        XCTAssertFalse(supportProbe.checkpoints.keys.contains { $0.hasPrefix("chunk_") })
+        let finalPayload = try XCTUnwrap(supportProbe.checkpoints["scene_monolithic_result.json"])
+        let finalObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: finalPayload) as? [String: Any]
+        )
+        XCTAssertEqual(finalObject["checkpointCount"] as? Int, 1)
+        XCTAssertNotNil(finalObject["activeSceneScript"])
+        XCTAssertNotNil(finalObject["bundleScript"])
+    }
+
+    func testChunkedThermalAwareWritesChunkCheckpointsAndSleepsOnSerious() async throws {
+        let pipeline = makeBundlePipeline(result: simpleProviderResult())
+        let supportProbe = ExecutionSupportProbe(
+            snapshots: [
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .serious, batteryLevel: 0.8, memoryMB: 150),
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .nominal, batteryLevel: 0.8, memoryMB: 149),
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .nominal, batteryLevel: 0.8, memoryMB: 149),
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .nominal, batteryLevel: 0.8, memoryMB: 149),
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .nominal, batteryLevel: 0.8, memoryMB: 149),
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .nominal, batteryLevel: 0.8, memoryMB: 149),
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .nominal, batteryLevel: 0.8, memoryMB: 149),
+                SceneExecutionResourceSnapshot(timestamp: Date(), thermalState: .nominal, batteryLevel: 0.8, memoryMB: 149),
+            ]
+        )
+        let description = """
+        Первый актёр берёт коробку.
+
+        Затем он держит коробку рядом со столом.
+        Потом он ставит коробку на стол.
+        """
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: .full,
+            previousState: nil,
+            executionPolicy: SceneGeneratorMobileExecutionPolicy(
+                mode: .chunkedThermalAware,
+                cooldownOnSeriousMs: 25,
+                cooldownOnCriticalMs: 40,
+                maxChunkAttempts: 1,
+                checkpointEnabled: true
+            ),
+            executionSupport: supportProbe.makeSupport()
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        XCTAssertNotNil(result.activeSceneScript)
+        XCTAssertEqual(supportProbe.sleepCalls, [25])
+        XCTAssertEqual(result.executionTrace?.events.filter { $0.kind == .thermalCooldownStarted }.count ?? 0, 1)
+        XCTAssertEqual(result.executionTrace?.events.filter { $0.kind == .thermalCooldownFinished }.count ?? 0, 1)
+        XCTAssertEqual(result.executionTrace?.checkpoints.count ?? 0, result.chunkDiagnostics.count + 1)
+        XCTAssertTrue(supportProbe.checkpoints.keys.contains("scene_chunked_result.json"))
+        XCTAssertTrue(supportProbe.checkpoints.keys.contains { $0.hasPrefix("chunk_") })
+        let chunkPayload = try XCTUnwrap(supportProbe.checkpoints.first(where: { $0.key.hasPrefix("chunk_") })?.value)
+        let chunkObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: chunkPayload) as? [String: Any]
+        )
+        XCTAssertNotNil(chunkObject["chunk"])
+        XCTAssertNotNil(chunkObject["diagnostics"])
+        let finalPayload = try XCTUnwrap(supportProbe.checkpoints["scene_chunked_result.json"])
+        let finalObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: finalPayload) as? [String: Any]
+        )
+        XCTAssertEqual(finalObject["checkpointCount"] as? Int, result.chunkDiagnostics.count + 1)
+        XCTAssertNotNil(finalObject["chunkDiagnostics"])
+    }
+
+    func testChunkedThermalAwareRecordsCriticalAsTelemetryOnly() async throws {
+        let pipeline = makeBundlePipeline(result: simpleProviderResult())
+        let supportProbe = ExecutionSupportProbe(
+            snapshots: Array(
+                repeating: SceneExecutionResourceSnapshot(
+                    timestamp: Date(),
+                    thermalState: .critical,
+                    batteryLevel: 0.7,
+                    memoryMB: 160
+                ),
+                count: 6
+            )
+        )
+
+        let result = await pipeline.parse(
+            description: "Первый актёр берёт коробку.",
+            markedObjects: [],
+            mode: .full,
+            previousState: nil,
+            executionPolicy: SceneGeneratorMobileExecutionPolicy(
+                mode: .chunkedThermalAware,
+                cooldownOnSeriousMs: 25,
+                cooldownOnCriticalMs: 40,
+                maxChunkAttempts: 1,
+                checkpointEnabled: false
+            ),
+            executionSupport: supportProbe.makeSupport()
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        XCTAssertNotNil(result.activeSceneScript)
+        XCTAssertTrue(supportProbe.sleepCalls.isEmpty)
+        XCTAssertEqual(result.executionTrace?.events.filter { $0.kind == .criticalTelemetryObserved }.count ?? 0, 1)
+        XCTAssertTrue(result.executionTrace?.events.contains(where: { $0.note == "critical_is_telemetry_only" }) ?? false)
     }
 
     func testParseBundleReturnsMultipleScenesForHeadings() async throws {
@@ -200,6 +422,22 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertEqual(genericResult.documentState.sceneCandidates.count, 1)
         XCTAssertEqual(genericResult.documentState.sceneCandidates.first?.metadata.locationName, "KITCHEN")
         XCTAssertEqual(genericResult.documentState.sceneCandidates.first?.metadata.timeOfDay, "night")
+    }
+
+    func testParseBundlePreservesSplitHeadingPrefixLines() async throws {
+        let description = """
+        ПЛАН НА:
+        ЭКСТ.
+        ЛА ДИСПЕНСАРИА — РАССВЕТ
+        Щелкает затвор, сделана фотография.
+        """
+
+        let result = await parser.parseBundle(description, markedObjects: [])
+
+        XCTAssertEqual(result.documentState.sceneCandidates.count, 1)
+        XCTAssertEqual(result.documentState.sceneCandidates.first?.metadata.interiorExterior, "exterior")
+        XCTAssertEqual(result.documentState.sceneCandidates.first?.metadata.timeOfDay, "morning")
+        XCTAssertTrue(result.documentState.sceneCandidates.first?.sourceText.hasPrefix("ЭКСТ.\nЛА ДИСПЕНСАРИА — РАССВЕТ") ?? false)
     }
 
     func testParseBundleFullModeReusesUnchangedScenesFromPreviousState() async throws {

@@ -14,12 +14,12 @@ final class LLMParserService: LocalScenePlanProvider {
 
     static let shared = LLMParserService()
     private static let modelPathOverrideDefaultsKey = "scene_generator_llm_model_path"
-    private static let generationTokenBudgets: [Int32] = [1024, 1536, 2048]
-    private static let maxGenerationTokens: Int32 = 3072
-    private static let v9EventTokenBudgets: [Int32] = [768, 1024, 1536]
-    private static let v9EventMaxGenerationTokens: Int32 = 2048
+    private static let generationTokenBudgets: [Int32] = [1536, 2048, 3072]
+    private static let maxGenerationTokens: Int32 = 4096
+    private static let v9EventTokenBudgets: [Int32] = [1024, 1536, 2048]
+    private static let v9EventMaxGenerationTokens: Int32 = 3072
     private static let v9PatchMaxRetry: Int = 1
-    private static let v9PatchMaxTokens: Int32 = 512
+    private static let v9PatchMaxTokens: Int32 = 768
     private static let v9PatchWallClockBudgetSeconds: TimeInterval = 8
     private static let v9EventTargetRequiredTypes: Set<SceneAction.ActionType> = [
         .lookAt, .pickUp, .open, .close, .approach, .putDown, .give, .passBy, .stop
@@ -30,6 +30,7 @@ final class LLMParserService: LocalScenePlanProvider {
     ]
     private let lemmatizer = Lemmatizer()
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
+    private let metadataExtractor = SceneMetadataExtractor()
     private let planCompiler = ScenePlanCompiler()
     private let v9EventTableService = SceneEventTableV9Service()
     private let stateLock = NSLock()
@@ -312,7 +313,7 @@ final class LLMParserService: LocalScenePlanProvider {
         let anchorComplexity = (anchors.mentionedMarkedObjects.count * 60)
             + (anchors.objectSurfaceMentions.count * 30)
             + (anchors.phaseCues.count * 20)
-        let estimated = Int32(description.count / 2) + 640 + Int32(anchorComplexity + (stateEntityCount * 25))
+        let estimated = Int32(description.count / 2) + 960 + Int32(anchorComplexity + (stateEntityCount * 32))
         let firstBudget = max(Self.generationTokenBudgets[0], min(estimated, Self.maxGenerationTokens))
 
         var budgets = [firstBudget]
@@ -657,6 +658,7 @@ final class LLMParserService: LocalScenePlanProvider {
             if !actorPositions.isEmpty { stateContext += "Последние смысловые позиции актёров: \(actorPositions)\n" }
             stateContext += "\n"
         }
+        let metadataContext = buildSceneMetadataContext(description)
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
         let anchorContext = buildAnchorContext(anchors)
 
@@ -676,7 +678,7 @@ final class LLMParserService: LocalScenePlanProvider {
         - выводи ТОЛЬКО валидный JSON ScenePlanIR, без пояснений
         <|im_end|>
         <|im_start|>user
-        \(stateContext)\(markedObjectsContext)\(anchorContext)SOURCE:
+        \(stateContext)\(metadataContext)\(markedObjectsContext)\(anchorContext)SOURCE:
         \(description)<|im_end|>
         <|im_start|>assistant
         """
@@ -733,6 +735,7 @@ final class LLMParserService: LocalScenePlanProvider {
         slotCatalog: SceneV9SlotCatalog
     ) -> String {
         let stateContext = buildStateContext(state)
+        let metadataContext = buildSceneMetadataContext(description)
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
         let anchorContext = buildAnchorContext(anchors)
         let slotCatalogJSON = encodePrettyJSON(slotCatalog) ?? "{}"
@@ -749,7 +752,7 @@ final class LLMParserService: LocalScenePlanProvider {
         - формат ответа: {"contractVersion":"sg_v9_event_table_v1","rows":[...]}
         <|im_end|>
         <|im_start|>user
-        \(stateContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
+        \(stateContext)\(metadataContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
         \(slotCatalogJSON)
 
         SOURCE:
@@ -769,6 +772,7 @@ final class LLMParserService: LocalScenePlanProvider {
         verifierIssues: [String]
     ) -> String {
         let stateContext = buildStateContext(state)
+        let metadataContext = buildSceneMetadataContext(description)
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
         let anchorContext = buildAnchorContext(anchors)
         let slotCatalogJSON = encodePrettyJSON(slotCatalog) ?? "{}"
@@ -787,7 +791,7 @@ final class LLMParserService: LocalScenePlanProvider {
         Не меняй contractVersion. Не добавляй комментарии.
         <|im_end|>
         <|im_start|>user
-        \(stateContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
+        \(stateContext)\(metadataContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
         \(slotCatalogJSON)
 
         EVENT TABLE JSON:
@@ -831,6 +835,33 @@ final class LLMParserService: LocalScenePlanProvider {
         return context
     }
 
+    private func buildSceneMetadataContext(_ description: String) -> String {
+        let metadata = metadataExtractor.extract(description: description)
+        var lines: [String] = []
+        if let heading = metadata.sceneHeading {
+            lines.append("- scene_heading=\(heading)")
+        }
+        if let location = metadata.locationName {
+            lines.append("- location=\(location)")
+        }
+        if let interiorExterior = metadata.interiorExterior {
+            lines.append("- interior_exterior=\(interiorExterior)")
+        }
+        if let timeOfDay = metadata.timeOfDay {
+            lines.append("- time_of_day=\(timeOfDay)")
+        }
+        guard !lines.isEmpty else {
+            return ""
+        }
+
+        return """
+        SCENE METADATA HINT:
+        \(lines.joined(separator: "\n"))
+        - use this hint only when it exactly matches SOURCE
+
+        """
+    }
+
     private func encodePrettyJSON<T: Encodable>(_ value: T) -> String? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -843,11 +874,11 @@ final class LLMParserService: LocalScenePlanProvider {
         anchors: SourceAnchorBundle,
         slotCatalog: SceneV9SlotCatalog
     ) -> [Int32] {
-        let estimated = Int32(description.count / 3)
-            + 256
-            + Int32(slotCatalog.beatSlots.count * 48)
-            + Int32(slotCatalog.actorSlots.count * 20)
-            + Int32(anchors.phaseCues.count * 12)
+        let estimated = Int32(description.count / 2)
+            + 384
+            + Int32(slotCatalog.beatSlots.count * 56)
+            + Int32(slotCatalog.actorSlots.count * 24)
+            + Int32(anchors.phaseCues.count * 16)
         let first = max(Self.v9EventTokenBudgets[0], min(estimated, Self.v9EventMaxGenerationTokens))
 
         var budgets = [first]

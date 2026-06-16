@@ -962,6 +962,37 @@ final class SceneV8PipelineTests: XCTestCase {
         XCTAssertEqual(metadata.sceneHeading, "INT. KITCHEN - EVENING")
     }
 
+    func testMetadataExtractorParsesSplitRussianHeadingWithCuePrefix() {
+        let extractor = SceneMetadataExtractor()
+        let metadata = extractor.extract(
+            description: """
+            ПЛАН НА:
+            ЭКСТ.
+            ГОРНЫЙ ХРЕБЕТ АНД — ВИД С ВОЗДУХА — СУМЕРКИ КАМЕРА ПРОЛЕТАЕТ над джунглями.
+            """
+        )
+
+        XCTAssertEqual(metadata.interiorExterior, "exterior")
+        XCTAssertEqual(metadata.locationName, "ГОРНЫЙ ХРЕБЕТ АНД — ВИД С ВОЗДУХА")
+        XCTAssertEqual(metadata.timeOfDay, "evening")
+        XCTAssertEqual(metadata.sceneHeading, "ЭКСТ. ГОРНЫЙ ХРЕБЕТ АНД — ВИД С ВОЗДУХА — СУМЕРКИ КАМЕРА ПРОЛЕТАЕТ НАД ДЖУНГЛЯМИ.")
+    }
+
+    func testMetadataExtractorMapsDawnToMorningForSplitHeading() {
+        let extractor = SceneMetadataExtractor()
+        let metadata = extractor.extract(
+            description: """
+            ЭКСТ.
+            ЛА ДИСПЕНСАРИА — РАССВЕТ Щелкает затвор, сделана фотография.
+            """
+        )
+
+        XCTAssertEqual(metadata.interiorExterior, "exterior")
+        XCTAssertEqual(metadata.locationName, "ЛА ДИСПЕНСАРИА")
+        XCTAssertEqual(metadata.timeOfDay, "morning")
+        XCTAssertEqual(metadata.sceneHeading, "ЭКСТ. ЛА ДИСПЕНСАРИА — РАССВЕТ ЩЕЛКАЕТ ЗАТВОР, СДЕЛАНА ФОТОГРАФИЯ.")
+    }
+
     func testCoordinatorUsesRemotePlanWhenOffloadEnabled() async {
         let localResult = ScenePlanProviderResult(
             plan: ScenePlanIR(
