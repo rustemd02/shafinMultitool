@@ -10,10 +10,12 @@ import base64
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import subprocess
 import sys
+import threading
 from typing import Any
 import zipfile
 
@@ -29,19 +31,17 @@ SCENE_ATTACHMENT_ALIASES = {
     "camera_still_rows.jsonl",
     "camera_live_sequence_rows.jsonl",
     "scene_case_results.json",
-    "scene_monolithic_result.json",
-    "scene_chunked_result.json",
+    "scene_execution_events.jsonl",
+    "scene_checkpoint_manifest.jsonl",
 }
 
 
 def normalize_attachment_alias(suggested_name: str) -> str | None:
     if not suggested_name:
         return None
-    match = re.match(r"(?P<stem>.+?)_\d+_[0-9A-Fa-f-]{36}(?P<ext>\.[^.]+)$", suggested_name)
+    match = re.match(r"(?P<stem>.+?)_\d+_[0-9A-F-]{36}(?P<ext>\.[^.]+)$", suggested_name)
     candidate = f"{match.group('stem')}{match.group('ext')}" if match else suggested_name
-    if candidate in SCENE_ATTACHMENT_ALIASES or candidate.startswith("chunk_"):
-        return candidate
-    return None
+    return candidate if candidate in SCENE_ATTACHMENT_ALIASES else None
 
 
 def build_config(args: argparse.Namespace) -> dict[str, Any]:
@@ -50,6 +50,7 @@ def build_config(args: argparse.Namespace) -> dict[str, Any]:
         "tier": args.tier,
         "enabledModules": args.modules,
         "sceneGeneratorModelPolicy": "explicitOrLatest",
+        "sceneGeneratorRuntimePreset": args.scene_runtime_preset,
         "sceneGeneratorExecutionMode": args.scene_execution_mode,
         "sceneGeneratorThermalPolicy": {
             "mode": args.scene_execution_mode,
@@ -78,6 +79,56 @@ def run_command(command: list[str], env: dict[str, str] | None = None, check: bo
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+
+
+def run_streaming_command(
+    command: list[str],
+    env: dict[str, str] | None = None,
+    check: bool = True,
+    log_path: Path | None = None,
+    timeout_seconds: int | None = None,
+    append_log: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], bool]:
+    log_mode = "a" if append_log else "w"
+    log_file = log_path.open(log_mode, encoding="utf-8") if log_path is not None else None
+    output_lines: list[str] = []
+    process = subprocess.Popen(
+        command,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+    )
+
+    def consume_stdout() -> None:
+        assert process.stdout is not None
+        for line in process.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            if log_file is not None:
+                log_file.write(line)
+                log_file.flush()
+            output_lines.append(line)
+
+    reader = threading.Thread(target=consume_stdout, daemon=True)
+    reader.start()
+    timed_out = False
+    try:
+        return_code = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.kill()
+        return_code = process.wait()
+    reader.join()
+    if log_file is not None:
+        log_file.close()
+
+    stdout = "".join(output_lines)
+    completed = subprocess.CompletedProcess(command, return_code, stdout, None)
+    if check and return_code != 0:
+        raise subprocess.CalledProcessError(return_code, command, output=stdout)
+    return completed, timed_out
 
 
 def maybe_export_attachments(xcresult: Path, output_dir: Path) -> None:
@@ -148,16 +199,61 @@ def find_first(root: Path, name: str) -> Path | None:
     return next(root.rglob(name), None) if root.exists() else None
 
 
-def find_first_across_roots(roots: list[Path], name: str) -> Path | None:
-    for root in roots:
-        candidate = find_first(root, name)
-        if candidate is not None:
-            return candidate
-    return None
+def collect_device_diagnostics(device_id: str) -> dict[str, Any]:
+    lock_state = run_command(
+        ["xcrun", "devicectl", "device", "info", "lockState", "--device", device_id],
+        check=False,
+    )
+    apps = run_command(
+        ["xcrun", "devicectl", "device", "info", "apps", "--device", device_id],
+        check=False,
+    )
+    processes = run_command(
+        ["xcrun", "devicectl", "device", "info", "processes", "--device", device_id],
+        check=False,
+    )
+    interesting_app_lines = [
+        line
+        for line in apps.stdout.splitlines()
+        if any(token in line.lower() for token in ("shafin", "multitool"))
+    ]
+    interesting_process_lines = [
+        line
+        for line in processes.stdout.splitlines()
+        if any(token in line.lower() for token in ("shafin", "xctest", "xctrunner", "testrunner"))
+    ]
+    return {
+        "device_id": device_id,
+        "lock_state_stdout": lock_state.stdout,
+        "installed_app_matches": interesting_app_lines,
+        "running_process_matches": interesting_process_lines,
+    }
 
 
-def maybe_run_camera_postprocess(repo_root: Path, search_roots: list[Path], tier: str, postprocess_dir: Path) -> Path | None:
-    candidate = find_first_across_roots(search_roots, "camera_still_rows.jsonl")
+def write_json_artifact(path: Path, payload: dict[str, Any]) -> Path:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def find_xctestrun_file(derived_data_path: Path) -> Path | None:
+    candidates = sorted(derived_data_path.rglob("*.xctestrun"))
+    return candidates[0] if candidates else None
+
+
+def patch_xctestrun_environment(source_path: Path, destination_path: Path, injected_environment: dict[str, str]) -> Path:
+    payload = plistlib.loads(source_path.read_bytes())
+    for configuration in payload.get("TestConfigurations", []):
+        for target in configuration.get("TestTargets", []):
+            target.setdefault("EnvironmentVariables", {})
+            target["EnvironmentVariables"].update(injected_environment)
+            target.setdefault("TestingEnvironmentVariables", {})
+            target["TestingEnvironmentVariables"].update(injected_environment)
+    destination_path.write_bytes(plistlib.dumps(payload))
+    return destination_path
+
+
+def maybe_run_camera_postprocess(repo_root: Path, artifacts_root: Path, tier: str, postprocess_dir: Path) -> Path | None:
+    candidate = find_first(artifacts_root, "camera_still_rows.jsonl")
     if candidate is None:
         print("warning: camera_still_rows.jsonl attachment not found; skipping camera postprocess.", file=sys.stderr)
         return None
@@ -253,7 +349,11 @@ def make_host_compare(
     baseline_summary: dict[str, Any],
     candidate_summary: dict[str, Any],
 ) -> dict[str, Any]:
+    baseline_camera = baseline_summary.get("camera_summary") or {}
+    baseline_camera_eval = baseline_summary.get("camera_eval") or {}
     baseline_scene = baseline_summary.get("scene_summary") or {}
+    candidate_camera = candidate_summary.get("camera_summary") or {}
+    candidate_camera_eval = candidate_summary.get("camera_eval") or {}
     candidate_scene = candidate_summary.get("scene_summary") or {}
 
     def metric_delta(key: str) -> dict[str, Any]:
@@ -268,13 +368,71 @@ def make_host_compare(
             "delta": delta,
         }
 
+    def nested_metric_delta(summary_a: dict[str, Any], summary_b: dict[str, Any], *path: str) -> dict[str, Any]:
+        baseline_value: Any = summary_a
+        candidate_value: Any = summary_b
+        for key in path:
+            baseline_value = baseline_value.get(key) if isinstance(baseline_value, dict) else None
+            candidate_value = candidate_value.get(key) if isinstance(candidate_value, dict) else None
+        delta = None
+        if isinstance(baseline_value, (int, float)) and isinstance(candidate_value, (int, float)):
+            delta = candidate_value - baseline_value
+        return {
+            "baseline": baseline_value,
+            "candidate": candidate_value,
+            "delta": delta,
+        }
+
     return {
         "baseline_run_id": baseline_summary.get("run_id"),
         "candidate_run_id": candidate_summary.get("run_id"),
+        "baseline_camera_status": baseline_camera.get("status"),
+        "candidate_camera_status": candidate_camera.get("status"),
         "baseline_execution_mode": baseline_scene.get("executionMode"),
         "candidate_execution_mode": candidate_scene.get("executionMode"),
+        "camera_quality_metrics": {
+            "pass_rate": nested_metric_delta(baseline_camera_eval, candidate_camera_eval, "set_metrics", "pass_rate"),
+            "forbidden_action_violation_rate": nested_metric_delta(
+                baseline_camera_eval,
+                candidate_camera_eval,
+                "set_metrics",
+                "forbidden_action_violation_rate",
+            ),
+            "good_frame_preservation_rate": nested_metric_delta(
+                baseline_camera_eval,
+                candidate_camera_eval,
+                "set_metrics",
+                "good_frame_preservation_rate",
+            ),
+            "expected_action_hit_rate": nested_metric_delta(
+                baseline_camera_eval,
+                candidate_camera_eval,
+                "set_metrics",
+                "expected_action_hit_rate",
+            ),
+            "future_action_hit_rate": nested_metric_delta(
+                baseline_camera_eval,
+                candidate_camera_eval,
+                "set_metrics",
+                "future_action_hit_rate",
+            ),
+        },
+        "camera_metrics": {
+            "batteryDelta": nested_metric_delta(baseline_camera, candidate_camera, "mobileMetrics", "batteryDelta"),
+            "uiFPSP50": nested_metric_delta(baseline_camera, candidate_camera, "mobileMetrics", "uiFPSP50"),
+            "pipelineFPSP50": nested_metric_delta(baseline_camera, candidate_camera, "mobileMetrics", "pipelineFPSP50"),
+            "frameTimeP95Ms": nested_metric_delta(baseline_camera, candidate_camera, "mobileMetrics", "frameTimeP95Ms"),
+            "cpuP95": nested_metric_delta(baseline_camera, candidate_camera, "mobileMetrics", "cpuP95"),
+            "memoryP95MB": nested_metric_delta(baseline_camera, candidate_camera, "mobileMetrics", "memoryP95MB"),
+        },
         "metrics": {
             "passRate": metric_delta("passRate"),
+            "firstPassSuccessRate": metric_delta("firstPassSuccessRate"),
+            "retryCaseRate": metric_delta("retryCaseRate"),
+            "meanRetryCountPerCase": metric_delta("meanRetryCountPerCase"),
+            "maxTokensReachedCaseRate": metric_delta("maxTokensReachedCaseRate"),
+            "successfulCasesPerMinute": metric_delta("successfulCasesPerMinute"),
+            "batteryDrainPer100Cases": metric_delta("batteryDrainPer100Cases"),
             "parseP50Ms": metric_delta("parseP50Ms"),
             "parseP95Ms": metric_delta("parseP95Ms"),
             "seriousThermalDurationRatio": metric_delta("seriousThermalDurationRatio"),
@@ -305,11 +463,29 @@ def write_host_compare(
         "",
         f"- `baseline_run_id`: {compare.get('baseline_run_id')}",
         f"- `candidate_run_id`: {compare.get('candidate_run_id')}",
+        f"- `baseline_camera_status`: {compare.get('baseline_camera_status')}",
+        f"- `candidate_camera_status`: {compare.get('candidate_camera_status')}",
         f"- `baseline_execution_mode`: {compare.get('baseline_execution_mode')}",
         f"- `candidate_execution_mode`: {compare.get('candidate_execution_mode')}",
         "",
-        "## Scene metrics",
+        "## Camera quality metrics",
     ]
+    for key, values in compare.get("camera_quality_metrics", {}).items():
+        lines.append(
+            f"- `{key}`: baseline={values.get('baseline')} candidate={values.get('candidate')} delta={values.get('delta')}"
+        )
+    lines.extend([
+        "",
+        "## Camera mobile metrics",
+    ])
+    for key, values in compare.get("camera_metrics", {}).items():
+        lines.append(
+            f"- `{key}`: baseline={values.get('baseline')} candidate={values.get('candidate')} delta={values.get('delta')}"
+        )
+    lines.extend([
+        "",
+        "## Scene metrics",
+    ])
     for key, values in compare.get("metrics", {}).items():
         lines.append(
             f"- `{key}`: baseline={values.get('baseline')} candidate={values.get('candidate')} delta={values.get('delta')}"
@@ -376,9 +552,45 @@ def write_host_summary(
                 f"- `good_frame_preservation_rate`: {set_metrics.get('good_frame_preservation_rate')}",
             ]
         )
+    if camera_summary:
+        mobile_metrics = camera_summary.get("mobileMetrics") or {}
+        lines.extend(
+            [
+                "",
+                "## Camera mobile metrics",
+                f"- `status`: {camera_summary.get('status')}",
+                f"- `batteryDelta`: {mobile_metrics.get('batteryDelta')}",
+                f"- `uiFPSP50`: {mobile_metrics.get('uiFPSP50')}",
+                f"- `pipelineFPSP50`: {mobile_metrics.get('pipelineFPSP50')}",
+                f"- `frameTimeP95Ms`: {mobile_metrics.get('frameTimeP95Ms')}",
+                f"- `cpuP95`: {mobile_metrics.get('cpuP95')}",
+                f"- `memoryP95MB`: {mobile_metrics.get('memoryP95MB')}",
+                f"- `thermalStatesSeen`: {mobile_metrics.get('thermalStatesSeen')}",
+            ]
+        )
     lines.extend(["", "## Scene gate checks"])
     for key, value in scene_gate.get("checks", {}).items():
         lines.append(f"- `{key}`: {value}")
+    if scene_summary:
+        lines.extend(
+            [
+                "",
+                "## Scene Generator metrics",
+                f"- `passRate`: {scene_summary.get('passRate')}",
+                f"- `firstPassSuccessRate`: {scene_summary.get('firstPassSuccessRate')}",
+                f"- `retryCaseRate`: {scene_summary.get('retryCaseRate')}",
+                f"- `meanRetryCountPerCase`: {scene_summary.get('meanRetryCountPerCase')}",
+                f"- `maxTokensReachedCaseRate`: {scene_summary.get('maxTokensReachedCaseRate')}",
+                f"- `successfulCasesPerMinute`: {scene_summary.get('successfulCasesPerMinute')}",
+                f"- `batteryDrainPer100Cases`: {scene_summary.get('batteryDrainPer100Cases')}",
+                f"- `parseP50Ms`: {scene_summary.get('parseP50Ms')}",
+                f"- `parseP95Ms`: {scene_summary.get('parseP95Ms')}",
+                f"- `cpuP95`: {scene_summary.get('cpuP95')}",
+                f"- `memoryP95MB`: {scene_summary.get('memoryP95MB')}",
+                f"- `seriousThermalDurationRatio`: {scene_summary.get('seriousThermalDurationRatio')}",
+                f"- `sustainedLatencyDegradationRatio`: {scene_summary.get('sustainedLatencyDegradationRatio')}",
+            ]
+        )
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return json_path, md_path
 
@@ -390,6 +602,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--modules", nargs="+", choices=("camera", "sceneGenerator"), default=["camera", "sceneGenerator"])
     parser.add_argument("--guided-live", action="store_true")
     parser.add_argument("--scene-min-pass-rate", type=float, default=0.60)
+    parser.add_argument("--scene-runtime-preset", choices=("baseline", "efficiency", "batterySaver"), default="baseline")
     parser.add_argument("--scene-execution-mode", choices=("monolithic", "chunkedThermalAware"), default="chunkedThermalAware")
     parser.add_argument("--scene-serious-cooldown-ms", type=int, default=15000)
     parser.add_argument("--scene-critical-cooldown-ms", type=int, default=30000)
@@ -401,6 +614,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scheme", default="shafinMultitool")
     parser.add_argument("--result-root", default="build/device-benchmark")
     parser.add_argument("--run-id", default=f"device-benchmark-host-{os.getpid()}")
+    parser.add_argument("--xcodebuild-timeout-seconds", type=int, default=1800)
     args = parser.parse_args(argv)
 
     if args.guided_live:
@@ -418,6 +632,9 @@ def main(argv: list[str] | None = None) -> int:
     attachments_dir = result_root / f"{args.run_id}-attachments"
     extracted_dir = result_root / f"{args.run_id}-artifacts"
     postprocess_dir = result_root / f"{args.run_id}-camera-postprocess"
+    xcodebuild_log_path = result_root / f"{args.run_id}-xcodebuild.log"
+    device_diagnostics_path = result_root / f"{args.run_id}-device_diagnostics.json"
+    patched_xctestrun_path = result_root / f"{args.run_id}.xctestrun"
     isolated_build_root = Path("/private/tmp") / args.run_id
     derived_data_path = isolated_build_root / "derived-data"
     build_dir = isolated_build_root / "build"
@@ -434,41 +651,94 @@ def main(argv: list[str] | None = None) -> int:
     env = dict(os.environ)
     env["DEVICE_BENCHMARK_CONFIG_BASE64"] = config_base64
 
-    command = ["xcodebuild", "test"]
+    build_command = ["xcodebuild", "build-for-testing"]
     if workspace is not None:
-        command.extend(["-workspace", workspace])
+        build_command.extend(["-workspace", workspace])
     else:
-        command.extend(["-project", args.project])
-    command.extend(
+        build_command.extend(["-project", args.project])
+    build_command.extend(
         [
             "-scheme",
             args.scheme,
             "-destination",
-            f"platform=iOS,id={args.device_id}",
+            "generic/platform=iOS",
             "-derivedDataPath",
             str(derived_data_path),
-            "-resultBundlePath",
-            str(xcresult),
-            "-only-testing:shafinMultitoolTests/DeviceBenchmarkHarnessTests/testRunConfiguredDeviceBenchmark",
             f"BUILD_DIR={build_dir}",
         ]
     )
-    print("running:", " ".join(command))
-    result = run_command(command, env=env, check=False)
-    print(result.stdout)
-    xcodebuild_failed = result.returncode != 0
+    print("running build-for-testing:", " ".join(build_command))
+    build_result, build_timed_out = run_streaming_command(
+        build_command,
+        env=env,
+        check=False,
+        log_path=xcodebuild_log_path,
+        timeout_seconds=args.xcodebuild_timeout_seconds,
+    )
+    xctestrun_path = find_xctestrun_file(derived_data_path)
+    test_result = build_result
+    test_timed_out = False
+    xcodebuild_failed = build_result.returncode != 0
+    if not xcodebuild_failed and xctestrun_path is None:
+        xcodebuild_failed = True
+        test_result = subprocess.CompletedProcess(
+            ["xcodebuild", "build-for-testing"],
+            65,
+            "error: build-for-testing completed but no .xctestrun file was produced.\n",
+            None,
+        )
+        print(test_result.stdout, file=sys.stderr)
+    if not xcodebuild_failed and xctestrun_path is not None:
+        patch_xctestrun_environment(
+            xctestrun_path,
+            patched_xctestrun_path,
+            {"DEVICE_BENCHMARK_CONFIG_BASE64": config_base64},
+        )
+        test_command = [
+            "xcodebuild",
+            "test-without-building",
+            "-xctestrun",
+            str(patched_xctestrun_path),
+            "-destination",
+            f"platform=iOS,id={args.device_id}",
+            "-resultBundlePath",
+            str(xcresult),
+            "-only-testing:shafinMultitoolTests/DeviceBenchmarkHarnessTests/testRunConfiguredDeviceBenchmark",
+        ]
+        print("running test-without-building:", " ".join(test_command))
+        test_result, test_timed_out = run_streaming_command(
+            test_command,
+            env=env,
+            check=False,
+            log_path=xcodebuild_log_path,
+            timeout_seconds=args.xcodebuild_timeout_seconds,
+            append_log=True,
+        )
+        xcodebuild_failed = test_result.returncode != 0
+    timed_out = build_timed_out or test_timed_out
+    result = test_result
+    device_diagnostics_json = None
     if xcodebuild_failed:
+        if timed_out:
+            print(
+                f"warning: xcodebuild test timed out after {args.xcodebuild_timeout_seconds} seconds; collecting device diagnostics.",
+                file=sys.stderr,
+            )
         print("warning: device benchmark xcodebuild test failed; attempting to export partial attachments and summaries.", file=sys.stderr)
+        device_diagnostics_json = write_json_artifact(
+            device_diagnostics_path,
+            collect_device_diagnostics(args.device_id),
+        )
 
     maybe_export_attachments(xcresult, attachments_dir)
     normalized_aliases = normalize_exported_attachments(attachments_dir)
     extracted_root = maybe_extract_artifacts_zip(attachments_dir, extracted_dir)
-    artifacts_search_roots = [root for root in [extracted_root, attachments_dir] if root is not None]
-    camera_metrics_path = maybe_run_camera_postprocess(repo_root, artifacts_search_roots, args.tier, postprocess_dir)
+    artifacts_search_root = extracted_root or attachments_dir
+    camera_metrics_path = maybe_run_camera_postprocess(repo_root, artifacts_search_root, args.tier, postprocess_dir)
 
-    app_summary = load_json_if_exists(find_first_across_roots(artifacts_search_roots, "combined_summary.json"))
-    camera_summary = load_json_if_exists(find_first_across_roots(artifacts_search_roots, "camera_summary.json"))
-    scene_summary = load_json_if_exists(find_first_across_roots(artifacts_search_roots, "scene_summary.json"))
+    app_summary = load_json_if_exists(find_first(artifacts_search_root, "combined_summary.json"))
+    camera_summary = load_json_if_exists(find_first(artifacts_search_root, "camera_summary.json"))
+    scene_summary = load_json_if_exists(find_first(artifacts_search_root, "scene_summary.json"))
     camera_eval = load_json_if_exists(camera_metrics_path)
     if camera_eval is not None:
         camera_eval["_bucket_metrics_path"] = str(postprocess_dir / "bucket_metrics.json")
@@ -513,6 +783,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"artifacts_dir: {extracted_dir}")
     print(f"host_summary_json: {host_summary_json}")
     print(f"host_summary_md: {host_summary_md}")
+    print(f"xcodebuild_log: {xcodebuild_log_path}")
+    if device_diagnostics_json is not None:
+        print(f"device_diagnostics_json: {device_diagnostics_json}")
     zip_path = archive_root.with_suffix(".zip")
     if zip_path.exists():
         print(f"artifacts_zip: {zip_path}")

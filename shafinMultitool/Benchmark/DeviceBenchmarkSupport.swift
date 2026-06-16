@@ -23,6 +23,64 @@ enum DeviceBenchmarkSceneGeneratorModelPolicy: String, Codable {
     case explicitOrLatest
 }
 
+enum SceneGeneratorBenchmarkRuntimeDefaults {
+    static let gpuLayersKey = "device_benchmark_scene_runtime_gpu_layers"
+    static let threadsKey = "device_benchmark_scene_runtime_threads"
+    static let contextTokensKey = "device_benchmark_scene_runtime_context_tokens"
+}
+
+struct SceneGeneratorBenchmarkRuntimeProfile: Equatable {
+    let gpuLayers: Int
+    let threads: Int
+    let contextTokens: Int
+}
+
+enum DeviceBenchmarkSceneRuntimePreset: String, Codable, Equatable {
+    case baseline
+    case efficiency
+    case batterySaver
+
+    var profile: SceneGeneratorBenchmarkRuntimeProfile {
+        switch self {
+        case .baseline:
+            return SceneGeneratorBenchmarkRuntimeProfile(gpuLayers: 99, threads: 4, contextTokens: 2048)
+        case .efficiency:
+            return SceneGeneratorBenchmarkRuntimeProfile(gpuLayers: 48, threads: 2, contextTokens: 2048)
+        case .batterySaver:
+            return SceneGeneratorBenchmarkRuntimeProfile(gpuLayers: 24, threads: 1, contextTokens: 2048)
+        }
+    }
+}
+
+enum SceneGeneratorExecutionMode: String, Codable, Equatable {
+    case monolithic
+    case chunkedThermalAware
+}
+
+struct SceneGeneratorMobileExecutionPolicy: Codable, Equatable {
+    let mode: SceneGeneratorExecutionMode
+    let cooldownOnSeriousMs: Int
+    let cooldownOnCriticalMs: Int
+    let maxChunkAttempts: Int
+    let checkpointEnabled: Bool
+
+    static let monolithicDefault = SceneGeneratorMobileExecutionPolicy(
+        mode: .monolithic,
+        cooldownOnSeriousMs: 0,
+        cooldownOnCriticalMs: 0,
+        maxChunkAttempts: 1,
+        checkpointEnabled: false
+    )
+
+    static let chunkedThermalAwareDefault = SceneGeneratorMobileExecutionPolicy(
+        mode: .chunkedThermalAware,
+        cooldownOnSeriousMs: 15_000,
+        cooldownOnCriticalMs: 30_000,
+        maxChunkAttempts: 2,
+        checkpointEnabled: true
+    )
+}
+
 enum DeviceBenchmarkSceneExecutionMode: String, Codable, Equatable {
     case monolithic
     case chunkedThermalAware
@@ -50,6 +108,7 @@ struct DeviceBenchmarkConfig: Codable, Equatable {
     var tier: DeviceBenchmarkTier
     var enabledModules: [DeviceBenchmarkModule]
     var sceneGeneratorModelPolicy: DeviceBenchmarkSceneGeneratorModelPolicy
+    var sceneGeneratorRuntimePreset: DeviceBenchmarkSceneRuntimePreset
     var sceneGeneratorExecutionMode: DeviceBenchmarkSceneExecutionMode
     var sceneGeneratorThermalPolicy: SceneGeneratorMobileExecutionPolicy
     var cameraResourcePackId: String
@@ -65,6 +124,7 @@ struct DeviceBenchmarkConfig: Codable, Equatable {
             tier: .quick,
             enabledModules: DeviceBenchmarkModule.allCases,
             sceneGeneratorModelPolicy: .explicitOrLatest,
+            sceneGeneratorRuntimePreset: .baseline,
             sceneGeneratorExecutionMode: .chunkedThermalAware,
             sceneGeneratorThermalPolicy: .chunkedThermalAwareDefault,
             cameraResourcePackId: "camera_device_benchmark_pack_v1",
@@ -285,7 +345,7 @@ final class DeviceBenchmarkArtifactStore {
     }
 
     func prepare() throws {
-        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true, attributes: nil)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
     }
 
     func fileURL(_ name: String) -> URL {
@@ -301,7 +361,7 @@ final class DeviceBenchmarkArtifactStore {
         if FileManager.default.fileExists(atPath: destination.path) {
             return destination
         }
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true, attributes: nil)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         if let source = bundledPackURL(packId: packId) {
             try FileManager.default.copyItem(at: source, to: destination)
             return destination
@@ -349,7 +409,7 @@ final class DeviceBenchmarkArtifactStore {
 
     private func materializeCameraPack(at destination: URL) throws {
         let imagesDirectory = destination.appendingPathComponent("images", isDirectory: true)
-        try FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true, attributes: nil)
+        try FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
 
         let staticFiles = [
             "camera_full_labels.jsonl",
@@ -414,17 +474,26 @@ final class DeviceBenchmarkArtifactStore {
         try FileManager.default.copyItem(at: sourceURL, to: destination)
     }
 
+    private func ensureParentDirectory(for url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+    }
+
     func writeJSON<T: Encodable>(_ value: T, named name: String) throws -> URL {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let url = fileURL(name)
+        try ensureParentDirectory(for: url)
         try encoder.encode(value).write(to: url)
         return url
     }
 
     func writeLines(_ lines: [String], named name: String) throws -> URL {
         let url = fileURL(name)
+        try ensureParentDirectory(for: url)
         let body = lines.joined(separator: "\n") + "\n"
         try body.write(to: url, atomically: true, encoding: .utf8)
         return url
@@ -443,6 +512,7 @@ final class DeviceBenchmarkArtifactStore {
 
     func writeString(_ value: String, named name: String) throws -> URL {
         let url = fileURL(name)
+        try ensureParentDirectory(for: url)
         try value.write(to: url, atomically: true, encoding: .utf8)
         return url
     }

@@ -14,12 +14,13 @@ final class LLMParserService: LocalScenePlanProvider {
 
     static let shared = LLMParserService()
     private static let modelPathOverrideDefaultsKey = "scene_generator_llm_model_path"
-    private static let generationTokenBudgets: [Int32] = [1536, 2048, 3072]
-    private static let maxGenerationTokens: Int32 = 4096
-    private static let v9EventTokenBudgets: [Int32] = [1024, 1536, 2048]
-    private static let v9EventMaxGenerationTokens: Int32 = 3072
+    private static let generationTokenBudgets: [Int32] = [1024, 1536, 2048]
+    private static let maxGenerationTokens: Int32 = 3072
+    private static let semanticRepairMaxTokens: Int32 = 256
+    private static let v9EventTokenBudgets: [Int32] = [768, 1024, 1536]
+    private static let v9EventMaxGenerationTokens: Int32 = 2048
     private static let v9PatchMaxRetry: Int = 1
-    private static let v9PatchMaxTokens: Int32 = 768
+    private static let v9PatchMaxTokens: Int32 = 512
     private static let v9PatchWallClockBudgetSeconds: TimeInterval = 8
     private static let v9EventTargetRequiredTypes: Set<SceneAction.ActionType> = [
         .lookAt, .pickUp, .open, .close, .approach, .putDown, .give, .passBy, .stop
@@ -30,11 +31,15 @@ final class LLMParserService: LocalScenePlanProvider {
     ]
     private let lemmatizer = Lemmatizer()
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
-    private let metadataExtractor = SceneMetadataExtractor()
     private let planCompiler = ScenePlanCompiler()
     private let v9EventTableService = SceneEventTableV9Service()
     private let stateLock = NSLock()
     private var loadingTask: Task<Void, Never>?
+    private let actorOrdinalAliasCatalog: [(ref: String, phrases: [String])] = [
+        ("first", ["первый актёр", "первый актер", "первый персонаж", "первый человек", "первая актриса", "актёр 1", "актер 1", "персонаж 1"]),
+        ("second", ["второй актёр", "второй актер", "второй персонаж", "второй человек", "вторая актриса", "актёр 2", "актер 2", "персонаж 2"]),
+        ("third", ["третий актёр", "третий актер", "третий персонаж", "третий человек", "третья актриса", "актёр 3", "актер 3", "персонаж 3"])
+    ]
 
     /// Plan context с grammar ScenePlanIR — текущий backward-compatible путь.
     private var llamaContext: LlamaContext?
@@ -140,6 +145,11 @@ final class LLMParserService: LocalScenePlanProvider {
         case patchOps
     }
 
+    private struct PromptCanonicalization {
+        let block: String
+        let usedCanonicalization: Bool
+    }
+
     private func loadV9ContextIfNeeded(_ kind: V9ContextKind) async -> LlamaContext? {
         await loadModelIfNeeded()
 
@@ -228,9 +238,22 @@ final class LLMParserService: LocalScenePlanProvider {
         }
 
         print("🤖 [LLM] Начало LLM парсинга для: '\(description)'")
-        let prompt = buildPrompt(description: description, markedObjects: markedObjects, anchors: anchors, state: state)
+        let canonicalization = buildScenePlanCanonicalization(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors
+        )
+        let prompt = buildPrompt(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: state,
+            canonicalization: canonicalization
+        )
         let budgets = generationBudgets(for: description, anchors: anchors, state: state)
-        var reasonCodes: [String] = []
+        var reasonCodes: [String] = canonicalization.usedCanonicalization ? ["llm.input_canonicalized"] : []
+        var lastIncompletePlanFingerprint: String?
+        var repeatedIncompletePlanCount = 0
 
         for (attemptIndex, maxTokens) in budgets.enumerated() {
             let attemptStart = CFAbsoluteTimeGetCurrent()
@@ -255,12 +278,65 @@ final class LLMParserService: LocalScenePlanProvider {
                 markedObjects: markedObjects,
                 anchors: anchors
             ) {
+                if let repairIssue = semanticRepairIssue(
+                    for: planResult.plan,
+                    description: description,
+                    markedObjects: markedObjects
+                ), !hitTokenLimit {
+                    if let repairedResult = await attemptSemanticRepair(
+                        context: context,
+                        description: description,
+                        markedObjects: markedObjects,
+                        anchors: anchors,
+                        incompletePlan: planResult.plan,
+                        issue: repairIssue
+                    ) {
+                        print("✅ [LLM] ScenePlanIR успешно восстановлен через semantic repair pass")
+                        if !reasonCodes.contains("llm.semantic_repair_recovered") {
+                            reasonCodes.append("llm.semantic_repair_recovered")
+                        }
+                        if attemptIndex > 0, !reasonCodes.contains("llm.retry_recovered") {
+                            reasonCodes.append("llm.retry_recovered")
+                        }
+                        return ScenePlanProviderResult(
+                            plan: repairedResult.plan,
+                            usedLegacySceneScriptBridge: repairedResult.usedLegacySceneScriptBridge,
+                            reasonCodes: reasonCodes
+                        )
+                    }
+                    print("⚠️ [LLM] Semantic repair pass не помог, продолжаем обычный retry path")
+                    if !reasonCodes.contains("llm.semantic_repair_failed") {
+                        reasonCodes.append("llm.semantic_repair_failed")
+                    }
+                }
                 if shouldRetryForLikelyTruncatedResponse(
                     generatedText,
                     plan: planResult.plan,
                     description: description,
                     stoppedByTokenBudget: hitTokenLimit
                 ), attemptIndex < budgets.count - 1 {
+                    if !hitTokenLimit {
+                        let fingerprint = planRetryFingerprint(for: planResult.plan)
+                        if fingerprint == lastIncompletePlanFingerprint {
+                            repeatedIncompletePlanCount += 1
+                        } else {
+                            lastIncompletePlanFingerprint = fingerprint
+                            repeatedIncompletePlanCount = 1
+                        }
+
+                        if repeatedIncompletePlanCount >= 2 {
+                            print("⚠️ [LLM] Неполный план повторился без изменений; прекращаем дальнейшую эскалацию maxTokens")
+                            if !reasonCodes.contains("llm.retry_stopped_after_repeated_incomplete_plan") {
+                                reasonCodes.append("llm.retry_stopped_after_repeated_incomplete_plan")
+                            }
+                            return ScenePlanProviderResult(
+                                plan: planResult.plan,
+                                usedLegacySceneScriptBridge: planResult.usedLegacySceneScriptBridge,
+                                reasonCodes: reasonCodes
+                            )
+                        }
+                    }
+
                     let nextBudget = budgets[attemptIndex + 1]
                     let reason = hitTokenLimit
                         ? "обрезано по maxTokens"
@@ -313,7 +389,7 @@ final class LLMParserService: LocalScenePlanProvider {
         let anchorComplexity = (anchors.mentionedMarkedObjects.count * 60)
             + (anchors.objectSurfaceMentions.count * 30)
             + (anchors.phaseCues.count * 20)
-        let estimated = Int32(description.count / 2) + 960 + Int32(anchorComplexity + (stateEntityCount * 32))
+        let estimated = Int32(description.count / 2) + 640 + Int32(anchorComplexity + (stateEntityCount * 25))
         let firstBudget = max(Self.generationTokenBudgets[0], min(estimated, Self.maxGenerationTokens))
 
         var budgets = [firstBudget]
@@ -334,6 +410,19 @@ final class LLMParserService: LocalScenePlanProvider {
     private func shouldRetryForLikelyTruncatedPlan(_ plan: ScenePlanIR, description: String) -> Bool {
         guard plan.beats.isEmpty else { return false }
         return descriptionLikelyContainsActionsOrDialogue(description)
+    }
+
+    private func semanticRepairIssue(
+        for plan: ScenePlanIR,
+        description: String,
+        markedObjects: [MarkedObject]
+    ) -> String? {
+        let mentionedMarkers = findMentionedMarkers(in: description.lowercased(), markedObjects: markedObjects)
+        if !mentionedMarkers.isEmpty, plan.objects.isEmpty {
+            return "В source упомянуты marked objects, но в JSON отсутствуют objects."
+        }
+
+        return nil
     }
 
     private func shouldRetryForLikelyTruncatedResponse(
@@ -363,6 +452,16 @@ final class LLMParserService: LocalScenePlanProvider {
             return true
         }
         return !trimmed.hasSuffix("}")
+    }
+
+    private func planRetryFingerprint(for plan: ScenePlanIR) -> String {
+        let actorRefs = plan.actors.map(\.ref).joined(separator: ",")
+        let objectRefs = plan.objects.map(\.ref).joined(separator: ",")
+        let actionTypes = plan.beats
+            .flatMap(\.actions)
+            .map { $0.type.rawValue }
+            .joined(separator: ",")
+        return "\(actorRefs)|\(objectRefs)|beats=\(plan.beats.count)|actions=\(actionTypes)"
     }
 
     private func descriptionLikelyContainsActionsOrDialogue(_ description: String) -> Bool {
@@ -470,15 +569,25 @@ final class LLMParserService: LocalScenePlanProvider {
             return nil
         }
 
+        let canonicalization = buildV9PromptCanonicalization(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            slotCatalog: slotCatalog
+        )
         let prompt = buildV9EventTablePrompt(
             description: description,
             markedObjects: markedObjects,
             anchors: anchors,
             state: state,
-            slotCatalog: slotCatalog
+            slotCatalog: slotCatalog,
+            canonicalization: canonicalization
         )
         let budgets = v9EventGenerationBudgets(for: description, anchors: anchors, slotCatalog: slotCatalog)
         var reasonCodes: [String] = ["v9.event_table_prompt_used"]
+        if canonicalization.usedCanonicalization {
+            reasonCodes.append("v9.input_canonicalized")
+        }
         let startedAt = CFAbsoluteTimeGetCurrent()
 
         for (attemptIndex, maxTokens) in budgets.enumerated() {
@@ -619,7 +728,13 @@ final class LLMParserService: LocalScenePlanProvider {
             state: state,
             slotCatalog: slotCatalog,
             eventTable: eventTable,
-            verifierIssues: verifierIssues
+            verifierIssues: verifierIssues,
+            canonicalization: buildV9PromptCanonicalization(
+                description: description,
+                markedObjects: markedObjects,
+                anchors: anchors,
+                slotCatalog: slotCatalog
+            )
         )
         let output = await context.generateWithMetadata(prompt: prompt, maxTokens: Self.v9PatchMaxTokens)
         print("🤖 [LLM][V9] PatchOps tokens=\(output.generatedTokenCount)/\(output.maxTokens), stop=\(output.stopReason.rawValue)")
@@ -632,7 +747,13 @@ final class LLMParserService: LocalScenePlanProvider {
     // MARK: - Prompt Building
 
     /// Формирует промпт для LLM
-    private func buildPrompt(description: String, markedObjects: [MarkedObject], anchors: SourceAnchorBundle, state: SceneChunkState?) -> String {
+    private func buildPrompt(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        canonicalization: PromptCanonicalization
+    ) -> String {
         var stateContext = ""
         if let state = state {
             let actors = state.knownActors.map { "\($0.key) (id: \($0.value))" }.joined(separator: ", ")
@@ -658,7 +779,6 @@ final class LLMParserService: LocalScenePlanProvider {
             if !actorPositions.isEmpty { stateContext += "Последние смысловые позиции актёров: \(actorPositions)\n" }
             stateContext += "\n"
         }
-        let metadataContext = buildSceneMetadataContext(description)
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
         let anchorContext = buildAnchorContext(anchors)
 
@@ -674,12 +794,54 @@ final class LLMParserService: LocalScenePlanProvider {
         - unmarked objects должны использовать refs вида "object_slot_1", "object_slot_2"
         - marked objects должны использовать exact refs вида "object_marked_xxxxxxxx"
         - если действие unsupported, сохраняй его как type="described_action" с fallbackText/sourceText
+        - если в CANONICAL SOURCE уже есть теги ACTOR[...] или OBJECT[...], используй именно эти refs
         - JSON должен быть полностью закрыт: все { } и [ ] должны быть сбалансированы
         - выводи ТОЛЬКО валидный JSON ScenePlanIR, без пояснений
         <|im_end|>
         <|im_start|>user
-        \(stateContext)\(metadataContext)\(markedObjectsContext)\(anchorContext)SOURCE:
+        \(stateContext)\(markedObjectsContext)\(anchorContext)\(canonicalization.block)SOURCE:
         \(description)<|im_end|>
+        <|im_start|>assistant
+        """
+    }
+
+    private func buildScenePlanRepairPrompt(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        incompletePlanJSON: String,
+        issue: String,
+        canonicalization: PromptCanonicalization
+    ) -> String {
+        let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
+        let anchorContext = buildAnchorContext(anchors)
+
+        return """
+        <|im_start|>system
+        Ты редактор ScenePlanIR. Тебе даны source и неполный JSON-план.
+        Верни ИСПРАВЛЕННЫЙ валидный JSON ScenePlanIR.
+        ПРАВИЛА:
+        - исправляй минимально, но устрани пропуски, указанные в ISSUE
+        - не выдумывай новые сущности, которых нет в source
+        - если в source есть действие или реплика, должен быть хотя бы один beat
+        - количество beats делай минимальным: обычно 1 или 2, не раздувай план
+        - сохраняй существующие refs, если они уже валидны
+        - marked objects должны использовать exact refs вида "object_marked_xxxxxxxx"
+        - не добавляй лишние optional поля, если они не нужны
+        - если в CANONICAL SOURCE уже есть теги ACTOR[...] или OBJECT[...], не переименовывай их
+        - верни компактный JSON в одну строку, без пустых строк и лишних пробелов
+        - выводи ТОЛЬКО валидный JSON ScenePlanIR, без пояснений
+        <|im_end|>
+        <|im_start|>user
+        \(markedObjectsContext)\(anchorContext)\(canonicalization.block)ISSUE:
+        \(issue)
+
+        SOURCE:
+        \(description)
+
+        CURRENT INCOMPLETE JSON:
+        \(incompletePlanJSON)
+        <|im_end|>
         <|im_start|>assistant
         """
     }
@@ -732,10 +894,10 @@ final class LLMParserService: LocalScenePlanProvider {
         markedObjects: [MarkedObject],
         anchors: SourceAnchorBundle,
         state: SceneChunkState?,
-        slotCatalog: SceneV9SlotCatalog
+        slotCatalog: SceneV9SlotCatalog,
+        canonicalization: PromptCanonicalization
     ) -> String {
         let stateContext = buildStateContext(state)
-        let metadataContext = buildSceneMetadataContext(description)
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
         let anchorContext = buildAnchorContext(anchors)
         let slotCatalogJSON = encodePrettyJSON(slotCatalog) ?? "{}"
@@ -749,10 +911,12 @@ final class LLMParserService: LocalScenePlanProvider {
         - actionType только из разрешённых actionTypes
         - если actionType=described_action, заполни describedActionText
         - если не уверен, оставь targetSlot пустым, но НЕ выдумывай слот
+        - если в CANONICAL SOURCE уже есть ACTOR_SLOT[...] или OBJECT_SLOT[...], используй именно эти slot id
+        - для однотипных object slots учитывай relativePosition и name из SLOT ALIASES
         - формат ответа: {"contractVersion":"sg_v9_event_table_v1","rows":[...]}
         <|im_end|>
         <|im_start|>user
-        \(stateContext)\(metadataContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
+        \(stateContext)\(markedObjectsContext)\(anchorContext)\(canonicalization.block)SLOT CATALOG JSON:
         \(slotCatalogJSON)
 
         SOURCE:
@@ -769,10 +933,10 @@ final class LLMParserService: LocalScenePlanProvider {
         state: SceneChunkState?,
         slotCatalog: SceneV9SlotCatalog,
         eventTable: SceneV9EventTable,
-        verifierIssues: [String]
+        verifierIssues: [String],
+        canonicalization: PromptCanonicalization
     ) -> String {
         let stateContext = buildStateContext(state)
-        let metadataContext = buildSceneMetadataContext(description)
         let markedObjectsContext = buildMarkedObjectsContext(markedObjects)
         let anchorContext = buildAnchorContext(anchors)
         let slotCatalogJSON = encodePrettyJSON(slotCatalog) ?? "{}"
@@ -788,10 +952,11 @@ final class LLMParserService: LocalScenePlanProvider {
         - сначала добавь новую строку через {"op":"add","rowId":"row_new_1"}
         - затем replace для beatSlot, actorSlot, actionType, targetSlot/dialogueText/describedActionText/sourceSpan/confidence.
         Используй только slot id из slotCatalog, новые слоты запрещены.
+        Если в CANONICAL SOURCE уже есть ACTOR_SLOT[...] или OBJECT_SLOT[...], не переименовывай эти slot id.
         Не меняй contractVersion. Не добавляй комментарии.
         <|im_end|>
         <|im_start|>user
-        \(stateContext)\(metadataContext)\(markedObjectsContext)\(anchorContext)SLOT CATALOG JSON:
+        \(stateContext)\(markedObjectsContext)\(anchorContext)\(canonicalization.block)SLOT CATALOG JSON:
         \(slotCatalogJSON)
 
         EVENT TABLE JSON:
@@ -835,31 +1000,90 @@ final class LLMParserService: LocalScenePlanProvider {
         return context
     }
 
-    private func buildSceneMetadataContext(_ description: String) -> String {
-        let metadata = metadataExtractor.extract(description: description)
-        var lines: [String] = []
-        if let heading = metadata.sceneHeading {
-            lines.append("- scene_heading=\(heading)")
-        }
-        if let location = metadata.locationName {
-            lines.append("- location=\(location)")
-        }
-        if let interiorExterior = metadata.interiorExterior {
-            lines.append("- interior_exterior=\(interiorExterior)")
-        }
-        if let timeOfDay = metadata.timeOfDay {
-            lines.append("- time_of_day=\(timeOfDay)")
-        }
-        guard !lines.isEmpty else {
-            return ""
-        }
+    private func buildScenePlanCanonicalization(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle
+    ) -> PromptCanonicalization {
+        PromptCanonicalization(block: "", usedCanonicalization: false)
+    }
 
-        return """
-        SCENE METADATA HINT:
-        \(lines.joined(separator: "\n"))
-        - use this hint only when it exactly matches SOURCE
+    private func buildV9PromptCanonicalization(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        slotCatalog: SceneV9SlotCatalog
+    ) -> PromptCanonicalization {
+        PromptCanonicalization(block: "", usedCanonicalization: false)
+    }
 
-        """
+    private func makeCanonicalizationBlock(
+        actorLines: [String],
+        objectLines: [String],
+        extraSections: [String],
+        normalizedSource: String
+    ) -> PromptCanonicalization {
+        var sections: [String] = []
+        if !actorLines.isEmpty {
+            sections.append(actorLines.joined(separator: "\n"))
+        }
+        if !objectLines.isEmpty {
+            sections.append(objectLines.joined(separator: "\n"))
+        }
+        for section in extraSections where !section.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            sections.append(section)
+        }
+        if !normalizedSource.isEmpty {
+            sections.append("NORMALIZED SOURCE:\n\(normalizedSource)")
+        }
+        guard !sections.isEmpty else {
+            return PromptCanonicalization(block: "", usedCanonicalization: false)
+        }
+        return PromptCanonicalization(
+            block: "CANONICAL SOURCE HINTS:\n" + sections.joined(separator: "\n") + "\n\n",
+            usedCanonicalization: true
+        )
+    }
+
+    private func canonicalActorAliases(limit: Int) -> [(token: String, phrases: [String], summary: String)] {
+        actorOrdinalAliasCatalog.prefix(max(0, min(limit, actorOrdinalAliasCatalog.count))).map { entry in
+            (
+                token: entry.ref,
+                phrases: entry.phrases.sorted { $0.count > $1.count },
+                summary: entry.phrases.prefix(2).joined(separator: " / ")
+            )
+        }
+    }
+
+    private func normalizedSourceText(
+        description: String,
+        actorReplacements: [([String], String)],
+        objectReplacements: [([String], String)]
+    ) -> String {
+        var normalized = description.lowercased()
+        for (phrases, target) in actorReplacements + objectReplacements {
+            for phrase in phrases.sorted(by: { $0.count > $1.count }) where !phrase.isEmpty {
+                normalized = normalized.replacingOccurrences(of: phrase, with: target)
+            }
+        }
+        normalized = normalized.replacingOccurrences(
+            of: #"\s+"#,
+            with: " ",
+            options: .regularExpression
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized == description.lowercased() ? "" : normalized
+    }
+
+    private func normalizedAliasPhrases(from rawValues: [String?]) -> [String] {
+        Array(
+            Set(
+                rawValues.compactMap { value in
+                    let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    guard let normalized, normalized.count >= 2 else { return nil }
+                    return normalized
+                }
+            )
+        )
     }
 
     private func encodePrettyJSON<T: Encodable>(_ value: T) -> String? {
@@ -874,11 +1098,11 @@ final class LLMParserService: LocalScenePlanProvider {
         anchors: SourceAnchorBundle,
         slotCatalog: SceneV9SlotCatalog
     ) -> [Int32] {
-        let estimated = Int32(description.count / 2)
-            + 384
-            + Int32(slotCatalog.beatSlots.count * 56)
-            + Int32(slotCatalog.actorSlots.count * 24)
-            + Int32(anchors.phaseCues.count * 16)
+        let estimated = Int32(description.count / 3)
+            + 256
+            + Int32(slotCatalog.beatSlots.count * 48)
+            + Int32(slotCatalog.actorSlots.count * 20)
+            + Int32(anchors.phaseCues.count * 12)
         let first = max(Self.v9EventTokenBudgets[0], min(estimated, Self.v9EventMaxGenerationTokens))
 
         var budgets = [first]
@@ -1092,10 +1316,14 @@ final class LLMParserService: LocalScenePlanProvider {
             jsonObj["actors"] = actors
         }
         if var beats = jsonObj["beats"] as? [[String: Any]] {
+            var seenBeatRefs: Set<String> = []
             for beatIndex in beats.indices {
-                if beats[beatIndex]["ref"] == nil {
-                    beats[beatIndex]["ref"] = "beat_\(beatIndex + 1)"
-                }
+                let preferredRef = (beats[beatIndex]["ref"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                beats[beatIndex]["ref"] = uniqueBeatRef(
+                    preferredRef,
+                    index: beatIndex,
+                    seen: &seenBeatRefs
+                )
             }
             jsonObj["beats"] = beats
         }
@@ -1215,7 +1443,14 @@ final class LLMParserService: LocalScenePlanProvider {
         // Пост-обработка beats: автогенерация id для action, маппинг speed→modifier
         if var beats = jsonObj["beats"] as? [[String: Any]] {
             var actionCounter = 1
+            var seenBeatIDs: Set<String> = []
             for i in 0..<beats.count {
+                let preferredBeatID = (beats[i]["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                beats[i]["id"] = uniqueBeatRef(
+                    preferredBeatID,
+                    index: i,
+                    seen: &seenBeatIDs
+                )
                 if var actions = beats[i]["actions"] as? [[String: Any]] {
                     for j in 0..<actions.count {
                         // Автогенерация id если отсутствует
@@ -1269,6 +1504,70 @@ final class LLMParserService: LocalScenePlanProvider {
         return repaired
     }
 
+    private func attemptSemanticRepair(
+        context: LlamaContext,
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        incompletePlan: ScenePlanIR,
+        issue: String
+    ) async -> ScenePlanProviderResult? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard
+            let planData = try? encoder.encode(incompletePlan),
+            let incompletePlanJSON = String(data: planData, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        let prompt = buildScenePlanRepairPrompt(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            incompletePlanJSON: incompletePlanJSON,
+            issue: issue,
+            canonicalization: buildScenePlanCanonicalization(
+                description: description,
+                markedObjects: markedObjects,
+                anchors: anchors
+            )
+        )
+
+        let startedAt = CFAbsoluteTimeGetCurrent()
+        let output = await context.generateWithMetadata(prompt: prompt, maxTokens: Self.semanticRepairMaxTokens)
+        let elapsed = CFAbsoluteTimeGetCurrent() - startedAt
+        print("🩹 [LLM] Semantic repair pass занял: \(String(format: "%.2f", elapsed)) сек")
+        print("🩹 [LLM] stopReason=\(output.stopReason.rawValue), generatedTokens=\(output.generatedTokenCount)/\(output.maxTokens)")
+        print("🩹 [LLM] Ответ repair pass:\n\(output.text)")
+
+        guard output.stopReason != .maxTokensReached else {
+            print("⚠️ [LLM] Semantic repair pass упёрся в maxTokens; считаем ответ ненадёжным")
+            return nil
+        }
+
+        guard let repairedResult = parsePlanFromResponse(
+            output.text,
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors
+        ) else {
+            return nil
+        }
+
+        let baselineScore = semanticCompletenessScore(incompletePlan)
+        let repairedScore = semanticCompletenessScore(repairedResult.plan)
+        guard repairedScore > baselineScore else {
+            return nil
+        }
+
+        return repairedResult
+    }
+
+    private func semanticCompletenessScore(_ plan: ScenePlanIR) -> Int {
+        (plan.beats.count * 100) + (plan.objects.count * 10) + plan.spatialRelations.count
+    }
+
     private func normalizePlanActors(_ actors: [ScenePlanIR.Actor]) -> [ScenePlanIR.Actor] {
         let canonicalRefs = ["first", "second", "third"]
         return actors.enumerated().map { index, actor in
@@ -1319,11 +1618,10 @@ final class LLMParserService: LocalScenePlanProvider {
     }
 
     private func normalizePlanBeats(_ beats: [ScenePlanIR.Beat], anchors: SourceAnchorBundle) -> [ScenePlanIR.Beat] {
-        beats.enumerated().map { beatIndex, beat in
+        var seenBeatRefs: Set<String> = []
+        return beats.enumerated().map { beatIndex, beat in
             var beat = beat
-            if beat.ref.isEmpty {
-                beat.ref = "beat_\(beatIndex + 1)"
-            }
+            beat.ref = uniqueBeatRef(beat.ref, index: beatIndex, seen: &seenBeatRefs)
             if beat.phase == nil {
                 beat.phase = anchors.phaseCues.first
             }
@@ -1378,9 +1676,10 @@ final class LLMParserService: LocalScenePlanProvider {
             )
         }
 
+        var seenBeatRefs: Set<String> = []
         let beats = script.beats.enumerated().map { beatIndex, beat in
             ScenePlanIR.Beat(
-                ref: beat.id.isEmpty ? "beat_\(beatIndex + 1)" : beat.id,
+                ref: uniqueBeatRef(beat.id, index: beatIndex, seen: &seenBeatRefs),
                 phase: anchors.phaseCues.first,
                 actions: beat.actions.map { action in
                     ScenePlanIR.Action(
@@ -1432,6 +1731,27 @@ final class LLMParserService: LocalScenePlanProvider {
             markedObjects: markedObjects,
             anchors: anchors
         )
+    }
+
+    private func uniqueBeatRef(_ preferred: String?, index: Int, seen: inout Set<String>) -> String {
+        let trimmed = preferred?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = "beat_\(index + 1)"
+        let base = (trimmed?.isEmpty == false ? trimmed! : fallback)
+
+        if !seen.contains(base) {
+            seen.insert(base)
+            return base
+        }
+
+        var suffix = 2
+        while true {
+            let candidate = "\(fallback)_dup_\(suffix)"
+            if !seen.contains(candidate) {
+                seen.insert(candidate)
+                return candidate
+            }
+            suffix += 1
+        }
     }
 
     private func planTargetRef(

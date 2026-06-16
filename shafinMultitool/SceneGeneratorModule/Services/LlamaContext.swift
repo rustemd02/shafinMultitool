@@ -11,10 +11,17 @@ import llama
 /// Swift-обёртка для llama.cpp C API
 /// Инкапсулирует загрузку модели, токенизацию и генерацию текста
 actor LlamaContext {
+    struct RuntimeConfiguration {
+        let gpuLayers: Int32
+        let threads: Int32
+        let contextTokens: UInt32
+    }
+
     struct GenerationOutput {
         enum StopReason: String {
             case endOfGeneration = "eog"
             case maxTokensReached = "max_tokens_reached"
+            case jsonPayloadCompleted = "json_payload_completed"
         }
 
         let text: String
@@ -103,6 +110,7 @@ actor LlamaContext {
     /// - Returns: Инициализированный LlamaContext
     static func create(modelPath path: String, temperature: Float = 0.1, grammarStr: String? = nil) throws -> LlamaContext {
         llama_backend_init()
+        let runtimeConfiguration = benchmarkRuntimeConfiguration()
         
         var modelParams = llama_model_default_params()
         
@@ -110,8 +118,8 @@ actor LlamaContext {
         modelParams.n_gpu_layers = 0
         print("🤖 [LLM] Запуск на симуляторе, GPU отключён")
         #else
-        modelParams.n_gpu_layers = 99 // Все слои на GPU (Metal)
-        print("🤖 [LLM] GPU слоёв: 99 (Metal)")
+        modelParams.n_gpu_layers = runtimeConfiguration?.gpuLayers ?? 99
+        print("🤖 [LLM] GPU слоёв: \(modelParams.n_gpu_layers) (Metal)")
         #endif
         
         guard let model = llama_model_load_from_file(path, modelParams) else {
@@ -119,13 +127,14 @@ actor LlamaContext {
             throw LlamaContextError.modelLoadFailed
         }
         
-        let nThreads = max(1, min(8, ProcessInfo.processInfo.processorCount - 2))
+        let nThreads = Int(runtimeConfiguration?.threads ?? Int32(max(1, min(8, ProcessInfo.processInfo.processorCount - 2))))
         print("🤖 [LLM] Потоков: \(nThreads)")
         
         var ctxParams = llama_context_default_params()
-        ctxParams.n_ctx = 2048
+        ctxParams.n_ctx = runtimeConfiguration?.contextTokens ?? 2048
         ctxParams.n_threads = Int32(nThreads)
         ctxParams.n_threads_batch = Int32(nThreads)
+        print("🤖 [LLM] Контекст: \(ctxParams.n_ctx)")
         
         guard let context = llama_init_from_model(model, ctxParams) else {
             llama_model_free(model)
@@ -141,6 +150,42 @@ actor LlamaContext {
             temperature: temperature,
             grammarStr: grammarStr
         )
+    }
+
+    private static func benchmarkRuntimeConfiguration() -> RuntimeConfiguration? {
+        let defaults = UserDefaults.standard
+        guard
+            let gpuLayers = benchmarkOverrideInt(
+                forKey: SceneGeneratorBenchmarkRuntimeDefaults.gpuLayersKey,
+                defaults: defaults
+            ),
+            let threads = benchmarkOverrideInt(
+                forKey: SceneGeneratorBenchmarkRuntimeDefaults.threadsKey,
+                defaults: defaults
+            ),
+            let contextTokens = benchmarkOverrideInt(
+                forKey: SceneGeneratorBenchmarkRuntimeDefaults.contextTokensKey,
+                defaults: defaults
+            )
+        else {
+            return nil
+        }
+        print(
+            "🤖 [LLM] Benchmark runtime override active: gpu_layers=\(gpuLayers) threads=\(threads) ctx=\(contextTokens)"
+        )
+        return RuntimeConfiguration(
+            gpuLayers: Int32(gpuLayers),
+            threads: Int32(threads),
+            contextTokens: UInt32(contextTokens)
+        )
+    }
+
+    private static func benchmarkOverrideInt(forKey key: String, defaults: UserDefaults) -> Int? {
+        guard defaults.object(forKey: key) != nil else {
+            return nil
+        }
+        let value = defaults.integer(forKey: key)
+        return value > 0 ? value : nil
     }
     
     // MARK: - Public API
@@ -167,6 +212,10 @@ actor LlamaContext {
         while !isDone {
             let piece = completionLoop()
             result += piece
+            if !isDone, shouldStopAfterCompletedJSON(result) {
+                isDone = true
+                stopReason = .jsonPayloadCompleted
+            }
         }
 
         let output = GenerationOutput(
@@ -291,6 +340,58 @@ actor LlamaContext {
         stopReason = nil
         llama_sampler_reset(sampling)
         llama_memory_clear(llama_get_memory(context), true)
+    }
+
+    private func shouldStopAfterCompletedJSON(_ text: String) -> Bool {
+        guard let completedEnd = completedJSONEndIndex(in: text) else {
+            return false
+        }
+        let trailing = text[completedEnd...]
+        return trailing.allSatisfy(\.isWhitespace)
+    }
+
+    private func completedJSONEndIndex(in text: String) -> String.Index? {
+        guard let start = text.firstIndex(where: { $0 == "{" || $0 == "[" }) else {
+            return nil
+        }
+
+        var depth = 0
+        var isInsideString = false
+        var isEscaping = false
+
+        for index in text[start...].indices {
+            let character = text[index]
+
+            if isInsideString {
+                if isEscaping {
+                    isEscaping = false
+                    continue
+                }
+
+                if character == "\\" {
+                    isEscaping = true
+                } else if character == "\"" {
+                    isInsideString = false
+                }
+                continue
+            }
+
+            switch character {
+            case "\"":
+                isInsideString = true
+            case "{", "[":
+                depth += 1
+            case "}", "]":
+                depth -= 1
+                if depth == 0 {
+                    return text.index(after: index)
+                }
+            default:
+                break
+            }
+        }
+
+        return nil
     }
     
     // MARK: - Private: Tokenization

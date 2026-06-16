@@ -33,13 +33,12 @@ final class DeviceBenchmarkHarnessTests: XCTestCase {
                     "camera_still_rows.jsonl",
                     "camera_live_sequence_rows.jsonl",
                     "scene_case_results.json",
-                    "scene_monolithic_result.json",
-                    "scene_chunked_result.json",
+                    "scene_execution_events.jsonl",
+                    "scene_checkpoint_manifest.jsonl",
                     "artifacts.zip"
                 ],
                 in: artifactStore
             )
-            attachCheckpointFilesIfPresent(in: artifactStore)
             throw error
         }
     }
@@ -71,30 +70,17 @@ final class DeviceBenchmarkHarnessTests: XCTestCase {
                 "camera_still_rows.jsonl",
                 "camera_live_sequence_rows.jsonl",
                 "scene_case_results.json",
-                "scene_monolithic_result.json",
-                "scene_chunked_result.json"
+                "scene_execution_events.jsonl",
+                "scene_checkpoint_manifest.jsonl"
             ],
             in: result.artifactStore
         )
-        attachCheckpointFilesIfPresent(in: result.artifactStore)
     }
 
     private func attachFilesIfPresent(named names: [String], in artifactStore: DeviceBenchmarkArtifactStore) {
         for name in names {
             let url = artifactStore.fileURL(name)
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            attachFile(url, name: name)
-        }
-    }
-
-    private func attachCheckpointFilesIfPresent(in artifactStore: DeviceBenchmarkArtifactStore) {
-        let root = artifactStore.rootURL
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return }
-        for case let url as URL in enumerator {
-            let name = url.lastPathComponent
-            let isChunkCheckpoint = name.hasPrefix("chunk_") && name.hasSuffix(".json")
-            let isFinalSceneCheckpoint = name == "scene_monolithic_result.json" || name == "scene_chunked_result.json"
-            guard isChunkCheckpoint || isFinalSceneCheckpoint else { continue }
             attachFile(url, name: name)
         }
     }

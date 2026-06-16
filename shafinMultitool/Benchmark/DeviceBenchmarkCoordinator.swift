@@ -16,10 +16,8 @@ struct DeviceBenchmarkRunManifest: Codable {
     let enabledModules: [String]
     let startedAt: Date
     let finishedAt: Date
-    let sceneExecutionMode: String
     let cameraPackId: String
     let scenePackId: String
-    let sceneThermalPolicy: SceneGeneratorMobileExecutionPolicy
     let guidedLiveEnabled: Bool
     let liveSequenceEnabled: Bool
 }
@@ -108,7 +106,6 @@ struct DeviceBenchmarkSceneCaseResult: Codable, Equatable {
     let patternName: String
     let difficultyBucket: String
     let coldStart: Bool
-    let executionMode: String
     let parseWallTimeMs: Double
     let actorCount: Int
     let beatCount: Int
@@ -118,17 +115,48 @@ struct DeviceBenchmarkSceneCaseResult: Codable, Equatable {
     let reasonCodes: [String]
     let hardIssues: [String]
     let softIssues: [String]
-    let executionMetrics: DeviceBenchmarkSceneCaseExecutionMetrics
     let passed: Bool
+}
+
+struct DeviceBenchmarkSceneExecutionEvent: Codable, Equatable {
+    let timestamp: Date
+    let sampleId: String
+    let executionMode: String
+    let chunkIndex: Int
+    let chunkCount: Int
+    let status: String
+    let thermalState: String
+    let batteryLevel: Float
+    let note: String?
+}
+
+struct DeviceBenchmarkSceneCheckpointRecord: Codable, Equatable {
+    let sampleId: String
+    let executionMode: String
+    let chunkIndex: Int
+    let sourceLength: Int
+    let thermalState: String
+    let checkpointFile: String
+    let timestamp: Date
 }
 
 struct DeviceBenchmarkSceneSummary: Codable, Equatable {
     let packId: String
-    let executionMode: String
     let modelPath: String
+    let runtimePreset: String
+    let runtimeGpuLayers: Int
+    let runtimeThreads: Int
+    let runtimeContextTokens: Int
     let loadingState: String
+    let executionMode: String
     let caseCount: Int
     let passRate: Double
+    let successfulCaseCount: Int
+    let firstPassSuccessRate: Double
+    let retryCaseRate: Double
+    let meanRetryCountPerCase: Double
+    let maxTokensReachedCaseRate: Double
+    let inputCanonicalizationRate: Double
     let coldStartLoadMs: Double
     let parseP50Ms: Double?
     let parseP95Ms: Double?
@@ -147,6 +175,8 @@ struct DeviceBenchmarkSceneSummary: Codable, Equatable {
     let latencySecondHalfP50Ms: Double?
     let sustainedLatencyDegradationRatio: Double?
     let casesPerMinute: Double?
+    let successfulCasesPerMinute: Double?
+    let batteryDrainPer100Cases: Double?
     let chunkRetryCount: Int
     let chunkFailureRate: Double
     let cpuP95: Double?
@@ -154,6 +184,9 @@ struct DeviceBenchmarkSceneSummary: Codable, Equatable {
     let warnings: [String]
     let hardFailures: [String]
     let outputFile: String
+    let executionEventsFile: String?
+    let checkpointManifestFile: String?
+    let finalDocumentStateFile: String?
     let mobileMetrics: DeviceBenchmarkAggregateMetrics
 }
 
@@ -241,6 +274,14 @@ private struct DeviceBenchmarkSeededGenerator {
         guard upperBound > 0 else { return 0 }
         return Int(next() % UInt64(upperBound))
     }
+}
+
+private struct DeviceBenchmarkSceneCaseRun {
+    let result: SceneBundleParsingResult
+    let metrics: DeviceBenchmarkSceneCaseExecutionMetrics
+    let events: [DeviceBenchmarkSceneExecutionEvent]
+    let checkpoints: [DeviceBenchmarkSceneCheckpointRecord]
+    let finalDocumentStateFile: String?
 }
 
 @MainActor
@@ -342,10 +383,8 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
                 enabledModules: config.enabledModules.map(\.rawValue),
                 startedAt: startedAt,
                 finishedAt: finishedAt,
-                sceneExecutionMode: config.sceneGeneratorExecutionMode.rawValue,
                 cameraPackId: config.cameraResourcePackId,
                 scenePackId: config.sceneResourcePackId,
-                sceneThermalPolicy: config.sceneGeneratorThermalPolicy,
                 guidedLiveEnabled: config.guidedLiveEnabled,
                 liveSequenceEnabled: config.liveSequenceEnabled
             ),
@@ -548,12 +587,34 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
         let parser = SceneParserService.shared
         let llmParser = LLMParserService.shared
         let previousModelOverride = UserDefaults.standard.string(forKey: "scene_generator_llm_model_path")
+        let runtimePreset = config.sceneGeneratorRuntimePreset
+        let runtimeProfile = runtimePreset.profile
+        let runtimeOverrideKeys = [
+            SceneGeneratorBenchmarkRuntimeDefaults.gpuLayersKey,
+            SceneGeneratorBenchmarkRuntimeDefaults.threadsKey,
+            SceneGeneratorBenchmarkRuntimeDefaults.contextTokensKey,
+        ]
+        let previousRuntimeOverrides = runtimeOverrideKeys.reduce(into: [String: Any]()) { partialResult, key in
+            if let value = UserDefaults.standard.object(forKey: key) {
+                partialResult[key] = value
+            }
+        }
         UserDefaults.standard.set(modelPath, forKey: "scene_generator_llm_model_path")
+        UserDefaults.standard.set(runtimeProfile.gpuLayers, forKey: SceneGeneratorBenchmarkRuntimeDefaults.gpuLayersKey)
+        UserDefaults.standard.set(runtimeProfile.threads, forKey: SceneGeneratorBenchmarkRuntimeDefaults.threadsKey)
+        UserDefaults.standard.set(runtimeProfile.contextTokens, forKey: SceneGeneratorBenchmarkRuntimeDefaults.contextTokensKey)
         defer {
             if let previousModelOverride {
                 UserDefaults.standard.set(previousModelOverride, forKey: "scene_generator_llm_model_path")
             } else {
                 UserDefaults.standard.removeObject(forKey: "scene_generator_llm_model_path")
+            }
+            for key in runtimeOverrideKeys {
+                if let value = previousRuntimeOverrides[key] {
+                    UserDefaults.standard.set(value, forKey: key)
+                } else {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
             }
         }
 
@@ -572,88 +633,615 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
 
         let sampledRecords = try sampledSceneRecords(from: packDirectory)
         var results: [DeviceBenchmarkSceneCaseResult] = []
+        var caseExecutionMetrics: [DeviceBenchmarkSceneCaseExecutionMetrics] = []
+        var executionEvents: [DeviceBenchmarkSceneExecutionEvent] = []
+        var checkpointRecords: [DeviceBenchmarkSceneCheckpointRecord] = []
+        var finalDocumentStateFile: String?
         results.reserveCapacity(sampledRecords.count)
-        var executionPolicy = config.sceneGeneratorThermalPolicy
-        executionPolicy.mode = config.sceneGeneratorExecutionMode.runtimeMode
         perfCollector.update(module: "scene_generator", phase: "warm_corpus", mode: config.sceneGeneratorExecutionMode.rawValue)
         statusText = "Scene Generator: \(sampledRecords.count) runtime cases"
 
         for (index, record) in sampledRecords.enumerated() {
             parser.resetRuntimeContext()
-            let startedAt = Date()
             let markedObjects = makeMarkedObjects(from: record)
-            let executionSupport = makeSceneExecutionSupport(namespace: record.sampleId)
-            let result = await parser.parseBundle(
-                record.sourceText,
-                markedObjects: markedObjects,
-                executionPolicy: executionPolicy,
-                executionSupport: executionSupport
-            )
-            let durationMs = Date().timeIntervalSince(startedAt) * 1000
+            let caseRun: DeviceBenchmarkSceneCaseRun
+            switch config.sceneGeneratorExecutionMode {
+            case .monolithic:
+                caseRun = try await runMonolithicSceneBenchmarkCase(
+                    parser: parser,
+                    record: record,
+                    markedObjects: markedObjects,
+                    perfCollector: perfCollector
+                )
+            case .chunkedThermalAware:
+                caseRun = try await runChunkedSceneBenchmarkCase(
+                    parser: parser,
+                    record: record,
+                    markedObjects: markedObjects,
+                    perfCollector: perfCollector
+                )
+            }
             let evaluation = evaluateSceneRecord(
                 record: record,
-                result: result,
+                result: caseRun.result,
                 trace: parser.lastRuntimeTrace,
-                executionTrace: parser.lastExecutionTrace,
-                parseWallTimeMs: durationMs,
+                parseWallTimeMs: caseRun.metrics.parseWallTimeMs,
                 coldStart: index == 0
             )
             results.append(evaluation)
-            perfCollector.mark(note: "scene_case=\(record.sampleId)")
+            caseExecutionMetrics.append(caseRun.metrics)
+            executionEvents.append(contentsOf: caseRun.events)
+            checkpointRecords.append(contentsOf: caseRun.checkpoints)
+            finalDocumentStateFile = caseRun.finalDocumentStateFile ?? finalDocumentStateFile
+            perfCollector.mark(note: "scene_case_completed=\(record.sampleId)")
         }
 
         let resultURL = try artifactStore.writeJSON(results, named: "scene_case_results.json")
+        let eventsURL = executionEvents.isEmpty ? nil : try artifactStore.writeJSONLines(
+            executionEvents,
+            named: "scene_execution_events.jsonl"
+        )
+        let checkpointManifestURL = checkpointRecords.isEmpty ? nil : try artifactStore.writeJSONLines(
+            checkpointRecords,
+            named: "scene_checkpoint_manifest.jsonl"
+        )
         let passRate = Double(results.filter(\.passed).count) / Double(max(results.count, 1))
-        let parseLatencies = results.map(\.parseWallTimeMs)
-        var warnings = passRate < config.softThresholds.scenePassRate ? ["pass_rate_below_threshold"] : []
-        let sceneSamples = perfCollector.samples.filter { $0.module == "scene_generator" }
-        if results.contains(where: { $0.reasonCodes.contains("critical_is_telemetry_only") }) {
-            warnings.append("critical_state_observed_telemetry_only")
+        let successfulCaseCount = results.filter(\.passed).count
+        let retryTaggedPairs = zip(results, caseExecutionMetrics).map { result, metrics in
+            (
+                result: result,
+                metrics: metrics,
+                hasRetry: metrics.chunkRetryCount > 0 || result.reasonCodes.contains(where: { $0.contains("retry") })
+            )
         }
+        let firstPassSuccessCount = retryTaggedPairs.filter { $0.result.passed && !$0.hasRetry }.count
+        let retryCaseCount = retryTaggedPairs.filter { $0.hasRetry }.count
+        let totalRetryCount = caseExecutionMetrics.reduce(0) { $0 + $1.chunkRetryCount }
+        let maxTokensReachedCaseCount = results.filter { result in
+            result.reasonCodes.contains { $0.contains("max_tokens") }
+        }.count
+        let inputCanonicalizedCaseCount = results.filter { result in
+            result.reasonCodes.contains { $0.contains("input_canonicalized") }
+        }.count
+        let parseLatencies = results.map(\.parseWallTimeMs)
+        let warnings = passRate < config.softThresholds.scenePassRate ? ["pass_rate_below_threshold"] : []
+        let sceneSamples = perfCollector.samples.filter { $0.module == "scene_generator" }
         let mobileMetrics = DeviceBenchmarkAggregateMetrics.from(
             samples: sceneSamples,
             startBattery: sceneSamples.first?.batteryLevel ?? UIDevice.current.batteryLevel,
             endBattery: sceneSamples.last?.batteryLevel ?? UIDevice.current.batteryLevel
         )
-        let executionAggregate = DeviceBenchmarkSceneExecutionAggregate.from(
+        let executionMetrics = DeviceBenchmarkSceneExecutionAggregate.from(
             executionMode: config.sceneGeneratorExecutionMode,
             samples: sceneSamples,
-            caseMetrics: results.map(\.executionMetrics)
+            caseMetrics: caseExecutionMetrics
         )
         return DeviceBenchmarkSceneSummary(
             packId: config.sceneResourcePackId,
-            executionMode: config.sceneGeneratorExecutionMode.rawValue,
             modelPath: modelPath,
+            runtimePreset: runtimePreset.rawValue,
+            runtimeGpuLayers: runtimeProfile.gpuLayers,
+            runtimeThreads: runtimeProfile.threads,
+            runtimeContextTokens: runtimeProfile.contextTokens,
             loadingState: loadingState,
+            executionMode: executionMetrics.executionMode,
             caseCount: results.count,
             passRate: passRate,
+            successfulCaseCount: successfulCaseCount,
+            firstPassSuccessRate: Double(firstPassSuccessCount) / Double(max(results.count, 1)),
+            retryCaseRate: Double(retryCaseCount) / Double(max(results.count, 1)),
+            meanRetryCountPerCase: Double(totalRetryCount) / Double(max(results.count, 1)),
+            maxTokensReachedCaseRate: Double(maxTokensReachedCaseCount) / Double(max(results.count, 1)),
+            inputCanonicalizationRate: Double(inputCanonicalizedCaseCount) / Double(max(results.count, 1)),
             coldStartLoadMs: coldStartLoadMs,
             parseP50Ms: percentile(parseLatencies, p: 0.50),
             parseP95Ms: percentile(parseLatencies, p: 0.95),
-            chunkCount: executionAggregate.chunkCount,
-            completedChunkCount: executionAggregate.completedChunkCount,
-            checkpointCount: executionAggregate.checkpointCount,
-            thermalPauseCount: executionAggregate.thermalPauseCount,
-            thermalPauseTotalMs: executionAggregate.thermalPauseTotalMs,
-            timeToSeriousThermalMs: executionAggregate.timeToSeriousThermalMs,
-            timeInNominalMs: executionAggregate.timeInNominalMs,
-            timeInFairMs: executionAggregate.timeInFairMs,
-            timeInSeriousMs: executionAggregate.timeInSeriousMs,
-            timeInCriticalMs: executionAggregate.timeInCriticalMs,
-            seriousThermalDurationRatio: executionAggregate.seriousThermalDurationRatio,
-            latencyFirstHalfP50Ms: executionAggregate.latencyFirstHalfP50Ms,
-            latencySecondHalfP50Ms: executionAggregate.latencySecondHalfP50Ms,
-            sustainedLatencyDegradationRatio: executionAggregate.sustainedLatencyDegradationRatio,
-            casesPerMinute: executionAggregate.casesPerMinute,
-            chunkRetryCount: executionAggregate.chunkRetryCount,
-            chunkFailureRate: executionAggregate.chunkFailureRate,
+            chunkCount: executionMetrics.chunkCount,
+            completedChunkCount: executionMetrics.completedChunkCount,
+            checkpointCount: executionMetrics.checkpointCount,
+            thermalPauseCount: executionMetrics.thermalPauseCount,
+            thermalPauseTotalMs: executionMetrics.thermalPauseTotalMs,
+            timeToSeriousThermalMs: executionMetrics.timeToSeriousThermalMs,
+            timeInNominalMs: executionMetrics.timeInNominalMs,
+            timeInFairMs: executionMetrics.timeInFairMs,
+            timeInSeriousMs: executionMetrics.timeInSeriousMs,
+            timeInCriticalMs: executionMetrics.timeInCriticalMs,
+            seriousThermalDurationRatio: executionMetrics.seriousThermalDurationRatio,
+            latencyFirstHalfP50Ms: executionMetrics.latencyFirstHalfP50Ms,
+            latencySecondHalfP50Ms: executionMetrics.latencySecondHalfP50Ms,
+            sustainedLatencyDegradationRatio: executionMetrics.sustainedLatencyDegradationRatio,
+            casesPerMinute: executionMetrics.casesPerMinute,
+            successfulCasesPerMinute: executionMetrics.casesPerMinute.map { $0 * passRate },
+            batteryDrainPer100Cases: results.isEmpty
+                ? nil
+                : Double(max(0, -mobileMetrics.batteryDelta)) * 100 / Double(results.count),
+            chunkRetryCount: executionMetrics.chunkRetryCount,
+            chunkFailureRate: executionMetrics.chunkFailureRate,
             cpuP95: mobileMetrics.cpuP95,
             memoryP95MB: mobileMetrics.memoryP95MB,
             warnings: warnings,
             hardFailures: hardFailures,
             outputFile: resultURL.lastPathComponent,
+            executionEventsFile: eventsURL?.lastPathComponent,
+            checkpointManifestFile: checkpointManifestURL?.lastPathComponent,
+            finalDocumentStateFile: finalDocumentStateFile,
             mobileMetrics: mobileMetrics
         )
+    }
+
+    private func runMonolithicSceneBenchmarkCase(
+        parser: SceneParserService,
+        record: DeviceBenchmarkSceneRecord,
+        markedObjects: [MarkedObject],
+        perfCollector: DeviceBenchmarkMetricsCollector
+    ) async throws -> DeviceBenchmarkSceneCaseRun {
+        let sourceText = normalizedSceneSourceText(record.sourceText)
+        let startedAt = Date()
+        perfCollector.update(
+            module: "scene_generator",
+            phase: "scene_case_monolithic",
+            mode: config.sceneGeneratorExecutionMode.rawValue,
+            note: "scene_case_started=\(record.sampleId)"
+        )
+        let eventStart = makeSceneExecutionEvent(
+            sampleId: record.sampleId,
+            chunkIndex: 1,
+            chunkCount: 1,
+            status: "chunk_started",
+            note: "monolithic_case_start"
+        )
+        let result = await parser.parseBundleAsync(sourceText, markedObjects: markedObjects)
+        let finalStateRelativePath = finalDocumentStateRelativePath(sampleId: record.sampleId)
+        _ = try artifactStore.writeJSON(result.documentState, named: finalStateRelativePath)
+        let durationMs = Date().timeIntervalSince(startedAt) * 1000
+        let failureCount = result.activeSceneScript == nil ? 1 : 0
+        let eventEnd = makeSceneExecutionEvent(
+            sampleId: record.sampleId,
+            chunkIndex: 1,
+            chunkCount: 1,
+            status: failureCount == 0 ? "chunk_completed" : "chunk_completed_without_active_scene",
+            note: "monolithic_case_end"
+        )
+        return DeviceBenchmarkSceneCaseRun(
+            result: result,
+            metrics: DeviceBenchmarkSceneCaseExecutionMetrics(
+                parseWallTimeMs: durationMs,
+                chunkCount: 1,
+                completedChunkCount: 1,
+                checkpointCount: 0,
+                thermalPauseCount: 0,
+                thermalPauseTotalMs: 0,
+                chunkRetryCount: retryCount(in: result),
+                chunkFailureCount: failureCount
+            ),
+            events: [eventStart, eventEnd],
+            checkpoints: [],
+            finalDocumentStateFile: finalStateRelativePath
+        )
+    }
+
+    private func runChunkedSceneBenchmarkCase(
+        parser: SceneParserService,
+        record: DeviceBenchmarkSceneRecord,
+        markedObjects: [MarkedObject],
+        perfCollector: DeviceBenchmarkMetricsCollector
+    ) async throws -> DeviceBenchmarkSceneCaseRun {
+        let sourceText = normalizedSceneSourceText(record.sourceText)
+        let progressiveDescriptions = progressiveSceneDescriptions(from: sourceText)
+        let policy = config.sceneGeneratorThermalPolicy
+        let startedAt = Date()
+        let chunkCount = max(progressiveDescriptions.count, 1)
+        var completedChunkCount = 0
+        var thermalPauseCount = 0
+        var thermalPauseTotalMs = 0.0
+        var chunkRetryCount = 0
+        var chunkFailureCount = 0
+        var previousState: ScriptDocumentState?
+        var finalResult: SceneBundleParsingResult?
+        var events: [DeviceBenchmarkSceneExecutionEvent] = []
+        var checkpoints: [DeviceBenchmarkSceneCheckpointRecord] = []
+
+        for (chunkIndex, descriptionPrefix) in progressiveDescriptions.enumerated() {
+            if chunkIndex > 0 {
+                let cooldownOutcome = await performThermalCooldownIfNeeded(
+                    sampleId: record.sampleId,
+                    chunkIndex: chunkIndex + 1,
+                    chunkCount: chunkCount,
+                    policy: policy,
+                    perfCollector: perfCollector
+                )
+                thermalPauseCount += cooldownOutcome.pauseCount
+                thermalPauseTotalMs += cooldownOutcome.pauseMs
+                events.append(contentsOf: cooldownOutcome.events)
+            }
+
+            let parseMode: SceneBundleParseMode = previousState == nil ? .full : .append
+            var attempt = 0
+            var lastAttemptResult: SceneBundleParsingResult?
+
+            repeat {
+                attempt += 1
+                let status = attempt == 1 ? "chunk_started" : "chunk_retry_started"
+                events.append(
+                    makeSceneExecutionEvent(
+                        sampleId: record.sampleId,
+                        chunkIndex: chunkIndex + 1,
+                        chunkCount: chunkCount,
+                        status: status,
+                        note: "attempt=\(attempt);mode=\(parseMode.rawValue)"
+                    )
+                )
+                perfCollector.update(
+                    module: "scene_generator",
+                    phase: "scene_case_chunk_\(chunkIndex + 1)",
+                    mode: config.sceneGeneratorExecutionMode.rawValue,
+                    note: "scene_case=\(record.sampleId);chunk=\(chunkIndex + 1)/\(chunkCount);attempt=\(attempt)"
+                )
+                let candidate = await parser.parseBundleAsync(
+                    descriptionPrefix,
+                    markedObjects: markedObjects,
+                    mode: parseMode,
+                    previousState: previousState
+                )
+                lastAttemptResult = candidate
+                if shouldRetryChunkResult(candidate), attempt < max(1, policy.maxChunkAttempts) {
+                    chunkRetryCount += 1
+                    events.append(
+                        makeSceneExecutionEvent(
+                            sampleId: record.sampleId,
+                            chunkIndex: chunkIndex + 1,
+                            chunkCount: chunkCount,
+                            status: "chunk_retry_scheduled",
+                            note: "attempt=\(attempt)"
+                        )
+                    )
+                    perfCollector.mark(note: "scene_case=\(record.sampleId);chunk_retry=\(chunkIndex + 1)")
+                } else {
+                    break
+                }
+            } while true
+
+            guard let chunkResult = lastAttemptResult else { continue }
+            previousState = chunkResult.documentState
+            finalResult = chunkResult
+            completedChunkCount += 1
+            if chunkResult.activeSceneScript == nil {
+                chunkFailureCount += 1
+            }
+            let completionStatus = chunkResult.activeSceneScript == nil
+                ? "chunk_completed_without_active_scene"
+                : "chunk_completed"
+            events.append(
+                makeSceneExecutionEvent(
+                    sampleId: record.sampleId,
+                    chunkIndex: chunkIndex + 1,
+                    chunkCount: chunkCount,
+                    status: completionStatus,
+                    note: "attempts=\(attempt)"
+                )
+            )
+            perfCollector.mark(note: "scene_case=\(record.sampleId);chunk_completed=\(chunkIndex + 1)/\(chunkCount)")
+
+            if policy.checkpointEnabled {
+                let relativePath = checkpointRelativePath(sampleId: record.sampleId, chunkIndex: chunkIndex + 1)
+                _ = try artifactStore.writeJSON(chunkResult.documentState, named: relativePath)
+                checkpoints.append(
+                    DeviceBenchmarkSceneCheckpointRecord(
+                        sampleId: record.sampleId,
+                        executionMode: config.sceneGeneratorExecutionMode.rawValue,
+                        chunkIndex: chunkIndex + 1,
+                        sourceLength: descriptionPrefix.count,
+                        thermalState: deviceBenchmarkThermalStateDescription(ProcessInfo.processInfo.thermalState),
+                        checkpointFile: relativePath,
+                        timestamp: Date()
+                    )
+                )
+                events.append(
+                    makeSceneExecutionEvent(
+                        sampleId: record.sampleId,
+                        chunkIndex: chunkIndex + 1,
+                        chunkCount: chunkCount,
+                        status: "checkpoint_written",
+                        note: relativePath
+                    )
+                )
+            }
+        }
+
+        let result: SceneBundleParsingResult
+        if let finalResult {
+            result = finalResult
+        } else {
+            result = await parser.parseBundleAsync(sourceText, markedObjects: markedObjects)
+        }
+        let finalStateRelativePath = finalDocumentStateRelativePath(sampleId: record.sampleId)
+        _ = try artifactStore.writeJSON(result.documentState, named: finalStateRelativePath)
+        let durationMs = Date().timeIntervalSince(startedAt) * 1000
+        return DeviceBenchmarkSceneCaseRun(
+            result: result,
+            metrics: DeviceBenchmarkSceneCaseExecutionMetrics(
+                parseWallTimeMs: durationMs,
+                chunkCount: chunkCount,
+                completedChunkCount: completedChunkCount,
+                checkpointCount: checkpoints.count,
+                thermalPauseCount: thermalPauseCount,
+                thermalPauseTotalMs: thermalPauseTotalMs,
+                chunkRetryCount: chunkRetryCount + retryCount(in: result),
+                chunkFailureCount: chunkFailureCount
+            ),
+            events: events,
+            checkpoints: checkpoints,
+            finalDocumentStateFile: finalStateRelativePath
+        )
+    }
+
+    private func normalizedSceneSourceText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    private func performThermalCooldownIfNeeded(
+        sampleId: String,
+        chunkIndex: Int,
+        chunkCount: Int,
+        policy: SceneGeneratorMobileExecutionPolicy,
+        perfCollector: DeviceBenchmarkMetricsCollector
+    ) async -> (pauseCount: Int, pauseMs: Double, events: [DeviceBenchmarkSceneExecutionEvent]) {
+        let initialState = ProcessInfo.processInfo.thermalState
+        var budgetMs = thermalCooldownBudget(for: initialState, policy: policy)
+        guard budgetMs > 0 else {
+            return (0, 0, [])
+        }
+
+        let pollingIntervalMs = 1_000
+        var waitedMs = 0
+        var currentState = initialState
+        var events: [DeviceBenchmarkSceneExecutionEvent] = [
+            makeSceneExecutionEvent(
+                sampleId: sampleId,
+                chunkIndex: chunkIndex,
+                chunkCount: chunkCount,
+                status: "thermal_pause_started",
+                note: "thermal_start=\(deviceBenchmarkThermalStateDescription(initialState));budget_ms=\(budgetMs)"
+            )
+        ]
+
+        perfCollector.update(
+            module: "scene_generator",
+            phase: "thermal_cooldown",
+            mode: config.sceneGeneratorExecutionMode.rawValue,
+            note: "scene_case=\(sampleId);chunk=\(chunkIndex)/\(chunkCount);thermal_start=\(deviceBenchmarkThermalStateDescription(initialState));budget_ms=\(budgetMs)"
+        )
+        perfCollector.mark(note: "scene_case=\(sampleId);cooldown_started")
+
+        while waitedMs < budgetMs {
+            let sleepMs = min(pollingIntervalMs, budgetMs - waitedMs)
+            try? await Task.sleep(nanoseconds: UInt64(sleepMs) * 1_000_000)
+            waitedMs += sleepMs
+            currentState = ProcessInfo.processInfo.thermalState
+            budgetMs = max(budgetMs, thermalCooldownBudget(for: currentState, policy: policy))
+            if thermalCooldownBudget(for: currentState, policy: policy) == 0 {
+                break
+            }
+        }
+
+        let completionReason = thermalCooldownBudget(for: currentState, policy: policy) == 0
+            ? "cooled"
+            : "budget_exhausted"
+        events.append(
+            makeSceneExecutionEvent(
+                sampleId: sampleId,
+                chunkIndex: chunkIndex,
+                chunkCount: chunkCount,
+                status: "thermal_pause_completed",
+                note: "actual_wait_ms=\(waitedMs);thermal_start=\(deviceBenchmarkThermalStateDescription(initialState));thermal_end=\(deviceBenchmarkThermalStateDescription(currentState));result=\(completionReason)"
+            )
+        )
+        perfCollector.mark(
+            note: "scene_case=\(sampleId);cooldown_completed;wait_ms=\(waitedMs);thermal_end=\(deviceBenchmarkThermalStateDescription(currentState));result=\(completionReason)"
+        )
+
+        return waitedMs > 0 ? (1, Double(waitedMs), events) : (0, 0, [])
+    }
+
+    private func thermalCooldownBudget(
+        for thermalState: ProcessInfo.ThermalState,
+        policy: SceneGeneratorMobileExecutionPolicy
+    ) -> Int {
+        switch thermalState {
+        case .critical:
+            return policy.cooldownOnCriticalMs
+        case .serious:
+            return policy.cooldownOnSeriousMs
+        default:
+            return 0
+        }
+    }
+
+    private func progressiveSceneDescriptions(from description: String) -> [String] {
+        let normalized = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            return [description]
+        }
+
+        let segments = semanticSceneSegments(from: normalized)
+        guard segments.count > 1 else {
+            return [description]
+        }
+        let segmentEndIndices = semanticSegmentEndIndices(in: normalized, segments: segments)
+        guard segmentEndIndices.count == segments.count else {
+            return [description]
+        }
+
+        let maxPrefixCount = config.tier == .quick ? 3 : 4
+        let targetPrefixCount = min(maxPrefixCount, segments.count)
+        var prefixes: [String] = []
+        for prefixOrdinal in 1..<targetPrefixCount {
+            let cutoffSegmentIndex = Int(ceil(Double(prefixOrdinal * segments.count) / Double(targetPrefixCount))) - 1
+            let clampedIndex = min(max(cutoffSegmentIndex, 0), segments.count - 2)
+            let prefix = String(normalized[..<segmentEndIndices[clampedIndex]])
+            let trimmedPrefix = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedPrefix.isEmpty, prefixes.last != trimmedPrefix {
+                prefixes.append(trimmedPrefix)
+            }
+        }
+
+        if prefixes.isEmpty {
+            return [description]
+        }
+        if prefixes.last != normalized {
+            prefixes.append(normalized)
+        }
+        return prefixes
+    }
+
+    private func semanticSceneSegments(from description: String) -> [String] {
+        let lineSegments = description
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !lineSegments.isEmpty else {
+            return []
+        }
+
+        var segments: [String] = []
+        for line in lineSegments {
+            for sentence in sentenceLikeSegments(from: line) {
+                let transitionSegments = splitBySceneTransitionMarkers(sentence)
+                for segment in transitionSegments {
+                    let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        segments.append(trimmed)
+                    }
+                }
+            }
+        }
+        return segments.isEmpty ? [description] : segments
+    }
+
+    private func semanticSegmentEndIndices(in text: String, segments: [String]) -> [String.Index] {
+        var searchStart = text.startIndex
+        var endIndices: [String.Index] = []
+
+        for segment in segments {
+            guard let range = text.range(of: segment, options: [], range: searchStart..<text.endIndex) else {
+                return []
+            }
+            endIndices.append(range.upperBound)
+            searchStart = range.upperBound
+        }
+
+        return endIndices
+    }
+
+    private func sentenceLikeSegments(from text: String) -> [String] {
+        let pattern = #"[^.!?…;]+[.!?…;]?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return [text]
+        }
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = regex.matches(in: text, options: [], range: nsRange)
+        let segments = matches.compactMap { match -> String? in
+            guard let range = Range(match.range, in: text) else { return nil }
+            let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return candidate.isEmpty ? nil : candidate
+        }
+        return segments.isEmpty ? [text] : segments
+    }
+
+    private func splitBySceneTransitionMarkers(_ text: String) -> [String] {
+        let markers = [
+            " а потом ",
+            " а затем ",
+            " затем ",
+            " потом ",
+            " после этого ",
+            " далее ",
+            " afterwards ",
+        ]
+        let lowercase = text.lowercased()
+        var cutIndices: [String.Index] = []
+
+        for marker in markers {
+            var searchStart = lowercase.startIndex
+            while searchStart < lowercase.endIndex,
+                  let range = lowercase.range(of: marker, options: [], range: searchStart..<lowercase.endIndex) {
+                cutIndices.append(range.lowerBound)
+                searchStart = range.upperBound
+            }
+        }
+
+        let sortedCuts = Array(Set(cutIndices)).sorted()
+        guard !sortedCuts.isEmpty else {
+            return [text]
+        }
+
+        var segments: [String] = []
+        var start = text.startIndex
+        for cut in sortedCuts where cut > start {
+            let segment = String(text[start..<cut]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !segment.isEmpty {
+                segments.append(segment)
+            }
+            start = cut
+        }
+
+        let tail = String(text[start...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty {
+            segments.append(tail)
+        }
+        return segments.isEmpty ? [text] : segments
+    }
+
+    private func shouldRetryChunkResult(_ result: SceneBundleParsingResult) -> Bool {
+        guard result.activeSceneScript == nil else { return false }
+        return true
+    }
+
+    private func retryCount(in result: SceneBundleParsingResult) -> Int {
+        result.chunkDiagnostics.reduce(0) { partial, diagnostics in
+            partial + diagnostics.reasonCodes.filter { $0.contains("retry") }.count
+        }
+    }
+
+    private func makeSceneExecutionEvent(
+        sampleId: String,
+        chunkIndex: Int,
+        chunkCount: Int,
+        status: String,
+        note: String?
+    ) -> DeviceBenchmarkSceneExecutionEvent {
+        DeviceBenchmarkSceneExecutionEvent(
+            timestamp: Date(),
+            sampleId: sampleId,
+            executionMode: config.sceneGeneratorExecutionMode.rawValue,
+            chunkIndex: chunkIndex,
+            chunkCount: chunkCount,
+            status: status,
+            thermalState: deviceBenchmarkThermalStateDescription(ProcessInfo.processInfo.thermalState),
+            batteryLevel: UIDevice.current.batteryLevel,
+            note: note
+        )
+    }
+
+    private func checkpointRelativePath(sampleId: String, chunkIndex: Int) -> String {
+        let safeSampleId = sanitizedArtifactComponent(sampleId)
+        let chunkLabel = String(format: "%02d", chunkIndex)
+        return "scene_checkpoints/\(safeSampleId)/chunk_\(chunkLabel)_document_state.json"
+    }
+
+    private func finalDocumentStateRelativePath(sampleId: String) -> String {
+        let safeSampleId = sanitizedArtifactComponent(sampleId)
+        return "scene_checkpoints/\(safeSampleId)/final_document_state.json"
+    }
+
+    private func sanitizedArtifactComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let scalars = value.unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        return String(scalars)
     }
 
     private func makeMarkdownSummary(combined: DeviceBenchmarkCombinedSummary,
@@ -776,9 +1364,6 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
             Bundle.main.path(forResource: "dataset_v9_event_sft_q4_k_m", ofType: "gguf"),
             Bundle.main.path(forResource: "dataset_v9_event_sft_q4_k_m", ofType: "gguf", inDirectory: "Models"),
             Bundle.main.path(forResource: "dataset_v9_event_sft_q4_k_m", ofType: "gguf", inDirectory: "Resources/Models"),
-            Bundle.main.path(forResource: "dataset_v8_plan_orpo_iter1_q4_k_m", ofType: "gguf"),
-            Bundle.main.path(forResource: "dataset_v8_plan_orpo_iter1_q4_k_m", ofType: "gguf", inDirectory: "SceneGeneratorModule/Models"),
-            Bundle.main.path(forResource: "dataset_v8_plan_orpo_iter1_q4_k_m", ofType: "gguf", inDirectory: "Models"),
         ].compactMap { $0 }
 
         if let first = directCandidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
@@ -800,7 +1385,6 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
 
         let fallbackPaths = [
             "shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf",
-            "shafinMultitool/SceneGeneratorModule/Models/dataset_v8_plan_orpo_iter1_q4_k_m.gguf",
         ]
         if let existing = fallbackPaths.first(where: { FileManager.default.fileExists(atPath: $0) }) {
             return existing
@@ -844,7 +1428,6 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
         if filename.contains("event") { score += 80 }
         if filename.contains("sft") { score += 40 }
         if filename.contains("q4") { score += 20 }
-        if filename.contains("v8") { score += 10 }
         if filename.contains("qwen2.5") { score -= 1000 }
         return score
     }
@@ -867,10 +1450,6 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
                                      from: packDirectory.appendingPathComponent("core_accepted_source.jsonl"))
         let hard = try loadJSONLines(DeviceBenchmarkSceneRecord.self,
                                      from: packDirectory.appendingPathComponent("hard_accepted_source.jsonl"))
-        let allRecords = deduplicatedSceneRecords(core + hard)
-        if config.sceneResourcePackId != "scene_generator_device_pack_v1" {
-            return allRecords
-        }
         let selectedPatterns = [
             "dialogue_only",
             "dialogue_then_put_down_object",
@@ -888,7 +1467,7 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
             "dialogue_only": 5,
         ]
 
-        let records = allRecords.filter { selectedPatterns.contains($0.patternName) }
+        let records = (core + hard).filter { selectedPatterns.contains($0.patternName) }
         let grouped = Dictionary(grouping: records, by: \.patternName)
         let orderedPatterns = selectedPatterns.sorted {
             preferredOrder[$0, default: Int.max] < preferredOrder[$1, default: Int.max]
@@ -922,13 +1501,6 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
         }
 
         return sampled
-    }
-
-    private func deduplicatedSceneRecords(_ records: [DeviceBenchmarkSceneRecord]) -> [DeviceBenchmarkSceneRecord] {
-        var seenSampleIds = Set<String>()
-        return records.filter { record in
-            seenSampleIds.insert(record.sampleId).inserted
-        }
     }
 
     private func sceneExpectation(for record: DeviceBenchmarkSceneRecord) -> DeviceBenchmarkSceneExpectation? {
@@ -995,60 +1567,15 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
         }
     }
 
-    private func makeSceneExecutionSupport(namespace: String) -> SceneGeneratorExecutionSupport {
-        let sanitizedNamespace = namespace.replacingOccurrences(
-            of: #"[^A-Za-z0-9_\-]"#,
-            with: "_",
-            options: .regularExpression
-        )
-        return SceneGeneratorExecutionSupport(
-            makeSnapshot: SceneGeneratorExecutionSupport.live.makeSnapshot,
-            sleep: SceneGeneratorExecutionSupport.live.sleep,
-            writeCheckpoint: { [artifactStore] fileName, data in
-                let directory = artifactStore.directoryURL("scene_checkpoints").appendingPathComponent(sanitizedNamespace, isDirectory: true)
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
-                let url = directory.appendingPathComponent(fileName, isDirectory: false)
-                try data.write(to: url)
-            },
-            now: { Date() }
-        )
-    }
-
-    private func makeCaseExecutionMetrics(
-        result: SceneBundleParsingResult,
-        parseWallTimeMs: Double
-    ) -> DeviceBenchmarkSceneCaseExecutionMetrics {
-        let trace = result.executionTrace
-        let chunkCount = result.chunkDiagnostics.count
-        let completedChunkCount = trace?.events.filter { $0.kind == .chunkCompleted }.count ?? chunkCount
-        let checkpointCount = trace?.checkpoints.count ?? 0
-        let thermalPauseEvents = trace?.events.filter { $0.kind == .thermalCooldownStarted } ?? []
-        let chunkStartedCount = trace?.events.filter { $0.kind == .chunkStarted }.count ?? chunkCount
-        let chunkFailureCount = trace?.events.filter { $0.kind == .chunkFailed }.count ?? 0
-        return DeviceBenchmarkSceneCaseExecutionMetrics(
-            parseWallTimeMs: parseWallTimeMs,
-            chunkCount: chunkCount,
-            completedChunkCount: completedChunkCount,
-            checkpointCount: checkpointCount,
-            thermalPauseCount: thermalPauseEvents.count,
-            thermalPauseTotalMs: thermalPauseEvents.compactMap(\.cooldownMs).reduce(0) { $0 + Double($1) },
-            chunkRetryCount: max(0, chunkStartedCount - chunkCount),
-            chunkFailureCount: chunkFailureCount
-        )
-    }
-
     private func evaluateSceneRecord(record: DeviceBenchmarkSceneRecord,
                                      result: SceneBundleParsingResult,
                                      trace: SceneRuntimeTrace?,
-                                     executionTrace: SceneExecutionTrace?,
                                      parseWallTimeMs: Double,
                                      coldStart: Bool) -> DeviceBenchmarkSceneCaseResult {
         let expectation = sceneExpectation(for: record)
         let activeScene = result.activeSceneScript
         let actions = activeScene?.actions ?? []
         let matchedMarkedCount = Set(result.diagnostics.matchedMarkedObjects).count
-        let caseExecutionMetrics = makeCaseExecutionMetrics(result: result, parseWallTimeMs: parseWallTimeMs)
-        let executionReasonCodes = executionTrace?.events.compactMap(\.note) ?? []
         var hardIssues: [String] = []
         var softIssues: [String] = []
 
@@ -1105,17 +1632,15 @@ final class DeviceBenchmarkCoordinator: ObservableObject {
             patternName: record.patternName,
             difficultyBucket: record.difficultyBucket,
             coldStart: coldStart,
-            executionMode: executionTrace?.executionMode.rawValue ?? config.sceneGeneratorExecutionMode.rawValue,
             parseWallTimeMs: parseWallTimeMs,
             actorCount: activeScene?.actors.count ?? 0,
             beatCount: activeScene?.beats.count ?? 0,
             actionCount: actions.count,
             confidence: result.diagnostics.confidence,
             route: trace?.route.rawValue,
-            reasonCodes: (trace?.reasons ?? []) + executionReasonCodes,
+            reasonCodes: trace?.reasons ?? [],
             hardIssues: hardIssues,
             softIssues: softIssues,
-            executionMetrics: caseExecutionMetrics,
             passed: hardIssues.isEmpty
         )
     }

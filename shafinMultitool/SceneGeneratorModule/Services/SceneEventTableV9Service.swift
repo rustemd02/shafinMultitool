@@ -71,8 +71,8 @@ final class SceneEventTableV9Service {
             )
         }
 
-        let actorRefToSlot = firstValueMap(actorSlots.map { ($0.ref, $0.slotID) })
-        let objectRefToSlot = firstValueMap(objectSlots.map { ($0.ref, $0.slotID) })
+        let actorRefToSlot = Dictionary(uniqueKeysWithValues: actorSlots.map { ($0.ref, $0.slotID) })
+        let objectRefToSlot = Dictionary(uniqueKeysWithValues: objectSlots.map { ($0.ref, $0.slotID) })
         let relationHints = plan.spatialRelations.compactMap { relation -> SceneV9SlotCatalog.RelationHint? in
             let subjectSlot = actorRefToSlot[relation.subjectRef] ?? objectRefToSlot[relation.subjectRef]
             let objectSlot = actorRefToSlot[relation.objectRef] ?? objectRefToSlot[relation.objectRef]
@@ -100,9 +100,12 @@ final class SceneEventTableV9Service {
     }
 
     func buildEventTable(from plan: ScenePlanIR, slotCatalog: SceneV9SlotCatalog) -> SceneV9EventTable {
-        let actorRefToSlot = firstValueMap(slotCatalog.actorSlots.map { ($0.ref, $0.slotID) })
-        let objectRefToSlot = firstValueMap(slotCatalog.objectSlots.map { ($0.ref, $0.slotID) })
-        let beatRefToSlot = firstValueMap(slotCatalog.beatSlots.map { ($0.beatRef, $0.slotID) })
+        let actorRefToSlot = Dictionary(uniqueKeysWithValues: slotCatalog.actorSlots.map { ($0.ref, $0.slotID) })
+        let objectRefToSlot = Dictionary(uniqueKeysWithValues: slotCatalog.objectSlots.map { ($0.ref, $0.slotID) })
+        let beatRefToSlot = slotCatalog.beatSlots.reduce(into: [String: String]()) { partialResult, slot in
+            guard partialResult[slot.beatRef] == nil else { return }
+            partialResult[slot.beatRef] = slot.slotID
+        }
 
         var rows: [SceneV9EventTable.EventRow] = []
         var rowIndex = 1
@@ -592,13 +595,4 @@ final class SceneEventTableV9Service {
     private func containsAny(_ text: String, _ needles: [String]) -> Bool {
         needles.contains { text.contains($0) }
     }
-}
-
-private func firstValueMap<Key: Hashable, Value>(_ pairs: [(Key, Value)]) -> [Key: Value] {
-    var result: [Key: Value] = [:]
-    result.reserveCapacity(pairs.count)
-    for (key, value) in pairs where result[key] == nil {
-        result[key] = value
-    }
-    return result
 }
