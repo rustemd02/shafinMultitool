@@ -40,3 +40,49 @@ struct SceneData: Codable {
     }
 }
 
+struct UnifiedSceneProjectSummary: Identifiable, Codable, Equatable {
+    let id: UUID
+    let name: String
+    let updatedAt: Date
+}
+
+struct UnifiedSceneProject: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var createdAt: Date
+    var updatedAt: Date
+    var sceneDescription: String
+    var markedObjects: [MarkedObject]
+    var parsedScript: SceneScript?
+    var plannedScene: PlannedScene?
+    var sceneChunkState: SceneChunkState?
+    var visualOverlays: [SceneVisualOverlay]
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        sceneDescription: String = "",
+        markedObjects: [MarkedObject] = [],
+        parsedScript: SceneScript? = nil,
+        plannedScene: PlannedScene? = nil,
+        sceneChunkState: SceneChunkState? = nil,
+        visualOverlays: [SceneVisualOverlay] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.sceneDescription = sceneDescription
+        self.markedObjects = markedObjects
+        self.parsedScript = parsedScript
+        self.plannedScene = plannedScene
+        self.sceneChunkState = sceneChunkState
+        self.visualOverlays = visualOverlays
+    }
+
+    var summary: UnifiedSceneProjectSummary {
+        UnifiedSceneProjectSummary(id: id, name: name, updatedAt: updatedAt)
+    }
+}

@@ -8,230 +8,203 @@
 import UIKit
 import SwiftUI
 
-// MARK: - SwiftUI View
-struct StageSelectionView: View {
-    @Environment(\.presentationMode) var presentationMode
+private struct StageSelectionView: View {
+    let onOpenSceneLibrary: () -> Void
 
-    let onPreProductionTapped: () -> Void
-    let onFilmingTapped: () -> Void
-    let onSceneGeneratorTapped: () -> Void
+    private let backgroundTop = Color(red: 0.10, green: 0.11, blue: 0.13)
+    private let backgroundBottom = Color(red: 0.05, green: 0.06, blue: 0.08)
+    private let cardFill = Color.white.opacity(0.06)
+    private let cardStroke = Color.white.opacity(0.10)
+    private let accent = Color(red: 0.83, green: 0.63, blue: 0.38)
 
     var body: some View {
         ZStack {
-            // Background gradient
             LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.05, green: 0.05, blue: 0.15),
-                    Color.black
-                ]),
+                colors: [backgroundTop, backgroundBottom],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Title
-                Text("Выберите стадию")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.white, Color(white: 0.8)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .padding(.top, 20)
-                    .padding(.bottom, 40)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("SHAFIN MULTITOOL")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.48))
 
-                // Cards
-                HStack(spacing: 20) {
-                    StageCard(
-                        title: "Пре-продакшен",
-                        subtitle: "Планирование и подготовка",
-                        emoji: "📋",
-                        gradientColors: [
-                            Color(red: 0.4, green: 0.6, blue: 1.0),
-                            Color(red: 0.2, green: 0.4, blue: 0.8)
-                        ]
-                    ) {
-                        onPreProductionTapped()
+                        Text("Съёмка по сцене")
+                            .font(.system(size: 38, weight: .bold))
+                            .foregroundStyle(.white)
+
+                        Text("Один спокойный вход вместо раздельных режимов. Выбираем или создаём сцену, размечаем пространство, генерируем AR-объекты и остаёмся в том же рабочем окне для записи с подсказками.")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    StageCard(
-                        title: "Съёмка",
-                        subtitle: "Процесс съёмки",
-                        emoji: "🎥",
-                        gradientColors: [
-                            Color(red: 1.0, green: 0.4, blue: 0.5),
-                            Color(red: 0.8, green: 0.2, blue: 0.3)
-                        ]
-                    ) {
-                        onFilmingTapped()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Как теперь устроен демо-флоу")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+
+                        FlowRow(index: "1",
+                                title: "Сцена",
+                                subtitle: "Создать новую или открыть сохранённую")
+                        FlowRow(index: "2",
+                                title: "AR workspace",
+                                subtitle: "Разметка, генерация и playback в одной сессии")
+                        FlowRow(index: "3",
+                                title: "Запись",
+                                subtitle: "Подсказки поверх сцены, без переключения режима камеры")
                     }
 
-                    StageCard(
-                        title: "Scene Generator",
-                        subtitle: "Генерация сцен из текста",
-                        emoji: "✨",
-                        gradientColors: [
-                            Color(red: 0.6, green: 0.4, blue: 1.0),
-                            Color(red: 0.4, green: 0.2, blue: 0.8)
-                        ]
-                    ) {
-                        onSceneGeneratorTapped()
-                    }
-                }
-                .padding(.horizontal, 24)
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("Основной режим")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(accent)
 
-                Spacer()
-            }
-        }
-    }
-}
+                        Text("Открыть сцену")
+                            .font(.system(size: 30, weight: .bold))
+                            .foregroundStyle(.white)
 
-// MARK: - Stage Card Component
-struct StageCard: View {
-    let title: String
-    let subtitle: String
-    let emoji: String
-    let gradientColors: [Color]
-    let action: () -> Void
+                        Text("Scene library ведёт сразу в единое AR-рабочее место. Legacy-сцены не смешиваются с новыми проектами.")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .fixedSize(horizontal: false, vertical: true)
 
-    @State private var isPressed = false
-
-    var body: some View {
-        Button(action: {
-            action()
-        }) {
-            ZStack {
-                // Background with gradient
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: gradientColors),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .shadow(
-                        color: gradientColors[0].opacity(0.5),
-                        radius: isPressed ? 8 : 20,
-                        x: 0,
-                        y: isPressed ? 4 : 10
-                    )
-
-                // Overlay shine effect
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color.white.opacity(0.3),
-                                Color.clear
-                            ]),
-                            startPoint: .topLeading,
-                            endPoint: .center
-                        )
-                    )
-
-                // Content
-                VStack(alignment: .leading, spacing: 0) {
-                    // Иконка слева сверху
-                    HStack {
-                        ZStack {
-                            Circle()
-                                .fill(Color.white.opacity(0.2))
-                                .frame(width: 50, height: 50)
-
-                            Text(emoji)
-                                .font(.system(size: 28))
+                        VStack(alignment: .leading, spacing: 10) {
+                            FeatureRow(text: "Новые scene projects хранятся отдельно от legacy")
+                            FeatureRow(text: "Разметка, генерация, preview и запись живут на одном экране")
+                            FeatureRow(text: "Live hints можно включать вручную, а при записи они активируются автоматически")
                         }
 
-                        Spacer()
+                        Button(action: onOpenSceneLibrary) {
+                            Text("Выбрать сцену")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.82))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(accent)
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
+                    .padding(22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(cardFill)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                    .stroke(cardStroke, lineWidth: 1)
+                            )
+                    )
 
-                    Spacer()
-
-                    // Текст растянут на всю ширину
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(title)
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-
-                        Text(subtitle)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.85))
-                            .lineLimit(2)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Playback остаётся дополнительным инструментом внутри workspace, а не отдельной стартовой веткой.")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.56))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.top, 28)
+                .padding(.bottom, 24)
+                .frame(maxWidth: 720, alignment: .leading)
             }
-            // .frame(height: 140)
         }
-        .buttonStyle(CardButtonStyle(isPressed: $isPressed))
     }
 }
 
-// MARK: - Button Style
-struct CardButtonStyle: ButtonStyle {
-    @Binding var isPressed: Bool
+private struct FlowRow: View {
+    let index: String
+    let title: String
+    let subtitle: String
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
-            .onChange(of: configuration.isPressed) { newValue in
-                isPressed = newValue
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(index)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(Color.white.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+
+                Text(subtitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.60))
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
+        )
     }
 }
 
-// MARK: - UIKit Wrapper
-class StageSelectionViewController: UIViewController {
+private struct FeatureRow: View {
+    let text: String
 
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(Color.white.opacity(0.78))
+                .frame(width: 7, height: 7)
+                .padding(.top, 6)
+
+            Text(text)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(0.76))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+final class StageSelectionViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.backgroundColor = .black
 
-        let swiftUIView = StageSelectionView(
-            onPreProductionTapped: { [weak self] in
-                self?.preProductionTapped()
-            },
-            onFilmingTapped: { [weak self] in
-                self?.filmingTapped()
-            },
-            onSceneGeneratorTapped: { [weak self] in
-                self?.sceneGeneratorTapped()
-            }
+        let hostingController = UIHostingController(
+            rootView: StageSelectionView(
+                onOpenSceneLibrary: { [weak self] in
+                    self?.openSceneLibrary()
+                }
+            )
         )
-        let hostingController = UIHostingController(rootView: swiftUIView)
 
         addChild(hostingController)
         view.addSubview(hostingController.view)
-        hostingController.view.frame = view.bounds
-        hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
         hostingController.didMove(toParent: self)
     }
 
-    private func preProductionTapped() {
+    private func openSceneLibrary() {
         let vc = SOModuleBuilder.build()
         navigationController?.pushViewController(vc, animated: true)
     }
-
-    private func filmingTapped() {
-        let contentView = ContentView()
-        let hostingController = LandscapeHostingController(rootView: contentView)
-        hostingController.modalPresentationStyle = .fullScreen
-        present(hostingController, animated: true)
-    }
-    
-    private func sceneGeneratorTapped() {
-        let sceneGeneratorView = SceneGeneratorView()
-        let hostingController = LandscapeHostingController(rootView: sceneGeneratorView)
-        hostingController.modalPresentationStyle = .fullScreen
-        present(hostingController, animated: true)
-    }
 }
 
-// MARK: - Landscape Hosting Controller
 class LandscapeHostingController<Content: View>: UIHostingController<Content> {
 }

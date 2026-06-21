@@ -506,6 +506,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 5NAKQ28539;
+				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = shafinMultitool/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";

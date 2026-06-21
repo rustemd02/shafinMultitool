@@ -52,35 +52,6 @@ enum DeviceBenchmarkSceneRuntimePreset: String, Codable, Equatable {
     }
 }
 
-enum SceneGeneratorExecutionMode: String, Codable, Equatable {
-    case monolithic
-    case chunkedThermalAware
-}
-
-struct SceneGeneratorMobileExecutionPolicy: Codable, Equatable {
-    let mode: SceneGeneratorExecutionMode
-    let cooldownOnSeriousMs: Int
-    let cooldownOnCriticalMs: Int
-    let maxChunkAttempts: Int
-    let checkpointEnabled: Bool
-
-    static let monolithicDefault = SceneGeneratorMobileExecutionPolicy(
-        mode: .monolithic,
-        cooldownOnSeriousMs: 0,
-        cooldownOnCriticalMs: 0,
-        maxChunkAttempts: 1,
-        checkpointEnabled: false
-    )
-
-    static let chunkedThermalAwareDefault = SceneGeneratorMobileExecutionPolicy(
-        mode: .chunkedThermalAware,
-        cooldownOnSeriousMs: 15_000,
-        cooldownOnCriticalMs: 30_000,
-        maxChunkAttempts: 2,
-        checkpointEnabled: true
-    )
-}
-
 enum DeviceBenchmarkSceneExecutionMode: String, Codable, Equatable {
     case monolithic
     case chunkedThermalAware

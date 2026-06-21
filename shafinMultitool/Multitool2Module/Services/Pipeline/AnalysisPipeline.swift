@@ -3124,6 +3124,18 @@ final class AnalysisPipeline: ObservableObject {
         ]
     }
 
+    func ingestHigh(context: FrameContext) {
+        handleHigh(context: context)
+    }
+
+    func ingestMedium(context: FrameContext) {
+        handleMedium(context: context)
+    }
+
+    func ingestLow(context: FrameContext) {
+        handleLow(context: context)
+    }
+
     fileprivate func handleHigh(context: FrameContext) {
         highQueue.async { [weak self] in
             guard let self else { return }

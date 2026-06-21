@@ -13,19 +13,24 @@ final class SceneSaveLoadTests: XCTestCase {
     
     var dbService: DBService!
     var testSceneName: String!
+    var testUnifiedProjectName: String!
     
     override func setUpWithError() throws {
         super.setUp()
         dbService = DBService.shared
         testSceneName = "TestScene_\(UUID().uuidString)"
+        testUnifiedProjectName = "UnifiedScene_\(UUID().uuidString)"
         
         // Очистка тестовых данных перед каждым тестом
         cleanupTestScene()
+        cleanupUnifiedProject()
     }
     
     override func tearDownWithError() throws {
         cleanupTestScene()
+        cleanupUnifiedProject()
         testSceneName = nil
+        testUnifiedProjectName = nil
         dbService = nil
         super.tearDown()
     }
@@ -33,6 +38,12 @@ final class SceneSaveLoadTests: XCTestCase {
     private func cleanupTestScene() {
         if let sceneName = testSceneName {
             dbService.deleteMap(with: sceneName) { _ in }
+        }
+    }
+
+    private func cleanupUnifiedProject() {
+        if let projectName = testUnifiedProjectName {
+            dbService.deleteUnifiedSceneProject(named: projectName) { _ in }
         }
     }
     
@@ -306,5 +317,52 @@ final class SceneSaveLoadTests: XCTestCase {
         } else {
             XCTFail("Не удалось загрузить обновленную сцену")
         }
+    }
+
+    func testCreateListAndDeleteUnifiedSceneProject() throws {
+        let created = try dbService.createUnifiedSceneProject(named: testUnifiedProjectName)
+
+        let names = dbService.listUnifiedSceneProjects().map(\.name)
+        XCTAssertTrue(names.contains(testUnifiedProjectName), "Новый unified project должен появиться в списке")
+
+        let loaded = dbService.loadUnifiedSceneProject(named: testUnifiedProjectName)
+        XCTAssertEqual(loaded?.0.id, created.id, "Должен загружаться тот же проект")
+        XCTAssertEqual(loaded?.0.name, testUnifiedProjectName, "Имя unified project должно совпадать")
+
+        let expectation = XCTestExpectation(description: "Удаление unified project")
+        dbService.deleteUnifiedSceneProject(named: testUnifiedProjectName) { deleted in
+            XCTAssertTrue(deleted, "Удаление unified project должно быть успешным")
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        XCTAssertNil(dbService.loadUnifiedSceneProject(named: testUnifiedProjectName),
+                     "После удаления unified project не должен загружаться")
+    }
+
+    func testSaveAndReloadUnifiedSceneProjectState() throws {
+        let created = try dbService.createUnifiedSceneProject(named: testUnifiedProjectName)
+        let marker = MarkedObject(name: "стойка", position: Position3D(x: 1.2, y: 0.0, z: -0.8))
+        let placedObject = PlannedScene.PlacedObject(
+            id: "virtual_table",
+            objectId: "table_1",
+            type: .table,
+            position: Position3D(x: 0.3, y: 0.0, z: -1.1),
+            rotation: 0.45,
+            isDetected: false,
+            placementSource: .virtual
+        )
+
+        var updated = created
+        updated.sceneDescription = "Актёр подходит к стойке и останавливается рядом со столом."
+        updated.markedObjects = [marker]
+        updated.plannedScene = PlannedScene(placedActors: [], placedObjects: [placedObject])
+
+        try dbService.saveUnifiedSceneProject(updated, worldMap: nil)
+
+        let loaded = dbService.loadUnifiedSceneProject(named: testUnifiedProjectName)
+        XCTAssertEqual(loaded?.0.sceneDescription, updated.sceneDescription, "Описание сцены должно восстанавливаться")
+        XCTAssertEqual(loaded?.0.markedObjects, [marker], "Маркеры должны восстанавливаться")
+        XCTAssertEqual(loaded?.0.plannedScene, updated.plannedScene, "Planned scene должна восстанавливаться")
     }
 }

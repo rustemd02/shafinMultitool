@@ -34,6 +34,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var startTime: CMTime?
     private var isRecording = false
     private var outputURL: URL?
+    private(set) var isRecorderPrepared = false
     
     var wbValues: [Int] = []
     
@@ -52,12 +53,15 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
     
     func prepareRecorder() {
+        isRecorderPrepared = false
+
         guard let outputURL = getVideoFileURL() else { return }
         self.outputURL = outputURL
         settingsValues = DBService.shared.fetchSettingsButtonValues()
         generateWBValues()
         
-        assetWriter = try? AVAssetWriter(outputURL: outputURL, fileType: .mov)
+        guard let writer = try? AVAssetWriter(outputURL: outputURL, fileType: .mov) else { return }
+        assetWriter = writer
         assetWriter.movieFragmentInterval = CMTime.invalid
                 
         audioSession = AVAudioSession.sharedInstance()
@@ -71,13 +75,20 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         
         videoSettingsUpdate()
 
-        audioCaptureDevice = AVCaptureDevice.default(for: .audio)!
-        audioCaptureDeviceInput = try! AVCaptureDeviceInput(device: audioCaptureDevice)
-        audioCaptureSession.addInput(audioCaptureDeviceInput)
-        
-        audioCaptureOutput = AVCaptureAudioDataOutput()
-        audioCaptureOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "audioCaptureQueue"))
-        audioCaptureSession.addOutput(audioCaptureOutput)
+        if let audioDevice = AVCaptureDevice.default(for: .audio),
+           let audioInput = try? AVCaptureDeviceInput(device: audioDevice),
+           audioCaptureSession.canAddInput(audioInput) {
+            audioCaptureDevice = audioDevice
+            audioCaptureDeviceInput = audioInput
+            audioCaptureSession.addInput(audioInput)
+
+            let audioOutput = AVCaptureAudioDataOutput()
+            audioOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "audioCaptureQueue"))
+            if audioCaptureSession.canAddOutput(audioOutput) {
+                audioCaptureOutput = audioOutput
+                audioCaptureSession.addOutput(audioOutput)
+            }
+        }
         
         DispatchQueue.global(qos: .background).async {
             self.audioCaptureSession.commitConfiguration()
@@ -88,6 +99,8 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             assetWriter.startWriting()
             assetWriter.startSession(atSourceTime: CMTime.zero)
         }
+
+        isRecorderPrepared = assetWriter != nil && assetWriterVideoInput != nil && pixelBufferAdaptor != nil
     }
     
     func videoSettingsUpdate() {
@@ -135,24 +148,44 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         
         changeFPS(fps: settingsValues.fps)
         
-        assetWriter.add(assetWriterVideoInput)
-        assetWriter.add(assetWriterAudioInput)
+        if assetWriter.canAdd(assetWriterVideoInput) {
+            assetWriter.add(assetWriterVideoInput)
+        }
+        if assetWriter.canAdd(assetWriterAudioInput) {
+            assetWriter.add(assetWriterAudioInput)
+        }
     }
 
     
     func startRecording() {
+        if !isRecorderPrepared {
+            prepareRecorder()
+        }
+        guard isRecorderPrepared else { return }
         isRecording = true
     }
     
     func stopRecording() {
+        guard isRecorderPrepared,
+              let assetWriterVideoInput,
+              let assetWriterAudioInput,
+              let assetWriter else {
+            isRecording = false
+            isRecorderPrepared = false
+            return
+        }
+
         isRecording = false
         assetWriterVideoInput.markAsFinished()
         assetWriterAudioInput.markAsFinished()
         assetWriter.finishWriting {
             DispatchQueue.main.async {
-                self.saveVideoToLibrary(videoURL: self.outputURL!)
+                if let outputURL = self.outputURL {
+                    self.saveVideoToLibrary(videoURL: outputURL)
+                }
                 self.assetWriter = nil
                 self.startTime = nil
+                self.isRecorderPrepared = false
                 self.prepareRecorder()
             }
         }
@@ -163,15 +196,25 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         guard isRecording else {
             return
         }
-        
-        let pixelBuffer = frame.capturedImage
-        let cmTime = CMTimeMakeWithSeconds(frame.timestamp, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        appendCapturedPixelBuffer(frame.capturedImage, at: frame.timestamp)
+    }
+
+    func appendCapturedPixelBuffer(_ pixelBuffer: CVPixelBuffer, at timestamp: TimeInterval) {
+        guard isRecording,
+              isRecorderPrepared,
+              let assetWriter,
+              let assetWriterVideoInput,
+              let assetWriterAudioInput,
+              let pixelBufferAdaptor else { return }
+
+        let cmTime = CMTimeMakeWithSeconds(timestamp, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         if startTime == nil {
             startTime = cmTime
             assetWriter.startSession(atSourceTime: CMTime.zero)
         }
         
-        let presentationTime = CMTimeSubtract(cmTime, startTime!)
+        guard let startTime else { return }
+        let presentationTime = CMTimeSubtract(cmTime, startTime)
         if !assetWriterVideoInput.isReadyForMoreMediaData {
             return
         }
@@ -185,7 +228,10 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
     
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard isRecording, let startTime = startTime else { return }
+        guard isRecording,
+              isRecorderPrepared,
+              let startTime = startTime,
+              let assetWriterAudioInput else { return }
         
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         

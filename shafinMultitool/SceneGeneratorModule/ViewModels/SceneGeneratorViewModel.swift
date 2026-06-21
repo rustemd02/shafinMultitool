@@ -10,6 +10,8 @@ import SwiftUI
 import Combine
 import ARKit
 import RealityKit
+import CoreMedia
+import ImageIO
 
 struct BeatPlaybackTimelineItem: Identifiable, Equatable {
     var id: String { "\(index)-\(beatID)" }
@@ -27,6 +29,15 @@ struct BeatPlaybackProgressState: Equatable {
     let elapsedTime: TimeInterval
 }
 
+enum SceneWorkspaceMode: Equatable {
+    case editingScene
+    case marking
+    case generatedReady
+    case shooting
+    case recording
+    case previewPlayback
+}
+
 /// ViewModel для управления генерацией AR сцены из текстового описания
 @MainActor
 final class SceneGeneratorViewModel: ObservableObject {
@@ -41,6 +52,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Текущее описание сцены
     @Published var sceneDescription: String = ""
+
+    /// Название проекта сцены
+    @Published private(set) var sceneTitle: String
     
     /// Распознанный скрипт сцены
     @Published var parsedScript: SceneScript?
@@ -65,6 +79,30 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Статус воспроизведения анимации
     @Published var isPlaying: Bool = false
+
+    /// Активный режим unified workspace
+    @Published private(set) var workspaceMode: SceneWorkspaceMode = .editingScene
+
+    /// Идёт ли запись видео
+    @Published var isRecording: Bool = false
+
+    /// Включены ли live hints
+    @Published var isHintsEnabled: Bool = false
+
+    /// Длительность текущей записи
+    @Published var recordingElapsedTime: TimeInterval = 0
+
+    /// Состояние live-hints overlay
+    @Published var coachingOverlayState: OverlayState = .init(primaryBoundingBox: nil,
+                                                              horizonAngle: 0,
+                                                              horizonConfidence: 0,
+                                                              saliencyBalance: 0)
+
+    /// Текущая live-подсказка по кадру
+    @Published var liveHint: LiveHintPresentation?
+
+    /// Визуальные аннотации для hints
+    @Published var coachingOverlayAnnotations: [OverlayAnnotationPresentation] = []
 
     /// Текущий диалоговый субтитр во время playback.
     @Published var activeDialogueCaption: String?
@@ -115,6 +153,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     private let parserService = SceneParserService.shared
     private let plannerService = SpatialPlannerService.shared
+    private let cameraService = CameraService.shared
+    private let projectStore: DBService
+    private let analysisPipeline = AnalysisPipeline()
     private let isObjectDetectionEnabled = false
     private var detectionBridge: ObjectDetectionBridge? {
         guard isObjectDetectionEnabled else { return nil }
@@ -125,6 +166,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Ссылка на ARView (устанавливается из ARSceneContainer)
     weak var arView: ARView?
+
+    /// Сохранённая world map для восстановления проекта
+    private var initialWorldMap: ARWorldMap?
     
     /// Текущая трансформация камеры
     private var currentCameraTransform: simd_float4x4?
@@ -136,6 +180,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     private var detectedPlanes: [ARPlaneAnchor] = []
     private var lastPlaneUpdateTimestamp: TimeInterval = 0
     private let planeRefreshInterval: TimeInterval = 0.35
+    private let highHintFrameInterval: TimeInterval = 1.0 / 15.0
+    private let mediumHintFrameInterval: TimeInterval = 1.0 / 8.0
+    private let lowHintFrameInterval: TimeInterval = 1.0
     
     /// Размещённые entity
     private var placedEntities: [String: ModelEntity] = [:]
@@ -158,6 +205,15 @@ final class SceneGeneratorViewModel: ObservableObject {
     private var activeScreenTextCaptionID: UUID?
     private var playbackTimelineTimer: Timer?
     private var playbackStartDate: Date?
+    private var recordingTimer: Timer?
+    private var recordingStartDate: Date?
+    private var recorderPrepared = false
+    private var hasRestoredPersistedEntities = false
+    private var hasAutoPromptedDescription = false
+    private var currentProject: UnifiedSceneProject
+    private var lastHighHintTimestamp: TimeInterval = 0
+    private var lastMediumHintTimestamp: TimeInterval = 0
+    private var lastLowHintTimestamp: TimeInterval = 0
     
     // MARK: - Cancellables
     
@@ -165,22 +221,67 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     // MARK: - Initialization
     
-    init() {
+    init(projectName: String = "Новая сцена",
+         isNewProject: Bool = true,
+         projectStore: DBService = .shared) {
+        self.projectStore = projectStore
+        let loadedProject = isNewProject ? nil : projectStore.loadUnifiedSceneProject(named: projectName)
+        if let loadedProject {
+            self.currentProject = loadedProject.0
+            self.initialWorldMap = loadedProject.1
+        } else {
+            self.currentProject = UnifiedSceneProject(name: projectName)
+            self.initialWorldMap = nil
+        }
+        self.sceneTitle = currentProject.name
+        self.sceneDescription = currentProject.sceneDescription
+        self.markedObjects = currentProject.markedObjects
+        self.parsedScript = currentProject.parsedScript
+        self.plannedScene = currentProject.plannedScene
+        self.sceneChunkState = currentProject.sceneChunkState
+        self.visualOverlays = currentProject.visualOverlays
         setupBindings()
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
     }
     
     private func setupBindings() {
-        // Автоматическое обновление статуса при изменении размеченных объектов
         $markedObjects
-            .map { markers in
-                if markers.isEmpty {
-                    return "Нажмите 📍 чтобы разметить объекты"
-                } else {
-                    let names = markers.prefix(3).map { $0.name.capitalized }
-                    return "Размечено: \(names.joined(separator: ", "))"
-                }
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.refreshIdleStatusMessage()
+                self?.persistProjectMetadata()
             }
-            .assign(to: &$statusMessage)
+            .store(in: &cancellables)
+
+        $sceneDescription
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.refreshIdleStatusMessage()
+                self?.persistProjectMetadata()
+            }
+            .store(in: &cancellables)
+
+        analysisPipeline.$overlayState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] overlayState in
+                self?.coachingOverlayState = overlayState
+            }
+            .store(in: &cancellables)
+
+        analysisPipeline.$currentLiveHint
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] hint in
+                self?.liveHint = hint
+            }
+            .store(in: &cancellables)
+
+        analysisPipeline.$currentOverlayAnnotations
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] annotations in
+                self?.coachingOverlayAnnotations = annotations
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Public API
@@ -192,7 +293,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         intrinsics: simd_float3x3,
         imageResolution: CGSize,
         planeAnchors: [ARPlaneAnchor],
-        timestamp: TimeInterval
+        timestamp: TimeInterval,
+        capturedImage: CVPixelBuffer? = nil
     ) {
         currentCameraTransform = cameraTransform
         if isMarkingMode, let depthMap {
@@ -215,7 +317,14 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Проверяем готовность AR сессии
         if !isARSessionReady && !detectedPlanes.isEmpty {
             isARSessionReady = true
-            statusMessage = "AR готов. Нажмите + для ввода описания"
+            refreshIdleStatusMessage()
+        }
+        
+        if let capturedImage {
+            if isRecording {
+                cameraService.appendCapturedPixelBuffer(capturedImage, at: timestamp)
+            }
+            processHintFrameIfNeeded(pixelBuffer: capturedImage, timestamp: timestamp)
         }
         
         // DETR детекция отключена - используем только ручную разметку и LiDAR
@@ -229,8 +338,47 @@ final class SceneGeneratorViewModel: ObservableObject {
             intrinsics: frame.camera.intrinsics,
             imageResolution: frame.camera.imageResolution,
             planeAnchors: frame.anchors.compactMap { $0 as? ARPlaneAnchor },
-            timestamp: frame.timestamp
+            timestamp: frame.timestamp,
+            capturedImage: frame.capturedImage
         )
+    }
+
+    func prepareWorkspace() {
+        prepareWorkspaceIfNeeded()
+    }
+
+    func persistWorkspaceState() {
+        Task { await persistProjectSnapshot() }
+    }
+
+    func attachARView(_ arView: ARView) {
+        let isNewAttachment = self.arView !== arView
+        self.arView = arView
+        prepareWorkspaceIfNeeded()
+        if isNewAttachment {
+            hasRestoredPersistedEntities = false
+        }
+        restorePersistedEntitiesIfNeeded()
+    }
+
+    func makeSessionConfiguration(depthEnabled: Bool) -> ARWorldTrackingConfiguration {
+        let configuration = ARWorldTrackingConfiguration()
+        configuration.planeDetection = [.horizontal]
+        configuration.environmentTexturing = .none
+
+        if let initialWorldMap {
+            configuration.initialWorldMap = initialWorldMap
+        }
+
+        if depthEnabled {
+            if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
+                configuration.frameSemantics.insert(.smoothedSceneDepth)
+            } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                configuration.frameSemantics.insert(.sceneDepth)
+            }
+        }
+
+        return configuration
     }
     
     /// Генерирует сцену из текстового описания
@@ -369,10 +517,12 @@ final class SceneGeneratorViewModel: ObservableObject {
         
         // 4. Создаём 3D объекты в AR
         await placeObjectsInAR(planned)
-        
+
         isGenerating = false
-        statusMessage = "Сцена создана! Нажмите ▶️ для воспроизведения"
-        
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
+        Task { await persistProjectSnapshot() }
+
         // Закрываем sheet
         showInputSheet = false
     }
@@ -392,6 +542,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         beatTimelineItems = buildBeatTimelineItems(for: planned, script: parsedScript)
         isPlaying = true
         resetPlaybackUIState(clearTimeline: false)
+        refreshWorkspaceMode()
         statusMessage = "Воспроизведение..."
         
         // Инициализируем счётчики анимаций
@@ -430,8 +581,9 @@ final class SceneGeneratorViewModel: ObservableObject {
         
         isPlaying = false
         resetPlaybackUIState(clearTimeline: true)
-        statusMessage = "Остановлено"
-        
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
+
         // Мгновенно возвращаем актёров на начальные позиции
         setActorsToInitialPositionsInstantly()
     }
@@ -488,6 +640,10 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Сбрасывает сцену
     func resetScene() {
+        if isRecording {
+            stopRecording()
+        }
+
         // Отменяем все анимации
         cancelAllAnimations()
         
@@ -499,11 +655,14 @@ final class SceneGeneratorViewModel: ObservableObject {
         plannedScene = nil
         parsedScript = nil
         sceneChunkState = nil
-        sceneDescription = ""
+        visualOverlays = []
         isPlaying = false
+        isHintsEnabled = false
+        clearHintPresentation()
         resetPlaybackUIState(clearTimeline: true)
-        
-        statusMessage = "Сцена очищена"
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
+        Task { await persistProjectSnapshot() }
     }
     
     /// Показывает sheet ввода
@@ -516,12 +675,11 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Включает/выключает режим разметки
     func toggleMarkingMode() {
         isMarkingMode.toggle()
-        if isMarkingMode {
-            statusMessage = "Режим разметки: тапните на объект"
-        } else {
+        if !isMarkingMode {
             latestDepthFrameSnapshot = nil
-            statusMessage = "Режим разметки выключен"
         }
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
     }
     
     /// Обрабатывает tap для размещения маркера
@@ -633,8 +791,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         pendingMarkerPosition = nil
         showMarkerNameInput = false
         isMarkingMode = false
-        
-        statusMessage = "Объект '\(marker.name)' отмечен"
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
     }
     
     /// Отменяет создание маркера
@@ -654,7 +812,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         }
         
         cleanupMarkersAnchorIfNeeded()
-        statusMessage = "Маркер удалён"
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
     }
     
     /// Удаляет все маркеры
@@ -668,7 +827,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         markerEntities.removeAll()
         
         cleanupMarkersAnchorIfNeeded()
-        statusMessage = "Все маркеры удалены"
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
     }
     
     /// Размещает визуальный маркер в AR (точно в указанной позиции)
@@ -996,7 +1156,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         if completedActorAnimations >= totalActorAnimations && isPlaying {
             isPlaying = false
             resetPlaybackUIState(clearTimeline: true)
-            statusMessage = "Воспроизведение завершено"
+            refreshWorkspaceMode()
+            refreshIdleStatusMessage()
         }
     }
 
@@ -1327,6 +1488,245 @@ final class SceneGeneratorViewModel: ObservableObject {
     ) -> [SceneObject] {
         // Метод больше не используется - парсер сам обрабатывает markedObjects
         return []
+    }
+
+    private func prepareWorkspaceIfNeeded() {
+        if !hasAutoPromptedDescription {
+            if sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                showInputSheet = true
+            }
+            hasAutoPromptedDescription = true
+        }
+    }
+
+    func toggleHintsEnabled() {
+        isHintsEnabled.toggle()
+        if !isHintsEnabled {
+            clearHintPresentation()
+        }
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
+    }
+
+    func startRecording() {
+        guard plannedScene != nil else {
+            errorMessage = "Сначала создайте сцену"
+            return
+        }
+
+        guard !isRecording else { return }
+
+        if !recorderPrepared {
+            cameraService.prepareRecorder()
+            recorderPrepared = cameraService.isRecorderPrepared
+        }
+
+        guard recorderPrepared else {
+            errorMessage = "Не удалось подготовить запись"
+            return
+        }
+
+        prepareWorkspaceIfNeeded()
+        if isPlaying {
+            stopScene()
+        }
+
+        isHintsEnabled = true
+        cameraService.startRecording()
+        isRecording = true
+        recordingElapsedTime = 0
+        recordingStartDate = Date()
+        recordingTimer?.invalidate()
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, let recordingStartDate = self.recordingStartDate else { return }
+                self.recordingElapsedTime = Date().timeIntervalSince(recordingStartDate)
+            }
+        }
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
+    }
+
+    func stopRecording() {
+        guard isRecording else { return }
+
+        cameraService.stopRecording()
+        recorderPrepared = cameraService.isRecorderPrepared
+        isRecording = false
+        if let recordingStartDate {
+            recordingElapsedTime = Date().timeIntervalSince(recordingStartDate)
+        }
+        recordingStartDate = nil
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
+        Task { await persistProjectSnapshot() }
+    }
+
+    private func processHintFrameIfNeeded(pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) {
+        guard isHintsEnabled else {
+            if liveHint != nil || !coachingOverlayAnnotations.isEmpty {
+                clearHintPresentation()
+            }
+            return
+        }
+
+        let context = makeHintContext(pixelBuffer: pixelBuffer, timestamp: timestamp)
+
+        if timestamp - lastHighHintTimestamp >= highHintFrameInterval {
+            lastHighHintTimestamp = timestamp
+            analysisPipeline.ingestHigh(context: context)
+        }
+
+        if timestamp - lastMediumHintTimestamp >= mediumHintFrameInterval {
+            lastMediumHintTimestamp = timestamp
+            analysisPipeline.ingestMedium(context: context)
+        }
+
+        if timestamp - lastLowHintTimestamp >= lowHintFrameInterval {
+            lastLowHintTimestamp = timestamp
+            analysisPipeline.ingestLow(context: context)
+        }
+    }
+
+    private func makeHintContext(pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) -> FrameContext {
+        FrameContext(
+            pixelBuffer: pixelBuffer,
+            timestamp: CMTimeMakeWithSeconds(timestamp, preferredTimescale: CMTimeScale(NSEC_PER_SEC)),
+            orientation: .up,
+            isStable: !isMarkingMode,
+            shakeLevel: isRecording ? 0.2 : 0.05,
+            motionState: isRecording ? .moving : .still
+        )
+    }
+
+    private func clearHintPresentation() {
+        analysisPipeline.clearLivePresentationState()
+        analysisPipeline.clearPausePresentationState()
+        coachingOverlayState = .init(primaryBoundingBox: nil,
+                                     horizonAngle: 0,
+                                     horizonConfidence: 0,
+                                     saliencyBalance: 0)
+        liveHint = nil
+        coachingOverlayAnnotations = []
+    }
+
+    private func persistProjectMetadata() {
+        currentProject = buildCurrentProject()
+        do {
+            try projectStore.saveUnifiedSceneProject(currentProject, worldMap: initialWorldMap)
+        } catch {
+            print("Error saving unified scene metadata: \(error)")
+        }
+    }
+
+    private func persistProjectSnapshot() async {
+        currentProject = buildCurrentProject()
+        let worldMap = await captureCurrentWorldMap() ?? initialWorldMap
+        if let worldMap {
+            initialWorldMap = worldMap
+        }
+
+        do {
+            try projectStore.saveUnifiedSceneProject(currentProject, worldMap: worldMap)
+        } catch {
+            print("Error saving unified scene snapshot: \(error)")
+        }
+    }
+
+    private func captureCurrentWorldMap() async -> ARWorldMap? {
+        guard let arView else { return initialWorldMap }
+        return await withCheckedContinuation { continuation in
+            arView.session.getCurrentWorldMap { worldMap, error in
+                if let error {
+                    print("Error capturing current world map: \(error)")
+                }
+                continuation.resume(returning: worldMap)
+            }
+        }
+    }
+
+    private func buildCurrentProject() -> UnifiedSceneProject {
+        var project = currentProject
+        project.name = sceneTitle
+        project.updatedAt = Date()
+        project.sceneDescription = sceneDescription
+        project.markedObjects = markedObjects
+        project.parsedScript = parsedScript
+        project.plannedScene = plannedScene
+        project.sceneChunkState = sceneChunkState
+        project.visualOverlays = visualOverlays
+        return project
+    }
+
+    private func restorePersistedEntitiesIfNeeded() {
+        guard arView != nil, !hasRestoredPersistedEntities else { return }
+
+        hasRestoredPersistedEntities = true
+        for marker in markedObjects where markerEntities[marker.id] == nil {
+            placeMarkerEntity(for: marker)
+        }
+
+        if let plannedScene {
+            Task {
+                await placeObjectsInAR(plannedScene)
+                refreshWorkspaceMode()
+                refreshIdleStatusMessage()
+            }
+        } else {
+            refreshWorkspaceMode()
+            refreshIdleStatusMessage()
+        }
+    }
+
+    private func refreshWorkspaceMode() {
+        if isPlaying {
+            workspaceMode = .previewPlayback
+            return
+        }
+
+        if isRecording {
+            workspaceMode = .recording
+            return
+        }
+
+        if isMarkingMode {
+            workspaceMode = .marking
+            return
+        }
+
+        if plannedScene != nil {
+            workspaceMode = isHintsEnabled ? .shooting : .generatedReady
+            return
+        }
+
+        workspaceMode = .editingScene
+    }
+
+    private func refreshIdleStatusMessage() {
+        guard !isGenerating else { return }
+
+        switch workspaceMode {
+        case .editingScene:
+            if !isARSessionReady {
+                statusMessage = "Наведите камеру на поверхность"
+            } else if sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                statusMessage = "Добавьте описание сцены"
+            } else {
+                statusMessage = "Можно разметить сцену или запустить генерацию"
+            }
+        case .marking:
+            statusMessage = "Тапните по объекту, который хотите отметить"
+        case .generatedReady:
+            statusMessage = "Сцена готова. Можно открыть превью или начать запись"
+        case .shooting:
+            statusMessage = "AR-сцена готова к съёмке, подсказки включены"
+        case .recording:
+            statusMessage = "Идёт запись, подсказки включены автоматически"
+        case .previewPlayback:
+            statusMessage = "Предпросмотр блокинга сцены"
+        }
     }
 }
 

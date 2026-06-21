@@ -20,14 +20,13 @@ class SOInteractor {
 
 extension SOInteractor: SOInteractorProtocol {
     func deleteScene(with title: String) {
-        DBService.shared.deleteMap(with: title) { deleted in
+        DBService.shared.deleteUnifiedSceneProject(named: title) { deleted in
             self.presenter?.updateUI()
         }
     }
     
     
     func getSceneNames() -> [String] {
-        guard let sceneNames = DBService.shared.getAllARWorldMapTitles() else { return [] }
-        return sceneNames
+        DBService.shared.listUnifiedSceneProjects().map(\.name)
     }
 }

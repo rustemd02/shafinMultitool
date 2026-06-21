@@ -23,6 +23,7 @@ struct ARSceneContainer: UIViewRepresentable {
         arView.session.delegate = context.coordinator
         context.coordinator.updateSessionState(
             for: arView,
+            configuration: viewModel.makeSessionConfiguration(depthEnabled: viewModel.isMarkingMode),
             depthEnabled: viewModel.isMarkingMode,
             isGenerating: viewModel.isGenerating,
             force: true
@@ -48,7 +49,7 @@ struct ARSceneContainer: UIViewRepresentable {
         
         // Сохраняем ссылку на ARView в ViewModel
         DispatchQueue.main.async {
-            viewModel.arView = arView
+            viewModel.attachARView(arView)
         }
         
         // Добавляем жест для отладки
@@ -62,6 +63,7 @@ struct ARSceneContainer: UIViewRepresentable {
         // Во время генерации приостанавливаем AR-сессию, чтобы не греть устройство параллельно с LLM.
         context.coordinator.updateSessionState(
             for: uiView,
+            configuration: viewModel.makeSessionConfiguration(depthEnabled: viewModel.isMarkingMode),
             depthEnabled: viewModel.isMarkingMode,
             isGenerating: viewModel.isGenerating
         )
@@ -90,28 +92,34 @@ struct ARSceneContainer: UIViewRepresentable {
             self.viewModel = viewModel
         }
 
-        func updateSessionState(for arView: ARView, depthEnabled: Bool, isGenerating: Bool, force: Bool = false) {
+        func updateSessionState(for arView: ARView,
+                                configuration: ARWorldTrackingConfiguration,
+                                depthEnabled: Bool,
+                                isGenerating: Bool,
+                                force: Bool = false) {
             if isGenerating {
                 pauseSessionIfNeeded(for: arView)
                 return
             }
 
             if isSessionPausedForGeneration {
-                resumeSessionIfNeeded(for: arView, depthEnabled: depthEnabled)
+                resumeSessionIfNeeded(for: arView, configuration: configuration, depthEnabled: depthEnabled)
                 return
             }
 
-            configureSessionIfNeeded(for: arView, depthEnabled: depthEnabled, force: force)
+            configureSessionIfNeeded(for: arView, configuration: configuration, depthEnabled: depthEnabled, force: force)
         }
 
-        func configureSessionIfNeeded(for arView: ARView, depthEnabled: Bool, force: Bool = false) {
+        func configureSessionIfNeeded(for arView: ARView,
+                                      configuration: ARWorldTrackingConfiguration,
+                                      depthEnabled: Bool,
+                                      force: Bool = false) {
             guard !isSessionPausedForGeneration else { return }
 
             if !force, isDepthEnabled == depthEnabled {
                 return
             }
 
-            let configuration = makeConfiguration(depthEnabled: depthEnabled)
             arView.session.run(configuration)
             isDepthEnabled = depthEnabled
         }
@@ -122,31 +130,14 @@ struct ARSceneContainer: UIViewRepresentable {
             isSessionPausedForGeneration = true
         }
 
-        private func resumeSessionIfNeeded(for arView: ARView, depthEnabled: Bool) {
+        private func resumeSessionIfNeeded(for arView: ARView,
+                                           configuration: ARWorldTrackingConfiguration,
+                                           depthEnabled: Bool) {
             guard isSessionPausedForGeneration else { return }
-            let configuration = makeConfiguration(depthEnabled: depthEnabled)
             arView.session.run(configuration)
             isDepthEnabled = depthEnabled
             isSessionPausedForGeneration = false
             lastProcessedFrameTimestamp = 0
-        }
-
-        private func makeConfiguration(depthEnabled: Bool) -> ARWorldTrackingConfiguration {
-            let configuration = ARWorldTrackingConfiguration()
-
-            // Для Scene Generator достаточно горизонтальных плоскостей — это дешевле по CPU/GPU.
-            configuration.planeDetection = [.horizontal]
-            configuration.environmentTexturing = .none
-
-            if depthEnabled {
-                if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
-                    configuration.frameSemantics.insert(.smoothedSceneDepth)
-                } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-                    configuration.frameSemantics.insert(.sceneDepth)
-                }
-            }
-
-            return configuration
         }
         
         // MARK: - ARSessionDelegate
@@ -177,7 +168,8 @@ struct ARSceneContainer: UIViewRepresentable {
                     intrinsics: cameraIntrinsics,
                     imageResolution: imageResolution,
                     planeAnchors: planeAnchors,
-                    timestamp: timestamp
+                    timestamp: timestamp,
+                    capturedImage: frame.capturedImage
                 )
             }
         }

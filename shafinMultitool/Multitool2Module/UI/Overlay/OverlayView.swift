@@ -10,6 +10,7 @@ import AVFoundation
 import UIKit
 
 struct OverlayView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: CameraViewModel
     let cameraManager: CameraManager
     @State private var decisionTrace: DecisionTracePresentation?
@@ -174,6 +175,14 @@ struct OverlayView: View {
     private func topControls(ux: CameraOverlayUXPresentation) -> some View {
         VStack {
             HStack(alignment: .top) {
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.black.opacity(0.88))
+                        .padding(10)
+                        .background(Color.white.opacity(0.92), in: Circle())
+                }
+                .accessibilityLabel("Закрыть режим съёмки")
+
                 if ux.canShowDecisionTrace {
                     Button(action: showDecisionTrace) {
                         Label("Почему?", systemImage: "questionmark.circle.fill")

@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Модальное окно для ввода описания сцены
+/// Модальное окно для ввода сценария сцены
 struct SceneInputSheet: View {
     
     @ObservedObject var viewModel: SceneGeneratorViewModel
@@ -75,7 +75,7 @@ struct SceneInputSheet: View {
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(.white)
             
-            Text("Создание сцены")
+            Text("Сценарий сцены")
                 .font(.system(size: 26, weight: .bold))
                 .foregroundColor(.white)
         }
@@ -85,14 +85,14 @@ struct SceneInputSheet: View {
     
     private var textInputSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Описание сцены")
+            Text("Сценарий")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(secondaryText)
             
             ZStack(alignment: .topLeading) {
                 // Placeholder
                 if viewModel.sceneDescription.isEmpty {
-                    Text("Например: 2 актёра идут навстречу друг другу, проходят мимо шкафа...")
+                    Text("Например: двое идут навстречу друг другу, один останавливается у стойки, второй проходит мимо шкафа...")
                         .font(.system(size: 16))
                         .foregroundColor(.white.opacity(0.3))
                         .padding(.horizontal, 16)
@@ -294,7 +294,7 @@ struct SceneInputSheet: View {
                                 .font(.system(size: 18, weight: .semibold))
                         }
                         
-                        Text(viewModel.isGenerating ? "Создаю..." : "Создать сцену")
+                        Text(viewModel.isGenerating ? "Собираю сцену..." : "Сохранить и собрать сцену")
                             .font(.system(size: 17, weight: .semibold))
                     }
                     .foregroundColor(

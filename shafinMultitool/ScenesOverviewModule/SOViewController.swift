@@ -37,7 +37,7 @@ class SOViewController: UIViewController {
         view.backgroundColor = #colorLiteral(red: 0.1125308201, green: 0.1222153977, blue: 0.1352786422, alpha: 1)
         
         view.addSubview(backgroundImageView)
-        backgroundImageView.image = UIImage(named: "background")!
+        backgroundImageView.image = UIImage(named: "background")
         backgroundImageView.snp.makeConstraints { make in
             make.center.equalToSuperview()
         }
@@ -137,7 +137,9 @@ extension SOViewController: UICollectionViewDelegate, UICollectionViewDataSource
             
             let cancelAction = UIAlertAction(title: "Отмена", style: .cancel, handler: nil)
             let saveAction = UIAlertAction(title: "Сохранить", style: .default) { _ in
-                guard let nameTextField = alertController.textFields?.first, let newName = nameTextField.text else { return }
+                guard let nameTextField = alertController.textFields?.first,
+                      let newName = nameTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !newName.isEmpty else { return }
                 if self.sceneNames.contains(newName) {
                     collectionView.shake()
                     return

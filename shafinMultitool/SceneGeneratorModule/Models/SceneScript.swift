@@ -12,7 +12,7 @@ import UIKit
 // MARK: - Marked Object (User-placed real world marker)
 
 /// Объект, размеченный пользователем вручную в реальном пространстве
-struct MarkedObject: Identifiable, Equatable {
+struct MarkedObject: Identifiable, Equatable, Codable {
     let id: UUID
     var name: String                    // Название объекта (шкаф, стол и т.д.)
     var type: SceneObject.ObjectType    // Тип объекта
@@ -562,11 +562,11 @@ struct PlaybackPathAnnotation: Codable, Equatable {
 }
 
 /// Результат планирования сцены - готовые координаты для размещения
-struct PlannedScene {
+struct PlannedScene: Codable, Equatable {
     let placedActors: [PlacedActor]
     let placedObjects: [PlacedObject]
     
-    struct PlacedActor: Identifiable {
+    struct PlacedActor: Identifiable, Codable, Equatable {
         let id: String
         let actorId: String
         let type: SceneActor.ActorType
@@ -589,7 +589,7 @@ struct PlannedScene {
         }
     }
     
-    struct PlacedObject: Identifiable {
+    struct PlacedObject: Identifiable, Codable, Equatable {
         let id: String
         let objectId: String
         let type: SceneObject.ObjectType
@@ -610,7 +610,7 @@ struct PlannedScene {
             placementSource != .virtual
         }
 
-        enum PlacementSource: String {
+        enum PlacementSource: String, Codable {
             case marked
             case detected
             case virtual

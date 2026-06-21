@@ -64,4 +64,4 @@ Last verified commit: `6e33b14d9cb001c38cdd1271bbbc56863392212e` plus dirty work
 
 | Claim ID | Утверждение | Тип | Источник подтверждения | Где использовать | Статус |
 |---|---|---|---|---|---|
-| CL-MASTER-SYNC-2026-05-29 | Локальные chapter-файлы синхронизированы с актуальным master-файлом `/Users/unterlantas/Downloads/ДИССЕР.md`; это техническая синхронизация текста, а не новая проверка всех научных утверждений и источников. | sync_note | EV-MASTER-SYNC-2026-05-29 | all synced local chapters | verified |
+| CL-MASTER-SYNC-2026-06-17 | Локальные chapter-файлы синхронизированы с актуальным master-файлом `/Users/unterlantas/Downloads/ДИССЕР-2.md`; это техническая синхронизация текста, а не новая проверка всех научных утверждений и источников. | sync_note | EV-MASTER-SYNC-2026-05-29 | all synced local chapters | verified |
