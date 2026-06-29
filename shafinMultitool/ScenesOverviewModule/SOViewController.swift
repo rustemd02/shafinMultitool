@@ -127,7 +127,6 @@ extension SOViewController: UICollectionViewDelegate, UICollectionViewDataSource
     }
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        guard scenesListCollectionView.dequeueReusableCell(withReuseIdentifier: "\(SceneInfoCell.self)", for: indexPath) is SceneInfoCell else { return }
         if indexPath.item == 0 {
             let alertController = UIAlertController(title: "Введите название новой сцены:", message: nil, preferredStyle: .alert)
             

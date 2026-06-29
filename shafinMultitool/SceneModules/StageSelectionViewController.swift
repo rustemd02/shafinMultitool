@@ -206,5 +206,10 @@ final class StageSelectionViewController: UIViewController {
     }
 }
 
-class LandscapeHostingController<Content: View>: UIHostingController<Content> {
+protocol InteractivePopGestureControlling: AnyObject {
+    var disablesInteractivePopGesture: Bool { get }
+}
+
+class LandscapeHostingController<Content: View>: UIHostingController<Content>, InteractivePopGestureControlling {
+    var disablesInteractivePopGesture = false
 }

@@ -22,6 +22,7 @@ final class LLMParserService: LocalScenePlanProvider {
     private static let v9PatchMaxRetry: Int = 1
     private static let v9PatchMaxTokens: Int32 = 512
     private static let v9PatchWallClockBudgetSeconds: TimeInterval = 8
+    private static let v9PatchRetryEnabledDefaultsKey = "scene_generator_v9_patch_retry_enabled"
     private static let v9EventTargetRequiredTypes: Set<SceneAction.ActionType> = [
         .lookAt, .pickUp, .open, .close, .approach, .putDown, .give, .passBy, .stop
     ]
@@ -99,8 +100,8 @@ final class LLMParserService: LocalScenePlanProvider {
                     .sorted()
                     .joined(separator: ", ")
                 let error = availableGGUF.isEmpty
-                    ? "V8 GGUF модель не найдена в приложении"
-                    : "V8 GGUF модель не найдена. Доступные GGUF: [\(availableGGUF)]"
+                    ? "GGUF модель Scene Generator не найдена в приложении"
+                    : "Подходящая GGUF модель Scene Generator не найдена. Доступные GGUF: [\(availableGGUF)]"
                 print("❌ [LLM] \(error)")
                 self.withStateLock {
                     self.loadingState = .failed(error)
@@ -151,12 +152,6 @@ final class LLMParserService: LocalScenePlanProvider {
     }
 
     private func loadV9ContextIfNeeded(_ kind: V9ContextKind) async -> LlamaContext? {
-        await loadModelIfNeeded()
-
-        if !isAvailable {
-            return nil
-        }
-
         if let existing = withStateLock({
             switch kind {
             case .eventTable:
@@ -201,6 +196,26 @@ final class LLMParserService: LocalScenePlanProvider {
             print("⚠️ [LLM][V9] Не удалось загрузить \(kind == .eventTable ? "event_table" : "patch_ops") context: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    func releaseModelResources(reason: String) {
+        let hadResources = withStateLock {
+            let hadResources = llamaContext != nil || eventTableLlamaContext != nil || patchOpsLlamaContext != nil || loadingState == .loaded
+            llamaContext = nil
+            eventTableLlamaContext = nil
+            patchOpsLlamaContext = nil
+            loadingTask = nil
+            loadingState = .notLoaded
+            return hadResources
+        }
+        guard hadResources else { return }
+        let message = "🤖 [LLM] Resources released: reason=\(reason)"
+        print(message)
+        SceneGeneratorDiagnosticsLogger.shared.log(message)
+    }
+
+    private static func isV9PatchRetryEnabled() -> Bool {
+        UserDefaults.standard.bool(forKey: v9PatchRetryEnabledDefaultsKey)
     }
 
     // MARK: - Public API
@@ -617,7 +632,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 reasonCodes.append("v9.event_table_verifier_issues_detected")
             }
 
-            if !verifierIssues.isEmpty {
+            if !verifierIssues.isEmpty && Self.isV9PatchRetryEnabled() {
                 let patchDeadline = startedAt + Self.v9PatchWallClockBudgetSeconds
                 var retriesLeft = Self.v9PatchMaxRetry
                 while retriesLeft > 0, CFAbsoluteTimeGetCurrent() < patchDeadline, !verifierIssues.isEmpty {
@@ -652,6 +667,8 @@ final class LLMParserService: LocalScenePlanProvider {
                 if !verifierIssues.isEmpty {
                     reasonCodes.append("v9.patch_retry_failed")
                 }
+            } else if !verifierIssues.isEmpty {
+                reasonCodes.append("v9.patch_retry_disabled_live_demo")
             }
 
             if attemptIndex > 0 {
@@ -2345,8 +2362,13 @@ final class LLMParserService: LocalScenePlanProvider {
 
     private func modelSelectionScore(for filename: String) -> Int {
         var score = 0
+        if filename.contains("v9.3") { score += 400 }
+        if filename.contains("v9") { score += 250 }
+        if filename.contains("event") { score += 80 }
+        if filename.contains("sft") { score += 40 }
+        if filename.contains("q4") { score += 20 }
         if filename.contains("v8") { score += 100 }
-        if filename.contains("iter1") || filename.contains("orpo") { score += 40 }
+        if filename.contains("iter1") || filename.contains("orpo") { score += 10 }
         if filename.contains("qwen3") { score += 20 }
         if filename.contains("qwen2.5") { score -= 1000 }
         return score
@@ -2392,7 +2414,7 @@ final class LLMParserService: LocalScenePlanProvider {
             #"actor-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
             "",
             #"object ::= "{" ws "\"ref\"" ws ":" ws id-string "," ws "\"type\"" ws ":" ws object-type "," ws "\"relativePosition\"" ws ":" ws relative-pos object-name object-marked-id ws "}""#,
-            #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"tv\"" | "\"generic\"""#,
+            #"object-type ::= "\"table\"" | "\"chair\"" | "\"couch\"" | "\"bed\"" | "\"door\"" | "\"window\"" | "\"cabinet\"" | "\"shelf\"" | "\"tv\"" | "\"phone\"" | "\"generic\"""#,
             #"object-name ::= ("," ws "\"name\"" ws ":" ws text-string) | """#,
             #"object-marked-id ::= ("," ws "\"markedObjectID\"" ws ":" ws id-string) | """#,
             #"relative-pos ::= "\"left\"" | "\"right\"" | "\"center\"" | "\"background\"" | "\"foreground\"" | "\"unknown\"""#,

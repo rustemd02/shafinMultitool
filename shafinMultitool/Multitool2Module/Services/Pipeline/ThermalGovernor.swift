@@ -34,10 +34,7 @@ final class ThermalGovernor {
         UIDevice.current.isBatteryMonitoringEnabled = true
         self.thermalStateProvider = { processInfo.thermalState }
         self.batteryLevelProvider = batteryLevelProvider
-        self.lastBudget = Budget(highPriorityFrequency: 15,
-                                 mediumPriorityFrequency: 10,
-                                 lowPriorityFrequency: 1,
-                                 heavyModelsEnabled: true)
+        self.lastBudget = Self.budget(for: .nominal)
     }
 
     init(thermalStateProvider: @escaping ThermalStateProvider,
@@ -45,17 +42,14 @@ final class ThermalGovernor {
         UIDevice.current.isBatteryMonitoringEnabled = true
         self.thermalStateProvider = thermalStateProvider
         self.batteryLevelProvider = batteryLevelProvider
-        self.lastBudget = Budget(highPriorityFrequency: 15,
-                                 mediumPriorityFrequency: 10,
-                                 lowPriorityFrequency: 1,
-                                 heavyModelsEnabled: true)
+        self.lastBudget = Self.budget(for: .nominal)
     }
 
     func currentTier() -> ThermalBudgetTier {
         switch thermalStateProvider() {
-        case .nominal, .fair:
+        case .nominal:
             return .unrestricted
-        case .serious:
+        case .fair, .serious:
             return .constrained
         case .critical:
             return .critical
@@ -69,25 +63,53 @@ final class ThermalGovernor {
     }
 
     func nextBudget() -> Budget {
-        // 🔥 THERMAL OPTIMIZATION DISABLED: всегда максимальная производительность!
-        // Игнорируем thermal state и battery level
-        
-        let tier = currentTier()  // Оставляем для логов
+        let thermalState = thermalStateProvider()
         let battery = batteryLevelProvider()
         let lowBattery = battery >= 0 && battery < 0.2
-        
-        // Всегда возвращаем максимальный бюджет
-        lastBudget = Budget(highPriorityFrequency: 15,
-                            mediumPriorityFrequency: 10,
-                            lowPriorityFrequency: 2,  // Увеличено с 1 до 2
-                            heavyModelsEnabled: true)  // 🔥 ВСЕГДА true!
-        
-        // Логируем что игнорируем thermal
-        if tier != .unrestricted || lowBattery {
-            // В продакшене здесь бы были ограничения, но сейчас игнорируем
+
+        let effectiveState: ProcessInfo.ThermalState
+        if lowBattery {
+            switch thermalState {
+            case .critical:
+                effectiveState = .critical
+            default:
+                effectiveState = .serious
+            }
+        } else {
+            effectiveState = thermalState
         }
-        
+
+        lastBudget = Self.budget(for: effectiveState)
         return lastBudget
     }
-}
 
+    private static func budget(for state: ProcessInfo.ThermalState) -> Budget {
+        switch state {
+        case .nominal:
+            return Budget(highPriorityFrequency: 6,
+                          mediumPriorityFrequency: 2,
+                          lowPriorityFrequency: 0.25,
+                          heavyModelsEnabled: true)
+        case .fair:
+            return Budget(highPriorityFrequency: 4,
+                          mediumPriorityFrequency: 1,
+                          lowPriorityFrequency: 0,
+                          heavyModelsEnabled: false)
+        case .serious:
+            return Budget(highPriorityFrequency: 2,
+                          mediumPriorityFrequency: 0.5,
+                          lowPriorityFrequency: 0,
+                          heavyModelsEnabled: false)
+        case .critical:
+            return Budget(highPriorityFrequency: 0.5,
+                          mediumPriorityFrequency: 0,
+                          lowPriorityFrequency: 0,
+                          heavyModelsEnabled: false)
+        @unknown default:
+            return Budget(highPriorityFrequency: 2,
+                          mediumPriorityFrequency: 0.5,
+                          lowPriorityFrequency: 0,
+                          heavyModelsEnabled: false)
+        }
+    }
+}

@@ -67,6 +67,82 @@ final class CameraAnalysisDomainContractsTests: XCTestCase {
         XCTAssertFalse(snapshot.validate().contains("faceDetected requires personCount > 0"))
     }
 
+    func testFrameFeatureSnapshotPreservesTopObjectRegion() throws {
+        let cupRegion = NormalizedRect(x: 0.12, y: 0.30, width: 0.18, height: 0.34)
+        let snapshot = makeSnapshot(
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "cup",
+                topObjectConfidence: 0.84,
+                topObjectRegion: cupRegion,
+                primaryCandidateRegion: cupRegion,
+                primaryCandidateConfidence: 0.84
+            )
+        )
+
+        XCTAssertEqual(snapshot.subjectSignals.topObjectRegion, cupRegion)
+
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(FrameFeatureSnapshot.self, from: encoded)
+
+        XCTAssertEqual(decoded.subjectSignals.topObjectRegion, cupRegion)
+    }
+
+    func testFrameFeatureSnapshotPreservesFaceRegion() throws {
+        let faceRegion = NormalizedRect(x: 0.22, y: 0.16, width: 0.18, height: 0.24)
+        let bodyRegion = NormalizedRect(x: 0.16, y: 0.28, width: 0.30, height: 0.56)
+        let snapshot = makeSnapshot(
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: faceRegion,
+                primaryCandidateRegion: bodyRegion,
+                primaryCandidateConfidence: 0.88
+            )
+        )
+
+        XCTAssertEqual(snapshot.subjectSignals.faceRegion, faceRegion)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateRegion, bodyRegion)
+
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(FrameFeatureSnapshot.self, from: encoded)
+
+        XCTAssertEqual(decoded.subjectSignals.faceRegion, faceRegion)
+        XCTAssertEqual(decoded.subjectSignals.primaryCandidateRegion, bodyRegion)
+    }
+
+    func testFrameFeatureSnapshotPreservesSubjectLightingMetrics() throws {
+        let metrics = FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics(
+            subjectMeanLuma: 1.4,
+            backgroundMeanLuma: -0.2,
+            subjectToBackgroundDelta: -1.7,
+            subjectClippedBrightRatio: 0.12,
+            backgroundHotspotRatio: 1.3
+        )
+        let snapshot = makeSnapshot(
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.2,
+                keyToFillRatio: nil,
+                subjectLighting: metrics
+            )
+        )
+
+        XCTAssertEqual(snapshot.lighting.subjectLighting?.subjectMeanLuma, 1.0)
+        XCTAssertEqual(snapshot.lighting.subjectLighting?.backgroundMeanLuma, 0.0)
+        XCTAssertEqual(snapshot.lighting.subjectLighting?.subjectToBackgroundDelta, -1.0)
+        XCTAssertEqual(snapshot.lighting.subjectLighting?.subjectClippedBrightRatio, 0.12)
+        XCTAssertEqual(snapshot.lighting.subjectLighting?.backgroundHotspotRatio, 1.0)
+
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(FrameFeatureSnapshot.self, from: encoded)
+
+        XCTAssertEqual(decoded.lighting.subjectLighting, snapshot.lighting.subjectLighting)
+    }
+
     func testFrameFeatureSnapshotSupportsUnavailableSources() {
         let snapshot = FrameFeatureSnapshot(
             frameId: "f-unavailable",
@@ -2332,6 +2408,68 @@ final class FeatureSnapshotAggregatorTests: XCTestCase {
         XCTAssertEqual(snapshot.subjectSignals.primaryCandidateRegion?.x, 0.55)
     }
 
+    func testSaliencyRegionBecomesPrimaryCandidateWhenObjectDetectorIsUnavailable() {
+        let aggregator = FeatureSnapshotAggregator()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_150)
+        let saliencyRegion = CGRect(x: 0.42, y: 0.28, width: 0.24, height: 0.38)
+
+        let input = makeInput(
+            capturedAt: capturedAt,
+            motionState: .still,
+            shakeLevel: 0,
+            vision: makeVisionSample(
+                measuredAt: capturedAt.addingTimeInterval(-0.03),
+                baseConfidence: 0.48,
+                subjects: [],
+                saliencyCenter: CGPoint(x: saliencyRegion.midX, y: saliencyRegion.midY),
+                saliencyRegion: saliencyRegion,
+                faceCount: 0,
+                personCount: 0
+            ),
+            detr: nil
+        )
+
+        let snapshot = aggregator.makeSnapshot(from: input)
+
+        XCTAssertTrue(snapshot.sources.vision.available)
+        XCTAssertFalse(snapshot.sources.detr.available)
+        XCTAssertNil(snapshot.subjectSignals.topObjectLabel)
+        XCTAssertNil(snapshot.subjectSignals.topObjectRegion)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateRegion?.x, 0.42)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateRegion?.y, 0.28)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateRegion?.width, 0.24)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateRegion?.height, 0.38)
+    }
+
+    func testOversizedSaliencyRegionDoesNotBecomePrimaryObjectCandidate() {
+        let aggregator = FeatureSnapshotAggregator()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_151)
+        let oversizedRegion = CGRect(x: 0.00, y: 0.22, width: 1.00, height: 0.77)
+
+        let input = makeInput(
+            capturedAt: capturedAt,
+            motionState: .still,
+            shakeLevel: 0,
+            vision: makeVisionSample(
+                measuredAt: capturedAt.addingTimeInterval(-0.03),
+                baseConfidence: 0.48,
+                subjects: [],
+                saliencyCenter: CGPoint(x: oversizedRegion.midX, y: oversizedRegion.midY),
+                saliencyRegion: oversizedRegion,
+                faceCount: 0,
+                personCount: 0
+            ),
+            detr: nil
+        )
+
+        let snapshot = aggregator.makeSnapshot(from: input)
+
+        XCTAssertTrue(snapshot.sources.vision.available)
+        XCTAssertNil(snapshot.subjectSignals.topObjectLabel)
+        XCTAssertNil(snapshot.subjectSignals.primaryCandidateRegion)
+        XCTAssertNil(snapshot.subjectSignals.primaryCandidateConfidence)
+    }
+
     func testTieInEffectiveConfidencePrefersVisionCandidate() {
         let aggregator = FeatureSnapshotAggregator()
         let capturedAt = Date(timeIntervalSince1970: 1_776_000_200)
@@ -2638,6 +2776,51 @@ final class PipelineFeatureSnapshotAdapterTests: XCTestCase {
         XCTAssertNil(input.lighting)
         XCTAssertNil(input.detr)
         XCTAssertNil(input.aesthetic)
+    }
+}
+
+final class SuggestionEngineTests: XCTestCase {
+    func testPersonPortraitDoesNotReceiveLegacyVerticalLowerCameraTip() {
+        let engine = SuggestionEngine()
+        var features = CoachingFeatures()
+        features.motion.state = .still
+        features.subject.isFace = true
+        features.subject.isPerson = true
+        features.subject.count = 1
+        features.composition.horizontalOffset = 0.02
+        features.composition.verticalOffset = 0.72
+        features.composition.subjectAreaRatio = 0.28
+
+        let suggestions = engine.rankedSuggestions(
+            from: features,
+            timestamp: Date(timeIntervalSince1970: 1_776_020_000)
+        )
+
+        XCTAssertFalse(
+            suggestions.contains { $0.type == .composition && $0.text.contains("ниже") },
+            "Legacy vertical composition fallback should not push a readable portrait downward."
+        )
+    }
+
+    func testPersonHorizontalCompositionTipStillWorks() {
+        let engine = SuggestionEngine()
+        var features = CoachingFeatures()
+        features.motion.state = .still
+        features.subject.isPerson = true
+        features.subject.count = 1
+        features.composition.horizontalOffset = 0.72
+        features.composition.verticalOffset = 0.02
+        features.composition.subjectAreaRatio = 0.18
+
+        let suggestions = engine.rankedSuggestions(
+            from: features,
+            timestamp: Date(timeIntervalSince1970: 1_776_020_001)
+        )
+
+        XCTAssertTrue(
+            suggestions.contains { $0.type == .composition && $0.text == "Камеру правее" },
+            "The guard should only suppress unreliable vertical portrait fallback, not horizontal reframing."
+        )
     }
 }
 
@@ -3145,12 +3328,14 @@ private extension FeatureSnapshotAggregatorTests {
                           baseConfidence: Double?,
                           subjects: [FeatureSnapshotVisionSubject],
                           saliencyCenter: CGPoint?,
+                          saliencyRegion: CGRect? = nil,
                           faceCount: Int,
                           personCount: Int) -> FeatureSample<FeatureSnapshotVisionPayload> {
         FeatureSample(
             value: FeatureSnapshotVisionPayload(
                 subjects: subjects,
                 saliencyCenter: saliencyCenter,
+                saliencyRegion: saliencyRegion,
                 faceCount: faceCount,
                 personCount: personCount
             ),

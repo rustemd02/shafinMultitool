@@ -17,6 +17,7 @@ struct TrackedSubject {
 struct VisionTrackingResult {
     let subjects: [TrackedSubject]
     let saliencyCenter: CGPoint?
+    let saliencyRegion: CGRect?
     let faceCount: Int
     let personCount: Int
 }
@@ -38,6 +39,7 @@ final class VisionTracking {
                  orientation: CGImagePropertyOrientation) -> VisionTrackingResult {
         var results: [TrackedSubject] = []
         var saliencyCenter: CGPoint?
+        var saliencyRegion: CGRect?
         
         frameCount += 1
         let shouldLog = CameraLog.vision && frameCount % 30 == 0
@@ -89,6 +91,7 @@ final class VisionTracking {
             if let saliency = saliencyRequest.results?.first as? VNSaliencyImageObservation,
                let top = saliency.salientObjects?.max(by: { ($0.confidence) < ($1.confidence) }) {
                 let rawCenter = CGPoint(x: top.boundingBox.midX, y: top.boundingBox.midY)
+                saliencyRegion = top.boundingBox
                 if let prev = saliencyEMA {
                     let dx = rawCenter.x - prev.x
                     let dy = rawCenter.y - prev.y
@@ -124,12 +127,11 @@ final class VisionTracking {
             }
         } catch {
             os_log("❌ Vision error: %{public}@", log: log, type: .error, error.localizedDescription)
-            return VisionTrackingResult(subjects: results, saliencyCenter: nil, faceCount: 0, personCount: 0)
+            return VisionTrackingResult(subjects: results, saliencyCenter: nil, saliencyRegion: nil, faceCount: 0, personCount: 0)
         }
 
         let faces = results.filter { $0.isFace }.count
         let persons = results.count
-        return VisionTrackingResult(subjects: results, saliencyCenter: saliencyCenter, faceCount: faces, personCount: persons)
+        return VisionTrackingResult(subjects: results, saliencyCenter: saliencyCenter, saliencyRegion: saliencyRegion, faceCount: faces, personCount: persons)
     }
 }
-

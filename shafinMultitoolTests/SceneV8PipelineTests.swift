@@ -299,7 +299,6 @@ final class SceneV8PipelineTests: XCTestCase {
         let root = datasetWorkspaceRoot()
         let candidates = [
             root.appendingPathComponent("shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf").path,
-            root.appendingPathComponent("shafinMultitool/SceneGeneratorModule/Models/dataset_v8_plan_orpo_iter1_q4_k_m.gguf").path,
             root.appendingPathComponent("shafinMultitool/Resources/Models/qwen2.5-1.5b-instruct.Q4_K_M.gguf").path,
         ]
 
@@ -905,6 +904,40 @@ final class SceneV8PipelineTests: XCTestCase {
 
         XCTAssertEqual(trace.route, .acceptLocal)
         XCTAssertTrue(trace.reasons.contains("v8.targetless_action_downgraded"))
+    }
+
+    func testQualityGateRejectsLegacyPlanStoppedByMaxTokens() {
+        let gate = SceneQualityGate()
+        let anchors = SourceAnchorBundle.empty
+        let providerResult = ScenePlanProviderResult(
+            plan: ScenePlanIR(
+                actors: [.init(ref: "first", type: .human)],
+                objects: [],
+                beats: [.init(ref: "beat_1", actions: [.init(actorRef: "first", type: .stand)])],
+                spatialRelations: [],
+                referenceBindings: .init(actorBindings: ["first": "actor_1"])
+            ),
+            usedLegacySceneScriptBridge: false,
+            reasonCodes: ["llm.max_tokens_reached"]
+        )
+        let script = SceneScript(
+            actors: [.init(id: "actor_1", type: .human)],
+            objects: [],
+            beats: [.init(id: "beat_1", actions: [.init(id: "action_1", actorId: "actor_1", type: .stand)])],
+            spatialRelations: [],
+            originalDescription: "demo"
+        )
+
+        let trace = gate.decide(
+            anchors: anchors,
+            providerResult: providerResult,
+            compiledScript: script,
+            remoteEnabled: false
+        )
+
+        XCTAssertEqual(trace.route, .fallbackRuleOnly)
+        XCTAssertTrue(trace.reasons.contains("llm_response_truncated"))
+        XCTAssertTrue(trace.reasons.contains("llm.max_tokens_reached"))
     }
 
     func testCoordinatorPropagatesClarificationTraceIntoDiagnostics() {

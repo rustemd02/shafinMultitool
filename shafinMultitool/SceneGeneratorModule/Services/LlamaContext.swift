@@ -8,6 +8,30 @@
 import Foundation
 import llama
 
+private enum LlamaBackendLifecycle {
+    private static let lock = NSLock()
+    private static var retainCount = 0
+
+    static func retain() {
+        lock.lock()
+        defer { lock.unlock() }
+        if retainCount == 0 {
+            llama_backend_init()
+        }
+        retainCount += 1
+    }
+
+    static func release() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard retainCount > 0 else { return }
+        retainCount -= 1
+        if retainCount == 0 {
+            llama_backend_free()
+        }
+    }
+}
+
 /// Swift-обёртка для llama.cpp C API
 /// Инкапсулирует загрузку модели, токенизацию и генерацию текста
 actor LlamaContext {
@@ -96,9 +120,12 @@ actor LlamaContext {
     deinit {
         llama_sampler_free(sampling)
         llama_batch_free(batch)
-        llama_model_free(model)
+        // The context can still own backend/Metal references to model buffers.
+        // Free it before the model, otherwise Metal debug builds can trip on
+        // command buffers that still require the model's GPU buffer.
         llama_free(context)
-        llama_backend_free()
+        llama_model_free(model)
+        LlamaBackendLifecycle.release()
     }
     
     // MARK: - Factory
@@ -109,7 +136,13 @@ actor LlamaContext {
     ///   - temperature: Температура генерации (0.1 = почти детерминированная)
     /// - Returns: Инициализированный LlamaContext
     static func create(modelPath path: String, temperature: Float = 0.1, grammarStr: String? = nil) throws -> LlamaContext {
-        llama_backend_init()
+        LlamaBackendLifecycle.retain()
+        var didTransferBackendOwnership = false
+        defer {
+            if !didTransferBackendOwnership {
+                LlamaBackendLifecycle.release()
+            }
+        }
         let runtimeConfiguration = benchmarkRuntimeConfiguration()
         
         var modelParams = llama_model_default_params()
@@ -143,6 +176,7 @@ actor LlamaContext {
         }
         
         print("✅ [LLM] Модель загружена успешно")
+        didTransferBackendOwnership = true
         return LlamaContext(
             model: model,
             context: context,

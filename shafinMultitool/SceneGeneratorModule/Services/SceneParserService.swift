@@ -181,12 +181,13 @@ final class SceneParserService {
         executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
         executionSupport: SceneGeneratorExecutionSupport = .live
     ) async -> SceneBundleParsingResult {
+        let effectiveExecutionPolicy = defaultExecutionPolicy(for: description, explicit: executionPolicy)
         let result = await bundlePipeline.parse(
             description: description,
             markedObjects: markedObjects,
             mode: mode,
             previousState: previousState,
-            executionPolicy: executionPolicy,
+            executionPolicy: effectiveExecutionPolicy,
             executionSupport: executionSupport
         ) { [weak self] text, markers, state in
             self?.ruleBasedParse(text, markedObjects: markers)
@@ -205,12 +206,13 @@ final class SceneParserService {
         executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
         executionSupport: SceneGeneratorExecutionSupport = .live
     ) async -> SceneBundleParsingResult {
+        let effectiveExecutionPolicy = defaultExecutionPolicy(for: description, explicit: executionPolicy)
         let result = await bundlePipeline.parseAsync(
             description: description,
             markedObjects: markedObjects,
             mode: mode,
             previousState: previousState,
-            executionPolicy: executionPolicy,
+            executionPolicy: effectiveExecutionPolicy,
             executionSupport: executionSupport
         ) { [weak self] text, markers, _ in
             self?.ruleBasedParse(text, markedObjects: markers)
@@ -219,6 +221,17 @@ final class SceneParserService {
         updateBundleContext(with: result, fallbackLocationName: previousState?.stitchStates.last?.metadata.locationName)
         print("🤖 [PARSER_V1] bundle scenes=\(result.bundleScript.scenes.count) chunks=\(result.sceneChunks.count)")
         return result
+    }
+
+    private func defaultExecutionPolicy(
+        for description: String,
+        explicit: SceneGeneratorMobileExecutionPolicy?
+    ) -> SceneGeneratorMobileExecutionPolicy? {
+        if let explicit {
+            return explicit
+        }
+        let characterCount = description.trimmingCharacters(in: .whitespacesAndNewlines).count
+        return characterCount <= 1_200 ? .monolithicDefault : nil
     }
 
     func configureRemoteOffload(enabled: Bool, provider: RemoteScenePlanProvider?) {
@@ -241,7 +254,7 @@ final class SceneParserService {
            UserDefaults.standard.bool(forKey: v9EnabledDefaultsKey) == false {
             return .v8Hotfix
         }
-        return .v9Bridge
+        return .v9Full
     }
 
     func resetRuntimeContext() {
@@ -252,6 +265,10 @@ final class SceneParserService {
         lastExecutionTrace = nil
         remoteOffloadEnabled = false
         remotePlanProvider = nil
+    }
+
+    func releaseLocalModelResources(reason: String) {
+        llmParser.releaseModelResources(reason: reason)
     }
 
     private func makeChunkState(from script: SceneScript, fallbackLocationName: String?) -> SceneChunkState {
@@ -740,6 +757,20 @@ final class SceneParserService {
         var actorCounter = 1
         var processedTypes: Set<SceneActor.ActorType> = []
 
+        let namedActors = extractNamedHumanActorNames(from: originalText)
+        for name in namedActors {
+            actors.append(SceneActor(
+                id: "actor_\(actorCounter)",
+                type: .human,
+                name: name
+            ))
+            print("🔍 [EXTRACT_ACTORS] Создан именованный актёр: id='actor_\(actorCounter)', name='\(name)'")
+            actorCounter += 1
+        }
+        if !namedActors.isEmpty {
+            processedTypes.insert(.human)
+        }
+
         // Паттерны для поиска актёров с количеством
         let patterns: [(pattern: String, type: SceneActor.ActorType)] = [
             // С количеством
@@ -834,6 +865,58 @@ final class SceneParserService {
 
         print("🔍 [EXTRACT_ACTORS] Итого актёров: \(actors.count)")
         return actors
+    }
+
+    private func extractNamedHumanActorNames(from originalText: String) -> [String] {
+        let actionVerbs = [
+            "идёт", "идет", "идут", "останавливается", "останавливаются", "смотрит", "смотрят",
+            "берёт", "берет", "берут", "передаёт", "передает", "даёт", "дает",
+            "говорит", "подходит", "подходят", "кладёт", "кладет", "стоит", "сидит"
+        ]
+        let stopWords: Set<String> = [
+            "ИНТ", "ЭКСТ", "НАТ", "INT", "EXT", "НА", "В", "И", "У", "К", "ОТ", "ДО",
+            "СТОЛ", "ТЕЛЕФОН", "ОФИС", "КОМНАТА", "ДЕНЬ", "НОЧЬ", "УТРО", "ВЕЧЕР"
+        ]
+        var names: [String] = []
+
+        func appendName(_ raw: String) {
+            let cleaned = raw
+                .replacingOccurrences(of: ":", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty, !stopWords.contains(cleaned.uppercased()) else { return }
+            let lowercased = cleaned.lowercased()
+            guard let first = lowercased.first else { return }
+            let displayName = String(first).uppercased() + lowercased.dropFirst()
+            guard !names.contains(where: { $0.lowercased() == displayName.lowercased() }) else { return }
+            names.append(displayName)
+        }
+
+        let speakerRegex = try? NSRegularExpression(pattern: #"^\s*([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9 \-_.]{1,40}):"#)
+        let uppercaseRegex = try? NSRegularExpression(pattern: #"\b[А-ЯЁ]{2,}\b"#)
+        let verbPattern = actionVerbs.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        let capitalizedActionRegex = try? NSRegularExpression(pattern: #"(?<!\p{L})([А-ЯЁ][а-яё]{2,})\s+(?:\S+\s+){0,3}(?:"# + verbPattern + #")\b"#)
+
+        for line in originalText.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let nsLine = trimmed as NSString
+            if let match = speakerRegex?.firstMatch(in: trimmed, range: NSRange(location: 0, length: nsLine.length)),
+               match.numberOfRanges > 1 {
+                appendName(nsLine.substring(with: match.range(at: 1)))
+            }
+            let lowercased = trimmed.lowercased()
+            let hasActionVerb = actionVerbs.contains(where: { lowercased.contains($0) })
+            guard hasActionVerb else { continue }
+            for match in uppercaseRegex?.matches(in: trimmed, range: NSRange(location: 0, length: nsLine.length)) ?? [] {
+                appendName(nsLine.substring(with: match.range))
+            }
+            for match in capitalizedActionRegex?.matches(in: trimmed, range: NSRange(location: 0, length: nsLine.length)) ?? [] {
+                guard match.numberOfRanges > 1 else { continue }
+                appendName(nsLine.substring(with: match.range(at: 1)))
+            }
+        }
+
+        return names
     }
 
     // MARK: - Object Extraction

@@ -31,6 +31,7 @@ class SORouter: SORouterProtocol {
         let vc = LandscapeHostingController(
             rootView: SceneGeneratorView(projectName: title, isNewProject: false)
         )
+        vc.disablesInteractivePopGesture = true
         view?.navigationController?.pushViewController(vc, animated: true)
     }
 }

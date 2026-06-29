@@ -9,6 +9,35 @@ import Foundation
 import simd
 import ARKit
 
+struct ScenePlaneSnapshot: Equatable {
+    enum Alignment: Equatable {
+        case horizontal
+        case vertical
+        case unknown
+    }
+
+    var alignment: Alignment
+    var y: Float
+
+    init(alignment: Alignment, y: Float) {
+        self.alignment = alignment
+        self.y = y
+    }
+
+    init(anchor: ARPlaneAnchor) {
+        let alignment: Alignment
+        switch anchor.alignment {
+        case .horizontal:
+            alignment = .horizontal
+        case .vertical:
+            alignment = .vertical
+        @unknown default:
+            alignment = .unknown
+        }
+        self.init(alignment: alignment, y: anchor.transform.columns.3.y)
+    }
+}
+
 /// Сервис для планирования размещения объектов и построения траекторий в 3D пространстве
 final class SpatialPlannerService {
 
@@ -31,6 +60,13 @@ final class SpatialPlannerService {
     /// Скорость ходьбы по умолчанию (м/с)
     private let defaultWalkSpeed: Float = 0.8
 
+    /// Сценическая минимальная длительность заметного перемещения: короткие шаги не должны выглядеть как телепорт.
+    private let minimumVisibleMovementDuration: Double = 1.2
+
+    /// Длительности действий без физического перемещения, ближе к реальному отыгрышу актёрами.
+    private let lookActionDuration: Double = 1.4
+    private let propActionDuration: Double = 1.7
+
     /// LLM иногда отдаёт слишком большие minDuration; для live-demo это выглядит как зависший playback.
     private let maxModelBeatMinDuration: Double = 4.0
 
@@ -50,14 +86,14 @@ final class SpatialPlannerService {
     ///   - script: Распознанный скрипт сцены
     ///   - cameraTransform: Текущая позиция и ориентация камеры
     ///   - detectedObjects: Обнаруженные объекты в кадре
-    ///   - availablePlanes: Доступные горизонтальные плоскости
+    ///   - availablePlanes: Лёгкие snapshot'ы доступных плоскостей
     ///   - markedObjects: Размеченные пользователем объекты (высший приоритет)
     /// - Returns: PlannedScene с готовыми координатами
     func planScene(
         script: SceneScript,
         cameraTransform: simd_float4x4,
         detectedObjects: [DetectedObject],
-        availablePlanes: [ARPlaneAnchor],
+        availablePlanes: [ScenePlaneSnapshot],
         markedObjects: [MarkedObject] = []
     ) -> PlannedScene {
         print("🔍 [PLANNER] === НАЧАЛО ПЛАНИРОВАНИЯ ===")
@@ -117,7 +153,7 @@ final class SpatialPlannerService {
 
     private func calculateSceneSpace(
         cameraTransform: simd_float4x4,
-        planes: [ARPlaneAnchor]
+        planes: [ScenePlaneSnapshot]
     ) -> SceneSpace {
         // Позиция камеры
         let cameraPosition = simd_float3(
@@ -138,8 +174,8 @@ final class SpatialPlannerService {
 
         // Определяем Y координату пола
         let floorY: Float
-        if let lowestPlane = planes.filter({ $0.alignment == .horizontal }).min(by: { $0.transform.columns.3.y < $1.transform.columns.3.y }) {
-            floorY = lowestPlane.transform.columns.3.y
+        if let lowestPlane = planes.filter({ $0.alignment == .horizontal }).min(by: { $0.y < $1.y }) {
+            floorY = lowestPlane.y
         } else {
             floorY = cameraPosition.y - 1.5  // Предполагаем высоту камеры ~1.5м
         }
@@ -186,7 +222,9 @@ final class SpatialPlannerService {
     ) -> [PlannedScene.PlacedObject] {
         print("🔍 [PLANNER] planObjects: scriptObjects=\(scriptObjects.count), detectedObjects=\(detectedObjects.count), markedObjects=\(markedObjects.count)")
 
-        return scriptObjects.enumerated().map { index, scriptObject in
+        var placedObjects: [PlannedScene.PlacedObject] = []
+
+        for (index, scriptObject) in scriptObjects.enumerated() {
             print("🔍 [PLANNER] Обработка scriptObject[\(index)]: id='\(scriptObject.id)', type=\(scriptObject.type.rawValue), detectedPosition=\(scriptObject.detectedPosition != nil ? "YES" : "NO")")
             let position: Position3D
             let placementSource: PlannedScene.PlacedObject.PlacementSource
@@ -214,7 +252,16 @@ final class SpatialPlannerService {
                 placementSource = .detected
                 isDetected = true
             }
-            // 4. Создаём виртуальный объект
+            // 4. Для связанных виртуальных объектов используем уже размещённый контекст сцены.
+            else if let relatedPosition = generateRelatedVirtualObjectPosition(
+                for: scriptObject,
+                placedObjects: placedObjects
+            ) {
+                print("🔍 [PLANNER]   Виртуальный объект связан с уже размещённым объектом")
+                position = relatedPosition
+                placementSource = .virtual
+            }
+            // 5. Создаём виртуальный объект
             else {
                 print("🔍 [PLANNER]   Создаётся виртуальный объект для type=\(scriptObject.type.rawValue)")
                 position = generateObjectPosition(
@@ -225,7 +272,7 @@ final class SpatialPlannerService {
                 placementSource = .virtual
             }
 
-            return PlannedScene.PlacedObject(
+            let placedObject = PlannedScene.PlacedObject(
                 id: "placed_\(scriptObject.id)",
                 objectId: scriptObject.id,
                 type: scriptObject.type,
@@ -234,7 +281,10 @@ final class SpatialPlannerService {
                 isDetected: isDetected,
                 placementSource: placementSource
             )
+            placedObjects.append(placedObject)
         }
+
+        return placedObjects
     }
 
     private func findMarkedObject(for scriptObject: SceneObject, in markedObjects: [MarkedObject]) -> MarkedObject? {
@@ -249,6 +299,52 @@ final class SpatialPlannerService {
         }
 
         return nil
+    }
+
+    private func generateRelatedVirtualObjectPosition(
+        for object: SceneObject,
+        placedObjects: [PlannedScene.PlacedObject]
+    ) -> Position3D? {
+        guard object.type == .phone,
+              let table = placedObjects.first(where: { $0.type == .table })
+        else {
+            return nil
+        }
+
+        let tableTopY: Float
+        if table.placementSource == .marked {
+            tableTopY = table.position.y
+        } else {
+            tableTopY = table.position.y + table.size.y / 2
+        }
+        let phoneCenterY = tableTopY + object.type.placeholderSize.y / 2 + 0.03
+        let tableOffset = supportSurfaceOffset(for: object, on: table)
+        return Position3D(
+            x: table.position.x + tableOffset.x,
+            y: phoneCenterY,
+            z: table.position.z + tableOffset.y
+        )
+    }
+
+    private func supportSurfaceOffset(
+        for object: SceneObject,
+        on supportObject: PlannedScene.PlacedObject
+    ) -> SIMD2<Float> {
+        guard object.type == .phone, supportObject.type == .table else {
+            return SIMD2<Float>(0, 0)
+        }
+
+        let localOffset = SIMD2<Float>(
+            min(max(supportObject.size.x * 0.04, 0.04), 0.07),
+            -min(max(supportObject.size.z * 0.035, 0.025), 0.05)
+        )
+        let cosRotation = cos(supportObject.rotation)
+        let sinRotation = sin(supportObject.rotation)
+
+        return SIMD2<Float>(
+            localOffset.x * cosRotation + localOffset.y * sinRotation,
+            -localOffset.x * sinRotation + localOffset.y * cosRotation
+        )
     }
 
     private func generateObjectPosition(
@@ -301,7 +397,7 @@ final class SpatialPlannerService {
         print("🔍 [PLANNER] planActors: scriptActors=\(scriptActors.count), actions=\(actions.count), relations=\(relations.count)")
 
         // Определяем начальные позиции
-        var initialPositions = calculateInitialPositions(
+        let initialPositions = calculateInitialPositions(
             actors: scriptActors,
             actions: actions,
             placedObjects: placedObjects,
@@ -406,7 +502,7 @@ final class SpatialPlannerService {
         }
 
         // Дополнительные актёры - случайные позиции
-        for i in 2..<actorCount {
+        for _ in 2..<actorCount {
             let offsetX = Float.random(in: -1.5...1.5)
             let offsetZ = Float.random(in: -1.0...1.0)
             positions.append(Position3D(
@@ -543,9 +639,34 @@ final class SpatialPlannerService {
         }
 
         for beat in beats {
+            if shouldSerializeBeatActions(beat) {
+                let serialized = buildSerializedBeatAdditions(
+                    beat: beat,
+                    actors: actors,
+                    currentPositions: currentPositions,
+                    placedObjects: placedObjects,
+                    sceneSpace: sceneSpace
+                )
+                guard serialized.hasOutput, serialized.duration > 0 else { continue }
+
+                for actor in actors {
+                    guard var timeline = timelines[actor.id],
+                          let addition = serialized.additions[actor.id]
+                    else { continue }
+                    timeline.path.append(contentsOf: addition.path)
+                    timeline.durations.append(contentsOf: addition.durations)
+                    timeline.annotations.append(contentsOf: addition.annotations)
+                    timeline.beatIDs.append(contentsOf: addition.beatIDs)
+                    timelines[actor.id] = timeline
+                    currentPositions[actor.id] = serialized.finalPositions[actor.id] ?? currentPositions[actor.id]
+                }
+                continue
+            }
+
             let beatStartPositions = currentPositions
             var additionsByActor: [String: ActorPathPlan] = [:]
             var beatDuration = min(max(beat.minDuration ?? 0, 0), maxModelBeatMinDuration)
+            var hasAnyActorOutput = false
 
             for actor in actors {
                 var actorPositions: [Position3D] = []
@@ -581,9 +702,11 @@ final class SpatialPlannerService {
                     annotations: actorAnnotations,
                     beatIDs: actorBeatIDs
                 )
+                hasAnyActorOutput = hasAnyActorOutput || !actorPositions.isEmpty
                 beatDuration = max(beatDuration, actorDurations.reduce(0, +))
             }
 
+            guard hasAnyActorOutput else { continue }
             guard beatDuration > 0 else { continue }
 
             for actor in actors {
@@ -610,6 +733,67 @@ final class SpatialPlannerService {
         }
 
         return timelines
+    }
+
+    private func shouldSerializeBeatActions(_ beat: SceneBeat) -> Bool {
+        guard beat.actions.count > 1 else { return false }
+        return beat.actions.allSatisfy { action in
+            action.type == .talk || action.type == .describedAction
+        }
+    }
+
+    private func buildSerializedBeatAdditions(
+        beat: SceneBeat,
+        actors: [SceneActor],
+        currentPositions: [String: Position3D],
+        placedObjects: [PlannedScene.PlacedObject],
+        sceneSpace: SceneSpace
+    ) -> (additions: [String: ActorPathPlan], finalPositions: [String: Position3D], duration: Double, hasOutput: Bool) {
+        var additions = Dictionary(
+            uniqueKeysWithValues: actors.map { actor in
+                (actor.id, ActorPathPlan(path: [], durations: [], annotations: [], beatIDs: []))
+            }
+        )
+        var runningPositions = currentPositions
+        var totalDuration: Double = 0
+        var hasOutput = false
+
+        for action in beat.actions {
+            guard actors.contains(where: { $0.id == action.actorId }) else { continue }
+            let currentPosition = runningPositions[action.actorId] ?? sceneSpace.center
+            let (newPositions, newDurations, newAnnotations) = processAction(
+                action,
+                currentPosition: currentPosition,
+                allActors: actors,
+                actorPositions: runningPositions,
+                placedObjects: placedObjects,
+                sceneSpace: sceneSpace
+            )
+            let actionDuration = newDurations.reduce(0, +)
+            guard !newPositions.isEmpty, actionDuration > 0 else { continue }
+            hasOutput = true
+            totalDuration += actionDuration
+
+            for actor in actors {
+                var addition = additions[actor.id] ?? ActorPathPlan(path: [], durations: [], annotations: [], beatIDs: [])
+                if actor.id == action.actorId {
+                    addition.path.append(contentsOf: newPositions)
+                    addition.durations.append(contentsOf: newDurations)
+                    addition.annotations.append(contentsOf: newAnnotations)
+                    addition.beatIDs.append(contentsOf: Array(repeating: beat.id, count: newPositions.count))
+                    runningPositions[actor.id] = newPositions.last ?? currentPosition
+                } else {
+                    let waitPosition = runningPositions[actor.id] ?? sceneSpace.center
+                    addition.path.append(waitPosition)
+                    addition.durations.append(actionDuration)
+                    addition.annotations.append(nil)
+                    addition.beatIDs.append(beat.id)
+                }
+                additions[actor.id] = addition
+            }
+        }
+
+        return (additions, runningPositions, totalDuration, hasOutput)
     }
 
     private func buildPath(
@@ -663,11 +847,16 @@ final class SpatialPlannerService {
         var durations: [Double] = []
         var annotations: [PlaybackPathAnnotation?] = []
 
+        let resolvedTargetObject: PlannedScene.PlacedObject? = {
+            guard let targetId = action.target else { return nil }
+            return placedObjects.first(where: { $0.objectId == targetId })
+        }()
+
         // Helper: resolve target position from objects OR actors
         let resolvedTargetPosition: Position3D? = {
             guard let targetId = action.target else { return nil }
             // 1. Поиск среди объектов
-            if let obj = placedObjects.first(where: { $0.objectId == targetId }) {
+            if let obj = resolvedTargetObject {
                 return obj.position
             }
             // 2. Поиск среди актёров (например, pass_by с target: actor_1)
@@ -711,6 +900,49 @@ final class SpatialPlannerService {
                     to: targetPos,
                     currentPosition: currentPosition,
                     speed: action.speed
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+                annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
+            }
+
+        case .enter:
+            if action.direction == .toTarget,
+               let targetPos = resolvedTargetPosition {
+                let (pos, dur) = handleApproach(
+                    to: targetPos,
+                    currentPosition: currentPosition,
+                    speed: max(action.speed, 0.8)
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+                annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
+            } else if let direction = action.direction {
+                let (pos, dur) = handleDirectionalMovement(
+                    direction: direction,
+                    action: action,
+                    currentPosition: currentPosition,
+                    allActors: allActors,
+                    actorPositions: actorPositions,
+                    sceneSpace: sceneSpace
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+                annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
+            } else if let targetPos = resolvedTargetPosition {
+                let (pos, dur) = handleApproach(
+                    to: targetPos,
+                    currentPosition: currentPosition,
+                    speed: max(action.speed, 0.8)
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+                annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
+            } else {
+                let (pos, dur) = handleEnter(
+                    currentPosition: currentPosition,
+                    sceneSpace: sceneSpace,
+                    speed: max(action.speed, 0.8)
                 )
                 positions.append(contentsOf: pos)
                 durations.append(contentsOf: dur)
@@ -783,18 +1015,66 @@ final class SpatialPlannerService {
                 durations.append(0.1)
                 annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
             } else {
-                positions.append(currentPosition)
-                durations.append(0.1)
-                annotations.append(nil)
+                if let annotation = playbackAnnotation(kind: .action, text: action.sourceText ?? action.fallbackText) {
+                    positions.append(currentPosition)
+                    durations.append(0.5)
+                    annotations.append(annotation)
+                }
             }
 
-        case .talk, .describedAction:
-            // Не перемещаемся физически, но резервируем время под реплику / описанное действие
+        case .lookAt:
+            var actionPosition = currentPosition
+            if sourceTextIndicatesApproach(action.sourceText),
+               let targetPos = resolvedTargetPosition {
+                let (pos, dur) = handleContextualApproach(
+                    action: action,
+                    to: targetPos,
+                    targetObject: resolvedTargetObject,
+                    currentPosition: currentPosition,
+                    placedObjects: placedObjects,
+                    speed: max(action.speed, 0.8)
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+                annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
+                actionPosition = pos.last ?? currentPosition
+            }
+            positions.append(actionPosition)
+            durations.append(lookActionDuration)
+            annotations.append(playbackAnnotation(kind: .action, text: actionCaption(for: action)))
+
+        case .pickUp, .putDown, .give, .open, .close:
+            var actionPosition = currentPosition
+            if let targetPos = resolvedTargetPosition {
+                let (pos, dur) = handleContextualApproach(
+                    action: action,
+                    to: targetPos,
+                    targetObject: resolvedTargetObject,
+                    currentPosition: currentPosition,
+                    placedObjects: placedObjects,
+                    speed: max(action.speed, 0.8)
+                )
+                positions.append(contentsOf: pos)
+                durations.append(contentsOf: dur)
+                annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
+                actionPosition = pos.last ?? currentPosition
+            }
+            positions.append(actionPosition)
+            durations.append(propActionDuration)
+            annotations.append(playbackAnnotation(kind: .action, text: actionCaption(for: action)))
+
+        case .talk:
+            let text = action.dialogue ?? action.sourceText ?? action.fallbackText
             positions.append(currentPosition)
-            durations.append(2.0)
-            let annotation = action.type == .talk
-                ? playbackAnnotation(kind: .dialogue, text: action.dialogue ?? action.sourceText ?? action.fallbackText)
-                : playbackAnnotation(kind: .action, text: action.fallbackText ?? action.sourceText)
+            durations.append(stageTextDuration(for: text, minimum: 1.7, maximum: 3.6))
+            annotations.append(playbackAnnotation(kind: .dialogue, text: text))
+
+        case .describedAction:
+            let text = action.fallbackText ?? action.sourceText
+            guard let annotation = playbackAnnotation(kind: .action, text: text) else { break }
+            // Не перемещаемся физически, но резервируем время под описанное действие.
+            positions.append(currentPosition)
+            durations.append(stageTextDuration(for: annotation.text, minimum: 1.8, maximum: 3.2))
             annotations.append(annotation)
 
         default:
@@ -804,9 +1084,106 @@ final class SpatialPlannerService {
         return (positions, durations, annotations)
     }
 
+    private func actionCaption(for action: SceneAction) -> String {
+        if let text = action.sourceText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return semanticActionCaption(for: action, sourceText: text)
+        }
+        if let text = action.fallbackText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return semanticActionCaption(for: action, sourceText: text)
+        }
+        switch action.type {
+        case .lookAt:
+            return "смотрит на объект"
+        case .pickUp:
+            return "берёт объект"
+        case .putDown:
+            return "кладёт объект"
+        case .give:
+            return "передаёт объект"
+        case .open:
+            return "открывает объект"
+        case .close:
+            return "закрывает объект"
+        case .describedAction:
+            return "описанное действие"
+        default:
+            return action.type.rawValue
+        }
+    }
+
+    private func semanticActionCaption(for action: SceneAction, sourceText: String) -> String {
+        switch action.type {
+        case .pickUp:
+            guard let giveRange = firstRange(
+                ofAny: ["передаёт", "передает", "передал", "передала", "даёт", "дает"],
+                in: sourceText
+            ) else { return sourceText }
+            return cleanedActionFragment(String(sourceText[..<giveRange.lowerBound]))
+        case .give:
+            guard let giveRange = firstRange(
+                ofAny: ["передаёт", "передает", "передал", "передала", "даёт", "дает"],
+                in: sourceText
+            ) else { return sourceText }
+            let actorPrefix = actorPrefixBeforeFirstActionVerb(in: sourceText)
+            let giveClause = cleanedActionFragment(String(sourceText[giveRange.lowerBound...]))
+            guard !actorPrefix.isEmpty else { return giveClause }
+            return cleanedActionFragment("\(actorPrefix) \(giveClause)")
+        default:
+            return sourceText
+        }
+    }
+
+    private func actorPrefixBeforeFirstActionVerb(in text: String) -> String {
+        guard let verbRange = firstRange(
+            ofAny: ["берёт", "берет", "поднимает", "взял", "взяла", "кладёт", "кладет", "передаёт", "передает", "даёт", "дает"],
+            in: text
+        ) else { return "" }
+        return cleanedActionFragment(String(text[..<verbRange.lowerBound]))
+    }
+
+    private func firstRange(ofAny needles: [String], in text: String) -> Range<String.Index>? {
+        needles
+            .compactMap { text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) }
+            .min { $0.lowerBound < $1.lowerBound }
+    }
+
+    private func cleanedActionFragment(_ text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.hasSuffix(" и") {
+            cleaned = String(cleaned.dropLast(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return cleaned.trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:"))
+    }
+
     private func playbackAnnotation(kind: PlaybackPathAnnotation.Kind, text: String?) -> PlaybackPathAnnotation? {
         guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
-        return PlaybackPathAnnotation(kind: kind, text: text)
+        guard let caption = humanReadablePlaybackCaption(text) else { return nil }
+        return PlaybackPathAnnotation(kind: kind, text: caption)
+    }
+
+    private func humanReadablePlaybackCaption(_ text: String) -> String? {
+        switch text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "described_action":
+            return nil
+        case "look_at":
+            return "Смотрит на цель"
+        case "pick_up":
+            return "Берёт объект"
+        case "give":
+            return "Передаёт объект"
+        default:
+            return text
+        }
+    }
+
+    private func stageTextDuration(for text: String?, minimum: Double, maximum: Double) -> Double {
+        let normalized = text?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty } ?? []
+        guard !normalized.isEmpty else { return minimum }
+        let spokenDuration = 0.45 + Double(normalized.count) * 0.34
+        return min(max(spokenDuration, minimum), maximum)
     }
 
     private func handleDirectionalMovement(
@@ -937,6 +1314,126 @@ final class SpatialPlannerService {
         return ([finalPosition], [duration])
     }
 
+    private func handleContextualApproach(
+        action: SceneAction,
+        to targetPosition: Position3D,
+        targetObject: PlannedScene.PlacedObject?,
+        currentPosition: Position3D,
+        placedObjects: [PlannedScene.PlacedObject],
+        speed: Float
+    ) -> ([Position3D], [Double]) {
+        if sourceTextIndicatesOppositeSide(action.sourceText),
+           let finalPosition = oppositeSideApproachPosition(
+            for: targetPosition,
+            targetObject: targetObject,
+            currentPosition: currentPosition,
+            placedObjects: placedObjects
+           ) {
+            return handleMove(to: finalPosition, currentPosition: currentPosition, speed: speed)
+        }
+
+        return handleApproach(to: targetPosition, currentPosition: currentPosition, speed: speed)
+    }
+
+    private func handleMove(
+        to finalPosition: Position3D,
+        currentPosition: Position3D,
+        speed: Float
+    ) -> ([Position3D], [Double]) {
+        let duration = calculateDuration(from: currentPosition, to: finalPosition, speed: speed)
+        return ([finalPosition], [duration])
+    }
+
+    private func handleEnter(
+        currentPosition: Position3D,
+        sceneSpace: SceneSpace,
+        speed: Float
+    ) -> ([Position3D], [Double]) {
+        let towardCenter = simd_float3(
+            sceneSpace.center.x - currentPosition.x,
+            0,
+            sceneSpace.center.z - currentPosition.z
+        )
+        let distanceToCenter = simd_length(towardCenter)
+        let direction: simd_float3
+        if distanceToCenter.isFinite, distanceToCenter > 0.05 {
+            direction = towardCenter / distanceToCenter
+        } else {
+            direction = simd_float3(sceneSpace.forward.x, 0, sceneSpace.forward.z)
+        }
+
+        let moveDistance = min(max(distanceToCenter * 0.35, 0.45), 0.85)
+        let targetPosition = Position3D(
+            x: currentPosition.x + direction.x * moveDistance,
+            y: currentPosition.y,
+            z: currentPosition.z + direction.z * moveDistance
+        )
+        return handleMove(to: targetPosition, currentPosition: currentPosition, speed: speed)
+    }
+
+    private func oppositeSideApproachPosition(
+        for targetPosition: Position3D,
+        targetObject: PlannedScene.PlacedObject?,
+        currentPosition: Position3D,
+        placedObjects: [PlannedScene.PlacedObject]
+    ) -> Position3D? {
+        let supportObject = supportObject(for: targetObject, near: targetPosition, placedObjects: placedObjects)
+        let anchor = supportObject?.position ?? targetPosition
+        let fromAnchor = simd_float3(currentPosition.x - anchor.x, 0, currentPosition.z - anchor.z)
+        let distance = simd_length(fromAnchor)
+        guard distance.isFinite, distance > 0.05 else { return nil }
+
+        let awayFromCurrent = -(fromAnchor / distance)
+        let clearance = max(max(supportObject?.size.x ?? 0.4, supportObject?.size.z ?? 0.4) / 2 + 0.55, 0.85)
+        return Position3D(
+            x: anchor.x + awayFromCurrent.x * clearance,
+            y: currentPosition.y,
+            z: anchor.z + awayFromCurrent.z * clearance
+        )
+    }
+
+    private func supportObject(
+        for targetObject: PlannedScene.PlacedObject?,
+        near targetPosition: Position3D,
+        placedObjects: [PlannedScene.PlacedObject]
+    ) -> PlannedScene.PlacedObject? {
+        if targetObject?.type == .table {
+            return targetObject
+        }
+        return placedObjects
+            .filter { $0.type == .table && horizontalDistance($0.position, targetPosition) < 0.85 }
+            .min { horizontalDistance($0.position, targetPosition) < horizontalDistance($1.position, targetPosition) }
+    }
+
+    private func horizontalDistance(_ lhs: Position3D, _ rhs: Position3D) -> Float {
+        let dx = lhs.x - rhs.x
+        let dz = lhs.z - rhs.z
+        return sqrt(dx * dx + dz * dz)
+    }
+
+    private func sourceTextIndicatesApproach(_ text: String?) -> Bool {
+        let lowercased = text?.lowercased() ?? ""
+        return [
+            "подходит",
+            "подош",
+            "приближается",
+            "идёт к",
+            "идет к",
+            "входит",
+            "обходит",
+        ].contains { lowercased.contains($0) }
+    }
+
+    private func sourceTextIndicatesOppositeSide(_ text: String?) -> Bool {
+        let lowercased = text?.lowercased() ?? ""
+        return [
+            "с другой стороны",
+            "с противоположной стороны",
+            "по другую сторону",
+            "обходит",
+        ].contains { lowercased.contains($0) }
+    }
+
     private func handlePassBy(
         object objectPosition: Position3D,
         currentPosition: Position3D,
@@ -991,6 +1488,6 @@ final class SpatialPlannerService {
             return 0.1
         }
 
-        return max(duration, 0.1)
+        return max(duration, minimumVisibleMovementDuration)
     }
 }

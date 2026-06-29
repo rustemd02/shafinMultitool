@@ -14,9 +14,9 @@ struct SceneInputSheet: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextFieldFocused: Bool
     
-    private let panelFill = Color.white.opacity(0.08)
-    private let panelBorder = Color.white.opacity(0.14)
-    private let secondaryText = Color.white.opacity(0.62)
+    private let panelFill = Color.white.opacity(0.06)
+    private let panelBorder = Color.white.opacity(0.16)
+    private let secondaryText = Color.white.opacity(0.64)
     
     var body: some View {
         NavigationView {
@@ -57,7 +57,6 @@ struct SceneInputSheet: View {
                     headerSection
                     if !viewModel.markedObjects.isEmpty { markedObjectsSection }
                     textInputSection
-                    examplesSection
                     if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
                     Spacer(minLength: 100)
                 }
@@ -70,15 +69,9 @@ struct SceneInputSheet: View {
     // MARK: - Header Section
     
     private var headerSection: some View {
-        HStack {
-            Image(systemName: "text.bubble")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(.white)
-            
-            Text("Сценарий сцены")
-                .font(.system(size: 26, weight: .bold))
-                .foregroundColor(.white)
-        }
+        Text("Сценарий")
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundColor(.white)
     }
     
     // MARK: - Text Input Section
@@ -92,9 +85,9 @@ struct SceneInputSheet: View {
             ZStack(alignment: .topLeading) {
                 // Placeholder
                 if viewModel.sceneDescription.isEmpty {
-                    Text("Например: двое идут навстречу друг другу, один останавливается у стойки, второй проходит мимо шкафа...")
+                    Text("Введите текст сцены")
                         .font(.system(size: 16))
-                        .foregroundColor(.white.opacity(0.3))
+                        .foregroundColor(.white.opacity(0.34))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
                 }
@@ -147,10 +140,10 @@ struct SceneInputSheet: View {
             }
             .frame(minHeight: 120, maxHeight: 200)
             .background(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: 8)
                     .fill(panelFill)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16)
+                        RoundedRectangle(cornerRadius: 8)
                             .strokeBorder(
                                 isTextFieldFocused ? Color.white.opacity(0.35) : panelBorder,
                                 lineWidth: 1
@@ -164,22 +157,16 @@ struct SceneInputSheet: View {
     // MARK: - Marked Objects Section (User-defined)
     
     private var markedObjectsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "mappin.circle.fill")
-                    .foregroundColor(.green)
-                Text("Мои объекты (реальные)")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(secondaryText)
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Объекты")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(secondaryText)
             
             FlowLayout(spacing: 8) {
                 ForEach(viewModel.markedObjects) { marker in
                     MarkedObjectChip(
                         marker: marker,
-                        isRecognized: viewModel.parsingResult?.diagnostics.matchedMarkedObjects.contains(marker.id) ?? false,
                         onTap: {
-                            // Добавляем объект в описание
                             if !viewModel.sceneDescription.isEmpty && !viewModel.sceneDescription.hasSuffix(" ") {
                                 viewModel.sceneDescription += " "
                             }
@@ -192,10 +179,10 @@ struct SceneInputSheet: View {
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(Color.black.opacity(0.45))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(Color.green.opacity(0.42), lineWidth: 1)
                 )
         )
@@ -232,39 +219,13 @@ struct SceneInputSheet: View {
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(Color.black.opacity(0.45))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 8)
                         .stroke(panelBorder, lineWidth: 1)
                 )
         )
-    }
-    
-    // MARK: - Examples Section
-    
-    private var examplesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "lightbulb.fill")
-                    .foregroundColor(.white)
-                Text("Примеры")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(secondaryText)
-            }
-            
-            VStack(spacing: 8) {
-                ForEach(SceneGeneratorViewModel.exampleDescriptions, id: \.title) { example in
-                    ExampleButton(
-                        title: example.title,
-                        description: example.description,
-                        onTap: {
-                            viewModel.sceneDescription = example.description
-                        }
-                    )
-                }
-            }
-        }
     }
     
     // MARK: - Generate Button
@@ -303,14 +264,14 @@ struct SceneInputSheet: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
+                        RoundedRectangle(cornerRadius: 8)
                             .fill(
                                 viewModel.sceneDescription.isEmpty
                                 ? Color.white.opacity(0.16)
                                 : Color.white
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16)
+                                RoundedRectangle(cornerRadius: 8)
                                     .stroke(panelBorder, lineWidth: 1)
                             )
                     )
@@ -328,25 +289,14 @@ struct SceneInputSheet: View {
 
 struct MarkedObjectChip: View {
     let marker: MarkedObject
-    let isRecognized: Bool
     let onTap: () -> Void
     
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 6) {
-                Image(systemName: isRecognized ? "checkmark.circle.fill" : "mappin.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(isRecognized ? .white : .green)
-                
+            HStack(spacing: 0) {
                 Text(marker.name.capitalized)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
-                
-                if !isRecognized {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.6))
-                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -354,10 +304,7 @@ struct MarkedObjectChip: View {
                 Capsule()
                     .fill(Color.black.opacity(0.45))
                     .overlay(
-                        Capsule().strokeBorder(
-                            isRecognized ? Color.white.opacity(0.28) : Color.green.opacity(0.5),
-                            lineWidth: 1
-                        )
+                        Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
                     )
             )
         }
@@ -392,64 +339,6 @@ struct DetectedObjectChip: View {
                     )
             )
         }
-    }
-}
-
-// MARK: - Example Button
-
-struct ExampleButton: View {
-    let title: String
-    let description: String
-    let onTap: () -> Void
-    
-    @State private var isPressed = false
-    
-    var body: some View {
-        Button(action: onTap) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                    
-                    Text(description)
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.6))
-                        .lineLimit(2)
-                }
-                
-                Spacer()
-                
-                Image(systemName: "arrow.right.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.white.opacity(0.3))
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.black.opacity(isPressed ? 0.55 : 0.45))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
-    }
-}
-
-// MARK: - Pressable Button Style
-
-struct PressableButtonStyle: ButtonStyle {
-    @Binding var isPressed: Bool
-    
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-            .onChange(of: configuration.isPressed) { newValue in
-                isPressed = newValue
-            }
     }
 }
 

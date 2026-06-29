@@ -199,6 +199,21 @@ struct DebugMetricsView: View {
     
     var body: some View {
         DebugOverlay(metrics: telemetry.metrics, isVisible: isVisible)
+            .onAppear {
+                if isVisible {
+                    telemetry.startSystemMonitoring()
+                }
+            }
+            .onChange(of: isVisible) { visible in
+                if visible {
+                    telemetry.startSystemMonitoring()
+                } else {
+                    telemetry.stopSystemMonitoring()
+                }
+            }
+            .onDisappear {
+                telemetry.stopSystemMonitoring()
+            }
     }
 }
 
@@ -224,5 +239,4 @@ struct DebugMetricsView: View {
         ), isVisible: true)
     }
 }
-
 

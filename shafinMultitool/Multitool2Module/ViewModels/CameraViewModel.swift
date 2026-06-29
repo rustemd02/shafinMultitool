@@ -35,6 +35,7 @@ final class CameraViewModel: ObservableObject {
     private let cameraManager: CameraManager
     private let analysisPipeline: AnalysisPipeline
     private var cancellables = Set<AnyCancellable>()
+    private var featurePollingCancellable: AnyCancellable?
     private var hasRegistered = false
     private var pauseRequestToken: UUID?
 
@@ -66,22 +67,6 @@ final class CameraViewModel: ObservableObject {
         analysisPipeline.$currentOverlayAnnotations
             .receive(on: DispatchQueue.main)
             .assign(to: &$overlayAnnotations)
-        
-        // Подписка на features и debug данные из pipeline через таймер
-        Timer.publish(every: 0.3, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                guard let self = self else { return }
-                self.features = self.analysisPipeline.currentFeatures
-                
-                if self.debugMode {
-                    let debugData = self.analysisPipeline.currentDebugData
-                    self.detrDetections = debugData.detrDetections
-                    self.visionSubjects = debugData.visionSubjects
-                    self.saliencyCenter = debugData.saliencyCenter
-                }
-            }
-            .store(in: &cancellables)
     }
 
     func start() {
@@ -89,6 +74,7 @@ final class CameraViewModel: ObservableObject {
             analysisPipeline.register(with: cameraManager)
             hasRegistered = true
         }
+        startFeaturePolling()
         cameraManager.start()
         
         // Обновляем список доступных объективов после старта
@@ -98,6 +84,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
+        stopFeaturePolling()
         cameraManager.stop()
     }
     
@@ -131,5 +118,27 @@ final class CameraViewModel: ObservableObject {
     func switchLens(to lens: CameraLens) {
         currentLens = lens
         cameraManager.switchLens(to: lens)
+    }
+
+    private func startFeaturePolling() {
+        guard featurePollingCancellable == nil else { return }
+        featurePollingCancellable = Timer.publish(every: 0.3, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.features = self.analysisPipeline.currentFeatures
+
+                if self.debugMode {
+                    let debugData = self.analysisPipeline.currentDebugData
+                    self.detrDetections = debugData.detrDetections
+                    self.visionSubjects = debugData.visionSubjects
+                    self.saliencyCenter = debugData.saliencyCenter
+                }
+            }
+    }
+
+    private func stopFeaturePolling() {
+        featurePollingCancellable?.cancel()
+        featurePollingCancellable = nil
     }
 }

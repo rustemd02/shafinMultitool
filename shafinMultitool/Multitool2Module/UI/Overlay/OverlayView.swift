@@ -14,6 +14,7 @@ struct OverlayView: View {
     @ObservedObject var viewModel: CameraViewModel
     let cameraManager: CameraManager
     @State private var decisionTrace: DecisionTracePresentation?
+    @State private var uiFPSTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -152,9 +153,21 @@ struct OverlayView: View {
         }
         .onAppear {
             viewModel.start()
-            startUIFPSMonitoring()
+            if viewModel.debugMode {
+                startUIFPSMonitoring()
+            }
         }
-        .onDisappear { viewModel.stop() }
+        .onChange(of: viewModel.debugMode) { isDebugModeEnabled in
+            if isDebugModeEnabled {
+                startUIFPSMonitoring()
+            } else {
+                stopUIFPSMonitoring()
+            }
+        }
+        .onDisappear {
+            stopUIFPSMonitoring()
+            viewModel.stop()
+        }
         .sheet(item: $decisionTrace) { trace in
             DecisionTraceView(trace: trace)
                 .presentationDetents([.medium, .large])
@@ -238,9 +251,15 @@ struct OverlayView: View {
     }
 
     private func startUIFPSMonitoring() {
-        Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
+        guard uiFPSTimer == nil else { return }
+        uiFPSTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
             Telemetry.shared.recordUIFrame()
         }
+    }
+
+    private func stopUIFPSMonitoring() {
+        uiFPSTimer?.invalidate()
+        uiFPSTimer = nil
     }
 
     private func liveHintBoundingBox(for liveHint: LiveHintPresentation?,
@@ -271,12 +290,25 @@ private struct StructuredOverlayAnnotationsView: View {
                     }
                 case .regionHighlight:
                     if let targetRegion = annotation.targetRegion {
-                        BBoxOverlay(
-                            boundingBox: rect(from: targetRegion),
-                            canvasSize: canvasSize
-                        )
-                        .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [10, 4]))
-                        .foregroundColor(.orange)
+                        let box = rect(from: targetRegion)
+                        ZStack(alignment: .topLeading) {
+                            BBoxOverlay(
+                                boundingBox: box,
+                                canvasSize: canvasSize
+                            )
+                            .stroke(style: StrokeStyle(lineWidth: max(2, CGFloat(annotation.emphasis) * 3), lineCap: .round, dash: [10, 4]))
+                            .foregroundColor(annotationColor(for: annotation))
+
+                            if let label = annotation.label {
+                                Text(label)
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(annotationColor(for: annotation).opacity(0.92), in: Capsule())
+                                    .position(labelPosition(for: box))
+                            }
+                        }
                     }
                 case .horizonLine:
                     HorizonOverlay(angle: overlayState.horizonAngle, confidence: overlayState.horizonConfidence)
@@ -289,6 +321,32 @@ private struct StructuredOverlayAnnotationsView: View {
 
     private func rect(from region: NormalizedRect) -> CGRect {
         CGRect(x: region.x, y: region.y, width: region.width, height: region.height)
+    }
+
+    private func annotationColor(for annotation: OverlayAnnotationPresentation) -> Color {
+        switch annotation.tone {
+        case .success:
+            return .green.opacity(0.9)
+        case .warning:
+            return .yellow.opacity(0.9)
+        case .danger:
+            return .red.opacity(0.92)
+        case .neutral:
+            switch annotation.kind {
+            case .arrow:
+                return .yellow.opacity(0.9)
+            case .regionHighlight:
+                return .orange.opacity(0.9)
+            case .horizonLine:
+                return .cyan.opacity(0.9)
+            }
+        }
+    }
+
+    private func labelPosition(for box: CGRect) -> CGPoint {
+        let x = max(36, min(canvasSize.width - 36, box.minX * canvasSize.width + 38))
+        let y = max(14, (1 - box.maxY) * canvasSize.height - 12)
+        return CGPoint(x: x, y: y)
     }
 
     private func arrowDirection(for direction: OverlayDirection) -> ArrowDirection? {
@@ -423,6 +481,7 @@ private extension AVCaptureVideoOrientation {
         case .portraitUpsideDown: self = .portraitUpsideDown
         case .landscapeLeft: self = .landscapeLeft
         case .landscapeRight: self = .landscapeRight
+        case .unknown: return nil
         @unknown default: return nil
         }
     }

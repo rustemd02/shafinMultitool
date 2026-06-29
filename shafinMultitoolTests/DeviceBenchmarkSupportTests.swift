@@ -15,6 +15,7 @@ final class DeviceBenchmarkSupportTests: XCTestCase {
             tier: .quick,
             enabledModules: [.sceneGenerator],
             sceneGeneratorModelPolicy: .explicitOrLatest,
+            sceneGeneratorRuntimePreset: .baseline,
             sceneGeneratorExecutionMode: .monolithic,
             sceneGeneratorThermalPolicy: SceneGeneratorMobileExecutionPolicy(
                 mode: .monolithic,

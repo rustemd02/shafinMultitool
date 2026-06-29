@@ -66,6 +66,13 @@ final class SceneParserServiceTests: XCTestCase {
         let tables = result.script.objects.filter { $0.type == .table }
         XCTAssertGreaterThanOrEqual(tables.count, 1, "Должен быть найден хотя бы один стол")
     }
+
+    func testParsePhoneObject() async throws {
+        let description = "Олег берёт телефон со стола"
+        let result = await parser.parse(description, markedObjects: [])
+
+        XCTAssertTrue(result.script.objects.contains(where: { $0.type == .phone }), "Должен быть найден объект phone")
+    }
     
     func testParseEmptyDescription() async throws {
         let description = ""

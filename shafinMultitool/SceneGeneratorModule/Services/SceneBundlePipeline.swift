@@ -42,6 +42,34 @@ private struct SceneFinalExecutionCheckpointPayload: Codable {
     var chunkDiagnostics: [SceneChunkDiagnostics]
 }
 
+private func renderNormalizedScriptUnits(_ units: [NormalizedScriptUnit]) -> String {
+    var lines: [String] = []
+    var index = 0
+
+    while index < units.count {
+        let unit = units[index]
+        if unit.kind == .speakerCue {
+            let speaker = unit.text
+                .replacingOccurrences(of: ":", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if index + 1 < units.count, units[index + 1].kind == .dialogue {
+                let dialogue = units[index + 1].text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !speaker.isEmpty, !dialogue.isEmpty {
+                    lines.append("\(speaker): \(dialogue)")
+                    index += 2
+                    continue
+                }
+            }
+            lines.append(speaker.isEmpty ? unit.text : "\(speaker):")
+        } else {
+            lines.append(unit.text)
+        }
+        index += 1
+    }
+
+    return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 final class ScriptNormalizer {
     private let headingDetector = SceneMetadataExtractor()
     private let speakerCueRegex = try? NSRegularExpression(pattern: #"^[A-ZА-Я0-9][A-ZА-Я0-9 \-_.]{1,40}:?$"#)
@@ -288,7 +316,7 @@ final class SceneBoundaryDetector {
         if let firstHeading = headingIndices.first, firstHeading > 0 {
             let preHeadingUnits = Array(units[0..<firstHeading])
             let contentUnits = preHeadingUnits.filter { $0.kind != .blank }
-            if !contentUnits.isEmpty {
+            if !contentUnits.isEmpty, !isDiscardableHeadingPrelude(preHeadingUnits) {
                 let sourceText = render(units: preHeadingUnits)
                 scenes.append(
                     ScriptSceneCandidate(
@@ -350,6 +378,19 @@ final class SceneBoundaryDetector {
         }
 
         return scenes
+    }
+
+    private func isDiscardableHeadingPrelude(_ units: [NormalizedScriptUnit]) -> Bool {
+        let contentUnits = units.filter { $0.kind != .blank }
+        guard contentUnits.count == 1 else { return false }
+        let normalized = contentUnits[0].text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        return [
+            "ПЛАН НА:",
+            "ПЛАН:",
+            "ПЕРЕХОД К:",
+        ].contains(normalized)
     }
 
     private func mergedHeadingStartIndices(in units: [NormalizedScriptUnit]) -> [Int] {
@@ -419,7 +460,7 @@ final class SceneBoundaryDetector {
                 dialogueCharacterCount += unit.text.count
                 dialogueUnitCount += 1
             case .actionLine, .proseLine:
-                if (dialogueCharacterCount > 450 || dialogueUnitCount >= 4),
+                if (dialogueCharacterCount > 450 || dialogueUnitCount >= 3),
                    looksLikeNamedActorPhysicalAction(unit.text) {
                     return absoluteStartIndex + localIndex
                 }
@@ -439,7 +480,7 @@ final class SceneBoundaryDetector {
     }
 
     private func render(units: [NormalizedScriptUnit]) -> String {
-        units.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        renderNormalizedScriptUnits(units)
     }
 }
 
@@ -545,7 +586,7 @@ final class ChunkSegmenter {
     }
 
     private func render(units: [NormalizedScriptUnit]) -> String {
-        units.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        renderNormalizedScriptUnits(units)
     }
 }
 
@@ -554,6 +595,15 @@ final class SceneChunkAnchorExtractor {
     private let metadataExtractor = SceneMetadataExtractor()
     private let objectKeywords = Set(KeywordsMapping.objectKeywords.keys)
     private let pronouns = ["он", "она", "они", "ему", "ей", "его", "её", "ее", "их", "другой", "другая", "первый", "второй", "третий"]
+    private let actorActionVerbs = [
+        "идёт", "идет", "идут", "останавливается", "останавливаются", "смотрит", "смотрят",
+        "берёт", "берет", "берут", "передаёт", "передает", "дают", "даёт", "дает",
+        "говорит", "подходит", "подходят", "кладёт", "кладет", "стоит", "сидит"
+    ]
+    private let actorNameStopWords: Set<String> = [
+        "ИНТ", "ЭКСТ", "НАТ", "INT", "EXT", "НА", "В", "И", "У", "К", "ОТ", "ДО", "ЗА", "ПОД",
+        "СТОЛ", "ТЕЛЕФОН", "ОФИС", "КОМНАТА", "ДЕНЬ", "НОЧЬ", "УТРО", "ВЕЧЕР"
+    ]
 
     init(baseExtractor: SceneAnchorExtractor) {
         self.baseExtractor = baseExtractor
@@ -564,10 +614,14 @@ final class SceneChunkAnchorExtractor {
         let lowercased = sourceText.lowercased()
         let speakerCues = normalizedUnits
             .filter { $0.kind == .speakerCue }
-            .map { $0.text.replacingOccurrences(of: ":", with: "").lowercased() }
+            .map { displayActorName(from: $0.text.replacingOccurrences(of: ":", with: "")) }
+            .filter { !$0.isEmpty }
 
         let objectMentions = objectKeywords.filter { lowercased.contains($0) }.sorted()
-        let actorMentions = speakerCues + ["человек", "мужчина", "женщина", "парень", "девушка"].filter { lowercased.contains($0) }
+        let namedActionActors = extractNamedActorMentions(from: sourceText, normalizedUnits: normalizedUnits)
+        let actorMentions = speakerCues
+            + namedActionActors
+            + ["человек", "мужчина", "женщина", "парень", "девушка"].filter { lowercased.contains($0) }
         let pronounMentions = pronouns.filter { lowercased.contains($0) }
         let chronologyCues = ["затем", "после этого", "в этот момент", "потом", "сразу"].filter { lowercased.contains($0) }
         let metadata = metadataExtractor.extract(description: sourceText)
@@ -592,9 +646,75 @@ final class SceneChunkAnchorExtractor {
         )
     }
 
+    private func extractNamedActorMentions(from sourceText: String, normalizedUnits: [NormalizedScriptUnit]) -> [String] {
+        var names: [String] = []
+        for unit in normalizedUnits where unit.kind == .speakerCue || unit.kind == .actionLine || unit.kind == .proseLine || unit.kind == .dialogue {
+            switch unit.kind {
+            case .speakerCue:
+                appendActorName(displayActorName(from: unit.text), to: &names)
+            case .actionLine, .proseLine:
+                for name in uppercaseActorNames(in: unit.text) {
+                    appendActorName(name, to: &names)
+                }
+                for name in capitalizedActorNamesNearActions(in: unit.text) {
+                    appendActorName(name, to: &names)
+                }
+            default:
+                continue
+            }
+        }
+
+        if names.isEmpty {
+            for name in capitalizedActorNamesNearActions(in: sourceText) {
+                appendActorName(name, to: &names)
+            }
+        }
+        return names
+    }
+
+    private func uppercaseActorNames(in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: #"\b[А-ЯЁ]{2,}\b"#) else { return [] }
+        let nsText = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)).compactMap { match in
+            let raw = nsText.substring(with: match.range)
+            guard !actorNameStopWords.contains(raw) else { return nil }
+            return displayActorName(from: raw)
+        }
+    }
+
+    private func capitalizedActorNamesNearActions(in text: String) -> [String] {
+        let verbs = actorActionVerbs.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        guard let regex = try? NSRegularExpression(pattern: #"(?<!\p{L})([А-ЯЁ][а-яё]{2,})\s+(?:\S+\s+){0,3}(?:"# + verbs + #")\b"#) else {
+            return []
+        }
+        let nsText = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)).compactMap { match in
+            guard match.numberOfRanges > 1 else { return nil }
+            let raw = nsText.substring(with: match.range(at: 1))
+            guard !actorNameStopWords.contains(raw.uppercased()) else { return nil }
+            return displayActorName(from: raw)
+        }
+    }
+
+    private func appendActorName(_ name: String, to names: inout [String]) {
+        let key = name.lowercased()
+        guard !key.isEmpty, !names.contains(where: { $0.lowercased() == key }) else { return }
+        names.append(name)
+    }
+
+    private func displayActorName(from raw: String) -> String {
+        let cleaned = raw
+            .replacingOccurrences(of: ":", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "" }
+        let lowercased = cleaned.lowercased()
+        guard let first = lowercased.first else { return cleaned }
+        return String(first).uppercased() + lowercased.dropFirst()
+    }
+
     private func unique(_ values: [String]) -> [String] {
         var result: [String] = []
-        for value in values where !result.contains(value) {
+        for value in values where !result.contains(where: { $0.lowercased() == value.lowercased() }) {
             result.append(value)
         }
         return result
@@ -651,8 +771,14 @@ final class ChunkCanonicalizer {
         var deferredRefs: [SceneDeferredRef] = []
         var orderedStableActorRefs: [String] = existingActorsInOrder.map(\.ref)
         let chunkSourceText = draft.sourceText.lowercased()
+        let plan = preparePlanForCanonicalization(
+            draft.plan,
+            anchors: draft.anchors.sourceBundle,
+            sourceText: draft.sourceText,
+            reasonCodes: &reasonCodes
+        )
 
-        for (index, actor) in draft.plan.actors.enumerated() {
+        for (index, actor) in plan.actors.enumerated() {
             let normalizedName = normalizeAlias(actor.name)
             let stableRef: String
             if let existing = actorRefMap[actor.ref] {
@@ -672,7 +798,7 @@ final class ChunkCanonicalizer {
             }
 
             if existingActorMap[stableRef] == nil && !createdActors.contains(where: { $0.ref == stableRef }) {
-                let created = ScenePlanIR.Actor(ref: stableRef, type: actor.type, name: normalizedName ?? actor.name)
+                let created = ScenePlanIR.Actor(ref: stableRef, type: actor.type, name: actor.name ?? normalizedName)
                 createdActors.append(created)
                 existingActorMap[stableRef] = created
             }
@@ -689,18 +815,18 @@ final class ChunkCanonicalizer {
             }
         }
 
-        if draft.plan.actors.isEmpty && !existingActorsInOrder.isEmpty {
+        if plan.actors.isEmpty && !existingActorsInOrder.isEmpty {
             actorRefMap["first"] = existingActorsInOrder[0].ref
         }
 
         let referencedObjectRefs = Set(
-            draft.plan.beats
+            plan.beats
                 .flatMap(\.actions)
                 .flatMap { [$0.targetRef, $0.holdingObjectRef] }
                 .compactMap { $0 }
         )
 
-        for object in draft.plan.objects {
+        for object in plan.objects {
             guard shouldAcceptObject(
                 object,
                 chunkSourceText: chunkSourceText,
@@ -771,7 +897,8 @@ final class ChunkCanonicalizer {
             }
         }
 
-        let beatPatch = draft.plan.beats.enumerated().compactMap { beatIndex, beat -> ScenePlanIR.Beat? in
+        let allowSyntheticReciprocalExpansion = true
+        var beatPatch = plan.beats.enumerated().compactMap { beatIndex, beat -> ScenePlanIR.Beat? in
             var actions: [ScenePlanIR.Action] = []
             for actionIndex in beat.actions.indices {
                 let action = beat.actions[actionIndex]
@@ -842,6 +969,7 @@ final class ChunkCanonicalizer {
                 chunkSourceText: draft.sourceText,
                 objectMap: objectRefMap,
                 objectAliasMap: objectAliasMap,
+                allowSyntheticReciprocalExpansion: allowSyntheticReciprocalExpansion,
                 reasonCodes: &reasonCodes
             )
             return ScenePlanIR.Beat(
@@ -852,7 +980,19 @@ final class ChunkCanonicalizer {
             )
         }
 
-        let spatialRelationPatch = draft.plan.spatialRelations.enumerated().compactMap { entry -> ScenePlanIR.SpatialRelation? in
+        beatPatch = repairTransferActions(
+            in: beatPatch,
+            sourceText: draft.sourceText,
+            orderedActorRefs: orderedStableActorRefs,
+            actorAliasMap: actorAliasMap,
+            objectAliasMap: objectAliasMap,
+            objectRefs: Set(objectRefMap.values),
+            reasonCodes: &reasonCodes
+        )
+        beatPatch = sanitizeDescribedActions(in: beatPatch, sourceText: draft.sourceText, reasonCodes: &reasonCodes)
+        beatPatch = orderBeatsBySourcePosition(beatPatch, sourceText: draft.sourceText, reasonCodes: &reasonCodes)
+
+        let spatialRelationPatch = plan.spatialRelations.enumerated().compactMap { entry -> ScenePlanIR.SpatialRelation? in
             let (relationIndex, relation) = entry
             guard let subjectRef = resolvePlanRef(relation.subjectRef, actorMap: actorRefMap, objectMap: objectRefMap),
                   let objectRef = resolvePlanRef(relation.objectRef, actorMap: actorRefMap, objectMap: objectRefMap)
@@ -898,6 +1038,528 @@ final class ChunkCanonicalizer {
             usedFallbackPlanner: draft.usedFallbackPlanner,
             usedLegacyPlanBridge: draft.usedLegacyPlanBridge
         )
+    }
+
+    private func preparePlanForCanonicalization(
+        _ plan: ScenePlanIR,
+        anchors: SourceAnchorBundle,
+        sourceText: String,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        var prepared = plan
+
+        for index in prepared.objects.indices {
+            guard normalizeAlias(prepared.objects[index].name) == nil,
+                  let canonicalName = defaultObjectName(for: prepared.objects[index].type)
+            else {
+                continue
+            }
+            prepared.objects[index].name = canonicalName
+            appendReason("v9.object_alias_normalized", to: &reasonCodes)
+        }
+
+        let lowercasedSource = sourceText.lowercased()
+        let mentionedTypes = anchors.objectSurfaceMentions.compactMap { mention -> SceneObject.ObjectType? in
+            KeywordsMapping.objectKeywords[mention.lowercased()]
+        }
+        var existingTypes = Set(prepared.objects.map(\.type))
+        var restoredTypes = Set<SceneObject.ObjectType>()
+
+        for type in mentionedTypes where !existingTypes.contains(type) && !restoredTypes.contains(type) {
+            guard lowercasedSource.contains(defaultObjectName(for: type) ?? type.rawValue) ||
+                    anchors.objectSurfaceMentions.contains(where: { KeywordsMapping.objectKeywords[$0.lowercased()] == type })
+            else {
+                continue
+            }
+            let nextIndex = prepared.objects.count + restoredTypes.count + 1
+            prepared.objects.append(
+                ScenePlanIR.Object(
+                    ref: "object_mentioned_\(type.rawValue)_\(nextIndex)",
+                    type: type,
+                    relativePosition: .unknown,
+                    name: defaultObjectName(for: type),
+                    markedObjectID: nil
+                )
+            )
+            existingTypes.insert(type)
+            restoredTypes.insert(type)
+            appendReason("v9.mentioned_object_restored", to: &reasonCodes)
+        }
+
+        return prepared
+    }
+
+    private func repairTransferActions(
+        in beats: [ScenePlanIR.Beat],
+        sourceText: String,
+        orderedActorRefs: [String],
+        actorAliasMap: [String: String],
+        objectAliasMap: [String: String],
+        objectRefs: Set<String>,
+        reasonCodes: inout [String]
+    ) -> [ScenePlanIR.Beat] {
+        var repaired = beats
+        var heldObjectByActor: [String: String] = [:]
+
+        for beatIndex in repaired.indices {
+            for actionIndex in repaired[beatIndex].actions.indices {
+                var action = repaired[beatIndex].actions[actionIndex]
+                switch action.type {
+                case .pickUp:
+                    if action.holdingObjectRef == nil,
+                       let targetRef = action.targetRef,
+                       objectRefs.contains(targetRef) {
+                        action.holdingObjectRef = targetRef
+                        appendReason("v9.pickup_holding_repaired", to: &reasonCodes)
+                    }
+                    if let held = action.holdingObjectRef ?? action.targetRef,
+                       objectRefs.contains(held) {
+                        heldObjectByActor[action.actorRef] = held
+                    }
+                case .give:
+                    let searchText = transferSearchText(for: action, sourceText: sourceText)
+                    let targetIsObject = action.targetRef.map { objectRefs.contains($0) } ?? false
+
+                    if action.holdingObjectRef == nil {
+                        if targetIsObject, let targetRef = action.targetRef {
+                            action.holdingObjectRef = targetRef
+                            appendReason("v9.give_holding_repaired", to: &reasonCodes)
+                        } else if let held = heldObjectByActor[action.actorRef] {
+                            action.holdingObjectRef = held
+                            appendReason("v9.give_holding_repaired", to: &reasonCodes)
+                        } else if let inferredObject = inferObjectTarget(
+                            from: searchText,
+                            objectMap: [:],
+                            objectAliasMap: objectAliasMap
+                        ) {
+                            action.holdingObjectRef = inferredObject
+                            appendReason("v9.give_holding_repaired", to: &reasonCodes)
+                        }
+                    }
+
+                    let targetNeedsActor = action.targetRef == nil
+                        || action.targetRef == action.actorRef
+                        || action.targetRef.map { objectRefs.contains($0) } == true
+                    if targetNeedsActor,
+                       let recipientRef = inferRecipientActorRef(
+                        from: searchText,
+                        actorAliasMap: actorAliasMap,
+                        orderedActorRefs: orderedActorRefs,
+                        excluding: action.actorRef
+                       ) {
+                        action.targetRef = recipientRef
+                        appendReason("v9.give_recipient_repaired", to: &reasonCodes)
+                    }
+
+                    if let targetRef = action.targetRef,
+                       orderedActorRefs.contains(targetRef),
+                       targetRef != action.actorRef {
+                        heldObjectByActor[action.actorRef] = nil
+                    }
+                default:
+                    break
+                }
+
+                repaired[beatIndex].actions[actionIndex] = action
+            }
+        }
+
+        return repaired
+    }
+
+    private func sanitizeDescribedActions(
+        in beats: [ScenePlanIR.Beat],
+        sourceText: String,
+        reasonCodes: inout [String]
+    ) -> [ScenePlanIR.Beat] {
+        let supportedTexts = Set(
+            beats
+                .flatMap(\.actions)
+                .filter { $0.type != .describedAction && $0.type != .talk }
+                .flatMap { [normalizedComparableText($0.sourceText), normalizedComparableText($0.fallbackText)] }
+                .filter { !$0.isEmpty }
+        )
+
+        return beats.compactMap { beat in
+            var actions: [ScenePlanIR.Action] = []
+            for action in beat.actions {
+                guard action.type == .describedAction else {
+                    actions.append(action)
+                    continue
+                }
+
+                var updated = action
+                let fallback = stripOptionalSpeakerPrefix(from: action.fallbackText)
+                let source = stripOptionalSpeakerPrefix(from: action.sourceText)
+                if fallback != action.fallbackText || source != action.sourceText {
+                    updated.fallbackText = fallback
+                    updated.sourceText = source
+                    appendReason("v9.described_action_speaker_prefix_stripped", to: &reasonCodes)
+                }
+
+                if isInternalActionToken(updated.fallbackText) {
+                    updated.fallbackText = nil
+                }
+                if isInternalActionToken(updated.sourceText) {
+                    updated.sourceText = nil
+                }
+                if updated.fallbackText == nil, updated.sourceText == nil {
+                    if let recovered = recoverDescribedActionText(from: sourceText, supportedTexts: supportedTexts) {
+                        updated.fallbackText = recovered
+                        updated.sourceText = recovered
+                        appendReason("v9.described_action_text_recovered", to: &reasonCodes)
+                    } else {
+                        appendReason("v9.empty_described_beat_dropped", to: &reasonCodes)
+                        continue
+                    }
+                }
+
+                let comparable = normalizedComparableText(updated.fallbackText ?? updated.sourceText)
+                if !comparable.isEmpty,
+                   supportedTexts.contains(comparable),
+                   !containsUnsupportedDescribedCue(comparable) {
+                    appendReason("v9.redundant_described_action_dropped", to: &reasonCodes)
+                    continue
+                }
+
+                actions.append(updated)
+            }
+
+            guard !actions.isEmpty else {
+                appendReason("v9.empty_described_beat_dropped", to: &reasonCodes)
+                return nil
+            }
+
+            var updatedBeat = beat
+            updatedBeat.actions = actions
+            return updatedBeat
+        }
+    }
+
+    private func isInternalActionToken(_ value: String?) -> Bool {
+        guard let value else { return false }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return [
+            "described_action",
+            "look_at",
+            "pick_up",
+            "put_down",
+            "give",
+            "talk",
+            "stand",
+            "walk",
+            "action",
+        ].contains(normalized)
+    }
+
+    private func recoverDescribedActionText(from sourceText: String, supportedTexts: Set<String>) -> String? {
+        let candidates = sourceText
+            .components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { candidate in
+                guard !candidate.isEmpty else { return false }
+                guard !isInternalActionToken(candidate) else { return false }
+                guard !looksLikeDialogueCue(candidate) else { return false }
+                return !supportedTexts.contains(normalizedComparableText(candidate))
+            }
+        guard !candidates.isEmpty else { return nil }
+
+        let describedCues = [
+            "задерживает взгляд", "задерживает", "взгляд",
+            "поправ", "улыба", "вздых", "кива", "машет", "машут",
+            "жестикулиру", "замира", "осматрива",
+        ]
+        if let cued = candidates.first(where: { candidate in
+            let lowercased = candidate.lowercased()
+            return describedCues.contains { lowercased.contains($0) }
+        }) {
+            return cued
+        }
+        return candidates.first
+    }
+
+    private func looksLikeDialogueCue(_ text: String) -> Bool {
+        guard let colonIndex = text.firstIndex(of: ":") else { return false }
+        let prefix = text[..<colonIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prefix.isEmpty, prefix.count <= 32 else { return false }
+        return prefix.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.letters.contains(scalar)
+                || CharacterSet.whitespaces.contains(scalar)
+                || CharacterSet(charactersIn: "-").contains(scalar)
+        }
+    }
+
+    private func containsUnsupportedDescribedCue(_ comparableText: String) -> Bool {
+        let cues = [
+            "поправ", "улыба", "танцу", "машет", "кивает", "обнима", "целует",
+            "жестикулиру", "делает помет", "замира", "задерживает", "взгляд"
+        ]
+        return cues.contains { comparableText.contains($0) }
+    }
+
+    private func orderBeatsBySourcePosition(
+        _ beats: [ScenePlanIR.Beat],
+        sourceText: String,
+        reasonCodes: inout [String]
+    ) -> [ScenePlanIR.Beat] {
+        guard beats.count > 1 else { return beats }
+
+        let lowercasedSource = sourceText.lowercased()
+        let ordered = beats.enumerated().sorted(by: { lhs, rhs in
+            let lhsOffset = sourceOffset(for: lhs.element, in: lowercasedSource)
+            let rhsOffset = sourceOffset(for: rhs.element, in: lowercasedSource)
+            let lhsRank = semanticFallbackRank(for: lhs.element)
+            let rhsRank = semanticFallbackRank(for: rhs.element)
+
+            switch (lhsOffset, rhsOffset) {
+            case let (lhsSourceOffset?, rhsSourceOffset?):
+                if lhsSourceOffset == rhsSourceOffset {
+                    if lhsRank != rhsRank {
+                        return lhsRank < rhsRank
+                    }
+                    return lhs.offset < rhs.offset
+                }
+                return lhsSourceOffset < rhsSourceOffset
+            case (_?, nil):
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return true
+            case (nil, _?):
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return false
+            default:
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return lhs.offset < rhs.offset
+            }
+        })
+        let orderedBeats = ordered.map { $0.element }
+        guard orderedBeats != beats else { return beats }
+
+        appendReason("v9.beats_source_ordered", to: &reasonCodes)
+        return orderedBeats
+    }
+
+    private func semanticFallbackRank(for beat: ScenePlanIR.Beat) -> Int {
+        let actionTypes = Set(beat.actions.map(\.type))
+        if actionTypes.contains(.walk)
+            || actionTypes.contains(.run)
+            || actionTypes.contains(.stand)
+            || actionTypes.contains(.stop)
+            || actionTypes.contains(.lookAt) {
+            return 0
+        }
+        if actionTypes.contains(.talk) {
+            return 1
+        }
+        if actionTypes.contains(.pickUp)
+            || actionTypes.contains(.putDown)
+            || actionTypes.contains(.give)
+            || actionTypes.contains(.open)
+            || actionTypes.contains(.close) {
+            return 2
+        }
+        return 3
+    }
+
+    private func sourceOffset(for beat: ScenePlanIR.Beat, in lowercasedSource: String) -> Int? {
+        beat.actions
+            .compactMap { sourceOffset(for: $0, in: lowercasedSource) }
+            .min()
+    }
+
+    private func sourceOffset(for action: ScenePlanIR.Action, in lowercasedSource: String) -> Int? {
+        for candidate in [action.sourceText, action.dialogue, action.fallbackText] {
+            if let offset = sourceOffset(of: candidate, in: lowercasedSource) {
+                return offset
+            }
+        }
+
+        if action.type == .talk {
+            return firstSpeakerCueOffset(in: lowercasedSource)
+        }
+        if (action.type == .walk || action.type == .run), action.direction == .towardEachOther {
+            return sourceOffset(
+                ofAny: ["идут навстречу", "идёт навстречу", "идет навстречу", "навстречу друг другу", "навстречу"],
+                in: lowercasedSource
+            )
+        }
+        if action.type == .lookAt {
+            return sourceOffset(
+                ofAny: ["смотрит на", "смотрят на", "посмотрел на", "посмотрела на", "глядит на"],
+                in: lowercasedSource
+            )
+        }
+        if action.type == .stand || action.type == .stop {
+            return sourceOffset(
+                ofAny: ["останавливается", "останавливаются", "остановился", "остановилась", "стоит", "стоят"],
+                in: lowercasedSource
+            )
+        }
+        if action.type == .pickUp || action.type == .putDown || action.type == .give {
+            return sourceOffset(
+                ofAny: ["берёт", "берет", "поднимает", "поднял", "взял", "берут", "кладёт", "кладет", "положи", "положил", "оставь", "ставит", "передаёт", "передает", "передам", "даёт", "дает", "получает"],
+                in: lowercasedSource
+            )
+        }
+        return nil
+    }
+
+    private func sourceOffset(of candidate: String?, in lowercasedSource: String) -> Int? {
+        guard let candidate else { return nil }
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let stripped = stripSpeakerPrefix(from: candidate)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        for normalized in [trimmed, stripped] {
+            guard !normalized.isEmpty,
+                  normalized.count >= 3,
+                  normalized != lowercasedSource,
+                  let range = lowercasedSource.range(of: normalized)
+            else {
+                continue
+            }
+            return lowercasedSource.distance(from: lowercasedSource.startIndex, to: range.lowerBound)
+        }
+        return nil
+    }
+
+    private func sourceOffset(ofAny needles: [String], in lowercasedSource: String) -> Int? {
+        needles
+            .compactMap { lowercasedSource.range(of: $0) }
+            .min { lhs, rhs in lhs.lowerBound < rhs.lowerBound }
+            .map { lowercasedSource.distance(from: lowercasedSource.startIndex, to: $0.lowerBound) }
+    }
+
+    private func firstSpeakerCueOffset(in lowercasedSource: String) -> Int? {
+        let pattern = #"(?m)^\s*[a-zа-яё0-9][a-zа-яё0-9 \-_.]{1,40}\s*:"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let nsRange = NSRange(lowercasedSource.startIndex..<lowercasedSource.endIndex, in: lowercasedSource)
+        guard let match = regex.firstMatch(in: lowercasedSource, range: nsRange),
+              let range = Range(match.range, in: lowercasedSource)
+        else {
+            return nil
+        }
+        return lowercasedSource.distance(from: lowercasedSource.startIndex, to: range.lowerBound)
+    }
+
+    private func transferSearchText(for action: ScenePlanIR.Action, sourceText: String) -> String {
+        let actionText = [action.sourceText, action.fallbackText]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        if let actionText {
+            return actionText.lowercased()
+        }
+        return firstSentenceContainingAny(
+            ["передаёт", "передает", "передал", "передала", "даёт", "дает"],
+            in: sourceText
+        )?.lowercased() ?? sourceText.lowercased()
+    }
+
+    private func inferRecipientActorRef(
+        from text: String,
+        actorAliasMap: [String: String],
+        orderedActorRefs: [String],
+        excluding actorRef: String
+    ) -> String? {
+        let lowercased = text.lowercased()
+        for (alias, ref) in actorAliasMap.sorted(by: { $0.key.count > $1.key.count }) {
+            guard ref != actorRef, actorAlias(alias, isMentionedIn: lowercased) else {
+                continue
+            }
+            return ref
+        }
+        if orderedActorRefs.count == 2,
+           containsAny(lowercased, ["переда", "даёт", "дает", "даст"]) {
+            return orderedActorRefs.first { $0 != actorRef }
+        }
+        return nil
+    }
+
+    private func actorAlias(_ alias: String, isMentionedIn text: String) -> Bool {
+        let normalized = alias.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalized.count >= 3 else { return false }
+        if text.contains(normalized) {
+            return true
+        }
+        if normalized.hasSuffix("а") {
+            let stem = String(normalized.dropLast())
+            return stem.count >= 4 && text.contains(stem)
+        }
+        if normalized.count >= 4 {
+            return ["а", "у", "ом", "е"].contains { text.contains(normalized + $0) }
+        }
+        return false
+    }
+
+    private func stripOptionalSpeakerPrefix(from value: String?) -> String? {
+        guard let value else { return nil }
+        return stripSpeakerPrefix(from: value)
+    }
+
+    private func stripSpeakerPrefix(from value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let colonIndex = trimmed.firstIndex(of: ":") else { return trimmed }
+        let prefix = trimmed[..<colonIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prefix.isEmpty, prefix.count <= 40 else { return trimmed }
+        let isSpeakerLike = prefix.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.letters.contains(scalar)
+                || CharacterSet.whitespaces.contains(scalar)
+                || CharacterSet(charactersIn: "-").contains(scalar)
+        }
+        guard isSpeakerLike else { return trimmed }
+        return trimmed[trimmed.index(after: colonIndex)...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func normalizedComparableText(_ value: String?) -> String {
+        guard let value else { return "" }
+        return stripSpeakerPrefix(from: value)
+            .lowercased()
+            .unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
+    }
+
+    private func firstSentenceContainingAny(_ needles: [String], in sourceText: String) -> String? {
+        let lowercasedNeedles = needles.map { $0.lowercased() }
+        return sourceText
+            .components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { sentence in
+                let lowercasedSentence = sentence.lowercased()
+                return lowercasedNeedles.contains { lowercasedSentence.contains($0) }
+            }
+    }
+
+    private func defaultObjectName(for type: SceneObject.ObjectType) -> String? {
+        switch type {
+        case .table: return "стол"
+        case .chair: return "стул"
+        case .cabinet: return "шкаф"
+        case .door: return "дверь"
+        case .couch: return "диван"
+        case .bed: return "кровать"
+        case .window: return "окно"
+        case .shelf: return "полка"
+        case .tv: return "телевизор"
+        case .phone: return "телефон"
+        case .generic: return nil
+        }
+    }
+
+    private func appendReason(_ reason: String, to reasonCodes: inout [String]) {
+        if !reasonCodes.contains(reason) {
+            reasonCodes.append(reason)
+        }
+    }
+
+    private func containsAny(_ text: String, _ needles: [String]) -> Bool {
+        needles.contains { text.contains($0) }
     }
 
     private func resolveOrdinalActorRef(_ rawRef: String, index: Int, existingActors: [ScenePlanIR.Actor]) -> String? {
@@ -1099,6 +1761,7 @@ final class ChunkCanonicalizer {
         chunkSourceText: String,
         objectMap: [String: String],
         objectAliasMap: [String: String],
+        allowSyntheticReciprocalExpansion: Bool,
         reasonCodes: inout [String]
     ) -> [ScenePlanIR.Action] {
         var normalizedTowardEachOther = normalizeCollectiveTowardEachOtherBeat(
@@ -1106,6 +1769,7 @@ final class ChunkCanonicalizer {
             orderedActorRefs: orderedActorRefs,
             beatPhase: beatPhase,
             chunkSourceText: chunkSourceText,
+            allowSyntheticReciprocalExpansion: allowSyntheticReciprocalExpansion,
             reasonCodes: &reasonCodes
         )
 
@@ -1264,6 +1928,7 @@ final class ChunkCanonicalizer {
         orderedActorRefs: [String],
         beatPhase: String?,
         chunkSourceText: String,
+        allowSyntheticReciprocalExpansion: Bool,
         reasonCodes: inout [String]
     ) -> [ScenePlanIR.Action] {
         guard orderedActorRefs.count >= 2 else {
@@ -1272,13 +1937,18 @@ final class ChunkCanonicalizer {
 
         let phaseText = (beatPhase ?? "").lowercased()
         let chunkText = chunkSourceText.lowercased()
-        let hasTowardEachOtherCue = phaseText.contains("navstrechu")
+        let hasBeatTowardEachOtherCue = phaseText.contains("navstrechu")
             || phaseText.contains("toward_each_other")
-            || actionTextIndicatesTowardEachOther(chunkText)
             || actions.contains { action in
                 action.direction == .towardEachOther
                     || actionTextIndicatesTowardEachOther((action.sourceText ?? action.fallbackText ?? "").lowercased())
             }
+        let hasMotionCarrier = actions.contains { action in
+            (action.type == .walk || action.type == .run)
+                && !isExplicitObjectMovementAction(action)
+        }
+        let hasTowardEachOtherCue = hasBeatTowardEachOtherCue
+            || (actionTextIndicatesTowardEachOther(chunkText) && hasMotionCarrier)
         let chunkHasExplicitObjectTarget = textHasExplicitObjectTarget(chunkText)
 
         guard hasTowardEachOtherCue else {
@@ -1308,38 +1978,40 @@ final class ChunkCanonicalizer {
             return updated
         }
 
-        let existingActorRefs = Set(normalized.map(\.actorRef))
-        if !existingActorRefs.contains(primary) {
-            normalized.append(
-                ScenePlanIR.Action(
-                    actorRef: primary,
-                    type: .walk,
-                    targetRef: secondary,
-                    direction: .towardEachOther,
-                    modifier: nil,
-                    resultingPose: .walking,
-                    holdingObjectRef: nil,
-                    dialogue: nil,
-                    fallbackText: nil,
-                    sourceText: "collective_toward_each_other"
+        if allowSyntheticReciprocalExpansion {
+            let existingActorRefs = Set(normalized.map(\.actorRef))
+            if !existingActorRefs.contains(primary) {
+                normalized.append(
+                    ScenePlanIR.Action(
+                        actorRef: primary,
+                        type: .walk,
+                        targetRef: secondary,
+                        direction: .towardEachOther,
+                        modifier: nil,
+                        resultingPose: .walking,
+                        holdingObjectRef: nil,
+                        dialogue: nil,
+                        fallbackText: nil,
+                        sourceText: "collective_toward_each_other"
+                    )
                 )
-            )
-        }
-        if !existingActorRefs.contains(secondary) {
-            normalized.append(
-                ScenePlanIR.Action(
-                    actorRef: secondary,
-                    type: .walk,
-                    targetRef: primary,
-                    direction: .towardEachOther,
-                    modifier: nil,
-                    resultingPose: .walking,
-                    holdingObjectRef: nil,
-                    dialogue: nil,
-                    fallbackText: nil,
-                    sourceText: "collective_toward_each_other"
+            }
+            if !existingActorRefs.contains(secondary) {
+                normalized.append(
+                    ScenePlanIR.Action(
+                        actorRef: secondary,
+                        type: .walk,
+                        targetRef: primary,
+                        direction: .towardEachOther,
+                        modifier: nil,
+                        resultingPose: .walking,
+                        holdingObjectRef: nil,
+                        dialogue: nil,
+                        fallbackText: nil,
+                        sourceText: "collective_toward_each_other"
+                    )
                 )
-            )
+            }
         }
 
         if normalized != actions, !reasonCodes.contains("v1.collective_toward_each_other_expanded") {
@@ -1823,6 +2495,7 @@ final class SceneBundlePipeline {
     private let v9MaxObjectsDefaultsKey = "scene_generator_v9_max_objects"
     private let v9MaxBeatsDefaultsKey = "scene_generator_v9_max_beats"
     private let v9ChunkBudgetMsDefaultsKey = "scene_generator_v9_chunk_budget_ms"
+    private let v9PatchRetryEnabledDefaultsKey = "scene_generator_v9_patch_retry_enabled"
 
     init(
         anchorExtractor: SceneAnchorExtractor,
@@ -1971,9 +2644,10 @@ final class SceneBundlePipeline {
                         snapshot: executionPolicy == nil ? nil : executionSupport.makeSnapshot(),
                         note: attempt > 0 ? "retry_attempt_\(attempt)" : nil
                     )
-                    if let asyncPlanner {
+                    let shouldSkipPlanProvider = selectedV9RuntimeMode() == .v9Full
+                    if let asyncPlanner, !shouldSkipPlanProvider {
                         providerResult = await asyncPlanner(rawSegment.sourceText, markedObjects, anchors.sourceBundle, chunkState)
-                    } else {
+                    } else if !shouldSkipPlanProvider {
                         providerResult = localProvider.generatePlan(
                             description: rawSegment.sourceText,
                             markedObjects: markedObjects,
@@ -1981,12 +2655,15 @@ final class SceneBundlePipeline {
                             state: chunkState
                         )
                     }
+                    if shouldSkipPlanProvider {
+                        break
+                    }
                     if providerResult != nil {
                         break
                     }
                 }
 
-                let draft = makeDraft(
+                let draft = await makeDraft(
                     scene: scene,
                     rawSegment: rawSegment,
                     anchors: anchors,
@@ -2306,7 +2983,7 @@ final class SceneBundlePipeline {
         markedObjects: [MarkedObject],
         chunkState: SceneChunkState,
         fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult
-    ) -> SceneChunkDraft {
+    ) async -> SceneChunkDraft {
         if let providerResult {
             var reasonCodes = providerResult.usedLegacySceneScriptBridge ? ["v1.legacy_scene_bridge_chunk"] : ["v1.local_chunk_plan"]
             appendReasons(providerResult.reasonCodes, provenance: "provider", into: &reasonCodes)
@@ -2330,7 +3007,7 @@ final class SceneBundlePipeline {
                     )
                     sourcePlan = v8BasePlan
                 } else {
-                    let v9Plan = applyV9RuntimeMode(
+                    let v9Plan = await applyV9RuntimeMode(
                         runtimeMode,
                         sourcePlan: sourcePlan,
                         v8FallbackPlan: v8BasePlan,
@@ -2356,7 +3033,8 @@ final class SceneBundlePipeline {
             let enrichedPlan = enrichRuleFallbackPlan(
                 sourcePlan,
                 sourceText: rawSegment.sourceText,
-                anchors: anchors.sourceBundle,
+                anchors: anchors,
+                chunkState: chunkState,
                 markedObjects: markedObjects,
                 reasonCodes: &reasonCodes
             )
@@ -2390,10 +3068,56 @@ final class SceneBundlePipeline {
         bridgedPlan = enrichRuleFallbackPlan(
             bridgedPlan,
             sourceText: rawSegment.sourceText,
-            anchors: anchors.sourceBundle,
+            anchors: anchors,
+            chunkState: chunkState,
             markedObjects: markedObjects,
             reasonCodes: &reasonCodes
         )
+        let runtimeMode = selectedV9RuntimeMode()
+        let limits = runtimeGuardrails(for: runtimeMode)
+        let startTime = CFAbsoluteTimeGetCurrent()
+
+        if runtimeMode != .v8Hotfix {
+            let guardrailPlan = v9EventService.applyGuardrails(to: bridgedPlan, limits: limits)
+            bridgedPlan = guardrailPlan.plan
+            appendReasons(guardrailPlan.reasonCodes, provenance: "runtime_guardrail", into: &reasonCodes)
+            if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
+                appendReasonWithProvenance(
+                    "v9.runtime_budget_exceeded_fallback_v8",
+                    provenance: "runtime_guardrail",
+                    into: &reasonCodes
+                )
+            } else {
+                bridgedPlan = await applyV9RuntimeMode(
+                    runtimeMode,
+                    sourcePlan: bridgedPlan,
+                    v8FallbackPlan: bridgedPlan,
+                    sourceText: rawSegment.sourceText,
+                    anchors: anchors.sourceBundle,
+                    chunkState: chunkState,
+                    markedObjects: markedObjects,
+                    limits: limits,
+                    startTime: startTime,
+                    reasonCodes: &reasonCodes
+                )
+            }
+        } else {
+            appendReasonWithProvenance(
+                "v9.runtime_mode_v8_hotfix",
+                provenance: "runtime_guardrail",
+                into: &reasonCodes
+            )
+        }
+        bridgedPlan = enrichRuleFallbackPlan(
+            bridgedPlan,
+            sourceText: rawSegment.sourceText,
+            anchors: anchors,
+            chunkState: chunkState,
+            markedObjects: markedObjects,
+            reasonCodes: &reasonCodes
+        )
+        let usedV9EventProvider = reasonCodes.contains("v9.event_provider_path_used")
+            || reasonCodes.contains("provider:v9.event_provider_path_used")
         return SceneChunkDraft(
             sceneID: scene.id,
             chunkID: rawSegment.chunkID,
@@ -2403,9 +3127,9 @@ final class SceneBundlePipeline {
             anchors: anchors,
             registrySnapshot: registrySnapshot,
             plan: bridgedPlan,
-            usedFallbackPlanner: true,
+            usedFallbackPlanner: !usedV9EventProvider,
             usedLegacyPlanBridge: true,
-            confidence: max(0.3, fallback.diagnostics.confidence),
+            confidence: usedV9EventProvider ? max(0.75, fallback.diagnostics.confidence) : max(0.3, fallback.diagnostics.confidence),
             unresolvedMentions: anchors.pronounMentions,
             reasonCodes: reasonCodes
         )
@@ -2421,7 +3145,7 @@ final class SceneBundlePipeline {
            UserDefaults.standard.bool(forKey: v9EnabledDefaultsKey) == false {
             return .v8Hotfix
         }
-        return .v9Bridge
+        return .v9Full
     }
 
     private func runtimeGuardrails(for mode: V9RuntimeMode) -> SceneEventTableV9Service.RuntimeGuardrails {
@@ -2449,6 +3173,10 @@ final class SceneBundlePipeline {
         (CFAbsoluteTimeGetCurrent() - startTime) * 1_000.0 > budgetMs
     }
 
+    private func isV9PatchRetryEnabled() -> Bool {
+        UserDefaults.standard.bool(forKey: v9PatchRetryEnabledDefaultsKey)
+    }
+
     private func applyV9RuntimeMode(
         _ mode: V9RuntimeMode,
         sourcePlan: ScenePlanIR,
@@ -2460,7 +3188,7 @@ final class SceneBundlePipeline {
         limits: SceneEventTableV9Service.RuntimeGuardrails,
         startTime: CFAbsoluteTime,
         reasonCodes: inout [String]
-    ) -> ScenePlanIR {
+    ) async -> ScenePlanIR {
         switch mode {
         case .v8Hotfix:
             return v8FallbackPlan
@@ -2473,7 +3201,7 @@ final class SceneBundlePipeline {
                 reasonCodes: &reasonCodes
             )
         case .v9Full:
-            return applyV9Full(
+            return await applyV9Full(
                 sourcePlan: sourcePlan,
                 v8FallbackPlan: v8FallbackPlan,
                 sourceText: sourceText,
@@ -2527,12 +3255,12 @@ final class SceneBundlePipeline {
         limits: SceneEventTableV9Service.RuntimeGuardrails,
         startTime: CFAbsoluteTime,
         reasonCodes: inout [String]
-    ) -> ScenePlanIR {
+    ) async -> ScenePlanIR {
         var slotCatalog = v9EventService.buildSlotCatalog(from: sourcePlan)
         var eventTable = v9EventService.buildEventTable(from: sourcePlan, slotCatalog: slotCatalog)
         var usedProvider = false
 
-        if let providerResult = localProvider.generateEventTable(
+        if let providerResult = await localProvider.generateEventTableAsync(
             description: sourceText,
             markedObjects: markedObjects,
             anchors: anchors,
@@ -2560,7 +3288,9 @@ final class SceneBundlePipeline {
 
         if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
             appendReasonWithProvenance("v9.runtime_budget_exceeded_fallback_v8", provenance: "runtime_guardrail", into: &reasonCodes)
-            return v8FallbackPlan
+            if !usedProvider {
+                return v8FallbackPlan
+            }
         }
 
         var verification = v9EventService.verifyAndRepair(eventTable: eventTable, slotCatalog: slotCatalog)
@@ -2575,11 +3305,19 @@ final class SceneBundlePipeline {
         var verifierIssuesForRetry = verification.reasonCodes + coverageIssues
 
         let canRetry = usedProvider
+            && isV9PatchRetryEnabled()
             && v9EventService.containsFixableVerifierIssues(verifierIssuesForRetry)
             && !didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs * 0.75)
+        if usedProvider,
+           !canRetry,
+           !verifierIssuesForRetry.isEmpty,
+           v9EventService.containsFixableVerifierIssues(verifierIssuesForRetry),
+           !isV9PatchRetryEnabled() {
+            appendReasonWithProvenance("v9.patch_retry_disabled_live_demo", provenance: "v9_verifier", into: &reasonCodes)
+        }
         if canRetry {
             appendReasonWithProvenance("v9.patch_retry_attempted", provenance: "v9_verifier", into: &reasonCodes)
-            if let retryPatchOps = localProvider.generateEventPatchOps(
+            if let retryPatchOps = await localProvider.generateEventPatchOpsAsync(
                 description: sourceText,
                 markedObjects: markedObjects,
                 anchors: anchors,
@@ -2619,7 +3357,9 @@ final class SceneBundlePipeline {
 
         if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
             appendReasonWithProvenance("v9.runtime_budget_exceeded_fallback_v8", provenance: "runtime_guardrail", into: &reasonCodes)
-            return v8FallbackPlan
+            if !usedProvider {
+                return v8FallbackPlan
+            }
         }
 
         appendReasonWithProvenance("v9.local_event_table_pipeline", provenance: "v9_verifier", into: &reasonCodes)
@@ -2657,86 +3397,272 @@ final class SceneBundlePipeline {
     private func enrichRuleFallbackPlan(
         _ plan: ScenePlanIR,
         sourceText: String,
-        anchors: SourceAnchorBundle,
+        anchors: SceneChunkAnchor,
+        chunkState: SceneChunkState?,
         markedObjects: [MarkedObject],
         reasonCodes: inout [String]
     ) -> ScenePlanIR {
-        var enriched = ensureOrdinalActors(in: plan, sourceText: sourceText, anchors: anchors)
+        var enriched = ensureOrdinalActors(in: plan, sourceText: sourceText, anchors: anchors, chunkState: chunkState)
         enriched = ensureMentionedMarkedObjects(
             in: enriched,
             sourceText: sourceText,
             markedObjects: markedObjects,
             reasonCodes: &reasonCodes
         )
+        enriched = ensureCollectiveMotionEvents(
+            in: enriched,
+            sourceText: sourceText,
+            reasonCodes: &reasonCodes
+        )
         enriched = ensureDialogueEvents(
             in: enriched,
             sourceText: sourceText,
+            chunkState: chunkState,
+            reasonCodes: &reasonCodes
+        )
+        enriched = ensureLookAtEvents(
+            in: enriched,
+            sourceText: sourceText,
+            chunkState: chunkState,
             reasonCodes: &reasonCodes
         )
         enriched = ensureTransferEvents(
             in: enriched,
             sourceText: sourceText,
+            chunkState: chunkState,
             reasonCodes: &reasonCodes
         )
 
-        guard !anchors.unsupportedActionFlags.isEmpty,
-              !enriched.beats.flatMap(\.actions).contains(where: { $0.type == .describedAction })
-        else { return enriched }
-
-        let describedText = extractUnsupportedActionSentence(
-            from: sourceText,
-            unsupportedFlags: anchors.unsupportedActionFlags
-        )
-        guard !describedText.isEmpty else { return enriched }
-
-        let actorRef = inferUnsupportedActionActorRef(from: describedText, sourceText: sourceText, anchors: anchors)
-        if !enriched.actors.contains(where: { $0.ref == actorRef }) {
-            enriched.actors.append(.init(ref: actorRef, type: .human))
-        }
-        enriched.beats.append(
-            ScenePlanIR.Beat(
-                ref: "beat_described_\(enriched.beats.count + 1)",
-                phase: "described_action",
-                actions: [
-                    ScenePlanIR.Action(
-                        actorRef: actorRef,
-                        type: .describedAction,
-                        resultingPose: .standing,
-                        fallbackText: describedText,
-                        sourceText: describedText
-                    ),
-                ],
-                minDuration: 0.5
+        if !anchors.sourceBundle.unsupportedActionFlags.isEmpty,
+           !enriched.beats.flatMap(\.actions).contains(where: { $0.type == .describedAction }) {
+            let describedText = extractUnsupportedActionSentence(
+                from: sourceText,
+                unsupportedFlags: anchors.sourceBundle.unsupportedActionFlags
             )
-        )
-        if !reasonCodes.contains("v1.unsupported_action_described") {
-            reasonCodes.append("v1.unsupported_action_described")
+            if !describedText.isEmpty {
+                let actorRef = inferUnsupportedActionActorRef(from: describedText, sourceText: sourceText, anchors: anchors.sourceBundle)
+                if !enriched.actors.contains(where: { $0.ref == actorRef }) {
+                    enriched.actors.append(.init(ref: actorRef, type: .human))
+                }
+                enriched.beats.append(
+                    ScenePlanIR.Beat(
+                        ref: "beat_described_\(enriched.beats.count + 1)",
+                        phase: "described_action",
+                        actions: [
+                            ScenePlanIR.Action(
+                                actorRef: actorRef,
+                                type: .describedAction,
+                                resultingPose: .standing,
+                                fallbackText: describedText,
+                                sourceText: describedText
+                            ),
+                        ],
+                        minDuration: 0.5
+                    )
+                )
+                if !reasonCodes.contains("v1.unsupported_action_described") {
+                    reasonCodes.append("v1.unsupported_action_described")
+                }
+            }
         }
-        return enriched
+        return orderBeatsBySourcePosition(enriched, sourceText: sourceText, reasonCodes: &reasonCodes)
     }
 
-    private func ensureOrdinalActors(in plan: ScenePlanIR, sourceText: String, anchors: SourceAnchorBundle) -> ScenePlanIR {
+    private func ensureOrdinalActors(
+        in plan: ScenePlanIR,
+        sourceText: String,
+        anchors: SceneChunkAnchor,
+        chunkState: SceneChunkState?
+    ) -> ScenePlanIR {
         var enriched = plan
         let lowercased = sourceText.lowercased()
         let speakerCount = Set(inlineSpeakerPairs(in: sourceText).map(\.speaker)).count
+        let namedActors = orderedNamedActorMentions(from: anchors)
         let requiredCount: Int
-        if anchors.actorCountHint >= 3 || lowercased.contains("трет") {
+        if anchors.sourceBundle.actorCountHint >= 3 || lowercased.contains("трет") || namedActors.count >= 3 {
             requiredCount = 3
-        } else if anchors.actorCountHint >= 2
+        } else if anchors.sourceBundle.actorCountHint >= 2
             || lowercased.contains("оба")
             || lowercased.contains("обе")
             || lowercased.contains("перв") && lowercased.contains("втор")
-            || speakerCount >= 2 {
+            || speakerCount >= 2
+            || namedActors.count >= 2 {
             requiredCount = 2
         } else {
             requiredCount = max(enriched.actors.count, speakerCount)
         }
 
         let ordinalRefs = ["first", "second", "third"]
-        for ref in ordinalRefs.prefix(requiredCount) where !enriched.actors.contains(where: { $0.ref == ref }) {
-            enriched.actors.append(.init(ref: ref, type: .human))
+        for (index, ref) in ordinalRefs.prefix(requiredCount).enumerated() {
+            let name = namedActors.indices.contains(index) ? namedActors[index] : nil
+            if let actorIndex = enriched.actors.firstIndex(where: { $0.ref == ref }) {
+                if enriched.actors[actorIndex].name == nil, let name {
+                    enriched.actors[actorIndex].name = name
+                }
+            } else {
+                enriched.actors.append(.init(ref: ref, type: .human, name: name))
+            }
+            if let name, let existingRef = actorRefForNamedMention(name, in: enriched, chunkState: chunkState, fallbackIndex: index) {
+                if let existingIndex = enriched.actors.firstIndex(where: { $0.ref == existingRef }),
+                   enriched.actors[existingIndex].name == nil {
+                    enriched.actors[existingIndex].name = name
+                }
+            }
         }
         return enriched
+    }
+
+    private func ensureCollectiveMotionEvents(
+        in plan: ScenePlanIR,
+        sourceText: String,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        let lowercased = sourceText.lowercased()
+        let towardEachOtherCues = [
+            "идут навстречу",
+            "идёт навстречу",
+            "идет навстречу",
+            "навстречу друг другу",
+            "друг к другу",
+        ]
+        guard containsAny(lowercased, towardEachOtherCues) else { return plan }
+        let alreadyHasMotion = plan.beats.flatMap(\.actions).contains { action in
+            action.type == .walk || action.type == .run || action.type == .approach
+        }
+        guard !alreadyHasMotion else { return plan }
+
+        var enriched = plan
+        if enriched.actors.count < 2 {
+            let ordinalRefs = ["first", "second"]
+            for ref in ordinalRefs where !enriched.actors.contains(where: { $0.ref == ref }) {
+                enriched.actors.append(.init(ref: ref, type: .human))
+            }
+        }
+        guard enriched.actors.count >= 2 else { return enriched }
+
+        let firstRef = enriched.actors[0].ref
+        let secondRef = enriched.actors[1].ref
+        let eventSourceText = firstSentenceContainingAny(towardEachOtherCues, in: sourceText) ?? sourceText
+        enriched.beats.append(
+            ScenePlanIR.Beat(
+                ref: "beat_collective_motion_runtime_\(enriched.beats.count + 1)",
+                phase: "toward_each_other",
+                actions: [
+                    ScenePlanIR.Action(
+                        actorRef: firstRef,
+                        type: .walk,
+                        targetRef: secondRef,
+                        direction: .towardEachOther,
+                        resultingPose: .walking,
+                        sourceText: eventSourceText
+                    ),
+                    ScenePlanIR.Action(
+                        actorRef: secondRef,
+                        type: .walk,
+                        targetRef: firstRef,
+                        direction: .towardEachOther,
+                        resultingPose: .walking,
+                        sourceText: eventSourceText
+                    ),
+                ],
+                minDuration: 0.5
+            )
+        )
+        appendUniqueReason("v9.collective_motion_materialized", to: &reasonCodes)
+        return enriched
+    }
+
+    private func orderedNamedActorMentions(from anchors: SceneChunkAnchor) -> [String] {
+        let generic: Set<String> = ["человек", "мужчина", "женщина", "парень", "девушка", "актёр", "актер", "персонаж"]
+        var result: [String] = []
+        for raw in anchors.actorMentions {
+            let cleaned = displayActorName(from: raw)
+            let key = normalizedActorAlias(cleaned) ?? cleaned.lowercased()
+            guard !cleaned.isEmpty,
+                  !generic.contains(key),
+                  !result.contains(where: { ($0.lowercased()) == cleaned.lowercased() })
+            else { continue }
+            result.append(cleaned)
+        }
+        return result
+    }
+
+    private func displayActorName(from raw: String) -> String {
+        let cleaned = raw
+            .replacingOccurrences(of: ":", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "" }
+        let lowercased = cleaned.lowercased()
+        guard let first = lowercased.first else { return cleaned }
+        return String(first).uppercased() + lowercased.dropFirst()
+    }
+
+    private func normalizedActorAlias(_ value: String?) -> String? {
+        guard let value = value?
+            .replacingOccurrences(of: ":", with: "")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !value.isEmpty
+        else { return nil }
+        let generic: Set<String> = ["человек", "мужчина", "женщина", "парень", "девушка", "актёр", "актер", "персонаж", "он", "она", "они"]
+        return generic.contains(value) ? nil : value
+    }
+
+    private func actorRefForNamedMention(
+        _ name: String,
+        in plan: ScenePlanIR,
+        chunkState: SceneChunkState?,
+        fallbackIndex: Int
+    ) -> String? {
+        guard let alias = normalizedActorAlias(name) else {
+            return ordinalActorRef(in: plan, fallbackIndex: fallbackIndex)
+        }
+        let aliasRefs = actorAliasRefs(in: plan, chunkState: chunkState)
+        if let exact = aliasRefs[alias] {
+            return exact
+        }
+        if let fuzzy = aliasRefs.first(where: { actorAliasMatches($0.key, in: alias) || actorAliasMatches(alias, in: $0.key) })?.value {
+            return fuzzy
+        }
+        return ordinalActorRef(in: plan, fallbackIndex: fallbackIndex)
+    }
+
+    private func ordinalActorRef(in plan: ScenePlanIR, fallbackIndex: Int) -> String? {
+        let ordinalRefs = ["first", "second", "third"]
+        if ordinalRefs.indices.contains(fallbackIndex),
+           plan.actors.contains(where: { $0.ref == ordinalRefs[fallbackIndex] }) {
+            return ordinalRefs[fallbackIndex]
+        }
+        if plan.actors.indices.contains(fallbackIndex) {
+            return plan.actors[fallbackIndex].ref
+        }
+        return plan.actors.first?.ref
+    }
+
+    private func actorAliasRefs(in plan: ScenePlanIR, chunkState: SceneChunkState?) -> [String: String] {
+        var refs: [String: String] = [:]
+        for actor in plan.actors {
+            if let alias = normalizedActorAlias(actor.name) {
+                refs[alias] = actor.ref
+            }
+            refs[actor.ref.lowercased()] = actor.ref
+        }
+        for map in [chunkState?.knownActors, chunkState?.actorAliases, chunkState?.speakerAliasMap] {
+            for (alias, ref) in map ?? [:] {
+                if let normalized = normalizedActorAlias(alias) {
+                    refs[normalized] = ref
+                }
+            }
+        }
+        return refs
+    }
+
+    private func actorAliasMatches(_ alias: String, in text: String) -> Bool {
+        let normalizedText = text.lowercased()
+        if normalizedText.contains(alias) { return true }
+        guard alias.count >= 4 else { return false }
+        let prefix = String(alias.prefix(min(5, alias.count)))
+        return normalizedText.contains(prefix)
     }
 
     private func ensureMentionedMarkedObjects(
@@ -2801,26 +3727,60 @@ final class SceneBundlePipeline {
     private func ensureDialogueEvents(
         in plan: ScenePlanIR,
         sourceText: String,
+        chunkState: SceneChunkState?,
         reasonCodes: inout [String]
     ) -> ScenePlanIR {
         let speakerPairs = inlineSpeakerPairs(in: sourceText)
-        let quotedText = quotedDialogue(in: sourceText)
+        let quotedSnippets = quotedDialogueSnippets(in: sourceText)
+        let quotedText = quotedSnippets.joined(separator: " ")
         guard !speakerPairs.isEmpty || !quotedText.isEmpty else { return plan }
 
-        let hasDialogue = plan.beats.flatMap(\.actions).contains { action in
-            action.type == .talk && !(action.dialogue ?? action.sourceText ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let existingDialogueKeys = Set(plan.beats.flatMap(\.actions).compactMap { action -> String? in
+            guard action.type == .talk else { return nil }
+            let key = dialogueKey(action.dialogue ?? action.sourceText ?? "")
+            return key.isEmpty ? nil : key
+        })
+        let missingSpeakerPairs = speakerPairs.enumerated().filter { _, pair in
+            !existingDialogueKeys.contains(dialogueKey(pair.dialogue))
         }
-        guard !hasDialogue else { return plan }
+        let quotedKey = dialogueKey(quotedText)
+        if speakerPairs.isEmpty, !quotedKey.isEmpty, existingDialogueKeys.contains(quotedKey) {
+            return plan
+        }
+        let quotedSnippetKeys = Set(quotedSnippets.map(dialogueKey).filter { !$0.isEmpty })
+        if speakerPairs.isEmpty, !quotedSnippetKeys.isEmpty, quotedSnippetKeys.isSubset(of: existingDialogueKeys) {
+            return plan
+        }
+        if !speakerPairs.isEmpty, missingSpeakerPairs.isEmpty {
+            return plan
+        }
 
         var enriched = plan
+        if !speakerPairs.isEmpty, !existingDialogueKeys.isEmpty {
+            let sourceDialogueKeys = Set(speakerPairs.map { dialogueKey($0.dialogue) })
+            for beatIndex in enriched.beats.indices {
+                enriched.beats[beatIndex].actions.removeAll { action in
+                    action.type == .talk && sourceDialogueKeys.contains(dialogueKey(action.dialogue ?? action.sourceText ?? ""))
+                }
+            }
+            enriched.beats.removeAll { $0.actions.isEmpty }
+        }
         if enriched.actors.isEmpty {
             enriched.actors.append(.init(ref: "first", type: .human))
         }
-        let actorRefs = enriched.actors.map(\.ref)
+        var actorRefs = enriched.actors.map(\.ref)
         let dialogueActions: [ScenePlanIR.Action]
         if !speakerPairs.isEmpty {
             dialogueActions = speakerPairs.enumerated().map { index, pair in
-                let actorRef = actorRefs.indices.contains(index) ? actorRefs[index] : actorRefs.first ?? "first"
+                let actorRef = actorRefForNamedMention(pair.speaker, in: enriched, chunkState: chunkState, fallbackIndex: index)
+                    ?? (actorRefs.indices.contains(index) ? actorRefs[index] : actorRefs.first ?? "first")
+                if !actorRefs.contains(actorRef) {
+                    enriched.actors.append(.init(ref: actorRef, type: .human, name: displayActorName(from: pair.speaker)))
+                    actorRefs.append(actorRef)
+                } else if let actorIndex = enriched.actors.firstIndex(where: { $0.ref == actorRef }),
+                          enriched.actors[actorIndex].name == nil {
+                    enriched.actors[actorIndex].name = displayActorName(from: pair.speaker)
+                }
                 return ScenePlanIR.Action(
                     actorRef: actorRef,
                     type: .talk,
@@ -2852,9 +3812,73 @@ final class SceneBundlePipeline {
         return enriched
     }
 
+    private func dialogueKey(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func ensureLookAtEvents(
+        in plan: ScenePlanIR,
+        sourceText: String,
+        chunkState: SceneChunkState?,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        let lowercased = sourceText.lowercased()
+        let lookVerbs = ["смотрит на", "смотрят на", "посмотрел на", "посмотрела на", "глядит на"]
+        guard containsAny(lowercased, lookVerbs) else { return plan }
+        let alreadyHasLookAt = plan.beats.flatMap(\.actions).contains { $0.type == .lookAt }
+        guard !alreadyHasLookAt else { return plan }
+
+        var enriched = plan
+        if enriched.actors.isEmpty {
+            enriched.actors.append(.init(ref: "first", type: .human))
+        }
+
+        let targetRef = ensureLookAtObject(in: &enriched, sourceText: lowercased)
+        let actorRef = actorRefBeforeFirstVerb(
+            in: enriched,
+            sourceText: lowercased,
+            verbs: lookVerbs,
+            chunkState: chunkState
+        ) ?? enriched.actors.first?.ref ?? "first"
+
+        let eventSourceText = firstSentenceContainingAny(lookVerbs, in: sourceText) ?? sourceText
+        enriched.beats.append(
+            ScenePlanIR.Beat(
+                ref: "beat_look_at_runtime_\(enriched.beats.count + 1)",
+                phase: "look_at_object",
+                actions: [
+                    ScenePlanIR.Action(
+                        actorRef: actorRef,
+                        type: .lookAt,
+                        targetRef: targetRef,
+                        resultingPose: .standing,
+                        sourceText: eventSourceText
+                    ),
+                ],
+                minDuration: 0.5
+            )
+        )
+        appendUniqueReason("v9.look_at_action_materialized", to: &reasonCodes)
+        return enriched
+    }
+
+    private func ensureLookAtObject(in plan: inout ScenePlanIR, sourceText: String) -> String {
+        if containsAny(sourceText, ["телефон", "телефона", "телефону", "телефоном", "телефоне"]) {
+            return ensureRuntimeObject(in: &plan, ref: "object_runtime_phone", type: .phone, name: "телефон")
+        }
+        if let mentionedObject = plan.objects.first(where: { object in
+            let name = object.name?.lowercased() ?? object.ref.lowercased()
+            return sourceText.contains(name)
+        }) {
+            return mentionedObject.ref
+        }
+        return ensureRuntimeObject(in: &plan, ref: "object_runtime_look_target", type: .generic, name: "предмет")
+    }
+
     private func ensureTransferEvents(
         in plan: ScenePlanIR,
         sourceText: String,
+        chunkState: SceneChunkState?,
         reasonCodes: inout [String]
     ) -> ScenePlanIR {
         let lowercased = sourceText.lowercased()
@@ -2868,8 +3892,8 @@ final class SceneBundlePipeline {
             enriched.actors.append(.init(ref: "first", type: .human))
         }
         let objectRef = ensureTransferObject(in: &enriched, sourceText: lowercased)
-        let actorRef = transferActorRef(in: enriched, sourceText: lowercased)
-        let recipientRef = transferRecipientRef(in: enriched, sourceText: lowercased)
+        let actorRef = transferActorRef(in: enriched, sourceText: lowercased, chunkState: chunkState)
+        let recipientRef = transferRecipientRef(in: enriched, sourceText: lowercased, actorRef: actorRef, chunkState: chunkState)
         var actionsToAdd: [ScenePlanIR.Action] = []
         let existingTypes = Set(enriched.beats.flatMap(\.actions).map(\.type))
 
@@ -2912,11 +3936,19 @@ final class SceneBundlePipeline {
         }
 
         guard !actionsToAdd.isEmpty else { return enriched }
+        let eventSourceText = firstSentenceContainingAny(
+            ["берёт", "берет", "поднимает", "поднял", "взял", "берут", "кладёт", "кладет", "положи", "положил", "оставь", "ставит", "передаёт", "передает", "передам", "даёт", "дает", "получает"],
+            in: sourceText
+        ) ?? sourceText
         enriched.beats.append(
             ScenePlanIR.Beat(
                 ref: "beat_transfer_runtime_\(enriched.beats.count + 1)",
                 phase: "object_transfer",
-                actions: actionsToAdd,
+                actions: actionsToAdd.map { action in
+                    var updated = action
+                    updated.sourceText = eventSourceText
+                    return updated
+                },
                 minDuration: 0.5
             )
         )
@@ -2924,20 +3956,66 @@ final class SceneBundlePipeline {
         return enriched
     }
 
-    private func inlineSpeakerPairs(in sourceText: String) -> [(speaker: String, dialogue: String)] {
-        let pattern = #"(?m)(?:^|[.!?]\s+)([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9 \-_.]{1,40}):\s*([^.\n]+(?:[.!?]|$))"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let nsText = sourceText as NSString
-        return regex.matches(in: sourceText, range: NSRange(location: 0, length: nsText.length)).compactMap { match in
-            guard match.numberOfRanges > 2 else { return nil }
-            let speaker = nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
-            let dialogue = nsText.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !speaker.isEmpty, !dialogue.isEmpty else { return nil }
-            return (speaker, dialogue)
+    private func ensureRuntimeObject(
+        in plan: inout ScenePlanIR,
+        ref: String,
+        type: SceneObject.ObjectType,
+        name: String
+    ) -> String {
+        if let existing = plan.objects.first(where: { $0.ref == ref || $0.type == type && $0.name?.lowercased() == name }) {
+            return existing.ref
         }
+        plan.objects.append(
+            ScenePlanIR.Object(
+                ref: ref,
+                type: type,
+                relativePosition: .center,
+                name: name,
+                markedObjectID: nil
+            )
+        )
+        return ref
+    }
+
+    private func inlineSpeakerPairs(in sourceText: String) -> [(speaker: String, dialogue: String)] {
+        let patterns = [
+            #"(?m)^\s*([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9 \-_.]{1,40}):\s*([^\n]+)"#,
+            #"(?m)(?:^|[.!?]\s+)([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9 \-_.]{1,40}):\s*([^\n]+)"#,
+        ]
+        let nsText = sourceText as NSString
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let pairs = regex.matches(in: sourceText, range: NSRange(location: 0, length: nsText.length)).compactMap { match -> (speaker: String, dialogue: String)? in
+                guard match.numberOfRanges > 2 else { return nil }
+                let speaker = nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+                let dialogue = nsText.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !speaker.isEmpty, !dialogue.isEmpty, !isNarrativeSpeechCue(speaker) else { return nil }
+                return (speaker, dialogue)
+            }
+            if !pairs.isEmpty {
+                return pairs
+            }
+        }
+        return []
+    }
+
+    private func isNarrativeSpeechCue(_ speaker: String) -> Bool {
+        let lowercased = speaker.lowercased()
+        guard lowercased.contains(" ") else { return false }
+        let speechVerbs = [
+            "говорит", "говорят", "сказал", "сказала", "сказали",
+            "отвечает", "ответил", "ответила", "ответили",
+            "спрашивает", "спросил", "спросила",
+            "произносит", "шепчет", "кричит"
+        ]
+        return speechVerbs.contains { lowercased.contains($0) }
     }
 
     private func quotedDialogue(in sourceText: String) -> String {
+        quotedDialogueSnippets(in: sourceText).joined(separator: " ")
+    }
+
+    private func quotedDialogueSnippets(in sourceText: String) -> [String] {
         let patterns = [
             #"«([^»]+)»"#,
             #""([^"]+)""#,
@@ -2952,13 +4030,18 @@ final class SceneBundlePipeline {
                 return value.isEmpty ? nil : value
             }
             if !snippets.isEmpty {
-                return snippets.joined(separator: " ")
+                return snippets
             }
         }
-        return ""
+        return []
     }
 
     private func ensureTransferObject(in plan: inout ScenePlanIR, sourceText: String) -> String {
+        if containsAny(sourceText, ["телефон", "телефона", "телефону", "телефоном", "телефоне"]),
+           let phone = plan.objects.first(where: { $0.type == .phone || ($0.name?.lowercased() == "телефон") }) {
+            return phone.ref
+        }
+
         let existingObject = plan.objects.first { object in
             let name = object.name?.lowercased() ?? object.ref.lowercased()
             return sourceText.contains(name) || object.ref.hasPrefix("object_marked_")
@@ -2973,7 +4056,7 @@ final class SceneBundlePipeline {
             plan.objects.append(
                 ScenePlanIR.Object(
                     ref: objectRef,
-                    type: .generic,
+                    type: transferObjectType(for: objectName),
                     relativePosition: .center,
                     name: objectName,
                     markedObjectID: nil
@@ -2984,9 +4067,10 @@ final class SceneBundlePipeline {
     }
 
     private func transferObjectName(in sourceText: String) -> String {
-        let candidates = ["письмо", "планшет", "сумка", "сумку", "коробка", "коробку", "пакет", "конверт", "отчёт", "отчет", "скриншот"]
+        let candidates = ["телефон", "телефона", "телефону", "телефоном", "телефоне", "письмо", "планшет", "сумка", "сумку", "коробка", "коробку", "пакет", "конверт", "отчёт", "отчет", "скриншот"]
         let candidate = candidates.first { sourceText.contains($0) } ?? "предмет"
         switch candidate {
+        case "телефона", "телефону", "телефоном", "телефоне": return "телефон"
         case "сумку": return "сумка"
         case "коробку": return "коробка"
         case "отчет": return "отчёт"
@@ -2994,8 +4078,24 @@ final class SceneBundlePipeline {
         }
     }
 
-    private func transferActorRef(in plan: ScenePlanIR, sourceText: String) -> String {
+    private func transferObjectType(for objectName: String) -> SceneObject.ObjectType {
+        switch objectName {
+        case "телефон": return .phone
+        default: return .generic
+        }
+    }
+
+    private func transferActorRef(in plan: ScenePlanIR, sourceText: String, chunkState: SceneChunkState?) -> String {
         let actorRefs = plan.actors.map(\.ref)
+        let transferVerbs = ["берёт", "берет", "поднимает", "поднял", "взял", "берут", "кладёт", "кладет", "передаёт", "передает", "даёт", "дает"]
+        if let namedRef = actorRefBeforeFirstVerb(
+            in: plan,
+            sourceText: sourceText,
+            verbs: transferVerbs,
+            chunkState: chunkState
+        ) {
+            return namedRef
+        }
         if actorRefs.contains("second"),
            containsAny(sourceText, ["второй бер", "вторая бер", "второй клад", "вторая клад", "второй перед", "вторая перед"]) {
             return "second"
@@ -3010,14 +4110,212 @@ final class SceneBundlePipeline {
         return actorRefs.first ?? "first"
     }
 
-    private func transferRecipientRef(in plan: ScenePlanIR, sourceText: String) -> String {
+    private func actorRefBeforeFirstVerb(
+        in plan: ScenePlanIR,
+        sourceText: String,
+        verbs: [String],
+        chunkState: SceneChunkState?
+    ) -> String? {
+        guard let verbRange = firstRange(ofAny: verbs, in: sourceText) else { return nil }
+        let beforeVerb = String(sourceText[..<verbRange.lowerBound])
+        return actorAliasRefs(in: plan, chunkState: chunkState)
+            .compactMap { alias, ref -> (ref: String, range: Range<String.Index>)? in
+                guard let range = lastAliasRange(alias, in: beforeVerb) else { return nil }
+                return (ref, range)
+            }
+            .max(by: { $0.range.lowerBound < $1.range.lowerBound })?
+            .ref
+    }
+
+    private func lastAliasRange(_ alias: String, in text: String) -> Range<String.Index>? {
+        let normalizedAlias = alias.lowercased()
+        guard !normalizedAlias.isEmpty else { return nil }
+        let normalizedText = text.lowercased()
+        if let range = normalizedText.range(of: normalizedAlias, options: [.backwards]) {
+            return range
+        }
+        guard normalizedAlias.count >= 4 else { return nil }
+        let prefix = String(normalizedAlias.prefix(min(5, normalizedAlias.count)))
+        return normalizedText.range(of: prefix, options: [.backwards])
+    }
+
+    private func transferRecipientRef(
+        in plan: ScenePlanIR,
+        sourceText: String,
+        actorRef: String,
+        chunkState: SceneChunkState?
+    ) -> String {
         let actorRefs = plan.actors.map(\.ref)
+        let actorAliases = actorAliasRefs(in: plan, chunkState: chunkState)
+        if let giveRange = firstRange(ofAny: ["передаёт", "передает", "даёт", "дает", "получает"], in: sourceText) {
+            let afterGive = String(sourceText[giveRange.upperBound...])
+            if let namedRef = actorAliases
+                .sorted(by: { $0.key.count > $1.key.count })
+                .first(where: { $0.value != actorRef && actorAliasMatches($0.key, in: afterGive) })?
+                .value {
+                return namedRef
+            }
+        }
         if (sourceText.contains("трет") || sourceText.contains("лиз") || sourceText.contains("егор")),
            actorRefs.contains("third") {
             return "third"
         }
         if sourceText.contains("втор"), actorRefs.contains("second") { return "second" }
-        return actorRefs.dropFirst().first ?? actorRefs.first ?? "first"
+        return actorRefs.first(where: { $0 != actorRef }) ?? actorRefs.first ?? "first"
+    }
+
+    private func orderBeatsBySourcePosition(
+        _ plan: ScenePlanIR,
+        sourceText: String,
+        reasonCodes: inout [String]
+    ) -> ScenePlanIR {
+        guard plan.beats.count > 1 else { return plan }
+
+        let lowercasedSource = sourceText.lowercased()
+        let ordered = plan.beats.enumerated().sorted(by: { lhs, rhs in
+            let lhsOffset = sourceOffset(for: lhs.element, in: lowercasedSource)
+            let rhsOffset = sourceOffset(for: rhs.element, in: lowercasedSource)
+            let lhsRank = semanticFallbackRank(for: lhs.element)
+            let rhsRank = semanticFallbackRank(for: rhs.element)
+
+            switch (lhsOffset, rhsOffset) {
+            case let (lhsSourceOffset?, rhsSourceOffset?):
+                if lhsSourceOffset != rhsSourceOffset {
+                    return lhsSourceOffset < rhsSourceOffset
+                }
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return lhs.offset < rhs.offset
+            case (_?, nil):
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return true
+            case (nil, _?):
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return false
+            default:
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return lhs.offset < rhs.offset
+            }
+        })
+        let orderedBeats = ordered.map { $0.element }
+        guard orderedBeats != plan.beats else { return plan }
+
+        var updated = plan
+        updated.beats = orderedBeats
+        appendUniqueReason("v9.beats_source_ordered", to: &reasonCodes)
+        return updated
+    }
+
+    private func semanticFallbackRank(for beat: ScenePlanIR.Beat) -> Int {
+        let actionTypes = Set(beat.actions.map(\.type))
+        if actionTypes.contains(.walk)
+            || actionTypes.contains(.run)
+            || actionTypes.contains(.stand)
+            || actionTypes.contains(.stop)
+            || actionTypes.contains(.lookAt) {
+            return 0
+        }
+        if actionTypes.contains(.talk) {
+            return 1
+        }
+        if actionTypes.contains(.pickUp)
+            || actionTypes.contains(.putDown)
+            || actionTypes.contains(.give)
+            || actionTypes.contains(.open)
+            || actionTypes.contains(.close) {
+            return 2
+        }
+        return 3
+    }
+
+    private func sourceOffset(for beat: ScenePlanIR.Beat, in lowercasedSource: String) -> Int? {
+        beat.actions
+            .compactMap { sourceOffset(for: $0, in: lowercasedSource) }
+            .min()
+    }
+
+    private func sourceOffset(for action: ScenePlanIR.Action, in lowercasedSource: String) -> Int? {
+        for candidate in [action.sourceText, action.dialogue, action.fallbackText] {
+            if let offset = sourceOffset(of: candidate, in: lowercasedSource) {
+                return offset
+            }
+        }
+
+        if action.type == .talk {
+            return firstSpeakerCueOffset(in: lowercasedSource)
+        }
+        if (action.type == .walk || action.type == .run), action.direction == .towardEachOther {
+            return sourceOffset(
+                ofAny: ["идут навстречу", "идёт навстречу", "идет навстречу", "навстречу друг другу", "навстречу"],
+                in: lowercasedSource
+            )
+        }
+        if action.type == .lookAt {
+            return sourceOffset(
+                ofAny: ["смотрит на", "смотрят на", "посмотрел на", "посмотрела на", "глядит на"],
+                in: lowercasedSource
+            )
+        }
+        if action.type == .pickUp || action.type == .putDown || action.type == .give {
+            return sourceOffset(
+                ofAny: ["берёт", "берет", "поднимает", "поднял", "взял", "берут", "кладёт", "кладет", "положи", "положил", "оставь", "ставит", "передаёт", "передает", "передам", "даёт", "дает", "получает"],
+                in: lowercasedSource
+            )
+        }
+        return nil
+    }
+
+    private func sourceOffset(of candidate: String?, in lowercasedSource: String) -> Int? {
+        guard let candidate else { return nil }
+        let normalized = candidate.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty,
+              normalized.count >= 3,
+              normalized != lowercasedSource
+        else { return nil }
+        guard let range = lowercasedSource.range(of: normalized) else { return nil }
+        return lowercasedSource.distance(from: lowercasedSource.startIndex, to: range.lowerBound)
+    }
+
+    private func sourceOffset(ofAny needles: [String], in lowercasedSource: String) -> Int? {
+        firstRange(ofAny: needles, in: lowercasedSource).map {
+            lowercasedSource.distance(from: lowercasedSource.startIndex, to: $0.lowerBound)
+        }
+    }
+
+    private func firstSpeakerCueOffset(in lowercasedSource: String) -> Int? {
+        let pattern = #"(?m)^\s*[a-zа-яё0-9][a-zа-яё0-9 \-_.]{1,40}\s*:"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let nsRange = NSRange(lowercasedSource.startIndex..<lowercasedSource.endIndex, in: lowercasedSource)
+        guard let match = regex.firstMatch(in: lowercasedSource, range: nsRange),
+              let range = Range(match.range, in: lowercasedSource)
+        else {
+            return nil
+        }
+        return lowercasedSource.distance(from: lowercasedSource.startIndex, to: range.lowerBound)
+    }
+
+    private func firstSentenceContainingAny(_ needles: [String], in sourceText: String) -> String? {
+        let lowercasedNeedles = needles.map { $0.lowercased() }
+        return sourceText
+            .components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { sentence in
+                let lowercasedSentence = sentence.lowercased()
+                return lowercasedNeedles.contains { lowercasedSentence.contains($0) }
+            }
+    }
+
+    private func firstRange(ofAny needles: [String], in text: String) -> Range<String.Index>? {
+        needles
+            .compactMap { text.range(of: $0) }
+            .min { lhs, rhs in lhs.lowerBound < rhs.lowerBound }
     }
 
     private func containsAny(_ text: String, _ needles: [String]) -> Bool {

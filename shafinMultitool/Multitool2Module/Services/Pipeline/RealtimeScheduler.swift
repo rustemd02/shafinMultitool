@@ -80,6 +80,14 @@ final class RealtimeScheduler {
         }
     }
 
+#if DEBUG
+    func dispatchSynchronouslyForTesting(context: FrameContext, budget: ThermalGovernor.Budget) {
+        queue.sync {
+            dispatchInternal(context: context, budget: budget)
+        }
+    }
+#endif
+
     private func dispatchInternal(context: FrameContext, budget: ThermalGovernor.Budget) {
         var removals: [UUID] = []
         let now = CFAbsoluteTimeGetCurrent()
@@ -96,10 +104,13 @@ final class RealtimeScheduler {
                 continue
             }
 
-            // 🔥 OPTIMIZATION DISABLED: игнорируем требование stability
-            // if registration.requiresStability && !context.isStable {
-            //     continue
-            // }
+            if registration.requiresStability && !context.isStable {
+                continue
+            }
+
+            if registration.priority == .low && !budget.heavyModelsEnabled {
+                continue
+            }
 
             let minInterval = adjustedInterval(for: registration.priority,
                                                base: registration.minInterval,
@@ -107,11 +118,6 @@ final class RealtimeScheduler {
             if now - registration.lastExecution < minInterval {
                 continue
             }
-
-            // 🔥 OPTIMIZATION DISABLED: низкий приоритет всегда выполняется
-            // if registration.priority == .low && !budget.heavyModelsEnabled {
-            //     continue
-            // }
 
             registration.lastExecution = now
             registrations[id] = registration
@@ -140,5 +146,3 @@ final class RealtimeScheduler {
         return max(base, 1.0 / maxFrequency)
     }
 }
-
-

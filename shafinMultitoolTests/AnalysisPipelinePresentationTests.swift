@@ -102,6 +102,55 @@ final class AnalysisPipelinePauseSnapshotTests: XCTestCase {
         XCTAssertNil(snapshot.subjectSignals.topObjectLabel)
         XCTAssertEqual(snapshot.objects.totalCount, 0)
     }
+
+    func testFeatureSnapshotCarriesDemoObjectRegionAheadOfBackgroundObjects() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let timestamp = Date(timeIntervalSince1970: 1_768_500_222)
+        let cupBox = CGRect(x: 0.10, y: 0.30, width: 0.18, height: 0.34)
+        let state = PipelineFeatureSnapshotAdapterState(
+            features: CoachingFeatures(),
+            debugData: DebugData(),
+            vision: nil,
+            horizonMeasuredAt: nil,
+            horizon: nil,
+            lightingMeasuredAt: nil,
+            lighting: nil,
+            detr: FeatureSample(
+                value: FeatureSnapshotDetrPayload(
+                    detections: [
+                        FeatureSnapshotDetectedObject(
+                            boundingBox: CGRect(x: 0.40, y: 0.18, width: 0.42, height: 0.52),
+                            label: "chair",
+                            confidence: 0.95
+                        ),
+                        FeatureSnapshotDetectedObject(
+                            boundingBox: cupBox,
+                            label: "cup",
+                            confidence: 0.72
+                        )
+                    ]
+                ),
+                measuredAt: timestamp,
+                baseConfidence: 0.82
+            ),
+            aestheticMeasuredAt: nil,
+            aesthetic: nil
+        )
+
+        let snapshot = pipeline.testingMakeFeatureSnapshot(
+            mode: .live,
+            frameId: "demo-cup-region",
+            capturedAt: timestamp,
+            adapterState: state
+        )
+
+        XCTAssertEqual(snapshot.subjectSignals.topObjectLabel, "cup")
+        XCTAssertEqual(
+            snapshot.subjectSignals.topObjectRegion,
+            NormalizedRect(x: cupBox.minX, y: cupBox.minY, width: cupBox.width, height: cupBox.height)
+        )
+        XCTAssertEqual(snapshot.objects.topKLabels.first, "cup")
+    }
 }
 
 final class AnalysisPipelinePresentationTests: XCTestCase {
@@ -2650,6 +2699,26 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     func testLiveStructuredPathPublishesMatchingHintAndExpandedCritique() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(frameId: "live-structured", verdict: .good)
+        let subjectRegion = NormalizedRect(x: 0.34, y: 0.18, width: 0.28, height: 0.50)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: critique.frameId,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                topObjectLabel: "person",
+                topObjectConfidence: 0.88,
+                topObjectRegion: subjectRegion,
+                primaryCandidateRegion: subjectRegion,
+                primaryCandidateConfidence: 0.90
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        let semantics = makeDemoSemantics(
+            frameId: critique.frameId,
+            primarySubject: .init(kind: .face, region: subjectRegion, confidence: 0.90),
+            sceneType: .singleCharacterMedium
+        )
         let plan = RecommendationPlan(
             frameId: critique.frameId,
             mode: .live,
@@ -2664,8 +2733,10 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         await MainActor.run {
             pipeline.testingPublishLivePresentation(
                 frameId: critique.frameId,
+                snapshot: snapshot,
                 critique: critique,
                 plan: plan,
+                semantics: semantics,
                 legacySuggestion: nil,
                 structuredAvailable: true,
                 now: Date(timeIntervalSince1970: 1_768_500_200)
@@ -2679,7 +2750,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         }
     }
 
-    func testLiveFallbackClearsExpandedCritique() async {
+    func testLiveCompositionFallbackClearsPreviousHintWithoutPublishingReserveCard() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(frameId: "live-fallback", verdict: .mixed)
         let plan = RecommendationPlan(
@@ -2724,15 +2795,975 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                 plan: plan,
                 legacySuggestion: fallbackSuggestion,
                 structuredAvailable: false,
-                now: Date(timeIntervalSince1970: 1_768_500_302)
+                now: Date(timeIntervalSince1970: 1_768_500_310)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertNil(pipeline.currentLiveHint)
+            XCTAssertFalse(pipeline.testingHasPauseReasoningTask)
+        }
+    }
+
+    func testCriticalHorizonLegacyFallbackStillPublishesLiveHint() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let critique = makeHorizonCritique(frameId: "live-horizon-fallback")
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .live,
+            inputVerdict: critique.verdict,
+            primaryAction: nil,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.48
+        )
+        let fallbackSuggestion = Suggestion(
+            text: "Выровняйте горизонт.",
+            priority: .critical,
+            type: .horizon,
+            ttl: 4.0,
+            createdAt: Date(timeIntervalSince1970: 1_768_500_320)
+        )
+
+        await MainActor.run {
+            pipeline.testingPublishLivePresentation(
+                frameId: critique.frameId,
+                critique: critique,
+                plan: plan,
+                legacySuggestion: fallbackSuggestion,
+                structuredAvailable: false,
+                now: Date(timeIntervalSince1970: 1_768_500_320)
             )
         }
 
         await MainActor.run {
             XCTAssertTrue(pipeline.currentLiveHint?.isFallback == true)
             XCTAssertEqual(pipeline.currentLiveHint?.text, fallbackSuggestion.text)
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .levelHorizon)
             XCTAssertEqual(pipeline.currentLiveHint?.expandedVerdict?.shortVerdict, critique.summary.shortVerdict)
             XCTAssertFalse(pipeline.testingHasPauseReasoningTask)
+        }
+    }
+
+    func testDemoLiveSemanticActionWhitelistKeepsAmbiguousCompositionOutOfLive() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let allowedActions: [SemanticActionType] = [
+            .keepCurrentSetup,
+            .simplifyBackground,
+            .waitForBackgroundClearance,
+            .stepBack,
+            .stepCloser,
+            .addFrontFillLight,
+            .removeBackgroundHotspot,
+            .levelHorizon,
+        ]
+        let forbiddenActions: [SemanticActionType] = [
+            .shiftFrameLeft,
+            .shiftFrameRight,
+            .shiftFrameUp,
+            .shiftFrameDown,
+            .lowerCamera,
+            .raiseCamera,
+            .changeCameraAngle,
+            .rotateSubjectTowardLight,
+            .moveSubjectLeft,
+            .moveSubjectRight,
+            .removeDistractingObject,
+            .repositionPropForBalance,
+        ]
+
+        for action in allowedActions {
+            XCTAssertTrue(pipeline.testingIsAllowedDemoLiveSemanticAction(action), "\(action.rawValue) should be allowed in demo live hints.")
+        }
+        for action in forbiddenActions {
+            XCTAssertFalse(pipeline.testingIsAllowedDemoLiveSemanticAction(action), "\(action.rawValue) should stay out of live hints.")
+        }
+    }
+
+    func testLivePositiveConfirmationWaitsForGroundedSubjectEvidence() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let frameId = "frame-good-unknown-subject"
+        let critique = CritiqueReport(
+            frameId: frameId,
+            mode: .live,
+            verdict: .good,
+            verdictConfidence: 0.92,
+            strengths: [],
+            issues: [],
+            summary: CritiqueSummary(
+                id: "summary_\(frameId)",
+                shortVerdict: "Кадр работает.",
+                whyGood: "Кадр читается стабильно.",
+                whyProblematic: nil
+            ),
+            traceRefs: ["trace_\(frameId)"],
+            fallbackUsed: false
+        )
+        let plan = RecommendationPlan(
+            frameId: frameId,
+            mode: .live,
+            inputVerdict: .good,
+            primaryAction: nil,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: "Кадр читается стабильно, критичных проблем не выявлено.",
+            planConfidence: 0.88
+        )
+
+        await MainActor.run {
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                critique: critique,
+                plan: plan,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_320)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertNil(pipeline.currentLiveHint)
+        }
+    }
+
+    func testDemoObjectModePublishesCupBoundingBoxAndCorrectionInsteadOfFalseGood() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let frameId = "demo-cup-edge"
+        let cupRegion = NormalizedRect(x: 0.02, y: 0.32, width: 0.18, height: 0.36)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "cup",
+                topObjectConfidence: 0.83,
+                topObjectRegion: cupRegion,
+                primaryCandidateRegion: cupRegion,
+                primaryCandidateConfidence: 0.83
+            ),
+            objects: .init(totalCount: 2, topKLabels: ["cup", "chair"])
+        )
+        let semantics = makeDemoSemantics(
+            frameId: frameId,
+            primarySubject: .init(kind: .unknown, confidence: 0.18),
+            sceneType: .objectInsert
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.object)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_330)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.targetRegion, cupRegion)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("объект") == true)
+            XCTAssertFalse(pipeline.currentLiveHint?.text.contains("стаканчик") == true)
+            XCTAssertNotEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs)
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.targetRegion, cupRegion)
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Объект")
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .danger)
+            XCTAssertTrue(pipeline.currentLiveHint?.expandedVerdict?.supportingText?.contains("cup") == true)
+        }
+    }
+
+    func testDemoAutoModeKeepsFaceAheadOfBackgroundObjectLabels() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let frameId = "demo-face-background"
+        let faceRegion = NormalizedRect(x: 0.18, y: 0.20, width: 0.30, height: 0.44)
+        let tvRegion = NormalizedRect(x: 0.58, y: 0.08, width: 0.34, height: 0.28)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                topObjectLabel: "tv",
+                topObjectConfidence: 0.91,
+                topObjectRegion: tvRegion,
+                primaryCandidateRegion: faceRegion,
+                primaryCandidateConfidence: 0.86
+            ),
+            lighting: .init(exposureBiasHint: -0.62, backlightIndex: 0.08, keyToFillRatio: nil),
+            objects: .init(totalCount: 3, topKLabels: ["tv", "paper", "chair"])
+        )
+        let semantics = makeDemoSemantics(
+            frameId: frameId,
+            primarySubject: .init(kind: .face, region: faceRegion, confidence: 0.86),
+            sceneType: .singleCharacterMedium
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.auto)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_340)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.targetRegion, faceRegion)
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Лицо")
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .danger)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Лицо") == true)
+        }
+    }
+
+    func testDemoPortraitPrefersFaceRegionOverBodySemanticRegion() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let frameId = "demo-face-region-not-body"
+        let faceRegion = NormalizedRect(x: 0.18, y: 0.18, width: 0.18, height: 0.24)
+        let bodyRegion = NormalizedRect(x: 0.10, y: 0.30, width: 0.26, height: 0.50)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: faceRegion,
+                primaryCandidateRegion: bodyRegion,
+                primaryCandidateConfidence: 0.90
+            ),
+            objects: .init(totalCount: 2, topKLabels: ["person", "screen"])
+        )
+        let semantics = makeDemoSemantics(
+            frameId: frameId,
+            primarySubject: .init(kind: .person, region: bodyRegion, confidence: 0.90),
+            sceneType: .singleCharacterMedium
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.portrait)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_345)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.targetRegion, faceRegion)
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Лицо")
+            XCTAssertNotEqual(pipeline.currentOverlayAnnotations.first?.targetRegion, bodyRegion)
+        }
+    }
+
+    func testDemoObjectModeFallsBackToPrimaryCandidateWhenDetectorLabelMissing() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let frameId = "demo-object-primary-fallback"
+        let objectRegion = NormalizedRect(x: 0.39, y: 0.30, width: 0.20, height: 0.34)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                primaryCandidateRegion: objectRegion,
+                primaryCandidateConfidence: 0.62
+            ),
+            objects: .init(totalCount: 1, topKLabels: [])
+        )
+        let semantics = makeDemoSemantics(
+            frameId: frameId,
+            primarySubject: .init(kind: .unknown, confidence: 0.20),
+            sceneType: .objectInsert
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.object)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_346)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.targetRegion, objectRegion)
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Объект")
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("объект") == true)
+        }
+    }
+
+    func testDemoObjectModeRejectsOversizedPrimaryCandidateFallback() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let frameId = "demo-object-oversized-fallback"
+        let oversizedRegion = NormalizedRect(x: 0.00, y: 0.22, width: 1.00, height: 0.77)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                primaryCandidateRegion: oversizedRegion,
+                primaryCandidateConfidence: 0.48
+            ),
+            objects: .init(totalCount: 0, topKLabels: [])
+        )
+        let semantics = makeDemoSemantics(
+            frameId: frameId,
+            primarySubject: .init(kind: .unknown, confidence: 0.12),
+            sceneType: .objectInsert
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.object)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_347)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertTrue(pipeline.currentOverlayAnnotations.isEmpty)
+            XCTAssertNotEqual(pipeline.currentLiveHint?.targetRegion, oversizedRegion)
+        }
+    }
+
+    func testDemoGoodFrameTurnsCheckOnlyAfterThreeStableFrames() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let cupRegion = NormalizedRect(x: 0.40, y: 0.30, width: 0.20, height: 0.34)
+        let firstFrame = "demo-cup-stable-1"
+        let secondFrame = "demo-cup-stable-2"
+        let thirdFrame = "demo-cup-stable-3"
+        let snapshot1 = makeDemoLiveSnapshot(
+            frameId: firstFrame,
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "cup",
+                topObjectConfidence: 0.86,
+                topObjectRegion: cupRegion,
+                primaryCandidateRegion: cupRegion,
+                primaryCandidateConfidence: 0.86
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["cup"])
+        )
+        let snapshot2 = makeDemoLiveSnapshot(
+            frameId: secondFrame,
+            subjectSignals: snapshot1.subjectSignals,
+            objects: snapshot1.objects
+        )
+        let snapshot3 = makeDemoLiveSnapshot(
+            frameId: thirdFrame,
+            subjectSignals: snapshot1.subjectSignals,
+            objects: snapshot1.objects
+        )
+        let semantics1 = makeDemoSemantics(
+            frameId: firstFrame,
+            primarySubject: .init(kind: .object, label: "cup", region: cupRegion, confidence: 0.86),
+            sceneType: .objectInsert
+        )
+        let semantics2 = makeDemoSemantics(
+            frameId: secondFrame,
+            primarySubject: .init(kind: .object, label: "cup", region: cupRegion, confidence: 0.86),
+            sceneType: .objectInsert
+        )
+        let semantics3 = makeDemoSemantics(
+            frameId: thirdFrame,
+            primarySubject: .init(kind: .object, label: "cup", region: cupRegion, confidence: 0.86),
+            sceneType: .objectInsert
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.object)
+            pipeline.testingPublishLivePresentation(
+                frameId: firstFrame,
+                snapshot: snapshot1,
+                critique: makeCritique(frameId: firstFrame, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: firstFrame),
+                semantics: semantics1,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_350)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .warning)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Фиксирую") == true)
+        }
+
+        await MainActor.run {
+            pipeline.testingPublishLivePresentation(
+                frameId: secondFrame,
+                snapshot: snapshot2,
+                critique: makeCritique(frameId: secondFrame, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: secondFrame),
+                semantics: semantics2,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_351)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .warning)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Фиксирую") == true)
+        }
+
+        await MainActor.run {
+            pipeline.testingPublishLivePresentation(
+                frameId: thirdFrame,
+                snapshot: snapshot3,
+                critique: makeCritique(frameId: thirdFrame, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: thirdFrame),
+                semantics: semantics3,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_352)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertTrue(pipeline.currentOverlayAnnotations.isEmpty)
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Объект зафиксирован") == true)
+        }
+    }
+
+    func testDemoObjectJitterStillReachesCheckOnlyGoodState() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let regions = [
+            NormalizedRect(x: 0.23, y: 0.30, width: 0.20, height: 0.34),
+            NormalizedRect(x: 0.245, y: 0.305, width: 0.20, height: 0.34),
+            NormalizedRect(x: 0.255, y: 0.295, width: 0.20, height: 0.34)
+        ]
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.object)
+        }
+
+        for (index, region) in regions.enumerated() {
+            let frameId = "demo-cup-jitter-\(index + 1)"
+            let snapshot = makeDemoLiveSnapshot(
+                frameId: frameId,
+                subjectSignals: .init(
+                    faceDetected: false,
+                    personDetected: false,
+                    personCount: 0,
+                    topObjectLabel: "cup",
+                    topObjectConfidence: 0.86,
+                    topObjectRegion: region,
+                    primaryCandidateRegion: region,
+                    primaryCandidateConfidence: 0.86
+                ),
+                objects: .init(totalCount: 1, topKLabels: ["cup"])
+            )
+            let semantics = makeDemoSemantics(
+                frameId: frameId,
+                primarySubject: .init(kind: .object, label: "cup", region: region, confidence: 0.86),
+                sceneType: .objectInsert
+            )
+            await MainActor.run {
+                pipeline.testingPublishLivePresentation(
+                    frameId: frameId,
+                    snapshot: snapshot,
+                    critique: makeCritique(frameId: frameId, verdict: .good),
+                    plan: makeDemoNoChangePlan(frameId: frameId),
+                    semantics: semantics,
+                    legacySuggestion: nil,
+                    structuredAvailable: true,
+                    now: Date(timeIntervalSince1970: 1_768_500_360 + Double(index))
+                )
+            }
+        }
+
+        await MainActor.run {
+            XCTAssertTrue(pipeline.currentOverlayAnnotations.isEmpty)
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Объект зафиксирован") == true)
+        }
+    }
+
+    func testDemoSubjectHoldKeepsLastBoundingBoxAcrossShortMiss() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let cupRegion = NormalizedRect(x: 0.03, y: 0.30, width: 0.18, height: 0.34)
+        let firstFrame = "demo-cup-hold-1"
+        let missFrame = "demo-cup-hold-2"
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: firstFrame,
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0,
+                topObjectLabel: "cup",
+                topObjectConfidence: 0.86,
+                topObjectRegion: cupRegion,
+                primaryCandidateRegion: cupRegion,
+                primaryCandidateConfidence: 0.86
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["cup"])
+        )
+        let missSnapshot = makeDemoLiveSnapshot(
+            frameId: missFrame,
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: false,
+                personCount: 0
+            ),
+            objects: .init(totalCount: 0, topKLabels: [])
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.object)
+            pipeline.testingPublishLivePresentation(
+                frameId: firstFrame,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: firstFrame, verdict: .mixed),
+                plan: makeDemoNoChangePlan(frameId: firstFrame),
+                semantics: makeDemoSemantics(
+                    frameId: firstFrame,
+                    primarySubject: .init(kind: .object, label: "cup", region: cupRegion, confidence: 0.86),
+                    sceneType: .objectInsert
+                ),
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_370)
+            )
+            pipeline.testingPublishLivePresentation(
+                frameId: missFrame,
+                snapshot: missSnapshot,
+                critique: makeCritique(frameId: missFrame, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: missFrame),
+                semantics: makeDemoSemantics(
+                    frameId: missFrame,
+                    primarySubject: .init(kind: .unknown, confidence: 0.1),
+                    sceneType: .objectInsert
+                ),
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_370.4)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.targetRegion, cupRegion)
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Объект")
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Фиксирую") == true)
+        }
+    }
+
+    func testDemoPortraitUsesSubjectLightingForBrightBackground() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let faceRegion = NormalizedRect(x: 0.25, y: 0.20, width: 0.30, height: 0.44)
+        let frameId = "demo-face-bright-background"
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                primaryCandidateRegion: faceRegion,
+                primaryCandidateConfidence: 0.88
+            ),
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.30,
+                    backgroundMeanLuma: 0.66,
+                    subjectToBackgroundDelta: -0.36,
+                    subjectClippedBrightRatio: 0.02,
+                    backgroundHotspotRatio: 0.22
+                )
+            ),
+            objects: .init(totalCount: 2, topKLabels: ["person", "window"])
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.portrait)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: makeDemoSemantics(
+                    frameId: frameId,
+                    primarySubject: .init(kind: .face, region: faceRegion, confidence: 0.88),
+                    sceneType: .singleCharacterMedium
+                ),
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_380)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Лицо")
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .danger)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Фон ярче лица") == true)
+            XCTAssertNotEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs)
+        }
+    }
+
+    func testDemoPortraitUsesSubjectLightingForOverexposedFace() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let faceRegion = NormalizedRect(x: 0.32, y: 0.18, width: 0.24, height: 0.42)
+        let frameId = "demo-face-overexposed"
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                primaryCandidateRegion: faceRegion,
+                primaryCandidateConfidence: 0.90
+            ),
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.84,
+                    backgroundMeanLuma: 0.42,
+                    subjectToBackgroundDelta: 0.42,
+                    subjectClippedBrightRatio: 0.14,
+                    backgroundHotspotRatio: 0.05
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.portrait)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: makeDemoSemantics(
+                    frameId: frameId,
+                    primarySubject: .init(kind: .face, region: faceRegion, confidence: 0.90),
+                    sceneType: .singleCharacterMedium
+                ),
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_768_500_390)
+            )
+        }
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Лицо")
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .danger)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Лицо пересвечено") == true)
+        }
+    }
+
+    func testCinematicPortraitModeStartsWithDarkerBackgroundAdvice() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let faceRegion = NormalizedRect(x: 0.24, y: 0.18, width: 0.24, height: 0.42)
+        let frameId = "demo-cinematic-flat-light"
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: faceRegion,
+                primaryCandidateRegion: faceRegion,
+                primaryCandidateConfidence: 0.90
+            ),
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.52,
+                    backgroundMeanLuma: 0.51,
+                    subjectToBackgroundDelta: 0.01,
+                    subjectClippedBrightRatio: 0.02,
+                    backgroundHotspotRatio: 0.04
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.cinematicPortrait)
+        }
+        await publishDemoFrame(
+            pipeline: pipeline,
+            frameId: frameId,
+            snapshot: snapshot,
+            semantics: makeDemoSemantics(
+                frameId: frameId,
+                primarySubject: .init(kind: .face, region: faceRegion, confidence: 0.90),
+                sceneType: .singleCharacterMedium
+            ),
+            now: 1_768_500_500
+        )
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Лицо")
+            XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .danger)
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .reduceBackgroundDistractions)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Сделай фон темнее") == true)
+            XCTAssertTrue(pipeline.currentLiveHint?.expandedVerdict?.supportingText?.contains("Лицо: 0.52") == true)
+        }
+    }
+
+    func testCinematicPortraitModeAdvancesThroughThreeLightingStages() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let faceRegion = NormalizedRect(x: 0.24, y: 0.18, width: 0.24, height: 0.42)
+        let semantics = makeDemoSemantics(
+            frameId: "demo-cinematic-sequence",
+            primarySubject: .init(kind: .face, region: faceRegion, confidence: 0.90),
+            sceneType: .singleCharacterMedium
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.cinematicPortrait)
+        }
+
+        let flatLightSnapshot = makeDemoLiveSnapshot(
+            frameId: "demo-cinematic-flat-start",
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: faceRegion,
+                primaryCandidateRegion: faceRegion,
+                primaryCandidateConfidence: 0.90
+            ),
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.52,
+                    backgroundMeanLuma: 0.51,
+                    subjectToBackgroundDelta: 0.01,
+                    subjectClippedBrightRatio: 0.02,
+                    backgroundHotspotRatio: 0.04
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        await publishDemoFrame(
+            pipeline: pipeline,
+            frameId: "demo-cinematic-flat-start",
+            snapshot: flatLightSnapshot,
+            semantics: semantics,
+            now: 1_768_500_506
+        )
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .reduceBackgroundDistractions)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Сделай фон темнее") == true)
+        }
+
+        let darkFaceSnapshot = makeDemoLiveSnapshot(
+            frameId: "demo-cinematic-dark-face",
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: faceRegion,
+                primaryCandidateRegion: faceRegion,
+                primaryCandidateConfidence: 0.90
+            ),
+            lighting: .init(
+                exposureBiasHint: -0.2,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.40,
+                    backgroundMeanLuma: 0.28,
+                    subjectToBackgroundDelta: 0.12,
+                    subjectClippedBrightRatio: 0.01,
+                    backgroundHotspotRatio: 0.04
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        await publishDemoFrame(
+            pipeline: pipeline,
+            frameId: "demo-cinematic-dark-face",
+            snapshot: darkFaceSnapshot,
+            semantics: semantics,
+            now: 1_768_500_510
+        )
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .improveFrontLight)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Добавь мягкий свет") == true)
+        }
+
+        let overlitSnapshot = makeDemoLiveSnapshot(
+            frameId: "demo-cinematic-overlit-face",
+            subjectSignals: darkFaceSnapshot.subjectSignals,
+            lighting: .init(
+                exposureBiasHint: 0.2,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.70,
+                    backgroundMeanLuma: 0.32,
+                    subjectToBackgroundDelta: 0.38,
+                    subjectClippedBrightRatio: 0.02,
+                    backgroundHotspotRatio: 0.04
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        await publishDemoFrame(
+            pipeline: pipeline,
+            frameId: "demo-cinematic-overlit-face",
+            snapshot: overlitSnapshot,
+            semantics: semantics,
+            now: 1_768_500_514
+        )
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .improveFrontLight)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Убери пересвет") == true)
+        }
+
+        let correctedLightSnapshot = makeDemoLiveSnapshot(
+            frameId: "demo-cinematic-light-corrected",
+            subjectSignals: darkFaceSnapshot.subjectSignals,
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.56,
+                    backgroundMeanLuma: 0.34,
+                    subjectToBackgroundDelta: 0.22,
+                    subjectClippedBrightRatio: 0.02,
+                    backgroundHotspotRatio: 0.04
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        await publishDemoFrame(
+            pipeline: pipeline,
+            frameId: "demo-cinematic-light-corrected",
+            snapshot: correctedLightSnapshot,
+            semantics: semantics,
+            now: 1_768_500_518
+        )
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Портрет собран") == true)
+            XCTAssertNil(pipeline.currentOverlayAnnotations.first?.targetRegion)
+        }
+    }
+
+    func testCinematicPortraitScreenDemoDoesNotSkipFirstAdviceWhenExposureLooksSeparated() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        let faceRegion = NormalizedRect(x: 0.24, y: 0.18, width: 0.24, height: 0.42)
+        let semantics = makeDemoSemantics(
+            frameId: "demo-cinematic-screen-sequence",
+            primarySubject: .init(kind: .face, region: faceRegion, confidence: 0.90),
+            sceneType: .singleCharacterMedium
+        )
+
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.cinematicPortrait)
+        }
+
+        let screenNormalizedSnapshot = makeDemoLiveSnapshot(
+            frameId: "demo-cinematic-screen-normalized",
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: faceRegion,
+                primaryCandidateRegion: faceRegion,
+                primaryCandidateConfidence: 0.90
+            ),
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.60,
+                    backgroundMeanLuma: 0.48,
+                    subjectToBackgroundDelta: 0.12,
+                    subjectClippedBrightRatio: 0.02,
+                    backgroundHotspotRatio: 0.05
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        await publishDemoFrame(
+            pipeline: pipeline,
+            frameId: "demo-cinematic-screen-normalized",
+            snapshot: screenNormalizedSnapshot,
+            semantics: semantics,
+            now: 1_768_500_540
+        )
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .reduceBackgroundDistractions)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Сделай фон темнее") == true)
+        }
+
+        let darkerBackgroundSnapshot = makeDemoLiveSnapshot(
+            frameId: "demo-cinematic-screen-bg-darker",
+            subjectSignals: screenNormalizedSnapshot.subjectSignals,
+            lighting: .init(
+                exposureBiasHint: 0.0,
+                backlightIndex: 0.0,
+                keyToFillRatio: nil,
+                subjectLighting: .init(
+                    subjectMeanLuma: 0.58,
+                    backgroundMeanLuma: 0.36,
+                    subjectToBackgroundDelta: 0.22,
+                    subjectClippedBrightRatio: 0.02,
+                    backgroundHotspotRatio: 0.05
+                )
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        await publishDemoFrame(
+            pipeline: pipeline,
+            frameId: "demo-cinematic-screen-bg-darker",
+            snapshot: darkerBackgroundSnapshot,
+            semantics: semantics,
+            now: 1_768_500_544
+        )
+
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .improveFrontLight)
+            XCTAssertTrue(pipeline.currentLiveHint?.text.contains("Добавь мягкий свет") == true)
         }
     }
 
@@ -2801,6 +3832,100 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         }
     }
 
+    private func publishDemoFrame(pipeline: AnalysisPipeline,
+                                  frameId: String,
+                                  snapshot: FrameFeatureSnapshot,
+                                  semantics: SceneSemanticsReport,
+                                  now: TimeInterval) async {
+        await MainActor.run {
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .good),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: now)
+            )
+        }
+    }
+
+    private func makeDemoLiveSnapshot(frameId: String,
+                                      subjectSignals: FrameFeatureSnapshot.SubjectSignals,
+                                      lighting: FrameFeatureSnapshot.LightingFeatures = .init(
+                                          exposureBiasHint: -0.05,
+                                          backlightIndex: 0.05,
+                                          keyToFillRatio: nil
+                                      ),
+                                      objects: FrameFeatureSnapshot.ObjectDetectionsSummary) -> FrameFeatureSnapshot {
+        FrameFeatureSnapshot(
+            frameId: frameId,
+            mode: .live,
+            capturedAt: Date(timeIntervalSince1970: 1_768_500_000),
+            sources: .init(
+                vision: .init(available: true, freshnessMs: 40, confidence: 0.86),
+                horizon: .init(available: true, freshnessMs: 45, confidence: 0.76),
+                lighting: .init(available: true, freshnessMs: 48, confidence: 0.78),
+                detr: .init(available: true, freshnessMs: 280, confidence: 0.80),
+                aesthetic: .init(available: false)
+            ),
+            composition: .init(
+                horizontalOffset: 0,
+                verticalOffset: 0,
+                subjectAreaRatio: subjectSignals.primaryCandidateRegion.map { $0.width * $0.height } ?? 0,
+                saliencyLeftRightBalance: 0,
+                saliencyTopBottomBalance: 0
+            ),
+            subjectSignals: subjectSignals,
+            horizon: .init(angleDegrees: 0.4, confidence: 0.74),
+            lighting: lighting,
+            motion: .init(state: .still, shakeLevel: 0.03),
+            aesthetics: .init(score: 0.78, scoreConfidence: 0.70),
+            objects: objects,
+            technicalFlags: []
+        )
+    }
+
+    private func makeDemoSemantics(frameId: String,
+                                   primarySubject: SceneSemanticsReport.PrimarySubject,
+                                   sceneType: SceneTypeV1,
+                                   hasClearFocus: Bool = true) -> SceneSemanticsReport {
+        SceneSemanticsReport(
+            frameId: frameId,
+            mode: .live,
+            sceneType: sceneType,
+            sceneTypeConfidence: 0.82,
+            primarySubject: primarySubject,
+            dominance: .init(
+                hasClearFocus: hasClearFocus,
+                focusCompetitionScore: hasClearFocus ? 0.18 : 0.62,
+                backgroundClutterScore: hasClearFocus ? 0.22 : 0.70
+            ),
+            readability: .init(
+                subjectReadable: true,
+                lookSpaceAdequate: true,
+                edgePressureScore: 0.12,
+                separationScore: 0.72
+            ),
+            ambiguities: [],
+            assumptions: []
+        )
+    }
+
+    private func makeDemoNoChangePlan(frameId: String) -> RecommendationPlan {
+        RecommendationPlan(
+            frameId: frameId,
+            mode: .live,
+            inputVerdict: .good,
+            primaryAction: nil,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: "Кадр читается стабильно, критичных проблем не выявлено.",
+            planConfidence: 0.88
+        )
+    }
+
     private func makeCritique(frameId: String, verdict: FrameVerdict) -> CritiqueReport {
         CritiqueReport(
             frameId: frameId,
@@ -2833,6 +3958,36 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                 shortVerdict: verdict == .good ? "Кадр работает." : "Кадр требует правки.",
                 whyGood: verdict == .good ? "Фокус и баланс читаются уверенно." : nil,
                 whyProblematic: verdict == .good ? nil : "Баланс нарушен, главный объект тесно прижат к краю."
+            ),
+            traceRefs: ["trace_\(frameId)"],
+            fallbackUsed: false
+        )
+    }
+
+    private func makeHorizonCritique(frameId: String) -> CritiqueReport {
+        CritiqueReport(
+            frameId: frameId,
+            mode: .live,
+            verdict: .needsFix,
+            verdictConfidence: 0.84,
+            strengths: [],
+            issues: [
+                FrameIssue(
+                    id: "iss_horizon",
+                    type: .horizonDistracts,
+                    severity: 0.72,
+                    confidence: 0.70,
+                    rationale: "Горизонт заметно завален и тянет внимание.",
+                    evidence: [EvidenceRef(source: .snapshot, key: "composition.horizonTiltDegrees", value: "8.2")],
+                    affectedRegion: nil,
+                    suggestedFixTypes: [.horizonCorrection]
+                )
+            ],
+            summary: CritiqueSummary(
+                id: "summary_\(frameId)",
+                shortVerdict: "Горизонт мешает кадру.",
+                whyGood: nil,
+                whyProblematic: "Заваленная линия горизонта делает сцену менее устойчивой."
             ),
             traceRefs: ["trace_\(frameId)"],
             fallbackUsed: false
@@ -3048,13 +4203,17 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     }
 
     private func makeDatasetPixelBuffer(named filename: String) throws -> CVPixelBuffer {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let imageURL = repoRoot
-            .appendingPathComponent("docs/cameraanalysis/dataset/inbox/images")
+        let imageURL = bundledCameraBenchmarkPackURL()
+            .appendingPathComponent("images")
             .appendingPathComponent(filename)
         return try makePixelBuffer(from: imageURL)
+    }
+
+    private func bundledCameraBenchmarkPackURL() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1")
     }
 
     private func loadSemanticDemoScenarios() throws -> [SemanticDemoScenario] {
@@ -3315,6 +4474,17 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
         }
 
         let fileManager = FileManager.default
+        let bundledPackURL = bundledCameraBenchmarkPackURL()
+        let bundledFallbackConfig = SemanticEvalReplayConfig(
+            labelsPath: bundledPackURL.appendingPathComponent("camera_quick_labels.jsonl").path,
+            imagesRootPath: bundledPackURL.appendingPathComponent("images").path,
+            outputPath: URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("semantic_eval_replay_candidate_outputs.jsonl")
+                .path,
+            runtime: "lightweight",
+            limit: nil,
+            deleteAfterRead: false
+        )
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -3328,7 +4498,7 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
             "/private/tmp/semantic_eval_replay_config.json"
         ].compactMap { $0 }
         guard let configPath = configCandidates.first(where: { fileManager.fileExists(atPath: $0) }) else {
-            return nil
+            return bundledFallbackConfig
         }
         let configURL = URL(fileURLWithPath: configPath)
         print("Semantic eval replay config path: \(configURL.path)")
@@ -3339,7 +4509,19 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
         if config.deleteAfterRead {
             try? FileManager.default.removeItem(at: configURL)
         }
+        guard fileManager.fileExists(atPath: config.labelsPath),
+              fileManager.fileExists(atPath: config.imagesRootPath) else {
+            print("Semantic eval replay falling back to bundled camera benchmark pack: \(bundledPackURL.path)")
+            return bundledFallbackConfig
+        }
         return config
+    }
+
+    private func bundledCameraBenchmarkPackURL() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1")
     }
 
     private func loadLabels(path: String) throws -> [SemanticEvalLabelRecord] {

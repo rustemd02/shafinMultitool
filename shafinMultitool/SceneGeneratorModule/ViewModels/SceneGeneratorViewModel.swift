@@ -12,6 +12,7 @@ import ARKit
 import RealityKit
 import CoreMedia
 import ImageIO
+import UIKit
 
 struct BeatPlaybackTimelineItem: Identifiable, Equatable {
     var id: String { "\(index)-\(beatID)" }
@@ -21,12 +22,120 @@ struct BeatPlaybackTimelineItem: Identifiable, Equatable {
     let duration: TimeInterval
     let hasDialogueCaption: Bool
     let hasActionCaption: Bool
+
+    var kindTitle: String {
+        if hasDialogueCaption && hasActionCaption { return "сцена" }
+        if hasDialogueCaption { return "диалог" }
+        if hasActionCaption { return "действие" }
+        return "движение"
+    }
 }
 
 struct BeatPlaybackProgressState: Equatable {
     let activeBeatIndex: Int
     let beatProgress: Double
     let elapsedTime: TimeInterval
+}
+
+enum SceneObjectRenderKind: Equatable {
+    case standardPlaceholder
+    case phoneProxy
+}
+
+struct SceneObjectRenderStyle: Equatable {
+    let kind: SceneObjectRenderKind
+    let targetCueRadius: Float
+}
+
+struct ARObjectLabelPresentation: Identifiable, Equatable {
+    let id: String
+    let text: String
+    let x: CGFloat
+    let y: CGFloat
+    let tint: SIMD3<Float>
+    let priority: Int
+
+    var position: CGPoint {
+        CGPoint(x: x, y: y)
+    }
+
+    var swiftUIColor: Color {
+        Color(
+            red: Double(tint.x),
+            green: Double(tint.y),
+            blue: Double(tint.z)
+        )
+    }
+
+    func withPosition(x: CGFloat, y: CGFloat) -> ARObjectLabelPresentation {
+        ARObjectLabelPresentation(id: id, text: text, x: x, y: y, tint: tint, priority: priority)
+    }
+}
+
+struct StoryboardEntityOption: Identifiable, Equatable {
+    enum Kind: String, Equatable {
+        case none
+        case actor
+        case object
+    }
+
+    let id: String
+    let label: String
+    let kind: Kind
+}
+
+struct StoryboardBeatPresentationItem: Identifiable, Equatable {
+    var id: String { beatID }
+    let beatID: String
+    let index: Int
+    let kindTitle: String
+    let summary: String
+    let hasDialogueCaption: Bool
+    let hasActionCaption: Bool
+    let actionCount: Int
+}
+
+struct StoryboardActionEditDraft: Identifiable, Equatable {
+    let id: String
+    var actorId: String
+    var type: SceneAction.ActionType
+    var target: String?
+    var text: String
+    var isDeleted: Bool = false
+    var isNew: Bool = false
+}
+
+struct StoryboardBeatEditDraft: Identifiable, Equatable {
+    var id: String { beatID }
+    let beatID: String
+    var title: String
+    var actions: [StoryboardActionEditDraft]
+    var actorOptions: [StoryboardEntityOption]
+    var targetOptions: [StoryboardEntityOption]
+}
+
+struct StoryboardBeatInspectorPresentation: Equatable {
+    let kindTitle: String
+    let summary: String
+    let durationText: String
+    let actorLabels: [String]
+    let targetLabels: [String]
+    let warnings: [String]
+    let dragHint: String
+}
+
+struct SceneActorRenderStyle: Equatable {
+    let color: SIMD3<Float>
+    let paletteIndex: Int
+
+    var uiColor: UIColor {
+        UIColor(
+            red: CGFloat(color.x),
+            green: CGFloat(color.y),
+            blue: CGFloat(color.z),
+            alpha: 1.0
+        )
+    }
 }
 
 enum SceneWorkspaceMode: Equatable {
@@ -41,13 +150,6 @@ enum SceneWorkspaceMode: Equatable {
 /// ViewModel для управления генерацией AR сцены из текстового описания
 @MainActor
 final class SceneGeneratorViewModel: ObservableObject {
-    private struct DepthFrameSnapshot {
-        let depthMap: CVPixelBuffer
-        let cameraTransform: simd_float4x4
-        let intrinsics: simd_float3x3
-        let imageResolution: CGSize
-    }
-    
     // MARK: - Published Properties
     
     /// Текущее описание сцены
@@ -98,11 +200,26 @@ final class SceneGeneratorViewModel: ObservableObject {
                                                               horizonConfidence: 0,
                                                               saliencyBalance: 0)
 
+    /// Transform from normalized camera-image coordinates to the ARView display space.
+    @Published var hintDisplayTransform: CGAffineTransform?
+
     /// Текущая live-подсказка по кадру
     @Published var liveHint: LiveHintPresentation?
 
+    /// Запущен ли углубленный разбор последнего кадра.
+    @Published var isHintPauseAnalysisActive: Bool = false
+
+    /// Карточка углубленного разбора последнего кадра.
+    @Published var hintPauseCritique: PauseCritiquePresentation?
+
+    /// Быстрые legacy-подсказки, доступные во время углубленного разбора.
+    @Published var hintPreviewSuggestions: [Suggestion] = []
+
     /// Визуальные аннотации для hints
     @Published var coachingOverlayAnnotations: [OverlayAnnotationPresentation] = []
+
+    /// Скрытый режим демо-коуча для страховки записи.
+    @Published var cameraDemoSceneMode: CameraDemoSceneMode = .auto
 
     /// Текущий диалоговый субтитр во время playback.
     @Published var activeDialogueCaption: String?
@@ -127,6 +244,24 @@ final class SceneGeneratorViewModel: ObservableObject {
 
     /// Прошедшее время текущего playback.
     @Published var playbackElapsedTime: TimeInterval = 0
+
+    /// Компактная лента раскадровки для демо-просмотра и ручного редактирования.
+    @Published var storyboardBeatItems: [StoryboardBeatPresentationItem] = []
+
+    /// 2D-подписи объектов, спроецированные из AR-пространства в экран.
+    @Published var objectLabelItems: [ARObjectLabelPresentation] = []
+
+    /// Draft текущего такта, открытого в ручном редакторе.
+    @Published var activeStoryboardEditDraft: StoryboardBeatEditDraft?
+
+    /// Короткая подсказка/ошибка ручного перемещения актёра для открытого такта.
+    @Published var storyboardDragFeedback: String?
+
+    private var generationLogCounter = 0
+    private var playbackLogCounter = 0
+    private var currentPlaybackLogID: String?
+    private var lastLoggedPlaybackBeatIndex: Int?
+    private var hintPauseRequestToken: UUID?
     
     /// Статус AR сессии
     @Published var isARSessionReady: Bool = false
@@ -155,7 +290,15 @@ final class SceneGeneratorViewModel: ObservableObject {
     private let plannerService = SpatialPlannerService.shared
     private let cameraService = CameraService.shared
     private let projectStore: DBService
-    private let analysisPipeline = AnalysisPipeline()
+    private let hintThermalGovernor = ThermalGovernor()
+    private lazy var analysisPipeline = AnalysisPipeline(
+        thermalGovernor: hintThermalGovernor,
+        neuralHeavyModelsEnabledProvider: { [weak self] in
+            self?.hintThermalGovernor.nextBudget().heavyModelsEnabled ?? true
+        },
+        liveHybridFusionEnabled: false,
+        demoLiveCoachEnabled: true
+    )
     private let isObjectDetectionEnabled = false
     private var detectionBridge: ObjectDetectionBridge? {
         guard isObjectDetectionEnabled else { return nil }
@@ -173,19 +316,32 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Текущая трансформация камеры
     private var currentCameraTransform: simd_float4x4?
     
-    /// Последний snapshot глубины без удержания всего ARFrame
-    private var latestDepthFrameSnapshot: DepthFrameSnapshot?
-    
     /// Обнаруженные плоскости
-    private var detectedPlanes: [ARPlaneAnchor] = []
+    private var detectedPlanes: [ScenePlaneSnapshot] = []
     private var lastPlaneUpdateTimestamp: TimeInterval = 0
     private let planeRefreshInterval: TimeInterval = 0.35
-    private let highHintFrameInterval: TimeInterval = 1.0 / 15.0
-    private let mediumHintFrameInterval: TimeInterval = 1.0 / 8.0
-    private let lowHintFrameInterval: TimeInterval = 1.0
+    private let disabledHintFrameInterval: TimeInterval = .greatestFiniteMagnitude
     
     /// Размещённые entity
     private var placedEntities: [String: ModelEntity] = [:]
+    private var cachedPersonPrototype: ModelEntity?
+    private var actorRenderStyles: [String: SceneActorRenderStyle] = [:]
+    private var sceneBillboardEntities: [Entity] = []
+    private var pathGuideEntities: [ModelEntity] = []
+    private var actorFocusEntities: [String: ModelEntity] = [:]
+    private var activeTargetCueEntities: [ModelEntity] = []
+    private var activeTargetCueID: UUID?
+    private var activeStoryboardActorDrag: StoryboardActorDragState?
+    private var lastPresentationFrameTimestamp: TimeInterval = 0
+    private let storyboardActorScreenPickRadius: CGFloat = 86
+
+    private struct StoryboardActorDragState {
+        let actorPlacedID: String
+        let actorID: String
+        let beatID: String?
+        let originalPosition: SIMD3<Float>
+        var latestPosition: Position3D
+    }
     
     /// Anchor для всей сцены
     private var sceneAnchor: AnchorEntity?
@@ -214,6 +370,11 @@ final class SceneGeneratorViewModel: ObservableObject {
     private var lastHighHintTimestamp: TimeInterval = 0
     private var lastMediumHintTimestamp: TimeInterval = 0
     private var lastLowHintTimestamp: TimeInterval = 0
+    private var arInterfaceOrientation: UIInterfaceOrientation = .portrait
+    private var hintFrameDebugCounter = 0
+    private var lastHintFrameDebugLogTimestamp: TimeInterval = 0
+    private let objectDemoDetrHintFrameInterval: TimeInterval = 1.2
+    private let lidarDepthMarkingEnabledDefaultsKey = "scene_generator_lidar_marking_enabled"
     
     // MARK: - Cancellables
     
@@ -241,6 +402,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         self.sceneChunkState = currentProject.sceneChunkState
         self.visualOverlays = currentProject.visualOverlays
         setupBindings()
+        refreshStoryboardBeatItems()
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
     }
@@ -257,6 +419,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         $sceneDescription
             .dropFirst()
             .sink { [weak self] _ in
+                self?.sceneChunkState = nil
                 self?.refreshIdleStatusMessage()
                 self?.persistProjectMetadata()
             }
@@ -282,35 +445,155 @@ final class SceneGeneratorViewModel: ObservableObject {
                 self?.coachingOverlayAnnotations = annotations
             }
             .store(in: &cancellables)
+
+        Task { @MainActor in
+            analysisPipeline.setCameraDemoSceneMode(cameraDemoSceneMode)
+        }
+    }
+
+    static func actorRenderStyle(for actor: PlannedScene.PlacedActor, at index: Int) -> SceneActorRenderStyle {
+        let palette: [SIMD3<Float>] = [
+            SIMD3<Float>(0.20, 0.62, 1.00),
+            SIMD3<Float>(1.00, 0.46, 0.30),
+            SIMD3<Float>(0.22, 0.76, 0.48),
+            SIMD3<Float>(0.74, 0.50, 1.00),
+            SIMD3<Float>(1.00, 0.75, 0.22),
+        ]
+        let numericSuffix = actor.actorId
+            .split(separator: "_")
+            .last
+            .flatMap { Int($0) }
+        let paletteIndex = max((numericSuffix ?? (index + 1)) - 1, 0) % palette.count
+        return SceneActorRenderStyle(color: palette[paletteIndex], paletteIndex: paletteIndex)
+    }
+
+    static let supportedStoryboardEditActionTypes: [SceneAction.ActionType] = [
+        .stand,
+        .walk,
+        .lookAt,
+        .pickUp,
+        .give,
+        .talk,
+        .describedAction,
+    ]
+
+    static let storyboardTargetActionTypes: Set<SceneAction.ActionType> = [
+        .walk,
+        .lookAt,
+        .pickUp,
+        .give,
+    ]
+
+    static func objectRenderStyle(for type: SceneObject.ObjectType) -> SceneObjectRenderStyle {
+        switch type {
+        case .phone:
+            return SceneObjectRenderStyle(kind: .phoneProxy, targetCueRadius: 0.074)
+        default:
+            return SceneObjectRenderStyle(kind: .standardPlaceholder, targetCueRadius: 0.045)
+        }
+    }
+
+    static func yawAngle(from start: SIMD3<Float>, toward end: SIMD3<Float>, minDistance: Float = 0.01) -> Float? {
+        let delta = end - start
+        let planarLength = sqrt(delta.x * delta.x + delta.z * delta.z)
+        guard planarLength > minDistance else { return nil }
+        return atan2(delta.x, delta.z)
+    }
+
+    static func layoutObjectLabels(
+        _ labels: [ARObjectLabelPresentation],
+        canvasSize: CGSize,
+        minVerticalSpacing: CGFloat = 28,
+        horizontalCollisionRange: CGFloat = 120,
+        edgeInsets: UIEdgeInsets = UIEdgeInsets(top: 48, left: 36, bottom: 94, right: 36)
+    ) -> [ARObjectLabelPresentation] {
+        guard !labels.isEmpty, canvasSize.width > 0, canvasSize.height > 0 else { return labels }
+
+        let minX = edgeInsets.left
+        let maxX = max(minX, canvasSize.width - edgeInsets.right)
+        let minY = edgeInsets.top
+        let maxY = max(minY, canvasSize.height - edgeInsets.bottom)
+        var arranged: [ARObjectLabelPresentation] = []
+
+        for label in labels.sorted(by: objectLabelSort) {
+            let clampedX = min(max(label.x, minX), maxX)
+            var candidateY = min(max(label.y, minY), maxY)
+
+            for placed in arranged where abs(placed.x - clampedX) < horizontalCollisionRange {
+                if abs(placed.y - candidateY) < minVerticalSpacing {
+                    candidateY = placed.y + minVerticalSpacing
+                }
+            }
+
+            if candidateY > maxY {
+                let overflow = candidateY - maxY
+                arranged = arranged.map { placed in
+                    guard abs(placed.x - clampedX) < horizontalCollisionRange else { return placed }
+                    return placed.withPosition(x: placed.x, y: max(minY, placed.y - overflow))
+                }
+                candidateY = maxY
+            }
+
+            arranged.append(label.withPosition(x: clampedX, y: min(max(candidateY, minY), maxY)))
+        }
+
+        return arranged.sorted { $0.priority == $1.priority ? $0.id < $1.id : $0.priority < $1.priority }
+    }
+
+    private static func objectLabelSort(_ lhs: ARObjectLabelPresentation, _ rhs: ARObjectLabelPresentation) -> Bool {
+        if abs(lhs.y - rhs.y) > 1 {
+            return lhs.y < rhs.y
+        }
+        if lhs.priority != rhs.priority {
+            return lhs.priority < rhs.priority
+        }
+        return lhs.id < rhs.id
+    }
+
+    private func actorRenderStyle(for actor: PlannedScene.PlacedActor) -> SceneActorRenderStyle {
+        if let style = actorRenderStyles[actor.id] {
+            return style
+        }
+        let index = plannedScene?.placedActors.firstIndex { $0.id == actor.id } ?? 0
+        return Self.actorRenderStyle(for: actor, at: index)
     }
     
     // MARK: - Public API
+
+    /// Обновляет только лёгкий presentation-layer AR: 2D object labels и billboard-подписи.
+    /// Этот путь вызывается на каждый AR frame, в отличие от тяжёлого `processARFrameSnapshot`.
+    func updateARPresentationFrame(cameraTransform: simd_float4x4, timestamp: TimeInterval) {
+        if timestamp < lastPresentationFrameTimestamp {
+            guard lastPresentationFrameTimestamp - timestamp > 2 else { return }
+        }
+        lastPresentationFrameTimestamp = timestamp
+        currentCameraTransform = cameraTransform
+        updateBillboardEntities(cameraTransform: cameraTransform)
+        if !isMarkerNameInputActive {
+            updateObjectLabelOverlays()
+        }
+    }
     
     /// Обрабатывает snapshot AR-кадра без удержания ARFrame в очереди MainActor.
     func processARFrameSnapshot(
         cameraTransform: simd_float4x4,
-        depthMap: CVPixelBuffer?,
-        intrinsics: simd_float3x3,
-        imageResolution: CGSize,
-        planeAnchors: [ARPlaneAnchor],
+        planeSnapshots: [ScenePlaneSnapshot],
         timestamp: TimeInterval,
-        capturedImage: CVPixelBuffer? = nil
+        capturedImage: CVPixelBuffer? = nil,
+        interfaceOrientation: UIInterfaceOrientation? = nil,
+        displayTransform: CGAffineTransform? = nil
     ) {
         currentCameraTransform = cameraTransform
-        if isMarkingMode, let depthMap {
-            latestDepthFrameSnapshot = DepthFrameSnapshot(
-                depthMap: depthMap,
-                cameraTransform: cameraTransform,
-                intrinsics: intrinsics,
-                imageResolution: imageResolution
-            )
-        } else {
-            latestDepthFrameSnapshot = nil
+        if let interfaceOrientation, interfaceOrientation != .unknown {
+            arInterfaceOrientation = interfaceOrientation
+        }
+        if let displayTransform {
+            hintDisplayTransform = displayTransform
         }
         
         // Обновляем плоскости с ограничением частоты, чтобы не перегружать main thread.
         if timestamp - lastPlaneUpdateTimestamp >= planeRefreshInterval || detectedPlanes.isEmpty {
-            detectedPlanes = planeAnchors
+            detectedPlanes = planeSnapshots
             lastPlaneUpdateTimestamp = timestamp
         }
         
@@ -326,6 +609,8 @@ final class SceneGeneratorViewModel: ObservableObject {
             }
             processHintFrameIfNeeded(pixelBuffer: capturedImage, timestamp: timestamp)
         }
+
+        updateARPresentationFrame(cameraTransform: cameraTransform, timestamp: timestamp)
         
         // DETR детекция отключена - используем только ручную разметку и LiDAR
     }
@@ -334,12 +619,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     func processARFrame(_ frame: ARFrame) {
         processARFrameSnapshot(
             cameraTransform: frame.camera.transform,
-            depthMap: (isMarkingMode ? (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap : nil),
-            intrinsics: frame.camera.intrinsics,
-            imageResolution: frame.camera.imageResolution,
-            planeAnchors: frame.anchors.compactMap { $0 as? ARPlaneAnchor },
+            planeSnapshots: frame.anchors.compactMap { ($0 as? ARPlaneAnchor).map(ScenePlaneSnapshot.init(anchor:)) },
             timestamp: frame.timestamp,
-            capturedImage: frame.capturedImage
+            capturedImage: nil
         )
     }
 
@@ -361,6 +643,10 @@ final class SceneGeneratorViewModel: ObservableObject {
         restorePersistedEntitiesIfNeeded()
     }
 
+    var isDepthMarkingEnabled: Bool {
+        isMarkingMode && UserDefaults.standard.bool(forKey: lidarDepthMarkingEnabledDefaultsKey)
+    }
+
     func makeSessionConfiguration(depthEnabled: Bool) -> ARWorldTrackingConfiguration {
         let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = [.horizontal]
@@ -370,7 +656,7 @@ final class SceneGeneratorViewModel: ObservableObject {
             configuration.initialWorldMap = initialWorldMap
         }
 
-        if depthEnabled {
+        if depthEnabled && UserDefaults.standard.bool(forKey: lidarDepthMarkingEnabledDefaultsKey) {
             if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
                 configuration.frameSemantics.insert(.smoothedSceneDepth)
             } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
@@ -380,7 +666,7 @@ final class SceneGeneratorViewModel: ObservableObject {
 
         return configuration
     }
-    
+
     /// Генерирует сцену из текстового описания
     func generateScene() async {
         guard !sceneDescription.isEmpty else {
@@ -397,13 +683,26 @@ final class SceneGeneratorViewModel: ObservableObject {
             errorMessage = "Не удалось получить позицию камеры"
             return
         }
+
+        generationLogCounter += 1
+        let generationID = "generation_\(generationLogCounter)"
         
         isGenerating = true
         errorMessage = nil
         statusMessage = "Анализирую описание..."
+        isPlaying = false
+        activeStoryboardEditDraft = nil
+        storyboardDragFeedback = nil
+        cancelAllAnimations()
+        resetPlaybackUIState(clearTimeline: true)
+        removePlacedSceneEntities(reason: "generation_start \(generationID)")
+        plannedScene = nil
+        beatTimelineItems = []
+        storyboardBeatItems = []
         
         // Логирование входных данных
-        print("🔍 [VIEWMODEL] === НАЧАЛО ГЕНЕРАЦИИ СЦЕНЫ ===")
+        print("🔍 [VIEWMODEL][\(generationID)] === НАЧАЛО ГЕНЕРАЦИИ СЦЕНЫ ===")
+        SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] start descriptionChars=\(sceneDescription.count), markedObjects=\(markedObjects.count)")
         print("🔍 [VIEWMODEL] Описание: '\(sceneDescription)'")
         print("🔍 [VIEWMODEL] Размеченных объектов: \(markedObjects.count)")
         for (index, marker) in markedObjects.enumerated() {
@@ -413,24 +712,27 @@ final class SceneGeneratorViewModel: ObservableObject {
         // 1. Парсим описание с учётом markedObjects (async — поддержка LLM fallback)
         print("🔍 [VIEWMODEL] Вызов parserService.parseAsync()...")
         statusMessage = "Анализирую текст..."
-        let result = await parserService.parseAsync(sceneDescription, markedObjects: markedObjects, state: sceneChunkState)
+        let result = await parserService.parseAsync(sceneDescription, markedObjects: markedObjects)
+        parserService.releaseLocalModelResources(reason: "scene_generation_parse_complete")
+        SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] parser finished and LLM resources requested for release")
         let script = result.script
         let runtimeTrace = parserService.lastRuntimeTrace
         
+        logParsedScriptDetails(script, diagnostics: result.diagnostics, generationID: generationID)
         print("🔍 [VIEWMODEL] Результат парсинга:")
         print("🔍 [VIEWMODEL]   Actors: \(script.actors.count)")
         for (index, actor) in script.actors.enumerated() {
-            print("🔍 [VIEWMODEL]     Actor[\(index)]: id='\(actor.id)', type=\(actor.type.rawValue)")
+            print("🔍 [VIEWMODEL]     Actor[\(index)]: id='\(actor.id)', type=\(actor.type.rawValue), name='\(actor.name ?? "nil")'")
         }
         print("🔍 [VIEWMODEL]   Objects: \(script.objects.count)")
         for (index, object) in script.objects.enumerated() {
-            print("🔍 [VIEWMODEL]     Object[\(index)]: id='\(object.id)', type=\(object.type.rawValue), detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
+            print("🔍 [VIEWMODEL]     Object[\(index)]: id='\(object.id)', type=\(object.type.rawValue), name='\(object.name ?? "nil")', detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
         }
         print("🔍 [VIEWMODEL]   Beats: \(script.beats.count), Actions: \(script.actions.count)")
         for (beatIndex, beat) in script.beats.enumerated() {
             print("🔍 [VIEWMODEL]     Beat[\(beatIndex)]: id='\(beat.id)', actions=\(beat.actions.count)")
             for (actionIndex, action) in beat.actions.enumerated() {
-                print("🔍 [VIEWMODEL]       Action[\(actionIndex)]: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target=\(action.target ?? "nil")")
+                print("🔍 [VIEWMODEL]       Action[\(actionIndex)]: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target=\(action.target ?? "nil"), holding=\(action.holdingObject ?? "nil"), direction=\(action.direction?.rawValue ?? "nil"), dialogue='\(action.dialogue ?? "nil")', fallback='\(action.fallbackText ?? "nil")', source='\(action.sourceText ?? "nil")'")
             }
         }
         print("🔍 [VIEWMODEL]   Confidence: \(result.diagnostics.confidence)")
@@ -463,6 +765,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         if script.isEmpty {
             errorMessage = "Не удалось распознать описание сцены"
             isGenerating = false
+            SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] failed empty script")
+            SceneGeneratorDiagnosticsLogger.shared.flush()
             return
         }
         
@@ -504,14 +808,18 @@ final class SceneGeneratorViewModel: ObservableObject {
         print("🔍 [VIEWMODEL] Результат планирования:")
         print("🔍 [VIEWMODEL]   PlacedActors: \(planned.placedActors.count)")
         for (index, actor) in planned.placedActors.enumerated() {
-            print("🔍 [VIEWMODEL]     PlacedActor[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), path.count=\(actor.path.count)")
+            print("🔍 [VIEWMODEL]     PlacedActor[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), name='\(actor.name ?? "nil")', label='\(displayName(for: actor))', path.count=\(actor.path.count)")
         }
         print("🔍 [VIEWMODEL]   PlacedObjects: \(planned.placedObjects.count)")
         for (index, object) in planned.placedObjects.enumerated() {
             print("🔍 [VIEWMODEL]     PlacedObject[\(index)]: id='\(object.id)', objectId='\(object.objectId)', type=\(object.type.rawValue), isRealWorld=\(object.isRealWorld), placementSource=\(object.placementSource.rawValue)")
         }
+        logPlannedSceneDetails(planned, script: updatedScript, generationID: generationID)
         
+        parsedScript = updatedScript
         plannedScene = planned
+        refreshStoryboardBeatItems()
+        beatTimelineItems = buildBeatTimelineItems(for: planned, script: updatedScript)
         
         statusMessage = "Размещаю объекты..."
         
@@ -521,7 +829,9 @@ final class SceneGeneratorViewModel: ObservableObject {
         isGenerating = false
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        Task { await persistProjectSnapshot() }
+        persistProjectMetadata()
+        SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] complete actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count)")
+        SceneGeneratorDiagnosticsLogger.shared.flush()
 
         // Закрываем sheet
         showInputSheet = false
@@ -531,15 +841,33 @@ final class SceneGeneratorViewModel: ObservableObject {
     func playScene() {
         guard let planned = plannedScene else {
             errorMessage = "Сначала создайте сцену"
+            diagnosticsLog("🎬 [PLAYBACK] playScene rejected: plannedScene=nil")
             return
         }
         
-        guard !isPlaying else { return }
+        guard !isPlaying else {
+            diagnosticsLog("🎬 [PLAYBACK] playScene ignored: already playing id=\(currentPlaybackLogID ?? "nil")")
+            return
+        }
+
+        playbackLogCounter += 1
+        let playbackID = "playback_\(playbackLogCounter)"
+        diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] playScene requested actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count)")
         
         // Отменяем все предыдущие анимации
         cancelAllAnimations()
+        if activeStoryboardEditDraft != nil {
+            cancelActiveStoryboardActorDrag()
+            activeStoryboardEditDraft = nil
+            storyboardDragFeedback = nil
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] storyboard editor closed before playback")
+        }
+        currentPlaybackLogID = playbackID
+        lastLoggedPlaybackBeatIndex = nil
         
         beatTimelineItems = buildBeatTimelineItems(for: planned, script: parsedScript)
+        logPlaybackPlan(planned, timeline: beatTimelineItems, playbackID: playbackID)
+        SceneGeneratorDiagnosticsLogger.shared.flush()
         isPlaying = true
         resetPlaybackUIState(clearTimeline: false)
         refreshWorkspaceMode()
@@ -549,9 +877,13 @@ final class SceneGeneratorViewModel: ObservableObject {
         completedActorAnimations = 0
         totalActorAnimations = planned.placedActors.filter { $0.path.count > 1 }.count
         if totalActorAnimations == 0 {
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] no animated actors: actors=\(planned.placedActors.count)")
             isPlaying = false
             statusMessage = "Нет анимируемых действий"
             setActorsToInitialPositionsInstantly()
+            currentPlaybackLogID = nil
+            lastLoggedPlaybackBeatIndex = nil
+            SceneGeneratorDiagnosticsLogger.shared.flush()
             return
         }
         
@@ -561,6 +893,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Небольшая задержка чтобы позиции успели примениться
         let startWorkItem = DispatchWorkItem { [weak self] in
             guard let self = self, self.isPlaying else { return }
+            self.diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] start animations actors=\(planned.placedActors.count), animatedActors=\(self.totalActorAnimations)")
             
             // Анимируем каждого актёра по его траектории
             for actor in planned.placedActors {
@@ -576,6 +909,8 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Останавливает воспроизведение
     func stopScene() {
+        let playbackID = currentPlaybackLogID
+        diagnosticsLog("🎬 [PLAYBACK][\(playbackID ?? "nil")] stopScene requested elapsed=\(formatSeconds(playbackElapsedTime))")
         // Отменяем все запланированные анимации
         cancelAllAnimations()
         
@@ -585,11 +920,19 @@ final class SceneGeneratorViewModel: ObservableObject {
         refreshIdleStatusMessage()
 
         // Мгновенно возвращаем актёров на начальные позиции
+        currentPlaybackLogID = playbackID
         setActorsToInitialPositionsInstantly()
+        diagnosticsLog("🎬 [PLAYBACK][\(playbackID ?? "nil")] stopScene complete")
+        currentPlaybackLogID = nil
+        lastLoggedPlaybackBeatIndex = nil
+        SceneGeneratorDiagnosticsLogger.shared.flush()
     }
     
     /// Отменяет все запланированные анимации
     private func cancelAllAnimations() {
+        if !animationWorkItems.isEmpty || playbackTimelineTimer != nil || isPlaying {
+            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] cancel animations workItems=\(animationWorkItems.count), isPlaying=\(isPlaying)")
+        }
         // Отменяем все DispatchWorkItems
         for workItem in animationWorkItems {
             workItem.cancel()
@@ -603,6 +946,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         activeDialogueCaptionID = nil
         activeActionCaptionID = nil
         activeScreenTextCaptionID = nil
+        currentPlaybackLogID = nil
+        lastLoggedPlaybackBeatIndex = nil
         
         // Останавливаем все текущие RealityKit анимации
         stopAllEntityAnimations()
@@ -612,6 +957,9 @@ final class SceneGeneratorViewModel: ObservableObject {
     private func stopAllEntityAnimations() {
         for (_, entity) in placedEntities {
             // Устанавливаем текущую трансформацию как конечную (останавливает анимацию)
+            entity.stopAllAnimations()
+        }
+        for (_, entity) in actorFocusEntities {
             entity.stopAllAnimations()
         }
     }
@@ -627,6 +975,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         beatProgress = 0
         playbackElapsedTime = 0
         playbackStartDate = nil
+        hideActorFocus()
+        removeActiveTargetCue()
         if clearTimeline {
             beatTimelineItems = []
         }
@@ -636,6 +986,59 @@ final class SceneGeneratorViewModel: ObservableObject {
         playbackTimelineTimer?.invalidate()
         playbackTimelineTimer = nil
         playbackStartDate = nil
+    }
+
+    private func diagnosticsLog(_ message: String) {
+        SceneGeneratorDiagnosticsLogger.shared.log(message)
+    }
+
+    private func logParsedScriptDetails(_ script: SceneScript, diagnostics: ParsingDiagnostics, generationID: String) {
+        diagnosticsLog("🧭 [TRACE][\(generationID)] parsed script summary: actors=\(script.actors.count), objects=\(script.objects.count), beats=\(script.beats.count), actions=\(script.actions.count), confidence=\(diagnostics.confidence)")
+        for actor in script.actors {
+            diagnosticsLog("🧭 [TRACE][\(generationID)] script.actor id=\(actor.id), type=\(actor.type.rawValue), name=\(actor.name ?? "nil")")
+        }
+        for object in script.objects {
+            diagnosticsLog("🧭 [TRACE][\(generationID)] script.object id=\(object.id), type=\(object.type.rawValue), name=\(object.name ?? "nil"), relative=\(object.relativePosition.rawValue), detected=\(object.detectedPosition.map(formatPosition) ?? "nil")")
+        }
+        for (beatIndex, beat) in script.beats.enumerated() {
+            diagnosticsLog("🧭 [TRACE][\(generationID)] script.beat[\(beatIndex)] id=\(beat.id), minDuration=\(beat.minDuration.map(formatSeconds) ?? "nil"), actions=\(beat.actions.count)")
+            for action in beat.actions {
+                diagnosticsLog("🧭 [TRACE][\(generationID)] script.action beat=\(beat.id), id=\(action.id), actor=\(action.actorId), type=\(action.type.rawValue), target=\(action.target ?? "nil"), holding=\(action.holdingObject ?? "nil"), direction=\(action.direction?.rawValue ?? "nil"), pose=\(action.resultingPose?.rawValue ?? "nil"), dialogue=\(quotedForLog(action.dialogue)), fallback=\(quotedForLog(action.fallbackText)), source=\(quotedForLog(action.sourceText))")
+            }
+        }
+    }
+
+    private func logPlannedSceneDetails(_ planned: PlannedScene, script: SceneScript, generationID: String) {
+        diagnosticsLog("🧭 [TRACE][\(generationID)] planned scene summary: actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count), scriptBeats=\(script.beats.count)")
+        for object in planned.placedObjects {
+            diagnosticsLog("🧭 [TRACE][\(generationID)] placed.object id=\(object.id), objectId=\(object.objectId), type=\(object.type.rawValue), position=\(formatPosition(object.position)), rotation=\(formatFloat(object.rotation)), source=\(object.placementSource.rawValue), isDetected=\(object.isDetected)")
+        }
+        for actor in planned.placedActors {
+            diagnosticsLog("🧭 [TRACE][\(generationID)] placed.actor id=\(actor.id), actorId=\(actor.actorId), label=\(displayName(for: actor)), type=\(actor.type.rawValue), initial=\(formatPosition(actor.initialPosition)), initialRotation=\(formatFloat(actor.initialRotation)), pathPoints=\(actor.path.count), durations=\(actor.pathDurations.map(formatSeconds).joined(separator: ","))")
+            for pointIndex in actor.path.indices {
+                let beatID = actor.pathBeatIDs.indices.contains(pointIndex) ? actor.pathBeatIDs[pointIndex] : nil
+                let pose = actor.pathPoses.indices.contains(pointIndex) ? actor.pathPoses[pointIndex].rawValue : "nil"
+                let annotation = actor.pathAnnotations.indices.contains(pointIndex) ? actor.pathAnnotations[pointIndex] : nil
+                diagnosticsLog("🧭 [TRACE][\(generationID)] placed.actor.path actor=\(displayName(for: actor)), point=\(pointIndex), position=\(formatPosition(actor.path[pointIndex])), beat=\(beatID ?? "nil"), pose=\(pose), annotationKind=\(annotation?.kind.rawValue ?? "nil"), annotation=\(quotedForLog(annotation?.text))")
+            }
+        }
+    }
+
+    private func logPlaybackPlan(_ planned: PlannedScene, timeline: [BeatPlaybackTimelineItem], playbackID: String) {
+        diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] plan summary: actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count), timelineBeats=\(timeline.count)")
+        for item in timeline {
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] timeline beatIndex=\(item.index), beatID=\(item.beatID), start=\(formatSeconds(item.startTime)), duration=\(formatSeconds(item.duration)), dialogue=\(item.hasDialogueCaption), action=\(item.hasActionCaption)")
+        }
+        for actor in planned.placedActors {
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] actor plan label=\(displayName(for: actor)), id=\(actor.id), actorId=\(actor.actorId), pathPoints=\(actor.path.count), segments=\(actor.pathDurations.count)")
+            for segmentIndex in 0..<actor.pathDurations.count {
+                let from = actor.path.indices.contains(segmentIndex) ? formatPosition(actor.path[segmentIndex]) : "nil"
+                let to = actor.path.indices.contains(segmentIndex + 1) ? formatPosition(actor.path[segmentIndex + 1]) : "nil"
+                let beatID = actor.pathBeatIDs.indices.contains(segmentIndex + 1) ? actor.pathBeatIDs[segmentIndex + 1] : nil
+                let annotation = actor.pathAnnotations.indices.contains(segmentIndex + 1) ? actor.pathAnnotations[segmentIndex + 1] : nil
+                diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] actor segment label=\(displayName(for: actor)), segment=\(segmentIndex), beat=\(beatID ?? "nil"), duration=\(formatSeconds(actor.pathDurations[segmentIndex])), from=\(from), to=\(to), annotationKind=\(annotation?.kind.rawValue ?? "nil"), annotation=\(quotedForLog(annotation?.text))")
+            }
+        }
     }
     
     /// Сбрасывает сцену
@@ -651,11 +1054,14 @@ final class SceneGeneratorViewModel: ObservableObject {
         sceneAnchor?.removeFromParent()
         sceneAnchor = nil
         placedEntities.removeAll()
+        clearSceneVisualState()
         
         plannedScene = nil
         parsedScript = nil
         sceneChunkState = nil
         visualOverlays = []
+        storyboardBeatItems = []
+        activeStoryboardEditDraft = nil
         isPlaying = false
         isHintsEnabled = false
         clearHintPresentation()
@@ -675,103 +1081,42 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Включает/выключает режим разметки
     func toggleMarkingMode() {
         isMarkingMode.toggle()
-        if !isMarkingMode {
-            latestDepthFrameSnapshot = nil
-        }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
     }
     
     /// Обрабатывает tap для размещения маркера
     func handleTapForMarker(at screenPoint: CGPoint) {
-        guard isMarkingMode, let arView = arView else { return }
-        
-        // Приоритет 1: Используем LiDAR depth для максимально точного определения позиции
-        if let worldPosition = getWorldPositionFromLiDAR(screenPoint: screenPoint, arView: arView) {
-            print("🔍 [MARKER] Позиция определена через LiDAR: x=\(worldPosition.x), y=\(worldPosition.y), z=\(worldPosition.z)")
-            pendingMarkerPosition = worldPosition
-            showMarkerNameInput = true
+        diagnosticsLog("[TOUCH_TRACE] marker tap received point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y)))), marking=\(isMarkingMode), hasARView=\(arView != nil)")
+        guard isMarkingMode, let arView = arView else {
+            diagnosticsLog("[MARKER] tap rejected before raycast: marking=\(isMarkingMode), hasARView=\(arView != nil)")
             return
         }
-        
-        // Приоритет 2: Используем raycast с более точными настройками
-        // Пробуем сначала точные плоскости, затем оценённые
+
+        // Demo-fast path: raycast не требует удерживать depth CVPixelBuffer между AR-кадрами.
         var results = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
         if results.isEmpty {
             results = arView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
         }
-        
-        guard let firstResult = results.first else {
-            statusMessage = "Не удалось определить позицию. Попробуйте ещё раз."
+
+        let worldPosition: Position3D
+        if let firstResult = results.first {
+            let transform = firstResult.worldTransform
+            let position = transform.columns.3
+            worldPosition = Position3D(x: position.x, y: position.y, z: position.z)
+        } else if let fallbackPosition = fallbackSurfacePosition(from: screenPoint) {
+            worldPosition = fallbackPosition
+            diagnosticsLog("[MARKER] raycast fallback used position=\(formatPosition(fallbackPosition))")
+        } else {
+            statusMessage = "Не удалось отметить объект. Наведите камеру на поверхность и попробуйте ещё раз."
+            diagnosticsLog("[MARKER] tap rejected: no raycast or fallback at point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
             return
         }
-        
-        // Используем точную позицию из raycast результата
-        let transform = firstResult.worldTransform
-        let position = transform.columns.3
-        let worldPosition = Position3D(x: position.x, y: position.y, z: position.z)
-        
-        print("🔍 [MARKER] Позиция определена через raycast: x=\(worldPosition.x), y=\(worldPosition.y), z=\(worldPosition.z)")
+
+        print("🔍 [MARKER] Позиция маркера определена: x=\(worldPosition.x), y=\(worldPosition.y), z=\(worldPosition.z)")
+        diagnosticsLog("[MARKER] tap accepted position=\(formatPosition(worldPosition))")
         pendingMarkerPosition = worldPosition
         showMarkerNameInput = true
-    }
-    
-    /// Получает 3D позицию в мировых координатах используя LiDAR depth
-    private func getWorldPositionFromLiDAR(screenPoint: CGPoint, arView: ARView) -> Position3D? {
-        guard let frame = latestDepthFrameSnapshot else { return nil }
-        
-        let depthMap = frame.depthMap
-        let width = CVPixelBufferGetWidth(depthMap)
-        let height = CVPixelBufferGetHeight(depthMap)
-        
-        // Конвертируем screen point в normalized координаты depth map
-        let viewSize = arView.bounds.size
-        let normalizedX = screenPoint.x / viewSize.width
-        let normalizedY = screenPoint.y / viewSize.height
-        
-        // Учитываем ориентацию устройства для правильного маппинга
-        let depthX = Int(normalizedX * CGFloat(width))
-        let depthY = Int(normalizedY * CGFloat(height))
-        
-        guard depthX >= 0, depthX < width, depthY >= 0, depthY < height else { return nil }
-        
-        // Читаем значение глубины
-        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
-        
-        guard let baseAddress = CVPixelBufferGetBaseAddress(depthMap) else { return nil }
-        
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
-        let offset = depthY * bytesPerRow + depthX * MemoryLayout<Float32>.size
-        let depthPointer = baseAddress.advanced(by: offset).assumingMemoryBound(to: Float32.self)
-        let depthValue = depthPointer.pointee
-        
-        // Проверяем валидность глубины
-        guard depthValue > 0 && depthValue < 10.0 else { return nil } // Глубина в разумных пределах
-        
-        // Конвертируем 2D + depth в 3D мировые координаты
-        let intrinsics = frame.intrinsics
-        let imageResolution = frame.imageResolution
-        
-        // Конвертируем screen point в image coordinates
-        let imageX = Float(normalizedX * imageResolution.width)
-        let imageY = Float(normalizedY * imageResolution.height)
-        
-        // Unproject из image coordinates в camera space
-        let fx = intrinsics[0][0]
-        let fy = intrinsics[1][1]
-        let cx = intrinsics[2][0]
-        let cy = intrinsics[2][1]
-        
-        let cameraX = (imageX - cx) * depthValue / fx
-        let cameraY = (imageY - cy) * depthValue / fy
-        let cameraZ = -depthValue // Negative because camera looks along -Z
-        
-        // Transform from camera space to world space
-        let cameraPoint = simd_float4(cameraX, cameraY, cameraZ, 1)
-        let worldPoint = frame.cameraTransform * cameraPoint
-        
-        return Position3D(x: worldPoint.x, y: worldPoint.y, z: worldPoint.z)
     }
     
     /// Создаёт маркер с указанным именем
@@ -810,6 +1155,7 @@ final class SceneGeneratorViewModel: ObservableObject {
             entity.removeFromParent()
             markerEntities.removeValue(forKey: marker.id)
         }
+        updateObjectLabelOverlays()
         
         cleanupMarkersAnchorIfNeeded()
         refreshWorkspaceMode()
@@ -825,6 +1171,7 @@ final class SceneGeneratorViewModel: ObservableObject {
             entity.removeFromParent()
         }
         markerEntities.removeAll()
+        updateObjectLabelOverlays()
         
         cleanupMarkersAnchorIfNeeded()
         refreshWorkspaceMode()
@@ -845,13 +1192,18 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Создаём визуальный маркер - сфера с подписью (отличается от виртуальных объектов)
         let markerEntity = createMarkerEntity(for: marker)
         
-        // Используем ТОЧНУЮ позицию из marker.worldPosition (без смещений)
-        markerEntity.position = marker.worldPosition.simdVector
+        // marker.worldPosition хранит точку попадания raycast; proxy поднимаем только на свою толщину.
+        markerEntity.position = marker.worldPosition.simdVector + SIMD3<Float>(
+            0,
+            markerProxyVerticalOffset(for: marker.type),
+            0
+        )
         
         print("🔍 [MARKER] Размещение маркера '\(marker.name)' в позиции: x=\(marker.worldPosition.x), y=\(marker.worldPosition.y), z=\(marker.worldPosition.z)")
         
         markersAnchor?.addChild(markerEntity)
         markerEntities[marker.id] = markerEntity
+        updateObjectLabelOverlays()
     }
 
     private func cleanupMarkersAnchorIfNeeded() {
@@ -863,39 +1215,63 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Создаёт entity для маркера (отличается от виртуальных объектов)
     private func createMarkerEntity(for marker: MarkedObject) -> ModelEntity {
-        // Создаём сферу вместо куба - более отличимый маркер
-        let mesh = MeshResource.generateSphere(radius: 0.06)
-        
-        // Используем яркий цвет с полупрозрачностью для отличия от виртуальных объектов
-        let markerColor = marker.markerColor.withAlphaComponent(0.8)
+        let proxySize = markerProxySize(for: marker.type)
+        let mesh: MeshResource
+        switch marker.type {
+        case .generic:
+            mesh = .generateSphere(radius: proxySize.x / 2)
+        default:
+            mesh = .generateBox(size: proxySize)
+        }
+
+        let markerColor = marker.markerColor.withAlphaComponent(marker.type == .generic ? 0.82 : 0.34)
         let material = SimpleMaterial(
             color: markerColor,
-            roughness: 0.2,
-            isMetallic: true // Металлический блеск для отличия
+            roughness: 0.35,
+            isMetallic: false
         )
         
         let entity = ModelEntity(mesh: mesh, materials: [material])
         entity.generateCollisionShapes(recursive: true)
-        
-        // Добавляем подпись сверху (меньше и выше)
-        let textMesh = MeshResource.generateText(
-            marker.name.capitalized,
-            extrusionDepth: 0.003,
-            font: .boldSystemFont(ofSize: 0.04)
-        )
-        let textMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
-        let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
-        textEntity.position = simd_float3(-0.04, 0.10, 0)
-        
-        entity.addChild(textEntity)
-        
-        // Маркер визуально отличается от виртуальных объектов:
-        // - Сфера вместо куба
-        // - Металлический блеск
-        // - Полупрозрачность
-        // - Яркий цвет
-        
+
+        if marker.type == .table {
+            addTableMarkerOutline(to: entity, size: proxySize, color: marker.markerColor)
+        }
+
+        diagnosticsLog("[AR_VISUAL] marker proxy created id=\(marker.id.uuidString.prefix(8)), type=\(marker.type.rawValue), size=\(formatVector(proxySize))")
         return entity
+    }
+
+    private func markerProxySize(for type: SceneObject.ObjectType) -> SIMD3<Float> {
+        switch type {
+        case .table:
+            return SIMD3<Float>(0.72, 0.014, 0.46)
+        case .phone:
+            return SIMD3<Float>(0.20, 0.018, 0.11)
+        default:
+            return SIMD3<Float>(0.10, 0.10, 0.10)
+        }
+    }
+
+    private func markerProxyVerticalOffset(for type: SceneObject.ObjectType) -> Float {
+        markerProxySize(for: type).y / 2 + 0.002
+    }
+
+    private func addTableMarkerOutline(to entity: Entity, size: SIMD3<Float>, color: UIColor) {
+        let barThickness: Float = 0.018
+        let barHeight: Float = 0.018
+        let material = SimpleMaterial(color: color.withAlphaComponent(0.86), roughness: 0.3, isMetallic: false)
+        let bars: [(SIMD3<Float>, SIMD3<Float>)] = [
+            (SIMD3<Float>(size.x, barHeight, barThickness), SIMD3<Float>(0, size.y / 2 + 0.006, size.z / 2)),
+            (SIMD3<Float>(size.x, barHeight, barThickness), SIMD3<Float>(0, size.y / 2 + 0.006, -size.z / 2)),
+            (SIMD3<Float>(barThickness, barHeight, size.z), SIMD3<Float>(size.x / 2, size.y / 2 + 0.006, 0)),
+            (SIMD3<Float>(barThickness, barHeight, size.z), SIMD3<Float>(-size.x / 2, size.y / 2 + 0.006, 0)),
+        ]
+        for (barSize, position) in bars {
+            let bar = ModelEntity(mesh: .generateBox(size: barSize), materials: [material])
+            bar.position = position
+            entity.addChild(bar)
+        }
     }
     
     /// Находит размеченный объект по ключевому слову
@@ -917,8 +1293,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         print("🔍 [VIEWMODEL]   Реальных объектов (isRealWorld=true): \(planned.placedObjects.filter { $0.isRealWorld }.count)")
         
         // Удаляем предыдущую сцену
-        sceneAnchor?.removeFromParent()
-        placedEntities.removeAll()
+        removePlacedSceneEntities(reason: "place_objects")
         
         // Создаём anchor для сцены
         let anchor = AnchorEntity(world: .zero)
@@ -929,11 +1304,8 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Размещаем только виртуальные объекты (реальные не дублируем)
         for object in planned.placedObjects where !object.isRealWorld {
             print("🔍 [VIEWMODEL] Размещаю виртуальный объект: id='\(object.id)', type=\(object.type.rawValue)")
-            let entity = createPlaceholderEntity(
-                size: object.size,
-                color: object.color,
-                label: object.type.rawValue
-            )
+            diagnosticsLog("[AR_VISUAL] placing object id=\(object.id), objectId=\(object.objectId), type=\(object.type.rawValue), position=\(formatPosition(object.position)), size=\(formatVector(object.size)), source=\(object.placementSource.rawValue), isRealWorld=\(object.isRealWorld)")
+            let entity = createSceneObjectEntity(for: object)
             
             entity.position = object.position.simdVector
             entity.orientation = simd_quatf(angle: object.rotation, axis: [0, 1, 0])
@@ -948,32 +1320,57 @@ final class SceneGeneratorViewModel: ObservableObject {
         // Размещаем актёров
         print("🔍 [VIEWMODEL] Начало размещения актёров, всего в planned.placedActors: \(planned.placedActors.count)")
         for (index, actor) in planned.placedActors.enumerated() {
-            print("🔍 [VIEWMODEL] Обработка актёра[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), initialPosition=(\(actor.initialPosition.x), \(actor.initialPosition.y), \(actor.initialPosition.z))")
+            let previewPosition = playbackStartPosition(for: actor)
+            print("🔍 [VIEWMODEL] Обработка актёра[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), initialPosition=(\(actor.initialPosition.x), \(actor.initialPosition.y), \(actor.initialPosition.z)), previewPosition=(\(previewPosition.x), \(previewPosition.y), \(previewPosition.z))")
+            let style = Self.actorRenderStyle(for: actor, at: index)
+            actorRenderStyles[actor.id] = style
             let entity = createActorEntity(
                 size: actor.size,
-                color: actor.color,
-                label: actor.name ?? actor.type.rawValue
+                style: style,
+                label: displayName(for: actor)
             )
+            entity.name = "storyboard_actor|\(actor.id)|\(actor.actorId)"
             
-            entity.position = actor.initialPosition.simdVector
+            entity.position = previewPosition.simdVector
             entity.orientation = simd_quatf(angle: actor.initialRotation, axis: [0, 1, 0])
             
             print("🔍 [VIEWMODEL] Создан entity для актёра[\(index)], добавляю в anchor...")
             anchor.addChild(entity)
             placedEntities[actor.id] = entity
+            let focusEntity = createActorFocusEntity(style: style, size: actor.size)
+            focusEntity.position = previewPosition.simdVector + SIMD3<Float>(0, 0.025, 0)
+            focusEntity.isEnabled = false
+            anchor.addChild(focusEntity)
+            actorFocusEntities[actor.id] = focusEntity
+            diagnosticsLog("[AR_VISUAL] actor placed actor=\(displayName(for: actor)), id=\(actor.actorId), initial=\(formatPosition(actor.initialPosition)), preview=\(formatPosition(previewPosition)), pathFirst=\(actor.path.first.map(formatPosition) ?? "nil"), palette=\(style.paletteIndex), color=\(formatVector(style.color))")
             print("🔍 [VIEWMODEL] Актёр[\(index)] добавлен в placedEntities с ключом '\(actor.id)', теперь placedEntities.count=\(placedEntities.count)")
             actorsPlaced += 1
         }
+        placePathGuides(for: planned, anchor: anchor)
+        updateObjectLabelOverlays()
         print("🔍 [VIEWMODEL] Размещено актёров: \(actorsPlaced) из \(planned.placedActors.count)")
         print("🔍 [VIEWMODEL] Всего entities в placedEntities: \(placedEntities.count)")
         print("🔍 [VIEWMODEL] Ключи в placedEntities: \(placedEntities.keys.sorted().joined(separator: ", "))")
         print("🔍 [VIEWMODEL] === РАЗМЕЩЕНИЕ ЗАВЕРШЕНО ===")
     }
+
+    private func createSceneObjectEntity(for object: PlannedScene.PlacedObject) -> ModelEntity {
+        let style = Self.objectRenderStyle(for: object.type)
+        diagnosticsLog("[AR_VISUAL] object style id=\(object.id), type=\(object.type.rawValue), kind=\(style.kind), cueRadius=\(formatFloat(style.targetCueRadius))")
+        switch style.kind {
+        case .phoneProxy:
+            return createPhoneProxyEntity(size: object.size, color: object.color)
+        case .standardPlaceholder:
+            return createPlaceholderEntity(
+                size: object.size,
+                color: object.color
+            )
+        }
+    }
     
     private func createPlaceholderEntity(
         size: simd_float3,
-        color: (r: Float, g: Float, b: Float),
-        label: String
+        color: (r: Float, g: Float, b: Float)
     ) -> ModelEntity {
         // Создаём куб
         let mesh = MeshResource.generateBox(size: size)
@@ -986,34 +1383,65 @@ final class SceneGeneratorViewModel: ObservableObject {
         let entity = ModelEntity(mesh: mesh, materials: [material])
         entity.generateCollisionShapes(recursive: true)
         
-        // Добавляем подпись
-        let textMesh = MeshResource.generateText(
-            label,
-            extrusionDepth: 0.01,
-            font: .boldSystemFont(ofSize: 0.1)
-        )
-        let textMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
-        let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
-        textEntity.position = simd_float3(0, size.y / 2 + 0.15, 0)
-        
-        entity.addChild(textEntity)
-        
         return entity
+    }
+
+    private func createPhoneProxyEntity(
+        size: SIMD3<Float>,
+        color: (r: Float, g: Float, b: Float)
+    ) -> ModelEntity {
+        let bodyColor = UIColor(
+            red: CGFloat(color.r),
+            green: CGFloat(color.g),
+            blue: CGFloat(color.b),
+            alpha: 0.94
+        )
+        let body = ModelEntity(
+            mesh: .generateBox(size: size),
+            materials: [SimpleMaterial(color: bodyColor, roughness: 0.22, isMetallic: false)]
+        )
+
+        let screenSize = SIMD3<Float>(size.x * 0.78, max(size.y * 0.16, 0.006), size.z * 0.68)
+        let screen = ModelEntity(
+            mesh: .generateBox(size: screenSize),
+            materials: [SimpleMaterial(color: UIColor.white.withAlphaComponent(0.92), roughness: 0.12, isMetallic: false)]
+        )
+        screen.position = SIMD3<Float>(0, size.y / 2 + screenSize.y / 2 + 0.002, 0)
+        body.addChild(screen)
+
+        let glow = ModelEntity(
+            mesh: .generateBox(size: SIMD3<Float>(size.x * 1.18, 0.006, size.z * 1.28)),
+            materials: [SimpleMaterial(color: UIColor.systemCyan.withAlphaComponent(0.34), roughness: 0.18, isMetallic: false)]
+        )
+        glow.position = SIMD3<Float>(0, -size.y / 2 - 0.005, 0)
+        body.addChild(glow)
+
+        let outlineMaterial = SimpleMaterial(color: UIColor.systemCyan.withAlphaComponent(0.82), roughness: 0.2, isMetallic: false)
+        let edgeThickness: Float = 0.008
+        let edges: [(SIMD3<Float>, SIMD3<Float>)] = [
+            (SIMD3<Float>(size.x, edgeThickness, edgeThickness), SIMD3<Float>(0, size.y / 2 + 0.009, size.z / 2)),
+            (SIMD3<Float>(size.x, edgeThickness, edgeThickness), SIMD3<Float>(0, size.y / 2 + 0.009, -size.z / 2)),
+            (SIMD3<Float>(edgeThickness, edgeThickness, size.z), SIMD3<Float>(size.x / 2, size.y / 2 + 0.009, 0)),
+            (SIMD3<Float>(edgeThickness, edgeThickness, size.z), SIMD3<Float>(-size.x / 2, size.y / 2 + 0.009, 0)),
+        ]
+        for (edgeSize, position) in edges {
+            let edge = ModelEntity(mesh: .generateBox(size: edgeSize), materials: [outlineMaterial])
+            edge.position = position
+            body.addChild(edge)
+        }
+
+        body.generateCollisionShapes(recursive: true)
+        return body
     }
     
     private func createActorEntity(
         size: simd_float3,
-        color: (r: Float, g: Float, b: Float),
+        style: SceneActorRenderStyle,
         label: String
     ) -> ModelEntity {
-        let actorColor = UIColor(
-            red: CGFloat(color.r),
-            green: CGFloat(color.g),
-            blue: CGFloat(color.b),
-            alpha: 1.0
-        )
+        let actorColor = style.uiColor
         
-        if let personEntity = try? ModelEntity.loadModel(named: "Person") {
+        if let personEntity = makePersonEntity() {
             // Используем ту же модель, что и в CameraScreenModule.
             // Нормализуем масштаб по высоте, чтобы анимация и размещение остались предсказуемыми.
             let bounds = personEntity.visualBounds(relativeTo: personEntity)
@@ -1022,17 +1450,17 @@ final class SceneGeneratorViewModel: ObservableObject {
             personEntity.scale = simd_float3(repeating: scaleFactor)
             applyTintRecursively(entity: personEntity, color: actorColor)
             personEntity.generateCollisionShapes(recursive: true)
-            
-            let textMesh = MeshResource.generateText(
-                label,
-                extrusionDepth: 0.01,
-                font: .boldSystemFont(ofSize: 0.08)
+
+            let badge = createBadgeEntity(
+                text: label,
+                accentColor: actorColor,
+                fontSize: 0.068,
+                maxWidth: 0.78
             )
-            let textMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
-            let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
             let scaledHeight = bounds.extents.y * scaleFactor
-            textEntity.position = simd_float3(-0.1, scaledHeight / 2 + 0.1, 0)
-            personEntity.addChild(textEntity)
+            badge.position = simd_float3(0, scaledHeight / 2 + 0.22, 0)
+            personEntity.addChild(badge)
+            sceneBillboardEntities.append(badge)
             
             return personEntity
         }
@@ -1047,18 +1475,303 @@ final class SceneGeneratorViewModel: ObservableObject {
         let fallbackMaterial = SimpleMaterial(color: actorColor, roughness: 0.3, isMetallic: false)
         let fallbackEntity = ModelEntity(mesh: fallbackMesh, materials: [fallbackMaterial])
         fallbackEntity.generateCollisionShapes(recursive: true)
-        
-        let textMesh = MeshResource.generateText(
-            label,
-            extrusionDepth: 0.01,
-            font: .boldSystemFont(ofSize: 0.08)
+
+        let badge = createBadgeEntity(
+            text: label,
+            accentColor: actorColor,
+            fontSize: 0.068,
+            maxWidth: 0.78
         )
-        let textMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
-        let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
-        textEntity.position = simd_float3(-0.1, size.y / 2 + 0.1, 0)
-        fallbackEntity.addChild(textEntity)
+        badge.position = simd_float3(0, size.y / 2 + 0.22, 0)
+        fallbackEntity.addChild(badge)
+        sceneBillboardEntities.append(badge)
         
         return fallbackEntity
+    }
+
+    private func createBadgeEntity(
+        text: String,
+        accentColor: UIColor,
+        fontSize: CGFloat,
+        maxWidth: Float
+    ) -> ModelEntity {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeText = trimmed.isEmpty ? "Объект" : trimmed
+        let estimatedTextWidth = min(maxWidth, max(0.24, Float(safeText.count) * Float(fontSize) * 0.62))
+        let backgroundSize = SIMD3<Float>(estimatedTextWidth + 0.18, 0.15, 0.022)
+        let background = ModelEntity(
+            mesh: .generateBox(size: backgroundSize),
+            materials: [SimpleMaterial(color: UIColor.black.withAlphaComponent(0.80), roughness: 0.28, isMetallic: false)]
+        )
+
+        let accent = ModelEntity(
+            mesh: .generateBox(size: SIMD3<Float>(0.04, 0.118, 0.027)),
+            materials: [SimpleMaterial(color: accentColor.withAlphaComponent(0.96), roughness: 0.25, isMetallic: false)]
+        )
+        accent.position = SIMD3<Float>(-backgroundSize.x / 2 + 0.04, 0, 0.014)
+        background.addChild(accent)
+
+        let textMesh = MeshResource.generateText(
+            safeText,
+            extrusionDepth: 0.0025,
+            font: .boldSystemFont(ofSize: fontSize)
+        )
+        let textEntity = ModelEntity(
+            mesh: textMesh,
+            materials: [SimpleMaterial(color: .white, roughness: 0.45, isMetallic: false)]
+        )
+        textEntity.position = SIMD3<Float>(-estimatedTextWidth / 2 + 0.025, -Float(fontSize) * 0.38, 0.024)
+        background.addChild(textEntity)
+
+        return background
+    }
+
+    private func createActorFocusEntity(style: SceneActorRenderStyle, size: SIMD3<Float>) -> ModelEntity {
+        let focusSize = max(size.x, size.z) + 0.28
+        let material = SimpleMaterial(color: style.uiColor.withAlphaComponent(0.26), roughness: 0.25, isMetallic: false)
+        let entity = ModelEntity(
+            mesh: .generateBox(size: SIMD3<Float>(focusSize, 0.012, focusSize)),
+            materials: [material]
+        )
+        return entity
+    }
+
+    private func clearSceneVisualState() {
+        sceneBillboardEntities.removeAll()
+        pathGuideEntities.removeAll()
+        actorFocusEntities.removeAll()
+        actorRenderStyles.removeAll()
+        objectLabelItems = []
+        removeActiveTargetCue()
+    }
+
+    private func removePlacedSceneEntities(reason: String) {
+        sceneAnchor?.removeFromParent()
+        sceneAnchor = nil
+        placedEntities.removeAll()
+        clearSceneVisualState()
+        diagnosticsLog("[AR_VISUAL] cleared placed scene reason=\(reason)")
+    }
+
+    private func playbackStartPosition(for actor: PlannedScene.PlacedActor) -> Position3D {
+        actor.path.first ?? actor.initialPosition
+    }
+
+    private func placePathGuides(for planned: PlannedScene, anchor: AnchorEntity) {
+        var created = 0
+        for (index, actor) in planned.placedActors.enumerated() {
+            let style = actorRenderStyles[actor.id] ?? Self.actorRenderStyle(for: actor, at: index)
+            for segmentIndex in 0..<actor.pathDurations.count {
+                guard actor.path.indices.contains(segmentIndex),
+                      actor.path.indices.contains(segmentIndex + 1)
+                else { continue }
+
+                let start = actor.path[segmentIndex].simdVector
+                let end = actor.path[segmentIndex + 1].simdVector
+                guard planarDistance(from: start, to: end) > 0.03 else { continue }
+
+                let guide = createLineEntity(
+                    from: start + SIMD3<Float>(0, 0.025, 0),
+                    to: end + SIMD3<Float>(0, 0.025, 0),
+                    thickness: 0.022,
+                    color: style.uiColor.withAlphaComponent(0.34)
+                )
+                anchor.addChild(guide)
+                pathGuideEntities.append(guide)
+                created += 1
+            }
+        }
+        diagnosticsLog("[AR_VISUAL] path guides created=\(created)")
+    }
+
+    private func createLineEntity(
+        from start: SIMD3<Float>,
+        to end: SIMD3<Float>,
+        thickness: Float,
+        color: UIColor
+    ) -> ModelEntity {
+        let delta = end - start
+        let length = max(simd_length(delta), 0.001)
+        let mesh = MeshResource.generateBox(size: SIMD3<Float>(thickness, thickness, length))
+        let material = SimpleMaterial(color: color, roughness: 0.3, isMetallic: false)
+        let entity = ModelEntity(mesh: mesh, materials: [material])
+        entity.position = (start + end) / 2
+        entity.orientation = simd_quatf(angle: atan2(delta.x, delta.z), axis: [0, 1, 0])
+        return entity
+    }
+
+    private func planarDistance(from start: SIMD3<Float>, to end: SIMD3<Float>) -> Float {
+        let dx = end.x - start.x
+        let dz = end.z - start.z
+        return sqrt(dx * dx + dz * dz)
+    }
+
+    private func updateBillboardEntities(cameraTransform: simd_float4x4) {
+        guard !sceneBillboardEntities.isEmpty else { return }
+        let cameraPosition = SIMD3<Float>(
+            cameraTransform.columns.3.x,
+            cameraTransform.columns.3.y,
+            cameraTransform.columns.3.z
+        )
+
+        for entity in sceneBillboardEntities where entity.parent != nil {
+            orientBillboard(entity, toward: cameraPosition)
+        }
+    }
+
+    private func updateObjectLabelOverlays() {
+        guard let arView else {
+            objectLabelItems = []
+            return
+        }
+
+        let rawLabels: [ARObjectLabelPresentation]
+        if let plannedScene {
+            rawLabels = plannedScene.placedObjects.compactMap { object in
+                makeObjectLabel(
+                    id: object.id,
+                    text: displayName(for: object),
+                    type: object.type,
+                    position: object.position,
+                    size: object.size,
+                    tint: SIMD3<Float>(object.color.r, object.color.g, object.color.b),
+                    placementSource: object.placementSource,
+                    arView: arView
+                )
+            }
+        } else {
+            rawLabels = markedObjects.compactMap { marker in
+                makeObjectLabel(
+                    id: "marker_\(marker.id.uuidString)",
+                    text: marker.name,
+                    type: marker.type,
+                    position: marker.worldPosition,
+                    size: markerProxySize(for: marker.type),
+                    tint: rgbVector(from: marker.markerColor),
+                    placementSource: .marked,
+                    arView: arView
+                )
+            }
+        }
+
+        objectLabelItems = Self.layoutObjectLabels(rawLabels, canvasSize: arView.bounds.size)
+    }
+
+    private var isMarkerNameInputActive: Bool {
+        showMarkerNameInput || pendingMarkerPosition != nil
+    }
+
+    private func makeObjectLabel(
+        id: String,
+        text: String,
+        type: SceneObject.ObjectType,
+        position: Position3D,
+        size: SIMD3<Float>,
+        tint: SIMD3<Float>,
+        placementSource: PlannedScene.PlacedObject.PlacementSource,
+        arView: ARView
+    ) -> ARObjectLabelPresentation? {
+        let labelPosition = position.simdVector + SIMD3<Float>(
+            0,
+            objectLabelVerticalOffset(type: type, size: size, placementSource: placementSource),
+            0
+        )
+        guard let projected = arView.project(labelPosition),
+              projected.x.isFinite,
+              projected.y.isFinite
+        else { return nil }
+
+        let bounds = arView.bounds.insetBy(dx: -42, dy: -42)
+        guard bounds.contains(projected) else { return nil }
+
+        let cleanText = objectLabelText(text, fallback: displayName(for: type))
+        return ARObjectLabelPresentation(
+            id: id,
+            text: cleanText,
+            x: projected.x,
+            y: projected.y - 24,
+            tint: tint,
+            priority: objectLabelPriority(for: type)
+        )
+    }
+
+    private func objectLabelVerticalOffset(
+        type: SceneObject.ObjectType,
+        size: SIMD3<Float>,
+        placementSource: PlannedScene.PlacedObject.PlacementSource
+    ) -> Float {
+        switch (type, placementSource) {
+        case (.table, .marked), (.table, .detected):
+            return 0.08
+        case (.phone, _):
+            return size.y / 2 + 0.12
+        default:
+            return size.y / 2 + 0.12
+        }
+    }
+
+    private func objectLabelPriority(for type: SceneObject.ObjectType) -> Int {
+        switch type {
+        case .phone:
+            return 0
+        case .table:
+            return 1
+        default:
+            return 2
+        }
+    }
+
+    private func objectLabelText(_ text: String, fallback: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = trimmed.isEmpty ? fallback : trimmed
+        return value.prefix(1).uppercased() + value.dropFirst()
+    }
+
+    private func displayName(for object: PlannedScene.PlacedObject) -> String {
+        if let scriptObject = parsedScript?.objects.first(where: { $0.id == object.objectId }) {
+            return displayName(for: scriptObject)
+        }
+        return displayName(for: object.type)
+    }
+
+    private func rgbVector(from color: UIColor) -> SIMD3<Float> {
+        var red: CGFloat = 1
+        var green: CGFloat = 1
+        var blue: CGFloat = 1
+        var alpha: CGFloat = 1
+        if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return SIMD3<Float>(Float(red), Float(green), Float(blue))
+        }
+        return SIMD3<Float>(1, 1, 1)
+    }
+
+    private func orientBillboard(_ entity: Entity, toward cameraPosition: SIMD3<Float>) {
+        let position = entity.position(relativeTo: nil)
+        let delta = cameraPosition - position
+        let planarDistanceSquared = delta.x * delta.x + delta.z * delta.z
+        guard planarDistanceSquared > 0.0001 else { return }
+
+        let desiredYaw = atan2(delta.x, delta.z)
+        let parentYaw = entity.parent.map { yaw(from: $0.orientation(relativeTo: nil)) } ?? 0
+        entity.orientation = simd_quatf(angle: desiredYaw - parentYaw, axis: [0, 1, 0])
+    }
+
+    private func yaw(from quaternion: simd_quatf) -> Float {
+        let q = quaternion.vector
+        let siny = 2 * (q.w * q.y + q.z * q.x)
+        let cosy = 1 - 2 * (q.y * q.y + q.x * q.x)
+        return atan2(siny, cosy)
+    }
+
+    private func makePersonEntity() -> ModelEntity? {
+        if let cachedPersonPrototype {
+            return cachedPersonPrototype.clone(recursive: true)
+        }
+        guard let loaded = try? ModelEntity.loadModel(named: "Person") else {
+            return nil
+        }
+        cachedPersonPrototype = loaded
+        return loaded.clone(recursive: true)
     }
     
     private func applyTintRecursively(entity: Entity, color: UIColor) {
@@ -1073,10 +1786,208 @@ final class SceneGeneratorViewModel: ObservableObject {
     }
     
     // MARK: - Animation
-    
+
+    private func updatePlaybackVisualFocus(
+        entity: ModelEntity,
+        for actor: PlannedScene.PlacedActor,
+        beatID: String?,
+        annotation: PlaybackPathAnnotation?,
+        startPosition: SIMD3<Float>,
+        targetPosition: SIMD3<Float>,
+        duration: TimeInterval
+    ) {
+        let style = actorRenderStyle(for: actor)
+        if let focus = actorFocusEntities[actor.id] {
+            focus.stopAllAnimations()
+            focus.isEnabled = true
+            focus.position = startPosition + SIMD3<Float>(0, 0.025, 0)
+            var transform = Transform()
+            transform.translation = targetPosition + SIMD3<Float>(0, 0.025, 0)
+            focus.move(to: transform, relativeTo: focus.parent, duration: duration, timingFunction: .linear)
+        }
+
+        guard annotation?.kind == .action,
+              let action = matchingTargetAction(for: actor, beatID: beatID, annotationText: annotation?.text),
+              let targetID = action.target,
+              let cueTarget = cueTargetPosition(for: targetID)
+        else {
+            removeActiveTargetCue()
+            return
+        }
+
+        orientActorEntity(
+            entity,
+            from: targetPosition,
+            toward: cueTarget,
+            actorLabel: displayName(for: actor),
+            action: action,
+            duration: duration
+        )
+        showTargetCue(
+            from: targetPosition + SIMD3<Float>(0, actor.size.y * 0.45, 0),
+            to: cueTarget,
+            color: style.uiColor.withAlphaComponent(0.82),
+            reticleRadius: targetCueRadius(for: targetID),
+            duration: duration,
+            actorLabel: displayName(for: actor),
+            action: action
+        )
+    }
+
+    private func orientActorEntity(
+        _ entity: ModelEntity,
+        from position: SIMD3<Float>,
+        toward target: SIMD3<Float>,
+        actorLabel: String,
+        action: SceneAction,
+        duration: TimeInterval
+    ) {
+        guard let angle = Self.yawAngle(from: position, toward: target) else { return }
+        let rotationDuration = min(max(duration * 0.22, 0.22), 0.55)
+        animateActorRotation(entity, yaw: angle, duration: rotationDuration)
+        diagnosticsLog("[AR_VISUAL] actor oriented actor=\(actorLabel), action=\(action.type.rawValue), target=\(action.target ?? "nil"), yaw=\(formatFloat(angle)), duration=\(formatSeconds(rotationDuration))")
+    }
+
+    private func animateActorRotation(_ entity: ModelEntity, yaw angle: Float, duration: TimeInterval) {
+        var transform = Transform()
+        transform.translation = entity.position
+        transform.rotation = simd_quatf(angle: angle, axis: [0, 1, 0])
+        transform.scale = entity.scale
+        entity.move(to: transform, relativeTo: entity.parent, duration: duration, timingFunction: .easeInOut)
+    }
+
+    private func hideActorFocus() {
+        for (_, entity) in actorFocusEntities {
+            entity.stopAllAnimations()
+            entity.isEnabled = false
+        }
+    }
+
+    private func removeActiveTargetCue() {
+        for entity in activeTargetCueEntities {
+            entity.removeFromParent()
+        }
+        activeTargetCueEntities.removeAll()
+        activeTargetCueID = nil
+    }
+
+    private func matchingTargetAction(
+        for actor: PlannedScene.PlacedActor,
+        beatID: String?,
+        annotationText: String?
+    ) -> SceneAction? {
+        guard let beatID,
+              let beat = parsedScript?.beats.first(where: { $0.id == beatID })
+        else { return nil }
+
+        let supportedTypes: Set<SceneAction.ActionType> = [.lookAt, .pickUp, .give, .putDown, .open, .close]
+        let candidates = beat.actions.filter {
+            $0.actorId == actor.actorId &&
+            $0.target != nil &&
+            supportedTypes.contains($0.type)
+        }
+        guard !candidates.isEmpty else { return nil }
+
+        if let annotationText,
+           let preferredType = preferredTargetCueActionType(for: annotationText),
+           let matched = candidates.first(where: { $0.type == preferredType }) {
+            return matched
+        }
+
+        if let annotationText,
+           let matched = candidates.first(where: { action in
+               [action.sourceText, action.fallbackText, action.dialogue]
+                   .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                   .contains(annotationText.trimmingCharacters(in: .whitespacesAndNewlines))
+           }) {
+            return matched
+        }
+
+        return candidates.first
+    }
+
+    private func preferredTargetCueActionType(for annotationText: String) -> SceneAction.ActionType? {
+        let text = annotationText.lowercased()
+        if text.contains("переда") || text.contains("даёт") || text.contains("дает") {
+            return .give
+        }
+        if text.contains("берёт") || text.contains("берет") || text.contains("поднима") || text.contains("взял") {
+            return .pickUp
+        }
+        if text.contains("кладёт") || text.contains("кладет") || text.contains("полож") {
+            return .putDown
+        }
+        return nil
+    }
+
+    private func cueTargetPosition(for targetID: String) -> SIMD3<Float>? {
+        guard let plannedScene else { return nil }
+
+        if let object = plannedScene.placedObjects.first(where: { $0.objectId == targetID || $0.id == targetID }) {
+            return object.position.simdVector + SIMD3<Float>(0, max(object.size.y / 2, 0.05), 0)
+        }
+
+        if let actor = plannedScene.placedActors.first(where: { $0.actorId == targetID || $0.id == targetID }) {
+            let basePosition = placedEntities[actor.id]?.position(relativeTo: nil) ?? actor.initialPosition.simdVector
+            return basePosition + SIMD3<Float>(0, actor.size.y * 0.45, 0)
+        }
+
+        return nil
+    }
+
+    private func targetCueRadius(for targetID: String) -> Float {
+        guard let plannedScene else { return 0.045 }
+        if let object = plannedScene.placedObjects.first(where: { $0.objectId == targetID || $0.id == targetID }) {
+            return Self.objectRenderStyle(for: object.type).targetCueRadius
+        }
+        return 0.055
+    }
+
+    private func showTargetCue(
+        from start: SIMD3<Float>,
+        to end: SIMD3<Float>,
+        color: UIColor,
+        reticleRadius: Float,
+        duration: TimeInterval,
+        actorLabel: String,
+        action: SceneAction
+    ) {
+        guard let sceneAnchor else { return }
+        removeActiveTargetCue()
+        let cueID = UUID()
+        activeTargetCueID = cueID
+
+        let line = createLineEntity(from: start, to: end, thickness: 0.018, color: color)
+        let reticle = ModelEntity(
+            mesh: .generateSphere(radius: reticleRadius),
+            materials: [SimpleMaterial(color: color, roughness: 0.2, isMetallic: false)]
+        )
+        reticle.position = end
+        sceneAnchor.addChild(line)
+        sceneAnchor.addChild(reticle)
+        activeTargetCueEntities = [line, reticle]
+        diagnosticsLog("[AR_VISUAL] target cue actor=\(actorLabel), action=\(action.type.rawValue), target=\(action.target ?? "nil"), radius=\(formatFloat(reticleRadius)), duration=\(formatSeconds(duration))")
+
+        let hideDelay = min(max(duration, 0.7), 2.2)
+        let hideWorkItem = DispatchWorkItem { [weak self] in
+            guard self?.activeTargetCueID == cueID else { return }
+            self?.removeActiveTargetCue()
+        }
+        animationWorkItems.append(hideWorkItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + hideDelay, execute: hideWorkItem)
+    }
+
     private func animateActor(_ actor: PlannedScene.PlacedActor) {
-        guard let entity = placedEntities[actor.id] else { return }
-        guard actor.path.count > 1 else { return }
+        let playbackID = currentPlaybackLogID ?? "nil"
+        guard let entity = placedEntities[actor.id] else {
+            print("🎬 [PLAYBACK][\(playbackID)] actor animation skipped: entity missing actor=\(displayName(for: actor)), id=\(actor.id)")
+            return
+        }
+        guard actor.path.count > 1 else {
+            print("🎬 [PLAYBACK][\(playbackID)] actor animation skipped: path too short actor=\(displayName(for: actor)), points=\(actor.path.count)")
+            return
+        }
+        print("🎬 [PLAYBACK][\(playbackID)] actor animation start actor=\(displayName(for: actor)), segments=\(actor.path.count - 1)")
         
         // Анимируем последовательно по всем точкам пути
         animateActorSegment(entity: entity, actor: actor, segmentIndex: 0)
@@ -1089,20 +2000,37 @@ final class SceneGeneratorViewModel: ObservableObject {
             // Все сегменты завершены - устанавливаем финальную позицию точно
             if let lastPosition = actor.path.last {
                 entity.position = lastPosition.simdVector
+                print("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] actor animation complete actor=\(displayName(for: actor)), final=\(formatPosition(lastPosition))")
             }
             checkIfAllAnimationsComplete()
             return
         }
         
-        guard isPlaying else { return }
+        guard isPlaying else {
+            print("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] segment skipped: playback stopped actor=\(displayName(for: actor)), segment=\(segmentIndex)")
+            return
+        }
         
         let startPosition = actor.path[segmentIndex].simdVector
         let targetPosition = actor.path[segmentIndex + 1].simdVector
         let duration = max(actor.pathDurations[segmentIndex], 0.1) // Минимум 0.1 сек
-        
+        let playbackID = currentPlaybackLogID ?? "nil"
+        let annotation = actor.pathAnnotations.indices.contains(segmentIndex + 1) ? actor.pathAnnotations[segmentIndex + 1] : nil
+        let beatID = actor.pathBeatIDs.indices.contains(segmentIndex + 1) ? actor.pathBeatIDs[segmentIndex + 1] : nil
+        diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] segment start actor=\(displayName(for: actor)), segment=\(segmentIndex), beat=\(beatID ?? "nil"), duration=\(formatSeconds(duration)), from=\(formatVector(startPosition)), to=\(formatVector(targetPosition)), annotationKind=\(annotation?.kind.rawValue ?? "nil"), annotation=\(quotedForLog(annotation?.text))")
+
         // Сначала устанавливаем точную начальную позицию сегмента
         entity.stopAllAnimations()
         entity.position = startPosition
+        updatePlaybackVisualFocus(
+            entity: entity,
+            for: actor,
+            beatID: beatID,
+            annotation: annotation,
+            startPosition: startPosition,
+            targetPosition: targetPosition,
+            duration: duration
+        )
         
         // Вычисляем угол поворота в направлении движения
         let delta = targetPosition - startPosition
@@ -1110,9 +2038,11 @@ final class SceneGeneratorViewModel: ObservableObject {
         
         // Если расстояние слишком маленькое, пропускаем этот сегмент
         guard distance > 0.01 else {
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] segment wait/no-move actor=\(displayName(for: actor)), segment=\(segmentIndex), distance=\(formatFloat(distance)), duration=\(formatSeconds(duration))")
             let waitWorkItem = DispatchWorkItem { [weak self] in
                 guard let self = self, self.isPlaying else { return }
                 entity.position = targetPosition
+                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] segment complete/no-move actor=\(self.displayName(for: actor)), segment=\(segmentIndex), position=\(self.formatVector(targetPosition))")
                 self.animateActorSegment(entity: entity, actor: actor, segmentIndex: segmentIndex + 1)
             }
             animationWorkItems.append(waitWorkItem)
@@ -1120,15 +2050,13 @@ final class SceneGeneratorViewModel: ObservableObject {
             return
         }
         
-        let angle = atan2(delta.x, delta.z)
-        
-        // Сначала устанавливаем ориентацию
-        entity.orientation = simd_quatf(angle: angle, axis: [0, 1, 0])
+        let angle = Self.yawAngle(from: startPosition, toward: targetPosition) ?? yaw(from: entity.orientation(relativeTo: nil))
         
         // Создаём целевую трансформацию
         var targetTransform = Transform()
         targetTransform.translation = targetPosition
         targetTransform.rotation = simd_quatf(angle: angle, axis: [0, 1, 0])
+        targetTransform.scale = entity.scale
         
         // Запускаем анимацию
         entity.move(to: targetTransform, relativeTo: entity.parent, duration: duration, timingFunction: .linear)
@@ -1138,6 +2066,7 @@ final class SceneGeneratorViewModel: ObservableObject {
             guard let self = self, self.isPlaying else { return }
             // Устанавливаем точную конечную позицию перед следующим сегментом
             entity.position = targetPosition
+            self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] segment complete actor=\(self.displayName(for: actor)), segment=\(segmentIndex), position=\(self.formatVector(targetPosition))")
             self.animateActorSegment(entity: entity, actor: actor, segmentIndex: segmentIndex + 1)
         }
         animationWorkItems.append(workItem)
@@ -1151,13 +2080,19 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Проверяет, завершились ли все анимации
     private func checkIfAllAnimationsComplete() {
         completedActorAnimations += 1
+        diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] actor animation counter \(completedActorAnimations)/\(totalActorAnimations)")
         
         // Все актёры завершили анимацию
         if completedActorAnimations >= totalActorAnimations && isPlaying {
+            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] playback complete elapsed=\(formatSeconds(playbackElapsedTime))")
             isPlaying = false
+            invalidatePlaybackTimelineTimer()
             resetPlaybackUIState(clearTimeline: true)
+            currentPlaybackLogID = nil
+            lastLoggedPlaybackBeatIndex = nil
             refreshWorkspaceMode()
             refreshIdleStatusMessage()
+            SceneGeneratorDiagnosticsLogger.shared.flush()
         }
     }
 
@@ -1169,7 +2104,12 @@ final class SceneGeneratorViewModel: ObservableObject {
         let caption: String
 
         var renderedText: String {
-            "\(actorLabel): \(caption)"
+            switch kind {
+            case .dialogue:
+                return "\(actorLabel): \(caption)"
+            case .action:
+                return caption
+            }
         }
     }
 
@@ -1186,6 +2126,8 @@ final class SceneGeneratorViewModel: ObservableObject {
             var duration: TimeInterval = fallbackDuration(for: beat)
             var hasDialogueCaption = false
             var hasActionCaption = false
+            var hasSegmentOutput = false
+            var hasMotion = false
 
             for actor in planned.placedActors {
                 var actorBeatDuration: TimeInterval = 0
@@ -1197,7 +2139,16 @@ final class SceneGeneratorViewModel: ObservableObject {
                         continue
                     }
 
+                    hasSegmentOutput = true
                     actorBeatDuration += max(actor.pathDurations[segmentIndex], 0.1)
+                    if actor.path.indices.contains(segmentIndex),
+                       actor.path.indices.contains(segmentIndex + 1),
+                       planarDistance(
+                           from: actor.path[segmentIndex].simdVector,
+                           to: actor.path[segmentIndex + 1].simdVector
+                       ) > 0.03 {
+                        hasMotion = true
+                    }
                     if actor.pathAnnotations.indices.contains(annotationIndex),
                        let annotation = actor.pathAnnotations[annotationIndex] {
                         hasDialogueCaption = hasDialogueCaption || annotation.kind == .dialogue
@@ -1207,19 +2158,32 @@ final class SceneGeneratorViewModel: ObservableObject {
                 duration = max(duration, actorBeatDuration)
             }
 
-            items.append(
-                BeatPlaybackTimelineItem(
-                    beatID: beat.id.isEmpty ? "beat_\(index + 1)" : beat.id,
-                    index: index,
-                    startTime: startTime,
-                    duration: duration,
-                    hasDialogueCaption: hasDialogueCaption,
-                    hasActionCaption: hasActionCaption
+            let hasUsefulText = beat.actions.contains { action in
+                [action.dialogue, action.sourceText, action.fallbackText]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .contains { !$0.isEmpty }
+            }
+            let shouldKeepBeat = hasSegmentOutput && (hasMotion || hasDialogueCaption || hasActionCaption || hasUsefulText)
+
+            if shouldKeepBeat {
+                items.append(
+                    BeatPlaybackTimelineItem(
+                        beatID: beat.id.isEmpty ? "beat_\(index + 1)" : beat.id,
+                        index: items.count,
+                        startTime: startTime,
+                        duration: duration,
+                        hasDialogueCaption: hasDialogueCaption,
+                        hasActionCaption: hasActionCaption
+                    )
                 )
-            )
-            startTime += duration
+            }
+
+            if hasSegmentOutput {
+                startTime += duration
+            }
         }
 
+        diagnosticsLog("[AR_VISUAL] beat timeline filtered source=\(beats.count), visible=\(items.count)")
         return items
     }
 
@@ -1264,6 +2228,838 @@ final class SceneGeneratorViewModel: ObservableObject {
         min(max(beat.minDuration ?? 0.4, 0.4), 4.0)
     }
 
+    // MARK: - Storyboard Strip & Manual Editing
+
+    func buildStoryboardBeatPresentationItems(for script: SceneScript?) -> [StoryboardBeatPresentationItem] {
+        guard let script, !script.beats.isEmpty else { return [] }
+        let visibleBeatIDs: Set<String>?
+        if let plannedScene {
+            visibleBeatIDs = Set(buildBeatTimelineItems(for: plannedScene, script: script).map(\.beatID))
+        } else {
+            visibleBeatIDs = nil
+        }
+
+        var items: [StoryboardBeatPresentationItem] = []
+        for beat in script.beats {
+            let hasDialogue = beat.actions.contains { $0.type == .talk && !storyboardActionText($0).isEmpty }
+            let hasAction = beat.actions.contains { action in
+                action.type != .talk && !storyboardActionText(action).isEmpty
+            }
+            let hasNonTextAction = beat.actions.contains { action in
+                action.type != .talk && (action.type != .stand || action.target != nil)
+            }
+            let shouldShow = visibleBeatIDs?.contains(beat.id) ?? (hasDialogue || hasAction || hasNonTextAction)
+            guard shouldShow else { continue }
+
+            items.append(
+                StoryboardBeatPresentationItem(
+                    beatID: beat.id,
+                    index: items.count,
+                    kindTitle: storyboardKindTitle(hasDialogue: hasDialogue, hasAction: hasAction || hasNonTextAction),
+                    summary: storyboardSummary(for: beat, in: script),
+                    hasDialogueCaption: hasDialogue,
+                    hasActionCaption: hasAction || hasNonTextAction,
+                    actionCount: beat.actions.count
+                )
+            )
+        }
+        diagnosticsLog("[STORYBOARD] presentation built source=\(script.beats.count), visible=\(items.count)")
+        return items
+    }
+
+    func refreshStoryboardBeatItems() {
+        storyboardBeatItems = buildStoryboardBeatPresentationItems(for: parsedScript)
+    }
+
+    func buildStoryboardBeatInspector(for draft: StoryboardBeatEditDraft) -> StoryboardBeatInspectorPresentation {
+        let nonDeletedActions = draft.actions.filter { !$0.isDeleted }
+        let actorLabelByID = Dictionary(uniqueKeysWithValues: draft.actorOptions.map { ($0.id, $0.label) })
+        let targetLabelByID = Dictionary(uniqueKeysWithValues: draft.targetOptions.map { ($0.id, $0.label) })
+        let actorLabels = uniqueLabels(
+            nonDeletedActions.compactMap { actorLabelByID[$0.actorId] }
+        )
+        let targetLabels = uniqueLabels(
+            nonDeletedActions.compactMap { action in
+                guard let target = normalizedStoryboardTarget(action.target) else { return nil }
+                return targetLabelByID[target] ?? target
+            }
+        )
+        let hasDialogue = nonDeletedActions.contains { $0.type == .talk && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let hasAction = nonDeletedActions.contains { $0.type != .talk }
+        let summary = storyboardDraftSummary(for: nonDeletedActions, actorLabelByID: actorLabelByID)
+        let warnings = storyboardInspectorWarnings(
+            for: draft,
+            actions: nonDeletedActions,
+            actorLabelByID: actorLabelByID
+        )
+        let duration = storyboardBeatDurationText(for: draft.beatID)
+        let dragHint = storyboardDragFeedback ?? "Удерживайте модель актёра в AR, чтобы переместить её в этом такте"
+
+        return StoryboardBeatInspectorPresentation(
+            kindTitle: storyboardKindTitle(hasDialogue: hasDialogue, hasAction: hasAction),
+            summary: summary,
+            durationText: duration,
+            actorLabels: actorLabels,
+            targetLabels: targetLabels,
+            warnings: warnings,
+            dragHint: dragHint
+        )
+    }
+
+    func openStoryboardEditor(for beatID: String) {
+        guard let draft = makeStoryboardEditDraft(for: beatID) else {
+            errorMessage = "Не удалось открыть такт для редактирования"
+            return
+        }
+        activeStoryboardEditDraft = draft
+        storyboardDragFeedback = nil
+        diagnosticsLog("[STORYBOARD_EDIT] open beat=\(beatID), actions=\(draft.actions.count)")
+    }
+
+    func cancelStoryboardEditor() {
+        cancelActiveStoryboardActorDrag()
+        activeStoryboardEditDraft = nil
+        storyboardDragFeedback = nil
+    }
+
+    func applyStoryboardBeatEdit(_ draft: StoryboardBeatEditDraft) async -> Bool {
+        guard let script = parsedScript,
+              let beatIndex = script.beats.firstIndex(where: { $0.id == draft.beatID })
+        else {
+            errorMessage = "Такт больше не найден"
+            return false
+        }
+
+        var updatedActions: [SceneAction] = []
+        let originalActions = Dictionary(uniqueKeysWithValues: script.beats[beatIndex].actions.map { ($0.id, $0) })
+        for actionDraft in draft.actions where !actionDraft.isDeleted {
+            if !validateStoryboardActionDraft(actionDraft) {
+                return false
+            }
+            updatedActions.append(makeSceneAction(from: actionDraft, original: originalActions[actionDraft.id]))
+        }
+
+        var beats = script.beats
+        let originalBeat = beats[beatIndex]
+        beats[beatIndex] = SceneBeat(
+            id: originalBeat.id,
+            actions: updatedActions,
+            camera: originalBeat.camera,
+            minDuration: originalBeat.minDuration
+        )
+        diagnosticsLog("[STORYBOARD_EDIT] save beat=\(draft.beatID), actions=\(updatedActions.count)")
+        return await applyManualStoryboardScriptEdit(beats: beats, reason: "save_beat")
+    }
+
+    func deleteStoryboardBeat(beatID: String) async -> Bool {
+        guard let script = parsedScript,
+              let index = script.beats.firstIndex(where: { $0.id == beatID })
+        else {
+            errorMessage = "Такт больше не найден"
+            return false
+        }
+        guard script.beats.count > 1 else {
+            errorMessage = "Нельзя удалить единственный такт"
+            return false
+        }
+
+        var beats = script.beats
+        beats.remove(at: index)
+        diagnosticsLog("[STORYBOARD_EDIT] delete beat=\(beatID)")
+        return await applyManualStoryboardScriptEdit(beats: beats, reason: "delete_beat")
+    }
+
+    func moveStoryboardBeat(beatID: String, offset: Int) async -> Bool {
+        guard offset != 0,
+              let script = parsedScript,
+              let index = script.beats.firstIndex(where: { $0.id == beatID })
+        else { return false }
+
+        let destination = index + offset
+        guard script.beats.indices.contains(destination) else { return false }
+
+        var beats = script.beats
+        beats.swapAt(index, destination)
+        diagnosticsLog("[STORYBOARD_EDIT] move beat=\(beatID), from=\(index), to=\(destination)")
+        return await applyManualStoryboardScriptEdit(beats: beats, reason: "move_beat")
+    }
+
+    private func makeStoryboardEditDraft(for beatID: String) -> StoryboardBeatEditDraft? {
+        guard let script = parsedScript,
+              let beat = script.beats.first(where: { $0.id == beatID })
+        else { return nil }
+
+        let actorOptions = script.actors.map {
+            StoryboardEntityOption(id: $0.id, label: displayName(for: $0.id, in: script), kind: .actor)
+        }
+        let targetOptions = [StoryboardEntityOption(id: "none", label: "Нет цели", kind: .none)] +
+            script.actors.map { StoryboardEntityOption(id: $0.id, label: displayName(for: $0.id, in: script), kind: .actor) } +
+            script.objects.map { StoryboardEntityOption(id: $0.id, label: displayName(for: $0), kind: .object) }
+        let actions = beat.actions.map { action in
+            StoryboardActionEditDraft(
+                id: action.id,
+                actorId: action.actorId,
+                type: action.type,
+                target: action.target,
+                text: storyboardActionText(action),
+                isDeleted: false,
+                isNew: false
+            )
+        }
+
+        return StoryboardBeatEditDraft(
+            beatID: beat.id,
+            title: "Такт \(script.beats.firstIndex(where: { $0.id == beat.id }).map { $0 + 1 } ?? 1)",
+            actions: actions,
+            actorOptions: actorOptions,
+            targetOptions: targetOptions
+        )
+    }
+
+    private func storyboardDraftSummary(
+        for actions: [StoryboardActionEditDraft],
+        actorLabelByID: [String: String]
+    ) -> String {
+        if let dialogue = actions.first(where: { $0.type == .talk && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return "\(actorLabelByID[dialogue.actorId] ?? dialogue.actorId): \(dialogue.text.trimmingCharacters(in: .whitespacesAndNewlines))"
+        }
+        if let action = actions.first(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return action.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let action = actions.first {
+            return "\(actorLabelByID[action.actorId] ?? action.actorId) · \(action.type.rawValue)"
+        }
+        return "Пустой такт"
+    }
+
+    private func storyboardInspectorWarnings(
+        for draft: StoryboardBeatEditDraft,
+        actions: [StoryboardActionEditDraft],
+        actorLabelByID: [String: String]
+    ) -> [String] {
+        var warnings: [String] = []
+
+        for action in actions {
+            if Self.storyboardTargetActionTypes.contains(action.type),
+               normalizedStoryboardTarget(action.target) == nil {
+                warnings.append("\(action.type.storyboardDiagnosticTitle): нет цели")
+            }
+            if (action.type == .talk || action.type == .describedAction),
+               action.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                warnings.append("\(actorLabelByID[action.actorId] ?? action.actorId): пустой текст")
+            }
+        }
+
+        for actorID in Set(actions.map(\.actorId)).sorted()
+        where !storyboardActorParticipatesInPlannedBeat(actorID: actorID, beatID: draft.beatID) {
+            warnings.append("\(actorLabelByID[actorID] ?? actorID): нет точки в такте")
+        }
+
+        if let storyboardDragFeedback,
+           !storyboardDragFeedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           storyboardDragFeedback.hasPrefix("Не") || storyboardDragFeedback.hasPrefix("Нельзя") {
+            warnings.append(storyboardDragFeedback)
+        }
+
+        return uniqueLabels(warnings)
+    }
+
+    private func storyboardBeatDurationText(for beatID: String) -> String {
+        if let item = beatTimelineItems.first(where: { $0.beatID == beatID }) {
+            return formatSeconds(item.duration)
+        }
+        if let plannedScene,
+           let item = buildBeatTimelineItems(for: plannedScene, script: parsedScript).first(where: { $0.beatID == beatID }) {
+            return formatSeconds(item.duration)
+        }
+        if let beat = parsedScript?.beats.first(where: { $0.id == beatID }) {
+            return formatSeconds(fallbackDuration(for: beat))
+        }
+        return "0.00s"
+    }
+
+    private func storyboardActorParticipatesInPlannedBeat(actorID: String, beatID: String) -> Bool {
+        guard let actor = plannedScene?.placedActors.first(where: { $0.actorId == actorID || $0.id == actorID }) else {
+            return false
+        }
+        return actor.pathBeatIDs.contains(beatID)
+    }
+
+    private func uniqueLabels(_ labels: [String]) -> [String] {
+        var result: [String] = []
+        for label in labels {
+            let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !result.contains(trimmed) else { continue }
+            result.append(trimmed)
+        }
+        return result
+    }
+
+    private func applyManualStoryboardScriptEdit(beats: [SceneBeat], reason: String) async -> Bool {
+        guard let script = parsedScript else { return false }
+        guard let cameraTransform = currentCameraTransform ?? arView?.session.currentFrame?.camera.transform else {
+            errorMessage = "Не удалось получить текущую AR-позицию для перепланирования"
+            return false
+        }
+
+        if isPlaying {
+            stopScene()
+        } else {
+            cancelAllAnimations()
+            resetPlaybackUIState(clearTimeline: true)
+        }
+
+        let editedScript = SceneScript(
+            sceneHeading: script.sceneHeading,
+            locationName: script.locationName,
+            interiorExterior: script.interiorExterior,
+            timeOfDay: script.timeOfDay,
+            actors: script.actors,
+            objects: matchObjectsWithMarkedAndDetected(script.objects),
+            beats: beats,
+            spatialRelations: script.spatialRelations,
+            originalDescription: script.originalDescription
+        )
+        let planned = plannerService.planScene(
+            script: editedScript,
+            cameraTransform: cameraTransform,
+            detectedObjects: detectedObjects,
+            availablePlanes: detectedPlanes,
+            markedObjects: markedObjects
+        )
+
+        parsedScript = editedScript
+        if let parsingResult {
+            self.parsingResult = ParsingResult(script: editedScript, diagnostics: parsingResult.diagnostics)
+        }
+        plannedScene = planned
+        await placeObjectsInAR(planned)
+        beatTimelineItems = buildBeatTimelineItems(for: planned, script: editedScript)
+        refreshStoryboardBeatItems()
+        activeStoryboardEditDraft = nil
+        refreshWorkspaceMode()
+        refreshIdleStatusMessage()
+        persistProjectMetadata()
+        diagnosticsLog("[STORYBOARD_EDIT] replan complete reason=\(reason), beats=\(editedScript.beats.count), visible=\(storyboardBeatItems.count), actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count)")
+        SceneGeneratorDiagnosticsLogger.shared.flush()
+        return true
+    }
+
+    func handleStoryboardActorDragGesture(state: UIGestureRecognizer.State, at screenPoint: CGPoint) {
+        if shouldLogStoryboardActorDragGestureState(state) {
+            diagnosticsLog(
+                "[STORYBOARD_EDIT] actor drag gesture received state=\(storyboardActorDragGestureStateDescription(state)), point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y)))), activeBeat=\(activeStoryboardEditDraft?.beatID ?? "nil"), hasARView=\(arView != nil), playing=\(isPlaying), generating=\(isGenerating), recording=\(isRecording)"
+            )
+        }
+        switch state {
+        case .began:
+            beginStoryboardActorDrag(at: screenPoint)
+        case .changed:
+            updateStoryboardActorDrag(at: screenPoint)
+        case .ended:
+            finishStoryboardActorDrag(commit: true)
+        case .cancelled, .failed:
+            finishStoryboardActorDrag(commit: false)
+        default:
+            break
+        }
+    }
+
+    private func shouldLogStoryboardActorDragGestureState(_ state: UIGestureRecognizer.State) -> Bool {
+        switch state {
+        case .began, .ended, .cancelled, .failed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func storyboardActorDragGestureStateDescription(_ state: UIGestureRecognizer.State) -> String {
+        switch state {
+        case .possible:
+            return "possible"
+        case .began:
+            return "began"
+        case .changed:
+            return "changed"
+        case .ended:
+            return "ended"
+        case .cancelled:
+            return "cancelled"
+        case .failed:
+            return "failed"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    @discardableResult
+    func commitStoryboardActorDrag(actorID: String, beatID: String, to position: Position3D) -> Bool {
+        guard activeStoryboardEditDraft?.beatID == beatID else {
+            storyboardDragFeedback = "Нельзя переместить актёра: такт не открыт"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: beat not active actor=\(actorID), beat=\(beatID)")
+            return false
+        }
+        guard !isPlaying, !isGenerating, !isRecording else {
+            storyboardDragFeedback = "Нельзя перемещать во время воспроизведения или записи"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: busy actor=\(actorID), beat=\(beatID)")
+            return false
+        }
+        guard let plannedScene,
+              let actorIndex = plannedScene.placedActors.firstIndex(where: { $0.actorId == actorID || $0.id == actorID })
+        else {
+            storyboardDragFeedback = "Не найден актёр для перемещения"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: actor missing actor=\(actorID), beat=\(beatID)")
+            return false
+        }
+
+        let actor = plannedScene.placedActors[actorIndex]
+        var changedPoints = 0
+        let updatedPath = actor.path.enumerated().map { index, point -> Position3D in
+            guard actor.pathBeatIDs.indices.contains(index),
+                  actor.pathBeatIDs[index] == beatID
+            else { return point }
+            changedPoints += 1
+            return Position3D(x: position.x, y: point.y, z: position.z)
+        }
+
+        guard changedPoints > 0 else {
+            storyboardDragFeedback = "\(displayName(for: actor)) не участвует в этом такте"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: no beat point actor=\(displayName(for: actor)), beat=\(beatID)")
+            return false
+        }
+
+        var actors = plannedScene.placedActors
+        actors[actorIndex] = PlannedScene.PlacedActor(
+            id: actor.id,
+            actorId: actor.actorId,
+            type: actor.type,
+            name: actor.name,
+            initialPosition: actor.initialPosition,
+            initialRotation: actor.initialRotation,
+            path: updatedPath,
+            pathDurations: actor.pathDurations,
+            pathPoses: actor.pathPoses,
+            pathCameras: actor.pathCameras,
+            pathAnnotations: actor.pathAnnotations,
+            pathBeatIDs: actor.pathBeatIDs
+        )
+
+        let updatedScene = PlannedScene(
+            placedActors: actors,
+            placedObjects: plannedScene.placedObjects
+        )
+        self.plannedScene = updatedScene
+        beatTimelineItems = buildBeatTimelineItems(for: updatedScene, script: parsedScript)
+        refreshStoryboardBeatItems()
+        refreshPathGuides(for: updatedScene)
+        persistProjectMetadata()
+        storyboardDragFeedback = "\(displayName(for: actor)) перемещён в \(activeStoryboardEditDraft?.title.lowercased() ?? "такте")"
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag committed actor=\(displayName(for: actor)), beat=\(beatID), points=\(changedPoints), position=\(formatPosition(position))")
+        SceneGeneratorDiagnosticsLogger.shared.flush()
+        return true
+    }
+
+    @discardableResult
+    func commitStoryboardActorTrackDrag(actorID: String, from originalPosition: SIMD3<Float>, to position: Position3D) -> Bool {
+        guard !isPlaying, !isGenerating, !isRecording else {
+            storyboardDragFeedback = "Нельзя перемещать во время воспроизведения или записи"
+            diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: busy actor=\(actorID)")
+            return false
+        }
+        guard let plannedScene,
+              let actorIndex = plannedScene.placedActors.firstIndex(where: { $0.actorId == actorID || $0.id == actorID })
+        else {
+            storyboardDragFeedback = "Не найден актёр для перемещения"
+            diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: actor missing actor=\(actorID)")
+            return false
+        }
+
+        let actor = plannedScene.placedActors[actorIndex]
+        let deltaX = position.x - originalPosition.x
+        let deltaZ = position.z - originalPosition.z
+        let updatedInitial = Position3D(
+            x: actor.initialPosition.x + deltaX,
+            y: actor.initialPosition.y,
+            z: actor.initialPosition.z + deltaZ
+        )
+        let updatedPath = actor.path.map { point in
+            Position3D(x: point.x + deltaX, y: point.y, z: point.z + deltaZ)
+        }
+
+        var actors = plannedScene.placedActors
+        actors[actorIndex] = PlannedScene.PlacedActor(
+            id: actor.id,
+            actorId: actor.actorId,
+            type: actor.type,
+            name: actor.name,
+            initialPosition: updatedInitial,
+            initialRotation: actor.initialRotation,
+            path: updatedPath,
+            pathDurations: actor.pathDurations,
+            pathPoses: actor.pathPoses,
+            pathCameras: actor.pathCameras,
+            pathAnnotations: actor.pathAnnotations,
+            pathBeatIDs: actor.pathBeatIDs
+        )
+
+        let updatedScene = PlannedScene(
+            placedActors: actors,
+            placedObjects: plannedScene.placedObjects
+        )
+        self.plannedScene = updatedScene
+        beatTimelineItems = buildBeatTimelineItems(for: updatedScene, script: parsedScript)
+        refreshStoryboardBeatItems()
+        refreshPathGuides(for: updatedScene)
+        persistProjectMetadata()
+        storyboardDragFeedback = "\(displayName(for: actor)) перемещён"
+        diagnosticsLog("[STORYBOARD_EDIT] actor track drag committed actor=\(displayName(for: actor)), delta=(\(formatFloat(deltaX)), \(formatFloat(deltaZ))), position=\(formatPosition(position))")
+        SceneGeneratorDiagnosticsLogger.shared.flush()
+        return true
+    }
+
+    private func beginStoryboardActorDrag(at screenPoint: CGPoint) {
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag begin requested point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
+        guard !isPlaying, !isGenerating, !isRecording else {
+            storyboardDragFeedback = "Нельзя перемещать во время воспроизведения или записи"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: busy")
+            return
+        }
+        guard arView != nil else {
+            storyboardDragFeedback = "AR-сцена ещё не готова"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: no arView")
+            return
+        }
+        let beatID = activeStoryboardEditDraft?.beatID
+        guard let actor = storyboardActorHit(at: screenPoint, beatID: beatID)
+        else {
+            storyboardDragFeedback = "Удерживайте именно модель актёра"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: actor hit missing beat=\(beatID ?? "global"), point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
+            return
+        }
+        if let beatID {
+            guard actor.pathBeatIDs.contains(beatID) else {
+                storyboardDragFeedback = "\(displayName(for: actor)) не участвует в этом такте"
+                diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: no beat point actor=\(displayName(for: actor)), beat=\(beatID)")
+                return
+            }
+        }
+        guard let entity = placedEntities[actor.id],
+              let position = storyboardActorDragPosition(at: screenPoint, for: actor, beatID: beatID)
+        else {
+            storyboardDragFeedback = "Не удалось найти поверхность для перемещения"
+            return
+        }
+
+        activeStoryboardActorDrag = StoryboardActorDragState(
+            actorPlacedID: actor.id,
+            actorID: actor.actorId,
+            beatID: beatID,
+            originalPosition: entity.position(relativeTo: entity.parent),
+            latestPosition: position
+        )
+        actorFocusEntities[actor.id]?.isEnabled = true
+        updateStoryboardActorDragPreview(actor: actor, position: position)
+        storyboardDragFeedback = beatID == nil
+            ? "Перемещаю \(displayName(for: actor))"
+            : "Перемещаю \(displayName(for: actor)) в \(activeStoryboardEditDraft?.title.lowercased() ?? "такте")"
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag began actor=\(displayName(for: actor)), beat=\(beatID ?? "global"), position=\(formatPosition(position))")
+    }
+
+    private func updateStoryboardActorDrag(at screenPoint: CGPoint) {
+        guard var drag = activeStoryboardActorDrag,
+              let actor = plannedScene?.placedActors.first(where: { $0.id == drag.actorPlacedID }),
+              let position = storyboardActorDragPosition(at: screenPoint, for: actor, beatID: drag.beatID)
+        else { return }
+
+        drag.latestPosition = position
+        activeStoryboardActorDrag = drag
+        updateStoryboardActorDragPreview(actor: actor, position: position)
+    }
+
+    private func finishStoryboardActorDrag(commit: Bool) {
+        guard let drag = activeStoryboardActorDrag else { return }
+        activeStoryboardActorDrag = nil
+        actorFocusEntities[drag.actorPlacedID]?.isEnabled = false
+
+        if commit {
+            if let beatID = drag.beatID {
+                _ = commitStoryboardActorDrag(actorID: drag.actorID, beatID: beatID, to: drag.latestPosition)
+            } else {
+                _ = commitStoryboardActorTrackDrag(actorID: drag.actorID, from: drag.originalPosition, to: drag.latestPosition)
+            }
+        } else {
+            if let entity = placedEntities[drag.actorPlacedID] {
+                entity.position = drag.originalPosition
+            }
+            storyboardDragFeedback = "Перемещение отменено"
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag cancelled actor=\(drag.actorID), beat=\(drag.beatID ?? "global")")
+        }
+    }
+
+    private func cancelActiveStoryboardActorDrag() {
+        finishStoryboardActorDrag(commit: false)
+    }
+
+    private func storyboardActorHit(at screenPoint: CGPoint, beatID: String?) -> PlannedScene.PlacedActor? {
+        guard let arView else { return nil }
+        let beatLabel = beatID ?? "global"
+
+        let sampleOffsets: [CGPoint] = [
+            .zero,
+            CGPoint(x: 22, y: 0),
+            CGPoint(x: -22, y: 0),
+            CGPoint(x: 0, y: 22),
+            CGPoint(x: 0, y: -22),
+            CGPoint(x: 38, y: 22),
+            CGPoint(x: -38, y: 22),
+            CGPoint(x: 38, y: -22),
+            CGPoint(x: -38, y: -22),
+        ]
+
+        for offset in sampleOffsets {
+            let point = CGPoint(x: screenPoint.x + offset.x, y: screenPoint.y + offset.y)
+            guard arView.bounds.contains(point),
+                  let hitEntity = arView.entity(at: point),
+                  let actor = placedActor(forHitEntity: hitEntity)
+            else { continue }
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag hit entity actor=\(displayName(for: actor)), beat=\(beatLabel), offset=(\(formatFloat(Float(offset.x))), \(formatFloat(Float(offset.y))))")
+            return actor
+        }
+
+        guard let projected = projectedStoryboardActorHit(at: screenPoint) else { return nil }
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag hit projection actor=\(displayName(for: projected.actor)), beat=\(beatLabel), distance=\(formatFloat(Float(projected.distance)))")
+        return projected.actor
+    }
+
+    private func projectedStoryboardActorHit(at screenPoint: CGPoint) -> (actor: PlannedScene.PlacedActor, distance: CGFloat)? {
+        guard let arView,
+              let plannedScene
+        else { return nil }
+
+        var bestMatch: (actor: PlannedScene.PlacedActor, distance: CGFloat)?
+        for actor in plannedScene.placedActors {
+            let basePosition = placedEntities[actor.id]?.position(relativeTo: nil) ?? actor.initialPosition.simdVector
+            let sampleWorldPoints = [
+                basePosition + SIMD3<Float>(0, max(actor.size.y * 0.18, 0.12), 0),
+                basePosition + SIMD3<Float>(0, max(actor.size.y * 0.48, 0.28), 0),
+                basePosition + SIMD3<Float>(0, max(actor.size.y * 0.78, 0.44), 0),
+            ]
+
+            let actorDistance = sampleWorldPoints.compactMap { point -> CGFloat? in
+                guard let projected = arView.project(point),
+                      projected.x.isFinite,
+                      projected.y.isFinite
+                else { return nil }
+                let dx = projected.x - screenPoint.x
+                let dy = projected.y - screenPoint.y
+                return sqrt(dx * dx + dy * dy)
+            }.min()
+
+            guard let actorDistance,
+                  actorDistance <= storyboardActorScreenPickRadius
+            else { continue }
+
+            if bestMatch == nil || actorDistance < bestMatch!.distance {
+                bestMatch = (actor, actorDistance)
+            }
+        }
+
+        return bestMatch
+    }
+
+    private func placedActor(forHitEntity entity: Entity) -> PlannedScene.PlacedActor? {
+        guard let plannedScene else { return nil }
+        for actor in plannedScene.placedActors {
+            guard let actorEntity = placedEntities[actor.id],
+                  entity === actorEntity || isEntity(entity, descendantOf: actorEntity)
+            else { continue }
+            return actor
+        }
+        return nil
+    }
+
+    private func isEntity(_ entity: Entity, descendantOf root: Entity) -> Bool {
+        var current: Entity? = entity
+        while let node = current {
+            if node === root { return true }
+            current = node.parent
+        }
+        return false
+    }
+
+    private func storyboardActorDragPosition(
+        at screenPoint: CGPoint,
+        for actor: PlannedScene.PlacedActor,
+        beatID: String?
+    ) -> Position3D? {
+        guard let arView else { return nil }
+        var results = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .horizontal)
+        if results.isEmpty {
+            results = arView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .horizontal)
+        }
+        if results.isEmpty {
+            results = arView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
+        }
+        let y = if let beatID {
+            actor.path.enumerated().first { index, _ in
+                actor.pathBeatIDs.indices.contains(index) && actor.pathBeatIDs[index] == beatID
+            }?.element.y ?? actor.initialPosition.y
+        } else {
+            actor.initialPosition.y
+        }
+        if let result = results.first {
+            let hit = result.worldTransform.columns.3
+            return Position3D(x: hit.x, y: y, z: hit.z)
+        }
+        guard let fallback = fallbackSurfacePosition(from: screenPoint, yOverride: y) else { return nil }
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag raycast fallback used beat=\(beatID ?? "global"), position=\(formatPosition(fallback))")
+        return fallback
+    }
+
+    private func fallbackSurfacePosition(from screenPoint: CGPoint, yOverride: Float? = nil) -> Position3D? {
+        guard let arView else { return nil }
+        let planeY = yOverride
+            ?? detectedPlanes.filter { $0.alignment == .horizontal }.map(\.y).min()
+            ?? currentCameraTransform.map { $0.columns.3.y - 1.25 }
+            ?? 0
+
+        if let ray = arView.ray(through: screenPoint) {
+            let origin = ray.origin
+            let direction = simd_normalize(ray.direction)
+            if abs(direction.y) > 0.0001 {
+                let t = (planeY - origin.y) / direction.y
+                if t.isFinite, t > 0 {
+                    let hit = origin + direction * t
+                    return Position3D(x: hit.x, y: planeY, z: hit.z)
+                }
+            }
+        }
+
+        guard let transform = currentCameraTransform else { return nil }
+        let origin = SIMD3<Float>(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+        let forward = -SIMD3<Float>(transform.columns.2.x, transform.columns.2.y, transform.columns.2.z)
+        let projected = origin + simd_normalize(forward) * 1.2
+        return Position3D(x: projected.x, y: planeY, z: projected.z)
+    }
+
+    private func updateStoryboardActorDragPreview(actor: PlannedScene.PlacedActor, position: Position3D) {
+        let vector = position.simdVector
+        placedEntities[actor.id]?.position = vector
+        actorFocusEntities[actor.id]?.position = vector + SIMD3<Float>(0, 0.025, 0)
+    }
+
+    private func refreshPathGuides(for planned: PlannedScene) {
+        for entity in pathGuideEntities {
+            entity.removeFromParent()
+        }
+        pathGuideEntities.removeAll()
+        guard let sceneAnchor else { return }
+        placePathGuides(for: planned, anchor: sceneAnchor)
+    }
+
+    private func validateStoryboardActionDraft(_ draft: StoryboardActionEditDraft) -> Bool {
+        guard draft.actorId != "none", !draft.actorId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "У действия должен быть актёр"
+            return false
+        }
+        if draft.type == .give {
+            guard let target = draft.target, target != "none", !target.isEmpty else {
+                errorMessage = "Для передачи нужна цель"
+                return false
+            }
+            guard target != draft.actorId else {
+                errorMessage = "Нельзя передать объект самому себе"
+                return false
+            }
+        }
+        return true
+    }
+
+    private func makeSceneAction(from draft: StoryboardActionEditDraft, original: SceneAction?) -> SceneAction {
+        let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = normalizedStoryboardTarget(draft.target)
+        return SceneAction(
+            id: original?.id ?? draft.id,
+            actorId: draft.actorId,
+            type: draft.type,
+            target: target,
+            direction: draft.type == .walk && target != nil ? .toTarget : original?.direction,
+            modifier: original?.modifier,
+            resultingPose: original?.resultingPose,
+            holdingObject: draft.type == .pickUp ? target : original?.holdingObject,
+            dialogue: draft.type == .talk && !text.isEmpty ? text : nil,
+            fallbackText: draft.type == .describedAction && !text.isEmpty ? text : nil,
+            sourceText: draft.type != .talk && !text.isEmpty ? text : nil
+        )
+    }
+
+    private func normalizedStoryboardTarget(_ target: String?) -> String? {
+        guard let target = target?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !target.isEmpty,
+              target != "none"
+        else { return nil }
+        return target
+    }
+
+    private func storyboardKindTitle(hasDialogue: Bool, hasAction: Bool) -> String {
+        if hasDialogue && hasAction { return "сцена" }
+        if hasDialogue { return "диалог" }
+        if hasAction { return "действие" }
+        return "движение"
+    }
+
+    private func storyboardSummary(for beat: SceneBeat, in script: SceneScript) -> String {
+        if let dialogue = beat.actions.first(where: { $0.type == .talk && !storyboardActionText($0).isEmpty }) {
+            return "\(displayName(for: dialogue.actorId, in: script)): \(storyboardActionText(dialogue))"
+        }
+        if let action = beat.actions.first(where: { !storyboardActionText($0).isEmpty }) {
+            return storyboardActionText(action)
+        }
+        if let action = beat.actions.first {
+            return "\(displayName(for: action.actorId, in: script)) · \(action.type.rawValue)"
+        }
+        return "Пустой такт"
+    }
+
+    private func storyboardActionText(_ action: SceneAction) -> String {
+        [action.dialogue, action.sourceText, action.fallbackText]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
+    }
+
+    private func displayName(for actorId: String, in script: SceneScript) -> String {
+        if let actor = script.actors.first(where: { $0.id == actorId }),
+           let name = actor.name?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            return name
+        }
+        if let suffix = actorId.split(separator: "_").last, Int(suffix) != nil {
+            return "Актёр \(suffix)"
+        }
+        return actorId
+    }
+
+    private func displayName(for object: SceneObject) -> String {
+        if let name = object.name?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty,
+           name.lowercased() != object.type.rawValue.lowercased() {
+            return name
+        }
+        return displayName(for: object.type)
+    }
+
+    private func displayName(for objectType: SceneObject.ObjectType) -> String {
+        switch objectType {
+        case .table:
+            return "Стол"
+        case .phone:
+            return "Телефон"
+        default:
+            return objectType.rawValue
+        }
+    }
+
     private func startPlaybackTimelineTimer() {
         invalidatePlaybackTimelineTimer()
         playbackStartDate = Date()
@@ -1279,6 +3075,12 @@ final class SceneGeneratorViewModel: ObservableObject {
 
     private func updatePlaybackTimeline(elapsedTime: TimeInterval) {
         let state = playbackProgressState(at: elapsedTime, items: beatTimelineItems)
+        if lastLoggedPlaybackBeatIndex != state.activeBeatIndex,
+           beatTimelineItems.indices.contains(state.activeBeatIndex) {
+            let item = beatTimelineItems[state.activeBeatIndex]
+            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] active beat changed index=\(state.activeBeatIndex), beatID=\(item.beatID), elapsed=\(formatSeconds(state.elapsedTime)), duration=\(formatSeconds(item.duration)), dialogue=\(item.hasDialogueCaption), action=\(item.hasActionCaption)")
+            lastLoggedPlaybackBeatIndex = state.activeBeatIndex
+        }
         playbackElapsedTime = state.elapsedTime
         activeBeatIndex = state.activeBeatIndex
         beatProgress = state.beatProgress
@@ -1303,9 +3105,11 @@ final class SceneGeneratorViewModel: ObservableObject {
                 case .dialogue:
                     self.activeDialogueCaptionID = captionID
                     self.activeDialogueCaption = event.renderedText
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show dialogue caption start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration)), text=\(self.quotedForLog(event.renderedText))")
                 case .action:
                     self.activeActionCaptionID = captionID
                     self.activeActionCaption = event.renderedText
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show action caption start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration)), text=\(self.quotedForLog(event.renderedText))")
                 }
             }
             animationWorkItems.append(showWorkItem)
@@ -1316,10 +3120,12 @@ final class SceneGeneratorViewModel: ObservableObject {
                 switch event.kind {
                 case .dialogue:
                     guard self.activeDialogueCaptionID == captionID else { return }
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide dialogue caption text=\(self.quotedForLog(event.renderedText))")
                     self.activeDialogueCaption = nil
                     self.activeDialogueCaptionID = nil
                 case .action:
                     guard self.activeActionCaptionID == captionID else { return }
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide action caption text=\(self.quotedForLog(event.renderedText))")
                     self.activeActionCaption = nil
                     self.activeActionCaptionID = nil
                 }
@@ -1343,12 +3149,14 @@ final class SceneGeneratorViewModel: ObservableObject {
                 guard let self, self.isPlaying else { return }
                 self.activeScreenTextCaptionID = captionID
                 self.activeScreenTextCaption = overlay.text
+                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show screen text start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration)), text=\(self.quotedForLog(overlay.text))")
             }
             animationWorkItems.append(showWorkItem)
             DispatchQueue.main.asyncAfter(deadline: .now() + startTime, execute: showWorkItem)
 
             let hideWorkItem = DispatchWorkItem { [weak self] in
                 guard let self, self.isPlaying, self.activeScreenTextCaptionID == captionID else { return }
+                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide screen text text=\(self.quotedForLog(overlay.text))")
                 self.activeScreenTextCaption = nil
                 self.activeScreenTextCaptionID = nil
             }
@@ -1413,6 +3221,30 @@ final class SceneGeneratorViewModel: ObservableObject {
         return "Актёр"
     }
 
+    private func formatPosition(_ position: Position3D) -> String {
+        "(\(formatFloat(position.x)), \(formatFloat(position.y)), \(formatFloat(position.z)))"
+    }
+
+    private func formatVector(_ vector: simd_float3) -> String {
+        "(\(formatFloat(vector.x)), \(formatFloat(vector.y)), \(formatFloat(vector.z)))"
+    }
+
+    private func formatFloat(_ value: Float) -> String {
+        String(format: "%.3f", Double(value))
+    }
+
+    private func formatSeconds(_ value: TimeInterval) -> String {
+        String(format: "%.2fs", value)
+    }
+
+    private func quotedForLog(_ value: String?) -> String {
+        guard let value else { return "nil" }
+        let sanitized = value
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return "'\(sanitized)'"
+    }
+
     private func sanitizeCaption(_ caption: String) -> String {
         caption
             .replacingOccurrences(of: "*", with: "")
@@ -1420,19 +3252,25 @@ final class SceneGeneratorViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    /// Мгновенно устанавливает актёров на начальные позиции (без анимации)
+    /// Мгновенно устанавливает актёров на стартовые позиции playback (без анимации)
     private func setActorsToInitialPositionsInstantly() {
         guard let planned = plannedScene else { return }
         
         for actor in planned.placedActors {
-            guard let entity = placedEntities[actor.id] else { continue }
+            guard let entity = placedEntities[actor.id] else {
+                print("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] initial position skipped: entity missing actor=\(displayName(for: actor)), id=\(actor.id)")
+                continue
+            }
             
             // Останавливаем любые текущие анимации этого entity
             entity.stopAllAnimations()
             
             // Мгновенно устанавливаем позицию
-            entity.position = actor.initialPosition.simdVector
+            let startPosition = playbackStartPosition(for: actor)
+            entity.position = startPosition.simdVector
             entity.orientation = simd_quatf(angle: actor.initialRotation, axis: [0, 1, 0])
+            actorFocusEntities[actor.id]?.position = startPosition.simdVector + SIMD3<Float>(0, 0.025, 0)
+            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] start position actor=\(displayName(for: actor)), position=\(formatPosition(startPosition)), initial=\(formatPosition(actor.initialPosition)), rotation=\(formatFloat(actor.initialRotation))")
         }
     }
     
@@ -1492,20 +3330,74 @@ final class SceneGeneratorViewModel: ObservableObject {
 
     private func prepareWorkspaceIfNeeded() {
         if !hasAutoPromptedDescription {
-            if sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                showInputSheet = true
-            }
             hasAutoPromptedDescription = true
         }
     }
 
     func toggleHintsEnabled() {
         isHintsEnabled.toggle()
+        print("[CA_DEBUG][HINT_TOGGLE] enabled=\(isHintsEnabled) recording=\(isRecording) pause=\(isHintPauseAnalysisActive)")
         if !isHintsEnabled {
             clearHintPresentation()
         }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
+    }
+
+    func startHintPauseAnalysis() {
+        guard isHintsEnabled else { return }
+        guard !isHintPauseAnalysisActive else { return }
+
+        isHintPauseAnalysisActive = true
+        let requestToken = UUID()
+        hintPauseRequestToken = requestToken
+        hintPreviewSuggestions = []
+        hintPauseCritique = nil
+        print("[CA_DEBUG][PAUSE_START] token=\(requestToken.uuidString) liveHint=\(liveHint?.text ?? "nil") overlayBBox=\(formatDebugRect(coachingOverlayState.primaryBoundingBox))")
+        analysisPipeline.clearLivePresentationState()
+
+        analysisPipeline.runPauseAnalysis { [weak self] suggestions, critique in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard self.isHintPauseAnalysisActive,
+                      self.hintPauseRequestToken == requestToken else { return }
+                self.hintPreviewSuggestions = suggestions
+                self.hintPauseCritique = critique
+                let critiqueText = critique.map {
+                    "verdict=\($0.verdict.rawValue) confidence=\(self.formatDebugDouble($0.verdictConfidence)) short=\($0.shortVerdict)"
+                } ?? "nil"
+                print("[CA_DEBUG][PAUSE_RESULT] token=\(requestToken.uuidString) suggestions=\(suggestions.count) critique=\(critiqueText)")
+            }
+        }
+    }
+
+    func resumeHintLiveAnalysis() {
+        guard isHintPauseAnalysisActive else { return }
+
+        isHintPauseAnalysisActive = false
+        hintPauseRequestToken = nil
+        hintPreviewSuggestions = []
+        hintPauseCritique = nil
+        print("[CA_DEBUG][PAUSE_RESUME_LIVE] liveStateReset=true")
+        analysisPipeline.clearPausePresentationState()
+        analysisPipeline.clearLivePresentationState()
+    }
+
+    @MainActor
+    func setCameraDemoSceneMode(_ mode: CameraDemoSceneMode) {
+        cameraDemoSceneMode = mode
+        analysisPipeline.setCameraDemoSceneMode(mode)
+        analysisPipeline.clearLivePresentationState()
+    }
+
+    func makeHintDecisionTrace() -> DecisionTracePresentation? {
+        DecisionTracePresentation.current(
+            liveHint: liveHint,
+            pauseCritique: hintPauseCritique,
+            isPaused: isHintPauseAnalysisActive,
+            overlayAnnotations: coachingOverlayAnnotations,
+            debugSignals: makeHintDecisionDebugSignals()
+        )
     }
 
     func startRecording() {
@@ -1566,48 +3458,197 @@ final class SceneGeneratorViewModel: ObservableObject {
 
     private func processHintFrameIfNeeded(pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) {
         guard isHintsEnabled else {
-            if liveHint != nil || !coachingOverlayAnnotations.isEmpty {
+            if liveHint != nil || hintPauseCritique != nil || !hintPreviewSuggestions.isEmpty || !coachingOverlayAnnotations.isEmpty {
                 clearHintPresentation()
             }
             return
         }
 
-        let context = makeHintContext(pixelBuffer: pixelBuffer, timestamp: timestamp)
+        guard !isHintPauseAnalysisActive else { return }
 
-        if timestamp - lastHighHintTimestamp >= highHintFrameInterval {
+        let context = makeHintContext(pixelBuffer: pixelBuffer, timestamp: timestamp)
+        let budget = hintThermalGovernor.nextBudget()
+        Telemetry.shared.setHeavyModelsEnabled(budget.heavyModelsEnabled)
+        let highHintFrameInterval = hintFrameInterval(for: budget.highPriorityFrequency)
+        let mediumHintFrameInterval = hintFrameInterval(for: budget.mediumPriorityFrequency)
+        let lowHintFrameInterval = hintFrameInterval(for: budget.lowPriorityFrequency)
+
+        let willRunHigh = timestamp - lastHighHintTimestamp >= highHintFrameInterval
+        let willRunMedium = timestamp - lastMediumHintTimestamp >= mediumHintFrameInterval
+        let thermalLowDue = budget.heavyModelsEnabled &&
+            context.isStable &&
+            timestamp - lastLowHintTimestamp >= lowHintFrameInterval
+        let objectDemoLowDue = cameraDemoSceneMode == .object &&
+            hintThermalGovernor.currentTier() != .critical &&
+            context.isStable &&
+            timestamp - lastLowHintTimestamp >= objectDemoDetrHintFrameInterval
+        let willRunLow = thermalLowDue || objectDemoLowDue
+        let lowRunReason: String
+        if objectDemoLowDue {
+            lowRunReason = "object_demo_detr"
+        } else if thermalLowDue {
+            lowRunReason = "thermal_budget"
+        } else {
+            lowRunReason = "none"
+        }
+        logHintFrameIfNeeded(
+            pixelBuffer: pixelBuffer,
+            timestamp: timestamp,
+            context: context,
+            willRunHigh: willRunHigh,
+            willRunMedium: willRunMedium,
+            willRunLow: willRunLow,
+            lowRunReason: lowRunReason
+        )
+
+        if willRunHigh {
             lastHighHintTimestamp = timestamp
             analysisPipeline.ingestHigh(context: context)
         }
 
-        if timestamp - lastMediumHintTimestamp >= mediumHintFrameInterval {
+        if willRunMedium {
             lastMediumHintTimestamp = timestamp
             analysisPipeline.ingestMedium(context: context)
         }
 
-        if timestamp - lastLowHintTimestamp >= lowHintFrameInterval {
+        if willRunLow {
             lastLowHintTimestamp = timestamp
             analysisPipeline.ingestLow(context: context)
         }
+    }
+
+    private func hintFrameInterval(for frequency: Double) -> TimeInterval {
+        guard frequency > 0 else { return disabledHintFrameInterval }
+        return 1.0 / frequency
     }
 
     private func makeHintContext(pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) -> FrameContext {
         FrameContext(
             pixelBuffer: pixelBuffer,
             timestamp: CMTimeMakeWithSeconds(timestamp, preferredTimescale: CMTimeScale(NSEC_PER_SEC)),
-            orientation: .up,
+            orientation: arCameraAnalysisOrientation,
             isStable: !isMarkingMode,
             shakeLevel: isRecording ? 0.2 : 0.05,
-            motionState: isRecording ? .moving : .still
+            motionState: isMarkingMode ? .moving : .still
+        )
+    }
+
+    private var arCameraAnalysisOrientation: CGImagePropertyOrientation {
+        switch arInterfaceOrientation {
+        case .portrait:
+            return .right
+        case .portraitUpsideDown:
+            return .left
+        case .landscapeRight:
+            return .up
+        case .landscapeLeft:
+            return .down
+        case .unknown:
+            return .right
+        @unknown default:
+            return .right
+        }
+    }
+
+    private func logHintFrameIfNeeded(pixelBuffer: CVPixelBuffer,
+                                      timestamp: TimeInterval,
+                                      context: FrameContext,
+                                      willRunHigh: Bool,
+                                      willRunMedium: Bool,
+                                      willRunLow: Bool,
+                                      lowRunReason: String) {
+        hintFrameDebugCounter += 1
+        guard timestamp - lastHintFrameDebugLogTimestamp >= 1.0 || willRunLow else { return }
+        lastHintFrameDebugLogTimestamp = timestamp
+        print(
+            "[CA_DEBUG][HINT_FRAME] idx=\(hintFrameDebugCounter) ts=\(formatDebugDouble(timestamp)) " +
+            "image=\(CVPixelBufferGetWidth(pixelBuffer))x\(CVPixelBufferGetHeight(pixelBuffer)) " +
+            "uiOrientation=\(debugInterfaceOrientationDescription(arInterfaceOrientation)) " +
+            "cgOrientation=\(debugCGOrientationDescription(context.orientation)) " +
+            "stable=\(context.isStable) motion=\(String(describing: context.motionState)) shake=\(formatDebugDouble(context.shakeLevel)) " +
+            "recording=\(isRecording) marking=\(isMarkingMode) pause=\(isHintPauseAnalysisActive) " +
+            "runHigh=\(willRunHigh) runMedium=\(willRunMedium) runLow=\(willRunLow) lowReason=\(lowRunReason) " +
+            "displayTransform=\(hintDisplayTransform.map(formatDebugTransform) ?? "nil")"
+        )
+    }
+
+    private func debugInterfaceOrientationDescription(_ orientation: UIInterfaceOrientation) -> String {
+        switch orientation {
+        case .portrait:
+            return "portrait"
+        case .portraitUpsideDown:
+            return "portraitUpsideDown"
+        case .landscapeLeft:
+            return "landscapeLeft"
+        case .landscapeRight:
+            return "landscapeRight"
+        case .unknown:
+            return "unknown"
+        @unknown default:
+            return "unknownFuture"
+        }
+    }
+
+    private func debugCGOrientationDescription(_ orientation: CGImagePropertyOrientation) -> String {
+        switch orientation {
+        case .up:
+            return "up"
+        case .upMirrored:
+            return "upMirrored"
+        case .down:
+            return "down"
+        case .downMirrored:
+            return "downMirrored"
+        case .left:
+            return "left"
+        case .leftMirrored:
+            return "leftMirrored"
+        case .right:
+            return "right"
+        case .rightMirrored:
+            return "rightMirrored"
+        }
+    }
+
+    private func formatDebugTransform(_ transform: CGAffineTransform) -> String {
+        "[a=\(formatDebugDouble(transform.a)) b=\(formatDebugDouble(transform.b)) c=\(formatDebugDouble(transform.c)) d=\(formatDebugDouble(transform.d)) tx=\(formatDebugDouble(transform.tx)) ty=\(formatDebugDouble(transform.ty))]"
+    }
+
+    private func formatDebugRect(_ rect: CGRect?) -> String {
+        guard let rect else { return "nil" }
+        return "[x=\(formatDebugDouble(rect.minX)) y=\(formatDebugDouble(rect.minY)) w=\(formatDebugDouble(rect.width)) h=\(formatDebugDouble(rect.height))]"
+    }
+
+    private func formatDebugDouble(_ value: Double) -> String {
+        String(format: "%.3f", value)
+    }
+
+    private func formatDebugDouble(_ value: CGFloat) -> String {
+        formatDebugDouble(Double(value))
+    }
+
+    private func makeHintDecisionDebugSignals() -> DecisionTraceDebugSignals {
+        let debugData = analysisPipeline.currentDebugData
+        return DecisionTraceDebugSignals.make(
+            features: analysisPipeline.currentFeatures,
+            detrDetections: debugData.detrDetections,
+            visionSubjects: debugData.visionSubjects,
+            saliencyCenter: debugData.saliencyCenter
         )
     }
 
     private func clearHintPresentation() {
+        isHintPauseAnalysisActive = false
+        hintPauseRequestToken = nil
+        hintPreviewSuggestions = []
+        hintPauseCritique = nil
         analysisPipeline.clearLivePresentationState()
         analysisPipeline.clearPausePresentationState()
         coachingOverlayState = .init(primaryBoundingBox: nil,
                                      horizonAngle: 0,
                                      horizonConfidence: 0,
                                      saliencyBalance: 0)
+        hintDisplayTransform = nil
         liveHint = nil
         coachingOverlayAnnotations = []
     }
@@ -1671,10 +3712,12 @@ final class SceneGeneratorViewModel: ObservableObject {
         if let plannedScene {
             Task {
                 await placeObjectsInAR(plannedScene)
+                refreshStoryboardBeatItems()
                 refreshWorkspaceMode()
                 refreshIdleStatusMessage()
             }
         } else {
+            refreshStoryboardBeatItems()
             refreshWorkspaceMode()
             refreshIdleStatusMessage()
         }
@@ -1725,25 +3768,52 @@ final class SceneGeneratorViewModel: ObservableObject {
         case .recording:
             statusMessage = "Идёт запись, подсказки включены автоматически"
         case .previewPlayback:
-            statusMessage = "Предпросмотр блокинга сцены"
+            statusMessage = "Предпросмотр сцены"
         }
     }
 }
 
-// MARK: - Example Descriptions
+#if DEBUG
+extension SceneGeneratorViewModel {
+    var testingARCameraAnalysisOrientation: CGImagePropertyOrientation {
+        arCameraAnalysisOrientation
+    }
+
+    func testingSetARInterfaceOrientation(_ orientation: UIInterfaceOrientation) {
+        arInterfaceOrientation = orientation
+    }
+
+    func testingSetPlanningContext(cameraTransform: simd_float4x4, planes: [ScenePlaneSnapshot]) {
+        currentCameraTransform = cameraTransform
+        detectedPlanes = planes
+        isARSessionReady = true
+    }
+}
+#endif
 
 extension SceneGeneratorViewModel {
-    
-    /// Примеры описаний для UI
-    static let exampleDescriptions: [(title: String, description: String)] = [
-        ("Первый и второй", "Первый подходит к экрану, а второй смотрит на него."),
-        ("Остановка у объекта", "Сначала первый актёр и второй актёр идут навстречу друг другу, потом оба останавливаются рядом с рабочим компьютером."),
-        ("Проход мимо объекта", "Первый актёр и второй актёр идут навстречу друг другу и затем оба проходят мимо рабочего компьютера."),
-        ("Открыть и взять", "Первый актёр сначала открывает коробку, затем берёт папку."),
-        ("Трое в сцене", "Первый подходит к шкафу, второй смотрит на первого, а третий остаётся у киоска."),
-        ("Сказать и положить", "Первый актёр говорит: «Положи коробку сюда, потом разберём», после чего второй кладёт коробку на стойку."),
-        ("Сказать и повернуться", "Первый актёр говорит: «Я уже приложил отчёт». Второй актёр отвечает: «Тогда быстро проверь отчёт», после чего второй актёр поворачивается к первому актёру."),
-        ("Сказать и передать", "Таня говорит: «Передай конверт третьему». Рома отвечает: «Сейчас передам». Затем второй берёт письмо и передаёт его Яне, после чего письмо получает третий."),
-        ("Сказать и посмотреть", "Илья говорит: «Я уже отправил скриншот», а потом Мила отвечает: «Тогда покажи скриншот», и Мила смотрит на Илью.")
-    ]
+    static func shouldPassTouchesThroughSwiftUIOverlay(
+        isMarkingMode: Bool,
+        hasActiveStoryboardEditor: Bool
+    ) -> Bool {
+        _ = hasActiveStoryboardEditor
+        return isMarkingMode
+    }
+}
+
+private extension SceneAction.ActionType {
+    var storyboardDiagnosticTitle: String {
+        switch self {
+        case .walk:
+            return "идёт"
+        case .lookAt:
+            return "смотрит"
+        case .pickUp:
+            return "берёт"
+        case .give:
+            return "передаёт"
+        default:
+            return rawValue
+        }
+    }
 }

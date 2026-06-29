@@ -13,6 +13,14 @@ enum CameraAnalysisMotionState: String, Codable, Sendable {
     case panning
 }
 
+enum CameraDemoSceneMode: String, Codable, CaseIterable, Sendable {
+    case auto
+    case object
+    case portrait
+    case cinematicPortrait = "cinematic_portrait"
+    case dialogue
+}
+
 enum FrameVerdict: String, Codable, Sendable {
     case good
     case mixed
@@ -325,23 +333,29 @@ struct FrameFeatureSnapshot: Codable, Equatable, Sendable {
         let faceDetected: Bool
         let personDetected: Bool
         let personCount: Int
+        let faceRegion: NormalizedRect?
         let topObjectLabel: String?
         let topObjectConfidence: Double?
+        let topObjectRegion: NormalizedRect?
         let primaryCandidateRegion: NormalizedRect?
         let primaryCandidateConfidence: Double?
 
         init(faceDetected: Bool,
              personDetected: Bool,
              personCount: Int,
+             faceRegion: NormalizedRect? = nil,
              topObjectLabel: String? = nil,
              topObjectConfidence: Double? = nil,
+             topObjectRegion: NormalizedRect? = nil,
              primaryCandidateRegion: NormalizedRect? = nil,
              primaryCandidateConfidence: Double? = nil) {
             self.faceDetected = faceDetected
             self.personDetected = personDetected
             self.personCount = max(0, personCount)
+            self.faceRegion = faceRegion
             self.topObjectLabel = topObjectLabel
             self.topObjectConfidence = topObjectConfidence.map(Self.clamp01)
+            self.topObjectRegion = topObjectRegion
             self.primaryCandidateRegion = primaryCandidateRegion
             self.primaryCandidateConfidence = primaryCandidateConfidence.map(Self.clamp01)
         }
@@ -366,14 +380,47 @@ struct FrameFeatureSnapshot: Codable, Equatable, Sendable {
     }
 
     struct LightingFeatures: Codable, Equatable, Sendable {
+        struct SubjectLightingMetrics: Codable, Equatable, Sendable {
+            let subjectMeanLuma: Double
+            let backgroundMeanLuma: Double
+            let subjectToBackgroundDelta: Double
+            let subjectClippedBrightRatio: Double
+            let backgroundHotspotRatio: Double
+
+            init(subjectMeanLuma: Double,
+                 backgroundMeanLuma: Double,
+                 subjectToBackgroundDelta: Double,
+                 subjectClippedBrightRatio: Double,
+                 backgroundHotspotRatio: Double) {
+                self.subjectMeanLuma = Self.clamp01(subjectMeanLuma)
+                self.backgroundMeanLuma = Self.clamp01(backgroundMeanLuma)
+                self.subjectToBackgroundDelta = Self.clamp11(subjectToBackgroundDelta)
+                self.subjectClippedBrightRatio = Self.clamp01(subjectClippedBrightRatio)
+                self.backgroundHotspotRatio = Self.clamp01(backgroundHotspotRatio)
+            }
+
+            private static func clamp01(_ value: Double) -> Double {
+                min(1.0, max(0.0, value))
+            }
+
+            private static func clamp11(_ value: Double) -> Double {
+                min(1.0, max(-1.0, value))
+            }
+        }
+
         let exposureBiasHint: Double
         let backlightIndex: Double
         let keyToFillRatio: Double?
+        let subjectLighting: SubjectLightingMetrics?
 
-        init(exposureBiasHint: Double, backlightIndex: Double, keyToFillRatio: Double?) {
+        init(exposureBiasHint: Double,
+             backlightIndex: Double,
+             keyToFillRatio: Double?,
+             subjectLighting: SubjectLightingMetrics? = nil) {
             self.exposureBiasHint = exposureBiasHint
             self.backlightIndex = Self.clamp01(backlightIndex)
             self.keyToFillRatio = keyToFillRatio
+            self.subjectLighting = subjectLighting
         }
 
         private static func clamp01(_ value: Double) -> Double {

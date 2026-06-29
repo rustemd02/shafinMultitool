@@ -31,20 +31,26 @@ final class Telemetry: ObservableObject {
     private var startTime: TimeInterval = CACurrentMediaTime()
     private var lastFPSUpdate: TimeInterval = CACurrentMediaTime()
     private let queue = DispatchQueue(label: "Telemetry")
+    private var systemMonitoringTimer: Timer?
     
     private var uiFrameCount: Int = 0
     private var uiStartTime: TimeInterval = CACurrentMediaTime()
 
     init() {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        startMonitoring()
     }
     
-    private func startMonitoring() {
-        // Периодическое обновление метрик
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+    func startSystemMonitoring() {
+        guard systemMonitoringTimer == nil else { return }
+        updateSystemMetrics()
+        systemMonitoringTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.updateSystemMetrics()
         }
+    }
+
+    func stopSystemMonitoring() {
+        systemMonitoringTimer?.invalidate()
+        systemMonitoringTimer = nil
     }
     
     private func updateSystemMetrics() {
@@ -155,4 +161,3 @@ final class Telemetry: ObservableObject {
         }
     }
 }
-

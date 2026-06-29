@@ -18,7 +18,12 @@ struct ContentView: View {
         let cameraManager = CameraManager(scheduler: scheduler,
                                           thermalGovernor: thermal,
                                           motionGate: motionGate)
-        let pipeline = AnalysisPipeline()
+        let pipeline = AnalysisPipeline(
+            thermalGovernor: thermal,
+            neuralHeavyModelsEnabledProvider: {
+                thermal.nextBudget().heavyModelsEnabled
+            }
+        )
         _viewModel = StateObject(wrappedValue: CameraViewModel(cameraManager: cameraManager,
                                                                analysisPipeline: pipeline))
         self.cameraManager = cameraManager

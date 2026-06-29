@@ -309,6 +309,7 @@ struct SceneObject: Codable, Equatable, Identifiable {
         case window = "window"
         case shelf = "shelf"
         case tv = "tv"
+        case phone = "phone"
         case generic = "generic"
         
         /// COCO labels, соответствующие данному типу
@@ -323,6 +324,7 @@ struct SceneObject: Codable, Equatable, Identifiable {
             case .window: return ["window (blind)", "window (other)"]
             case .shelf: return ["shelf"]
             case .tv: return ["tv"]
+            case .phone: return ["cell phone"]
             case .generic: return []
             }
         }
@@ -339,6 +341,7 @@ struct SceneObject: Codable, Equatable, Identifiable {
             case .window: return simd_float3(1.0, 1.2, 0.1)
             case .shelf: return simd_float3(1.0, 0.3, 0.3)
             case .tv: return simd_float3(1.0, 0.6, 0.1)
+            case .phone: return simd_float3(0.28, 0.035, 0.16)
             case .generic: return simd_float3(0.5, 0.5, 0.5)
             }
         }
@@ -355,6 +358,7 @@ struct SceneObject: Codable, Equatable, Identifiable {
             case .window: return (0.7, 0.9, 1.0)    // Голубой
             case .shelf: return (0.5, 0.4, 0.3)     // Коричневый
             case .tv: return (0.1, 0.1, 0.1)        // Чёрный
+            case .phone: return (0.02, 0.09, 0.18)   // Тёмно-синий экран, заметнее в демо
             case .generic: return (0.5, 0.5, 0.5)   // Серый
             }
         }
@@ -718,6 +722,11 @@ struct KeywordsMapping {
         "телевизора": .tv,
         "телевизором": .tv,
         "тв": .tv,
+        "телефон": .phone,
+        "телефона": .phone,
+        "телефону": .phone,
+        "телефоном": .phone,
+        "телефоне": .phone,
         "телек": .tv,
         "телику": .tv,
         "телика": .tv,
@@ -835,6 +844,7 @@ struct KeywordsMapping {
         "couch": "диван",
         "bed": "кровать",
         "tv": "телевизор",
+        "cell phone": "телефон",
         "door": "дверь",
         "cabinet": "шкаф",
         "shelf": "полка",

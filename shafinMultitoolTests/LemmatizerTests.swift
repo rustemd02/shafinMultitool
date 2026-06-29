@@ -71,4 +71,10 @@ final class LemmatizerTests: XCTestCase {
         let text = "Подойти к моему столу"
         XCTAssertTrue(lemmatizer.textContainsKeyword(text, keyword: "стол"), "Текст должен содержать стол даже с притяжательным местоимением")
     }
+
+    func testPhoneDoesNotMatchTelevisionByShortRoot() throws {
+        XCTAssertTrue(lemmatizer.matchesKeyword("телефона", keyword: "телефон"))
+        XCTAssertFalse(lemmatizer.matchesKeyword("телефон", keyword: "телевизор"))
+        XCTAssertFalse(lemmatizer.textContainsKeyword("на столе лежит телефон", keyword: "телевизор"))
+    }
 }

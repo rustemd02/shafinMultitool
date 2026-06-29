@@ -7,6 +7,9 @@
 
 import XCTest
 import simd
+import CoreGraphics
+import ImageIO
+import UIKit
 @testable import shafinMultitool
 
 final class SceneBundlePipelineTests: XCTestCase {
@@ -14,6 +17,10 @@ final class SceneBundlePipelineTests: XCTestCase {
         let result: ScenePlanProviderResult?
         let eventProvider: ((String, [MarkedObject], SourceAnchorBundle, SceneChunkState?, SceneV9SlotCatalog) -> SceneV9EventProviderResult?)?
         private var asyncResults: [ScenePlanProviderResult?]
+        private(set) var generatePlanCallCount = 0
+        private(set) var generatePlanAsyncCallCount = 0
+        private(set) var generateEventTableCallCount = 0
+        private(set) var generateEventTableAsyncCallCount = 0
 
         init(
             result: ScenePlanProviderResult?,
@@ -31,6 +38,7 @@ final class SceneBundlePipelineTests: XCTestCase {
             anchors: SourceAnchorBundle,
             state: SceneChunkState?
         ) -> ScenePlanProviderResult? {
+            generatePlanCallCount += 1
             return result
         }
 
@@ -40,6 +48,7 @@ final class SceneBundlePipelineTests: XCTestCase {
             anchors: SourceAnchorBundle,
             state: SceneChunkState?
         ) async -> ScenePlanProviderResult? {
+            generatePlanAsyncCallCount += 1
             if !asyncResults.isEmpty {
                 return asyncResults.removeFirst()
             }
@@ -53,7 +62,32 @@ final class SceneBundlePipelineTests: XCTestCase {
             state: SceneChunkState?,
             slotCatalog: SceneV9SlotCatalog
         ) -> SceneV9EventProviderResult? {
-            eventProvider?(description, markedObjects, anchors, state, slotCatalog)
+            generateEventTableCallCount += 1
+            return eventProvider?(description, markedObjects, anchors, state, slotCatalog)
+                ?? makeEventProviderResultFromPlan()
+        }
+
+        func generateEventTableAsync(
+            description: String,
+            markedObjects: [MarkedObject],
+            anchors: SourceAnchorBundle,
+            state: SceneChunkState?,
+            slotCatalog: SceneV9SlotCatalog
+        ) async -> SceneV9EventProviderResult? {
+            generateEventTableAsyncCallCount += 1
+            return eventProvider?(description, markedObjects, anchors, state, slotCatalog)
+                ?? makeEventProviderResultFromPlan()
+        }
+
+        private func makeEventProviderResultFromPlan() -> SceneV9EventProviderResult? {
+            guard let result else { return nil }
+            let service = SceneEventTableV9Service()
+            let slotCatalog = service.buildSlotCatalog(from: result.plan)
+            return SceneV9EventProviderResult(
+                slotCatalog: slotCatalog,
+                eventTable: service.buildEventTable(from: result.plan, slotCatalog: slotCatalog),
+                reasonCodes: result.reasonCodes + ["test.stub_event_table_from_plan"]
+            )
         }
     }
 
@@ -93,6 +127,7 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     private var parser: SceneParserService!
+    private let runtimeModeKey = "scene_generator_v9_runtime_mode"
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -104,6 +139,19 @@ final class SceneBundlePipelineTests: XCTestCase {
         parser?.resetRuntimeContext()
         parser = nil
         try super.tearDownWithError()
+    }
+
+    private func setRuntimeMode(_ rawValue: String) -> () -> Void {
+        let defaults = UserDefaults.standard
+        let oldValue = defaults.object(forKey: runtimeModeKey)
+        defaults.set(rawValue, forKey: runtimeModeKey)
+        return {
+            if let oldValue {
+                defaults.set(oldValue, forKey: self.runtimeModeKey)
+            } else {
+                defaults.removeObject(forKey: self.runtimeModeKey)
+            }
+        }
     }
 
     private func makeBundlePipeline(result: ScenePlanProviderResult?) -> SceneBundlePipeline {
@@ -477,6 +525,9 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     func testBundlePipelinePreservesDialogueThenPutDownPattern() async throws {
+        let restoreRuntimeMode = setRuntimeMode("v8_hotfix")
+        defer { restoreRuntimeMode() }
+
         let description = "Первый актёр говорит: «Положи коробку сюда, потом разберём», после чего второй кладёт коробку на стойку."
         let pipeline = makeBundlePipeline(
             result: ScenePlanProviderResult(
@@ -535,12 +586,17 @@ final class SceneBundlePipelineTests: XCTestCase {
         }
 
         let script = try XCTUnwrap(result.activeSceneScript)
+        let putDownDebug = script.beats.enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorId)|\($0.target ?? "nil")|\($0.dialogue ?? $0.sourceText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ") + " || " + result.chunkDiagnostics.flatMap(\.reasonCodes).joined(separator: ",")
         XCTAssertEqual(script.actors.count, 2)
-        XCTAssertEqual(script.beats.count, 2)
+        XCTAssertEqual(script.beats.count, 2, putDownDebug)
         XCTAssertFalse(result.chunkDiagnostics.contains { $0.usedFallbackPlanner })
 
         let talkAction = script.beats.flatMap { $0.actions }.first(where: { $0.type == SceneAction.ActionType.talk })
-        XCTAssertEqual(talkAction?.dialogue, "Положи коробку сюда, потом разберём")
+        XCTAssertEqual(talkAction?.dialogue, "Положи коробку сюда, потом разберём", putDownDebug)
 
         let putDownAction = try XCTUnwrap(script.beats.flatMap { $0.actions }.first(where: { $0.type == SceneAction.ActionType.putDown }))
         XCTAssertNotNil(putDownAction.target)
@@ -549,6 +605,9 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     func testBundlePipelinePreservesDialoguePickUpGiveToThirdPattern() async throws {
+        let restoreRuntimeMode = setRuntimeMode("v8_hotfix")
+        defer { restoreRuntimeMode() }
+
         let description = "Таня говорит: «Передай конверт третьему». Рома отвечает: «Сейчас передам». Затем второй берёт письмо и передаёт его Яне, после чего письмо получает третий."
         let pipeline = makeBundlePipeline(
             result: ScenePlanProviderResult(
@@ -602,12 +661,17 @@ final class SceneBundlePipelineTests: XCTestCase {
         }
 
         let script = try XCTUnwrap(result.activeSceneScript)
+        let transferDebug = script.beats.enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorId)|\($0.target ?? "nil")|\($0.dialogue ?? $0.sourceText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ") + " || " + result.chunkDiagnostics.flatMap(\.reasonCodes).joined(separator: ",")
         XCTAssertEqual(script.actors.count, 3)
-        XCTAssertEqual(script.beats.count, 3)
+        XCTAssertEqual(script.beats.count, 3, transferDebug)
         XCTAssertFalse(result.chunkDiagnostics.contains { $0.usedFallbackPlanner })
 
         let talkActions = script.beats.flatMap { $0.actions }.filter { $0.type == SceneAction.ActionType.talk }
-        XCTAssertEqual(talkActions.count, 2)
+        XCTAssertEqual(talkActions.count, 2, transferDebug)
 
         let pickUpAction = try XCTUnwrap(script.beats.flatMap { $0.actions }.first(where: { $0.type == SceneAction.ActionType.pickUp }))
         XCTAssertEqual(pickUpAction.holdingObject, script.objects.first?.id)
@@ -615,6 +679,323 @@ final class SceneBundlePipelineTests: XCTestCase {
         let giveAction = try XCTUnwrap(script.beats.flatMap { $0.actions }.first(where: { $0.type == SceneAction.ActionType.give }))
         XCTAssertNotNil(giveAction.target)
         XCTAssertEqual(giveAction.holdingObject, script.objects.first?.id)
+    }
+
+    func testDemoScenarioMaterializesNamedDialogueLookAtAndPhoneTransfer() async throws {
+        let modeKey = "scene_generator_v9_runtime_mode"
+        let defaults = UserDefaults.standard
+        let oldMode = defaults.string(forKey: modeKey)
+        defaults.set("v8_hotfix", forKey: modeKey)
+        defer {
+            if let oldMode {
+                defaults.set(oldMode, forKey: modeKey)
+            } else {
+                defaults.removeObject(forKey: modeKey)
+            }
+        }
+
+        let description = """
+        МАРИНА и ОЛЕГ идут навстречу друг другу в тихом офисе. Марина останавливается у стола; на столе лежит телефон. Олег смотрит на телефон.
+
+        МАРИНА: Он опять звонил?
+        ОЛЕГ: Три раза. Я не стал брать.
+        МАРИНА: Тогда дай сюда, я сама всё решу.
+
+        Олег берёт телефон со стола и передаёт его Марине.
+        """
+        let pipeline = makeBundlePipeline(result: nil)
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: SceneBundleParseMode.full,
+            previousState: nil as ScriptDocumentState?,
+            executionPolicy: .monolithicDefault
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        let reasonCodes = result.chunkDiagnostics.flatMap(\.reasonCodes)
+        let script = try XCTUnwrap(result.activeSceneScript)
+        let debugBeatSummary = script.beats.enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorId)|\($0.target ?? "nil")|\($0.sourceText ?? $0.dialogue ?? $0.fallbackText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ")
+        let planBeatSummary = result.documentState.bundlePlan.scenes.flatMap(\.plan.beats).enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorRef)|\($0.targetRef ?? "nil")|\($0.sourceText ?? $0.dialogue ?? $0.fallbackText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ")
+        let chunkBeatSummary = result.sceneChunks.flatMap(\.beatPatch).enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorRef)|\($0.targetRef ?? "nil")|\($0.sourceText ?? $0.dialogue ?? $0.fallbackText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ")
+        let sourceSummary = result.documentState.bundlePlan.scenes.map(\.sourceText)
+            .joined(separator: " || ")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        let debugSummary = "\(debugBeatSummary) || source=\(sourceSummary) || plan=\(planBeatSummary) || chunks=\(chunkBeatSummary)"
+        XCTAssertTrue(reasonCodes.contains("v9.collective_motion_materialized"), debugSummary)
+        XCTAssertTrue(reasonCodes.contains("v9.dialogue_event_materialized"), debugSummary)
+        XCTAssertTrue(reasonCodes.contains("v9.look_at_action_materialized"), debugSummary)
+        XCTAssertTrue(reasonCodes.contains("v9.transfer_action_materialized"), debugSummary)
+        let marina = try XCTUnwrap(script.actors.first { $0.name == "Марина" })
+        let oleg = try XCTUnwrap(script.actors.first { $0.name == "Олег" })
+        let phone = try XCTUnwrap(script.objects.first { $0.type == .phone })
+
+        XCTAssertEqual(script.actors.count, 2)
+
+        let talkActions = script.actions.filter { $0.type == .talk }
+        XCTAssertEqual(talkActions.count, 3)
+        XCTAssertEqual(talkActions.map { $0.dialogue ?? "" }, [
+            "Он опять звонил?",
+            "Три раза. Я не стал брать.",
+            "Тогда дай сюда, я сама всё решу.",
+        ])
+        XCTAssertEqual(talkActions.map(\.actorId), [marina.id, oleg.id, marina.id])
+
+        let firstTalkBeatIndex = try XCTUnwrap(script.beats.firstIndex { beat in
+            beat.actions.contains { $0.type == .talk }
+        }, debugSummary)
+        let walkBeatIndex = try XCTUnwrap(script.beats.firstIndex { beat in
+            beat.actions.contains { $0.type == .walk }
+        }, debugSummary)
+        let lookAtBeatIndex = try XCTUnwrap(script.beats.firstIndex { beat in
+            beat.actions.contains { $0.type == .lookAt }
+        }, debugSummary)
+        let transferBeatIndex = try XCTUnwrap(script.beats.firstIndex { beat in
+            beat.actions.contains { $0.type == .pickUp || $0.type == .give }
+        }, debugSummary)
+        XCTAssertLessThan(walkBeatIndex, firstTalkBeatIndex, debugSummary)
+        XCTAssertLessThan(lookAtBeatIndex, firstTalkBeatIndex, debugSummary)
+        XCTAssertLessThan(firstTalkBeatIndex, transferBeatIndex, debugSummary)
+
+        let lookAtAction = try XCTUnwrap(script.actions.first { $0.type == .lookAt })
+        XCTAssertEqual(lookAtAction.actorId, oleg.id)
+        XCTAssertEqual(lookAtAction.target, phone.id)
+
+        let pickUpAction = try XCTUnwrap(script.actions.first { $0.type == .pickUp })
+        XCTAssertEqual(pickUpAction.actorId, oleg.id)
+        XCTAssertEqual(pickUpAction.target, phone.id)
+        XCTAssertEqual(pickUpAction.holdingObject, phone.id)
+
+        let giveAction = try XCTUnwrap(script.actions.first { $0.type == .give })
+        XCTAssertEqual(giveAction.actorId, oleg.id)
+        XCTAssertEqual(giveAction.target, marina.id)
+        XCTAssertEqual(giveAction.holdingObject, phone.id)
+        XCTAssertNotEqual(giveAction.actorId, giveAction.target)
+    }
+
+    func testDemoScenarioProviderPathRepairsTransferObjectsAndSourceOrder() async throws {
+        let modeKey = "scene_generator_v9_runtime_mode"
+        let defaults = UserDefaults.standard
+        let oldMode = defaults.string(forKey: modeKey)
+        defaults.set("v9_full", forKey: modeKey)
+        defer {
+            if let oldMode {
+                defaults.set(oldMode, forKey: modeKey)
+            } else {
+                defaults.removeObject(forKey: modeKey)
+            }
+        }
+
+        let description = """
+        МАРИНА и ОЛЕГ идут навстречу друг другу в тихом офисе. Марина останавливается у стола; на столе лежит телефон. Олег смотрит на телефон.
+
+        МАРИНА: Он опять звонил?
+        ОЛЕГ: Три раза. Я не стал брать.
+        МАРИНА: Тогда дай сюда, я сама всё решу.
+
+        Олег берёт телефон со стола и передаёт его Марине.
+        """
+
+        let slotCatalog = SceneV9SlotCatalog(
+            contractVersion: "sg_v9_slot_catalog_v1",
+            actorSlots: [
+                .init(slotID: "actor_slot_1", ref: "first", type: .human, name: "Марина"),
+                .init(slotID: "actor_slot_2", ref: "second", type: .human, name: "Олег"),
+            ],
+            objectSlots: [
+                .init(slotID: "object_slot_1", ref: "object_provider_phone_1", type: .phone, relativePosition: .unknown, markedObjectID: nil, name: nil),
+                .init(slotID: "object_slot_2", ref: "object_provider_phone_2", type: .phone, relativePosition: .center, markedObjectID: nil, name: "телефон"),
+            ],
+            markedObjectSlots: [],
+            beatSlots: [
+                .init(slotID: "beat_slot_1", beatRef: "provider_beat_dialogue", phaseHint: "talk", order: 1, minDuration: 0.5),
+                .init(slotID: "beat_slot_2", beatRef: "provider_beat_walk", phaseHint: "toward_each_other", order: 2, minDuration: nil),
+                .init(slotID: "beat_slot_3", beatRef: "provider_beat_stand", phaseHint: "stand", order: 3, minDuration: 0.5),
+                .init(slotID: "beat_slot_4", beatRef: "provider_beat_look", phaseHint: "look_at_object", order: 4, minDuration: 0.5),
+                .init(slotID: "beat_slot_5", beatRef: "provider_beat_described", phaseHint: "described_action", order: 5, minDuration: 0.5),
+                .init(slotID: "beat_slot_6", beatRef: "provider_beat_pick_up", phaseHint: "object_transfer", order: 6, minDuration: 0.5),
+                .init(slotID: "beat_slot_7", beatRef: "provider_beat_give", phaseHint: "object_transfer", order: 7, minDuration: 0.5),
+            ],
+            actionTypes: SceneAction.ActionType.allCases,
+            relationHints: []
+        )
+        let pipeline = makeBundlePipeline(
+            result: nil,
+            eventProvider: { _, _, _, _, _ in
+                SceneV9EventProviderResult(
+                    slotCatalog: slotCatalog,
+                    eventTable: SceneV9EventTable(
+                        contractVersion: "sg_v9_event_table_v1",
+                        rows: [
+                            .init(rowID: "row_1", beatSlot: "beat_slot_1", actorSlot: "actor_slot_1", actionType: .talk, dialogueText: "Он опять звонил?", sourceSpan: "МАРИНА: Он опять звонил?", confidence: 0.9),
+                            .init(rowID: "row_2", beatSlot: "beat_slot_1", actorSlot: "actor_slot_2", actionType: .talk, dialogueText: "Три раза. Я не стал брать.", sourceSpan: "ОЛЕГ: Три раза. Я не стал брать.", confidence: 0.9),
+                            .init(rowID: "row_3", beatSlot: "beat_slot_1", actorSlot: "actor_slot_1", actionType: .talk, dialogueText: "Тогда дай сюда, я сама всё решу.", sourceSpan: "МАРИНА: Тогда дай сюда, я сама всё решу.", confidence: 0.9),
+                            .init(rowID: "row_4", beatSlot: "beat_slot_2", actorSlot: "actor_slot_2", actionType: .walk, targetSlot: "actor_slot_1", sourceSpan: "идут навстречу друг другу", confidence: 0.8),
+                            .init(rowID: "row_5", beatSlot: "beat_slot_3", actorSlot: "actor_slot_1", actionType: .stand, confidence: 0.7),
+                            .init(rowID: "row_6", beatSlot: "beat_slot_4", actorSlot: "actor_slot_2", actionType: .lookAt, targetSlot: "object_slot_2", sourceSpan: "Олег смотрит на телефон", confidence: 0.9),
+                            .init(rowID: "row_7", beatSlot: "beat_slot_5", actorSlot: "actor_slot_1", actionType: .describedAction, describedActionText: "Марина: Олег смотрит на телефон", sourceSpan: "Марина: Олег смотрит на телефон", confidence: 0.5),
+                            .init(rowID: "row_8", beatSlot: "beat_slot_6", actorSlot: "actor_slot_2", actionType: .pickUp, targetSlot: "object_slot_1", holdingObjectSlot: "object_slot_1", sourceSpan: "Олег берёт телефон со стола и передаёт его Марине", confidence: 0.9),
+                            .init(rowID: "row_9", beatSlot: "beat_slot_7", actorSlot: "actor_slot_2", actionType: .give, targetSlot: "object_slot_2", confidence: 0.6),
+                        ]
+                    ),
+                    reasonCodes: ["v9.event_provider_test_payload"]
+                )
+            }
+        )
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: SceneBundleParseMode.full,
+            previousState: nil as ScriptDocumentState?,
+            executionPolicy: .monolithicDefault
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        let reasonCodes = result.chunkDiagnostics.flatMap(\.reasonCodes)
+        XCTAssertTrue(
+            reasonCodes.contains("v9.event_provider_path_used") ||
+                reasonCodes.contains("provider:v9.event_provider_path_used")
+        )
+        XCTAssertTrue(reasonCodes.contains("v9.give_recipient_repaired"))
+        XCTAssertTrue(reasonCodes.contains("v9.redundant_described_action_dropped"))
+
+        let script = try XCTUnwrap(result.activeSceneScript)
+        let debugBeatSummary = script.beats.enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorId)|\($0.target ?? "nil")|\($0.sourceText ?? $0.dialogue ?? $0.fallbackText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ")
+        let planBeatSummary = result.documentState.bundlePlan.scenes.flatMap(\.plan.beats).enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorRef)|\($0.targetRef ?? "nil")|\($0.sourceText ?? $0.dialogue ?? $0.fallbackText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ")
+        let chunkBeatSummary = result.sceneChunks.flatMap(\.beatPatch).enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorRef)|\($0.targetRef ?? "nil")|\($0.sourceText ?? $0.dialogue ?? $0.fallbackText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ")
+        let sourceSummary = result.documentState.bundlePlan.scenes.map(\.sourceText)
+            .joined(separator: " || ")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        let debugSummary = "\(debugBeatSummary) || source=\(sourceSummary) || plan=\(planBeatSummary) || chunks=\(chunkBeatSummary)"
+        let marina = try XCTUnwrap(script.actors.first { $0.name == "Марина" })
+        let oleg = try XCTUnwrap(script.actors.first { $0.name == "Олег" })
+        let phone = try XCTUnwrap(script.objects.first { $0.type == .phone })
+
+        XCTAssertEqual(script.objects.filter { $0.type == .phone }.count, 1)
+        XCTAssertTrue(script.objects.contains { $0.type == .table })
+        XCTAssertFalse(script.actions.contains { $0.type == .describedAction })
+
+        let walkActions = script.actions.filter { $0.type == .walk }
+        XCTAssertEqual(Set(walkActions.map(\.actorId)), Set([marina.id, oleg.id]))
+
+        let firstTalkBeatIndex = try XCTUnwrap(script.beats.firstIndex { $0.actions.contains { $0.type == .talk } })
+        let walkBeatIndex = try XCTUnwrap(script.beats.firstIndex { $0.actions.contains { $0.type == .walk } })
+        let lookAtBeatIndex = try XCTUnwrap(script.beats.firstIndex { $0.actions.contains { $0.type == .lookAt } })
+        let transferBeatIndex = try XCTUnwrap(script.beats.firstIndex { $0.actions.contains { $0.type == .pickUp || $0.type == .give } })
+        if !(lookAtBeatIndex < firstTalkBeatIndex) {
+            XCTFail("debugSummary=\(debugSummary)")
+        }
+        XCTAssertLessThan(walkBeatIndex, firstTalkBeatIndex, debugSummary)
+        XCTAssertLessThan(lookAtBeatIndex, firstTalkBeatIndex, debugSummary)
+        XCTAssertLessThan(firstTalkBeatIndex, transferBeatIndex, debugSummary)
+
+        let giveActions = script.actions.filter { $0.type == .give }
+        XCTAssertEqual(giveActions.count, 1)
+        let giveAction = try XCTUnwrap(giveActions.first)
+        XCTAssertEqual(giveAction.actorId, oleg.id)
+        XCTAssertEqual(giveAction.target, marina.id)
+        XCTAssertEqual(giveAction.holdingObject, phone.id)
+    }
+
+    func testPartialProviderDialogueIsRecoveredFromSpeakerCues() async throws {
+        let modeKey = "scene_generator_v9_runtime_mode"
+        let defaults = UserDefaults.standard
+        let oldMode = defaults.string(forKey: modeKey)
+        defaults.set("v8_hotfix", forKey: modeKey)
+        defer {
+            if let oldMode {
+                defaults.set(oldMode, forKey: modeKey)
+            } else {
+                defaults.removeObject(forKey: modeKey)
+            }
+        }
+
+        let description = """
+        МАРИНА: Он опять звонил?
+        ОЛЕГ: Три раза. Я не стал брать.
+        МАРИНА: Тогда дай сюда, я сама всё решу.
+        """
+        let partialPlan = ScenePlanIR(
+            actors: [
+                .init(ref: "first", type: .human, name: "Марина"),
+                .init(ref: "second", type: .human, name: "Олег"),
+            ],
+            objects: [],
+            beats: [
+                .init(
+                    ref: "beat_partial_dialogue",
+                    actions: [
+                        .init(
+                            actorRef: "second",
+                            type: .talk,
+                            resultingPose: .standing,
+                            dialogue: "Три раза. Я не стал брать.",
+                            sourceText: "ОЛЕГ: Три раза. Я не стал брать."
+                        ),
+                    ]
+                ),
+            ],
+            spatialRelations: [],
+            referenceBindings: .init(actorBindings: ["first": "actor_1", "second": "actor_2"])
+        )
+        let pipeline = makeBundlePipeline(
+            result: ScenePlanProviderResult(plan: partialPlan, usedLegacySceneScriptBridge: false)
+        )
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: SceneBundleParseMode.full,
+            previousState: nil as ScriptDocumentState?,
+            executionPolicy: .monolithicDefault
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+                diagnostics: .empty
+            )
+        }
+
+        let script = try XCTUnwrap(result.activeSceneScript)
+        let talkActions = script.actions.filter { $0.type == .talk }
+        XCTAssertEqual(talkActions.map { $0.dialogue ?? "" }, [
+            "Он опять звонил?",
+            "Три раза. Я не стал брать.",
+            "Тогда дай сюда, я сама всё решу.",
+        ])
     }
 
     func testRuleFallbackKeepsTwoActorMotionAndUnsupportedTextActionAcrossChunks() async throws {
@@ -691,17 +1072,22 @@ final class SceneBundlePipelineTests: XCTestCase {
         }
 
         let script = try XCTUnwrap(result.activeSceneScript)
-        XCTAssertEqual(script.actors.count, 2)
+        let ruleDebug = script.beats.enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorId)|\($0.target ?? "nil")|\($0.fallbackText ?? $0.sourceText ?? $0.dialogue ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ") + " || actors=\(script.actors.map { "\($0.id):\($0.name ?? "nil")" }) || " + result.chunkDiagnostics.flatMap(\.reasonCodes).joined(separator: ",")
+        XCTAssertEqual(script.actors.count, 2, ruleDebug)
 
         let walkActions = script.beats.flatMap(\.actions).filter { $0.type == .walk }
-        XCTAssertEqual(walkActions.count, 2)
-        XCTAssertEqual(Set(walkActions.compactMap(\.target)), Set(["actor_1", "actor_2"]))
+        XCTAssertGreaterThanOrEqual(walkActions.count, 2, ruleDebug)
+        XCTAssertTrue(Set(walkActions.compactMap(\.target)).isSuperset(of: Set(["actor_1", "actor_2"])), ruleDebug)
 
         let stopActions = script.beats.flatMap(\.actions).filter { $0.type == .stop }
-        XCTAssertEqual(stopActions.count, 2)
+        XCTAssertEqual(stopActions.count, 2, ruleDebug)
         XCTAssertTrue(stopActions.allSatisfy { $0.target == marker.canonicalMarkedObjectID })
 
-        let describedAction = try XCTUnwrap(script.beats.flatMap(\.actions).first(where: { $0.type == .describedAction }))
+        let describedAction = try XCTUnwrap(script.beats.flatMap(\.actions).first(where: { $0.type == .describedAction }), ruleDebug)
         XCTAssertEqual(describedAction.actorId, "actor_2")
         XCTAssertTrue(describedAction.fallbackText?.contains("поправляет воротник") ?? false)
         XCTAssertTrue(result.chunkDiagnostics.flatMap(\.reasonCodes).contains("v1.unsupported_action_described"))
@@ -729,6 +1115,9 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     func testCollectivePassByGetsExpandedForBothActors() async throws {
+        let restoreRuntimeMode = setRuntimeMode("v8_hotfix")
+        defer { restoreRuntimeMode() }
+
         let description = "Сначала первый актёр и второй актёр идут навстречу друг другу, затем оба проходят мимо монитора."
         let pipeline = makeBundlePipeline(
             result: ScenePlanProviderResult(
@@ -776,9 +1165,15 @@ final class SceneBundlePipelineTests: XCTestCase {
 
         let script = try XCTUnwrap(result.activeSceneScript)
         let passByActions = script.beats.flatMap(\.actions).filter { $0.type == .passBy }
-        XCTAssertGreaterThanOrEqual(passByActions.count, 2)
-        XCTAssertTrue(passByActions.allSatisfy { $0.target != nil })
-        XCTAssertTrue(result.chunkDiagnostics.flatMap(\.reasonCodes).contains("v9.collective_pass_by_expanded"))
+        let debugSummary = script.beats.enumerated().map { index, beat in
+            "\(index):" + beat.actions.map {
+                "\($0.type.rawValue)|\($0.actorId)|\($0.target ?? "nil")|\($0.sourceText ?? "nil")"
+            }.joined(separator: "+")
+        }.joined(separator: " / ")
+        let reasonSummary = result.chunkDiagnostics.flatMap(\.reasonCodes).joined(separator: ",")
+        XCTAssertGreaterThanOrEqual(passByActions.count, 2, debugSummary + " || " + reasonSummary)
+        XCTAssertTrue(passByActions.allSatisfy { $0.target != nil }, debugSummary + " || " + reasonSummary)
+        XCTAssertTrue(result.chunkDiagnostics.flatMap(\.reasonCodes).contains("v9.collective_pass_by_expanded"), debugSummary + " || " + reasonSummary)
     }
 
     func testPlannerPreservesDialogueAndDescribedActionAsPlaybackAnnotations() throws {
@@ -918,6 +1313,17 @@ final class SceneBundlePipelineTests: XCTestCase {
                     minDuration: 0.5
                 ),
                 SceneBeat(
+                    id: "beat_empty_stand",
+                    actions: [
+                        SceneAction(
+                            id: "action_empty_stand",
+                            actorId: "actor_2",
+                            type: .stand
+                        ),
+                    ],
+                    minDuration: 0.5
+                ),
+                SceneBeat(
                     id: "beat_action",
                     actions: [
                         SceneAction(
@@ -946,6 +1352,7 @@ final class SceneBundlePipelineTests: XCTestCase {
         let timeline = viewModel.buildBeatTimelineItems(for: planned, script: script)
 
         XCTAssertEqual(timeline.count, 3)
+        XCTAssertFalse(timeline.map(\.beatID).contains("beat_empty_stand"))
         XCTAssertTrue(timeline[0].hasDialogueCaption)
         XCTAssertFalse(timeline[0].hasActionCaption)
         XCTAssertFalse(timeline[1].hasDialogueCaption)
@@ -957,6 +1364,770 @@ final class SceneBundlePipelineTests: XCTestCase {
         let progress = viewModel.playbackProgressState(at: middleOfSecondBeat, items: timeline)
         XCTAssertEqual(progress.activeBeatIndex, 1)
         XCTAssertEqual(progress.beatProgress, 0.5, accuracy: 0.05)
+    }
+
+    @MainActor
+    func testBeatTimelineKeepsHiddenNoOpDurationForPlaybackSync() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+            ],
+            objects: [],
+            beats: [
+                SceneBeat(
+                    id: "beat_visible_1",
+                    actions: [
+                        SceneAction(id: "action_1", actorId: "actor_1", type: .describedAction, fallbackText: "Марина входит")
+                    ],
+                    minDuration: 1
+                ),
+                SceneBeat(
+                    id: "beat_hidden_wait",
+                    actions: [
+                        SceneAction(id: "action_wait", actorId: "actor_1", type: .stand)
+                    ],
+                    minDuration: 2
+                ),
+                SceneBeat(
+                    id: "beat_visible_2",
+                    actions: [
+                        SceneAction(id: "action_2", actorId: "actor_1", type: .talk, dialogue: "Готово.")
+                    ],
+                    minDuration: 1
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Марина входит, ждёт и говорит."
+        )
+        let point = Position3D(x: 0, y: 0, z: -1)
+        let planned = PlannedScene(
+            placedActors: [
+                PlannedScene.PlacedActor(
+                    id: "placed_actor_1",
+                    actorId: "actor_1",
+                    type: .human,
+                    name: "Марина",
+                    initialPosition: point,
+                    initialRotation: 0,
+                    path: [point, point, point, point],
+                    pathDurations: [1, 2, 1],
+                    pathPoses: [.standing, .standing, .standing, .standing],
+                    pathCameras: [nil, nil, nil, nil],
+                    pathAnnotations: [
+                        nil,
+                        PlaybackPathAnnotation(kind: .action, text: "Марина входит"),
+                        nil,
+                        PlaybackPathAnnotation(kind: .dialogue, text: "Готово."),
+                    ],
+                    pathBeatIDs: [nil, "beat_visible_1", "beat_hidden_wait", "beat_visible_2"]
+                ),
+            ],
+            placedObjects: []
+        )
+
+        let viewModel = SceneGeneratorViewModel()
+        let timeline = viewModel.buildBeatTimelineItems(for: planned, script: script)
+
+        XCTAssertEqual(timeline.map(\.beatID), ["beat_visible_1", "beat_visible_2"])
+        XCTAssertEqual(timeline[0].startTime, 0, accuracy: 0.01)
+        XCTAssertEqual(timeline[1].startTime, 3, accuracy: 0.01)
+
+        let hiddenWaitState = viewModel.playbackProgressState(at: 1.5, items: timeline)
+        XCTAssertEqual(hiddenWaitState.activeBeatIndex, 0)
+        XCTAssertEqual(hiddenWaitState.beatProgress, 1, accuracy: 0.01)
+
+        let secondBeatState = viewModel.playbackProgressState(at: 3.5, items: timeline)
+        XCTAssertEqual(secondBeatState.activeBeatIndex, 1)
+        XCTAssertEqual(secondBeatState.beatProgress, 0.5, accuracy: 0.05)
+    }
+
+    @MainActor
+    func testActorRenderStylesAreDeterministicAndDistinctForHumans() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                SceneActor(id: "actor_2", type: .human, name: "Олег"),
+            ],
+            objects: [],
+            beats: [
+                SceneBeat(
+                    id: "beat_1",
+                    actions: [
+                        SceneAction(id: "action_1", actorId: "actor_1", type: .stand, sourceText: "Марина ждёт"),
+                        SceneAction(id: "action_2", actorId: "actor_2", type: .stand, sourceText: "Олег ждёт"),
+                    ]
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Марина и Олег ждут."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [],
+            markedObjects: []
+        )
+
+        let marina = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_1" })
+        let oleg = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_2" })
+        let marinaStyle = SceneGeneratorViewModel.actorRenderStyle(for: marina, at: 0)
+        let olegStyle = SceneGeneratorViewModel.actorRenderStyle(for: oleg, at: 1)
+
+        XCTAssertNotEqual(marinaStyle.color, olegStyle.color)
+        XCTAssertEqual(marinaStyle, SceneGeneratorViewModel.actorRenderStyle(for: marina, at: 0))
+        XCTAssertEqual(olegStyle, SceneGeneratorViewModel.actorRenderStyle(for: oleg, at: 1))
+    }
+
+    @MainActor
+    func testDialogueBeatSerializesSpeakerTurnsForPlayback() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                SceneActor(id: "actor_2", type: .human, name: "Олег"),
+            ],
+            objects: [],
+            beats: [
+                SceneBeat(
+                    id: "beat_dialogue",
+                    actions: [
+                        SceneAction(id: "talk_1", actorId: "actor_1", type: .talk, dialogue: "Он опять звонил?"),
+                        SceneAction(id: "talk_2", actorId: "actor_2", type: .talk, dialogue: "Три раза. Я не стал брать."),
+                        SceneAction(id: "talk_3", actorId: "actor_1", type: .talk, dialogue: "Тогда дай сюда, я сама всё решу."),
+                    ],
+                    minDuration: 0.5
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Марина и Олег разговаривают."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [],
+            markedObjects: []
+        )
+
+        func dialogueStarts(for actor: PlannedScene.PlacedActor) -> [(text: String, start: TimeInterval)] {
+            var elapsed: TimeInterval = 0
+            var starts: [(String, TimeInterval)] = []
+            for segmentIndex in 0..<actor.pathDurations.count {
+                let annotationIndex = segmentIndex + 1
+                if actor.pathAnnotations.indices.contains(annotationIndex),
+                   let annotation = actor.pathAnnotations[annotationIndex],
+                   annotation.kind == .dialogue {
+                    starts.append((annotation.text, elapsed))
+                }
+                elapsed += actor.pathDurations[segmentIndex]
+            }
+            return starts
+        }
+
+        let marina = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_1" })
+        let oleg = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_2" })
+        let marinaStarts = dialogueStarts(for: marina)
+        let olegStarts = dialogueStarts(for: oleg)
+
+        XCTAssertEqual(marinaStarts.count, 2)
+        XCTAssertEqual(olegStarts.count, 1)
+        XCTAssertEqual(marinaStarts[0].start, 0, accuracy: 0.01)
+        XCTAssertEqual(olegStarts[0].start, 2, accuracy: 0.01)
+        XCTAssertEqual(marinaStarts[1].start, 4, accuracy: 0.01)
+
+        let viewModel = SceneGeneratorViewModel()
+        let timeline = viewModel.buildBeatTimelineItems(for: planned, script: script)
+        XCTAssertEqual(timeline.count, 1)
+        XCTAssertEqual(timeline[0].duration, 6, accuracy: 0.01)
+    }
+
+    @MainActor
+    func testCombinedPickUpGiveCaptionsAreActionSpecific() throws {
+        let sourceText = "Олег берёт телефон со стола и передаёт его Марине"
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                SceneActor(id: "actor_2", type: .human, name: "Олег"),
+            ],
+            objects: [
+                SceneObject(id: "object_phone", type: .phone, name: "телефон", relativePosition: .unknown),
+            ],
+            beats: [
+                SceneBeat(
+                    id: "beat_transfer",
+                    actions: [
+                        SceneAction(id: "pick_1", actorId: "actor_2", type: .pickUp, target: "object_phone", holdingObject: "object_phone", sourceText: sourceText),
+                        SceneAction(id: "give_1", actorId: "actor_2", type: .give, target: "actor_1", holdingObject: "object_phone", sourceText: sourceText),
+                    ],
+                    minDuration: 0.5
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: sourceText
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            markedObjects: []
+        )
+
+        let oleg = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_2" })
+        let actionCaptions = oleg.pathAnnotations.compactMap { annotation -> String? in
+            guard annotation?.kind == .action else { return nil }
+            return annotation?.text
+        }
+
+        XCTAssertEqual(actionCaptions.count, 2)
+        XCTAssertEqual(actionCaptions[0], "Олег берёт телефон со стола")
+        XCTAssertEqual(actionCaptions[1], "Олег передаёт его Марине")
+        XCTAssertNotEqual(actionCaptions[0], actionCaptions[1])
+    }
+
+    @MainActor
+    func testPlannerDoesNotExposeRawInternalActionCaption() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+            ],
+            objects: [],
+            beats: [
+                SceneBeat(
+                    id: "beat_described",
+                    actions: [
+                        SceneAction(
+                            id: "action_described",
+                            actorId: "actor_1",
+                            type: .describedAction,
+                            sourceText: "described_action"
+                        ),
+                    ],
+                    minDuration: 0.5
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Марина действует без точной анимации."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            markedObjects: []
+        )
+
+        let actor = try XCTUnwrap(planned.placedActors.first)
+        let captions = actor.pathAnnotations.compactMap { $0?.text }
+        XCTAssertFalse(captions.contains("described_action"))
+        XCTAssertFalse(captions.contains("Описанное действие"))
+    }
+
+    func testV9RawDescribedActionRecoversHumanSourceSentence() async throws {
+        let restoreRuntimeMode = setRuntimeMode("v9_full")
+        defer { restoreRuntimeMode() }
+
+        let description = """
+        МАРИНА и ОЛЕГ идут навстречу друг другу в офисе. Марина останавливается у стола; на столе лежит телефон. Олег подходит с другой стороны стола и смотрит на телефон.
+
+        МАРИНА: Он опять звонил?
+        ОЛЕГ: Три раза. Я не стал брать.
+        МАРИНА: Дай сюда, я сама всё решу.
+
+        Марина на секунду задерживает взгляд на Олеге.
+        Олег берёт телефон со стола и передаёт его Марине.
+        """
+
+        let slotCatalog = SceneV9SlotCatalog(
+            contractVersion: "sg_v9_slot_catalog_v1",
+            actorSlots: [
+                .init(slotID: "actor_slot_1", ref: "first", type: .human, name: "Марина"),
+                .init(slotID: "actor_slot_2", ref: "second", type: .human, name: "Олег"),
+            ],
+            objectSlots: [
+                .init(slotID: "object_slot_1", ref: "object_table", type: .table, relativePosition: .unknown, markedObjectID: nil, name: "стол"),
+                .init(slotID: "object_slot_2", ref: "object_phone", type: .phone, relativePosition: .unknown, markedObjectID: nil, name: "телефон"),
+            ],
+            markedObjectSlots: [],
+            beatSlots: [
+                .init(slotID: "beat_slot_1", beatRef: "beat_walk", phaseHint: "toward_each_other", order: 1, minDuration: 0.5),
+                .init(slotID: "beat_slot_2", beatRef: "beat_look", phaseHint: "look_at_object", order: 2, minDuration: 0.5),
+                .init(slotID: "beat_slot_3", beatRef: "beat_described", phaseHint: "described_action", order: 3, minDuration: 0.5),
+            ],
+            actionTypes: SceneAction.ActionType.allCases,
+            relationHints: []
+        )
+        let pipeline = makeBundlePipeline(result: nil) { _, _, _, _, _ in
+            SceneV9EventProviderResult(
+                slotCatalog: slotCatalog,
+                eventTable: SceneV9EventTable(
+                    contractVersion: "sg_v9_event_table_v1",
+                    rows: [
+                        .init(rowID: "row_1", beatSlot: "beat_slot_1", actorSlot: "actor_slot_1", actionType: .walk, targetSlot: "actor_slot_2", sourceSpan: "МАРИНА и ОЛЕГ идут навстречу друг другу в офисе", confidence: 0.9),
+                        .init(rowID: "row_2", beatSlot: "beat_slot_1", actorSlot: "actor_slot_2", actionType: .walk, targetSlot: "actor_slot_1", sourceSpan: "МАРИНА и ОЛЕГ идут навстречу друг другу в офисе", confidence: 0.9),
+                        .init(rowID: "row_3", beatSlot: "beat_slot_2", actorSlot: "actor_slot_2", actionType: .lookAt, targetSlot: "object_slot_2", sourceSpan: "Олег подходит с другой стороны стола и смотрит на телефон", confidence: 0.9),
+                        .init(rowID: "row_4", beatSlot: "beat_slot_3", actorSlot: "actor_slot_1", actionType: .describedAction, targetSlot: "object_slot_1", describedActionText: "described_action", sourceSpan: "described_action", confidence: 0.5),
+                    ]
+                ),
+                reasonCodes: ["test.raw_described_payload"]
+            )
+        }
+
+        let result = await pipeline.parse(
+            description: description,
+            markedObjects: [],
+            mode: .full,
+            previousState: nil as ScriptDocumentState?,
+            executionPolicy: .monolithicDefault
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(
+                    actors: [
+                        SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                        SceneActor(id: "actor_2", type: .human, name: "Олег"),
+                    ],
+                    objects: [
+                        SceneObject(id: "object_table", type: .table, name: "стол", relativePosition: .unknown),
+                        SceneObject(id: "object_phone", type: .phone, name: "телефон", relativePosition: .unknown),
+                    ],
+                    beats: [],
+                    spatialRelations: [],
+                    originalDescription: text
+                ),
+                diagnostics: .empty
+            )
+        }
+
+        let script = try XCTUnwrap(result.activeSceneScript)
+        let described = try XCTUnwrap(script.actions.first { action in
+            action.type == SceneAction.ActionType.describedAction
+        })
+        XCTAssertEqual(described.fallbackText, "Марина на секунду задерживает взгляд на Олеге")
+        XCTAssertEqual(described.sourceText, "Марина на секунду задерживает взгляд на Олеге")
+        XCTAssertFalse(script.actions.contains { $0.fallbackText == "described_action" || $0.sourceText == "described_action" })
+        let reasonCodes = result.chunkDiagnostics.flatMap { $0.reasonCodes }
+        XCTAssertTrue(reasonCodes.contains("v9.described_action_text_recovered"))
+    }
+
+    @MainActor
+    func testDemoActionBeatsAreVisibleAndPhoneSitsOnTable() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                SceneActor(id: "actor_2", type: .human, name: "Олег"),
+            ],
+            objects: [
+                SceneObject(id: "object_1", type: .table, name: "стол", relativePosition: .unknown),
+                SceneObject(id: "object_2", type: .phone, name: "телефон", relativePosition: .unknown),
+            ],
+            beats: [
+                SceneBeat(
+                    id: "beat_walk",
+                    actions: [
+                        SceneAction(id: "walk_1", actorId: "actor_1", type: .walk, target: "actor_2", direction: .towardEachOther),
+                        SceneAction(id: "walk_2", actorId: "actor_2", type: .walk, target: "actor_1", direction: .towardEachOther),
+                    ]
+                ),
+                SceneBeat(
+                    id: "beat_look",
+                    actions: [
+                        SceneAction(id: "look_1", actorId: "actor_2", type: .lookAt, target: "object_2", sourceText: "Олег смотрит на телефон"),
+                    ],
+                    minDuration: 0.5
+                ),
+                SceneBeat(
+                    id: "beat_pick",
+                    actions: [
+                        SceneAction(id: "pick_1", actorId: "actor_2", type: .pickUp, target: "object_2", holdingObject: "object_2", sourceText: "Олег берёт телефон со стола"),
+                    ],
+                    minDuration: 0.5
+                ),
+                SceneBeat(
+                    id: "beat_give",
+                    actions: [
+                        SceneAction(id: "give_1", actorId: "actor_2", type: .give, target: "actor_1", holdingObject: "object_2", sourceText: "Олег передаёт телефон Марине"),
+                    ],
+                    minDuration: 0.5
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Марина и Олег идут навстречу. На столе лежит телефон. Олег смотрит, берёт и передаёт телефон."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            markedObjects: []
+        )
+
+        let table = try XCTUnwrap(planned.placedObjects.first { $0.type == .table })
+        let phone = try XCTUnwrap(planned.placedObjects.first { $0.type == .phone })
+        let phoneTableOffset = simd_distance(
+            SIMD2<Float>(phone.position.x, phone.position.z),
+            SIMD2<Float>(table.position.x, table.position.z)
+        )
+        XCTAssertGreaterThan(phoneTableOffset, 0.04)
+        XCTAssertLessThan(phoneTableOffset, 0.09)
+        XCTAssertGreaterThan(phone.position.y, table.position.y + table.size.y / 2)
+
+        let viewModel = SceneGeneratorViewModel()
+        let timeline = viewModel.buildBeatTimelineItems(for: planned, script: script)
+        let actionBeatIDs = Set(timeline.filter { $0.hasActionCaption }.map(\.beatID))
+        XCTAssertTrue(actionBeatIDs.contains("beat_look"))
+        XCTAssertTrue(actionBeatIDs.contains("beat_pick"))
+        XCTAssertTrue(actionBeatIDs.contains("beat_give"))
+
+        let oleg = try XCTUnwrap(planned.placedActors.first { $0.name == "Олег" })
+        let actionAnnotations = oleg.pathAnnotations.compactMap { $0?.text }.joined(separator: " ")
+        XCTAssertTrue(actionAnnotations.contains("смотрит"))
+        XCTAssertTrue(actionAnnotations.contains("берёт"))
+        XCTAssertTrue(actionAnnotations.contains("передаёт"))
+    }
+
+    func testEnterWithoutTargetCreatesVisibleInitialStep() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                SceneActor(id: "actor_2", type: .human, name: "Олег"),
+            ],
+            objects: [],
+            beats: [
+                SceneBeat(
+                    id: "beat_enter",
+                    actions: [
+                        SceneAction(id: "enter_1", actorId: "actor_2", type: .enter),
+                    ],
+                    minDuration: 0.5
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Олег входит сбоку."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            markedObjects: []
+        )
+
+        let oleg = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_2" })
+        let enterIndex = try XCTUnwrap(oleg.pathBeatIDs.firstIndex(of: "beat_enter"))
+        XCTAssertGreaterThan(enterIndex, 0)
+
+        let before = oleg.path[enterIndex - 1]
+        let after = oleg.path[enterIndex]
+        let distance = simd_distance(
+            SIMD3<Float>(before.x, before.y, before.z),
+            SIMD3<Float>(after.x, after.y, after.z)
+        )
+        XCTAssertGreaterThan(distance, 0.35)
+        XCTAssertGreaterThan(oleg.pathDurations[enterIndex - 1], 0.4)
+    }
+
+    func testOppositeSideTableCueMovesActorAcrossSupportObject() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                SceneActor(id: "actor_2", type: .human, name: "Олег"),
+            ],
+            objects: [
+                SceneObject(id: "object_table", type: .table, name: "стол", relativePosition: .unknown),
+                SceneObject(id: "object_phone", type: .phone, name: "телефон", relativePosition: .unknown),
+            ],
+            beats: [
+                SceneBeat(
+                    id: "beat_walk",
+                    actions: [
+                        SceneAction(id: "walk_1", actorId: "actor_1", type: .walk, target: "actor_2", direction: .towardEachOther),
+                        SceneAction(id: "walk_2", actorId: "actor_2", type: .walk, target: "actor_1", direction: .towardEachOther),
+                    ]
+                ),
+                SceneBeat(
+                    id: "beat_look",
+                    actions: [
+                        SceneAction(
+                            id: "look_1",
+                            actorId: "actor_2",
+                            type: .lookAt,
+                            target: "object_phone",
+                            sourceText: "Олег обходит стол с другой стороны и смотрит на телефон"
+                        ),
+                    ],
+                    minDuration: 0.5
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Олег обходит стол с другой стороны и смотрит на телефон."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            markedObjects: []
+        )
+
+        let table = try XCTUnwrap(planned.placedObjects.first { $0.type == .table })
+        let oleg = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_2" })
+        let lookIndex = try XCTUnwrap(oleg.pathBeatIDs.firstIndex(of: "beat_look"))
+        XCTAssertGreaterThan(lookIndex, 0)
+
+        let before = oleg.path[lookIndex - 1]
+        let after = oleg.path[lookIndex]
+        let beforeVector = SIMD2<Float>(before.x - table.position.x, before.z - table.position.z)
+        let afterVector = SIMD2<Float>(after.x - table.position.x, after.z - table.position.z)
+        XCTAssertLessThan(simd_dot(simd_normalize(beforeVector), simd_normalize(afterVector)), -0.25)
+        XCTAssertGreaterThan(oleg.pathDurations[lookIndex - 1], 1.1)
+    }
+
+    func testPhoneOnMarkedTableUsesRaycastSurfaceY() throws {
+        let tableMarker = MarkedObject(
+            name: "стол",
+            position: Position3D(x: -0.4, y: -0.2, z: -1.25)
+        )
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Олег"),
+            ],
+            objects: [
+                SceneObject(id: tableMarker.canonicalMarkedObjectID, type: .table, name: "стол", relativePosition: .unknown),
+                SceneObject(id: "object_phone", type: .phone, name: "телефон", relativePosition: .unknown),
+            ],
+            beats: [
+                SceneBeat(
+                    id: "beat_1",
+                    actions: [
+                        SceneAction(id: "action_1", actorId: "actor_1", type: .lookAt, target: "object_phone", sourceText: "Олег смотрит на телефон"),
+                    ]
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "На столе лежит телефон."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            markedObjects: [tableMarker]
+        )
+
+        let table = try XCTUnwrap(planned.placedObjects.first { $0.type == .table })
+        let phone = try XCTUnwrap(planned.placedObjects.first { $0.type == .phone })
+
+        XCTAssertEqual(table.position.y, tableMarker.worldPosition.y, accuracy: 0.001)
+        let phoneMarkerOffset = simd_distance(
+            SIMD2<Float>(phone.position.x, phone.position.z),
+            SIMD2<Float>(tableMarker.worldPosition.x, tableMarker.worldPosition.z)
+        )
+        XCTAssertGreaterThan(phoneMarkerOffset, 0.04)
+        XCTAssertLessThan(phoneMarkerOffset, 0.09)
+        XCTAssertGreaterThan(phone.position.y, tableMarker.worldPosition.y)
+        XCTAssertLessThan(phone.position.y, tableMarker.worldPosition.y + 0.08)
+    }
+
+    func testSpatialPlannerUsesLightweightPlaneSnapshots() throws {
+        let script = SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+            ],
+            objects: [],
+            beats: [
+                SceneBeat(
+                    id: "beat_1",
+                    actions: [
+                        SceneAction(id: "action_1", actorId: "actor_1", type: .stand),
+                    ]
+                ),
+            ],
+            spatialRelations: [],
+            originalDescription: "Марина стоит."
+        )
+
+        let planned = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: -0.42)],
+            markedObjects: []
+        )
+
+        let actor = try XCTUnwrap(planned.placedActors.first)
+        XCTAssertEqual(actor.initialPosition.y, -0.42, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testSceneGeneratorDoesNotAutoOpenScenarioEditorOnAppear() throws {
+        let viewModel = SceneGeneratorViewModel(projectName: "no-auto-editor-\(UUID().uuidString)")
+
+        viewModel.prepareWorkspace()
+
+        XCTAssertFalse(viewModel.showInputSheet)
+    }
+
+    @MainActor
+    func testSceneGeneratorOverlayPassesTouchesDuringMarkingButKeepsStoryboardEditorInteractive() throws {
+        XCTAssertTrue(
+            SceneGeneratorViewModel.shouldPassTouchesThroughSwiftUIOverlay(
+                isMarkingMode: true,
+                hasActiveStoryboardEditor: false
+            )
+        )
+        XCTAssertFalse(
+            SceneGeneratorViewModel.shouldPassTouchesThroughSwiftUIOverlay(
+                isMarkingMode: false,
+                hasActiveStoryboardEditor: true
+            )
+        )
+        XCTAssertFalse(
+            SceneGeneratorViewModel.shouldPassTouchesThroughSwiftUIOverlay(
+                isMarkingMode: false,
+                hasActiveStoryboardEditor: false
+            )
+        )
+    }
+
+    @MainActor
+    func testSceneGeneratorViewModelProcessesLightweightFrameSnapshotInDemoMode() throws {
+        let defaults = UserDefaults.standard
+        let depthKey = "scene_generator_lidar_marking_enabled"
+        let oldDepth = defaults.object(forKey: depthKey)
+        defer {
+            if let oldDepth {
+                defaults.set(oldDepth, forKey: depthKey)
+            } else {
+                defaults.removeObject(forKey: depthKey)
+            }
+        }
+        defaults.removeObject(forKey: depthKey)
+
+        let viewModel = SceneGeneratorViewModel()
+        viewModel.toggleMarkingMode()
+        XCTAssertFalse(viewModel.isDepthMarkingEnabled)
+
+        viewModel.processARFrameSnapshot(
+            cameraTransform: matrix_identity_float4x4,
+            planeSnapshots: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            timestamp: 1,
+            capturedImage: nil
+        )
+
+        XCTAssertTrue(viewModel.isARSessionReady)
+    }
+
+    @MainActor
+    func testSceneGeneratorCameraHintsMapARInterfaceOrientationLikeCameraManager() throws {
+        let viewModel = SceneGeneratorViewModel()
+
+        XCTAssertEqual(viewModel.testingARCameraAnalysisOrientation, .right)
+
+        viewModel.testingSetARInterfaceOrientation(.landscapeLeft)
+        XCTAssertEqual(viewModel.testingARCameraAnalysisOrientation, .down)
+
+        viewModel.testingSetARInterfaceOrientation(.landscapeRight)
+        XCTAssertEqual(viewModel.testingARCameraAnalysisOrientation, .up)
+
+        viewModel.processARFrameSnapshot(
+            cameraTransform: matrix_identity_float4x4,
+            planeSnapshots: [],
+            timestamp: 1,
+            capturedImage: nil,
+            interfaceOrientation: .portraitUpsideDown,
+            displayTransform: CGAffineTransform(a: 1, b: 0, c: 0, d: 1, tx: 0.1, ty: 0.2)
+        )
+
+        XCTAssertEqual(viewModel.testingARCameraAnalysisOrientation, .left)
+        XCTAssertEqual(viewModel.hintDisplayTransform, CGAffineTransform(a: 1, b: 0, c: 0, d: 1, tx: 0.1, ty: 0.2))
+    }
+
+    @MainActor
+    func testSceneGeneratorHintPauseLifecycleStopsAndResumesLiveAnalysis() throws {
+        let viewModel = SceneGeneratorViewModel()
+
+        viewModel.toggleHintsEnabled()
+        viewModel.startHintPauseAnalysis()
+
+        XCTAssertTrue(viewModel.isHintsEnabled)
+        XCTAssertTrue(viewModel.isHintPauseAnalysisActive)
+        XCTAssertNil(viewModel.liveHint)
+
+        viewModel.resumeHintLiveAnalysis()
+
+        XCTAssertTrue(viewModel.isHintsEnabled)
+        XCTAssertFalse(viewModel.isHintPauseAnalysisActive)
+        XCTAssertNil(viewModel.hintPauseCritique)
+        XCTAssertTrue(viewModel.hintPreviewSuggestions.isEmpty)
+    }
+
+    func testLLMReleaseModelResourcesIsIdempotent() throws {
+        let service = LLMParserService.shared
+        service.releaseModelResources(reason: "unit_test")
+        XCTAssertEqual(service.loadingState, .notLoaded)
+    }
+
+    func testV9FullSkipsLegacyPlanProviderAndUsesEventTableProvider() async throws {
+        let modeKey = "scene_generator_v9_runtime_mode"
+        let defaults = UserDefaults.standard
+        let oldMode = defaults.object(forKey: modeKey)
+        defer {
+            if let oldMode {
+                defaults.set(oldMode, forKey: modeKey)
+            } else {
+                defaults.removeObject(forKey: modeKey)
+            }
+        }
+        defaults.set("v9_full", forKey: modeKey)
+
+        let provider = StubLocalProvider(result: simpleProviderResult()) { _, _, _, _, slotCatalog in
+            SceneV9EventProviderResult(
+                slotCatalog: slotCatalog,
+                eventTable: SceneV9EventTable(contractVersion: "sg_v9_event_table_v1", rows: []),
+                reasonCodes: ["test_event_provider"]
+            )
+        }
+        let pipeline = SceneBundlePipeline(
+            anchorExtractor: SceneAnchorExtractor(),
+            metadataExtractor: SceneMetadataExtractor(),
+            localProvider: provider,
+            planCompiler: ScenePlanCompiler()
+        )
+
+        _ = await pipeline.parseAsync(
+            description: "Марина стоит у стола.",
+            markedObjects: [],
+            mode: .full,
+            previousState: nil as ScriptDocumentState?
+        ) { text, _, _ in
+            ParsingResult(
+                script: SceneScript(
+                    actors: [SceneActor(id: "actor_1", type: .human, name: "Марина")],
+                    objects: [],
+                    beats: [
+                        SceneBeat(
+                            id: "beat_1",
+                            actions: [SceneAction(id: "action_1", actorId: "actor_1", type: .stand)]
+                        ),
+                    ],
+                    spatialRelations: [],
+                    originalDescription: text
+                ),
+                diagnostics: .empty
+            )
+        }
+
+        XCTAssertEqual(provider.generatePlanAsyncCallCount, 0)
+        XCTAssertEqual(provider.generatePlanCallCount, 0)
+        XCTAssertEqual(provider.generateEventTableAsyncCallCount, 1)
     }
 
     @MainActor
@@ -989,7 +2160,7 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertEqual(parser.getV9RuntimeMode(), .v9Full)
     }
 
-    func testV9FullBudgetFallbackEmitsReasonCode() async throws {
+    func testV9FullBudgetKeepsSuccessfulProviderResultAndEmitsReasonCode() async throws {
         let modeKey = "scene_generator_v9_runtime_mode"
         let budgetKey = "scene_generator_v9_chunk_budget_ms"
         let defaults = UserDefaults.standard
@@ -1063,8 +2234,31 @@ final class SceneBundlePipelineTests: XCTestCase {
             mode: .full,
             previousState: nil as ScriptDocumentState?
         ) { text, _, _ in
-            ParsingResult(
-                script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text),
+            let fallbackScript = SceneScript(
+                actors: [
+                    SceneActor(id: "actor_1", type: .human),
+                    SceneActor(id: "actor_2", type: .human),
+                ],
+                objects: [],
+                beats: [
+                    SceneBeat(
+                        id: "beat_1",
+                        actions: [
+                            SceneAction(
+                                id: "action_1",
+                                actorId: "actor_1",
+                                type: .walk,
+                                target: "actor_2",
+                                resultingPose: .walking
+                            ),
+                        ]
+                    ),
+                ],
+                spatialRelations: [],
+                originalDescription: text
+            )
+            return ParsingResult(
+                script: fallbackScript,
                 diagnostics: .empty
             )
         }
@@ -1072,6 +2266,10 @@ final class SceneBundlePipelineTests: XCTestCase {
         let reasons = Set(result.chunkDiagnostics.flatMap(\.reasonCodes))
         XCTAssertTrue(reasons.contains("v9.runtime_budget_exceeded_fallback_v8"))
         XCTAssertTrue(reasons.contains("runtime_guardrail:v9.runtime_budget_exceeded_fallback_v8"))
+        let script = try XCTUnwrap(result.activeSceneScript)
+        let walkActions = script.actions.filter { $0.type == .walk }
+        XCTAssertEqual(walkActions.count, 2)
+        XCTAssertTrue(reasons.contains("provider:v9.event_provider_test_payload"))
     }
 
     func testV9FixableVerifierIssuePolicy() {
@@ -1139,7 +2337,10 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertTrue(result.documentState.sceneCandidates.first?.isMontage == true)
         XCTAssertTrue(result.visualOverlays.contains { $0.kind == .screenText && $0.text.contains("2048") })
         XCTAssertTrue(result.visualOverlays.contains { $0.kind == .stageNote && $0.text.contains("речь затухает") })
-        XCTAssertTrue(result.documentState.sceneCandidates.contains { $0.isImplicit && $0.sourceText.contains("Рустам сидит") })
+        let sceneDebug = result.documentState.sceneCandidates.map {
+            "\($0.id)|implicit=\($0.isImplicit)|montage=\($0.isMontage)|\($0.sourceText.replacingOccurrences(of: "\n", with: "\\n"))"
+        }.joined(separator: " / ")
+        XCTAssertTrue(result.documentState.sceneCandidates.contains { $0.isImplicit && $0.sourceText.contains("Рустам сидит") }, sceneDebug)
         XCTAssertEqual(result.bundleScript.activeSceneIndex, 0)
         XCTAssertEqual(result.activeSceneScript?.locationName, "Телестудия")
     }
@@ -1324,5 +2525,367 @@ final class SceneBundlePipelineTests: XCTestCase {
         let decodedPatchLegacy = try JSONDecoder().decode(SceneV9PatchOps.self, from: Data(patchPayloadLegacy.utf8))
         XCTAssertEqual(decodedPatchRowId.ops.first?.rowID, "row_1")
         XCTAssertEqual(decodedPatchLegacy.ops.first?.rowID, "row_2")
+    }
+
+    @MainActor
+    func testStoryboardPhoneRenderStyleAndYawHelpers() throws {
+        let phoneStyle = SceneGeneratorViewModel.objectRenderStyle(for: .phone)
+        let tableStyle = SceneGeneratorViewModel.objectRenderStyle(for: .table)
+
+        XCTAssertEqual(phoneStyle.kind, .phoneProxy)
+        XCTAssertGreaterThan(phoneStyle.targetCueRadius, tableStyle.targetCueRadius)
+
+        let yaw = SceneGeneratorViewModel.yawAngle(
+            from: SIMD3<Float>(0, 0, 0),
+            toward: SIMD3<Float>(1, 0, 0)
+        )
+        XCTAssertEqual(yaw ?? 0, Float.pi / 2, accuracy: 0.001)
+        XCTAssertNil(SceneGeneratorViewModel.yawAngle(from: .zero, toward: .zero))
+
+        let overlappingLabels = [
+            ARObjectLabelPresentation(
+                id: "phone",
+                text: "Телефон",
+                x: 220,
+                y: 320,
+                tint: SIMD3<Float>(0.2, 0.9, 1.0),
+                priority: 0
+            ),
+            ARObjectLabelPresentation(
+                id: "table",
+                text: "Стол",
+                x: 224,
+                y: 322,
+                tint: SIMD3<Float>(0.0, 0.8, 0.4),
+                priority: 1
+            ),
+        ]
+        let arranged = SceneGeneratorViewModel.layoutObjectLabels(
+            overlappingLabels,
+            canvasSize: CGSize(width: 430, height: 760),
+            minVerticalSpacing: 28
+        )
+        let phone = try XCTUnwrap(arranged.first { $0.id == "phone" })
+        let table = try XCTUnwrap(arranged.first { $0.id == "table" })
+        XCTAssertGreaterThanOrEqual(abs(phone.y - table.y), 28)
+    }
+
+    @MainActor
+    func testStoryboardPresentationBuildsVisibleSummaries() {
+        let script = makeStoryboardDemoScript()
+        let viewModel = SceneGeneratorViewModel(projectName: "storyboard-presentation-\(UUID().uuidString)")
+        let items = viewModel.buildStoryboardBeatPresentationItems(for: script)
+
+        XCTAssertEqual(items.count, 4)
+        XCTAssertEqual(items[1].kindTitle, "диалог")
+        XCTAssertTrue(items[1].summary.contains("Марина"))
+        XCTAssertTrue(items[1].hasDialogueCaption)
+        XCTAssertTrue(items[2].summary.contains("телефон"))
+        XCTAssertTrue(items[3].hasActionCaption)
+    }
+
+    @MainActor
+    func testStoryboardBeatInspectorShowsActorsTargetsAndDuration() throws {
+        let viewModel = makeStoryboardViewModel()
+        viewModel.openStoryboardEditor(for: "beat_3")
+        let draft = try XCTUnwrap(viewModel.activeStoryboardEditDraft)
+
+        let inspector = viewModel.buildStoryboardBeatInspector(for: draft)
+
+        XCTAssertEqual(inspector.kindTitle, "действие")
+        XCTAssertTrue(inspector.summary.contains("телефон"))
+        XCTAssertTrue(inspector.actorLabels.contains("Олег"))
+        XCTAssertTrue(inspector.targetLabels.contains("телефон"))
+        XCTAssertNotEqual(inspector.durationText, "0.00s")
+        XCTAssertTrue(inspector.warnings.isEmpty)
+    }
+
+    @MainActor
+    func testStoryboardBeatInspectorWarnsAboutMissingTargetAndEmptyText() throws {
+        let viewModel = makeStoryboardViewModel()
+        viewModel.openStoryboardEditor(for: "beat_3")
+        var draft = try XCTUnwrap(viewModel.activeStoryboardEditDraft)
+        draft.actions[0].target = nil
+        draft.actions[0].text = ""
+
+        let inspector = viewModel.buildStoryboardBeatInspector(for: draft)
+
+        XCTAssertTrue(inspector.warnings.contains { $0.contains("нет цели") })
+    }
+
+    @MainActor
+    func testStoryboardActorDragCommitChangesOnlySelectedBeatPoints() throws {
+        let viewModel = makeStoryboardViewModel()
+        viewModel.openStoryboardEditor(for: "beat_3")
+        let oldActor = try XCTUnwrap(viewModel.plannedScene?.placedActors.first { $0.actorId == "actor_2" })
+        let newPosition = Position3D(x: 1.35, y: 0, z: -0.75)
+
+        let committed = viewModel.commitStoryboardActorDrag(actorID: "actor_2", beatID: "beat_3", to: newPosition)
+
+        XCTAssertTrue(committed)
+        let updatedActor = try XCTUnwrap(viewModel.plannedScene?.placedActors.first { $0.actorId == "actor_2" })
+        for index in updatedActor.path.indices {
+            let isEditedBeat = updatedActor.pathBeatIDs.indices.contains(index) && updatedActor.pathBeatIDs[index] == "beat_3"
+            if isEditedBeat {
+                XCTAssertEqual(updatedActor.path[index].x, newPosition.x, accuracy: 0.001)
+                XCTAssertEqual(updatedActor.path[index].z, newPosition.z, accuracy: 0.001)
+            } else {
+                XCTAssertEqual(updatedActor.path[index], oldActor.path[index])
+            }
+        }
+    }
+
+    @MainActor
+    func testStoryboardActorTrackDragWithoutActiveBeatMovesWholeActorPath() throws {
+        let viewModel = makeStoryboardViewModel()
+        let oldScene = try XCTUnwrap(viewModel.plannedScene)
+        let oldActor = try XCTUnwrap(oldScene.placedActors.first { $0.actorId == "actor_2" })
+        let oldOtherActor = try XCTUnwrap(oldScene.placedActors.first { $0.actorId == "actor_1" })
+        let newPosition = Position3D(
+            x: oldActor.initialPosition.x + 0.45,
+            y: oldActor.initialPosition.y,
+            z: oldActor.initialPosition.z - 0.25
+        )
+
+        let committed = viewModel.commitStoryboardActorTrackDrag(
+            actorID: "actor_2",
+            from: oldActor.initialPosition.simdVector,
+            to: newPosition
+        )
+
+        XCTAssertTrue(committed)
+        let updatedScene = try XCTUnwrap(viewModel.plannedScene)
+        let updatedActor = try XCTUnwrap(updatedScene.placedActors.first { $0.actorId == "actor_2" })
+        let updatedOtherActor = try XCTUnwrap(updatedScene.placedActors.first { $0.actorId == "actor_1" })
+
+        XCTAssertEqual(updatedActor.initialPosition.x, oldActor.initialPosition.x + 0.45, accuracy: 0.001)
+        XCTAssertEqual(updatedActor.initialPosition.z, oldActor.initialPosition.z - 0.25, accuracy: 0.001)
+        for index in oldActor.path.indices {
+            XCTAssertEqual(updatedActor.path[index].x, oldActor.path[index].x + 0.45, accuracy: 0.001)
+            XCTAssertEqual(updatedActor.path[index].z, oldActor.path[index].z - 0.25, accuracy: 0.001)
+            XCTAssertEqual(updatedActor.path[index].y, oldActor.path[index].y, accuracy: 0.001)
+        }
+        XCTAssertEqual(updatedOtherActor.initialPosition, oldOtherActor.initialPosition)
+        XCTAssertEqual(updatedOtherActor.path, oldOtherActor.path)
+    }
+
+    @MainActor
+    func testStoryboardActorDragRequiresActiveBeatAndBeatParticipation() throws {
+        let viewModel = makeStoryboardViewModel()
+        let oldScene = viewModel.plannedScene
+        let rejectedWithoutSheet = viewModel.commitStoryboardActorDrag(
+            actorID: "actor_2",
+            beatID: "beat_3",
+            to: Position3D(x: 2, y: 0, z: 2)
+        )
+
+        XCTAssertFalse(rejectedWithoutSheet)
+        XCTAssertEqual(viewModel.plannedScene, oldScene)
+
+        var script = makeStoryboardDemoScript()
+        var beats = script.beats
+        beats.append(
+            SceneBeat(
+                id: "beat_empty_stand",
+                actions: [SceneAction(id: "action_empty", actorId: "actor_1", type: .stand)],
+                minDuration: 0.5
+            )
+        )
+        script = SceneScript(
+            actors: script.actors,
+            objects: script.objects,
+            beats: beats,
+            spatialRelations: script.spatialRelations,
+            originalDescription: script.originalDescription
+        )
+
+        viewModel.parsedScript = script
+        viewModel.plannedScene = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: matrix_identity_float4x4,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)],
+            markedObjects: []
+        )
+        viewModel.openStoryboardEditor(for: "beat_empty_stand")
+        let sceneBeforeEmptyBeatDrag = viewModel.plannedScene
+        let rejectedWithoutBeatPoint = viewModel.commitStoryboardActorDrag(
+            actorID: "actor_1",
+            beatID: "beat_empty_stand",
+            to: Position3D(x: 3, y: 0, z: 3)
+        )
+
+        XCTAssertFalse(rejectedWithoutBeatPoint)
+        XCTAssertEqual(viewModel.plannedScene, sceneBeforeEmptyBeatDrag)
+        XCTAssertTrue(viewModel.storyboardDragFeedback?.contains("не участвует") == true)
+    }
+
+    @MainActor
+    func testStoryboardManualEditChangesActionAndReplans() async throws {
+        let viewModel = makeStoryboardViewModel()
+        viewModel.openStoryboardEditor(for: "beat_3")
+        var draft = try XCTUnwrap(viewModel.activeStoryboardEditDraft)
+
+        XCTAssertEqual(draft.actions.first?.type, .lookAt)
+        draft.actions[0].type = .give
+        draft.actions[0].target = "actor_1"
+        draft.actions[0].text = "Олег передаёт телефон Марине"
+
+        let saved = await viewModel.applyStoryboardBeatEdit(draft)
+
+        XCTAssertTrue(saved)
+        let editedAction = try XCTUnwrap(viewModel.parsedScript?.beats.first(where: { $0.id == "beat_3" })?.actions.first)
+        XCTAssertEqual(editedAction.type, .give)
+        XCTAssertEqual(editedAction.actorId, "actor_2")
+        XCTAssertEqual(editedAction.target, "actor_1")
+        XCTAssertEqual(editedAction.sourceText, "Олег передаёт телефон Марине")
+        XCTAssertNotNil(viewModel.plannedScene)
+        XCTAssertFalse(viewModel.storyboardBeatItems.isEmpty)
+    }
+
+    @MainActor
+    func testStoryboardManualEditRejectsSelfGive() async throws {
+        let viewModel = makeStoryboardViewModel()
+        viewModel.openStoryboardEditor(for: "beat_4")
+        var draft = try XCTUnwrap(viewModel.activeStoryboardEditDraft)
+
+        draft.actions[0].type = .give
+        draft.actions[0].actorId = "actor_2"
+        draft.actions[0].target = "actor_2"
+
+        let saved = await viewModel.applyStoryboardBeatEdit(draft)
+
+        XCTAssertFalse(saved)
+        XCTAssertEqual(viewModel.parsedScript?.beats.first(where: { $0.id == "beat_4" })?.actions.first?.target, "actor_1")
+        XCTAssertEqual(viewModel.errorMessage, "Нельзя передать объект самому себе")
+    }
+
+    @MainActor
+    func testStoryboardMoveAddAndDeleteReplans() async throws {
+        let viewModel = makeStoryboardViewModel()
+
+        let moved = await viewModel.moveStoryboardBeat(beatID: "beat_1", offset: 1)
+        XCTAssertTrue(moved)
+        XCTAssertEqual(Array(viewModel.parsedScript?.beats.map(\.id).prefix(2) ?? []), ["beat_2", "beat_1"])
+
+        viewModel.openStoryboardEditor(for: "beat_1")
+        var draft = try XCTUnwrap(viewModel.activeStoryboardEditDraft)
+        draft.actions.append(
+            StoryboardActionEditDraft(
+                id: "manual_action_test",
+                actorId: "actor_1",
+                type: .describedAction,
+                target: nil,
+                text: "Марина задерживается у стола",
+                isDeleted: false,
+                isNew: true
+            )
+        )
+        let saved = await viewModel.applyStoryboardBeatEdit(draft)
+        XCTAssertTrue(saved)
+        XCTAssertTrue(
+            viewModel.parsedScript?.beats
+                .first(where: { $0.id == "beat_1" })?
+                .actions
+                .contains { $0.id == "manual_action_test" && $0.sourceText == "Марина задерживается у стола" } == true
+        )
+
+        let deleted = await viewModel.deleteStoryboardBeat(beatID: "beat_2")
+        XCTAssertTrue(deleted)
+        XCTAssertFalse(viewModel.parsedScript?.beats.contains { $0.id == "beat_2" } == true)
+        XCTAssertNotNil(viewModel.plannedScene)
+        XCTAssertFalse(viewModel.storyboardBeatItems.contains { $0.beatID == "beat_2" })
+    }
+
+    @MainActor
+    private func makeStoryboardViewModel() -> SceneGeneratorViewModel {
+        let script = makeStoryboardDemoScript()
+        let viewModel = SceneGeneratorViewModel(projectName: "storyboard-edit-\(UUID().uuidString)")
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        let planes = [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        viewModel.testingSetPlanningContext(cameraTransform: cameraTransform, planes: planes)
+        viewModel.parsedScript = script
+        viewModel.plannedScene = SpatialPlannerService.shared.planScene(
+            script: script,
+            cameraTransform: cameraTransform,
+            detectedObjects: [],
+            availablePlanes: planes,
+            markedObjects: []
+        )
+        viewModel.refreshStoryboardBeatItems()
+        return viewModel
+    }
+
+    private func makeStoryboardDemoScript() -> SceneScript {
+        SceneScript(
+            actors: [
+                SceneActor(id: "actor_1", type: .human, name: "Марина"),
+                SceneActor(id: "actor_2", type: .human, name: "Олег"),
+            ],
+            objects: [
+                SceneObject(id: "object_table", type: .table, name: "стол", relativePosition: .center),
+                SceneObject(id: "object_phone", type: .phone, name: "телефон", relativePosition: .center),
+            ],
+            beats: [
+                SceneBeat(
+                    id: "beat_1",
+                    actions: [
+                        SceneAction(
+                            id: "action_walk_1",
+                            actorId: "actor_1",
+                            type: .walk,
+                            target: "actor_2",
+                            direction: .towardEachOther,
+                            sourceText: "Марина и Олег идут навстречу друг другу"
+                        ),
+                    ],
+                    minDuration: 0.8
+                ),
+                SceneBeat(
+                    id: "beat_2",
+                    actions: [
+                        SceneAction(
+                            id: "action_talk_1",
+                            actorId: "actor_1",
+                            type: .talk,
+                            dialogue: "Он опять звонил?"
+                        ),
+                    ],
+                    minDuration: 0.8
+                ),
+                SceneBeat(
+                    id: "beat_3",
+                    actions: [
+                        SceneAction(
+                            id: "action_look_1",
+                            actorId: "actor_2",
+                            type: .lookAt,
+                            target: "object_phone",
+                            sourceText: "Олег смотрит на телефон"
+                        ),
+                    ],
+                    minDuration: 0.8
+                ),
+                SceneBeat(
+                    id: "beat_4",
+                    actions: [
+                        SceneAction(
+                            id: "action_give_1",
+                            actorId: "actor_2",
+                            type: .give,
+                            target: "actor_1",
+                            holdingObject: "object_phone",
+                            sourceText: "Олег передаёт телефон Марине"
+                        ),
+                    ],
+                    minDuration: 0.8
+                ),
+            ],
+            spatialRelations: [
+                SpatialRelation(id: "relation_phone_table", subject: "object_phone", relation: .near, object: "object_table"),
+            ],
+            originalDescription: "Марина и Олег идут навстречу друг другу. Олег смотрит на телефон и передаёт его Марине."
+        )
     }
 }

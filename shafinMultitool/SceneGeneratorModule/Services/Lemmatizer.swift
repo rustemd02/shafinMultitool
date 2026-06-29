@@ -134,9 +134,9 @@ final class Lemmatizer {
             return true
         }
         
-        // НЕ используем contains для избежания ложных срабатываний (например, "кот" в "актера")
-        // Только точное совпадение лемм или проверка на общий корень (минимум 4 символа)
-        let minRootLength = 4
+        // НЕ используем contains для избежания ложных срабатываний (например, "кот" в "актера").
+        // Общий корень короче 5 символов слишком легко склеивает разные слова: "телефон" и "телевизор" по "теле".
+        let minRootLength = 5
         if wordLemma.count >= minRootLength && keywordLemma.count >= minRootLength {
             let wordRoot = String(wordLemma.prefix(minRootLength))
             let keywordRoot = String(keywordLemma.prefix(minRootLength))

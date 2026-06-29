@@ -146,6 +146,7 @@ class CameraScreenViewController: UIViewController {
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        PerformanceMonitor.shared.stopMonitoring()
         // Clean up resources when leaving the screen
         cleanupResources()
     }
@@ -1136,4 +1137,3 @@ extension CameraScreenViewController: UIPickerViewDelegate {
         self.fetchSettingsButtonValues()
     }
 }
-

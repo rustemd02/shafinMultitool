@@ -317,6 +317,9 @@ final class SuggestionEngine {
         
         // Вертикальная коррекция (редкая для ландшафта)
         if abs(vertical) >= threshold * 1.3 {
+            // Legacy bbox-center vertical framing is too noisy for portraits:
+            // a readable person often sits below the upper-third line.
+            guard !features.subject.isFace && !features.subject.isPerson else { return nil }
             let direction = vertical > 0 ? "ниже" : "выше"
             return "Камеру чуть \(direction)"
         }

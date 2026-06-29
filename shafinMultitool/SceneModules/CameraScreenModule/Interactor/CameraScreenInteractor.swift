@@ -302,6 +302,8 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func startRecording() {
+        timer.invalidate()
+        elapsedTime = 1
         timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: .default)
         finishEditingAtOnce { _ in }
@@ -833,4 +835,3 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
 }
-

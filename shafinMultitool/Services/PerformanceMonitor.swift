@@ -49,6 +49,7 @@ final class PerformanceMonitor {
     // MARK: - Public Methods
     func startMonitoring(onUpdate: @escaping (PerformanceMetrics) -> Void) {
         self.onMetricsUpdate = onUpdate
+        guard displayLink == nil, updateTimer == nil else { return }
 
         // Start display link for FPS tracking
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))

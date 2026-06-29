@@ -33,8 +33,18 @@ struct SceneGeneratorView: View {
             SceneInputSheet(viewModel: viewModel)
         }
         .sheet(isPresented: $viewModel.showMarkerNameInput) {
-            MarkerNameInputSheet(viewModel: viewModel)
-                .presentationDetents([.height(220)])
+            MarkerNameInputSheet(
+                onCancel: {
+                    viewModel.cancelMarkerCreation()
+                },
+                onSave: { name in
+                    viewModel.createMarker(withName: name)
+                },
+                shouldCancelOnDisappear: {
+                    viewModel.pendingMarkerPosition != nil
+                }
+            )
+                .presentationDetents([.height(170)])
                 .presentationDragIndicator(.visible)
         }
         .alert("Ошибка", isPresented: .init(
@@ -52,50 +62,63 @@ struct SceneGeneratorView: View {
 }
 
 struct MarkerNameInputSheet: View {
-    @ObservedObject var viewModel: SceneGeneratorViewModel
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
+    let shouldCancelOnDisappear: () -> Bool
+
     @State private var markerName: String = ""
+    @State private var didFinishExplicitly = false
+    @FocusState private var isNameFocused: Bool
 
     var body: some View {
         NavigationView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Как назвать объект?")
-                    .font(.headline)
-                    .foregroundColor(.white)
-
-                Text("Например: шкаф, стол или стойка. Это имя используется для привязки реального объекта к описанию сцены.")
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.7))
-
-                TextField("Шкаф", text: $markerName)
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Название", text: $markerName)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isNameFocused)
+                    .submitLabel(.done)
+                    .onSubmit(saveMarkerIfPossible)
 
                 Spacer()
             }
             .padding()
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle("Новый маркер")
+            .navigationTitle("Маркер")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Отмена") {
-                        viewModel.cancelMarkerCreation()
+                        didFinishExplicitly = true
+                        onCancel()
                     }
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Сохранить") {
-                        viewModel.createMarker(withName: markerName)
-                        markerName = ""
+                        saveMarkerIfPossible()
                     }
                     .disabled(markerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
-        .onDisappear {
-            if viewModel.pendingMarkerPosition != nil {
-                viewModel.cancelMarkerCreation()
+        .onAppear {
+            DispatchQueue.main.async {
+                isNameFocused = true
             }
         }
+        .onDisappear {
+            if !didFinishExplicitly && shouldCancelOnDisappear() {
+                onCancel()
+            }
+        }
+    }
+
+    private func saveMarkerIfPossible() {
+        let trimmedName = markerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        didFinishExplicitly = true
+        onSave(trimmedName)
+        markerName = ""
     }
 }
 

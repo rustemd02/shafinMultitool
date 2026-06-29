@@ -30,6 +30,10 @@ final class SceneQualityGate {
         let providerNotes = providerResult.reasonCodes
         var blockingReasons: [String] = []
 
+        if providerNotes.contains("llm.max_tokens_reached") {
+            blockingReasons.append("llm_response_truncated")
+        }
+
         if plan.beats.isEmpty || plan.beats.contains(where: { $0.actions.isEmpty }) {
             blockingReasons.append("beat_collapse_or_empty")
         }

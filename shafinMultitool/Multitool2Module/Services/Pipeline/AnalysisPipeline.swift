@@ -26,6 +26,7 @@ struct DebugData {
     var visionSubjects: [VisionSubject] = []
     var visionMeasuredAt: Date?
     var saliencyCenter: CGPoint?
+    var saliencyRegion: CGRect?
 }
 
 private struct SendablePixelBuffer: @unchecked Sendable {
@@ -1554,11 +1555,91 @@ extension ActionTypeV1 {
 }
 
 struct OverlayAnnotationPresentation: Identifiable, Equatable, Sendable {
+    enum Tone: String, Equatable, Sendable {
+        case neutral
+        case success
+        case warning
+        case danger
+    }
+
     let id: String
     let kind: OverlayKind
     let direction: OverlayDirection?
     let targetRegion: NormalizedRect?
     let emphasis: Double
+    let tone: Tone
+    let label: String?
+
+    init(id: String,
+         kind: OverlayKind,
+         direction: OverlayDirection?,
+         targetRegion: NormalizedRect?,
+         emphasis: Double,
+         tone: Tone = .neutral,
+         label: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.direction = direction
+        self.targetRegion = targetRegion
+        self.emphasis = emphasis
+        self.tone = tone
+        self.label = label
+    }
+}
+
+private enum DemoCoachingSubjectKind: String, Equatable {
+    case object
+    case portrait
+    case dialogue
+}
+
+private struct DemoCoachingSubject: Equatable {
+    let kind: DemoCoachingSubjectKind
+    let rawLabel: String?
+    let displayLabel: String
+    let region: NormalizedRect
+    let confidence: Double
+}
+
+private struct DemoSubjectTrack {
+    var subject: DemoCoachingSubject
+    var stableCount: Int
+    var missCount: Int
+    var lastSeenAt: Date
+}
+
+private struct DemoCinematicPortraitStepEvidence {
+    var lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics?
+    var presentationCount: Int
+
+    static var empty: DemoCinematicPortraitStepEvidence {
+        DemoCinematicPortraitStepEvidence(lighting: nil, presentationCount: 0)
+    }
+}
+
+private enum DemoCinematicPortraitStep: String {
+    case darkenBackground
+    case addFaceLight
+    case reduceFaceOverexposure
+    case complete
+}
+
+private struct DemoCoachingDecision {
+    let hint: LiveHintPresentation?
+    let annotations: [OverlayAnnotationPresentation]
+    let suppressesPipelineHint: Bool
+}
+
+private struct DemoCoachingRule {
+    let id: String
+    let text: String
+    let shortVerdict: String
+    let supportingText: String
+    let actionText: String?
+    let actionType: ActionTypeV1?
+    let tone: OverlayAnnotationPresentation.Tone
+    let confidence: Double
+    let showHint: Bool
 }
 
 struct RecommendationPlanner {
@@ -1798,8 +1879,21 @@ struct FeatureSnapshotVisionSubject: Equatable {
 struct FeatureSnapshotVisionPayload: Equatable {
     let subjects: [FeatureSnapshotVisionSubject]
     let saliencyCenter: CGPoint?
+    let saliencyRegion: CGRect?
     let faceCount: Int
     let personCount: Int
+
+    init(subjects: [FeatureSnapshotVisionSubject],
+         saliencyCenter: CGPoint?,
+         saliencyRegion: CGRect? = nil,
+         faceCount: Int,
+         personCount: Int) {
+        self.subjects = subjects
+        self.saliencyCenter = saliencyCenter
+        self.saliencyRegion = saliencyRegion
+        self.faceCount = faceCount
+        self.personCount = personCount
+    }
 }
 
 struct FeatureSnapshotHorizonPayload: Equatable {
@@ -1811,6 +1905,17 @@ struct FeatureSnapshotLightingPayload: Equatable {
     let exposureBiasHint: Double
     let backlightIndex: Double
     let keyToFillRatio: Double?
+    let subjectLighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics?
+
+    init(exposureBiasHint: Double,
+         backlightIndex: Double,
+         keyToFillRatio: Double?,
+         subjectLighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics? = nil) {
+        self.exposureBiasHint = exposureBiasHint
+        self.backlightIndex = backlightIndex
+        self.keyToFillRatio = keyToFillRatio
+        self.subjectLighting = subjectLighting
+    }
 }
 
 struct FeatureSnapshotDetectedObject: Equatable {
@@ -1889,7 +1994,7 @@ struct PipelineFeatureSnapshotAdapter {
                 isFace: $0.isFace
             )
         }
-        guard !subjects.isEmpty || debugData.saliencyCenter != nil else {
+        guard !subjects.isEmpty || debugData.saliencyCenter != nil || debugData.saliencyRegion != nil else {
             return nil
         }
 
@@ -1898,6 +2003,7 @@ struct PipelineFeatureSnapshotAdapter {
         let payload = FeatureSnapshotVisionPayload(
             subjects: subjects,
             saliencyCenter: debugData.saliencyCenter,
+            saliencyRegion: debugData.saliencyRegion,
             faceCount: faceCount,
             personCount: personCount
         )
@@ -2016,11 +2122,13 @@ struct FeatureSnapshotAggregator {
         let aestheticPayload = sourceStatuses.aesthetic.available ? input.aesthetic?.value : nil
 
         let sortedVisionSubjects = sortVisionSubjects(visionPayload?.subjects ?? [])
+        let primaryFaceRegion = primaryFaceRegion(from: visionPayload?.subjects ?? [])
         let sortedDetections = sortDetections(detrPayload?.detections ?? [])
         let foregroundDetections = foregroundDetections(from: sortedDetections)
 
         let primaryCandidate = selectPrimaryCandidate(
             visionSubjects: sortedVisionSubjects,
+            saliencyRegion: visionPayload?.saliencyRegion,
             detections: foregroundDetections,
             sourceStatuses: sourceStatuses
         )
@@ -2034,8 +2142,10 @@ struct FeatureSnapshotAggregator {
             faceDetected: (visionPayload?.faceCount ?? 0) > 0,
             personDetected: (visionPayload?.personCount ?? 0) > 0 || (visionPayload?.faceCount ?? 0) > 0,
             personCount: visionPayload?.personCount ?? 0,
+            faceRegion: primaryFaceRegion,
             topObjectLabel: foregroundDetections.first?.label,
             topObjectConfidence: foregroundDetections.first?.confidence,
+            topObjectRegion: foregroundDetections.first.flatMap { normalizedRect(from: $0.boundingBox) },
             primaryCandidateRegion: primaryCandidate?.region,
             primaryCandidateConfidence: primaryCandidate?.effectiveConfidence
         )
@@ -2048,7 +2158,8 @@ struct FeatureSnapshotAggregator {
         let lightingFeatures = FrameFeatureSnapshot.LightingFeatures(
             exposureBiasHint: lightingPayload?.exposureBiasHint ?? 0,
             backlightIndex: lightingPayload?.backlightIndex ?? 0,
-            keyToFillRatio: lightingPayload?.keyToFillRatio
+            keyToFillRatio: lightingPayload?.keyToFillRatio,
+            subjectLighting: lightingPayload?.subjectLighting
         )
 
         let motionFeatures = FrameFeatureSnapshot.MotionFeatures(
@@ -2169,6 +2280,29 @@ struct FeatureSnapshotAggregator {
         }
     }
 
+    private func primaryFaceRegion(from subjects: [FeatureSnapshotVisionSubject]) -> NormalizedRect? {
+        let face = subjects
+            .filter { $0.isFace }
+            .stableSorted { lhs, rhs in
+                if lhs.confidence != rhs.confidence {
+                    return lhs.confidence > rhs.confidence
+                }
+                let lhsArea = max(0, Double(lhs.boundingBox.width * lhs.boundingBox.height))
+                let rhsArea = max(0, Double(rhs.boundingBox.width * rhs.boundingBox.height))
+                if lhsArea != rhsArea {
+                    return lhsArea > rhsArea
+                }
+                let lhsMidX = Double(lhs.boundingBox.midX)
+                let rhsMidX = Double(rhs.boundingBox.midX)
+                if lhsMidX != rhsMidX {
+                    return lhsMidX < rhsMidX
+                }
+                return Double(lhs.boundingBox.midY) < Double(rhs.boundingBox.midY)
+            }
+            .first
+        return face.flatMap { normalizedRect(from: $0.boundingBox) }
+    }
+
     private func sortDetections(_ detections: [FeatureSnapshotDetectedObject]) -> [FeatureSnapshotDetectedObject] {
         detections.stableSorted { lhs, rhs in
             if lhs.confidence != rhs.confidence {
@@ -2192,7 +2326,24 @@ struct FeatureSnapshotAggregator {
     }
 
     private func foregroundDetections(from detections: [FeatureSnapshotDetectedObject]) -> [FeatureSnapshotDetectedObject] {
-        detections.filter(isForegroundDetection)
+        detections
+            .filter(isForegroundDetection)
+            .stableSorted { lhs, rhs in
+                let lhsScore = foregroundDetectionPriorityScore(lhs)
+                let rhsScore = foregroundDetectionPriorityScore(rhs)
+                if lhsScore != rhsScore {
+                    return lhsScore > rhsScore
+                }
+                if lhs.confidence != rhs.confidence {
+                    return lhs.confidence > rhs.confidence
+                }
+                let lhsArea = max(0, Double(lhs.boundingBox.width * lhs.boundingBox.height))
+                let rhsArea = max(0, Double(rhs.boundingBox.width * rhs.boundingBox.height))
+                if lhsArea != rhsArea {
+                    return lhsArea < rhsArea
+                }
+                return lhs.label < rhs.label
+            }
     }
 
     private func isForegroundDetection(_ detection: FeatureSnapshotDetectedObject) -> Bool {
@@ -2215,6 +2366,15 @@ struct FeatureSnapshotAggregator {
         }
 
         return true
+    }
+
+    private func foregroundDetectionPriorityScore(_ detection: FeatureSnapshotDetectedObject) -> Double {
+        let label = normalizedObjectLabel(detection.label)
+        let area = max(0, Double(detection.boundingBox.width * detection.boundingBox.height))
+        let preferredAreaPenalty = min(0.28, abs(area - 0.16))
+        let demoObjectBonus = demoPriorityObjectLabels.contains(label) ? 0.55 : 0.0
+        let backgroundContextPenalty = backgroundContextObjectLabels.contains(label) ? 0.45 : 0.0
+        return detection.confidence + demoObjectBonus - backgroundContextPenalty - preferredAreaPenalty
     }
 
     private func normalizedObjectLabel(_ label: String) -> String {
@@ -2249,6 +2409,31 @@ struct FeatureSnapshotAggregator {
         ]
     }
 
+    private var demoPriorityObjectLabels: Set<String> {
+        [
+            "book",
+            "bottle",
+            "cell phone",
+            "cup",
+            "keyboard",
+            "laptop",
+            "potted plant",
+            "vase"
+        ]
+    }
+
+    private var backgroundContextObjectLabels: Set<String> {
+        [
+            "bed",
+            "cabinet",
+            "chair",
+            "paper",
+            "screen",
+            "sofa",
+            "tv"
+        ]
+    }
+
     private var largeFrameForegroundLabels: Set<String> {
         [
             "backpack",
@@ -2272,6 +2457,7 @@ struct FeatureSnapshotAggregator {
     }
 
     private func selectPrimaryCandidate(visionSubjects: [FeatureSnapshotVisionSubject],
+                                        saliencyRegion: CGRect?,
                                         detections: [FeatureSnapshotDetectedObject],
                                         sourceStatuses: FeatureSourceStatus) -> Candidate? {
         var candidates: [Candidate] = []
@@ -2285,6 +2471,22 @@ struct FeatureSnapshotAggregator {
                 Candidate(
                     source: .vision,
                     rawConfidence: subject.confidence,
+                    effectiveConfidence: effective,
+                    region: region
+                )
+            )
+        }
+
+        if visionSubjects.isEmpty,
+           detections.isEmpty,
+           let saliencyRegion,
+           isUsableSaliencyFallbackRegion(saliencyRegion),
+           let region = normalizedRect(from: saliencyRegion) {
+            let effective = clamp01(0.48 * visionSourceConfidence)
+            candidates.append(
+                Candidate(
+                    source: .vision,
+                    rawConfidence: 0.48,
                     effectiveConfidence: effective,
                     region: region
                 )
@@ -2327,6 +2529,19 @@ struct FeatureSnapshotAggregator {
             }
             return lhs.region.height < rhs.region.height
         }
+    }
+
+    private func isUsableSaliencyFallbackRegion(_ region: CGRect) -> Bool {
+        guard region.minX.isFinite,
+              region.minY.isFinite,
+              region.width.isFinite,
+              region.height.isFinite else {
+            return false
+        }
+        let area = Double(region.width * region.height)
+        guard area >= 0.004, area <= 0.45 else { return false }
+        guard region.width <= 0.78, region.height <= 0.78 else { return false }
+        return true
     }
 
     private func normalizedRect(from boundingBox: CGRect) -> NormalizedRect? {
@@ -2602,9 +2817,30 @@ struct PrimarySubjectResolver {
     private func buildCoreCandidates(snapshot: FrameFeatureSnapshot) -> [Candidate] {
         var candidates: [Candidate] = []
 
+        if let region = snapshot.subjectSignals.faceRegion, isValidRegion(region) {
+            let base = clamp01(max(
+                snapshot.subjectSignals.primaryCandidateConfidence ?? 0,
+                snapshot.sources.vision.confidence ?? 0,
+                0.70
+            ))
+            let reliability = max(snapshot.sources.vision.confidence ?? 0.70, 0.82)
+            candidates.append(
+                makeCandidate(
+                    id: "snapshot-face",
+                    kind: .face,
+                    label: nil,
+                    region: region,
+                    baseConfidence: base,
+                    sourceReliability: reliability
+                )
+            )
+        }
+
         if let region = snapshot.subjectSignals.primaryCandidateRegion, isValidRegion(region) {
             let kind: SubjectKind
-            if snapshot.subjectSignals.faceDetected {
+            if snapshot.subjectSignals.faceDetected,
+               let faceRegion = snapshot.subjectSignals.faceRegion,
+               regionLikelyMatches(region, faceRegion) {
                 kind = .face
             } else if snapshot.subjectSignals.personDetected {
                 kind = .person
@@ -2627,13 +2863,26 @@ struct PrimarySubjectResolver {
 
         if let objectLabel = snapshot.subjectSignals.topObjectLabel {
             let base = clamp01(snapshot.subjectSignals.topObjectConfidence ?? 0)
-            let reliability = snapshot.sources.detr.confidence ?? 0.50
+            let region = snapshot.subjectSignals.topObjectRegion
+            let normalizedLabel = normalizeObjectLabel(objectLabel)
+            let hasPersonSignal = snapshot.subjectSignals.faceDetected || snapshot.subjectSignals.personDetected
+            let reliabilityMultiplier: Double
+            if hasPersonSignal && backgroundContextLabels.contains(normalizedLabel) {
+                reliabilityMultiplier = 0.20
+            } else if demoPriorityObjectLabels.contains(normalizedLabel) {
+                reliabilityMultiplier = 1.08
+            } else if backgroundContextLabels.contains(normalizedLabel) {
+                reliabilityMultiplier = 0.55
+            } else {
+                reliabilityMultiplier = 0.92
+            }
+            let reliability = clamp01((snapshot.sources.detr.confidence ?? 0.50) * reliabilityMultiplier)
             candidates.append(
                 makeCandidate(
                     id: "snapshot-object",
                     kind: .object,
                     label: objectLabel,
-                    region: nil,
+                    region: region,
                     baseConfidence: base,
                     sourceReliability: reliability
                 )
@@ -2665,6 +2914,29 @@ struct PrimarySubjectResolver {
         region.width.isFinite &&
         region.height.isFinite &&
         !region.isDegenerate
+    }
+
+    private func regionLikelyMatches(_ lhs: NormalizedRect, _ rhs: NormalizedRect) -> Bool {
+        let left = max(lhs.x, rhs.x)
+        let top = max(lhs.y, rhs.y)
+        let right = min(lhs.x + lhs.width, rhs.x + rhs.width)
+        let bottom = min(lhs.y + lhs.height, rhs.y + rhs.height)
+        let intersectionWidth = max(0, right - left)
+        let intersectionHeight = max(0, bottom - top)
+        let intersectionArea = intersectionWidth * intersectionHeight
+        let lhsArea = max(0.001, lhs.width * lhs.height)
+        let rhsArea = max(0.001, rhs.width * rhs.height)
+        let unionArea = lhsArea + rhsArea - intersectionArea
+        let iou = unionArea > 0 ? intersectionArea / unionArea : 0
+        if iou >= 0.18 { return true }
+
+        let lhsCenterX = lhs.x + lhs.width * 0.5
+        let lhsCenterY = lhs.y + lhs.height * 0.5
+        let rhsCenterX = rhs.x + rhs.width * 0.5
+        let rhsCenterY = rhs.y + rhs.height * 0.5
+        let dx = lhsCenterX - rhsCenterX
+        let dy = lhsCenterY - rhsCenterY
+        return sqrt(dx * dx + dy * dy) <= 0.10
     }
 
     private func makeCandidate(id: String,
@@ -2707,6 +2979,37 @@ struct PrimarySubjectResolver {
             sourceReliability: sourceReliability,
             score: score
         )
+    }
+
+    private var demoPriorityObjectLabels: Set<String> {
+        [
+            "book",
+            "bottle",
+            "cell phone",
+            "cup",
+            "keyboard",
+            "laptop",
+            "potted plant",
+            "vase"
+        ]
+    }
+
+    private var backgroundContextLabels: Set<String> {
+        [
+            "bed",
+            "cabinet",
+            "chair",
+            "paper",
+            "screen",
+            "table",
+            "tv"
+        ]
+    }
+
+    private func normalizeObjectLabel(_ label: String) -> String {
+        let lowercased = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = lowercased.split(separator: "(", maxSplits: 1).first.map(String.init) ?? lowercased
+        return base.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func selectWinner(_ candidates: [Candidate]) -> Candidate? {
@@ -2970,6 +3273,8 @@ final class AnalysisPipeline: ObservableObject {
     private let neuralEvidenceService: NeuralEvidenceInferenceService?
     private let thermalGovernor: ThermalGovernor
     private let neuralHeavyModelsEnabledProvider: () -> Bool
+    private let liveHybridFusionEnabled: Bool
+    private let demoLiveCoachEnabled: Bool
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -3011,25 +3316,51 @@ final class AnalysisPipeline: ObservableObject {
     private var currentLiveFusionTraceBundle: ExplainabilityTraceBundle?
     private var liveHintDecisionLogCounter = 0
     private var lastLiveHintDecisionLogKey: String?
+    private var lastLiveDecisionDebugLogKey: String?
+    private var lastHighCameraDebugTimestamp: TimeInterval = 0
+    private var lastLiveDecisionDebugLogTimestamp: TimeInterval = 0
+    private var lastDemoLightDebugLogTimestamp: TimeInterval = 0
+    private var lastDetrUnavailableDebugDate: Date = .distantPast
+    private var cameraDemoSceneMode: CameraDemoSceneMode = .auto
+    private var demoSubjectTrack: DemoSubjectTrack?
+    private var demoCinematicPortraitStep: DemoCinematicPortraitStep = .darkenBackground
+    private var demoCinematicPortraitStepEvidence: DemoCinematicPortraitStepEvidence = .empty
+    private var currentDemoOverlayAnnotations: [OverlayAnnotationPresentation] = []
 
     private var suggestionCancellable: AnyCancellable?
-    private let minLiveHintHold: TimeInterval = 5.0
-    private let liveHintDisplayDuration: TimeInterval = 8.0
+    private let minLiveHintHold: TimeInterval = 2.0
+    private let liveHintDisplayDuration: TimeInterval = 4.0
     private let liveHintMotionHideGrace: TimeInterval = 0.8
     private let liveHintConfidenceDelta: Double = 0.28
     private let liveHintTextOnlyConfidenceDelta: Double = 0.06
     private let maxOverlayHz: Double = 8.0
+    private let objectDemoDetrInterval: TimeInterval = 1.2
 
     init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider(),
          visualEvidenceProvider: VisualSemanticEvidenceProvider? = VisualSemanticEvidenceProviderFactory.makeDefaultProvider(),
          neuralEvidenceService: NeuralEvidenceInferenceService? = NeuralEvidenceInferenceService.makeDefault(),
          thermalGovernor: ThermalGovernor = ThermalGovernor(),
-         neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true }) {
+         neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true },
+         liveHybridFusionEnabled: Bool = true,
+         demoLiveCoachEnabled: Bool = false) {
         self.pauseReasoningCoordinator = PauseReasoningCoordinator(provider: reasoningProvider)
         self.visualSemanticEvidenceCoordinator = VisualSemanticEvidenceCoordinator(provider: visualEvidenceProvider)
         self.neuralEvidenceService = neuralEvidenceService
         self.thermalGovernor = thermalGovernor
         self.neuralHeavyModelsEnabledProvider = neuralHeavyModelsEnabledProvider
+        self.liveHybridFusionEnabled = liveHybridFusionEnabled
+        self.demoLiveCoachEnabled = demoLiveCoachEnabled
+    }
+
+    @MainActor
+    func setCameraDemoSceneMode(_ mode: CameraDemoSceneMode) {
+        guard cameraDemoSceneMode != mode else { return }
+        cameraDemoSceneMode = mode
+        demoSubjectTrack = nil
+        demoCinematicPortraitStep = .darkenBackground
+        demoCinematicPortraitStepEvidence = .empty
+        currentDemoOverlayAnnotations = []
+        print("[CA_DEBUG][DEMO_MODE] mode=\(mode.rawValue)")
     }
     
     var currentFeatures: CoachingFeatures {
@@ -3228,15 +3559,17 @@ final class AnalysisPipeline: ObservableObject {
             }
             self.debugData.visionMeasuredAt = measurementTime
             self.debugData.saliencyCenter = trackingResult.saliencyCenter
+            self.debugData.saliencyRegion = trackingResult.saliencyRegion
             self.latestVisionSample = FeatureSample(
                 value: FeatureSnapshotVisionPayload(
                     subjects: visionSubjectsPayload,
                     saliencyCenter: trackingResult.saliencyCenter,
+                    saliencyRegion: trackingResult.saliencyRegion,
                     faceCount: trackingResult.faceCount,
                     personCount: trackingResult.personCount
                 ),
                 measuredAt: measurementTime,
-                baseConfidence: visionBaseConfidence
+                baseConfidence: visionBaseConfidence ?? (trackingResult.saliencyRegion == nil ? nil : 0.48)
             )
             self.latestHorizonSample = FeatureSample(
                 value: FeatureSnapshotHorizonPayload(
@@ -3250,6 +3583,16 @@ final class AnalysisPipeline: ObservableObject {
         }
         
         Telemetry.shared.setCameraStable(context.isStable, shakeLevel: context.shakeLevel)
+        logHighFrameDebug(
+            context: context,
+            sourceFrameId: sourceFrameId,
+            trackingResult: trackingResult,
+            primarySubject: primarySubject,
+            horizon: horizon,
+            saliencyBalance: saliencyBalance,
+            visionLatency: visionLatency,
+            horizonLatency: horizonLatency
+        )
 
         Task { @MainActor in
             self.overlayState = OverlayState(primaryBoundingBox: primarySubject?.boundingBox,
@@ -3319,16 +3662,33 @@ final class AnalysisPipeline: ObservableObject {
             features.lighting.backlightIndex = lighting.backlightIndex
             features.lighting.keyToFillRatio = lighting.keyFillRatio
             features.lighting.exposureBiasHint = lighting.exposureBiasHint
+            let subjectLighting = FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics(
+                subjectMeanLuma: Double(lighting.subjectMeanLuma),
+                backgroundMeanLuma: Double(lighting.backgroundMeanLuma),
+                subjectToBackgroundDelta: Double(lighting.subjectToBackgroundDelta),
+                subjectClippedBrightRatio: Double(lighting.subjectClippedBrightRatio),
+                backgroundHotspotRatio: Double(lighting.backgroundHotspotRatio)
+            )
             self.latestLightingSample = FeatureSample(
                 value: FeatureSnapshotLightingPayload(
                     exposureBiasHint: Double(lighting.exposureBiasHint),
                     backlightIndex: Double(lighting.backlightIndex),
-                    keyToFillRatio: Double(lighting.keyFillRatio)
+                    keyToFillRatio: Double(lighting.keyFillRatio),
+                    subjectLighting: subjectLighting
                 ),
                 measuredAt: measurementTime,
                 baseConfidence: nil
             )
             self.latestLightingMeasuredAt = measurementTime
+        }
+        let debugNow = CACurrentMediaTime()
+        if debugNow - lastDemoLightDebugLogTimestamp >= 1.0 {
+            lastDemoLightDebugLogTimestamp = debugNow
+            print(
+                "[CA_DEBUG][DEMO_LIGHT] bbox=\(debugRect(bbox)) subjectLuma=\(debugDouble(Double(lighting.subjectMeanLuma))) " +
+                "backgroundLuma=\(debugDouble(Double(lighting.backgroundMeanLuma))) delta=\(debugDouble(Double(lighting.subjectToBackgroundDelta))) " +
+                "subjectClip=\(debugDouble(Double(lighting.subjectClippedBrightRatio))) bgHotspot=\(debugDouble(Double(lighting.backgroundHotspotRatio)))"
+            )
         }
 
         Task { @MainActor in
@@ -3339,20 +3699,44 @@ final class AnalysisPipeline: ObservableObject {
     private func performLow(context: FrameContext) {
         lowFrameCount += 1
         let now = Date()
+        let budget = thermalGovernor.nextBudget()
+        let objectDemoDetrOverride = cameraDemoSceneMode == .object && thermalGovernor.currentTier() != .critical
+        let thermalAllowsLowPriority = budget.heavyModelsEnabled && budget.lowPriorityFrequency > 0
+        Telemetry.shared.setHeavyModelsEnabled(budget.heavyModelsEnabled || objectDemoDetrOverride)
+        guard thermalAllowsLowPriority || objectDemoDetrOverride else { return }
+        let lowBudgetInterval = thermalAllowsLowPriority ? 1.0 / budget.lowPriorityFrequency : objectDemoDetrInterval
+        let detrInterval = objectDemoDetrOverride ? objectDemoDetrInterval : max(0.5, lowBudgetInterval)
 
-        // DETR object detection каждые 0.5 сек
+        // DETR follows the low-priority thermal budget.
         let timeSinceLastDETR = now.timeIntervalSince(lastDETRRequest)
         let hasDetector = detrDetector != nil
 
-        if CameraLog.detr, lowFrameCount % 30 == 0 {
-            os_log("🔥 DETR: time=%.1fs (need>0.5) detector=%d",
-                   log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                   type: .debug,
-                   timeSinceLastDETR, hasDetector ? 1 : 0)
+        if !hasDetector, now.timeIntervalSince(lastDetrUnavailableDebugDate) > 2.0 {
+            lastDetrUnavailableDebugDate = now
+            print(
+                "[CA_DEBUG][DETR_SKIP] reason=no_detector lowFrame=\(lowFrameCount) " +
+                "sinceLast=\(debugDouble(timeSinceLastDETR)) image=\(debugPixelBufferSize(context.pixelBuffer)) " +
+                "orientation=\(debugCGOrientationDescription(context.orientation))"
+            )
         }
 
-        // Запускаем DETR каждые 0.5 сек
-        if timeSinceLastDETR > 0.5,
+        if CameraLog.detr, lowFrameCount % 30 == 0 {
+            os_log("🔥 DETR: time=%.1fs (need>%.1f) detector=%d",
+                   log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                   type: .debug,
+                   timeSinceLastDETR, lowBudgetInterval, hasDetector ? 1 : 0)
+        }
+
+        if objectDemoDetrOverride, now.timeIntervalSince(lastDetrUnavailableDebugDate) > 2.0 {
+            lastDetrUnavailableDebugDate = now
+            print(
+                "[CA_DEBUG][DETR_OVERRIDE] mode=object interval=\(debugDouble(detrInterval)) " +
+                "thermalHeavy=\(budget.heavyModelsEnabled) lowFreq=\(debugDouble(budget.lowPriorityFrequency)) " +
+                "sinceLast=\(debugDouble(timeSinceLastDETR)) detector=\(hasDetector)"
+            )
+        }
+
+        if timeSinceLastDETR > detrInterval,
            let detector = detrDetector {
 
             if CameraLog.detr {
@@ -3364,6 +3748,10 @@ final class AnalysisPipeline: ObservableObject {
             lastDETRRequest = now
             let detrStart = CACurrentMediaTime()
             Telemetry.shared.setActiveModule("DETR", active: true)
+            print(
+                "[CA_DEBUG][DETR_REQUEST] lowFrame=\(lowFrameCount) sinceLast=\(debugDouble(timeSinceLastDETR)) " +
+                "image=\(debugPixelBufferSize(context.pixelBuffer)) orientation=\(debugCGOrientationDescription(context.orientation))"
+            )
 
             detector.detect(pixelBuffer: context.pixelBuffer,
                              orientation: context.orientation) { [weak self] detections in
@@ -3380,6 +3768,11 @@ final class AnalysisPipeline: ObservableObject {
                 guard let self else { return }
 
                 let priorityDetections = self.compositionPriorityDetections(detections)
+                print(
+                    "[CA_DEBUG][DETR_RESULT] count=\(detections.count) priority=\(priorityDetections.count) " +
+                    "latencyMs=\(self.debugDouble(detrLatency * 1000)) detections=\(self.debugDetections(detections)) " +
+                    "priorityTop=\(self.debugDetection(priorityDetections.first))"
+                )
                 if let top = priorityDetections.first {
                     var didUseDetrSubject = false
 
@@ -3403,6 +3796,11 @@ final class AnalysisPipeline: ObservableObject {
                         features.subject.count = detections.count
                     }
                     let didUseDetrSubjectSnapshot = didUseDetrSubject
+                    print(
+                        "[CA_DEBUG][DETR_APPLY] used=\(didUseDetrSubjectSnapshot) " +
+                        "reason=\(didUseDetrSubjectSnapshot ? "priority_subject" : "preserved_vision_subject") " +
+                        "top=\(self.debugDetection(top)) overlay=\(self.debugRect(didUseDetrSubjectSnapshot ? top.boundingBox : self.overlayState.primaryBoundingBox))"
+                    )
                     Task { @MainActor in
                         if didUseDetrSubjectSnapshot {
                             if CameraLog.detr {
@@ -3447,6 +3845,10 @@ final class AnalysisPipeline: ObservableObject {
                         features.subject.count = 0
                     }
                     let shouldClearDetrOverlaySnapshot = shouldClearDetrOverlay
+                    print(
+                        "[CA_DEBUG][DETR_APPLY] used=false reason=\(shouldClearDetrOverlaySnapshot ? "cleared_no_priority_subject" : "preserved_vision_subject") " +
+                        "top=none overlay=\(self.debugRect(shouldClearDetrOverlaySnapshot ? nil : self.overlayState.primaryBoundingBox))"
+                    )
                     Task { @MainActor in
                         if shouldClearDetrOverlaySnapshot {
                             self.overlayState.primaryBoundingBox = nil
@@ -3457,8 +3859,7 @@ final class AnalysisPipeline: ObservableObject {
             }
         }
 
-        // Aesthetic каждые 2 сек
-        if now.timeIntervalSince(lastAestheticRequest) > 2.0 {
+        if thermalAllowsLowPriority, now.timeIntervalSince(lastAestheticRequest) > 6.0 {
             lastAestheticRequest = now
             let aestheticStart = CACurrentMediaTime()
             Telemetry.shared.setActiveModule("Aesthetic", active: true)
@@ -3516,6 +3917,8 @@ final class AnalysisPipeline: ObservableObject {
             }
             currentLiveHint = nil
             liveHintExpiresAt = .distantPast
+            currentDemoOverlayAnnotations = []
+            demoSubjectTrack = nil
             currentLiveFusionTraceBundle = nil
             publishOverlayAnnotations([], now: now)
             return
@@ -3547,16 +3950,30 @@ final class AnalysisPipeline: ObservableObject {
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
         let deterministicCritique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
-        let (fusionOutput, liveNeuralOutcome) = await resolveCritiqueWithHybridFusion(
-            mode: .live,
-            capturedAt: now,
-            pixelBuffer: lastPixelBuffer,
-            orientation: lastOrientation,
-            snapshot: snapshot,
-            semantics: semantics,
-            deterministicCritique: deterministicCritique,
-            forcePauseExecution: false
-        )
+        let (fusionOutput, liveNeuralOutcome): (HybridFusionOutput, NeuralEvidenceRecordedOutcome?)
+        if liveHybridFusionEnabled {
+            (fusionOutput, liveNeuralOutcome) = await resolveCritiqueWithHybridFusion(
+                mode: .live,
+                capturedAt: now,
+                pixelBuffer: lastPixelBuffer,
+                orientation: lastOrientation,
+                snapshot: snapshot,
+                semantics: semantics,
+                deterministicCritique: deterministicCritique,
+                forcePauseExecution: false
+            )
+        } else {
+            fusionOutput = hybridFusionService.fuse(
+                HybridFusionInput(
+                    snapshot: snapshot,
+                    semantics: semantics,
+                    critique: deterministicCritique,
+                    neuralSnapshot: nil,
+                    neuralMetadata: nil
+                )
+            )
+            liveNeuralOutcome = nil
+        }
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
         let semanticTips = semanticTipPlanner.plan(
@@ -3635,15 +4052,1015 @@ final class AnalysisPipeline: ObservableObject {
             snapshot: snapshot,
             semantics: semantics
         )
+        let demoDecision = makeDemoCoachingDecision(
+            frameId: frameId,
+            snapshot: snapshot,
+            semantics: semantics,
+            now: now
+        )
+        currentDemoOverlayAnnotations = demoDecision?.annotations ?? []
+        let effectiveHintCandidate: LiveHintPresentation?
+        if let demoDecision {
+            effectiveHintCandidate = demoDecision.hint ?? (demoDecision.suppressesPipelineHint ? nil : hintCandidate)
+        } else {
+            effectiveHintCandidate = hintCandidate
+        }
+        printLiveDecisionDebug(
+            candidate: effectiveHintCandidate,
+            frameId: frameId,
+            critique: critique,
+            plan: plan,
+            snapshot: snapshot,
+            semantics: semantics,
+            semanticTip: semanticTips.livePrimaryTip,
+            legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            technicalQualitySignal: technicalQualitySignal
+        )
         logLiveHintDecision(
-            candidate: hintCandidate,
+            candidate: effectiveHintCandidate,
             legacySuggestion: legacySuggestion,
             semanticTip: semanticTips.livePrimaryTip,
             structuredAvailable: structuredAvailable,
             critique: critique,
             plan: plan
         )
-        applyLiveHint(candidate: hintCandidate, now: now)
+        applyLiveHint(candidate: effectiveHintCandidate, now: now)
+    }
+
+    @MainActor
+    private func makeDemoCoachingDecision(frameId: String,
+                                          snapshot: FrameFeatureSnapshot,
+                                          semantics: SceneSemanticsReport,
+                                          now: Date) -> DemoCoachingDecision? {
+        guard demoLiveCoachEnabled else { return nil }
+
+        let resolvedMode = resolvedDemoSceneMode(snapshot: snapshot, semantics: semantics)
+        guard let detectedSubject = selectDemoSubject(mode: resolvedMode, snapshot: snapshot, semantics: semantics) else {
+            if let heldDecision = makeHeldDemoSubjectDecision(
+                frameId: frameId,
+                mode: resolvedMode,
+                snapshot: snapshot,
+                now: now
+            ) {
+                return heldDecision
+            }
+            demoSubjectTrack = nil
+            print(
+                "[CA_DEBUG][DEMO_SUPPRESS] reason=no_demo_subject mode=\(cameraDemoSceneMode.rawValue) " +
+                "resolved=\(resolvedMode.rawValue) topObject=\(snapshot.subjectSignals.topObjectLabel ?? "nil") " +
+                "faceRegion=\(debugRegion(snapshot.subjectSignals.faceRegion)) topRegion=\(debugRegion(snapshot.subjectSignals.topObjectRegion)) " +
+                "primaryRegion=\(debugRegion(snapshot.subjectSignals.primaryCandidateRegion)) semantic=\(debugPrimarySubject(semantics.primarySubject))"
+            )
+            return DemoCoachingDecision(hint: nil, annotations: [], suppressesPipelineHint: true)
+        }
+
+        let track = updateDemoSubjectTrack(with: detectedSubject, now: now)
+        let subject = track.subject
+
+        let rule = selectDemoRule(
+            subject: subject,
+            mode: resolvedMode,
+            snapshot: snapshot,
+            semantics: semantics,
+            stableCount: track.stableCount
+        )
+        let annotations = makeDemoAnnotations(frameId: frameId, subject: subject, rule: rule)
+        let hint = rule.showHint ? makeDemoLiveHint(
+            frameId: frameId,
+            subject: subject,
+            rule: rule
+        ) : nil
+
+        print(
+            "[CA_DEBUG][DEMO_SUBJECT] mode=\(cameraDemoSceneMode.rawValue) resolved=\(resolvedMode.rawValue) " +
+            "kind=\(subject.kind.rawValue) label=\(subject.rawLabel ?? "nil") display=\(subject.displayLabel) " +
+            "conf=\(debugDouble(subject.confidence)) stable=\(track.stableCount) misses=\(track.missCount) region=\(debugRegion(subject.region))"
+        )
+        print(
+            "[CA_DEBUG][DEMO_TRACK] state=detected identity=\(demoSubjectIdentityKey(subject)) " +
+            "stable=\(track.stableCount) misses=\(track.missCount) region=\(debugRegion(subject.region))"
+        )
+        print(
+            "[CA_DEBUG][DEMO_RULE] id=\(rule.id) tone=\(rule.tone.rawValue) showHint=\(rule.showHint) " +
+            "confidence=\(debugDouble(rule.confidence)) text=\(debugText(rule.text))"
+        )
+        print(
+            "[CA_DEBUG][DEMO_PRESENTATION] rule=\(rule.id) annotations=\(annotations.count) " +
+            "successCheckOnly=\(rule.tone == .success) visibleLabel=\(subject.displayLabel) rawLabel=\(subject.rawLabel ?? "nil")"
+        )
+        if let hint {
+            print(
+                "[CA_DEBUG][DEMO_HINT] id=\(hint.id) action=\(hint.actionType?.rawValue ?? "none") " +
+                "target=\(debugRegion(hint.targetRegion)) text=\(debugText(hint.text))"
+            )
+        }
+
+        return DemoCoachingDecision(
+            hint: hint,
+            annotations: annotations,
+            suppressesPipelineHint: true
+        )
+    }
+
+    @MainActor
+    private func makeHeldDemoSubjectDecision(frameId: String,
+                                             mode: CameraDemoSceneMode,
+                                             snapshot: FrameFeatureSnapshot,
+                                             now: Date) -> DemoCoachingDecision? {
+        guard var track = demoSubjectTrack,
+              now.timeIntervalSince(track.lastSeenAt) <= demoSubjectHoldAge(for: track.subject),
+              track.missCount < demoSubjectHoldMissLimit(for: track.subject) else {
+            return nil
+        }
+        track.missCount += 1
+        demoSubjectTrack = track
+        let rule = demoWaitingRule(for: track.subject)
+        let annotations = makeDemoAnnotations(frameId: frameId, subject: track.subject, rule: rule)
+        let hint = makeDemoLiveHint(frameId: frameId, subject: track.subject, rule: rule)
+        print(
+            "[CA_DEBUG][DEMO_TRACK] state=held mode=\(mode.rawValue) identity=\(demoSubjectIdentityKey(track.subject)) " +
+            "stable=\(track.stableCount) misses=\(track.missCount) ageMs=\(debugDouble(now.timeIntervalSince(track.lastSeenAt) * 1000))"
+        )
+        print(
+            "[CA_DEBUG][DEMO_SUPPRESS] reason=holding_last_subject topObject=\(snapshot.subjectSignals.topObjectLabel ?? "nil") " +
+            "region=\(debugRegion(track.subject.region))"
+        )
+        return DemoCoachingDecision(hint: hint, annotations: annotations, suppressesPipelineHint: true)
+    }
+
+    @MainActor
+    private func updateDemoSubjectTrack(with subject: DemoCoachingSubject, now: Date) -> DemoSubjectTrack {
+        if var track = demoSubjectTrack,
+           isSameDemoSubject(previous: track.subject, current: subject) {
+            track.subject = subject
+            track.stableCount += 1
+            track.missCount = 0
+            track.lastSeenAt = now
+            demoSubjectTrack = track
+            return track
+        }
+
+        let track = DemoSubjectTrack(subject: subject, stableCount: 1, missCount: 0, lastSeenAt: now)
+        demoSubjectTrack = track
+        return track
+    }
+
+    private func makeDemoAnnotations(frameId: String,
+                                     subject: DemoCoachingSubject,
+                                     rule: DemoCoachingRule) -> [OverlayAnnotationPresentation] {
+        guard rule.tone != .success else { return [] }
+        return [
+            OverlayAnnotationPresentation(
+                id: "demo_\(frameId)_\(rule.id)_\(quantizedRegionKey(for: subject.region))",
+                kind: .regionHighlight,
+                direction: nil,
+                targetRegion: subject.region,
+                emphasis: max(0.72, rule.confidence),
+                tone: rule.tone,
+                label: subject.displayLabel
+            )
+        ]
+    }
+
+    private func isSameDemoSubject(previous: DemoCoachingSubject,
+                                   current: DemoCoachingSubject) -> Bool {
+        guard previous.kind == current.kind else { return false }
+        guard demoSubjectIdentityKey(previous) == demoSubjectIdentityKey(current) else { return false }
+        let iou = intersectionOverUnion(previous.region, current.region)
+        if iou >= 0.25 { return true }
+        let distance = centerDistance(previous.region, current.region)
+        let previousArea = max(0.001, previous.region.width * previous.region.height)
+        let currentArea = max(0.001, current.region.width * current.region.height)
+        let areaRatio = max(previousArea, currentArea) / min(previousArea, currentArea)
+        return distance <= 0.12 && areaRatio <= 2.8
+    }
+
+    private func demoSubjectIdentityKey(_ subject: DemoCoachingSubject) -> String {
+        switch subject.kind {
+        case .object:
+            return "\(subject.kind.rawValue)_\(normalizedDemoObjectLabel(subject.rawLabel ?? "object"))"
+        case .portrait:
+            return "\(subject.kind.rawValue)_person"
+        case .dialogue:
+            return "\(subject.kind.rawValue)_group"
+        }
+    }
+
+    private func demoSubjectHoldAge(for subject: DemoCoachingSubject) -> TimeInterval {
+        switch subject.kind {
+        case .object:
+            return 0.55
+        case .portrait, .dialogue:
+            return 0.35
+        }
+    }
+
+    private func demoSubjectHoldMissLimit(for subject: DemoCoachingSubject) -> Int {
+        switch subject.kind {
+        case .object:
+            return 1
+        case .portrait, .dialogue:
+            return 1
+        }
+    }
+
+    private func intersectionOverUnion(_ lhs: NormalizedRect, _ rhs: NormalizedRect) -> Double {
+        let left = max(lhs.x, rhs.x)
+        let top = max(lhs.y, rhs.y)
+        let right = min(lhs.x + lhs.width, rhs.x + rhs.width)
+        let bottom = min(lhs.y + lhs.height, rhs.y + rhs.height)
+        let intersectionWidth = max(0, right - left)
+        let intersectionHeight = max(0, bottom - top)
+        let intersectionArea = intersectionWidth * intersectionHeight
+        let lhsArea = lhs.width * lhs.height
+        let rhsArea = rhs.width * rhs.height
+        let unionArea = lhsArea + rhsArea - intersectionArea
+        guard unionArea > 0 else { return 0 }
+        return intersectionArea / unionArea
+    }
+
+    private func centerDistance(_ lhs: NormalizedRect, _ rhs: NormalizedRect) -> Double {
+        let lhsX = lhs.x + lhs.width * 0.5
+        let lhsY = lhs.y + lhs.height * 0.5
+        let rhsX = rhs.x + rhs.width * 0.5
+        let rhsY = rhs.y + rhs.height * 0.5
+        let dx = lhsX - rhsX
+        let dy = lhsY - rhsY
+        return sqrt(dx * dx + dy * dy)
+    }
+
+    private func resolvedDemoSceneMode(snapshot: FrameFeatureSnapshot,
+                                       semantics: SceneSemanticsReport) -> CameraDemoSceneMode {
+        if cameraDemoSceneMode != .auto {
+            return cameraDemoSceneMode
+        }
+        if snapshot.subjectSignals.personCount >= 2 || semantics.sceneType == .twoCharacterFrame {
+            return .dialogue
+        }
+        if snapshot.subjectSignals.faceDetected || snapshot.subjectSignals.personDetected {
+            return .portrait
+        }
+        if let label = snapshot.subjectSignals.topObjectLabel,
+           isDemoPriorityObjectLabel(label),
+           snapshot.subjectSignals.topObjectRegion != nil {
+            return .object
+        }
+        return .auto
+    }
+
+    private func selectDemoSubject(mode: CameraDemoSceneMode,
+                                   snapshot: FrameFeatureSnapshot,
+                                   semantics: SceneSemanticsReport) -> DemoCoachingSubject? {
+        switch mode {
+        case .portrait, .cinematicPortrait, .dialogue:
+            if let subject = personDemoSubject(mode: mode, snapshot: snapshot, semantics: semantics) {
+                return subject
+            }
+            if mode == .dialogue {
+                return objectDemoSubject(snapshot: snapshot)
+            }
+            return nil
+        case .object:
+            return objectDemoSubject(snapshot: snapshot)
+        case .auto:
+            if let subject = personDemoSubject(mode: .portrait, snapshot: snapshot, semantics: semantics) {
+                return subject
+            }
+            return objectDemoSubject(snapshot: snapshot)
+        }
+    }
+
+    private func personDemoSubject(mode: CameraDemoSceneMode,
+                                   snapshot: FrameFeatureSnapshot,
+                                   semantics: SceneSemanticsReport) -> DemoCoachingSubject? {
+        let subject = semantics.primarySubject
+        let candidateRegion = validDemoRegion(subject.region)
+            ?? validDemoRegion(snapshot.subjectSignals.primaryCandidateRegion)
+        let region: NormalizedRect?
+        if snapshot.subjectSignals.faceDetected {
+            if let faceRegion = validDemoRegion(snapshot.subjectSignals.faceRegion) {
+                region = faceRegion
+            } else {
+                region = candidateRegion.flatMap(portraitFaceFallbackRegion(from:))
+            }
+        } else {
+            region = candidateRegion
+        }
+        guard let region else { return nil }
+
+        let hasPerson = snapshot.subjectSignals.faceDetected
+            || snapshot.subjectSignals.personDetected
+            || subject.kind == .face
+            || subject.kind == .person
+            || subject.kind == .group
+        guard hasPerson else { return nil }
+
+        let isDialogue = mode == .dialogue || snapshot.subjectSignals.personCount >= 2 || subject.kind == .group
+        return DemoCoachingSubject(
+            kind: isDialogue ? .dialogue : .portrait,
+            rawLabel: subject.kind.rawValue,
+            displayLabel: isDialogue ? "Герои" : (snapshot.subjectSignals.faceDetected ? "Лицо" : "Герой"),
+            region: region,
+            confidence: max(subject.confidence, snapshot.subjectSignals.primaryCandidateConfidence ?? 0.45)
+        )
+    }
+
+    private func objectDemoSubject(snapshot: FrameFeatureSnapshot) -> DemoCoachingSubject? {
+        let label = snapshot.subjectSignals.topObjectLabel
+        let normalizedLabel = label.map(normalizedDemoObjectLabel)
+        let topRegion = validDemoObjectRegion(snapshot.subjectSignals.topObjectRegion)
+        let primaryRegion = validDemoObjectRegion(snapshot.subjectSignals.primaryCandidateRegion)
+
+        if let label,
+           isDemoPriorityObjectLabel(label),
+           let region = topRegion ?? primaryRegion {
+            return DemoCoachingSubject(
+                kind: .object,
+                rawLabel: label,
+                displayLabel: demoObjectDisplayName(label),
+                region: region,
+                confidence: snapshot.subjectSignals.topObjectConfidence ?? snapshot.subjectSignals.primaryCandidateConfidence ?? 0.45
+            )
+        }
+
+        if let label,
+           let region = topRegion,
+           !isDemoBackgroundObjectLabel(label) {
+            return DemoCoachingSubject(
+                kind: .object,
+                rawLabel: label,
+                displayLabel: "Объект",
+                region: region,
+                confidence: snapshot.subjectSignals.topObjectConfidence ?? 0.52
+            )
+        }
+
+        let hasPersonSignal = snapshot.subjectSignals.faceDetected || snapshot.subjectSignals.personDetected
+        if !hasPersonSignal,
+           let region = primaryRegion,
+           normalizedLabel.map(isDemoBackgroundObjectLabel) != true {
+            return DemoCoachingSubject(
+                kind: .object,
+                rawLabel: label ?? "object",
+                displayLabel: "Объект",
+                region: region,
+                confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? snapshot.subjectSignals.topObjectConfidence ?? 0.54
+            )
+        }
+
+        return nil
+    }
+
+    private func selectDemoRule(subject: DemoCoachingSubject,
+                                mode: CameraDemoSceneMode,
+                                snapshot: FrameFeatureSnapshot,
+                                semantics: SceneSemanticsReport,
+                                stableCount: Int) -> DemoCoachingRule {
+        let region = subject.region
+        let centerX = region.x + region.width * 0.5
+        let area = region.width * region.height
+        let minEdgeDistance = min(region.x, region.y, 1 - (region.x + region.width), 1 - (region.y + region.height))
+
+        if subject.kind == .portrait || subject.kind == .dialogue {
+            if mode == .cinematicPortrait {
+                return selectCinematicPortraitRule(
+                    subject: subject,
+                    snapshot: snapshot,
+                    stableCount: stableCount
+                )
+            }
+
+            if let subjectLighting = snapshot.lighting.subjectLighting {
+                if subjectLighting.subjectMeanLuma >= 0.78 || subjectLighting.subjectClippedBrightRatio >= 0.10 {
+                    return DemoCoachingRule(
+                        id: "portrait_overexposed_face",
+                        text: "Лицо пересвечено — убавь свет или смени угол.",
+                        shortVerdict: "Лицо найдено, но свет слишком жёсткий.",
+                        supportingText: demoLightingSupportingText(
+                            prefix: "Система сравнила яркость лица и фона: на лице есть выбитые светлые участки.",
+                            lighting: subjectLighting
+                        ),
+                        actionText: "Убавь источник, отведи его в сторону или поверни героя от прямого света.",
+                        actionType: .improveFrontLight,
+                        tone: .danger,
+                        confidence: min(0.94, max(0.74, subjectLighting.subjectMeanLuma + subjectLighting.subjectClippedBrightRatio)),
+                        showHint: true
+                    )
+                }
+
+                let backgroundMinusSubject = subjectLighting.backgroundMeanLuma - subjectLighting.subjectMeanLuma
+                if backgroundMinusSubject >= 0.18 ||
+                    (subjectLighting.backgroundHotspotRatio >= 0.16 && subjectLighting.subjectMeanLuma <= 0.56) {
+                    return DemoCoachingRule(
+                        id: "portrait_backlight",
+                        text: "Фон ярче лица — смени угол.",
+                        shortVerdict: "Герой найден, но фон перетягивает внимание.",
+                        supportingText: demoLightingSupportingText(
+                            prefix: "Лицо темнее окружения: яркий фон или источник света конкурирует с героем.",
+                            lighting: subjectLighting
+                        ),
+                        actionText: "Поверни камеру или героя так, чтобы яркий фон не бил из-за спины.",
+                        actionType: .improveFrontLight,
+                        tone: .danger,
+                        confidence: min(0.94, max(0.74, backgroundMinusSubject + subjectLighting.backgroundHotspotRatio + 0.58)),
+                        showHint: true
+                    )
+                }
+
+                if subjectLighting.subjectMeanLuma <= 0.34 {
+                    return DemoCoachingRule(
+                        id: "portrait_dark_face",
+                        text: "Лицо темновато — добавь мягкий свет спереди.",
+                        shortVerdict: "Герой найден, но лицо недосвечено.",
+                        supportingText: demoLightingSupportingText(
+                            prefix: "Система измерила яркость внутри bbox лица: субъект темнее комфортного уровня.",
+                            lighting: subjectLighting
+                        ),
+                        actionText: "Добавь фронтальный или боковой мягкий свет и подержи кадр стабильно.",
+                        actionType: .improveFrontLight,
+                        tone: .danger,
+                        confidence: min(0.92, max(0.72, 0.92 - subjectLighting.subjectMeanLuma)),
+                        showHint: true
+                    )
+                }
+            }
+
+            if snapshot.lighting.backlightIndex >= 0.22,
+               snapshot.lighting.exposureBiasHint > -1.4 {
+                return DemoCoachingRule(
+                    id: "portrait_backlight",
+                    text: "Фон ярче лица — смени угол.",
+                    shortVerdict: "Фон перетягивает внимание с лица.",
+                    supportingText: "Система видит лицо/героя и более яркий фон за ним: контровой свет снижает читаемость субъекта.",
+                    actionText: "Поверни камеру или героя так, чтобы яркий источник не бил из-за спины.",
+                    actionType: .improveFrontLight,
+                    tone: .danger,
+                    confidence: max(0.72, min(0.92, snapshot.lighting.backlightIndex + 0.55)),
+                    showHint: true
+                )
+            }
+
+            if snapshot.lighting.exposureBiasHint <= -0.45 {
+                return DemoCoachingRule(
+                    id: "portrait_dark_face",
+                    text: "Лицо темновато — добавь мягкий свет спереди.",
+                    shortVerdict: "Герой читается, но лицо недосвечено.",
+                    supportingText: "Основной субъект найден как человек/лицо, при этом экспозиция по субъекту ниже комфортного уровня.",
+                    actionText: "Добавь фронтальный или боковой мягкий свет и пересними кадр.",
+                    actionType: .improveFrontLight,
+                    tone: .danger,
+                    confidence: min(0.92, max(0.70, abs(snapshot.lighting.exposureBiasHint) * 0.75)),
+                    showHint: true
+                )
+            }
+
+            if minEdgeDistance < 0.045 {
+                let moveRight = centerX < 0.5
+                return DemoCoachingRule(
+                    id: "portrait_edge",
+                    text: moveRight ? "Оставь больше воздуха слева от лица." : "Оставь больше воздуха справа от лица.",
+                    shortVerdict: "Лицо слишком близко к краю кадра.",
+                    supportingText: "Bounding box героя касается края, поэтому зрителю сложнее воспринимать портрет как аккуратно собранный.",
+                    actionText: moveRight ? "Смести камеру чуть вправо." : "Смести камеру чуть влево.",
+                    actionType: moveRight ? .moveFrameRight : .moveFrameLeft,
+                    tone: .danger,
+                    confidence: 0.82,
+                    showHint: true
+                )
+            }
+
+            if snapshot.objects.totalCount >= 4 && !semantics.dominance.hasClearFocus {
+                return DemoCoachingRule(
+                    id: "portrait_busy_background",
+                    text: "Фон спорит с героем — упрости сцену.",
+                    shortVerdict: "В кадре есть герой, но фон конкурирует с ним.",
+                    supportingText: "Система видит несколько объектов вокруг субъекта и слабую иерархию внимания.",
+                    actionText: "Смени угол или убери лишние элементы за человеком.",
+                    actionType: .reduceBackgroundDistractions,
+                    tone: .warning,
+                    confidence: 0.74,
+                    showHint: true
+                )
+            }
+
+            if stableCount < 3 {
+                return demoWaitingRule(for: subject)
+            }
+
+            return DemoCoachingRule(
+                id: "portrait_good",
+                text: subject.kind == .dialogue ? "Герои зафиксированы." : "Лицо зафиксировано.",
+                shortVerdict: "Главный субъект стабильно найден.",
+                supportingText: "Система несколько кадров подряд удерживает bbox героя и не видит критичных live-проблем.",
+                actionText: nil,
+                actionType: .leaveFrameAsIs,
+                tone: .success,
+                confidence: max(0.76, min(0.92, subject.confidence)),
+                showHint: true
+            )
+        }
+
+        if minEdgeDistance < 0.055 {
+            let moveRight = centerX < 0.5
+            return DemoCoachingRule(
+                id: "object_edge",
+                text: moveRight ? "Сдвинь объект правее." : "Сдвинь объект левее.",
+                shortVerdict: "Предмет слишком близко к краю.",
+                supportingText: "Система видит главный объект и bbox почти касается края кадра. Детектор: \(subject.rawLabel ?? "object").",
+                actionText: moveRight ? "Перемести предмет или камеру чуть вправо." : "Перемести предмет или камеру чуть влево.",
+                actionType: moveRight ? .moveFrameRight : .moveFrameLeft,
+                tone: .danger,
+                confidence: 0.86,
+                showHint: true
+            )
+        }
+
+        if area < 0.035 {
+            return DemoCoachingRule(
+                id: "object_too_small",
+                text: "Объект теряется — подойди ближе.",
+                shortVerdict: "Предмет найден, но занимает мало кадра.",
+                supportingText: "Bounding box главного объекта слишком мал относительно всего кадра. Детектор: \(subject.rawLabel ?? "object").",
+                actionText: "Подойди ближе или увеличь объект в кадре.",
+                actionType: .increaseSubjectSize,
+                tone: .danger,
+                confidence: 0.84,
+                showHint: true
+            )
+        }
+
+        if !isNearDemoCompositionAnchor(x: centerX) {
+            let moveRight = centerX < 0.5
+            return DemoCoachingRule(
+                id: "object_thirds",
+                text: moveRight ? "Сдвинь объект правее к линии третей." : "Сдвинь объект левее к линии третей.",
+                shortVerdict: "Предмет виден, но композиционно стоит невыгодно.",
+                supportingText: "Центр bbox не попадает ни в устойчивую центральную зону, ни рядом с линиями третей.",
+                actionText: "Смести предмет к ближайшей вертикали третей.",
+                actionType: moveRight ? .moveFrameRight : .moveFrameLeft,
+                tone: .danger,
+                confidence: 0.78,
+                showHint: true
+            )
+        }
+
+        if snapshot.lighting.exposureBiasHint <= -0.55 {
+            return DemoCoachingRule(
+                id: "object_dark",
+                text: "Объект темноват — добавь свет спереди.",
+                shortVerdict: "Предмет найден, но освещение слабое.",
+                supportingText: "Субъект найден по bbox, при этом экспозиция указывает на недостаток света.",
+                actionText: "Добавь мягкий свет на предмет или поверни его к источнику.",
+                actionType: .improveFrontLight,
+                tone: .warning,
+                confidence: 0.74,
+                showHint: true
+            )
+        }
+
+        if stableCount < 3 {
+            return demoWaitingRule(for: subject)
+        }
+
+        return DemoCoachingRule(
+            id: "object_good",
+            text: "Объект зафиксирован.",
+            shortVerdict: "Главный предмет стабильно найден.",
+            supportingText: "Система несколько кадров подряд удерживает bbox предмета и не видит критичных live-проблем.",
+            actionText: nil,
+            actionType: .leaveFrameAsIs,
+            tone: .success,
+            confidence: max(0.76, min(0.92, subject.confidence)),
+            showHint: true
+        )
+    }
+
+    private func selectCinematicPortraitRule(subject: DemoCoachingSubject,
+                                             snapshot: FrameFeatureSnapshot,
+                                             stableCount: Int) -> DemoCoachingRule {
+        guard let subjectLighting = snapshot.lighting.subjectLighting else {
+            print(
+                "[CA_DEBUG][DEMO_RECIPE] mode=cinematic_portrait step=\(demoCinematicPortraitStep.rawValue) " +
+                "reason=no_subject_lighting subject=\(debugRegion(subject.region))"
+            )
+            return DemoCoachingRule(
+                id: "cinematic_portrait_wait_light",
+                text: "Фиксирую свет лица…",
+                shortVerdict: "Лицо найдено, ждём метрики света.",
+                supportingText: "Система удерживает bbox лица, но ещё не получила надёжные значения яркости лица и фона.",
+                actionText: nil,
+                actionType: nil,
+                tone: .warning,
+                confidence: max(0.55, min(0.72, subject.confidence)),
+                showHint: true
+            )
+        }
+
+        var safety = 0
+        while safety < 5 {
+            safety += 1
+            prepareCinematicPortraitStepEvidence(lighting: subjectLighting)
+
+            switch demoCinematicPortraitStep {
+            case .darkenBackground:
+                let satisfied = cinematicPortraitBackgroundReadyForDemo(subjectLighting)
+                logCinematicPortraitRecipe(
+                    step: .darkenBackground,
+                    satisfied: satisfied,
+                    subject: subject,
+                    lighting: subjectLighting
+                )
+                if canAdvanceCinematicPortraitStep(with: satisfied) {
+                    advanceCinematicPortraitStep(to: .addFaceLight)
+                    continue
+                }
+                markCinematicPortraitStepPresented()
+                return DemoCoachingRule(
+                    id: "cinematic_portrait_darken_background",
+                    text: "Сделай фон темнее.",
+                    shortVerdict: "Лицо найдено, но фон слишком близок по яркости.",
+                    supportingText: demoLightingSupportingText(
+                        prefix: "Система сравнила лицо и фон: герой ещё недостаточно отделён по яркости.",
+                        lighting: subjectLighting
+                    ),
+                    actionText: "Убери яркий фон, отвернись от светлой стены или затемни источник за героем.",
+                    actionType: .reduceBackgroundDistractions,
+                    tone: .danger,
+                    confidence: min(0.92, max(0.72, 0.82 - subjectLighting.subjectToBackgroundDelta)),
+                    showHint: true
+                )
+
+            case .addFaceLight:
+                if cinematicPortraitBackgroundRegressedForDemo(subjectLighting) {
+                    advanceCinematicPortraitStep(to: .darkenBackground)
+                    continue
+                }
+                let satisfied = cinematicPortraitFaceLightReadyForDemo(subjectLighting)
+                logCinematicPortraitRecipe(
+                    step: .addFaceLight,
+                    satisfied: satisfied,
+                    subject: subject,
+                    lighting: subjectLighting
+                )
+                if canAdvanceCinematicPortraitStep(with: satisfied) {
+                    advanceCinematicPortraitStep(to: .reduceFaceOverexposure)
+                    continue
+                }
+                markCinematicPortraitStepPresented()
+                return DemoCoachingRule(
+                    id: "cinematic_portrait_add_face_light",
+                    text: "Добавь мягкий свет на лицо.",
+                    shortVerdict: "Фон уже отделён, теперь лицо нужно вывести вперёд.",
+                    supportingText: demoLightingSupportingText(
+                        prefix: "Фон стал темнее, но яркость лица ниже комфортного уровня для читаемого портрета.",
+                        lighting: subjectLighting
+                    ),
+                    actionText: "Подними мягкий фронтальный или боковой свет и держи его не впритык к лицу.",
+                    actionType: .improveFrontLight,
+                    tone: .danger,
+                    confidence: min(0.92, max(0.72, 0.95 - subjectLighting.subjectMeanLuma)),
+                    showHint: true
+                )
+
+            case .reduceFaceOverexposure:
+                if cinematicPortraitBackgroundRegressedForDemo(subjectLighting) {
+                    advanceCinematicPortraitStep(to: .darkenBackground)
+                    continue
+                }
+                if cinematicPortraitFaceLightRegressedForDemo(subjectLighting) {
+                    advanceCinematicPortraitStep(to: .addFaceLight)
+                    continue
+                }
+                let overexposed = cinematicPortraitFaceLooksOverexposedForDemo(subjectLighting)
+                logCinematicPortraitRecipe(
+                    step: .reduceFaceOverexposure,
+                    satisfied: !overexposed,
+                    subject: subject,
+                    lighting: subjectLighting
+                )
+                if overexposed {
+                    markCinematicPortraitStepPresented()
+                    return DemoCoachingRule(
+                        id: "cinematic_portrait_reduce_face_overexposure",
+                        text: "Убери пересвет на лице.",
+                        shortVerdict: "Свет появился, но на лице выбиваются яркие участки.",
+                        supportingText: demoLightingSupportingText(
+                            prefix: "Система видит слишком высокую яркость или клиппинг внутри bbox лица.",
+                            lighting: subjectLighting
+                        ),
+                        actionText: "Отодвинь свет, рассей его или поверни лицо от прямого источника.",
+                        actionType: .improveFrontLight,
+                        tone: .danger,
+                        confidence: min(0.94, max(0.76, subjectLighting.subjectMeanLuma + subjectLighting.subjectClippedBrightRatio)),
+                        showHint: true
+                    )
+                }
+                if canAdvanceCinematicPortraitStep(with: cinematicPortraitOverexposureRecoveredForDemo(subjectLighting)) {
+                    advanceCinematicPortraitStep(to: .complete)
+                    continue
+                }
+                markCinematicPortraitStepPresented()
+                return DemoCoachingRule(
+                    id: "cinematic_portrait_hold_face_light",
+                    text: "Свет на лице стал мягче.",
+                    shortVerdict: "Пересвет ушёл, удерживаем лицо перед финальной оценкой.",
+                    supportingText: demoLightingSupportingText(
+                        prefix: "Система видит, что яркие участки на лице больше не выбиваются.",
+                        lighting: subjectLighting
+                    ),
+                    actionText: nil,
+                    actionType: nil,
+                    tone: .warning,
+                    confidence: max(0.68, min(0.82, subject.confidence)),
+                    showHint: true
+                )
+
+            case .complete:
+                logCinematicPortraitRecipe(
+                    step: .complete,
+                    satisfied: stableCount >= 3,
+                    subject: subject,
+                    lighting: subjectLighting
+                )
+                if stableCount < 3 {
+                    return demoWaitingRule(for: subject)
+                }
+                return DemoCoachingRule(
+                    id: "cinematic_portrait_good",
+                    text: "Портрет собран.",
+                    shortVerdict: "Лицо отделено от фона, свет читается, композиция стабильна.",
+                    supportingText: demoLightingSupportingText(
+                        prefix: "Система удерживает лицо несколько кадров подряд и видит рабочее разделение лица и фона.",
+                        lighting: subjectLighting
+                    ),
+                    actionText: nil,
+                    actionType: .leaveFrameAsIs,
+                    tone: .success,
+                    confidence: max(0.78, min(0.93, subject.confidence)),
+                    showHint: true
+                )
+            }
+        }
+
+        return demoWaitingRule(for: subject)
+    }
+
+    private func prepareCinematicPortraitStepEvidence(lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) {
+        guard demoCinematicPortraitStepEvidence.lighting == nil else {
+            return
+        }
+        demoCinematicPortraitStepEvidence = DemoCinematicPortraitStepEvidence(
+            lighting: lighting,
+            presentationCount: 0
+        )
+    }
+
+    private func markCinematicPortraitStepPresented() {
+        demoCinematicPortraitStepEvidence.presentationCount += 1
+    }
+
+    private func advanceCinematicPortraitStep(to step: DemoCinematicPortraitStep) {
+        guard demoCinematicPortraitStep != step else { return }
+        demoCinematicPortraitStep = step
+        demoCinematicPortraitStepEvidence = .empty
+    }
+
+    private func canAdvanceCinematicPortraitStep(with evidence: Bool) -> Bool {
+        evidence && demoCinematicPortraitStepEvidence.presentationCount > 0
+    }
+
+    private func cinematicPortraitBackgroundReadyForDemo(_ lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) -> Bool {
+        guard let baseline = demoCinematicPortraitStepEvidence.lighting else {
+            return false
+        }
+        let deltaGain = lighting.subjectToBackgroundDelta - baseline.subjectToBackgroundDelta
+        let backgroundDrop = baseline.backgroundMeanLuma - lighting.backgroundMeanLuma
+        let subjectDrop = baseline.subjectMeanLuma - lighting.subjectMeanLuma
+        let relativeSeparationImproved = deltaGain >= 0.05 && lighting.subjectToBackgroundDelta >= 0.06
+        let backgroundActuallyDarker = backgroundDrop >= 0.06 && subjectDrop <= 0.04
+        return (relativeSeparationImproved || backgroundActuallyDarker) && lighting.backgroundHotspotRatio < 0.24
+    }
+
+    private func cinematicPortraitBackgroundRegressedForDemo(_ lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) -> Bool {
+        lighting.subjectToBackgroundDelta < -0.08 || lighting.backgroundHotspotRatio >= 0.34
+    }
+
+    private func cinematicPortraitFaceLightReadyForDemo(_ lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) -> Bool {
+        guard let baseline = demoCinematicPortraitStepEvidence.lighting else {
+            return false
+        }
+        let faceLift = lighting.subjectMeanLuma - baseline.subjectMeanLuma
+        return lighting.subjectMeanLuma >= 0.54 || (faceLift >= 0.10 && lighting.subjectMeanLuma >= 0.48)
+    }
+
+    private func cinematicPortraitFaceLightRegressedForDemo(_ lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) -> Bool {
+        lighting.subjectMeanLuma < 0.36 && lighting.subjectToBackgroundDelta < 0.02
+    }
+
+    private func cinematicPortraitFaceLooksOverexposedForDemo(_ lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) -> Bool {
+        lighting.subjectMeanLuma >= 0.72 ||
+            lighting.subjectClippedBrightRatio >= 0.05 ||
+            (lighting.subjectMeanLuma >= 0.62 && lighting.subjectToBackgroundDelta >= 0.22)
+    }
+
+    private func cinematicPortraitOverexposureRecoveredForDemo(_ lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) -> Bool {
+        guard !cinematicPortraitFaceLooksOverexposedForDemo(lighting) else {
+            return false
+        }
+        guard let baseline = demoCinematicPortraitStepEvidence.lighting else {
+            return true
+        }
+        let faceDrop = baseline.subjectMeanLuma - lighting.subjectMeanLuma
+        let clipDrop = baseline.subjectClippedBrightRatio - lighting.subjectClippedBrightRatio
+        return faceDrop >= 0.04 || clipDrop >= 0.03 || lighting.subjectMeanLuma <= 0.64
+    }
+
+    private func logCinematicPortraitRecipe(step: DemoCinematicPortraitStep,
+                                            satisfied: Bool,
+                                            subject: DemoCoachingSubject,
+                                            lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) {
+        let baseline = demoCinematicPortraitStepEvidence.lighting
+        let baselineFace = baseline.map { debugDouble($0.subjectMeanLuma) } ?? "nil"
+        let baselineBackground = baseline.map { debugDouble($0.backgroundMeanLuma) } ?? "nil"
+        let baselineDelta = baseline.map { debugDouble($0.subjectToBackgroundDelta) } ?? "nil"
+        print(
+            "[CA_DEBUG][DEMO_RECIPE] mode=cinematic_portrait step=\(step.rawValue) " +
+            "satisfied=\(satisfied) current=\(demoCinematicPortraitStep.rawValue) " +
+            "shown=\(demoCinematicPortraitStepEvidence.presentationCount) " +
+            "subject=\(debugRegion(subject.region)) faceLuma=\(debugDouble(lighting.subjectMeanLuma)) " +
+            "bgLuma=\(debugDouble(lighting.backgroundMeanLuma)) delta=\(debugDouble(lighting.subjectToBackgroundDelta)) " +
+            "faceClip=\(debugDouble(lighting.subjectClippedBrightRatio)) bgHotspot=\(debugDouble(lighting.backgroundHotspotRatio)) " +
+            "baselineFace=\(baselineFace) baselineBg=\(baselineBackground) baselineDelta=\(baselineDelta)"
+        )
+    }
+
+    private func demoWaitingRule(for subject: DemoCoachingSubject) -> DemoCoachingRule {
+        DemoCoachingRule(
+            id: "subject_waiting",
+            text: "Фиксирую \(demoSubjectTextName(subject))…",
+            shortVerdict: "Главный субъект найден, ждём стабильности.",
+            supportingText: "Система уже видит bbox, но ждёт повторного подтверждения на следующем кадре.",
+            actionText: nil,
+            actionType: nil,
+            tone: .warning,
+            confidence: max(0.55, min(0.72, subject.confidence)),
+            showHint: true
+        )
+    }
+
+    private func demoSubjectTextName(_ subject: DemoCoachingSubject) -> String {
+        subject.displayLabel.lowercased()
+    }
+
+    private func demoLightingSupportingText(prefix: String,
+                                            lighting: FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics) -> String {
+        prefix + " " +
+        "Лицо: \(debugDouble(lighting.subjectMeanLuma)), фон: \(debugDouble(lighting.backgroundMeanLuma)), " +
+        "дельта: \(debugDouble(lighting.subjectToBackgroundDelta)), пересвет лица: \(debugDouble(lighting.subjectClippedBrightRatio)), " +
+        "яркий фон: \(debugDouble(lighting.backgroundHotspotRatio))."
+    }
+
+    private func makeDemoLiveHint(frameId: String,
+                                  subject: DemoCoachingSubject,
+                                  rule: DemoCoachingRule) -> LiveHintPresentation {
+        let traceId = "trc_\(frameId)_demo_\(rule.id)"
+        let overlayHint = OverlayHint(
+            id: "ovh_demo_\(rule.id)_\(quantizedRegionKey(for: subject.region))",
+            kind: .regionHighlight,
+            targetRegion: subject.region,
+            direction: nil
+        )
+        return LiveHintPresentation(
+            id: "lh_demo_\(rule.id)_\(stableDemoSubjectKey(subject))",
+            frameId: frameId,
+            text: rule.text,
+            confidence: rule.confidence,
+            actionType: rule.actionType,
+            actionId: nil,
+            linkedIssueIds: [],
+            summaryId: traceId,
+            traceRootIds: [traceId],
+            targetRegion: subject.region,
+            overlayHint: overlayHint,
+            isFallback: false,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: rule.shortVerdict,
+                supportingText: rule.supportingText,
+                actionText: rule.actionText,
+                fallbackUsed: false
+            )
+        )
+    }
+
+    private func validDemoRegion(_ region: NormalizedRect?) -> NormalizedRect? {
+        guard let region,
+              region.x.isFinite,
+              region.y.isFinite,
+              region.width.isFinite,
+              region.height.isFinite,
+              !region.isDegenerate,
+              region.width * region.height >= 0.002 else {
+            return nil
+        }
+        return region
+    }
+
+    private func validDemoObjectRegion(_ region: NormalizedRect?) -> NormalizedRect? {
+        guard let region = validDemoRegion(region) else { return nil }
+        let area = region.width * region.height
+        guard area <= 0.45,
+              region.width <= 0.78,
+              region.height <= 0.78 else {
+            return nil
+        }
+        return region
+    }
+
+    private func portraitFaceFallbackRegion(from region: NormalizedRect) -> NormalizedRect? {
+        let aspect = region.width / max(0.001, region.height)
+        if region.height <= 0.48 && aspect >= 0.42 && aspect <= 1.35 {
+            return region
+        }
+
+        let width = min(region.width * 0.72, max(0.12, region.height * 0.46))
+        let height = min(region.height * 0.42, max(0.12, width * 1.18))
+        let x = clamp01(region.x + (region.width - width) * 0.5)
+        let y = clamp01(region.y + region.height * 0.06)
+        let clampedWidth = min(width, 1.0 - x)
+        let clampedHeight = min(height, 1.0 - y)
+        return validDemoRegion(
+            NormalizedRect(
+                x: x,
+                y: y,
+                width: clampedWidth,
+                height: clampedHeight
+            )
+        )
+    }
+
+    private func stableDemoSubjectKey(_ subject: DemoCoachingSubject) -> String {
+        demoSubjectIdentityKey(subject)
+    }
+
+    private func isDemoPriorityObjectLabel(_ label: String) -> Bool {
+        demoObjectDisplayNames[normalizedDemoObjectLabel(label)] != nil
+    }
+
+    private func isDemoBackgroundObjectLabel(_ label: String) -> Bool {
+        demoBackgroundObjectLabels.contains(normalizedDemoObjectLabel(label))
+    }
+
+    private func demoObjectDisplayName(_ label: String) -> String {
+        demoObjectDisplayNames[normalizedDemoObjectLabel(label)] ?? "Объект"
+    }
+
+    private var demoObjectDisplayNames: [String: String] {
+        [
+            "book": "Объект",
+            "bottle": "Объект",
+            "cell phone": "Объект",
+            "cup": "Объект",
+            "keyboard": "Объект",
+            "laptop": "Объект",
+            "potted plant": "Объект",
+            "vase": "Объект"
+        ]
+    }
+
+    private var demoBackgroundObjectLabels: Set<String> {
+        [
+            "bed",
+            "cabinet",
+            "ceiling",
+            "chair",
+            "door",
+            "floor",
+            "keyboard",
+            "paper",
+            "screen",
+            "sofa",
+            "table",
+            "tv",
+            "wall",
+            "window"
+        ]
+    }
+
+    private func normalizedDemoObjectLabel(_ label: String) -> String {
+        let lowercased = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = lowercased.split(separator: "(", maxSplits: 1).first.map(String.init) ?? lowercased
+        return base.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isNearDemoCompositionAnchor(x: Double) -> Bool {
+        let anchors = [1.0 / 3.0, 0.5, 2.0 / 3.0]
+        return anchors.map { abs(x - $0) }.min() ?? 1.0 <= 0.095
+    }
+
+    private func capitalized(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return String(first).uppercased() + String(text.dropFirst())
     }
 
     func clearPausePresentationState() {
@@ -3673,6 +5090,9 @@ final class AnalysisPipeline: ObservableObject {
             self.liveHintShownAt = .distantPast
             self.liveHintExpiresAt = .distantPast
             self.lastLiveMotionBecameUnstableAt = nil
+            self.currentDemoOverlayAnnotations = []
+            self.demoSubjectTrack = nil
+            self.currentOverlayAnnotations = []
         }
         currentLiveFusionTraceBundle = nil
     }
@@ -3967,6 +5387,8 @@ final class AnalysisPipeline: ObservableObject {
                 linkedAction: linkedAction,
                 critique: critique,
                 plan: plan,
+                snapshot: snapshot,
+                semantics: semantics,
                 fallbackUsed: fallbackUsed
            ) {
             let targetRegion = linkedAction.targetRegion ?? firstIssueRegion(linkedIssueIds: semanticTip.linkedIssueIds, critique: critique)
@@ -3998,7 +5420,8 @@ final class AnalysisPipeline: ObservableObject {
             semantics: semantics,
             critique: critique,
             technicalQualitySignal: technicalQualitySignal
-        ) {
+        ),
+           isLiveWorthyContextualCorrection(correction) {
             return LiveHintPresentation(
                 id: "lh_live_contextual_\(correction.idSuffix)",
                 frameId: frameId,
@@ -4023,7 +5446,12 @@ final class AnalysisPipeline: ObservableObject {
 
         if let semanticTip,
            critique.verdict == .good,
-           shouldShowLivePositiveConfirmation(critique: critique, plan: plan) {
+           shouldShowLivePositiveConfirmation(
+                critique: critique,
+                plan: plan,
+                snapshot: snapshot,
+                semantics: semantics
+           ) {
             return LiveHintPresentation(
                 id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
                 frameId: frameId,
@@ -4048,7 +5476,13 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         if let primaryAction = plan.primaryAction,
-           isLiveWorthyPrimaryAction(primaryAction, critique: critique, plan: plan) {
+           isLiveWorthyPrimaryAction(
+                primaryAction,
+                critique: critique,
+                plan: plan,
+                snapshot: snapshot,
+                semantics: semantics
+           ) {
             let linkedIssueTypes = critique.issues
                 .filter { primaryAction.linkedIssueIds.contains($0.id) }
                 .map(\.type.rawValue)
@@ -4082,7 +5516,12 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         if critique.verdict == .good,
-           shouldShowLivePositiveConfirmation(critique: critique, plan: plan) {
+           shouldShowLivePositiveConfirmation(
+                critique: critique,
+                plan: plan,
+                snapshot: snapshot,
+                semantics: semantics
+           ) {
             let strengthTypes = critique.strengths.prefix(3).map(\.type.rawValue).sorted().joined(separator: "+")
             let normalizedSummary = normalizeSummaryKey(critique.summary.shortVerdict)
             let id = "lh_live_summary_\(normalizedSummary)_\(strengthTypes.isEmpty ? "none" : strengthTypes)"
@@ -4122,25 +5561,59 @@ final class AnalysisPipeline: ObservableObject {
                                          linkedAction: RecommendationAction,
                                          critique: CritiqueReport,
                                          plan: RecommendationPlan,
+                                         snapshot: FrameFeatureSnapshot?,
+                                         semantics: SceneSemanticsReport?,
                                          fallbackUsed: Bool) -> Bool {
+        guard isAllowedDemoLiveSemanticAction(semanticTip.actionType) else { return false }
+
         switch semanticTip.priorityBand {
         case .primaryCorrective:
             if fallbackUsed && !isStableLiveAction(linkedAction.actionType) {
                 return false
             }
-            return isLiveWorthyPrimaryAction(linkedAction, critique: critique, plan: plan)
+            return isLiveWorthyPrimaryAction(
+                linkedAction,
+                critique: critique,
+                plan: plan,
+                snapshot: snapshot,
+                semantics: semantics
+            )
         case .positiveConfirmation:
-            return shouldShowLivePositiveConfirmation(critique: critique, plan: plan)
-        case .secondaryCorrective, .contextualCorrective, .timingCorrective:
-            return false
+            return shouldShowLivePositiveConfirmation(
+                critique: critique,
+                plan: plan,
+                snapshot: snapshot,
+                semantics: semantics
+            )
+        case .timingCorrective:
+            guard !fallbackUsed,
+                  plan.planConfidence >= 0.70,
+                  critique.verdictConfidence >= 0.64 else { return false }
+            return strongestIssueScore(for: linkedAction, critique: critique) >= 0.70
+        case .secondaryCorrective, .contextualCorrective:
+            guard !fallbackUsed,
+                  plan.planConfidence >= 0.74,
+                  critique.verdictConfidence >= 0.66 else { return false }
+            return strongestIssueScore(for: linkedAction, critique: critique) >= 0.76
         }
     }
 
     private func isLiveWorthyPrimaryAction(_ action: RecommendationAction,
                                            critique: CritiqueReport,
-                                           plan: RecommendationPlan) -> Bool {
+                                           plan: RecommendationPlan,
+                                           snapshot: FrameFeatureSnapshot? = nil,
+                                           semantics: SceneSemanticsReport? = nil) -> Bool {
         if action.actionType == .leaveFrameAsIs {
-            return shouldShowLivePositiveConfirmation(critique: critique, plan: plan)
+            return shouldShowLivePositiveConfirmation(
+                critique: critique,
+                plan: plan,
+                snapshot: snapshot,
+                semantics: semantics
+            )
+        }
+
+        guard isAllowedDemoLiveSemanticAction(action.actionType.semanticActionType) else {
+            return false
         }
 
         guard critique.verdict != .good,
@@ -4158,13 +5631,41 @@ final class AnalysisPipeline: ObservableObject {
         case .increaseSubjectSize, .reduceBackgroundDistractions, .changeAngle:
             return issueScore >= 0.90 && plan.planConfidence >= 0.82
         case .leaveFrameAsIs:
-            return shouldShowLivePositiveConfirmation(critique: critique, plan: plan)
+            return shouldShowLivePositiveConfirmation(
+                critique: critique,
+                plan: plan,
+                snapshot: snapshot,
+                semantics: semantics
+            )
         }
     }
 
     private func isStableLiveAction(_ actionType: ActionTypeV1) -> Bool {
         actionType == .improveFrontLight || actionType == .levelHorizon || actionType == .leaveFrameAsIs
     }
+
+    private func isLiveWorthyContextualCorrection(_ correction: ContextualSemanticCorrection) -> Bool {
+        guard correction.semanticActionTypes.allSatisfy(isAllowedDemoLiveSemanticAction) else {
+            return false
+        }
+        guard let liveActionType = correction.liveActionType else { return true }
+        return isAllowedDemoLiveSemanticAction(liveActionType.semanticActionType)
+    }
+
+    private func isAllowedDemoLiveSemanticAction(_ actionType: SemanticActionType) -> Bool {
+        Self.demoLiveSemanticActionIds.contains(actionType.rawValue)
+    }
+
+    private static let demoLiveSemanticActionIds: Set<String> = [
+        SemanticActionType.keepCurrentSetup.rawValue,
+        SemanticActionType.simplifyBackground.rawValue,
+        SemanticActionType.waitForBackgroundClearance.rawValue,
+        SemanticActionType.stepBack.rawValue,
+        SemanticActionType.stepCloser.rawValue,
+        SemanticActionType.addFrontFillLight.rawValue,
+        SemanticActionType.removeBackgroundHotspot.rawValue,
+        SemanticActionType.levelHorizon.rawValue,
+    ]
 
     private func strongestIssueScore(for action: RecommendationAction,
                                      critique: CritiqueReport) -> Double {
@@ -4178,10 +5679,57 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     private func shouldShowLivePositiveConfirmation(critique: CritiqueReport,
-                                                    plan: RecommendationPlan) -> Bool {
-        critique.verdict == .good &&
-            critique.verdictConfidence >= 0.76 &&
-            plan.planConfidence >= 0.72
+                                                    plan: RecommendationPlan,
+                                                    snapshot: FrameFeatureSnapshot? = nil,
+                                                    semantics: SceneSemanticsReport? = nil) -> Bool {
+        guard critique.verdict == .good,
+              critique.verdictConfidence >= 0.76,
+              plan.planConfidence >= 0.72 else {
+            return false
+        }
+
+        guard snapshot != nil || semantics != nil else {
+            return true
+        }
+
+        let hasGrounding = hasGroundedLiveSubjectEvidence(snapshot: snapshot, semantics: semantics)
+        if !hasGrounding {
+            let semanticSubject = debugPrimarySubject(semantics?.primarySubject)
+            let snapshotRegion = debugRegion(snapshot?.subjectSignals.primaryCandidateRegion)
+            let snapshotConfidence = debugDouble(snapshot?.subjectSignals.primaryCandidateConfidence)
+            let parts = [
+                "[CA_DEBUG][LIVE_POSITIVE_GATE]",
+                "blocked=no_grounded_subject",
+                "verdict=\(critique.verdict.rawValue)",
+                "verdictConf=\(debugDouble(critique.verdictConfidence))",
+                "planConf=\(debugDouble(plan.planConfidence))",
+                "semanticSubject=\(semanticSubject)",
+                "snapshotRegion=\(snapshotRegion)",
+                "snapshotConf=\(snapshotConfidence)"
+            ]
+            print(parts.joined(separator: " "))
+        }
+        return hasGrounding
+    }
+
+    private func hasGroundedLiveSubjectEvidence(snapshot: FrameFeatureSnapshot?,
+                                                semantics: SceneSemanticsReport?) -> Bool {
+        if let primarySubject = semantics?.primarySubject,
+           primarySubject.kind != .unknown,
+           primarySubject.confidence >= 0.35,
+           let region = primarySubject.region,
+           !region.isDegenerate {
+            return true
+        }
+
+        guard let snapshot else { return false }
+        if let region = snapshot.subjectSignals.primaryCandidateRegion,
+           !region.isDegenerate,
+           (snapshot.subjectSignals.primaryCandidateConfidence ?? 0) >= 0.20 {
+            return true
+        }
+
+        return false
     }
 
     private func liveActionConfidence(for action: RecommendationAction,
@@ -4202,7 +5750,6 @@ final class AnalysisPipeline: ObservableObject {
                                      structuredAvailable: Bool,
                                      critique: CritiqueReport,
                                      plan: RecommendationPlan) {
-        guard CameraLog.liveHintDecisions else { return }
         liveHintDecisionLogCounter += 1
         let candidateKey = candidate?.id ?? "none"
         let legacyKey = legacySuggestion.map { "\($0.type):\($0.text)" } ?? "none"
@@ -4219,6 +5766,20 @@ final class AnalysisPipeline: ObservableObject {
         guard logKey != lastLiveHintDecisionLogKey || liveHintDecisionLogCounter % 20 == 0 else { return }
         lastLiveHintDecisionLogKey = logKey
 
+        let parts = [
+            "[CA_DEBUG][LIVE_HINT_SELECTED]",
+            "selected=\(debugText(candidate?.text))",
+            "legacy=\(legacyKey)",
+            "semantic=\(semanticKey)",
+            "structured=\(structuredAvailable)",
+            "verdict=\(critique.verdict.rawValue)",
+            "conf=\(debugDouble(critique.verdictConfidence))",
+            "plan=\(debugDouble(plan.planConfidence))",
+            "action=\(primaryActionKey)"
+        ]
+        print(parts.joined(separator: " "))
+
+        guard CameraLog.liveHintDecisions else { return }
         os_log(
             "💬 LiveHint decision selected=%{public}@ legacy=%{public}@ semantic=%{public}@ structured=%{public}@ verdict=%{public}@ conf=%.2f plan=%.2f action=%{public}@",
             log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
@@ -4232,6 +5793,240 @@ final class AnalysisPipeline: ObservableObject {
             plan.planConfidence,
             primaryActionKey
         )
+    }
+
+    private func logHighFrameDebug(context: FrameContext,
+                                   sourceFrameId: String,
+                                   trackingResult: VisionTrackingResult,
+                                   primarySubject: TrackedSubject?,
+                                   horizon: (angle: CGFloat, confidence: CGFloat),
+                                   saliencyBalance: CGFloat,
+                                   visionLatency: TimeInterval,
+                                   horizonLatency: TimeInterval) {
+        let timestamp = CMTimeGetSeconds(context.timestamp)
+        guard timestamp.isFinite else { return }
+        guard timestamp - lastHighCameraDebugTimestamp >= 0.5 else { return }
+        lastHighCameraDebugTimestamp = timestamp
+
+        let parts = [
+            "[CA_DEBUG][PIPE_HIGH]",
+            "frame=\(sourceFrameId)",
+            "ts=\(debugDouble(timestamp))",
+            "image=\(debugPixelBufferSize(context.pixelBuffer))",
+            "orientation=\(debugCGOrientationDescription(context.orientation))",
+            "stable=\(context.isStable)",
+            "motion=\(String(describing: context.motionState))",
+            "shake=\(debugDouble(context.shakeLevel))",
+            "visionSubjects=\(debugTrackedSubjects(trackingResult.subjects))",
+            "faces=\(trackingResult.faceCount)",
+            "persons=\(trackingResult.personCount)",
+            "primary=\(debugTrackedSubject(primarySubject))",
+            "saliency=\(debugPoint(trackingResult.saliencyCenter))",
+            "saliencyRegion=\(debugRect(trackingResult.saliencyRegion))",
+            "saliencyBalance=\(debugDouble(saliencyBalance))",
+            "horizon=\(debugDouble(horizon.angle))",
+            "horizonConf=\(debugDouble(horizon.confidence))",
+            "visionMs=\(debugDouble(visionLatency * 1000))",
+            "horizonMs=\(debugDouble(horizonLatency * 1000))"
+        ]
+        print(parts.joined(separator: " "))
+    }
+
+    @MainActor
+    private func printLiveDecisionDebug(candidate: LiveHintPresentation?,
+                                        frameId: String,
+                                        critique: CritiqueReport,
+                                        plan: RecommendationPlan,
+                                        snapshot: FrameFeatureSnapshot,
+                                        semantics: SceneSemanticsReport,
+                                        semanticTip: SemanticTipCandidate?,
+                                        legacySuggestion: Suggestion?,
+                                        structuredAvailable: Bool,
+                                        technicalQualitySignal: TechnicalQualitySignal) {
+        let semanticKey = semanticTip.map { semanticTipPlanner.stableKey(for: $0) } ?? "none"
+        let candidateId = candidate?.id ?? "none"
+        let candidateAction = candidate?.actionType?.rawValue ?? "none"
+        let primaryAction = plan.primaryAction?.actionType.rawValue ?? "none"
+        let decisionKey = [
+            candidateId,
+            candidateAction,
+            critique.verdict.rawValue,
+            primaryAction,
+            semanticKey,
+            structuredAvailable ? "structured" : "legacy",
+            critique.issues.first?.type.rawValue ?? "no_issue"
+        ].joined(separator: "|")
+        let now = CACurrentMediaTime()
+        guard decisionKey != lastLiveDecisionDebugLogKey ||
+                now - lastLiveDecisionDebugLogTimestamp >= 1.0 else {
+            return
+        }
+        lastLiveDecisionDebugLogKey = decisionKey
+        lastLiveDecisionDebugLogTimestamp = now
+
+        let issueTypes = critique.issues.prefix(4).map(\.type.rawValue).joined(separator: ",")
+        let strengthTypes = critique.strengths.prefix(4).map(\.type.rawValue).joined(separator: ",")
+        let semanticAction = semanticTip?.actionType.rawValue ?? "none"
+        let semanticGrounding = semanticTip?.targetEntityGroundingConfidence.map { debugDouble($0) } ?? "nil"
+        let technicalActions = technicalQualitySignal.futureActionIds.joined(separator: ",")
+        let candidateText = debugText(candidate?.text)
+        let candidateTarget = debugRegion(candidate?.targetRegion)
+        let candidateConfidence = debugDouble(candidate?.confidence)
+        let legacyKey = legacySuggestion.map { "\($0.type):\($0.text)" } ?? "none"
+        let primarySubject = debugPrimarySubject(semantics.primarySubject)
+        let snapshotRegion = debugRegion(snapshot.subjectSignals.primaryCandidateRegion)
+        let snapshotConfidence = debugDouble(snapshot.subjectSignals.primaryCandidateConfidence)
+        let topObject = "\(snapshot.subjectSignals.topObjectLabel ?? "nil"):\(debugDouble(snapshot.subjectSignals.topObjectConfidence))"
+        let sourceStatus = debugSources(snapshot.sources)
+        let issues = issueTypes.isEmpty ? "none" : issueTypes
+        let strengths = strengthTypes.isEmpty ? "none" : strengthTypes
+        let technical = technicalActions.isEmpty ? "none" : technicalActions
+        let parts = [
+            "[CA_DEBUG][LIVE_DECISION]",
+            "frame=\(frameId)",
+            "shown=\(candidate != nil)",
+            "text=\(candidateText)",
+            "id=\(candidateId)",
+            "action=\(candidateAction)",
+            "target=\(candidateTarget)",
+            "confidence=\(candidateConfidence)",
+            "verdict=\(critique.verdict.rawValue)",
+            "verdictConf=\(debugDouble(critique.verdictConfidence))",
+            "planConf=\(debugDouble(plan.planConfidence))",
+            "primaryAction=\(primaryAction)",
+            "structured=\(structuredAvailable)",
+            "semantic=\(semanticKey)",
+            "semanticAction=\(semanticAction)",
+            "semanticGround=\(semanticGrounding)",
+            "legacy=\(legacyKey)",
+            "subject=\(primarySubject)",
+            "scene=\(semantics.sceneType.rawValue)",
+            "readable=\(semantics.readability.subjectReadable)",
+            "clearFocus=\(semantics.dominance.hasClearFocus)",
+            "snapshotRegion=\(snapshotRegion)",
+            "snapshotConf=\(snapshotConfidence)",
+            "topObject=\(topObject)",
+            "objects=\(snapshot.objects.totalCount)",
+            "sources=\(sourceStatus)",
+            "issues=\(issues)",
+            "strengths=\(strengths)",
+            "technical=\(technical)"
+        ]
+        print(parts.joined(separator: " "))
+    }
+
+    private func debugTrackedSubjects(_ subjects: [TrackedSubject]) -> String {
+        guard !subjects.isEmpty else { return "none" }
+        return subjects
+            .prefix(5)
+            .map { debugTrackedSubject($0) }
+            .joined(separator: ";")
+    }
+
+    private func debugTrackedSubject(_ subject: TrackedSubject?) -> String {
+        guard let subject else { return "nil" }
+        let kind = subject.isFace ? "face" : "person"
+        return "\(kind):\(debugDouble(Double(subject.confidence)))@\(debugRect(subject.boundingBox))"
+    }
+
+    private func debugDetections(_ detections: [DETRDetection], limit: Int = 5) -> String {
+        guard !detections.isEmpty else { return "total=0" }
+        let rendered = detections
+            .sorted { $0.confidence > $1.confidence }
+            .prefix(limit)
+            .map { debugDetection($0) }
+            .joined(separator: ";")
+        let suffix = detections.count > limit ? ";..." : ""
+        return "total=\(detections.count) top=\(rendered)\(suffix)"
+    }
+
+    private func debugDetection(_ detection: DETRDetection?) -> String {
+        guard let detection else { return "nil" }
+        return "\(detection.label):\(debugDouble(Double(detection.confidence)))@\(debugRect(detection.boundingBox))"
+    }
+
+    private func debugPrimarySubject(_ subject: SceneSemanticsReport.PrimarySubject?) -> String {
+        guard let subject else { return "nil" }
+        let label = subject.label ?? "nil"
+        return "\(subject.kind.rawValue):\(label):\(debugDouble(subject.confidence))@\(debugRegion(subject.region))"
+    }
+
+    private func debugSources(_ sources: FeatureSourceStatus) -> String {
+        [
+            "vision=\(debugSourceState(sources.vision))",
+            "detr=\(debugSourceState(sources.detr))",
+            "horizon=\(debugSourceState(sources.horizon))",
+            "lighting=\(debugSourceState(sources.lighting))",
+            "aesthetic=\(debugSourceState(sources.aesthetic))"
+        ].joined(separator: ",")
+    }
+
+    private func debugSourceState(_ state: SourceState) -> String {
+        let available = state.available ? "1" : "0"
+        let freshness = state.freshnessMs.map { "\($0)ms" } ?? "nil"
+        let confidence = debugDouble(state.confidence)
+        return "\(available)/\(freshness)/\(confidence)"
+    }
+
+    private func debugRect(_ rect: CGRect?) -> String {
+        guard let rect else { return "nil" }
+        return "[x=\(debugDouble(rect.minX)) y=\(debugDouble(rect.minY)) w=\(debugDouble(rect.width)) h=\(debugDouble(rect.height))]"
+    }
+
+    private func debugRegion(_ region: NormalizedRect?) -> String {
+        guard let region else { return "nil" }
+        return "[x=\(debugDouble(region.x)) y=\(debugDouble(region.y)) w=\(debugDouble(region.width)) h=\(debugDouble(region.height))]"
+    }
+
+    private func debugPoint(_ point: CGPoint?) -> String {
+        guard let point else { return "nil" }
+        return "[x=\(debugDouble(point.x)) y=\(debugDouble(point.y))]"
+    }
+
+    private func debugPixelBufferSize(_ pixelBuffer: CVPixelBuffer) -> String {
+        "\(CVPixelBufferGetWidth(pixelBuffer))x\(CVPixelBufferGetHeight(pixelBuffer))"
+    }
+
+    private func debugCGOrientationDescription(_ orientation: CGImagePropertyOrientation) -> String {
+        switch orientation {
+        case .up:
+            return "up"
+        case .upMirrored:
+            return "upMirrored"
+        case .down:
+            return "down"
+        case .downMirrored:
+            return "downMirrored"
+        case .left:
+            return "left"
+        case .leftMirrored:
+            return "leftMirrored"
+        case .right:
+            return "right"
+        case .rightMirrored:
+            return "rightMirrored"
+        }
+    }
+
+    private func debugText(_ value: String?) -> String {
+        guard let value else { return "none" }
+        return value
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+    }
+
+    private func debugDouble(_ value: Double?) -> String {
+        guard let value else { return "nil" }
+        return debugDouble(value)
+    }
+
+    private func debugDouble(_ value: Double) -> String {
+        guard value.isFinite else { return "nan" }
+        return String(format: "%.3f", value)
+    }
+
+    private func debugDouble(_ value: CGFloat) -> String {
+        debugDouble(Double(value))
     }
 
     private func makeLegacyLiveHint(frameId: String,
@@ -4284,14 +6079,9 @@ final class AnalysisPipeline: ObservableObject {
         case .lighting:
             return suggestion.priority != .optional
         case .composition:
-            return suggestion.priority != .optional &&
-                critique.issues.contains {
-                    ($0.type == .subjectTooCloseToEdge ||
-                     $0.type == .insufficientLookSpace ||
-                     $0.type == .subjectNotProminentEnough) &&
-                        $0.severity >= 0.58 &&
-                        $0.confidence >= 0.45
-                }
+            // Live composition advice is owned by the structured semantic path.
+            // Legacy bbox heuristics are too noisy for portraits and demo framing.
+            return false
         case .lens, .other:
             return false
         }
@@ -4968,7 +6758,14 @@ final class AnalysisPipeline: ObservableObject {
         guard let current = currentLiveHint else {
             currentLiveHint = candidate
             liveHintShownAt = now
-            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
+            return
+        }
+
+        if current.id.hasPrefix("lh_demo_") || candidate.id.hasPrefix("lh_demo_") {
+            currentLiveHint = candidate
+            liveHintShownAt = now
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
             return
         }
 
@@ -4991,20 +6788,20 @@ final class AnalysisPipeline: ObservableObject {
                 isFallback: candidate.isFallback,
                 expandedVerdict: candidate.expandedVerdict
             )
-            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
             return
         }
 
         if current.id == candidate.id {
             currentLiveHint = candidate
-            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
             return
         }
 
         if candidate.isFallback && !current.isFallback {
             currentLiveHint = candidate
             liveHintShownAt = now
-            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
             return
         }
 
@@ -5013,8 +6810,16 @@ final class AnalysisPipeline: ObservableObject {
         if holdExpired || confidenceBoost >= liveHintConfidenceDelta {
             currentLiveHint = candidate
             liveHintShownAt = now
-            liveHintExpiresAt = now.addingTimeInterval(liveHintDisplayDuration)
+            liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
         }
+    }
+
+    private func liveHintDuration(for hint: LiveHintPresentation) -> TimeInterval {
+        guard hint.id.hasPrefix("lh_demo_") else { return liveHintDisplayDuration }
+        if hint.actionType == nil || hint.actionType == .leaveFrameAsIs {
+            return 1.5
+        }
+        return 3.0
     }
 
     private func makePauseCritiquePresentation(critique: CritiqueReport,
@@ -7731,6 +9536,9 @@ final class AnalysisPipeline: ObservableObject {
         var annotations: [OverlayAnnotationPresentation] = []
 
         if mode == .live {
+            if !currentDemoOverlayAnnotations.isEmpty {
+                return currentDemoOverlayAnnotations
+            }
             guard let liveHint else { return [] }
             if let actionId = liveHint.actionId,
                let action = allPlanActions(plan).first(where: { $0.id == actionId }),
@@ -8793,15 +10601,17 @@ extension AnalysisPipeline {
             }
             self.debugData.visionMeasuredAt = measuredAt
             self.debugData.saliencyCenter = trackingResult.saliencyCenter
+            self.debugData.saliencyRegion = trackingResult.saliencyRegion
             self.latestVisionSample = FeatureSample(
                 value: FeatureSnapshotVisionPayload(
                     subjects: visionSubjectsPayload,
                     saliencyCenter: trackingResult.saliencyCenter,
+                    saliencyRegion: trackingResult.saliencyRegion,
                     faceCount: trackingResult.faceCount,
                     personCount: trackingResult.personCount
                 ),
                 measuredAt: measuredAt,
-                baseConfidence: visionBaseConfidence
+                baseConfidence: visionBaseConfidence ?? (trackingResult.saliencyRegion == nil ? nil : 0.48)
             )
             self.latestHorizonSample = FeatureSample(
                 value: FeatureSnapshotHorizonPayload(
@@ -8833,11 +10643,19 @@ extension AnalysisPipeline {
             features.lighting.backlightIndex = lighting.backlightIndex
             features.lighting.keyToFillRatio = lighting.keyFillRatio
             features.lighting.exposureBiasHint = lighting.exposureBiasHint
+            let subjectLighting = FrameFeatureSnapshot.LightingFeatures.SubjectLightingMetrics(
+                subjectMeanLuma: Double(lighting.subjectMeanLuma),
+                backgroundMeanLuma: Double(lighting.backgroundMeanLuma),
+                subjectToBackgroundDelta: Double(lighting.subjectToBackgroundDelta),
+                subjectClippedBrightRatio: Double(lighting.subjectClippedBrightRatio),
+                backgroundHotspotRatio: Double(lighting.backgroundHotspotRatio)
+            )
             self.latestLightingSample = FeatureSample(
                 value: FeatureSnapshotLightingPayload(
                     exposureBiasHint: Double(lighting.exposureBiasHint),
                     backlightIndex: Double(lighting.backlightIndex),
-                    keyToFillRatio: Double(lighting.keyFillRatio)
+                    keyToFillRatio: Double(lighting.keyFillRatio),
+                    subjectLighting: subjectLighting
                 ),
                 measuredAt: measuredAt,
                 baseConfidence: nil
@@ -9629,6 +11447,47 @@ extension AnalysisPipeline {
             structuredAvailable: structuredAvailable,
             now: now
         )
+        if currentLiveHint?.id.hasPrefix("lh_demo_") == true {
+            publishOverlayAnnotations(currentDemoOverlayAnnotations, now: now)
+        } else if !currentDemoOverlayAnnotations.isEmpty {
+            publishOverlayAnnotations(currentDemoOverlayAnnotations, now: now)
+        }
+    }
+
+    @MainActor
+    func testingPublishLivePresentation(frameId: String,
+                                        snapshot: FrameFeatureSnapshot,
+                                        critique: CritiqueReport,
+                                        plan: RecommendationPlan,
+                                        semantics: SceneSemanticsReport,
+                                        legacySuggestion: Suggestion?,
+                                        structuredAvailable: Bool,
+                                        now: Date = Date()) {
+        let semanticTips = semanticTipPlanner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: frameId,
+                mode: critique.mode,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: semantics
+            )
+        )
+        publishLivePresentation(
+            frameId: frameId,
+            critique: critique,
+            plan: plan,
+            snapshot: snapshot,
+            semantics: semantics,
+            semanticTips: semanticTips,
+            legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            now: now
+        )
+        if currentLiveHint?.id.hasPrefix("lh_demo_") == true {
+            publishOverlayAnnotations(currentDemoOverlayAnnotations, now: now)
+        } else if !currentDemoOverlayAnnotations.isEmpty {
+            publishOverlayAnnotations(currentDemoOverlayAnnotations, now: now)
+        }
     }
 
     @MainActor
@@ -9755,6 +11614,10 @@ extension AnalysisPipeline {
 
     var testingHasPauseReasoningTask: Bool {
         pauseReasoningTask != nil
+    }
+
+    func testingIsAllowedDemoLiveSemanticAction(_ actionType: SemanticActionType) -> Bool {
+        isAllowedDemoLiveSemanticAction(actionType)
     }
 
     @MainActor
