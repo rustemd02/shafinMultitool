@@ -29,7 +29,7 @@ The proposed Release contract is:
 
 | Contributor | Current evidence | Proposed disposition |
 |---|---|---|
-| `dataset_v9_event_sft_q4_k_m.gguf` | **Declared** by STATUS as approximately 1.0 GB; **absent** from this checkout and the partial app. `.gitignore` explicitly excludes `*.gguf`. | **DOWNLOAD / ON-DEMAND; EXCLUDE FROM Release.** Keep the existing explicit-path/override route for Debug and device benchmarking. |
+| `dataset_v9_event_sft_q4_k_m.gguf` | **Worker checkout:** absent because it is ignored by `.gitignore`. **Parent-supplied, independently reproduced acceptance evidence:** present in the primary developer checkout at 1,094,912 KB and copied to the partial app. | **EXCLUDE FROM Release regardless of checkout contamination; ON-DEMAND only for explicitly supported Debug/device flows.** `.gitignore` is not a Release boundary. |
 | `Resources/DeviceBenchmark/camera_device_benchmark_pack_v1` | **Measured** 36,760 KB, 179 files; its files are copied to the partial app root as part of a 52,072 KB flattened benchmark contribution. | **EXCLUDE FROM Release; KEEP for the existing Debug/device harness through a Debug-only input or test artifact.** |
 | `Resources/DeviceBenchmark/scene_generator_device_pack_v1` | **Measured** 15,312 KB, 3 JSONL/manifest files; flattened into the same 52,072 KB partial-app contribution. | **EXCLUDE FROM Release; KEEP for the existing Debug/device harness through a Debug-only input or test artifact.** |
 | Core ML packages | **Measured** 48,440 KB source; 48,532 KB as two compiled `.mlmodelc` bundles in the partial app. DETR is a hard bundle lookup; aesthetic scoring is an optional/soft lookup. | **KEEP in Release and Debug.** |
@@ -40,9 +40,12 @@ The proposed Release contract is:
 | `Circle.rcproject` | **Observed** as a synchronized-group membership exception and not present in the partial app. | **KEEP excluded from the app target.** No change was made. |
 
 The most important result is that the approximately 1.0 GB GGUF and the
-approximately 51 MB benchmark packs have different statuses: the GGUF is an
-external runtime payload that is absent here, while the benchmark packs are
-tracked resources that the synchronized group currently copies into the app.
+approximately 51 MB benchmark packs have different statuses, and that the
+GGUF is not safe to classify as merely absent: the clean worker checkout has no
+ignored payload, but the parent’s developer checkout reproduced the payload
+being copied automatically by synchronized-root membership. CC-002 therefore
+needs a deterministic Release allowlist/exclusion boundary that produces the
+same result whether the ignored local file exists or not.
 
 ## Why the current target bundles these files
 
@@ -72,6 +75,47 @@ implementation must preserve Debug harness availability while making the
 Release output satisfy the disposition contract; this audit does not choose or
 apply the project-file mechanism.
 
+## Parent-supplied contaminated-checkout evidence
+
+The following evidence was supplied by the Sol parent after independently
+reproducing the same build in the primary developer checkout. It was **not
+observed in this worker worktree** and is intentionally kept separate from the
+worker measurements above.
+
+- The primary checkout contained the ignored local file
+  `shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf`.
+- The exact parent command was:
+
+  ```text
+  xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -configuration Release -destination 'generic/platform=iOS' -derivedDataPath /private/tmp/shafin-cc001-parent-release-derived CODE_SIGNING_ALLOWED=NO build
+  ```
+
+- The parent build also exited 65 with the same six
+  `DeviceBenchmarkCoordinator.swift:465/499` errors documented below. It did
+  not produce a clean Release app/archive.
+- Parent-supplied partial-app measurements:
+
+  | Parent partial-product item | `du -sk` |
+  |---|---:|
+  | `/private/tmp/shafin-cc001-parent-release-derived/Build/Products/Release-iphoneos/shafinMultitool.app` | 1,198,316 KB |
+  | `dataset_v9_event_sft_q4_k_m.gguf` at the copied app root | 1,094,912 KB |
+  | Remaining partial-app content | 103,404 KB |
+
+- The parent partial app path for the copied payload was
+  `/private/tmp/shafin-cc001-parent-release-derived/Build/Products/Release-iphoneos/shafinMultitool.app/dataset_v9_event_sft_q4_k_m.gguf`.
+- The parent also independently observed `Assets.car`,
+  `core_accepted_source.jsonl`, and `hard_accepted_source.jsonl` over 1 MB in
+  that partial product. The worker’s 103,404 KB partial-app total and the
+  parent’s non-GGUF remainder are exactly equal; this is an independent
+  cross-check of the contamination delta, not a claim that the worker saw the
+  parent file.
+
+This evidence changes the Release risk classification: an ignored developer
+file is a release determinism/security boundary failure when synchronized-root
+membership copies it. CC-002 must prevent the file from entering Release by
+project/configuration membership or an equivalent explicit allowlist, and must
+verify both a clean tracked checkout and a contaminated developer checkout.
+
 ## Detailed inventory
 
 ### 1. GGUF model payload — external/on-demand
@@ -79,15 +123,15 @@ apply the project-file mechanism.
 - **Source path:** `shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf`
   is the expected path in `scripts/run_open_domain_scene_benchmark.py:23` and
   the fallback path in `shafinMultitool/Benchmark/DeviceBenchmarkCoordinator.swift:1386–1390`.
-  The file is absent from the checkout; `find . -iname '*.gguf'` returned no
-  file. `.gitignore:4–5` says large GGUF files should be downloaded separately.
-- **Built path:** none observed. If a developer-local GGUF is placed under the
-  synchronized `shafinMultitool` tree, its app path is conditional on the
-  resource membership mechanism; the current flattened resource output makes
-  an app-root file the expected candidate, but this was not observed.
-- **Size:** unknown/measurable only when the ignored file is present. Existing
-  `STATUS.md` declares approximately 1.0 GB; that is not a measurement of this
-  checkout.
+  In the clean worker checkout, `find . -iname '*.gguf'` returned no file
+  because `.gitignore:4–5` excludes large GGUF files. The parent independently
+  reproduced the same path as a developer-local ignored file.
+- **Built path:** none was observed in the clean worker product. Parent-supplied
+  acceptance evidence observed the copied file at
+  `/private/tmp/shafin-cc001-parent-release-derived/Build/Products/Release-iphoneos/shafinMultitool.app/dataset_v9_event_sft_q4_k_m.gguf`.
+- **Size:** clean worker measurement is unavailable because the file is absent.
+  Existing `STATUS.md` declares approximately 1.0 GB; the parent-supplied
+  independent measurement is **1,094,912 KB** (approximately 1.04 GiB).
 - **Why it enters:** the synchronized root can make a local file eligible for
   resource copying. Scene Generator runtime then looks for `.gguf` recursively
   in `Bundle.main`, all bundles, and all frameworks
@@ -102,23 +146,29 @@ apply the project-file mechanism.
 - **Release necessity:** not needed to compile/link the app or to preserve the
   Camera Coach path. It is needed only if Release is expected to ship the
   local Scene Generator model already installed. Product authority does not
-  require a bundled GGUF.
+  require a bundled GGUF, and parent evidence proves that relying on file
+  absence is insufficient.
 - **Provenance/license:** no file, checksum, license, or redistribution grant
   can be inspected because the payload is absent. Historical model names in
   old documents are not treated as current authority.
-- **Disposition:** **DOWNLOAD / ON-DEMAND; EXCLUDE FROM Release.** The next
-  implementation should download or otherwise provision a model into an app
-  support/cache location, set the existing override for benchmark/debug use,
-  and retain a clear unavailable-model state. Do not add the payload to the
-  synchronized Release resources.
+- **Disposition:** **EXCLUDE FROM Release regardless of whether the ignored
+  local file exists; ON-DEMAND only for explicitly supported Debug/device
+  benchmark flows.** The next implementation should download or otherwise
+  provision a model into an app support/cache location, set the existing
+  override for benchmark/debug use, and retain a clear unavailable-model
+  state. It must make Release resource membership deterministic rather than
+  relying on `.gitignore`, the developer’s checkout contents, or an absent
+  file.
 - **Owner/build reference:** `CF37407A...` synchronized root; target
   `CFF7B203...`; script line 23; coordinator lines 1356–1397; parser lines
   2313–2360.
-- **Risk:** removing the bundled fallback without provisioning a replacement
-  makes local Scene Mode and the Scene Generator benchmark fail with the
-  existing “GGUF model not found”/“Could not resolve scene generator runtime
-  model” errors. A download policy, endpoint, cache lifetime, size budget, and
-  legal provenance remain open decisions.
+- **Risk:** retaining the payload makes the partial Release product about 1.2
+  GB and allows developer-local data to cross the release boundary. Excluding
+  the bundled fallback without provisioning a replacement makes local Scene
+  Mode and the Scene Generator benchmark fail with the existing “GGUF model
+  not found”/“Could not resolve scene generator runtime model” errors. A
+  download policy, endpoint, cache lifetime, size budget, checksum, and legal
+  provenance remain open decisions.
 
 ### 2. Camera device benchmark pack
 
@@ -354,13 +404,15 @@ apply the project-file mechanism.
   asset unavailable. The next implementation must run the existing Scene Mode
   smoke path before enforcing this exclusion.
 
-## Reconciliation of the partial Release product
+## Reconciliation of the partial Release products
 
-The required Release build did not complete, but Xcode copied resources before
-the compiler failed. The partial product is evidence of resource membership,
-not a valid Release app/archive.
+Neither Release build completed, but Xcode copied resources before the
+compiler failed. Both partial products are evidence of resource membership,
+not valid Release apps/archives.
 
-Measured resource subtotal in
+### Clean worker checkout: GGUF absent
+
+Measured resource subtotal in the clean worker product at
 `/private/tmp/cc001-release-derived/Build/Products/Release-iphoneos/shafinMultitool.app`:
 
 | Partial-app contributor | `du -sk` |
@@ -381,10 +433,31 @@ Release framework products were measured but not counted in that partial-app
 subtotal: `llama.framework` 4,684 KB, `ARVideoKit.framework` 1,340 KB,
 `SnapKit.framework` 912 KB, and `Pods_shafinMultitool.framework` 20 KB.
 
-The missing GGUF is deliberately not added to this measured subtotal. Adding a
-developer-local approximately 1.0 GB payload would explain the historical
-`STATUS.md` declaration of an approximately 1.2 GB test bundle, but this worker
-cannot measure or claim that bundle.
+The GGUF is deliberately not added to this worker subtotal because it is absent
+from the clean checkout.
+
+### Parent-supplied primary checkout: ignored GGUF copied
+
+The parent-supplied, independently reproduced primary-checkout evidence is:
+
+| Parent partial-app item | `du -sk` |
+|---|---:|
+| `/private/tmp/shafin-cc001-parent-release-derived/Build/Products/Release-iphoneos/shafinMultitool.app` | 1,198,316 KB |
+| `dataset_v9_event_sft_q4_k_m.gguf` copied into that app | 1,094,912 KB |
+| Parent partial-app remainder after GGUF | 103,404 KB |
+
+The parent remainder equals the worker partial-app total exactly:
+
+```text
+1,198,316 KB - 1,094,912 KB = 103,404 KB
+```
+
+This is the critical contamination delta. It proves that the ignored local
+file is automatically copied by the synchronized root in a primary Release
+build attempt and that the resulting partial app is approximately 1.2 GB.
+The parent also observed `Assets.car`, `core_accepted_source.jsonl`, and
+`hard_accepted_source.jsonl` over 1 MB in that partial app. Those observations
+are parent-supplied and are not relabeled as worker measurements.
 
 ## Exact handoff contract for the implementation task
 
@@ -397,7 +470,9 @@ The next task can be mechanical against the following contract:
    models, `Assets.car`, any explicitly proven product USDZ resources, the
    device `llama.framework`, and the current CocoaPods frameworks. It must not
    contain any `*.gguf` or any file from either `Resources/DeviceBenchmark`
-   pack.
+   pack, **whether or not an ignored developer-local GGUF exists in the
+   checkout**. The absence of the file in a clean checkout is not sufficient
+   evidence.
 3. For **Debug/device benchmark**, preserve access to both pack IDs and the
    existing flattened/nested lookup behavior. The harness currently enters
    only when `DEVICE_BENCHMARK_CONFIG_BASE64` is present in `SceneDelegate` and
@@ -408,7 +483,8 @@ The next task can be mechanical against the following contract:
    file. Do not create a Release resource dependency on the ignored source
    path. The implementation must define download failure, cache location,
    version/checksum, and provenance separately; none is established by this
-   audit.
+   audit. A Release membership test must run once with the ignored local file
+   absent and once with it present, and must produce the same no-GGUF result.
 5. Keep the direct Core ML bundle names unchanged unless the corresponding
    wrapper and tests are updated in a separate task. Keep the explicit llama
    framework embed phase and the current Pods embed phase.
@@ -416,7 +492,9 @@ The next task can be mechanical against the following contract:
    clean generic-device Release build/archive-equivalent. Inspect the final
    `.app` with `find`/`du`, assert no `.gguf` and no benchmark-pack files are
    present, assert the required Core ML/framework/assets are present, and
-   record the final bundle total. A build-for-testing or this failed build is
+   record the final bundle total. Repeat the Release resource assertion from a
+   developer checkout containing the ignored 1,094,912 KB GGUF; the result
+   must remain identical. A build-for-testing or either failed build above is
    not a clean Release archive claim.
 7. Clear model, benchmark-data, USDZ, llama, and model-conversion provenance
    and notice obligations before App Store submission. This report records
@@ -443,6 +521,19 @@ shafinMultitool/Benchmark/DeviceBenchmarkCoordinator.swift:503:49: error: cannot
 shafinMultitool/Benchmark/DeviceBenchmarkCoordinator.swift:505:49: error: cannot infer contextual base in reference to member 'fullRuntime'
 ```
 
+Parent-supplied independent verification used the primary checkout and this
+exact command:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -configuration Release -destination 'generic/platform=iOS' -derivedDataPath /private/tmp/shafin-cc001-parent-release-derived CODE_SIGNING_ALLOWED=NO build
+```
+
+It also exited 65 with the same errors at `DeviceBenchmarkCoordinator.swift`
+465/469/471/499/503/505. Before that failure, the parent partial app measured
+1,198,316 KB and contained the ignored GGUF at its app root at 1,094,912 KB.
+This is acceptance evidence supplied by the parent, not a worker-observed
+success or a clean Release result.
+
 No source fix was attempted. Because the compiler failed, this report makes no
 clean Release archive claim. `xcodebuild -list`/`-showBuildSettings` also
 returned `xcodebuild: error: 'shafinMultitool.xcworkspace' is not a workspace
@@ -457,7 +548,8 @@ product instead.
   catalog and largest image, the llama XCFramework slices, USDZ/Reality
   Composer files, and CocoaPods framework products.
 - `find . -iname '*.gguf'` returned no file; the absent model is not silently
-  counted in the bundle totals.
+  counted in the clean-worker bundle totals. Parent-supplied evidence proves
+  the same ignored path is copied when present in the primary checkout.
 - The current checkout started clean at detached `HEAD`, so the report’s only
   intended change is this file. `git diff --check` and the final path-only diff
   check are required after writing it and before the scoped commit.
@@ -467,10 +559,11 @@ product instead.
 - The Release exclusion of both benchmark packs is a bundle disposition, not a
   deletion or a product/legal decision. Debug/test provisioning remains
   required.
-- The GGUF is classified as download/on-demand because the repository itself
-  says to download ignored GGUF files separately and the runtime already
-  supports explicit paths. Download URL, checksum, version policy, storage
-  policy, and license are unresolved.
+- The GGUF is classified as **Release-excluded regardless of local checkout
+  contents**, with download/on-demand reserved for explicitly supported
+  Debug/device flows. The repository says to download ignored GGUF files
+  separately and the runtime already supports explicit paths. Download URL,
+  checksum, version policy, storage policy, and license are unresolved.
 - USDZ files are classified as Release exclusions only because no current
   source reference was found. A Scene Mode dynamic/serialized reference would
   change their disposition to KEEP and must be checked before implementation.
@@ -479,7 +572,8 @@ product instead.
 - The required Release build is blocked by the pre-existing compile errors
   above. The partial resource product proves membership and reconciles its
   resource subtotal, but cannot prove executable linkage, signing, archive
-  size, or final embedded frameworks.
+  size, or final embedded frameworks. Parent evidence adds the contaminated
+  checkout size and copied GGUF, but does not change that build blocker.
 
 ## Goal closure
 
@@ -489,8 +583,9 @@ product instead.
 - **Success evidence:** all observed material contributors and conditional
   GGUF path are mapped to source/built paths, sizes, ownership references,
   configuration necessity, provenance status, disposition, risks, and an
-  implementation contract; the partial resource subtotal reconciles to the
-  partial app total.
+  implementation contract. The clean-worker subtotal reconciles to its
+  partial app total, and the parent-supplied contaminated-checkout total
+  reconciles as 1,198,316 KB = 1,094,912 KB GGUF + 103,404 KB non-GGUF.
 - **Stop state:** audit-only; no source/project/resource exclusion was applied.
 - **Non-goals respected:** no app-code changes, no build change, no deletion,
   no other docs, no push/PR/rebase/merge, and no clean Release claim.
