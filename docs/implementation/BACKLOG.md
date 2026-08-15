@@ -168,9 +168,21 @@
 
 ### CC-010C — Serialized recorder ownership
 
-- Lane: Terra / High because `CameraService.shared` crosses current Scene Mode, legacy CameraScreen, audio capture, AR pixel buffers, `AVAssetWriter` and Photos.
-- State: `draft` until recording/save/retention policy is accepted from CC-008/CC-003.
+- Lane: Sol decomposes; Luna / Max owns isolated mechanics; one-time production migration remains high-complexity review because `CameraService.shared` crosses current Scene Mode, legacy CameraScreen, audio capture, AR pixel buffers, `AVAssetWriter` and Photos.
+- State: `partially_in_progress`; production wiring waits for recording/save/retention policy accepted from CC-008/CC-003.
 - Objective: one serialized recorder state machine, awaited finalization, stopped audio capture, typed local-file/Photos result and deterministic cleanup.
+
+#### CC-010C-A — Policy-neutral serialized recorder core
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Task: `01a00609-a689-7373-b2d4-d0eb245a6c66`.
+- Ownership: create only `shafinMultitool/Services/Recording/RecorderContracts.swift`, `shafinMultitool/Services/Recording/SerializedMediaRecorder.swift` and `shafinMultitoolTests/SerializedMediaRecorderTests.swift`.
+- Non-edits: current `CameraService`, Scene/legacy Camera call sites, AR container, Camera Coach, lifecycle delegates, project/plist/privacy files, Photos and permissions.
+- Contract: typed idle/prepared/recording/finishing/finished/failed/released state; caller-supplied UUID/output URL/audio policy; one serial queue; generation fence for late frames; shared in-flight awaited finish; idempotent release; separate export protocol with no Photos implementation.
+- Focused tests: transition validity, writer/audio single start, required/disabled audio, queue confinement, late-frame fence, concurrent/repeated stop, finish failure, no-video result, prepared/recording release, waiter cancellation and absence of automatic re-prepare/export.
+- Acceptance: focused tests and generic iOS build-for-testing pass; the owned files have no dependency on current recorder/call sites or Photos; no runtime behavior changes.
+- Boundary: this foundation is not production recording. CC-010C remains incomplete until owner-approved save/retention/background/route-exit policy and a separately reviewed production migration.
 
 ### CC-010D — Scene route teardown
 

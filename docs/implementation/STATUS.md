@@ -45,7 +45,8 @@
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
 | CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
 | CC-010B | accepted | Luna / Max | CC-010A | Детерминированный unregister/drain, release/re-register и stale-result fences; 23/23 focused tests прошли |
-| CC-010C | draft | Terra / High | CC-009, recording policy | Serialized recorder ownership и typed save result |
+| CC-010C | partially_in_progress | Sol → Luna / Max | CC-009, recording policy | Policy-neutral serialized recorder core выполняется; production wiring/save policy остаются gated |
+| CC-010C-A | in_progress | Luna / Max | CC-009 | Изолированное recorder core с typed state/result и concurrency tests без production wiring |
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
 | CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
@@ -79,6 +80,7 @@
 - CC-008A: точный post-acceptance packet подготовлен: typed presentation только для S04/S06/S07/S10c, один lower-third coaching surface, action-linked guides, production-safe copy, accessibility и Reduce Motion/Transparency. Пакет не обещает subject clarification, verification, recording, Deep Review или persistence и не запускается до CC-008.
 - CC-013B1: Luna / Max task `01a00603-9514-7ea0-81f3-21361862bc87` выполняет offline-verifiable record, validator и fixture tests для точного `llama.xcframework`; legal/redistribution approval явно вне пакета.
 - CC-013C1: Luna / Max task `01a00603-9514-7ea0-81f3-2140ad032657` выполняет offline-verifiable source/export linkage record для `Circle.rcproject` и `Circle.usdz`; deterministic export recipe и creator/rights declaration явно вне пакета.
+- CC-010C-A: Luna / Max task `01a00609-a689-7373-b2d4-d0eb245a6c66` выполняет policy-neutral serialized recorder core и fake-driven concurrency tests. `CameraService`, Scene/Camera call sites, Photos, permission UI и runtime behavior не входят в пакет.
 
 ## Ворота следующего шага
 
