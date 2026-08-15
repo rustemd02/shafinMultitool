@@ -9,15 +9,27 @@ import Foundation
 import CoreMotion
 import os.log
 
-final class MotionGate {
+extension MotionState: @unchecked Sendable {}
+
+struct MotionSnapshot: Equatable, Sendable {
+    let motionState: MotionState
+    let shakeLevel: Double
+    let isStable: Bool
+}
+
+final class MotionGate: @unchecked Sendable {
     private let motionManager = CMMotionManager()
     private var gyroEMA = ExponentialMovingAverage(alpha: 0.3)
     private var accelEMA = ExponentialMovingAverage(alpha: 0.3)
     private let queue = OperationQueue()
     private let log = OSLog(subsystem: "com.multitool2.motion", category: "MotionGate")
+    private let stateLock = NSLock()
     private var processCount: Int = 0
     private var pendingState: MotionState?
     private var pendingStateSampleCount: Int = 0
+    private var publishedSnapshot = MotionSnapshot(motionState: .still,
+                                                   shakeLevel: 0.0,
+                                                   isStable: true)
 
     private let stillEnterShakeThreshold = 0.18
     private let stillExitShakeThreshold = 0.42
@@ -25,26 +37,41 @@ final class MotionGate {
     private let panningExitGyroThreshold = 0.45
     private let panningMaxAccelThreshold = 0.40
 
-    private(set) var shakeLevel: Double = 0.0
-    private(set) var motionState: MotionState = .still {
-        didSet {
-            if CameraLog.motion, oldValue != motionState {
-                os_log("🏃 Motion state changed: %{public}@ → %{public}@ (shake=%.2f)", 
-                       log: log, type: .debug,
-                       String(describing: oldValue), 
-                       String(describing: motionState), 
-                       shakeLevel)
-            }
-        }
+    var shakeLevel: Double {
+        snapshot().shakeLevel
+    }
+
+    var motionState: MotionState {
+        snapshot().motionState
     }
 
     var isCameraStable: Bool {
-        shakeLevel < stillExitShakeThreshold && motionState == .still
+        snapshot().isStable
     }
 
     init() {
-        queue.name = "MotionGateQueue"
+        configureQueue()
         startMotionUpdates()
+    }
+
+#if DEBUG
+    init(startMotionUpdates: Bool) {
+        configureQueue()
+        if startMotionUpdates {
+            self.startMotionUpdates()
+        }
+    }
+#endif
+
+    func snapshot() -> MotionSnapshot {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return publishedSnapshot
+    }
+
+    private func configureQueue() {
+        queue.name = "MotionGateQueue"
+        queue.maxConcurrentOperationCount = 1
     }
 
     deinit {
@@ -63,27 +90,79 @@ final class MotionGate {
     }
 
     private func process(motion: CMDeviceMotion) {
-        processCount += 1
         let gyroMagnitude = hypot(hypot(motion.rotationRate.x, motion.rotationRate.y), motion.rotationRate.z)
         let accelMagnitude = hypot(hypot(motion.userAcceleration.x, motion.userAcceleration.y), motion.userAcceleration.z)
-
-        let gyro = gyroEMA.addSample(gyroMagnitude)
-        let accel = accelEMA.addSample(accelMagnitude)
-
-        shakeLevel = min(1.0, gyro * 0.7 + accel * 0.3)
-        
-        // Verbose motion diagnostics are opt-in; otherwise they drown live hint logs.
-        if CameraLog.motion, processCount % 120 == 0 {
-            os_log("📊 Motion values: shake=%.3f gyro=%.3f accel=%.3f state=%{public}@",
-                   log: log, type: .debug, shakeLevel, gyro, accel, String(describing: motionState))
-        }
-
-        let desiredState = desiredMotionState(gyro: gyro, accel: accel, shake: shakeLevel)
-        applyStateWithHysteresis(desiredState)
+        processSample(gyroMagnitude: gyroMagnitude, accelMagnitude: accelMagnitude)
     }
 
-    private func desiredMotionState(gyro: Double, accel: Double, shake: Double) -> MotionState {
-        switch motionState {
+    #if DEBUG
+    func processSyntheticSample(gyroMagnitude: Double, accelMagnitude: Double) {
+        processSample(gyroMagnitude: gyroMagnitude, accelMagnitude: accelMagnitude)
+    }
+    #endif
+
+    private func processSample(gyroMagnitude: Double, accelMagnitude: Double) {
+        var verboseLog: (shake: Double, gyro: Double, accel: Double, state: MotionState)?
+        var stateChangeLog: (oldState: MotionState, newState: MotionState, shake: Double)?
+
+        stateLock.lock()
+        processCount += 1
+        let gyro = gyroEMA.addSample(gyroMagnitude)
+        let accel = accelEMA.addSample(accelMagnitude)
+        let shake = min(1.0, gyro * 0.7 + accel * 0.3)
+        let currentState = publishedSnapshot.motionState
+        let motionLoggingEnabled = CameraLog.motion
+
+        // Verbose motion diagnostics are opt-in; otherwise they drown live hint logs.
+        if motionLoggingEnabled, processCount % 120 == 0 {
+            verboseLog = (shake: shake,
+                          gyro: gyro,
+                          accel: accel,
+                          state: currentState)
+        }
+
+        let desiredState = desiredMotionState(currentState: currentState,
+                                               gyro: gyro,
+                                               accel: accel,
+                                               shake: shake)
+        let nextState = applyStateWithHysteresis(desiredState,
+                                                 currentState: currentState)
+        publishedSnapshot = MotionSnapshot(motionState: nextState,
+                                           shakeLevel: shake,
+                                           isStable: nextState == .still && shake < stillExitShakeThreshold)
+
+        if motionLoggingEnabled, currentState != nextState {
+            stateChangeLog = (oldState: currentState,
+                              newState: nextState,
+                              shake: shake)
+        }
+        stateLock.unlock()
+
+        if let verboseLog {
+            os_log("📊 Motion values: shake=%.3f gyro=%.3f accel=%.3f state=%{public}@",
+                   log: log,
+                   type: .debug,
+                   verboseLog.shake,
+                   verboseLog.gyro,
+                   verboseLog.accel,
+                   String(describing: verboseLog.state))
+        }
+
+        if let stateChangeLog {
+            os_log("🏃 Motion state changed: %{public}@ → %{public}@ (shake=%.2f)",
+                   log: log,
+                   type: .debug,
+                   String(describing: stateChangeLog.oldState),
+                   String(describing: stateChangeLog.newState),
+                   stateChangeLog.shake)
+        }
+    }
+
+    private func desiredMotionState(currentState: MotionState,
+                                    gyro: Double,
+                                    accel: Double,
+                                    shake: Double) -> MotionState {
+        switch currentState {
         case .still:
             if shake <= stillExitShakeThreshold {
                 return .still
@@ -111,11 +190,12 @@ final class MotionGate {
         }
     }
 
-    private func applyStateWithHysteresis(_ desiredState: MotionState) {
-        guard desiredState != motionState else {
+    private func applyStateWithHysteresis(_ desiredState: MotionState,
+                                          currentState: MotionState) -> MotionState {
+        guard desiredState != currentState else {
             pendingState = nil
             pendingStateSampleCount = 0
-            return
+            return currentState
         }
 
         if pendingState == desiredState {
@@ -134,10 +214,10 @@ final class MotionGate {
         case .panning:
             requiredSamples = 12
         }
-        guard pendingStateSampleCount >= requiredSamples else { return }
+        guard pendingStateSampleCount >= requiredSamples else { return currentState }
 
-        motionState = desiredState
         pendingState = nil
         pendingStateSampleCount = 0
+        return desiredState
     }
 }

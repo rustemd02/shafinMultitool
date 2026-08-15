@@ -573,15 +573,13 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let orientation = CGImagePropertyOrientation(connection.videoOrientation)
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let isStable = motionGate.isCameraStable
-        let shakeLevel = motionGate.shakeLevel
-        let motionState = motionGate.motionState
+        let motionSnapshot = motionGate.snapshot()
         let context = FrameContext(pixelBuffer: pixelBuffer,
                                    timestamp: timestamp,
                                    orientation: orientation,
-                                   isStable: isStable,
-                                   shakeLevel: shakeLevel,
-                                   motionState: motionState)
+                                   isStable: motionSnapshot.isStable,
+                                   shakeLevel: motionSnapshot.shakeLevel,
+                                   motionState: motionSnapshot.motionState)
 
         let budget = thermalGovernor.nextBudget()
 
