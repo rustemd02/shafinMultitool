@@ -172,6 +172,26 @@
 - Acceptance: repeated/racing start-stop tests pass; generic iOS test build passes; existing Camera Coach frame flow remains intact.
 - Evidence: worker commit `b93e4aa`, accepted commit `e0bd423`; generic build-for-testing passed, and Sol independently reran `CameraManagerLifecycleTests` on iPhone 17 Pro simulator with 7/7 passing.
 
+#### CC-010A1 — Failed-start registration rollback
+
+- Lane: Luna / Max after CC-010B1 acceptance; Sol verification and acceptance.
+- State: `ready_after_CC-010B1`.
+- Ownership: `CameraViewModel.swift` and a new isolated `CameraViewModelLifecycleTests.swift`; no `AnalysisPipeline`, `CameraManager`, UI or route edits.
+- Objective: when an actual current camera start fails after pipeline registration, await a cleanup boundary that releases those registrations and session-local presentation/evidence before publishing the typed failure; a superseded start must not release a newer retry registration.
+- Contract: retries and `releaseAndWait` wait any failed-start rollback; successful start semantics and ordinary pause/stop behavior remain unchanged; failed start leaves zero scheduler registrations; one retry creates exactly three fresh registrations.
+- Acceptance: focused failed/superseded/retry/release races and generic build pass. This slice does not add permission UI or classify a system permission itself.
+
+#### CC-010A2 — Atomic motion snapshot
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Ownership: `MotionGate.swift`, the single `CameraManager.captureOutput` read seam, and new `MotionGateTests.swift` only.
+- Objective: every `FrameContext` receives one coherent `{state, shakeLevel, isStable}` snapshot instead of three unsynchronized reads across Core Motion and camera-output queues.
+- Contract: immutable Equatable/Sendable `MotionSnapshot`; one lock/serialized publication boundary; `CameraManager` reads exactly once per frame. Preserve current EMA, thresholds, hysteresis, logs and production start/stop behavior. Add an internal deterministic sample seam rather than a second estimator.
+- Tests: initial snapshot; exact still/moving/panning hysteresis; coherence invariant; concurrent synthetic updates/reads; CameraManager source check or injectable assertion proving one snapshot read. No physical motion sensor dependency.
+- Non-goals: threshold tuning, orientation, permission UI, session lifecycle redesign, new analytics or advice changes.
+- Acceptance: focused tests and generic iOS build-for-testing pass; existing lifecycle/scheduler tests remain green.
+
 ### CC-010B — Scheduler and pipeline release
 
 - Lane: Luna / Max.
@@ -179,6 +199,19 @@
 - Objective: own registration tokens, unregister deterministically, cancel/await outstanding analysis work and fence stale presentation updates.
 - Acceptance: register/release/re-register and stale-result tests pass without changing recommendation semantics.
 - Evidence: worker commit `1926988`, accepted commit `79f7d1d`. `AnalysisPipeline` owns the three scheduler tokens; registration is rejected during release; unregister, queue/task draining and generation fences make release terminal. Sol independently passed generic simulator `build-for-testing` and 23/23 focused tests across `AnalysisPipelineReleaseTests`, `RealtimeSchedulerTests` and `CameraManagerLifecycleTests`.
+
+#### CC-010B1 — Coherent latest-frame evidence and release reset
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Ownership: `AnalysisPipeline.swift`, new `LatestFrameEvidenceStore.swift`, `LatestFrameEvidenceStoreTests.swift` and narrow additions to `AnalysisPipelineReleaseTests.swift` only.
+- Objective: live/pause work consumes one coherent latest-frame envelope and a released/re-registered pipeline cannot emit advice or critique from retained pixels, frame IDs or feature samples of the prior session.
+- Envelope: one lock-confined immutable snapshot containing `CVPixelBuffer`, orientation, source frame ID, capture time and stability. High analysis publishes the tuple once; live emit and pause analysis each read one snapshot once; current test replay uses the same seam.
+- Release boundary: after unregister and queue/task drain, clear the envelope and reset session-local feature/debug/sample/neural outcomes before marking release finished. Re-register starts empty; no suggestion is emitted until new-session frame evidence exists. Keep generation fences and presentation clearing intact.
+- Tests: concurrent tuple writes/reads never mix frame ID/orientation/stability; clear releases the retained buffer and returns nil; release clears evidence and feature samples; re-register/poll before a new frame cannot reuse old evidence; new frame after re-register is accepted; existing 23 focused release/scheduler/camera tests remain green.
+- Non-goals: advice thresholds/semantics, Core ML composition, UI, camera ownership, recording, orientation or analytics.
+- TDD Route: mode off; decision skipped; normal focused verification only.
+- Acceptance: focused store/release suites and generic iOS build-for-testing pass with no stale-frame behavior and no changes outside the owned four files.
 
 ### CC-010C — Serialized recorder ownership
 
