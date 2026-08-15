@@ -351,9 +351,17 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
     }
 
     private func waitUntil(_ condition: @escaping () -> Bool) async -> Bool {
-        for _ in 0..<2_000 {
+        // High analysis runs on a dedicated queue; use elapsed time instead of a fixed yield budget.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+
+        while clock.now < deadline {
             if condition() { return true }
-            await Task.yield()
+            do {
+                try await Task.sleep(nanoseconds: 1_000_000)
+            } catch {
+                return false
+            }
         }
         return condition()
     }
