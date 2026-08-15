@@ -15,6 +15,7 @@ struct OverlayView: View {
     let cameraManager: CameraManager
     @State private var decisionTrace: DecisionTracePresentation?
     @State private var uiFPSTimer: Timer?
+    @State private var lifecycleTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -152,7 +153,10 @@ struct OverlayView: View {
             }
         }
         .onAppear {
-            viewModel.start()
+            lifecycleTask?.cancel()
+            lifecycleTask = Task { @MainActor in
+                await viewModel.startAndWait()
+            }
             if viewModel.debugMode {
                 startUIFPSMonitoring()
             }
@@ -166,7 +170,10 @@ struct OverlayView: View {
         }
         .onDisappear {
             stopUIFPSMonitoring()
-            viewModel.stop()
+            lifecycleTask?.cancel()
+            lifecycleTask = Task { @MainActor in
+                await viewModel.stopAndWait()
+            }
         }
         .sheet(item: $decisionTrace) { trace in
             DecisionTraceView(trace: trace)

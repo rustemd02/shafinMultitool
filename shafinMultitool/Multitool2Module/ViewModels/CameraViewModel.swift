@@ -8,7 +8,11 @@
 import Combine
 import Foundation
 
+@MainActor
 final class CameraViewModel: ObservableObject {
+    @Published private(set) var lifecycleState: CameraLifecycleState = .idle
+    @Published private(set) var lifecycleError: CameraManagerError?
+
     @Published var overlayState: OverlayState = .init(primaryBoundingBox: nil,
                                                       horizonAngle: 0,
                                                       horizonConfidence: 0,
@@ -38,6 +42,8 @@ final class CameraViewModel: ObservableObject {
     private var featurePollingCancellable: AnyCancellable?
     private var hasRegistered = false
     private var pauseRequestToken: UUID?
+    private var lifecycleTask: Task<Void, Never>?
+    private var lifecycleIntent = UUID()
 
     init(cameraManager: CameraManager,
          analysisPipeline: AnalysisPipeline) {
@@ -70,22 +76,88 @@ final class CameraViewModel: ObservableObject {
     }
 
     func start() {
+        let intent = beginLifecycleRequest(.starting)
+        startCaptureRegistrationIfNeeded()
+        lifecycleTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performStart(intent: intent)
+        }
+    }
+
+    func startAndWait() async {
+        let intent = beginLifecycleRequest(.starting)
+        startCaptureRegistrationIfNeeded()
+        await performStart(intent: intent)
+    }
+
+    func stop() {
+        let intent = beginLifecycleRequest(.stopping)
+        stopFeaturePolling()
+        lifecycleTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performStop(intent: intent)
+        }
+    }
+
+    func stopAndWait() async {
+        let intent = beginLifecycleRequest(.stopping)
+        stopFeaturePolling()
+        await performStop(intent: intent)
+    }
+
+    func releaseAndWait() async {
+        let intent = beginLifecycleRequest(.stopping)
+        stopFeaturePolling()
+        await cameraManager.releaseAndWait()
+        guard lifecycleIntent == intent else { return }
+        lifecycleState = .idle
+        lifecycleError = nil
+        availableLenses = []
+    }
+
+    private func beginLifecycleRequest(_ requestedState: CameraLifecycleState) -> UUID {
+        lifecycleTask?.cancel()
+        let intent = UUID()
+        lifecycleIntent = intent
+        lifecycleState = requestedState
+        lifecycleError = nil
+        return intent
+    }
+
+    private func performStart(intent: UUID) async {
+        do {
+            try await cameraManager.startAndWait()
+            guard !Task.isCancelled, lifecycleIntent == intent else { return }
+            lifecycleState = .running
+            lifecycleError = nil
+            availableLenses = cameraManager.availableLenses
+        } catch let error as CameraManagerError {
+            guard !Task.isCancelled, lifecycleIntent == intent else { return }
+            stopFeaturePolling()
+            lifecycleState = .failed(error)
+            lifecycleError = error
+        } catch {
+            guard !Task.isCancelled, lifecycleIntent == intent else { return }
+            stopFeaturePolling()
+            let typedError = CameraManagerError.startFailed
+            lifecycleState = .failed(typedError)
+            lifecycleError = typedError
+        }
+    }
+
+    private func performStop(intent: UUID) async {
+        await cameraManager.stopAndWait()
+        guard !Task.isCancelled, lifecycleIntent == intent else { return }
+        lifecycleState = cameraManager.lifecycleState
+        lifecycleError = cameraManager.lifecycleError
+    }
+
+    private func startCaptureRegistrationIfNeeded() {
         if !hasRegistered {
             analysisPipeline.register(with: cameraManager)
             hasRegistered = true
         }
         startFeaturePolling()
-        cameraManager.start()
-        
-        // Обновляем список доступных объективов после старта
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.availableLenses = self?.cameraManager.availableLenses ?? []
-        }
-    }
-
-    func stop() {
-        stopFeaturePolling()
-        cameraManager.stop()
     }
     
     func toggleDebug() {
@@ -97,7 +169,7 @@ final class CameraViewModel: ObservableObject {
         if isPaused {
             isPaused = false
             pauseRequestToken = nil
-            cameraManager.start()
+            start()
             previewSuggestions = []
             pauseCritique = nil
             analysisPipeline.clearPausePresentationState()
@@ -105,7 +177,7 @@ final class CameraViewModel: ObservableObject {
             isPaused = true
             let token = UUID()
             pauseRequestToken = token
-            cameraManager.stop()
+            stop()
             analysisPipeline.runPauseAnalysis { [weak self] list, critique in
                 guard let self else { return }
                 guard self.isPaused, self.pauseRequestToken == token else { return }
