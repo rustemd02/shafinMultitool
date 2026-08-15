@@ -67,13 +67,14 @@
 ## CC-006 — Runtime entry and legacy route audit
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `accepted`.
 - Ownership: create only `docs/implementation/audits/runtime-entry-routing.md`.
 - Read: `AppDelegate`, `SceneDelegate`, `SOModuleBuilder`, scene overview/stage selection, `ContentView`, camera shell entry points and benchmark environment route.
 - Must report: launch graph, navigation owners, orientation assumptions, camera owners created per route, persistent-state dependencies, candidate commercial shell seam, routes safe to retire later and required negative tests.
 - Must not change navigation or delete legacy code.
 - Verification: call graph searches, compile baseline reference and `git diff --check`.
 - Acceptance: one lowest-risk seam for Camera Coach default entry is recommended with explicit compatibility and retirement boundaries.
+- Evidence: `docs/implementation/audits/runtime-entry-routing.md`; accepted after `git diff --check`, source-citation spot checks and generic iOS `build-for-testing` (`** TEST BUILD SUCCEEDED **`).
 
 ## CC-007 — Commercial shell and Camera Coach default route
 

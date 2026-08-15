@@ -37,7 +37,7 @@
 | CC-003 | in_progress | Luna / Max | bootstrap commit | Privacy/permission inventory и executable gap list |
 | CC-004 | ready | Luna / Max | bootstrap commit | Dependency/model/media provenance inventory |
 | CC-005 | in_progress | Luna / Max | bootstrap commit | Test topology и UI-test target implementation plan |
-| CC-006 | in_progress | Luna / Max | bootstrap commit | Runtime entry и legacy route audit |
+| CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
 | CC-007 | draft | Sol → Luna | CC-006, UX spec | Commercial app shell и Camera Coach default route |
 | CC-008 | in_progress | Sol | product baseline | UI/UX state specification без vibe-code patterns |
 | CC-009 | ready | Luna / Max | bootstrap commit | Camera/session owner and lifecycle audit |
@@ -47,11 +47,11 @@
 
 ## Активная работа
 
-- Sol: контролирует четыре независимых audit stacks; CC-004 и CC-009 остаются следующими ready tasks после освобождения task capacity.
+- Sol: принял CC-006 после проверки diff, исходных ссылок и повторной generic iOS test build; освободившийся слот передаётся CC-009.
 - CC-001: task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worktree `/Users/unterlantas/.codex/worktrees/f179/shafinMultitool`.
 - CC-003: task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worktree `/Users/unterlantas/.codex/worktrees/5496/shafinMultitool`.
 - CC-005: task `01a0055c-a4b4-70e2-bb46-5381f4f0acf1`, worktree `/Users/unterlantas/.codex/worktrees/f619/shafinMultitool`.
-- CC-006: task `01a0055c-a4b4-70e2-bb46-536ebdfd5585`, worktree `/Users/unterlantas/.codex/worktrees/439b/shafinMultitool`.
+- CC-006: accepted, task `01a0055c-a4b4-70e2-bb46-536ebdfd5585`, worker commit `caefe22`, accepted commit `67ede42`, evidence `docs/implementation/audits/runtime-entry-routing.md`.
 
 ## Ворота следующего шага
 
