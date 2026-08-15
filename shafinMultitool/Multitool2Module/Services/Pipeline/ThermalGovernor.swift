@@ -8,7 +8,7 @@
 import Foundation
 import UIKit
 
-enum ThermalBudgetTier {
+enum ThermalBudgetTier: Sendable {
     case unrestricted
     case constrained
     case critical
@@ -18,14 +18,13 @@ final class ThermalGovernor {
     typealias ThermalStateProvider = () -> ProcessInfo.ThermalState
     typealias BatteryLevelProvider = () -> Float
 
-    struct Budget {
-        var highPriorityFrequency: Double
-        var mediumPriorityFrequency: Double
-        var lowPriorityFrequency: Double
-        var heavyModelsEnabled: Bool
+    struct Budget: Sendable {
+        let highPriorityFrequency: Double
+        let mediumPriorityFrequency: Double
+        let lowPriorityFrequency: Double
+        let heavyModelsEnabled: Bool
     }
 
-    private var lastBudget: Budget
     private let thermalStateProvider: ThermalStateProvider
     private let batteryLevelProvider: BatteryLevelProvider
 
@@ -34,7 +33,6 @@ final class ThermalGovernor {
         UIDevice.current.isBatteryMonitoringEnabled = true
         self.thermalStateProvider = { processInfo.thermalState }
         self.batteryLevelProvider = batteryLevelProvider
-        self.lastBudget = Self.budget(for: .nominal)
     }
 
     init(thermalStateProvider: @escaping ThermalStateProvider,
@@ -42,7 +40,6 @@ final class ThermalGovernor {
         UIDevice.current.isBatteryMonitoringEnabled = true
         self.thermalStateProvider = thermalStateProvider
         self.batteryLevelProvider = batteryLevelProvider
-        self.lastBudget = Self.budget(for: .nominal)
     }
 
     func currentTier() -> ThermalBudgetTier {
@@ -79,8 +76,7 @@ final class ThermalGovernor {
             effectiveState = thermalState
         }
 
-        lastBudget = Self.budget(for: effectiveState)
-        return lastBudget
+        return Self.budget(for: effectiveState)
     }
 
     private static func budget(for state: ProcessInfo.ThermalState) -> Budget {

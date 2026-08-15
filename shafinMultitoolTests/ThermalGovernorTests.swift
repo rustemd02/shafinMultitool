@@ -54,11 +54,75 @@ final class ThermalGovernorTests: XCTestCase {
         XCTAssertFalse(budget.heavyModelsEnabled)
     }
 
+    func testConcurrentFixedProviderGovernorsReturnExactPolicyBudgets() {
+        let fixtures: [(governor: ThermalGovernor, expected: BudgetTuple)] = [
+            (makeGovernor(thermalState: .nominal, batteryLevel: 1.0),
+             BudgetTuple(highPriorityFrequency: 6,
+                         mediumPriorityFrequency: 2,
+                         lowPriorityFrequency: 0.25,
+                         heavyModelsEnabled: true)),
+            (makeGovernor(thermalState: .fair, batteryLevel: 1.0),
+             BudgetTuple(highPriorityFrequency: 4,
+                         mediumPriorityFrequency: 1,
+                         lowPriorityFrequency: 0,
+                         heavyModelsEnabled: false)),
+            (makeGovernor(thermalState: .serious, batteryLevel: 1.0),
+             BudgetTuple(highPriorityFrequency: 2,
+                         mediumPriorityFrequency: 0.5,
+                         lowPriorityFrequency: 0,
+                         heavyModelsEnabled: false)),
+            (makeGovernor(thermalState: .critical, batteryLevel: 1.0),
+             BudgetTuple(highPriorityFrequency: 0.5,
+                         mediumPriorityFrequency: 0,
+                         lowPriorityFrequency: 0,
+                         heavyModelsEnabled: false)),
+            (makeGovernor(thermalState: .nominal, batteryLevel: 0.19),
+             BudgetTuple(highPriorityFrequency: 2,
+                         mediumPriorityFrequency: 0.5,
+                         lowPriorityFrequency: 0,
+                         heavyModelsEnabled: false))
+        ]
+        let expectedPolicyTuples = fixtures.map { $0.expected }
+        let iterationsPerFixture = 512
+
+        DispatchQueue.concurrentPerform(iterations: fixtures.count * iterationsPerFixture) { index in
+            let fixture = fixtures[index % fixtures.count]
+            let actual = BudgetTuple(fixture.governor.nextBudget())
+
+            XCTAssertTrue(expectedPolicyTuples.contains(actual), "Unexpected budget tuple: \(actual)")
+            XCTAssertEqual(actual, fixture.expected)
+        }
+    }
+
     private func makeGovernor(thermalState: ProcessInfo.ThermalState,
                               batteryLevel: Float) -> ThermalGovernor {
         ThermalGovernor(
             thermalStateProvider: { thermalState },
             batteryLevelProvider: { batteryLevel }
         )
+    }
+
+    private struct BudgetTuple: Equatable {
+        let highPriorityFrequency: Double
+        let mediumPriorityFrequency: Double
+        let lowPriorityFrequency: Double
+        let heavyModelsEnabled: Bool
+
+        init(highPriorityFrequency: Double,
+             mediumPriorityFrequency: Double,
+             lowPriorityFrequency: Double,
+             heavyModelsEnabled: Bool) {
+            self.highPriorityFrequency = highPriorityFrequency
+            self.mediumPriorityFrequency = mediumPriorityFrequency
+            self.lowPriorityFrequency = lowPriorityFrequency
+            self.heavyModelsEnabled = heavyModelsEnabled
+        }
+
+        init(_ budget: ThermalGovernor.Budget) {
+            self.init(highPriorityFrequency: budget.highPriorityFrequency,
+                      mediumPriorityFrequency: budget.mediumPriorityFrequency,
+                      lowPriorityFrequency: budget.lowPriorityFrequency,
+                      heavyModelsEnabled: budget.heavyModelsEnabled)
+        }
     }
 }
