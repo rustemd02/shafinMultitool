@@ -40,8 +40,13 @@
 | CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
 | CC-007 | draft | Sol → Luna | CC-006, UX spec | Commercial app shell и Camera Coach default route |
 | CC-008 | proposed_for_owner_acceptance | Sol | product baseline | 610-строчная UX state machine подготовлена; implementation gate ждёт осмысленного owner acceptance |
-| CC-009 | in_progress | Luna / Max | CC-003, CC-006 | Camera/session owner and lifecycle audit запущен из принятой store baseline |
-| CC-010 | draft | Terra / High | CC-009 | Camera foundation migration plan при подтверждённой сложности |
+| CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
+| CC-010A | ready | Luna / Max | CC-009 | Awaitable idempotent Coach capture lifecycle и late-callback fence |
+| CC-010B | draft | Luna / Max | CC-010A | Scheduler registration ownership и pipeline release |
+| CC-010C | draft | Terra / High | CC-009, recording policy | Serialized recorder ownership и typed save result |
+| CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
+| CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
+| CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
 | CC-011 | draft | Luna / Max | CC-001, CC-005 | Reproducible local/CI release gates |
 | CC-012 | draft | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
 
@@ -53,7 +58,7 @@
 - CC-003: accepted, task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worker commit `a91a290`, accepted commit `e3b3712`, evidence `docs/implementation/audits/privacy-permissions-inventory.md`.
 - CC-005: accepted, task `01a0055c-a4b4-70e2-bb46-5381f4f0acf1`, worker commit `05cad36`, accepted commit `e8f8615`, evidence `docs/implementation/audits/test-topology.md`.
 - CC-006: accepted, task `01a0055c-a4b4-70e2-bb46-536ebdfd5585`, worker commit `caefe22`, accepted commit `67ede42`, evidence `docs/implementation/audits/runtime-entry-routing.md`.
-- CC-009: task `01a00572-424a-7211-85df-c1719caf6108`, worktree `/Users/unterlantas/.codex/worktrees/39f4/shafinMultitool`.
+- CC-009: accepted, task `01a00572-424a-7211-85df-c1719caf6108`, worker commit `addb184`, accepted commit `07a449a`, evidence `docs/implementation/audits/camera-session-ownership.md`.
 - CC-004: task `01a00574-d6e4-7043-aafe-1cc3fd44eae6`, worktree `/Users/unterlantas/.codex/worktrees/121a/shafinMultitool`.
 - CC-008: proposed evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; до owner acceptance UI source tasks не запускаются.
 

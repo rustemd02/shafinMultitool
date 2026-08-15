@@ -101,21 +101,62 @@
 ## CC-009 — Camera/session owner and lifecycle audit
 
 - Lane: Luna / Max audit; implementation may route to Terra / High.
-- State: `in_progress`.
+- State: `accepted`.
 - Ownership: create only `docs/implementation/audits/camera-session-ownership.md`.
 - Read: `CameraManager`, `CameraViewModel`, recording service, AR camera shell/container, overlays and app lifecycle/orientation hooks.
 - Must report: session creation/destruction, queues/actors, frame consumers, record/save owner, background/foreground behavior, rotation path, permission assumptions, thermal/memory controls, duplicated ownership and concurrency risks.
 - Verification: call-site graph with exact paths/symbols, current build evidence and `git diff --check`.
 - Acceptance: identifies canonical owner candidate and separates mechanical fixes from high-complexity migration work.
+- Evidence: `docs/implementation/audits/camera-session-ownership.md`; accepted after path-only diff inspection and parent generic iOS `build-for-testing` (`** TEST BUILD SUCCEEDED **`).
 
-## CC-010 — Camera foundation migration
+## CC-010 — Camera foundation migration program
 
-- Lane: Terra / High only if CC-009 confirms concurrency or wide-blast-radius complexity; otherwise decompose for Luna.
-- State: `draft`.
-- Dependencies: CC-009, CC-007 interfaces.
+- Lane: Luna / Max for bounded mechanics; Terra / High only for recorder/route integration proven wide-blast-radius by CC-009.
+- State: `decomposed`.
+- Dependencies: CC-009; individual slices below add their own gates.
 - Objective: one camera/session owner with reliable lifecycle, recording, rotation and resource cleanup.
 - Boundary: saved Scene Mode data remains compatible; no StoreKit/backend/UI redesign.
 - Verification: focused unit/integration tests, simulator lifecycle tests and required physical-device smoke matrix.
+
+### CC-010A — Awaitable Coach capture lifecycle
+
+- Lane: Luna / Max.
+- State: `ready`.
+- Ownership candidate: `CameraManager.swift`, `CameraViewModel.swift`, minimal `OverlayView.swift` call-site changes and focused lifecycle tests selected in the task packet.
+- Objective: serialize capture start/stop, make completion awaitable and idempotent, publish typed failure/state, drain/detach the video delegate before stop returns, and prevent post-release frames from reaching the scheduler.
+- Non-goals: permissions UI, recording, Scene Mode, route shell, orientation redesign and scheduler/pipeline unregister.
+- Acceptance: repeated/racing start-stop tests pass; generic iOS test build passes; existing Camera Coach frame flow remains intact.
+
+### CC-010B — Scheduler and pipeline release
+
+- Lane: Luna / Max.
+- State: `draft` until CC-010A.
+- Objective: own registration tokens, unregister deterministically, cancel/await outstanding analysis work and fence stale presentation updates.
+- Acceptance: register/release/re-register and stale-result tests pass without changing recommendation semantics.
+
+### CC-010C — Serialized recorder ownership
+
+- Lane: Terra / High because `CameraService.shared` crosses current Scene Mode, legacy CameraScreen, audio capture, AR pixel buffers, `AVAssetWriter` and Photos.
+- State: `draft` until recording/save/retention policy is accepted from CC-008/CC-003.
+- Objective: one serialized recorder state machine, awaited finalization, stopped audio capture, typed local-file/Photos result and deterministic cleanup.
+
+### CC-010D — Scene route teardown
+
+- Lane: Luna / Max after CC-010C exposes a stable interface.
+- State: `draft`.
+- Objective: Scene back/disappear/background awaits recorder policy, pauses/releases AR, then persists through the existing unified project/world-map path.
+
+### CC-010E — Exclusive route lease integration
+
+- Lane: Terra / High for the one-time cross-route migration; subsequent shell slices return to Luna.
+- State: `blocked_by_CC-007`.
+- Objective: commercial shell owns a serialized `none / cameraCoach / sceneMode` lease and never activates a new route before the previous owner releases.
+
+### CC-010F — Orientation continuity
+
+- Lane: Luna / Max after CC-008 and CC-010A.
+- State: `blocked_by_CC-008`.
+- Objective: portrait/landscape reflow and capture/writer/AR transforms change in place without session, analysis, recording or settings reset.
 
 ## CC-011 — Reproducible release gates
 
