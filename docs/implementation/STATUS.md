@@ -45,8 +45,8 @@
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
 | CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
 | CC-010B | accepted | Luna / Max | CC-010A | Детерминированный unregister/drain, release/re-register и stale-result fences; 23/23 focused tests прошли |
-| CC-010C | partially_in_progress | Sol → Luna / Max | CC-009, recording policy | Policy-neutral serialized recorder core выполняется; production wiring/save policy остаются gated |
-| CC-010C-A | in_progress | Luna / Max | CC-009 | Изолированное recorder core с typed state/result и concurrency tests без production wiring |
+| CC-010C | partially_accepted | Sol → Luna / Max | CC-009, recording policy | Policy-neutral serialized recorder core принято; production wiring/save policy остаются gated |
+| CC-010C-A | accepted | Luna / Max | CC-009 | Изолированное recorder core принято после Sol-review, canonical build и 29/29 simulator tests |
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
 | CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
@@ -83,7 +83,7 @@
 - CC-013B1: accepted, Luna / Max task `01a00603-9514-7ea0-81f3-21361862bc87`, worker twice-amended commit `ac97f6e`, accepted commit `d7fff1b`. После двух Sol fix-first loops зафиксированы только exact artifact traceability и existing build-output match; clean rebuild не заявлен. На основной ветке прошли 15 llama fixtures, offline/optional-upstream validators и совместные 25 provenance tests; legal/redistribution и archive proof остаются открыты.
 - CC-011D: Luna / Max task `01a00631-d259-7c22-aa35-7e6ef95e8e1b` встраивает оба accepted offline validator до Xcode build, сохраняя пять честных legal/provenance blockers и существующие release/contamination gates.
 - CC-013C1: accepted, Luna / Max task `01a00603-9514-7ea0-81f3-2140ad032657`, worker amended commit `81f50c2`, accepted commit `c8601ba`. После Sol fix-first review claim сужен до repository correlation; 10/10 fixtures и реальный offline validator повторно прошли на основной ветке. Source-to-export causality, deterministic recipe и creator/rights/legal decision остаются открыты.
-- CC-010C-A: Luna / Max task `01a00609-a689-7373-b2d4-d0eb245a6c66` выполняет policy-neutral serialized recorder core и fake-driven concurrency tests. `CameraService`, Scene/Camera call sites, Photos, permission UI и runtime behavior не входят в пакет.
+- CC-010C-A: accepted, Luna / Max task `01a00609-a689-7373-b2d4-d0eb245a6c66`, worker twice-amended commit `d1277ca`, accepted commit `9b41adf`. Sol-review снял ложный recoverable artifact, `hasAudio` overclaim, слабые concurrency assertions и потерю результата в `releaseAndWait`. На основной ветке прошли canonical generic iOS Simulator `build-for-testing` и 29/29 `SerializedMediaRecorderTests` на iPhone 17 Pro. `CameraService`, Scene/Camera call sites, Photos, permission UI и runtime behavior не входят в принятый пакет.
 - CC-013B2: source audit исправил прежнее предположение: DETR и NIMA компилируются в Release app-root `.mlmodelc`; исключённый `Resources/Models` к ним не относится. Sol рекомендует RC без DETR/NIMA/compact neural fusion: сохранить Apple Vision/saliency и deterministic critique, явно отключить production consumers и сделать Release gate zero-Core-ML. Implementation ждёт owner acceptance, потому что продукт осознанно теряет object-aware DETR labels и model aesthetic score.
 
 ## Ворота следующего шага
