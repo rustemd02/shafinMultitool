@@ -42,13 +42,14 @@
 | CC-008 | proposed_for_owner_acceptance | Sol | product baseline | 610-строчная UX state machine подготовлена; implementation gate ждёт осмысленного owner acceptance |
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
 | CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
-| CC-010B | in_progress | Luna / Max | CC-010A | Scheduler registration ownership и pipeline release |
+| CC-010B | accepted | Luna / Max | CC-010A | Детерминированный unregister/drain, release/re-register и stale-result fences; 23/23 focused tests прошли |
 | CC-010C | draft | Terra / High | CC-009, recording policy | Serialized recorder ownership и typed save result |
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
 | CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
 | CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
-| CC-011A | in_progress | Luna / Max | CC-013A | App-owned privacy manifest и deterministic validator |
+| CC-011A | accepted | Luna / Max | CC-013A | App-owned manifest и validator приняты; Release содержит ровно app + SnapKit manifests |
+| CC-011B | in_progress | Luna / Max | CC-002, CC-011A | Один воспроизводимый Debug/Release/privacy/bundle gate и contamination self-test |
 | CC-012 | decomposed | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
 | CC-012A | accepted | Luna / Max | CC-003, CC-008 | 12 instrumentation owners, 59 active events, 63 properties; activation требует action + independent verification |
 | CC-013A | accepted | Luna / Max | CC-004 | ARVideoKit удалён; SnapKit 5.7.1 privacy bundle доказан в Release app |
@@ -57,7 +58,7 @@
 
 ## Активная работа
 
-- Sol: принял CC-003, CC-005 и CC-006 после diff/source/build checks; CC-001 возвращён тому же worker на сверку clean worktree с локальным ignored GGUF.
+- Sol: ведёт rolling-wave оркестрацию и принимает каждый Luna / Max пакет только после независимых diff/source/build/test checks на основной ветке.
 - CC-001: accepted, task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worker commits `c96b679`, `25bf140`, accepted commits `d8061aa`, `d4c4873`, evidence `docs/implementation/audits/release-bundle-inventory.md`.
 - CC-002: accepted, task `01a00578-f7d5-75d3-ba32-3796ce136c1b`, worker commit `c2b8d4c`, accepted commit `2d7c26e`; parent Release и Debug build/bundle assertions прошли.
 - CC-003: accepted, task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worker commit `a91a290`, accepted commit `e3b3712`, evidence `docs/implementation/audits/privacy-permissions-inventory.md`.
@@ -66,10 +67,11 @@
 - CC-009: accepted, task `01a00572-424a-7211-85df-c1719caf6108`, worker commit `addb184`, accepted commit `07a449a`, evidence `docs/implementation/audits/camera-session-ownership.md`.
 - CC-004: accepted, task `01a00574-d6e4-7043-aafe-1cc3fd44eae6`, worker commit `c02cbea`, accepted commit `bfad2fa`, evidence `docs/implementation/audits/dependency-provenance-inventory.md`.
 - CC-010A: accepted, task `01a00586-0a90-7323-b195-21d7941ffc70`, worker commit `b93e4aa`, accepted commit `e0bd423`; Sol повторил 7/7 simulator tests.
-- CC-010B: task `01a0059d-6beb-71d3-a194-552d1e474f89`, worktree `/Users/unterlantas/.codex/worktrees/adcb/shafinMultitool`.
+- CC-010B: accepted, task `01a0059d-6beb-71d3-a194-552d1e474f89`, worker commit `1926988`, accepted commit `79f7d1d`; Sol повторил generic simulator build-for-testing и 23/23 focused tests: 9 pipeline release, 7 scheduler, 7 camera lifecycle.
 - CC-012A: accepted, task `01a0058b-d2da-7491-b3f4-de880445997b`, worker commit `2c75c53`, accepted commit `7a7c55b`, evidence `docs/implementation/audits/coaching-loop-event-contract-inventory.md`; Sol correction loop removed a duplicate metric and reconciled accepted CC-010A lifecycle evidence.
 - CC-013A: accepted, task `01a005ae-36ec-7fe3-80ac-3fa10ed2703a`, worker commit `3a7731f`, accepted commit `c4275da`; Sol повторил Release build и bundle assertions на основной ветке: 71 848 КБ, SnapKit manifest присутствует, ARVideoKit/DeviceBenchmark/Models/GGUF отсутствуют.
-- CC-011A: task `01a005c4-6a4d-7e63-a8d2-cd7199ea921f`, worktree `/Users/unterlantas/.codex/worktrees/24f9/shafinMultitool`.
+- CC-011A: accepted, task `01a005c4-6a4d-7e63-a8d2-cd7199ea921f`, worker commit `a49c234`, accepted commit `c1e6646`; Sol повторил Release build, validator и negative self-test: ровно два manifests, 71 888 КБ, no unexpected paths.
+- CC-011B: task `01a005d8-ac86-7d02-98ec-8b41b398bbe8`, worktree `/Users/unterlantas/.codex/worktrees/e36c/shafinMultitool`; Luna / Max реализует единый детерминированный release-gate entrypoint и шесть contamination fixtures.
 - CC-008: proposed evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; до owner acceptance UI source tasks не запускаются.
 
 ## Ворота следующего шага

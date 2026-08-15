@@ -133,9 +133,10 @@
 ### CC-010B — Scheduler and pipeline release
 
 - Lane: Luna / Max.
-- State: `in_progress`.
+- State: `accepted`.
 - Objective: own registration tokens, unregister deterministically, cancel/await outstanding analysis work and fence stale presentation updates.
 - Acceptance: register/release/re-register and stale-result tests pass without changing recommendation semantics.
+- Evidence: worker commit `1926988`, accepted commit `79f7d1d`. `AnalysisPipeline` owns the three scheduler tokens; registration is rejected during release; unregister, queue/task draining and generation fences make release terminal. Sol independently passed generic simulator `build-for-testing` and 23/23 focused tests across `AnalysisPipelineReleaseTests`, `RealtimeSchedulerTests` and `CameraManagerLifecycleTests`.
 
 ### CC-010C — Serialized recorder ownership
 
@@ -173,17 +174,18 @@
 ### CC-011A — App privacy manifest and validation
 
 - Lane: Luna / Max after CC-013A.
-- State: `in_progress`.
+- State: `accepted`.
 - Ownership candidate: one app-owned `PrivacyInfo.xcprivacy`, focused validation script/tests and exact target membership only.
 - Repository evidence: production code uses app-local `UserDefaults`; no app manifest exists; no active analytics SDK, tracking domain or production remote endpoint is configured.
 - Required baseline: `NSPrivacyTracking=false`, no tracking domains, app-local UserDefaults category with approved reason `CA92.1`; collected-data declarations must remain evidence-based and must not guess server/provider retention.
 - Apple authority: [Privacy manifest files](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files), [required-reason APIs](https://developer.apple.com/documentation/BundleResources/describing-use-of-required-reason-api), [adding a manifest](https://developer.apple.com/documentation/bundleresources/adding-a-privacy-manifest-to-your-app-or-third-party-sdk).
 - Acceptance: `plutil` validation, Release bundle contains exactly the intended app manifest at its root, UserDefaults reason matches executable use, unknown provider/retention decisions remain blocked rather than encoded as false facts.
+- Evidence: worker commit `a49c234`, accepted commit `c1e6646`; app manifest declares tracking false, empty tracking domains/collected data and only UserDefaults `CA92.1`. Sol independently rebuilt Release, validated exactly the root app manifest plus SnapKit nested manifest, and passed positive plus missing-root/wrong-reason/unexpected-extra fixtures.
 
 ### CC-011B — Deterministic build and bundle gate script
 
 - Lane: Luna / Max after CC-002 and CC-011A.
-- State: `ready_after_CC-011A`.
+- State: `in_progress`.
 - Objective: one documented command produces Debug test build and Release build, validates privacy manifests, checks the release allowlist/denylist, reports material size contributors and fails on DeviceBenchmark, GGUF, unknown model/media families or missing acknowledgements.
 - Acceptance: a clean checkout and a deliberately contaminated checkout produce deterministic pass/fail; output paths stay under an explicit derived-data root.
 
