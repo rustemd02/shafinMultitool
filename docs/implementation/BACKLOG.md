@@ -46,6 +46,20 @@
 - Acceptance: every permission and external-data path has a disposition and executable follow-up; unknowns are explicit.
 - Evidence: `docs/implementation/audits/privacy-permissions-inventory.md`; accepted after path-only diff, plist validation and parent negative/call-site checks.
 
+### CC-003A — Policy-neutral permission capability foundation
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Dependencies: accepted CC-003 audit. Runtime/UI integration remains gated by CC-008 and canonical route ownership.
+- Ownership: create only `shafinMultitool/Services/Permissions/PermissionContracts.swift`, `shafinMultitool/Services/Permissions/SystemPermissionClient.swift` and `shafinMultitoolTests/PermissionFoundationTests.swift`.
+- Objective: provide a deterministic typed boundary for camera, microphone, Speech and Photos add-only authorization/availability without choosing user copy, request timing or fallback UX.
+- Contract: `AppPermission` has camera/microphone/speechRecognition/photosAddOnly; authorization preserves notDetermined/authorized/limited/denied/restricted and unknown future status; availability distinguishes available from concrete camera hardware, microphone hardware and Speech service unavailability. Public values are Equatable/Sendable and each snapshot names its permission.
+- System behavior: use current iOS 17+ `AVAudioApplication` microphone APIs, `AVCaptureDevice`, `SFSpeechRecognizer` and `PHPhotoLibrary` strictly with `.addOnly`; prompt only from notDetermined; never reprompt denied/restricted/authorized/limited/unknown; return a post-request typed snapshot; keep permissions independent; coalesce concurrent requests for the same permission so one system prompt resolves all waiters; map unknown SDK states honestly.
+- Test seam: injectable internal platform boundary with no physical device or real prompt. Tests cover every platform mapping, Photos add-only scope, hardware/service availability independent of authorization, no-prompt terminal states, post-callback result, same-permission coalescing, cross-permission independence and duplicate/late callback safety.
+- Non-edits: Camera/CameraViewModel/CameraService/Speech/AR/Scene owners, Overlay/Content/SceneDelegate, UI copy, Settings route, analytics, Info/Privacy manifests, Xcode project, runtime launch and recording/export behavior.
+- TDD Route: mode off; decision skipped; normal focused-test verification, no strict RED/GREEN authority inferred.
+- Acceptance: generic iOS `build-for-testing` and focused `PermissionFoundationTests` pass; exact three-file diff contains no runtime/UI wiring and makes no claim that the end-to-end permission gate is complete.
+
 ## CC-004 — Dependency, model and media provenance inventory
 
 - Lane: Luna / Max.
