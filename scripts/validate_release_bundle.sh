@@ -336,10 +336,10 @@ validate_acknowledgements() {
 
 report_provenance_blockers() {
     printf 'STAGE 9: provenance status\n'
-    printf 'KNOWN_BLOCKER: component=llama.framework owner_task=CC-013B status=provenance-unresolved release-allowlisted=true license_approved=false\n'
+    printf 'KNOWN_BLOCKER: component=llama.framework owner_task=CC-013B status=artifact-traceability-complete/rebuild-unproven blocker=exact-binary-legal-redistribution-approval-and-archive-notice-scope-pending release-allowlisted=true license_approved=false\n'
     printf 'KNOWN_BLOCKER: component=%s owner_task=CC-013B status=provenance-unresolved release-allowlisted=true license_approved=false\n' "$DETR_MODEL_ROOT"
     printf 'KNOWN_BLOCKER: component=%s owner_task=CC-013B status=provenance-unresolved release-allowlisted=true license_approved=false\n' "$NIMA_MODEL_ROOT"
-    printf 'KNOWN_BLOCKER: component=Circle.usdz owner_task=CC-013C status=provenance-unresolved release-allowlisted=true license_approved=false\n'
+    printf 'KNOWN_BLOCKER: component=Circle.usdz owner_task=CC-013C status=repository-correlation-verified blocker=creator-rights-export-causality-pending release-allowlisted=true license_approved=false\n'
     printf 'KNOWN_BLOCKER: component=Person.usdz owner_task=CC-013C status=provenance-unresolved release-allowlisted=true license_approved=false\n'
     printf 'KNOWN_BLOCKER_COUNT=5\n'
 }

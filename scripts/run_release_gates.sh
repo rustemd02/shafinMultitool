@@ -11,6 +11,8 @@ SOURCE_MANIFEST="$REPO_ROOT/shafinMultitool/PrivacyInfo.xcprivacy"
 PRIVACY_VALIDATOR="$REPO_ROOT/scripts/validate_privacy_manifest.sh"
 BUNDLE_VALIDATOR="$REPO_ROOT/scripts/validate_release_bundle.sh"
 FIXTURE_TEST="$REPO_ROOT/scripts/tests/test_release_bundle_gate.sh"
+LLAMA_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_llama_framework_provenance.py"
+CIRCLE_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_circle_asset_provenance.py"
 DERIVED_DATA_ROOT_ARG=""
 DERIVED_DATA_ROOT=""
 OWNED_ROOT=""
@@ -165,7 +167,7 @@ done
 [ -n "$DERIVED_DATA_ROOT_ARG" ] || fail "argument" "--derived-data-root is required"
 
 printf 'STAGE 1: preflight\n'
-for tool in xcodebuild xcrun plutil find du sort git; do
+for tool in xcodebuild xcrun plutil python3 find du sort git; do
     require_tool "$tool"
 done
 if [ ! -d "$WORKSPACE" ] || [ ! -f "$WORKSPACE/contents.xcworkspacedata" ]; then
@@ -182,6 +184,11 @@ for required_script in "$PRIVACY_VALIDATOR" "$BUNDLE_VALIDATOR" "$FIXTURE_TEST";
         fail "preflight" "required release script is missing or not executable: $required_script"
     fi
 done
+for required_validator in "$LLAMA_PROVENANCE_VALIDATOR" "$CIRCLE_PROVENANCE_VALIDATOR"; do
+    if [ ! -f "$required_validator" ] || [ -L "$required_validator" ]; then
+        fail "preflight" "required offline provenance validator is missing or is a symlink: $required_validator"
+    fi
+done
 validate_derived_data_root "$DERIVED_DATA_ROOT_ARG"
 
 TESTED_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)" || fail "preflight" "could not resolve tested Git commit"
@@ -196,7 +203,7 @@ printf 'TESTED_COMMIT: %s\n' "$TESTED_COMMIT"
 printf 'TESTED_DIRTY: %s\n' "$TESTED_DIRTY"
 printf 'DERIVED_DATA_ROOT: %s\n' "$DERIVED_DATA_ROOT"
 printf 'OWNED_OUTPUT_ROOT: %s\n' "$OWNED_ROOT"
-printf 'PASS preflight: tools, workspace, scheme, source manifest, validators, and output root are valid\n'
+printf 'PASS preflight: tools, workspace, scheme, source manifest, validators, offline provenance records, and output root are valid\n'
 
 if [ -e "$OWNED_ROOT" ]; then
     if ! rm -rf -- "$OWNED_ROOT"; then
@@ -209,12 +216,29 @@ fi
 DEBUG_DERIVED_ROOT="$OWNED_ROOT/DebugDerivedData"
 RELEASE_DERIVED_ROOT="$OWNED_ROOT/ReleaseDerivedData"
 
+# CC-011D: accepted offline provenance records are a pre-build release gate.
+llama_provenance=(
+    python3
+    "$LLAMA_PROVENANCE_VALIDATOR"
+    --repo-root "$REPO_ROOT"
+)
+run_logged_command "2" "llama framework provenance (offline)" "$OWNED_ROOT/llama-provenance.log" "${llama_provenance[@]}"
+cat "$OWNED_ROOT/llama-provenance.log"
+
+circle_provenance=(
+    python3
+    "$CIRCLE_PROVENANCE_VALIDATOR"
+    --repo-root "$REPO_ROOT"
+)
+run_logged_command "3" "Circle asset provenance (offline)" "$OWNED_ROOT/circle-provenance.log" "${circle_provenance[@]}"
+cat "$OWNED_ROOT/circle-provenance.log"
+
 privacy_self_test=(
     "$PRIVACY_VALIDATOR"
     --self-test
     --source-manifest "$SOURCE_MANIFEST"
 )
-run_logged_command "2" "privacy validator self-test" "$OWNED_ROOT/privacy-self-test.log" "${privacy_self_test[@]}"
+run_logged_command "4" "privacy validator self-test" "$OWNED_ROOT/privacy-self-test.log" "${privacy_self_test[@]}"
 cat "$OWNED_ROOT/privacy-self-test.log"
 
 debug_build=(
@@ -228,7 +252,7 @@ debug_build=(
     COMPILER_INDEX_STORE_ENABLE=NO
     build-for-testing
 )
-run_logged_command "3" "Debug build-for-testing" "$OWNED_ROOT/debug-build.log" "${debug_build[@]}"
+run_logged_command "5" "Debug build-for-testing" "$OWNED_ROOT/debug-build.log" "${debug_build[@]}"
 debug_app="$(resolve_exact_app "$DEBUG_DERIVED_ROOT" "$OWNED_ROOT/debug-apps.list")"
 debug_xctestrun="$(find "$DEBUG_DERIVED_ROOT" -type f -name '*.xctestrun' -print -quit)"
 if [ -z "$debug_xctestrun" ]; then
@@ -247,7 +271,7 @@ release_build=(
     COMPILER_INDEX_STORE_ENABLE=NO
     build
 )
-run_logged_command "4" "Release build" "$OWNED_ROOT/release-build.log" "${release_build[@]}"
+run_logged_command "6" "Release build" "$OWNED_ROOT/release-build.log" "${release_build[@]}"
 release_app="$(resolve_exact_app "$RELEASE_DERIVED_ROOT" "$OWNED_ROOT/release-apps.list")"
 printf 'RELEASE_APP: %s\n' "$release_app"
 
@@ -257,14 +281,14 @@ release_validation=(
     --source-manifest "$SOURCE_MANIFEST"
     --app "$release_app"
 )
-run_logged_command "6-10" "Release bundle validation" "$OWNED_ROOT/release-validation.log" "${release_validation[@]}"
+run_logged_command "7" "Release bundle validation" "$OWNED_ROOT/release-validation.log" "${release_validation[@]}"
 cat "$OWNED_ROOT/release-validation.log"
 
 fixture_test=(
     "$FIXTURE_TEST"
     --release-app "$release_app"
 )
-run_logged_command "11" "Release bundle contamination fixtures" "$OWNED_ROOT/release-fixtures.log" "${fixture_test[@]}"
+run_logged_command "8" "Release bundle contamination fixtures" "$OWNED_ROOT/release-fixtures.log" "${fixture_test[@]}"
 cat "$OWNED_ROOT/release-fixtures.log"
 
 manifest_count="$(extract_metric MANIFEST_COUNT "$OWNED_ROOT/release-validation.log")"
@@ -272,7 +296,7 @@ total_app_kib="$(extract_metric TOTAL_APP_KIB "$OWNED_ROOT/release-validation.lo
 material_count="$(extract_metric MATERIAL_CONTRIBUTOR_COUNT "$OWNED_ROOT/release-validation.log")"
 known_blocker_count="$(extract_metric KNOWN_BLOCKER_COUNT "$OWNED_ROOT/release-validation.log")"
 
-printf 'PASS RELEASE GATES: commit=%s dirty=%s debug_product=%s release_app=%s manifest_count=%s total_app_kib=%s material_contributors=%s known_blockers=%s contamination_fixtures=6 owned_output_root=%s\n' \
+printf 'PASS RELEASE GATES: commit=%s dirty=%s debug_product=%s release_app=%s manifest_count=%s total_app_kib=%s material_contributors=%s known_blockers=%s provenance_validators=2 contamination_fixtures=6 owned_output_root=%s\n' \
     "$TESTED_COMMIT" \
     "$TESTED_DIRTY" \
     "$debug_app" \
