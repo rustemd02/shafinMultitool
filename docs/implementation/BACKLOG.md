@@ -241,12 +241,13 @@
 ### CC-011D — Gate accepted provenance records
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a00631-d259-7c22-aa35-7e6ef95e8e1b`.
 - Ownership: `scripts/run_release_gates.sh`, `scripts/validate_release_bundle.sh` and at most one narrow shell orchestration test.
 - Objective: run the accepted llama artifact-traceability and Circle repository-correlation validators offline before any Xcode build; no ignored checkout, network or legal inference.
 - Reporting: llama and Circle remain among the five release blockers, but their technical status is no longer generically unresolved; final summary reports two provenance validators and preserves six contamination fixtures.
 - Acceptance: syntax/orchestration tests and canonical full release gate pass on main; a drift in either accepted record stops before Xcode build; existing privacy/build/bundle/safety behavior is unchanged.
+- Evidence: worker commit `4802b9c`, accepted commit `7891fec`; fresh Sol-review verdict `ship`. Sol independently passed orchestration fixtures, 15/15 llama tests, 10/10 Circle tests, both real offline validators and the canonical clean-main release gate with 2 validators, 2 privacy manifests, 5 blockers and all 6 contamination fixtures.
 
 ## CC-012 — Coaching-loop analytics contract
 
