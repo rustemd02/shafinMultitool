@@ -47,7 +47,7 @@
 ## CC-004 — Dependency, model and media provenance inventory
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `in_progress`.
 - Ownership: create only `docs/implementation/audits/dependency-provenance-inventory.md`.
 - Read: `Podfile`, `Podfile.lock`, vendored frameworks/packages, Core ML packages, GGUF, images, USDZ/Reality Composer assets and acknowledgements.
 - Must report: component, version/hash where observable, runtime role, source, license evidence path, redistribution status, privacy/network behavior, bundle impact and disposition `verified / missing / replace / exclude`.
@@ -91,7 +91,7 @@
 ## CC-008 — UI/UX state specification
 
 - Lane: Sol owns decisions; bounded Luna tasks may produce artifacts after specification.
-- State: `in_progress`.
+- State: `proposed_for_owner_acceptance`.
 - Ownership: `docs/implementation/ux/**` only until implementation packets are approved.
 - Must specify: onboarding, permissions, live Coach, one-tip lifecycle, tap-to-clarify, action detected, before/after verification, keep-as-is, abstention, pause summary, recording, offline, thermal, server consent/timeout/quota, History if retained, Scene Mode entry and both orientations.
 - Visual constraints: native hierarchy, semantic system materials/colors, restrained motion/haptics, no dashboard-card grid, gradient-everything, fake AI glow, oversized marketing hero inside tools, decorative glass stacks or arbitrary pill overload.
