@@ -26,13 +26,13 @@
 
 ## Active slice
 
-CC-003A is the selected independent local RC foundation. A read-only audit proved a three-file typed permission seam can be implemented without runtime/UI wiring; two broader gap explorations continue in parallel while Luna / Max implements the bounded foundation.
+Three independent Luna / Max foundations are active: CC-003A permission contracts (`01a0064b-e81f-71f0-ac7e-661725dd3011`), CC-010B1 coherent latest-frame evidence (`01a0064f-3d5a-7452-a196-5ce39f1fae8b`) and CC-010A2 atomic motion snapshot (`01a0064f-d087-7b92-9424-8a90cebb989e`). Their ownership sets do not overlap.
 
 Slice Card:
 
 - Goal: advance the local Camera Coach RC without bypassing owner-gated UX or model composition.
 - Parent plan/spec: `docs/app-store-product-plan.md`, `docs/implementation/STATUS.md`, `docs/implementation/BACKLOG.md`.
-- Files: `PermissionContracts.swift`, `SystemPermissionClient.swift`, `PermissionFoundationTests.swift` only.
+- Files: exact ownership is recorded in BACKLOG for CC-003A, CC-010B1 and CC-010A2; the three sets do not overlap.
 - Boundary: no user-facing UI, third-party Core ML exclusion, asset/legal approval, provider, payment, push or publication decision.
 - Verification: source/test evidence, exact Luna packet, primary diff review, focused tests and canonical main verification.
 - Stop: accept and integrate one coherent slice; otherwise record the genuine gate and choose another independent slice.
@@ -46,10 +46,10 @@ Slice Card:
 
 ## Next
 
-1. Launch CC-003A from the committed accepted-main snapshot.
-2. Monitor the Luna / Max task and keep all corrections in that same task.
-3. Inspect and verify the actual diff on main before acceptance; update this checkpoint and evidence bundle.
-4. Reconcile the two broader gap reports and select the next available slice only after ownership/dependencies are proven.
+1. Monitor all three Luna / Max tasks and keep corrections in each original task.
+2. Inspect each actual worktree/base/diff independently; do not treat isolated worktrees as merge safety.
+3. Integrate only accepted, non-overlapping commits and repeat focused plus generic verification on main.
+4. Start CC-010A1 failed-start rollback only after CC-010B1 is accepted, so its cleanup contract targets the final release boundary.
 5. Re-run the completion audit and continue toward the full RC.
 
 ## Drift check

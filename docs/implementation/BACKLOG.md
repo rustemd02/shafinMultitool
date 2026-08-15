@@ -185,6 +185,7 @@
 
 - Lane: Luna / Max, Sol verification and acceptance.
 - State: `in_progress`.
+- Task: `01a0064f-d087-7b92-9424-8a90cebb989e`.
 - Ownership: `MotionGate.swift`, the single `CameraManager.captureOutput` read seam, and new `MotionGateTests.swift` only.
 - Objective: every `FrameContext` receives one coherent `{state, shakeLevel, isStable}` snapshot instead of three unsynchronized reads across Core Motion and camera-output queues.
 - Contract: immutable Equatable/Sendable `MotionSnapshot`; one lock/serialized publication boundary; `CameraManager` reads exactly once per frame. Preserve current EMA, thresholds, hysteresis, logs and production start/stop behavior. Add an internal deterministic sample seam rather than a second estimator.
@@ -204,6 +205,7 @@
 
 - Lane: Luna / Max, Sol verification and acceptance.
 - State: `in_progress`.
+- Task: `01a0064f-3d5a-7452-a196-5ce39f1fae8b`.
 - Ownership: `AnalysisPipeline.swift`, new `LatestFrameEvidenceStore.swift`, `LatestFrameEvidenceStoreTests.swift` and narrow additions to `AnalysisPipelineReleaseTests.swift` only.
 - Objective: live/pause work consumes one coherent latest-frame envelope and a released/re-registered pipeline cannot emit advice or critique from retained pixels, frame IDs or feature samples of the prior session.
 - Envelope: one lock-confined immutable snapshot containing `CVPixelBuffer`, orientation, source frame ID, capture time and stability. High analysis publishes the tuple once; live emit and pause analysis each read one snapshot once; current test replay uses the same seam.
