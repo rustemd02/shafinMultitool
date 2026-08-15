@@ -82,11 +82,14 @@ final class MotionGateTests: XCTestCase {
         }
         XCTAssertEqual(exactPanningGyroGate.snapshot().motionState, .moving)
 
-        let exactPanningAccelGate = MotionGate(startMotionUpdates: false)
+        // Keep the acceleration just above the strict panning cutoff. Repeated
+        // EMA updates of exact 0.40 can round below the cutoff and change the
+        // desired-state path before the moving hysteresis completes.
+        let abovePanningAccelGate = MotionGate(startMotionUpdates: false)
         for _ in 0..<8 {
-            exactPanningAccelGate.processSyntheticSample(gyroMagnitude: 1.0, accelMagnitude: 0.40)
+            abovePanningAccelGate.processSyntheticSample(gyroMagnitude: 1.0, accelMagnitude: 0.4001)
         }
-        XCTAssertEqual(exactPanningAccelGate.snapshot().motionState, .moving)
+        XCTAssertEqual(abovePanningAccelGate.snapshot().motionState, .moving)
     }
 
     func testConcurrentSyntheticUpdatesAndSnapshotReadsNeverTearThePublishedTuple() {
