@@ -279,6 +279,16 @@
 - State: `blocked_by_CC-008`.
 - Objective: portrait/landscape reflow and capture/writer/AR transforms change in place without session, analysis, recording or settings reset.
 
+### CC-010G — Stateless thermal budget
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Task: `01a006b4-a0bf-7e52-b870-bb3c77505063`.
+- Ownership: `ThermalGovernor.swift` and `ThermalGovernorTests.swift` only.
+- Objective: remove the unused unsynchronized `lastBudget` state so concurrent camera/pipeline/scene budget reads do not race inside the governor.
+- Contract: preserve every thermal/battery threshold and frequency exactly; return a fresh immutable budget value; no locks, caches, new owner or product-policy change.
+- Tests: exact policy matrix plus bounded deterministic concurrent fixed-provider stress; generic iOS build and focused suite.
+
 ## CC-011 — Reproducible release gates
 
 - Lane: Luna / Max.

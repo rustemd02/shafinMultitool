@@ -56,6 +56,7 @@
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
 | CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
+| CC-010G | in_progress | Luna / Max | CC-010A | Stateless thermal-budget task `01a006b4-a0bf-7e52-b870-bb3c77505063`; policy constants unchanged |
 | CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
 | CC-011A | accepted | Luna / Max | CC-013A | App-owned manifest и validator приняты; Release содержит ровно app + SnapKit manifests |
 | CC-011B | accepted | Luna / Max | CC-002, CC-011A | Единый clean-HEAD gate принят: Debug, Release, privacy, allowlists, sizes и 6 contamination fixtures |
@@ -71,6 +72,7 @@
 
 - Sol: ведёт rolling-wave оркестрацию и принимает каждый Luna / Max пакет только после независимых diff/source/build/test checks на основной ветке.
 - CC-010A4 task `01a006af-8d1a-7941-a294-84a330bb1e01`: Luna / Max переводит `CameraViewModel.currentLens` на подтверждённый CC-010A3 result с rapid-tap/lifecycle fence; Overlay/копирайт не меняются.
+- CC-010G task `01a006b4-a0bf-7e52-b870-bb3c77505063`: Luna / Max убирает ложный mutable `lastBudget` owner без изменения thermal/battery policy.
 - CC-010A3 accepted: task `01a006a4-5560-7851-acfc-730223da26e8`, worker `85fc422`, accepted `15aa4e5`; Sol прошёл 16/16 transaction/manager/view-model tests.
 - CC-010A1 accepted: task `01a00683-dd24-72b1-a914-302c7b59db9f`, worker `7169d85`, accepted `d7c4e98`, correction `f49953a` → `9a63f69`; Sol прошёл generic build и 22/22 пересекающихся lifecycle/release tests.
 - CC-003A accepted: task `01a0064b-e81f-71f0-ac7e-661725dd3011`, worker `322faeb`, accepted `f246ada`; Sol прошёл generic integrated build и 10/10 `PermissionFoundationTests`.
