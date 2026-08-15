@@ -284,10 +284,11 @@
 #### CC-013B1 — llama framework technical provenance
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a00603-9514-7ea0-81f3-21361862bc87`.
-- Scope: exact upstream URL/commit, build recipe metadata, sorted file-hash record, MIT notice evidence, offline validator and contamination-style fixture tests for `Frameworks/llama.xcframework`.
-- Boundary: technical identity and reproducibility may become complete; legal/redistribution owner approval, GGUF selection and all Core ML keep/replace decisions remain open. The task must not claim App Store readiness.
+- Scope: exact upstream URL/commit, preserved verbatim build recipe, historical/current tool metadata, sorted 25-file hash record, MIT notice evidence, offline validator and optional explicit-checkout comparison for `Frameworks/llama.xcframework`.
+- Boundary: exact artifact traceability and equality with an existing local build output are proven; a clean deterministic rebuild is not. Legal/redistribution owner approval, archive proof, GGUF selection and all Core ML keep/replace decisions remain open.
+- Evidence: worker twice-amended commit `ac97f6e`, accepted commit `d7fff1b`; two independent Sol correction loops removed reproducibility overclaim and a Git-rename false-green. Main passed 15 llama fixtures, both validator modes and 25 combined provenance tests.
 
 #### CC-013B2 — Exclude unproven third-party Core ML from minimal RC
 
