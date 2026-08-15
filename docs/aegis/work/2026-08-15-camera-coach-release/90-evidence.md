@@ -7,7 +7,7 @@
 - Codex project ID: `ac45e24e-80ce-4fad-803a-731a0a84ee27`; `isGitRepository: true`.
 - Luna app-task toolchain exposed: list/create/wait/read/send tools; host advertises `gpt-5.6-luna` with `max`.
 - Saved project profile: orchestrator inherits parent; app-task lane is enabled at `gpt-5.6-luna` / `max`; fallback policy is fail-closed.
-- Main branch snapshot before the next slice: `store` at `ced37390fc2e24b550864633be292beb0df1807f`, clean and ahead of `origin/store` by 43 local commits.
+- Main branch after the accepted reliability batch: `store` at `b76f217`; one untracked Core ML research draft remains outside accepted evidence pending recommendation reconciliation.
 
 ## Accepted product and release evidence
 
@@ -27,6 +27,9 @@
 - CC-010A capture lifecycle: accepted `e0bd423`; generic build and 7/7 focused simulator tests passed.
 - CC-010B scheduler/pipeline release: accepted `79f7d1d`; generic build and 23/23 focused simulator tests passed.
 - CC-010C-A serialized recorder core: worker `d1277ca`, accepted `9b41adf`; canonical generic build-for-testing and 29/29 `SerializedMediaRecorderTests` passed on iPhone 17 Pro.
+- CC-003A permission foundation: worker `322faeb`, accepted `f246ada`; exact three-file scope, integrated generic build and 10/10 `PermissionFoundationTests` passed.
+- CC-010B1 latest-frame evidence: worker `b38ef12`, accepted `8b20380`; correction worker `772fe33`, accepted `ee019f0`. Integrated generic build and 12/12 focused release/store tests passed.
+- CC-010A2 atomic motion snapshot: worker `9fb974e`, accepted `caef74b`; correction worker `f80e1a3`, accepted `b76f217`. Integrated generic build and 4/4 `MotionGateTests` passed, including concurrent tuple coherence.
 - Recorder evidence covers an isolated policy-neutral core only; production camera wiring, Photos export and retention/background behavior are not claimed.
 
 ## Proposed but not accepted

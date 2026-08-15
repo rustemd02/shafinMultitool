@@ -49,7 +49,7 @@
 ### CC-003A — Policy-neutral permission capability foundation
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Dependencies: accepted CC-003 audit. Runtime/UI integration remains gated by CC-008 and canonical route ownership.
 - Ownership: create only `shafinMultitool/Services/Permissions/PermissionContracts.swift`, `shafinMultitool/Services/Permissions/SystemPermissionClient.swift` and `shafinMultitoolTests/PermissionFoundationTests.swift`.
 - Objective: provide a deterministic typed boundary for camera, microphone, Speech and Photos add-only authorization/availability without choosing user copy, request timing or fallback UX.
@@ -59,6 +59,7 @@
 - Non-edits: Camera/CameraViewModel/CameraService/Speech/AR/Scene owners, Overlay/Content/SceneDelegate, UI copy, Settings route, analytics, Info/Privacy manifests, Xcode project, runtime launch and recording/export behavior.
 - TDD Route: mode off; decision skipped; normal focused-test verification, no strict RED/GREEN authority inferred.
 - Acceptance: generic iOS `build-for-testing` and focused `PermissionFoundationTests` pass; exact three-file diff contains no runtime/UI wiring and makes no claim that the end-to-end permission gate is complete.
+- Evidence: worker commit `322faeb`, accepted commit `f246ada`; Sol reviewed the exact three-file diff, passed the integrated generic build and 10/10 `PermissionFoundationTests` on iPhone 17 Pro Max.
 
 ## CC-004 — Dependency, model and media provenance inventory
 
@@ -175,7 +176,8 @@
 #### CC-010A1 — Failed-start registration rollback
 
 - Lane: Luna / Max after CC-010B1 acceptance; Sol verification and acceptance.
-- State: `ready_after_CC-010B1`.
+- State: `in_progress`.
+- Task: `01a00683-dd24-72b1-a914-302c7b59db9f`.
 - Ownership: `CameraViewModel.swift` and a new isolated `CameraViewModelLifecycleTests.swift`; no `AnalysisPipeline`, `CameraManager`, UI or route edits.
 - Objective: when an actual current camera start fails after pipeline registration, await a cleanup boundary that releases those registrations and session-local presentation/evidence before publishing the typed failure; a superseded start must not release a newer retry registration.
 - Contract: retries and `releaseAndWait` wait any failed-start rollback; successful start semantics and ordinary pause/stop behavior remain unchanged; failed start leaves zero scheduler registrations; one retry creates exactly three fresh registrations.
@@ -184,7 +186,7 @@
 #### CC-010A2 — Atomic motion snapshot
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a0064f-d087-7b92-9424-8a90cebb989e`.
 - Ownership: `MotionGate.swift`, the single `CameraManager.captureOutput` read seam, and new `MotionGateTests.swift` only.
 - Objective: every `FrameContext` receives one coherent `{state, shakeLevel, isStable}` snapshot instead of three unsynchronized reads across Core Motion and camera-output queues.
@@ -192,6 +194,7 @@
 - Tests: initial snapshot; exact still/moving/panning hysteresis; coherence invariant; concurrent synthetic updates/reads; CameraManager source check or injectable assertion proving one snapshot read. No physical motion sensor dependency.
 - Non-goals: threshold tuning, orientation, permission UI, session lifecycle redesign, new analytics or advice changes.
 - Acceptance: focused tests and generic iOS build-for-testing pass; existing lifecycle/scheduler tests remain green.
+- Evidence: worker commit `9fb974e`, accepted commit `caef74b`; correction worker `f80e1a3`, accepted correction `b76f217`. Sol independently passed the generic integrated build and 4/4 `MotionGateTests`. The correction preserved production code and replaced a floating-point-unstable exact-`0.40` test input with `0.4001` after proving the inherited EMA rounding path.
 
 ### CC-010B — Scheduler and pipeline release
 
@@ -204,7 +207,7 @@
 #### CC-010B1 — Coherent latest-frame evidence and release reset
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a0064f-3d5a-7452-a196-5ce39f1fae8b`.
 - Ownership: `AnalysisPipeline.swift`, new `LatestFrameEvidenceStore.swift`, `LatestFrameEvidenceStoreTests.swift` and narrow additions to `AnalysisPipelineReleaseTests.swift` only.
 - Objective: live/pause work consumes one coherent latest-frame envelope and a released/re-registered pipeline cannot emit advice or critique from retained pixels, frame IDs or feature samples of the prior session.
@@ -214,6 +217,7 @@
 - Non-goals: advice thresholds/semantics, Core ML composition, UI, camera ownership, recording, orientation or analytics.
 - TDD Route: mode off; decision skipped; normal focused verification only.
 - Acceptance: focused store/release suites and generic iOS build-for-testing pass with no stale-frame behavior and no changes outside the owned four files.
+- Evidence: worker commit `b38ef12`, accepted commit `8b20380`; correction worker `772fe33`, accepted correction `ee019f0`. Sol independently passed the generic integrated build and 12/12 focused tests: 10 `AnalysisPipelineReleaseTests` plus 2 `LatestFrameEvidenceStoreTests`. The correction changed only the async test poll from a scheduler-dependent yield budget to a bounded three-second wall-clock deadline.
 
 ### CC-010C — Serialized recorder ownership
 

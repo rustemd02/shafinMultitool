@@ -35,7 +35,7 @@
 | CC-001 | accepted | Luna / Max | bootstrap commit | Clean/contaminated bundle inventory принят; Release partial = 1 198 316 КБ, GGUF contamination = 1 094 912 КБ |
 | CC-002 | accepted | Luna / Max | CC-001 | Release = 72 728 КБ без DeviceBenchmark/GGUF; Debug сохраняет оба benchmark-пака |
 | CC-003 | accepted | Luna / Max | bootstrap commit | Все permission/data paths инвентаризированы; подтверждены отсутствующие denied/restricted/Settings flows и privacy manifest |
-| CC-003A | in_progress | Luna / Max | CC-003 | Policy-neutral typed permission foundation без runtime/UI wiring; task `01a0064b-e81f-71f0-ac7e-661725dd3011` |
+| CC-003A | accepted | Luna / Max | CC-003 | Typed permission foundation принято: current-SDK adapter, add-only Photos, coalesced prompts, 10/10 focused tests |
 | CC-004 | accepted | Luna / Max | accepted audit baseline | 16 provenance dispositions accepted; 8 missing, 2 exclude, 4 development-only, 2 verified |
 | CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
 | CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
@@ -45,10 +45,10 @@
 | CC-008A | ready_after_CC-008 | Luna / Max | CC-008, CC-010B | Production-safe live surface только для уже доказуемых S04/S06/S07/S10c |
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
 | CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
-| CC-010A1 | ready_after_CC-010B1 | Luna / Max | CC-010A, CC-010B1 | Failed camera start освобождает pipeline registration без stale retry race |
-| CC-010A2 | in_progress | Luna / Max | CC-010A | Один атомарный motion snapshot на каждый FrameContext; task `01a0064f-d087-7b92-9424-8a90cebb989e` |
+| CC-010A1 | in_progress | Luna / Max | CC-010A, CC-010B1 | Failed-start rollback task `01a00683-dd24-72b1-a914-302c7b59db9f` запущен на принятой release boundary |
+| CC-010A2 | accepted | Luna / Max | CC-010A | Atomic motion snapshot принят после correction loop; 4/4 focused tests прошли |
 | CC-010B | accepted | Luna / Max | CC-010A | Детерминированный unregister/drain, release/re-register и stale-result fences; 23/23 focused tests прошли |
-| CC-010B1 | in_progress | Luna / Max | CC-010B | Coherent latest-frame envelope и session-local reset на release; task `01a0064f-3d5a-7452-a196-5ce39f1fae8b` |
+| CC-010B1 | accepted | Luna / Max | CC-010B | Coherent latest-frame envelope и session-local reset приняты; 12/12 focused tests прошли |
 | CC-010C | partially_accepted | Sol → Luna / Max | CC-009, recording policy | Policy-neutral serialized recorder core принято; production wiring/save policy остаются gated |
 | CC-010C-A | accepted | Luna / Max | CC-009 | Изолированное recorder core принято после Sol-review, canonical build и 29/29 simulator tests |
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
@@ -68,8 +68,10 @@
 ## Активная работа
 
 - Sol: ведёт rolling-wave оркестрацию и принимает каждый Luna / Max пакет только после независимых diff/source/build/test checks на основной ветке.
-- CC-003A: task `01a0064b-e81f-71f0-ac7e-661725dd3011`; Sol source audit подтвердил независимый foundation seam. Luna / Max получает ровно три новых файла: typed permission contracts, current-SDK system adapter и deterministic focused tests; Camera/Scene/recording/UI owners не меняются.
-- CC-010B1 task `01a0064f-3d5a-7452-a196-5ce39f1fae8b` и CC-010A2 task `01a0064f-d087-7b92-9424-8a90cebb989e`: два независимых Luna / Max reliability-slice запущены после parallel gap audit. Первый исключает torn/stale frame evidence между high/live/pause/release; второй исключает torn motion state при формировании `FrameContext`. Thresholds, advice semantics, Core ML и UI не меняются.
+- CC-010A1 task `01a00683-dd24-72b1-a914-302c7b59db9f`: Luna / Max реализует failed-start rollback после принятия финальной CC-010B1 release boundary. Ownership ограничен `CameraViewModel.swift` и новым focused test-файлом; UI, AnalysisPipeline, CameraManager, Core ML и продуктовая политика не меняются.
+- CC-003A accepted: task `01a0064b-e81f-71f0-ac7e-661725dd3011`, worker `322faeb`, accepted `f246ada`; Sol прошёл generic integrated build и 10/10 `PermissionFoundationTests`.
+- CC-010B1 accepted: task `01a0064f-3d5a-7452-a196-5ce39f1fae8b`, worker `b38ef12`, accepted `8b20380`, correction `772fe33` → `ee019f0`; Sol прошёл 12/12 focused tests.
+- CC-010A2 accepted: task `01a0064f-d087-7b92-9424-8a90cebb989e`, worker `9fb974e`, accepted `caef74b`, correction `f80e1a3` → `b76f217`; Sol прошёл 4/4 `MotionGateTests`.
 - CC-001: accepted, task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worker commits `c96b679`, `25bf140`, accepted commits `d8061aa`, `d4c4873`, evidence `docs/implementation/audits/release-bundle-inventory.md`.
 - CC-002: accepted, task `01a00578-f7d5-75d3-ba32-3796ce136c1b`, worker commit `c2b8d4c`, accepted commit `2d7c26e`; parent Release и Debug build/bundle assertions прошли.
 - CC-003: accepted, task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worker commit `a91a290`, accepted commit `e3b3712`, evidence `docs/implementation/audits/privacy-permissions-inventory.md`.
