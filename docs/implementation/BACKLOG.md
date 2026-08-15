@@ -173,7 +173,7 @@
 ### CC-011A — App privacy manifest and validation
 
 - Lane: Luna / Max after CC-013A.
-- State: `ready_after_CC-013A`.
+- State: `in_progress`.
 - Ownership candidate: one app-owned `PrivacyInfo.xcprivacy`, focused validation script/tests and exact target membership only.
 - Repository evidence: production code uses app-local `UserDefaults`; no app manifest exists; no active analytics SDK, tracking domain or production remote endpoint is configured.
 - Required baseline: `NSPrivacyTracking=false`, no tracking domains, app-local UserDefaults category with approved reason `CA92.1`; collected-data declarations must remain evidence-based and must not guess server/provider retention.
@@ -223,12 +223,13 @@
 ### CC-013A — Remove ARVideoKit and update SnapKit privacy support
 
 - Lane: Luna / Max.
-- State: `in_progress`.
+- State: `accepted`.
 - Repository evidence: no production `import ARVideoKit`, `RecordAR` or `RenderAR` call site exists; current SnapKit 5.6.0 has no `PrivacyInfo.xcprivacy`.
 - Decision: remove unused ARVideoKit from app dependency graph; update both SnapKit declarations to 5.7.1, whose official release states CocoaPods privacy-manifest support.
 - Apple authority: SnapKit appears in Apple’s [SDKs requiring a privacy manifest and signature](https://developer.apple.com/support/third-party-SDK-requirements/).
 - Ownership: `Podfile`, `Podfile.lock`, generated CocoaPods workspace/project/support/acknowledgement state only; no app feature source.
 - Acceptance: no ARVideoKit link/embed/copy input remains; SnapKit 5.7.1 manifest is present in the built framework/bundle privacy report surface; acknowledgements match; Debug/Release builds and focused camera tests pass.
+- Evidence: worker commit `3a7731f`, accepted commit `c4275da`. Debug build-for-testing, Release build and 7/7 `CameraManagerLifecycleTests` passed; Sol independently rebuilt Release on main (71 848 КБ) and confirmed `Frameworks/SnapKit.framework/SnapKit_Privacy.bundle/PrivacyInfo.xcprivacy` plus the absence of ARVideoKit, DeviceBenchmark, Models and GGUF.
 
 ### CC-013B — Model/framework provenance decisions
 
