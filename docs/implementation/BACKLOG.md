@@ -2,6 +2,15 @@
 
 Волна создаёт проверяемую производственную базу. Она не реализует StoreKit, backend или массовый UI-рефакторинг до закрытия соответствующих evidence gates.
 
+## Current orchestration amendment
+
+- Every spawned subagent for this project MUST use GPT-5.6 Luna / Max. Never spawn a Sol, Terra or inherited-model subagent; if Luna / Max is unavailable, fail closed rather than substituting another model.
+- The main chat is the sole Sol orchestrator.
+- Luna / Max owns all implementation, testing, correction loops, task-level independent review and verification.
+- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It MUST NOT spawn any Sol reviewer, advisor or implementer subagent.
+- Historical lane labels and evidence below are preserved for traceability. Past references to Sol review/verification or Terra routing are historical evidence only and are not current authorization for a Sol/Terra subagent.
+- The active system goal text is immutable through the goal API while active; the durable amendment is recorded in `docs/aegis/work/2026-08-15-camera-coach-release/10-intent.md` and `20-checkpoint.md`.
+
 ## CC-000 — синхронизировать Product и Deep Research
 
 - Lane: Sol.
@@ -146,7 +155,7 @@
 
 ## CC-009 — Camera/session owner and lifecycle audit
 
-- Lane: Luna / Max audit; implementation may route to Terra / High.
+- Lane: Luna / Max audit; implementation remains Luna / Max under the current hard policy. The former Terra / High classification is historical/disabled and is not a spawn route.
 - State: `accepted`.
 - Ownership: create only `docs/implementation/audits/camera-session-ownership.md`.
 - Read: `CameraManager`, `CameraViewModel`, recording service, AR camera shell/container, overlays and app lifecycle/orientation hooks.
@@ -157,7 +166,7 @@
 
 ## CC-010 — Camera foundation migration program
 
-- Lane: Luna / Max for bounded mechanics; Terra / High only for recorder/route integration proven wide-blast-radius by CC-009.
+- Lane: Luna / Max for bounded mechanics and all current spawned work. The former Terra / High recorder/route-integration route is historical/disabled; no Terra subagent may be spawned under the current hard policy.
 - State: `decomposed`.
 - Dependencies: CC-009; individual slices below add their own gates.
 - Objective: one camera/session owner with reliable lifecycle, recording, rotation and resource cleanup.
@@ -271,7 +280,7 @@
 
 ### CC-010E — Exclusive route lease integration
 
-- Lane: Terra / High for the one-time cross-route migration; subsequent shell slices return to Luna.
+- Lane: disabled historical Terra / High classification for the one-time cross-route migration; current and subsequent shell slices remain Luna / Max, with no Terra spawn route.
 - State: `blocked_by_CC-007`.
 - Objective: commercial shell owns a serialized `none / cameraCoach / sceneMode` lease and never activates a new route before the previous owner releases.
 
@@ -342,32 +351,33 @@
 
 ### CC-011E — Test and contract hygiene correction wave
 
-- Lane: Luna / Max; Sol performs bounded acceptance only.
-- State: `correction_wave_uncommitted`.
-- Baseline: `store` at `bf666f44d3791ef34d577a10a69bb1a2a00addeb`; changes are not accepted evidence until coherently committed and followed by the clean canonical release gate.
+- Lane: Luna / Max owns implementation, testing, correction and task-level review/verification; parent/main-chat Sol performs no task-level review and may perform only the one bounded risk-based milestone acceptance.
+- State: `accepted`.
+- Baseline: `store` at `6ff225d553ae654298dda70b9c779c1226c31800`; CC-011E is committed and accepted after the canonical clean release gate.
 - Trigger evidence: the raw full unit target ran 593 tests: 496 passed, 94 failed and 3 skipped. XCResult: `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. This is an audit result, not a green gate.
 - Failure taxonomy: pseudo-UI tests have no target application; opt-in local-model and physical benchmark suites execute by default; Settings fixtures hit force unwraps; real-image Camera Coach evaluation depends on simulator Vision/Espresso and absent never-tracked assets; legacy parser, persistence and fixtures fail independently.
 - Integrated evidence: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Additional repetitions: Scene 18/18 twice plus DB performance 4/4; DeepCritic 20/20; subtitle/config 22 with 1 intended skip; Hybrid 7/7; Semantic 8/8.
-- Next: commit this coherent correction wave, repeat `scripts/run_release_gates.sh` on the resulting clean commit, then launch ready CC-007A and CC-008A through Luna / Max. A true UI target/default test topology and configured real-image evaluation remain separate unresolved lanes.
+- Canonical clean release gate passed all stages on `6ff225d553ae654298dda70b9c779c1226c31800`: Release 72,032 KiB; 2 privacy manifests; only `SnapKit.framework` and `llama.framework`; 5 material contributors; 5 blockers; 2 provenance validators; 6/6 contamination fixtures.
+- Next: launch ready CC-007A and CC-008A through Luna / Max. A true UI target/default test topology and configured real-image evaluation remain separate unresolved lanes.
 
 #### CC-011E1 — Opt-in execution gates
 
-- State: `accepted_in_uncommitted_wave`.
+- State: `accepted`.
 - Contract: absent local-model or device-benchmark configuration skips before work begins; explicitly invalid benchmark environment fails rather than silently falling back; configured runs retain their prior semantics.
 
 #### CC-011E2 — Metadata persistence and dialogue presentation
 
-- State: `accepted_in_uncommitted_wave`.
+- State: `accepted`.
 - Contract: a nil AR map still writes scene metadata while preserving any legacy `_map`; this does not claim an atomic map/data pair transaction. Parser name/phrase arrays are parallel, and presentation renders `Иван: Привет.` rather than exposing the structural colon as content.
 
 #### CC-011E3 — Neural/domain fixture correction
 
-- State: `accepted_in_uncommitted_wave`.
+- State: `accepted`.
 - Contract: fixtures use canonical signal ordering and exact timestamp relationships; production neural inference semantics are unchanged.
 
 #### CC-011E4 — DeepCritic, Hybrid and Semantic truth
 
-- State: `accepted_in_uncommitted_wave`.
+- State: `accepted`.
 - Contract: Russian certainty validation catches inflected absolute language while allowing calibrated phrasing; semantic actions outside the live whitelist remain suppressed; Hybrid production remains unchanged and the ranking fixture is made unambiguous.
 
 ## CC-012 — Coaching-loop analytics contract

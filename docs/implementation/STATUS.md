@@ -4,7 +4,16 @@
 
 ## Глобальная цель
 
-Автономно довести всю систему до production-level, submission-ready App Store candidate по `docs/implementation/PRODUCTION_ACCEPTANCE.md`. Camera Coach остаётся первичным продуктом, Scene Mode — вторичным; Sol владеет архитектурой, декомпозицией, проверкой и приёмкой, Luna / Max выполняет полностью специфицированные задачи. Task/milestone/build completion не закрывают глобальную цель. Push, PR, платные действия, TestFlight/App Store submission и юридические решения не разрешены автоматически.
+Автономно довести всю систему до production-level, submission-ready App Store candidate по `docs/implementation/PRODUCTION_ACCEPTANCE.md`. Camera Coach остаётся первичным продуктом, Scene Mode — вторичным; parent/main-chat Sol владеет архитектурой, low-level task contracts, tracker и одной bounded risk-based milestone acceptance, а GPT-5.6 Luna / Max владеет всей реализацией, тестированием, correction loops, task-level independent review и verification. Task/milestone/build completion не закрывают глобальную цель. Push, PR, платные действия, TestFlight/App Store submission и юридические решения не разрешены автоматически.
+
+## Hard orchestration policy (current)
+
+- Every spawned subagent for this project MUST use GPT-5.6 Luna / Max. Never spawn a Sol, Terra or inherited-model subagent; if Luna / Max is unavailable, fail closed rather than substituting another model.
+- The main chat is the sole Sol orchestrator.
+- Luna / Max owns all implementation, testing, correction loops, task-level independent review and verification.
+- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It MUST NOT spawn any Sol reviewer, advisor or implementer subagent.
+- The active system goal text is immutable through the goal API while active; the durable goal-policy amendment is recorded in `docs/aegis/work/2026-08-15-camera-coach-release/10-intent.md` and `20-checkpoint.md`.
+- Existing historical queue labels and evidence that mention past Sol reviews or verification are preserved as historical evidence only. They are not current routing permission and do not authorize task-level Sol review or any Sol/Terra subagent.
 
 ## Текущий milestone
 
@@ -15,7 +24,7 @@
 ## Baseline snapshot
 
 - Git: ветка `store`, base `018ceab` до bootstrap-коммита.
-- Текущий принятый pre-wave baseline: ветка `store`, `bf666f44d3791ef34d577a10a69bb1a2a00addeb`; поверх него находится непринятая uncommitted correction wave CC-011E.
+- Текущий принятый baseline: ветка `store`, `6ff225d553ae654298dda70b9c779c1226c31800`; CC-011E committed and accepted.
 - Tracked source до bootstrap не изменён.
 - `xcodebuild ... build-for-testing` для `generic/platform=iOS` прошёл 15 августа 2026 года.
 - В проекте есть app target и unit-test target; отдельного UI-test target нет.
@@ -29,6 +38,8 @@
 - Deep Research принят с рекомендацией `NARROW`; публичная монетизация отложена до instrumented beta.
 
 ## Очередь первой волны
+
+The queue below preserves historical lane labels and evidence for traceability. The current hard policy above supersedes any historical `Sol verification`, `Sol review`, `Terra / High` or similar wording: all current/future spawned work, including review and verification, is Luna / Max only; the parent/main-chat Sol has only the bounded milestone acceptance described above.
 
 | ID | Состояние | Lane | Зависимости | Краткий результат |
 | --- | --- | --- | --- | --- |
@@ -55,14 +66,14 @@
 | CC-010C | partially_accepted | Sol → Luna / Max | CC-009, recording policy | Policy-neutral serialized recorder core принято; production wiring/save policy остаются gated |
 | CC-010C-A | accepted | Luna / Max | CC-009 | Изолированное recorder core принято после Sol-review, canonical build и 29/29 simulator tests |
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
-| CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
+| CC-010E | blocked_by_CC-007 | disabled historical Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | ready | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata готовы к реализации |
 | CC-010G | accepted | Luna / Max | CC-010A | Stateless thermal budget принят; worker `3212923` → `6bfd3a4`, 6/6 focused tests прошли |
 | CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
 | CC-011A | accepted | Luna / Max | CC-013A | App-owned manifest и validator приняты; Release содержит ровно app + SnapKit manifests |
 | CC-011B | accepted | Luna / Max | CC-002, CC-011A | Единый clean-HEAD gate принят: Debug, Release, privacy, allowlists, sizes и 6 contamination fixtures |
 | CC-011D | accepted | Luna / Max | CC-013B1, CC-013C1 | Два offline provenance validator приняты как fail-fast stages canonical release gate |
-| CC-011E | correction_wave_uncommitted | Luna / Max | CC-005, raw full-target audit | Test/contract hygiene: E1–E4 интегрированно дали 104 executed, 102 passed, 2 intended skips, 0 failures; commit и clean canonical gate ещё впереди |
+| CC-011E | accepted | Luna / Max | CC-005, raw full-target audit | Test/contract hygiene accepted at `6ff225d553ae654298dda70b9c779c1226c31800`; E1–E4 gave 104 executed, 102 passed, 2 intended skips, 0 failures; canonical clean gate passed all stages |
 | CC-012 | decomposed | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
 | CC-012A | accepted | Luna / Max | CC-003, CC-008 | 12 instrumentation owners, 59 active events, 63 properties; activation требует action + independent verification |
 | CC-013A | accepted | Luna / Max | CC-004 | ARVideoKit удалён; SnapKit 5.7.1 privacy bundle доказан в Release app |
@@ -73,9 +84,9 @@
 ## Активная работа
 
 - Luna / Max выполняет реализацию, коррекции и основное тестирование; Sol ограничен архитектурными решениями, трекером и короткой risk-based приёмкой интегрированного evidence, без дублирования каждого worker run.
-- Clean canonical release gate прошёл на `store` / `bf666f4`: offline llama и Circle provenance, privacy self-tests, Debug build-for-testing, Release build и bundle validation; 2 privacy manifests, только SnapKit и llama среди frameworks, Release 72 012 KiB, 5 material contributors, 5 честных blockers и 6/6 contamination fixtures.
-- Raw full unit-target audit на том же baseline не зелёный: 593 total, 496 passed, 94 failed, 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. Классы отказов: unit-hosted pseudo-UI без target app, default-запуск opt-in model/physical benchmark, Settings force unwraps, real-image Camera Coach evaluation с simulator Vision/Espresso и отсутствующими never-tracked assets, legacy parser/persistence/fixture failures.
-- CC-011E correction wave пока uncommitted: E1 opt-in gates; E2 metadata persistence и dialogue parser/subtitle presentation; E3 neural/domain fixture corrections; E4 DeepCritic/Hybrid/Semantic truth. Интегрированный Luna gate: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Дополнительно: Scene 18/18 два последовательных раза и DB performance 4/4; DeepCritic 20/20; subtitle/config 22 с одним intended skip; Hybrid 7/7; Semantic 8/8.
+- Canonical clean release gate прошёл на `store` / `6ff225d553ae654298dda70b9c779c1226c31800`; all stages passed: offline llama and Circle provenance, privacy self-tests, Debug build-for-testing, Release build и bundle validation; Release 72 032 KiB, 2 privacy manifests, only SnapKit.framework and llama.framework, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures.
+- Raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed, 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. Классы отказов: unit-hosted pseudo-UI без target app, default-запуск opt-in model/physical benchmark, Settings force unwraps, real-image Camera Coach evaluation с simulator Vision/Espresso и отсутствующими never-tracked assets, legacy parser/persistence/fixture failures.
+- CC-011E accepted at `6ff225d553ae654298dda70b9c779c1226c31800`: E1 opt-in gates; E2 metadata persistence и dialogue parser/subtitle presentation; E3 neural/domain fixture corrections; E4 DeepCritic/Hybrid/Semantic truth. Интегрированный Luna gate: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Дополнительно: Scene 18/18 два последовательных раза и DB performance 4/4; DeepCritic 20/20; subtitle/config 22 с одним intended skip; Hybrid 7/7; Semantic 8/8.
 - CC-011E contracts: nil map сохраняет metadata и не меняет legacy `_map`, без заявления о pair transaction; parser arrays параллельны, subtitle отображает `Иван: Привет.`; отсутствующая benchmark-конфигурация означает skip, некорректная — fail; certainty validation учитывает русские формы и calibrated language; non-whitelisted semantic actions подавляются; Hybrid production не изменён.
 - CC-010A4 accepted: task `01a006af-8d1a-7941-a294-84a330bb1e01`, worker `993510e`, accepted `b38f9fb`; Sol прошёл 15/15 lens transaction/presentation/lifecycle tests.
 - CC-010G accepted: task `01a006b4-a0bf-7e52-b870-bb3c77505063`, worker `3212923`, accepted `6bfd3a4`; Sol прошёл 6/6 focused thermal policy/concurrency tests.
@@ -108,7 +119,7 @@
 
 ## Ворота следующего шага
 
-Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008 принят; после commit и повторного clean canonical gate для CC-011E Luna / Max может запускать CC-007A и CC-008A. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
+Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008 и CC-011E приняты; Luna / Max теперь может запускать CC-007A и CC-008A. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
 
 ## Внешние блокеры
 
