@@ -48,19 +48,26 @@ final class CameraViewModel: ObservableObject {
 
     private let cameraManager: CameraManager
     private let analysisPipeline: AnalysisPipeline
+    private let lensSwitchOperation: @Sendable (CameraLens) async -> CameraLensSwitchResult
     private var cancellables = Set<AnyCancellable>()
     private var featurePollingCancellable: AnyCancellable?
     private var pauseRequestToken: UUID?
     private var lifecycleTask: Task<Void, Never>?
     private var lifecycleIntent = UUID()
+    private var lensSwitchTask: Task<Void, Never>?
+    private var lensSwitchIntent = UUID()
     private var releaseTask: Task<Void, Never>?
     private var failedStartRollbackOperation: FailedStartRollbackOperation?
     private var nextFailedStartRollbackGeneration: UInt64 = 0
 
     init(cameraManager: CameraManager,
-         analysisPipeline: AnalysisPipeline) {
+         analysisPipeline: AnalysisPipeline,
+         lensSwitchOperation: (@Sendable (CameraLens) async -> CameraLensSwitchResult)? = nil) {
         self.cameraManager = cameraManager
         self.analysisPipeline = analysisPipeline
+        self.lensSwitchOperation = lensSwitchOperation ?? { [cameraManager] lens in
+            await cameraManager.switchLensAndWait(to: lens)
+        }
 
         analysisPipeline.$overlayState
             .receive(on: DispatchQueue.main)
@@ -186,11 +193,15 @@ final class CameraViewModel: ObservableObject {
         overlayAnnotations = []
         lifecycleState = .idle
         lifecycleError = nil
+        currentLens = .wide
         availableLenses = []
     }
 
     private func beginLifecycleRequest(_ requestedState: CameraLifecycleState) -> UUID {
         lifecycleTask?.cancel()
+        lensSwitchTask?.cancel()
+        lensSwitchTask = nil
+        lensSwitchIntent = UUID()
         let intent = UUID()
         lifecycleIntent = intent
         lifecycleState = requestedState
@@ -204,6 +215,7 @@ final class CameraViewModel: ObservableObject {
             guard !Task.isCancelled, lifecycleIntent == intent else { return }
             lifecycleState = .running
             lifecycleError = nil
+            currentLens = .wide
             availableLenses = cameraManager.availableLenses
         } catch let error as CameraManagerError {
             guard lifecycleIntent == intent else { return }
@@ -299,8 +311,37 @@ final class CameraViewModel: ObservableObject {
     }
     
     func switchLens(to lens: CameraLens) {
-        currentLens = lens
-        cameraManager.switchLens(to: lens)
+        lensSwitchTask?.cancel()
+        let intent = UUID()
+        lensSwitchIntent = intent
+        let operation = lensSwitchOperation
+        lensSwitchTask = Task { [weak self, operation] in
+            let result = await operation(lens)
+            guard let self,
+                  !Task.isCancelled,
+                  self.lensSwitchIntent == intent else { return }
+            applyLensSwitchResult(result)
+            lensSwitchTask = nil
+        }
+    }
+
+    private func applyLensSwitchResult(_ result: CameraLensSwitchResult) {
+        switch result {
+        case .success(let activeLens), .noOp(let activeLens):
+            currentLens = activeLens
+        case .failure(_, let lastKnownActiveLens, let reason):
+            if let lastKnownActiveLens {
+                currentLens = lastKnownActiveLens
+                return
+            }
+
+            currentLens = .wide
+            availableLenses = []
+            if reason == .rollbackFailed {
+                lifecycleState = cameraManager.lifecycleState
+                lifecycleError = cameraManager.lifecycleError
+            }
+        }
     }
 
     private func startFeaturePolling() {
