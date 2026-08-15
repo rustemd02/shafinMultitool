@@ -37,6 +37,46 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         await pipeline.releaseAndWait()
     }
 
+    func testReleaseClearsFrameAndFeatureEvidenceBeforeFreshRegistration() async {
+        let (pipeline, manager, _, _) = makeComponents()
+
+        pipeline.ingestHigh(context: makeFrameContext(timestamp: 1.0, orientation: .up, isStable: true))
+        let receivedFirstFrame = await waitUntil {
+            pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_1000"
+                && pipeline.testingFeatureEvidenceSampleCount > 0
+        }
+        XCTAssertTrue(receivedFirstFrame)
+
+        await pipeline.releaseAndWait()
+
+        XCTAssertNil(pipeline.testingLatestFrameEvidence)
+        XCTAssertEqual(pipeline.testingFeatureEvidenceSampleCount, 0)
+
+        XCTAssertTrue(pipeline.register(with: manager))
+        XCTAssertNil(pipeline.testingLatestFrameEvidence)
+        XCTAssertEqual(pipeline.testingFeatureEvidenceSampleCount, 0)
+
+        var completedWithoutEvidence = false
+        pipeline.runPauseAnalysis { suggestions, critique in
+            completedWithoutEvidence = true
+            XCTAssertTrue(suggestions.isEmpty)
+            XCTAssertNil(critique)
+        }
+        XCTAssertTrue(completedWithoutEvidence)
+
+        pipeline.ingestHigh(context: makeFrameContext(timestamp: 2.0, orientation: .left, isStable: false))
+        let receivedFreshFrame = await waitUntil {
+            guard let evidence = pipeline.testingLatestFrameEvidence else { return false }
+            return evidence.sourceFrameId == "frame_2000"
+                && evidence.orientation == .left
+                && !evidence.isStable
+                && pipeline.testingFeatureEvidenceSampleCount > 0
+        }
+        XCTAssertTrue(receivedFreshFrame)
+
+        await pipeline.releaseAndWait()
+    }
+
     @MainActor
     func testReleaseInvalidatesQueuedPresentationAndClearsLivePauseAndOverlayState() async {
         let (pipeline, manager, scheduler, _) = makeComponents()
@@ -281,7 +321,9 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         )
     }
 
-    private func makeFrameContext() -> FrameContext {
+    private func makeFrameContext(timestamp: Double = 1.0,
+                                  orientation: CGImagePropertyOrientation = .up,
+                                  isStable: Bool = true) -> FrameContext {
         var pixelBuffer: CVPixelBuffer?
         let attributes: [String: Any] = [
             kCVPixelBufferWidthKey as String: 4,
@@ -300,12 +342,20 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         XCTAssertEqual(status, kCVReturnSuccess)
         return FrameContext(
             pixelBuffer: pixelBuffer!,
-            timestamp: CMTimeMakeWithSeconds(1, preferredTimescale: 600),
-            orientation: .up,
-            isStable: true,
+            timestamp: CMTimeMakeWithSeconds(timestamp, preferredTimescale: 600),
+            orientation: orientation,
+            isStable: isStable,
             shakeLevel: 0.05,
             motionState: .still
         )
+    }
+
+    private func waitUntil(_ condition: @escaping () -> Bool) async -> Bool {
+        for _ in 0..<2_000 {
+            if condition() { return true }
+            await Task.yield()
+        }
+        return condition()
     }
 }
 

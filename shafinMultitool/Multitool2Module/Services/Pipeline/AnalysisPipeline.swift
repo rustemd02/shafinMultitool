@@ -29,10 +29,6 @@ struct DebugData {
     var saliencyRegion: CGRect?
 }
 
-private struct SendablePixelBuffer: @unchecked Sendable {
-    let value: CVPixelBuffer
-}
-
 struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     let id: String
     let frameId: String
@@ -3279,6 +3275,7 @@ final class AnalysisPipeline: ObservableObject {
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
     private let lowQueue = DispatchQueue(label: "AnalysisPipeline.low", qos: .utility)
+    private let latestFrameEvidenceStore = LatestFrameEvidenceStore()
     private let lifecycleLock = NSLock()
     private let registrationLock = NSLock()
     private let taskLock = NSLock()
@@ -3300,10 +3297,6 @@ final class AnalysisPipeline: ObservableObject {
     private var latestAestheticSample: FeatureSample<FeatureSnapshotAestheticPayload>?
     private var latestAestheticMeasuredAt: Date?
     private let featureQueue = DispatchQueue(label: "AnalysisPipeline.features")
-    private var lastFrameWasStable = false
-    private var lastPixelBuffer: CVPixelBuffer?
-    private var lastOrientation: CGImagePropertyOrientation = .right
-    private var lastSourceFrameId: String = ""
     private var latestLiveNeuralOutcome: NeuralEvidenceRecordedOutcome?
     private var latestPauseNeuralOutcome: NeuralEvidenceRecordedOutcome?
     private var lastRequestedLiveNeuralFrameId: String?
@@ -3570,7 +3563,42 @@ final class AnalysisPipeline: ObservableObject {
         }
         await waitForMainQueueFence()
 
+        resetSessionLocalEvidence()
         markReleaseFinished()
+    }
+
+    private func resetSessionLocalEvidence() {
+        latestFrameEvidenceStore.clear()
+
+        featureQueue.sync {
+            features = CoachingFeatures()
+            debugData = DebugData()
+            latestVisionSample = nil
+            latestHorizonSample = nil
+            latestHorizonMeasuredAt = nil
+            latestLightingSample = nil
+            latestLightingMeasuredAt = nil
+            latestDetrSample = nil
+            latestAestheticSample = nil
+            latestAestheticMeasuredAt = nil
+            latestLiveNeuralOutcome = nil
+            latestPauseNeuralOutcome = nil
+            lastRequestedLiveNeuralFrameId = nil
+            lastRequestedPauseNeuralFrameId = nil
+        }
+
+        suggestionExpiry = .distantPast
+        lastAestheticRequest = .distantPast
+        lastDETRRequest = .distantPast
+        lowFrameCount = 0
+        lastRefinedPauseFrameId = nil
+        lastLiveHintDecisionLogKey = nil
+        lastLiveDecisionDebugLogKey = nil
+        lastHighCameraDebugTimestamp = 0
+        lastLiveDecisionDebugLogTimestamp = 0
+        lastDemoLightDebugLogTimestamp = 0
+        lastDetrUnavailableDebugDate = .distantPast
+        demoCinematicPortraitStepEvidence = .empty
     }
 
     private func markReleaseFinished() {
@@ -3764,13 +3792,7 @@ final class AnalysisPipeline: ObservableObject {
 
     private func performHigh(context: FrameContext, generation: UInt64) {
         guard isGenerationCurrent(generation) else { return }
-        // Запомним последний кадр для режима предпросмотра
-        self.lastPixelBuffer = context.pixelBuffer
-        self.lastOrientation = context.orientation
         let sourceFrameId = makeSourceFrameId(from: context.timestamp)
-        featureQueue.sync {
-            self.lastSourceFrameId = sourceFrameId
-        }
         let startTime = CACurrentMediaTime()
         
         Telemetry.shared.setActiveModule("Vision", active: true)
@@ -3808,7 +3830,6 @@ final class AnalysisPipeline: ObservableObject {
             features.horizon.confidence = horizon.confidence
             features.motion.shakeLevel = CGFloat(context.shakeLevel)
             features.motion.state = context.motionState
-            self.lastFrameWasStable = context.isStable
             if let subject = primarySubject {
                 features.composition = self.compositionFeatures(from: subject.boundingBox)
                 features.composition.saliencyLeftRightBalance = saliencyBalance
@@ -3856,6 +3877,14 @@ final class AnalysisPipeline: ObservableObject {
             )
             self.latestHorizonMeasuredAt = measurementTime
         }
+
+        _ = latestFrameEvidenceStore.publish(
+            pixelBuffer: context.pixelBuffer,
+            orientation: context.orientation,
+            sourceFrameId: sourceFrameId,
+            capturedAt: measurementTime,
+            isStable: context.isStable
+        )
         
         Telemetry.shared.setCameraStable(context.isStable, shakeLevel: context.shakeLevel)
         logHighFrameDebug(
@@ -4177,6 +4206,7 @@ final class AnalysisPipeline: ObservableObject {
     @MainActor
     private func emitSuggestion(generation: UInt64) async {
         guard isGenerationCurrent(generation) else { return }
+        guard let frameEvidence = latestFrameEvidenceStore.snapshot() else { return }
         let now = Date()
         let localFeatures = featureQueue.sync { features }
         
@@ -4228,8 +4258,8 @@ final class AnalysisPipeline: ObservableObject {
 
         let snapshot = makeFeatureSnapshot(
             mode: .live,
-            frameId: currentSourceFrameId(fallbackDate: now),
-            capturedAt: now
+            frameId: frameEvidence.sourceFrameId,
+            capturedAt: frameEvidence.capturedAt
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
         let deterministicCritique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
@@ -4237,9 +4267,10 @@ final class AnalysisPipeline: ObservableObject {
         if liveHybridFusionEnabled {
             (fusionOutput, liveNeuralOutcome) = await resolveCritiqueWithHybridFusion(
                 mode: .live,
-                capturedAt: now,
-                pixelBuffer: lastPixelBuffer,
-                orientation: lastOrientation,
+                capturedAt: frameEvidence.capturedAt,
+                pixelBuffer: frameEvidence.pixelBuffer,
+                orientation: frameEvidence.orientation,
+                isStable: frameEvidence.isStable,
                 snapshot: snapshot,
                 semantics: semantics,
                 deterministicCritique: deterministicCritique,
@@ -4288,7 +4319,7 @@ final class AnalysisPipeline: ObservableObject {
             plan: plan,
             motionState: snapshot.motion.state
         )
-        let technicalQualitySignal = technicalQualitySignal(for: lastPixelBuffer)
+        let technicalQualitySignal = technicalQualitySignal(for: frameEvidence.pixelBuffer)
         publishLivePresentation(
             frameId: snapshot.frameId,
             critique: critique,
@@ -5412,7 +5443,7 @@ final class AnalysisPipeline: ObservableObject {
     func runPauseAnalysis(completion: @escaping ([Suggestion], PauseCritiquePresentation?) -> Void) {
         let generation = currentGeneration()
         guard isFrameWorkActive(generation) else { return }
-        guard let pixelBuffer = lastPixelBuffer else {
+        guard let frameEvidence = latestFrameEvidenceStore.snapshot() else {
             completion([], nil)
             return
         }
@@ -5423,10 +5454,8 @@ final class AnalysisPipeline: ObservableObject {
             pauseAnalysisRevision += 1
             return pauseAnalysisRevision
         }
-        let analysisCapturedAt = Date()
-        let pauseSourceFrameId = currentSourceFrameId(fallbackDate: analysisCapturedAt)
-        let orientation = lastOrientation
-        let sendablePixelBuffer = SendablePixelBuffer(value: pixelBuffer)
+        let analysisCapturedAt = frameEvidence.capturedAt
+        let pauseSourceFrameId = frameEvidence.sourceFrameId
         let baseAdapterState = currentAdapterState()
         lowQueue.async { [weak self] in
             guard let self, self.isGenerationCurrent(generation) else { return }
@@ -5438,14 +5467,15 @@ final class AnalysisPipeline: ObservableObject {
             var pauseAestheticScoreOverride: Double?
             var pauseAestheticMeasuredAt: Date?
             let shouldUpdateLegacySubjectFromDetr = localFeatures.composition.subjectAreaRatio == 0
-            let technicalQualitySignal = self.technicalQualityAnalyzer.signal(pixelBuffer: pixelBuffer)
+            let technicalQualitySignal = self.technicalQualityAnalyzer.signal(pixelBuffer: frameEvidence.pixelBuffer)
 
             let group = DispatchGroup()
 
             // Для pause structured path всегда считаем свежий local DETR, но не мутируем shared live-state.
             if let detector = self.detrDetector {
                 group.enter()
-                detector.detect(pixelBuffer: pixelBuffer, orientation: orientation) { detections in
+                detector.detect(pixelBuffer: frameEvidence.pixelBuffer,
+                               orientation: frameEvidence.orientation) { detections in
                     pauseStateQueue.sync {
                         let measuredAt = Date()
                         pauseDetectionsOverride = detections
@@ -5473,7 +5503,8 @@ final class AnalysisPipeline: ObservableObject {
 
             // Эстетика (off‑by‑default в live, но в preview считаем)
             group.enter()
-            self.aestheticScorer.score(pixelBuffer: pixelBuffer, orientation: orientation) { score in
+            self.aestheticScorer.score(pixelBuffer: frameEvidence.pixelBuffer,
+                                       orientation: frameEvidence.orientation) { score in
                 pauseStateQueue.sync {
                     if let score {
                         let measuredAt = Date()
@@ -5527,8 +5558,9 @@ final class AnalysisPipeline: ObservableObject {
                     let (fusionOutput, pauseNeuralOutcome) = await self.resolveCritiqueWithHybridFusion(
                         mode: .pause,
                         capturedAt: analysisCapturedAt,
-                        pixelBuffer: sendablePixelBuffer.value,
-                        orientation: orientation,
+                        pixelBuffer: frameEvidence.pixelBuffer,
+                        orientation: frameEvidence.orientation,
+                        isStable: frameEvidence.isStable,
                         snapshot: snapshot,
                         semantics: semantics,
                         deterministicCritique: deterministicCritique,
@@ -10305,10 +10337,7 @@ final class AnalysisPipeline: ObservableObject {
 
     private func currentSourceFrameId(fallbackDate: Date) -> String {
         let fallback = "frame_\(Int(fallbackDate.timeIntervalSince1970 * 1000))"
-        return featureQueue.sync {
-            let trimmed = lastSourceFrameId.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? fallback : trimmed
-        }
+        return latestFrameEvidenceStore.snapshot()?.sourceFrameId ?? fallback
     }
 
     private func nonEmpty(_ value: String?) -> String? {
@@ -10402,6 +10431,7 @@ final class AnalysisPipeline: ObservableObject {
                                                       snapshot: FrameFeatureSnapshot,
                                                       semantics: SceneSemanticsReport,
                                                       forcePauseExecution: Bool,
+                                                      isStable: Bool = true,
                                                       generation: UInt64? = nil) {
         guard let neuralEvidenceService,
               let pixelBuffer,
@@ -10410,6 +10440,7 @@ final class AnalysisPipeline: ObservableObject {
                 capturedAt: capturedAt,
                 pixelBuffer: pixelBuffer,
                 orientation: orientation,
+                isStable: isStable,
                 snapshot: snapshot,
                 semantics: semantics,
                 forcePauseExecution: forcePauseExecution
@@ -10468,6 +10499,7 @@ final class AnalysisPipeline: ObservableObject {
                                                     capturedAt: Date,
                                                     pixelBuffer: CVPixelBuffer,
                                                     orientation: CGImagePropertyOrientation,
+                                                    isStable: Bool,
                                                     snapshot: FrameFeatureSnapshot,
                                                     semantics: SceneSemanticsReport,
                                                     forcePauseExecution: Bool) -> NeuralEvidenceInferenceRequest? {
@@ -10481,7 +10513,7 @@ final class AnalysisPipeline: ObservableObject {
             primarySubjectRegion: snapshot.subjectSignals.primaryCandidateRegion,
             motionState: snapshot.motion.state,
             shakeLevel: snapshot.motion.shakeLevel,
-            isStable: featureQueue.sync { lastFrameWasStable },
+            isStable: isStable,
             thermalTier: thermalGovernor.currentTier(),
             heavyModelsEnabled: neuralHeavyModelsEnabledProvider(),
             batteryLevel: thermalGovernor.currentBatteryLevel(),
@@ -10493,6 +10525,7 @@ final class AnalysisPipeline: ObservableObject {
                                             capturedAt: Date,
                                             pixelBuffer: CVPixelBuffer,
                                             orientation: CGImagePropertyOrientation,
+                                            isStable: Bool,
                                             snapshot: FrameFeatureSnapshot,
                                             semantics: SceneSemanticsReport,
                                             forcePauseExecution: Bool,
@@ -10503,6 +10536,7 @@ final class AnalysisPipeline: ObservableObject {
                 capturedAt: capturedAt,
                 pixelBuffer: pixelBuffer,
                 orientation: orientation,
+                isStable: isStable,
                 snapshot: snapshot,
                 semantics: semantics,
                 forcePauseExecution: forcePauseExecution
@@ -10525,6 +10559,7 @@ final class AnalysisPipeline: ObservableObject {
                                                  capturedAt: Date,
                                                  pixelBuffer: CVPixelBuffer?,
                                                  orientation: CGImagePropertyOrientation,
+                                                 isStable: Bool,
                                                  snapshot: FrameFeatureSnapshot,
                                                  semantics: SceneSemanticsReport,
                                                  deterministicCritique: CritiqueReport,
@@ -10550,6 +10585,7 @@ final class AnalysisPipeline: ObservableObject {
             capturedAt: capturedAt,
             pixelBuffer: pixelBuffer,
             orientation: orientation,
+            isStable: isStable,
             snapshot: snapshot,
             semantics: semantics,
             forcePauseExecution: forcePauseExecution,
@@ -10777,7 +10813,8 @@ extension AnalysisPipeline {
         testingResetStillImageReplayState(
             frameId: frameId,
             pixelBuffer: pixelBuffer,
-            orientation: orientation
+            orientation: orientation,
+            capturedAt: capturedAt
         )
         await testingExtractStillImageReplayFeatures(
             pixelBuffer: pixelBuffer,
@@ -10820,10 +10857,8 @@ extension AnalysisPipeline {
     @MainActor
     private func testingResetStillImageReplayState(frameId: String,
                                                    pixelBuffer: CVPixelBuffer,
-                                                   orientation: CGImagePropertyOrientation) {
-        lastPixelBuffer = pixelBuffer
-        lastOrientation = orientation
-        lastFrameWasStable = true
+                                                   orientation: CGImagePropertyOrientation,
+                                                   capturedAt: Date) {
         suggestionExpiry = .distantPast
         lastAestheticRequest = .distantPast
         lastDETRRequest = .distantPast
@@ -10858,8 +10893,15 @@ extension AnalysisPipeline {
             latestPauseNeuralOutcome = nil
             lastRequestedLiveNeuralFrameId = nil
             lastRequestedPauseNeuralFrameId = nil
-            lastSourceFrameId = frameId
         }
+
+        _ = latestFrameEvidenceStore.publish(
+            pixelBuffer: pixelBuffer,
+            orientation: orientation,
+            sourceFrameId: frameId,
+            capturedAt: capturedAt,
+            isStable: true
+        )
 
         overlayState = OverlayState(
             primaryBoundingBox: nil,
@@ -10942,7 +10984,6 @@ extension AnalysisPipeline {
             features.horizon.confidence = horizon.confidence
             features.motion.shakeLevel = 0
             features.motion.state = .still
-            self.lastFrameWasStable = true
 
             if let subject = primarySubject {
                 features.composition = self.compositionFeatures(from: subject.boundingBox)
@@ -11135,6 +11176,7 @@ extension AnalysisPipeline {
             capturedAt: capturedAt,
             pixelBuffer: options.runNeuralEvidence ? pixelBuffer : nil,
             orientation: orientation,
+            isStable: true,
             snapshot: snapshot,
             semantics: semantics,
             deterministicCritique: deterministicCritique,
@@ -11241,6 +11283,7 @@ extension AnalysisPipeline {
             capturedAt: capturedAt,
             pixelBuffer: options.runNeuralEvidence ? pixelBuffer : nil,
             orientation: orientation,
+            isStable: true,
             snapshot: snapshot,
             semantics: semantics,
             deterministicCritique: deterministicCritique,
@@ -11938,6 +11981,7 @@ extension AnalysisPipeline {
             capturedAt: capturedAt,
             pixelBuffer: pixelBuffer,
             orientation: orientation,
+            isStable: true,
             snapshot: snapshot,
             semantics: semantics,
             deterministicCritique: deterministicCritique,
@@ -12022,6 +12066,22 @@ extension AnalysisPipeline {
         lifecycleLock.lock()
         defer { lifecycleLock.unlock() }
         return releaseInProgress
+    }
+
+    var testingLatestFrameEvidence: LatestFrameEvidenceStore.Snapshot? {
+        latestFrameEvidenceStore.snapshot()
+    }
+
+    var testingFeatureEvidenceSampleCount: Int {
+        featureQueue.sync {
+            [
+                latestVisionSample != nil,
+                latestHorizonSample != nil,
+                latestLightingSample != nil,
+                latestDetrSample != nil,
+                latestAestheticSample != nil
+            ].filter { $0 }.count
+        }
     }
 
     @MainActor
