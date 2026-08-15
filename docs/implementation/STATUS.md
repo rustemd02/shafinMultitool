@@ -1,6 +1,6 @@
 # Camera Coach execution status
 
-Последнее обновление: 15 августа 2026 года.
+Последнее обновление: 16 августа 2026 года.
 
 ## Глобальная цель
 
@@ -86,7 +86,9 @@ The queue below preserves historical lane labels and evidence for traceability. 
 ## Активная работа
 
 - Visible Luna / Max threads выполняют реализацию, коррекции и основное тестирование; Sol ограничен архитектурными решениями, трекером и короткой risk-based приёмкой интегрированного evidence, без дублирования каждого worker run.
-- Canonical clean release gate прошёл на `store` / `6ff225d553ae654298dda70b9c779c1226c31800`; all stages passed: offline llama and Circle provenance, privacy self-tests, Debug build-for-testing, Release build и bundle validation; Release 72 032 KiB, 2 privacy manifests, only SnapKit.framework and llama.framework, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures.
+- Earlier canonical clean release gate прошёл на `store` / `6ff225d553ae654298dda70b9c779c1226c31800`; all stages passed: offline llama and Circle provenance, privacy self-tests, Debug build-for-testing, Release build и bundle validation; Release 72 032 KiB, 2 privacy manifests, only SnapKit.framework and llama.framework, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures.
+- Host-retry canonical release gate прошёл на clean HEAD `5e5dfef859c7db220864076aead9c0de44181a8d`: `scripts/run_release_gates.sh --derived-data-root /private/tmp/shafin-release-gate.20260816-host-retry`, exit 0, `dirty=false`; passed Debug build-for-testing, Release build, 2 provenance validators, privacy validation, bundle validation and 6 contamination fixtures. Values: `manifest_count=2`, `TOTAL_APP_KIB=72104`, `KNOWN_BLOCKER_COUNT=5`. Logs: `/private/tmp/shafin-release-gate.20260816-host-retry/shafin-release-gates/{debug-build.log,release-build.log,release-validation.log,release-fixtures.log}`.
+- The previous exit 66 was a sandbox/Xcode/CoreSimulator host restriction, not a repository failure; the host retry restored valid evidence. Five existing provenance/license blockers remain unresolved: `llama.framework`, two Core ML models and `Circle.usdz`/`Person.usdz`; release readiness must not be overstated.
 - Raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed, 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. Классы отказов: unit-hosted pseudo-UI без target app, default-запуск opt-in model/physical benchmark, Settings force unwraps, real-image Camera Coach evaluation с simulator Vision/Espresso и отсутствующими never-tracked assets, legacy parser/persistence/fixture failures.
 - CC-011E accepted at `6ff225d553ae654298dda70b9c779c1226c31800`: E1 opt-in gates; E2 metadata persistence и dialogue parser/subtitle presentation; E3 neural/domain fixture corrections; E4 DeepCritic/Hybrid/Semantic truth. Интегрированный Luna gate: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Дополнительно: Scene 18/18 два последовательных раза и DB performance 4/4; DeepCritic 20/20; subtitle/config 22 с одним intended skip; Hybrid 7/7; Semantic 8/8.
 - CC-011E contracts: nil map сохраняет metadata и не меняет legacy `_map`, без заявления о pair transaction; parser arrays параллельны, subtitle отображает `Иван: Привет.`; отсутствующая benchmark-конфигурация означает skip, некорректная — fail; certainty validation учитывает русские формы и calibrated language; non-whitelisted semantic actions подавляются; Hybrid production не изменён.
