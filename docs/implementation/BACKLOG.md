@@ -237,6 +237,16 @@
 - Objective: implement the target/file-membership/scheme packet from CC-005 and replace the unit-hosted pseudo-UI smoke with true process-launch tests.
 - Acceptance: Camera Coach default launch, permission-state launch arguments, both orientations and Scene Mode entry run in a separate UI-test process.
 
+### CC-011D — Gate accepted provenance records
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Task: `01a00631-d259-7c22-aa35-7e6ef95e8e1b`.
+- Ownership: `scripts/run_release_gates.sh`, `scripts/validate_release_bundle.sh` and at most one narrow shell orchestration test.
+- Objective: run the accepted llama artifact-traceability and Circle repository-correlation validators offline before any Xcode build; no ignored checkout, network or legal inference.
+- Reporting: llama and Circle remain among the five release blockers, but their technical status is no longer generically unresolved; final summary reports two provenance validators and preserves six contamination fixtures.
+- Acceptance: syntax/orchestration tests and canonical full release gate pass on main; a drift in either accepted record stops before Xcode build; existing privacy/build/bundle/safety behavior is unchanged.
+
 ## CC-012 — Coaching-loop analytics contract
 
 - Lane: Sol defines semantics, Luna / Max implements after UX spec.
