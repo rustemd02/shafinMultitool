@@ -77,6 +77,7 @@ public final class CommercialShellViewController: UIViewController {
     public override func loadView() {
         let rootView = UIView()
         rootView.backgroundColor = .systemBackground
+        rootView.accessibilityIdentifier = "commercial-shell"
         view = rootView
     }
 
@@ -171,11 +172,17 @@ public final class CommercialShellViewController: UIViewController {
         if let activeRoute = activeRouteStorage {
             result = await activeRoute.deactivateAndWait()
             lastTransitionResult = result
-            removeActiveRoute()
+            if result == .released {
+                removeActiveRoute()
+            } else {
+                // A blocked route still owns its child. Re-open the shell so the
+                // owner can remain visible instead of being discarded unsafely.
+                isTearingDown = false
+            }
         }
 
         isTransitioning = false
-        tabBar.isUserInteractionEnabled = false
+        tabBar.isUserInteractionEnabled = !isTearingDown
         tabBar.selectedItem = item(for: selectedSection)
         return result
     }
@@ -244,7 +251,9 @@ public final class CommercialShellViewController: UIViewController {
         // Container teardown owns cleanup and suppresses every pending activation,
         // including a request coalesced while route deactivation was in flight.
         guard !isTearingDown else {
-            removeActiveRoute()
+            if result == .released {
+                removeActiveRoute()
+            }
             finishTransition()
             return
         }

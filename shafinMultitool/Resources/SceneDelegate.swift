@@ -10,48 +10,50 @@ import SwiftUI
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
-    private let interactivePopGuard = NavigationInteractivePopGuard()
-    
+
+#if DEBUG
+    static func makeRootViewController(
+        benchmarkConfig: DeviceBenchmarkConfig?,
+        benchmarkRootBuilder: @escaping (DeviceBenchmarkConfig) -> UIViewController,
+        commercialRootBuilder: @escaping () -> UIViewController
+    ) -> UIViewController {
+        if let benchmarkConfig {
+            return benchmarkRootBuilder(benchmarkConfig)
+        }
+
+        return commercialRootBuilder()
+    }
+#else
+    static func makeRootViewController(
+        commercialRootBuilder: @escaping () -> UIViewController
+    ) -> UIViewController {
+        commercialRootBuilder()
+    }
+#endif
+
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         let window = UIWindow(windowScene: windowScene)
         self.window = window
         window.backgroundColor = .black
 #if DEBUG
-        if let benchmarkConfig = DeviceBenchmarkConfig.fromEnvironment() {
-            let hostingController = UIHostingController(
-                rootView: DeviceBenchmarkRootView(config: benchmarkConfig, interactive: true)
-            )
-            window.rootViewController = hostingController
-            window.makeKeyAndVisible()
-            return
+        let rootViewController = Self.makeRootViewController(
+            benchmarkConfig: DeviceBenchmarkConfig.fromEnvironment(),
+            benchmarkRootBuilder: { benchmarkConfig in
+                UIHostingController(
+                    rootView: DeviceBenchmarkRootView(config: benchmarkConfig, interactive: true)
+                )
+            },
+            commercialRootBuilder: {
+                CommercialShellComposition().makeShell()
+            }
+        )
+#else
+        let rootViewController = Self.makeRootViewController {
+            CommercialShellComposition().makeShell()
         }
 #endif
-        let vc = SOModuleBuilder.build()
-        let navigationController = UINavigationController(rootViewController: vc)
-        navigationController.navigationBar.isHidden = true
-        interactivePopGuard.navigationController = navigationController
-        navigationController.interactivePopGestureRecognizer?.delegate = interactivePopGuard
-        window.rootViewController = navigationController
+        window.rootViewController = rootViewController
         window.makeKeyAndVisible()
-    }
-}
-
-private final class NavigationInteractivePopGuard: NSObject, UIGestureRecognizerDelegate {
-    weak var navigationController: UINavigationController?
-
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let navigationController,
-              gestureRecognizer === navigationController.interactivePopGestureRecognizer
-        else { return true }
-
-        guard navigationController.viewControllers.count > 1 else { return false }
-
-        if let topController = navigationController.topViewController as? InteractivePopGestureControlling,
-           topController.disablesInteractivePopGesture {
-            return false
-        }
-
-        return true
     }
 }
