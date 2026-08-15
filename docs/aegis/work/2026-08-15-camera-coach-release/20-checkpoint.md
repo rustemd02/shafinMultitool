@@ -29,13 +29,13 @@
 
 ## Active slice
 
-CC-010A4 confirmed lens presentation is active in Luna / Max task `01a006af-8d1a-7941-a294-84a330bb1e01` after CC-010A3 transactional input replacement passed 16/16 intersecting tests.
+The owner-independent local reliability wave is accepted through CC-010A4 and CC-010G. The next product-changing wave is intentionally stopped at the explicit CC-008 commercial UI and CC-013B2 Core ML composition decisions.
 
 Slice Card:
 
 - Goal: advance the local Camera Coach RC without bypassing owner-gated UX or model composition.
 - Parent plan/spec: `docs/app-store-product-plan.md`, `docs/implementation/STATUS.md`, `docs/implementation/BACKLOG.md`.
-- Files: `CameraViewModel.swift` and new `CameraViewModelLensSwitchTests.swift` only.
+- Files: no active implementation ownership until the two decision gates are accepted.
 - Boundary: no user-facing UI, third-party Core ML exclusion, asset/legal approval, provider, payment, push or publication decision.
 - Verification: source/test evidence, exact Luna packet, primary diff review, focused tests and canonical main verification.
 - Stop: accept and integrate one coherent slice; otherwise record the genuine gate and choose another independent slice.
@@ -49,9 +49,9 @@ Slice Card:
 
 ## Next
 
-1. Monitor and independently review CC-010A4; keep corrections in its original task.
-2. Integrate only after lens-state and lifecycle focused evidence plus generic main build pass.
-3. Reconcile the conflicting Core ML recommendations into one explicit owner decision and continue the next ungated production slice.
+1. Obtain meaningful owner acceptance for CC-008, then launch the already prepared Camera-first shell and truthful live coaching surface packets.
+2. Obtain the CC-013B2 minimal-RC Core ML decision, then launch the zero-Core-ML bundle/default-construction packet or the materially larger retain-and-harden DETR route.
+3. Continue remaining production gates without claiming physical-device, beta, signing, provider, payment or legal evidence prematurely.
 
 ## Drift check
 
@@ -60,4 +60,4 @@ Slice Card:
 - Baseline: product plan, STATUS, BACKLOG and accepted audits were re-read from current main.
 - Compatibility: saved Scene Mode data and existing routes remain protected.
 - Owner boundaries: CC-008, CC-013B2, legal/privacy/provider/payment decisions remain explicit.
-- Evidence state: last canonical release gate passed at accepted commit `7891fec`; later accepted local commits through `9a63f69` are covered by integrated generic/focused checks but the full canonical release gate must be repeated after the next coherent batch.
+- Evidence state: last canonical full release gate passed at accepted commit `7891fec`; later accepted local commits through `b38f9fb` are covered by integrated focused/build checks, including 15/15 lens and 6/6 thermal tests, but the full canonical release gate must be repeated after the next coherent product batch.

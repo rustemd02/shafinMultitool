@@ -32,6 +32,8 @@
 - CC-010A2 atomic motion snapshot: worker `9fb974e`, accepted `caef74b`; correction worker `f80e1a3`, accepted `b76f217`. Integrated generic build and 4/4 `MotionGateTests` passed, including concurrent tuple coherence.
 - CC-010A1 failed-start rollback: worker `7169d85`, accepted `d7c4e98`; correction worker `f49953a`, accepted `9a63f69`. Sol source-reviewed the lifecycle identity/generation fence, independently passed the integrated generic build and 22/22 focused simulator tests across CameraViewModel, pipeline release and camera manager lifecycle suites.
 - CC-010A3 transactional lens input: worker `85fc422`, accepted `15aa4e5`; one generic helper closes replace/restore/rollback mechanics, both manager APIs share one session-queue owner, worker generic build passed and Sol independently passed 16/16 focused simulator tests.
+- CC-010A4 confirmed lens presentation: worker `993510e`, accepted `b38f9fb`; Sol reviewed the MainActor task/intent fence and result mapping, then independently passed 15/15 lens presentation, transaction and lifecycle simulator tests. Physical lens matrix and CC-008 feedback UI remain unclaimed.
+- CC-010G stateless thermal budget: worker `3212923`, accepted `6bfd3a4`; `lastBudget` was removed without policy changes, immutable Sendable values were adopted and Sol independently passed 6/6 focused tests including bounded concurrent reads.
 - Recorder evidence covers an isolated policy-neutral core only; production camera wiring, Photos export and retention/background behavior are not claimed.
 
 ## Proposed but not accepted

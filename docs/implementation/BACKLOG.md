@@ -212,12 +212,13 @@
 #### CC-010A4 — Confirmed lens presentation state
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a006af-8d1a-7941-a294-84a330bb1e01`.
 - Ownership: `CameraViewModel.swift` and new `CameraViewModelLensSwitchTests.swift` only.
 - Objective: lens UI state changes only after CC-010A3 confirms the actual active lens; rejected or stale results never highlight an inactive lens.
 - Contract: one in-flight waiter plus lifecycle/intent fence; success/no-op use reported active lens; ordinary failure retains reported active lens; nil-active/catastrophic result resets presentation; start/release define wide/empty presentation boundaries; no UI copy before CC-008.
 - Tests: no optimistic update, failure retains actual lens, out-of-order rapid requests, release late-result fence, no-op and nil-active mapping; deterministic async operation injection, no physical camera.
+- Evidence: worker `993510e`, accepted `b38f9fb`; Sol source-reviewed the exact two-file diff and independently passed 15/15 simulator tests across lens presentation, lens transaction and view-model lifecycle suites.
 
 ### CC-010B — Scheduler and pipeline release
 
@@ -282,12 +283,13 @@
 ### CC-010G — Stateless thermal budget
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a006b4-a0bf-7e52-b870-bb3c77505063`.
 - Ownership: `ThermalGovernor.swift` and `ThermalGovernorTests.swift` only.
 - Objective: remove the unused unsynchronized `lastBudget` state so concurrent camera/pipeline/scene budget reads do not race inside the governor.
 - Contract: preserve every thermal/battery threshold and frequency exactly; return a fresh immutable budget value; no locks, caches, new owner or product-policy change.
 - Tests: exact policy matrix plus bounded deterministic concurrent fixed-provider stress; generic iOS build and focused suite.
+- Evidence: worker `3212923`, accepted `6bfd3a4`; exact two-file review and Sol 6/6 focused simulator tests passed, including 2,560 concurrent fixed-provider reads.
 
 ## CC-011 — Reproducible release gates
 
