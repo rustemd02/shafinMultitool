@@ -22,6 +22,13 @@
 			remoteGlobalIDString = CFF7B20329CC876400C3B73E;
 			remoteInfo = shafinMultitool;
 		};
+		A1B2C3D4E5F6012345678904 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CFF7B1FC29CC876400C3B73E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CFF7B20329CC876400C3B73E;
+			remoteInfo = shafinMultitool;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -45,6 +52,7 @@
 		CF10E5F129F8238100D3E39A /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
 		CF3345CB2F6438AC0017F85F /* llama.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = Frameworks/llama.xcframework; sourceTree = "<group>"; };
 		CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shafinMultitoolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F6012345678901 /* shafinMultitoolUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shafinMultitoolUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFF7B20429CC876400C3B73E /* shafinMultitool.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shafinMultitool.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DC0EF1BD3939CF7AE32E11A0 /* Pods-shafinMultitool.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitool.debug.xcconfig"; path = "Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool.debug.xcconfig"; sourceTree = "<group>"; };
 		DC0EF1BE3939CF7AE32E11A1 /* Pods-shafinMultitoolTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-shafinMultitoolTests.debug.xcconfig"; path = "Target Support Files/Pods-shafinMultitoolTests/Pods-shafinMultitoolTests.debug.xcconfig"; sourceTree = "<group>"; };
@@ -94,10 +102,22 @@
 			path = shafinMultitoolTests;
 			sourceTree = "<group>";
 		};
+		A1B2C3D4E5F6012345678902 /* shafinMultitoolUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = shafinMultitoolUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		CF5C603B2B84C0E100218148 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F6012345678907 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -145,6 +165,7 @@
 			children = (
 				CF37407A2EC890C80005765D /* shafinMultitool */,
 				CF79E4BF2F365C7E009D9CB9 /* shafinMultitoolTests */,
+				A1B2C3D4E5F6012345678902 /* shafinMultitoolUITests */,
 				CFF7B20529CC876400C3B73E /* Products */,
 				CF10E5EE29F8236100D3E39A /* Frameworks */,
 				457F7D83A82BD1A3BB0F89BB /* Pods */,
@@ -156,6 +177,7 @@
 			children = (
 				CFF7B20429CC876400C3B73E /* shafinMultitool.app */,
 				CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */,
+				A1B2C3D4E5F6012345678901 /* shafinMultitoolUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -183,6 +205,27 @@
 			productName = shafinMultitoolTests;
 			productReference = CF5C603E2B84C0E100218148 /* shafinMultitoolTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A1B2C3D4E5F6012345678903 /* shafinMultitoolUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F601234567890B /* Build configuration list for PBXNativeTarget "shafinMultitoolUITests" */;
+			buildPhases = (
+				A1B2C3D4E5F6012345678906 /* Sources */,
+				A1B2C3D4E5F6012345678907 /* Frameworks */,
+				A1B2C3D4E5F6012345678908 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1B2C3D4E5F6012345678905 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D4E5F6012345678902 /* shafinMultitoolUITests */,
+			);
+			name = shafinMultitoolUITests;
+			productName = shafinMultitoolUITests;
+			productReference = A1B2C3D4E5F6012345678901 /* shafinMultitoolUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		CFF7B20329CC876400C3B73E /* shafinMultitool */ = {
 			isa = PBXNativeTarget;
@@ -222,6 +265,10 @@
 						CreatedOnToolsVersion = 15.2;
 						TestTargetID = CFF7B20329CC876400C3B73E;
 					};
+					A1B2C3D4E5F6012345678903 = {
+						CreatedOnToolsVersion = 15.2;
+						TestTargetID = CFF7B20329CC876400C3B73E;
+					};
 					CFF7B20329CC876400C3B73E = {
 						CreatedOnToolsVersion = 14.2;
 					};
@@ -242,12 +289,20 @@
 			targets = (
 				CFF7B20329CC876400C3B73E /* shafinMultitool */,
 				CF5C603D2B84C0E100218148 /* shafinMultitoolTests */,
+				A1B2C3D4E5F6012345678903 /* shafinMultitoolUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		CF5C603C2B84C0E100218148 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F6012345678908 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -338,6 +393,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3D4E5F6012345678906 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CFF7B20029CC876400C3B73E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -352,6 +414,11 @@
 			isa = PBXTargetDependency;
 			target = CFF7B20329CC876400C3B73E /* shafinMultitool */;
 			targetProxy = CF5C60422B84C0E100218148 /* PBXContainerItemProxy */;
+		};
+		A1B2C3D4E5F6012345678905 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CFF7B20329CC876400C3B73E /* shafinMultitool */;
+			targetProxy = A1B2C3D4E5F6012345678904 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -402,6 +469,44 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/shafinMultitool.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/shafinMultitool";
+			};
+			name = Release;
+		};
+		A1B2C3D4E5F6012345678909 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5NAKQ28539;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.vigvamcev-media.shafinMultitoolUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = shafinMultitool;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F601234567890A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5NAKQ28539;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.vigvamcev-media.shafinMultitoolUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = shafinMultitool;
 			};
 			name = Release;
 		};
@@ -600,6 +705,15 @@
 			buildConfigurations = (
 				CF5C60452B84C0E100218148 /* Debug */,
 				CF5C60462B84C0E100218148 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F601234567890B /* Build configuration list for PBXNativeTarget "shafinMultitoolUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F6012345678909 /* Debug */,
+				A1B2C3D4E5F601234567890A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

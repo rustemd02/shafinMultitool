@@ -40,6 +40,17 @@
                ReferencedContainer = "container:shafinMultitool.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A1B2C3D4E5F6012345678903"
+               BuildableName = "shafinMultitoolUITests.xctest"
+               BlueprintName = "shafinMultitoolUITests"
+               ReferencedContainer = "container:shafinMultitool.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

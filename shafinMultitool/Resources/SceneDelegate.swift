@@ -7,11 +7,53 @@
 
 import UIKit
 import SwiftUI
+#if DEBUG
+import AVFoundation
+#endif
+
+#if DEBUG
+private let uiTestingEnvironmentKey = "SHAFIN_UI_TESTING"
+#endif
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
 #if DEBUG
+    private static func makeUITestingRootViewController() -> UIViewController {
+        CommercialShellComposition(
+            cameraCoachBuilder: {
+                let thermal = ThermalGovernor()
+                let cameraManager = CameraManager(
+                    scheduler: RealtimeScheduler(),
+                    thermalGovernor: thermal,
+                    motionGate: MotionGate(),
+                    sessionRunner: AVCaptureSessionRunner(session: AVCaptureSession()),
+                    configuration: .failure(.noWideCamera)
+                )
+                let analysisPipeline = AnalysisPipeline(
+                    thermalGovernor: thermal,
+                    neuralHeavyModelsEnabledProvider: {
+                        thermal.nextBudget().heavyModelsEnabled
+                    }
+                )
+                let dependencies = ContentView.CameraCoachDependencies(
+                    cameraManager: cameraManager,
+                    viewModel: CameraViewModel(
+                        cameraManager: cameraManager,
+                        analysisPipeline: analysisPipeline
+                    )
+                )
+                let viewController = UIHostingController(
+                    rootView: ContentView(dependencies: dependencies)
+                )
+                return CommercialCameraCoachRoute(
+                    viewController: viewController,
+                    cameraViewModel: dependencies.viewModel
+                )
+            }
+        ).makeShell()
+    }
+
     static func makeRootViewController(
         benchmarkConfig: DeviceBenchmarkConfig?,
         benchmarkRootBuilder: @escaping (DeviceBenchmarkConfig) -> UIViewController,
@@ -37,6 +79,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         window.backgroundColor = .black
 #if DEBUG
+        let isUITesting = ProcessInfo.processInfo.environment[uiTestingEnvironmentKey] == "1"
         let rootViewController = Self.makeRootViewController(
             benchmarkConfig: DeviceBenchmarkConfig.fromEnvironment(),
             benchmarkRootBuilder: { benchmarkConfig in
@@ -45,7 +88,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 )
             },
             commercialRootBuilder: {
-                CommercialShellComposition().makeShell()
+                if isUITesting {
+                    return Self.makeUITestingRootViewController()
+                }
+                return CommercialShellComposition().makeShell()
             }
         )
 #else
