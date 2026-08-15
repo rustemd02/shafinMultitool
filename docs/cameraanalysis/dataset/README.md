@@ -11,8 +11,6 @@ This dataset supports the semantic camera-coach eval described in
 ```text
 docs/cameraanalysis/dataset/
   inbox/
-    images/
-      001...207
     images_manifest.csv
     images_manifest.jsonl
     apple_tv_press_trailer_sources_108_157.jsonl
@@ -39,6 +37,16 @@ docs/cameraanalysis/dataset/
     bad_live_challenge_50_contact_sheet.jpg
 ```
 
+The tracked benchmark images were moved out of this documentation tree. The
+runtime/dev benchmark source of truth is now:
+
+```text
+shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/
+```
+
+The historical labels and manifests in `inbox/` continue to reference the same
+filenames and hashes.
+
 ## Source Policy
 
 - `001...057` are user-curated cinematic / camera-analysis examples.
@@ -47,7 +55,7 @@ docs/cameraanalysis/dataset/
 - `158...177` are AI-generated synthetic bad anti-examples derived from `108...127`, with extra deterministic framing damage for demo stress testing.
 - `178...207` are deterministic synthetic bad variants derived from `128...157`; every degradation is reproducible from a named Python recipe.
 - `ChallengeDB_release/` is raw public dataset input and is intentionally ignored by git.
-- The tracked source of truth for this repo is the renamed image subset plus manifests and labels, not the raw dataset dump.
+- The tracked source of truth is the renamed image subset in the DeviceBenchmark pack plus the manifests and labels, not the raw dataset dump.
 - `apple_tv_press_trailer_sources_108_157.jsonl` stores the source page URL, source image URL, dimensions and SHA-256 for each Apple TV Press candidate.
 - `imagegen_bad_sources_158_177.jsonl` stores parent-frame provenance, imagegen source paths, expected issue tags and deterministic postprocess metadata for the synthetic bad set.
 

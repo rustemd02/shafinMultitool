@@ -152,7 +152,10 @@ def test_semantic_scorer_reports_good_overcorrection_and_technical_overreach() -
 def test_oracle_outputs_pass_real_semantic_labels() -> None:
     repo_root = Path(__file__).resolve().parents[4]
     labels_path = repo_root / "docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl"
-    image_dir = repo_root / "docs/cameraanalysis/dataset/inbox/images"
+    image_dir = (
+        repo_root
+        / "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images"
+    )
 
     records = load_semantic_label_records(labels_path, images_dir=image_dir)
     cases = normalize_semantic_label_cases(records)
