@@ -17,19 +17,22 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let window = UIWindow(windowScene: windowScene)
         self.window = window
         window.backgroundColor = .black
+#if DEBUG
         if let benchmarkConfig = DeviceBenchmarkConfig.fromEnvironment() {
             let hostingController = UIHostingController(
                 rootView: DeviceBenchmarkRootView(config: benchmarkConfig, interactive: true)
             )
             window.rootViewController = hostingController
-        } else {
-            let vc = SOModuleBuilder.build()
-            let navigationController = UINavigationController(rootViewController: vc)
-            navigationController.navigationBar.isHidden = true
-            interactivePopGuard.navigationController = navigationController
-            navigationController.interactivePopGestureRecognizer?.delegate = interactivePopGuard
-            window.rootViewController = navigationController
+            window.makeKeyAndVisible()
+            return
         }
+#endif
+        let vc = SOModuleBuilder.build()
+        let navigationController = UINavigationController(rootViewController: vc)
+        navigationController.navigationBar.isHidden = true
+        interactivePopGuard.navigationController = navigationController
+        navigationController.interactivePopGestureRecognizer?.delegate = interactivePopGuard
+        window.rootViewController = navigationController
         window.makeKeyAndVisible()
     }
 }

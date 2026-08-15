@@ -57,6 +57,8 @@
 			membershipExceptions = (
 				Info.plist,
 				Resources/Circle.rcproject,
+				Resources/DeviceBenchmark,
+				Resources/Models,
 			);
 			target = CFF7B20329CC876400C3B73E /* shafinMultitool */;
 		};
@@ -81,6 +83,8 @@
 			);
 			explicitFolders = (
 				Resources/Circle.rcproject,
+				Resources/DeviceBenchmark,
+				Resources/Models,
 			);
 			path = shafinMultitool;
 			sourceTree = "<group>";
@@ -188,6 +192,7 @@
 				CFF7B20029CC876400C3B73E /* Sources */,
 				CFF7B20129CC876400C3B73E /* Frameworks */,
 				CFF7B20229CC876400C3B73E /* Resources */,
+				CC002A000000000000000001 /* Copy Debug DeviceBenchmark Resources */,
 				430CDBAEF84F01F44B60348F /* [CP] Embed Pods Frameworks */,
 				CF3345CE2F6438AC0017F85F /* Embed Frameworks */,
 			);
@@ -259,6 +264,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		CC002A000000000000000001 /* Copy Debug DeviceBenchmark Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${SRCROOT}/shafinMultitool/Resources/DeviceBenchmark",
+			);
+			name = "Copy Debug DeviceBenchmark Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/DeviceBenchmark/.debug-resource-copy-marker",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/copy_debug_device_benchmark_resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		430CDBAEF84F01F44B60348F /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;

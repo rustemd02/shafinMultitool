@@ -6,6 +6,15 @@
 //
 
 import Foundation
+
+enum SceneGeneratorBenchmarkRuntimeDefaults {
+    static let gpuLayersKey = "device_benchmark_scene_runtime_gpu_layers"
+    static let threadsKey = "device_benchmark_scene_runtime_threads"
+    static let contextTokensKey = "device_benchmark_scene_runtime_context_tokens"
+}
+
+#if DEBUG
+
 import UIKit
 import Darwin
 
@@ -21,12 +30,6 @@ enum DeviceBenchmarkModule: String, Codable, CaseIterable {
 
 enum DeviceBenchmarkSceneGeneratorModelPolicy: String, Codable {
     case explicitOrLatest
-}
-
-enum SceneGeneratorBenchmarkRuntimeDefaults {
-    static let gpuLayersKey = "device_benchmark_scene_runtime_gpu_layers"
-    static let threadsKey = "device_benchmark_scene_runtime_threads"
-    static let contextTokensKey = "device_benchmark_scene_runtime_context_tokens"
 }
 
 struct SceneGeneratorBenchmarkRuntimeProfile: Equatable {
@@ -699,3 +702,5 @@ func percentile(_ values: [Double], p: Double) -> Double? {
     let rank = Int((Double(sorted.count - 1) * clamped).rounded())
     return sorted[min(max(rank, 0), sorted.count - 1)]
 }
+
+#endif

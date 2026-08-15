@@ -5,6 +5,8 @@
 //  Created by Codex on 15.06.2026.
 //
 
+#if DEBUG
+
 import Foundation
 import SwiftUI
 import ImageIO
@@ -1749,3 +1751,5 @@ struct DeviceBenchmarkRootView: View {
         .accessibilityIdentifier("deviceBenchmarkGuidedOverlay")
     }
 }
+
+#endif
