@@ -47,9 +47,12 @@
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
 | CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
-| CC-011 | draft | Luna / Max | CC-001, CC-005 | Reproducible local/CI release gates |
+| CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
 | CC-012 | draft | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
 | CC-012A | in_progress | Luna / Max | CC-003, CC-008 | Source-grounded coaching-loop event/schema inventory |
+| CC-013A | ready | Luna / Max | CC-004 | Удалить unused ARVideoKit; обновить SnapKit до 5.7.1 с privacy manifest |
+| CC-013B | blocked_by_owner | Sol → implementation | CC-004 | Provenance/keep-replace решения для llama, GGUF и Core ML |
+| CC-013C | blocked_by_owner | Sol → implementation | CC-004, CC-008 | Provenance или замена material images/USDZ |
 
 ## Активная работа
 

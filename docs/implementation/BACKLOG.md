@@ -164,11 +164,35 @@
 ## CC-011 — Reproducible release gates
 
 - Lane: Luna / Max.
-- State: `draft`.
+- State: `decomposed`.
 - Dependencies: CC-001, CC-005.
 - Objective: documented local commands and CI-ready scripts for Debug test build, focused unit suites, Release build, bundle allowlist, privacy manifest and true UI smoke.
 - Ownership: new scripts/config/docs selected after audits; no product behavior.
 - Acceptance: a clean checkout can run gates with deterministic pass/fail and without relying on generated files in the developer's home directory.
+
+### CC-011A — App privacy manifest and validation
+
+- Lane: Luna / Max after CC-013A.
+- State: `ready_after_CC-013A`.
+- Ownership candidate: one app-owned `PrivacyInfo.xcprivacy`, focused validation script/tests and exact target membership only.
+- Repository evidence: production code uses app-local `UserDefaults`; no app manifest exists; no active analytics SDK, tracking domain or production remote endpoint is configured.
+- Required baseline: `NSPrivacyTracking=false`, no tracking domains, app-local UserDefaults category with approved reason `CA92.1`; collected-data declarations must remain evidence-based and must not guess server/provider retention.
+- Apple authority: [Privacy manifest files](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files), [required-reason APIs](https://developer.apple.com/documentation/BundleResources/describing-use-of-required-reason-api), [adding a manifest](https://developer.apple.com/documentation/bundleresources/adding-a-privacy-manifest-to-your-app-or-third-party-sdk).
+- Acceptance: `plutil` validation, Release bundle contains exactly the intended app manifest at its root, UserDefaults reason matches executable use, unknown provider/retention decisions remain blocked rather than encoded as false facts.
+
+### CC-011B — Deterministic build and bundle gate script
+
+- Lane: Luna / Max after CC-002 and CC-011A.
+- State: `ready_after_CC-011A`.
+- Objective: one documented command produces Debug test build and Release build, validates privacy manifests, checks the release allowlist/denylist, reports material size contributors and fails on DeviceBenchmark, GGUF, unknown model/media families or missing acknowledgements.
+- Acceptance: a clean checkout and a deliberately contaminated checkout produce deterministic pass/fail; output paths stay under an explicit derived-data root.
+
+### CC-011C — Real UI-test target and launch smoke
+
+- Lane: Luna / Max after CC-007/CC-008 commercial shell.
+- State: `blocked_by_CC-007_CC-008`.
+- Objective: implement the target/file-membership/scheme packet from CC-005 and replace the unit-hosted pseudo-UI smoke with true process-launch tests.
+- Acceptance: Camera Coach default launch, permission-state launch arguments, both orientations and Scene Mode entry run in a separate UI-test process.
 
 ## CC-012 — Coaching-loop analytics contract
 
@@ -187,3 +211,34 @@
 - Objective: map every accepted/proposed Coach state and observable transition to a low-cardinality, privacy-safe event contract centered on the first verified helpful loop.
 - Constraints: no raw media, transcript, free-form user text, hidden persistent identifier, provider/region/retention/legal invention or causal overclaim.
 - Acceptance: exact event/property dictionary, deterministic activation derivation, source/test seams, negative privacy tests and bounded Luna implementation slices are all repository-grounded.
+
+## CC-013 — Dependency and provenance remediation
+
+- Lane: Luna / Max for bounded dependency mechanics; Sol/owner for provenance and keep/replace decisions.
+- State: `decomposed`.
+- Dependencies: CC-004.
+- Objective: every executable third-party SDK/framework/model/media family is either supported by concrete release evidence or excluded/replaced.
+
+### CC-013A — Remove ARVideoKit and update SnapKit privacy support
+
+- Lane: Luna / Max.
+- State: `ready`.
+- Repository evidence: no production `import ARVideoKit`, `RecordAR` or `RenderAR` call site exists; current SnapKit 5.6.0 has no `PrivacyInfo.xcprivacy`.
+- Decision: remove unused ARVideoKit from app dependency graph; update both SnapKit declarations to 5.7.1, whose official release states CocoaPods privacy-manifest support.
+- Apple authority: SnapKit appears in Apple’s [SDKs requiring a privacy manifest and signature](https://developer.apple.com/support/third-party-SDK-requirements/).
+- Ownership: `Podfile`, `Podfile.lock`, generated CocoaPods workspace/project/support/acknowledgement state only; no app feature source.
+- Acceptance: no ARVideoKit link/embed/copy input remains; SnapKit 5.7.1 manifest is present in the built framework/bundle privacy report surface; acknowledgements match; Debug/Release builds and focused camera tests pass.
+
+### CC-013B — Model/framework provenance decisions
+
+- Lane: Sol/owner decision, then bounded implementation.
+- State: `blocked_by_provenance_owner_decisions`.
+- Scope: `llama.xcframework`, GGUF release candidate, `compact_neural_evidence_net`, DETR and NIMA.
+- Acceptance: each retained component has exact upstream source/checkpoint, conversion/build recipe, checksum and applicable licence/NOTICE evidence; otherwise its consumer and bundle payload are excluded or replaced.
+
+### CC-013C — Product media provenance or replacement
+
+- Lane: Sol design packet, Luna implementation, owner approval.
+- State: `blocked_by_asset_owner_decisions`.
+- Scope: material app icon/logo/background images and Person/Circle USDZ assets.
+- Acceptance: source/creation/export and permission record per retained asset, or provenance-cleared replacement plus archive allowlist proof.
