@@ -109,12 +109,14 @@
 ## CC-007 — Commercial shell and Camera Coach default route
 
 - Lane: Luna / Max after Sol architecture packet.
-- State: `draft`.
+- State: `partially_accepted`.
 - Dependencies: CC-006 and CC-008.
 - Ownership: exact shell/entry files selected after audit; no camera/session internals.
 - Objective: app opens Camera Coach by default and exposes secondary Scene Mode without duplicating camera ownership.
 - Verification: unit/navigation tests, true UI smoke when target exists, portrait/landscape launch checks and Scene Mode saved-project access.
-- Acceptance: no scene-first onboarding, no dead end, no regression in opening existing scenes, no vibe-code navigation patterns.
+- Acceptance: bounded normal launch integration must avoid scene-first onboarding and duplicate camera ownership; full acceptance still requires true UI smoke, portrait/landscape launch checks and saved-project access.
+- Evidence: commit `ff9ce3e` connects the normal non-benchmark `SceneDelegate` branch to `CommercialShell` with Camera selected; the DEBUG benchmark branch remains first when configured. Generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`; focused workspace tests passed 22/22 on iPhone 17 Pro / iOS Simulator 26.5: `CommercialShellLaunchCompositionTests` 11/11 and `CommercialShellRoutingTests` 11/11. Full evidence: `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
+- Boundary: normal Camera Coach launch is accepted as a bounded portion only. True UI-test target/default smoke, portrait/landscape checks, saved-project access, full CC-010E/CC-010D teardown and release readiness remain unclaimed.
 
 ### CC-007A — Single-active-route shell contract
 
@@ -127,8 +129,8 @@
 - Behavior: custom single-child container with a system `UITabBar`; Camera selected by default; Scenes and History are lazy; exactly one active child and retained route; selection is disabled during teardown; a blocked teardown retains the current child and selection; rapid taps coalesce to the last pending section; repeated current selection is a no-op.
 - Focused tests: default selection, lazy construction, one-child invariant, teardown-before-create ordering, blocked rollback, interaction lock, rapid-tap coalescing, repeat-selection no-op, child containment lifecycle and route release on container teardown.
 - Acceptance: deterministic routing contract passes focused tests and generic iOS build-for-testing without changing runtime launch behavior.
-- Evidence: integrated Luna / Max run on iPhone 17 Pro / iOS Simulator 26.5 passed generic `build-for-testing`; the ordinary `xcodebuild test` run passed `CommercialShellRoutingTests` 11/11 as part of 19/19. Full evidence and retained diagnostics: `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
-- Boundary: accepted slice only, not release-ready. The production launch graph/default-route integration and dependent true UI target/default smoke remain outside this slice; full test topology and real-image evaluation remain separate unresolved lanes.
+- Evidence: integrated Luna / Max run on iPhone 17 Pro / iOS Simulator 26.5 passed generic `build-for-testing`; the ordinary `xcodebuild test` run passed `CommercialShellRoutingTests` 11/11 as part of 19/19. The later bounded parent launch integration is recorded separately under `ff9ce3e`; full evidence and retained diagnostics: `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
+- Boundary: accepted slice only, not release-ready. The slice itself does not change the launch graph; the later bounded parent integration does not prove a true UI-test target/default smoke, portrait/landscape launch, saved-project access, full test topology or configured real-image evaluation.
 - Rollback: remove the two owned files; no production route is connected by this slice.
 
 ## CC-008 — UI/UX state specification
@@ -282,12 +284,17 @@
 - Lane: Luna / Max after CC-010C exposes a stable interface.
 - State: `draft`.
 - Objective: Scene back/disappear/background awaits recorder policy, pauses/releases AR, then persists through the existing unified project/world-map path.
+- Boundary: remains incomplete. Existing Scene Mode AR and persistence cleanup has no awaitable release boundary; the bounded CC-010E integration may release only the untouched Scene library root, while a deeper workspace or any presented modal blocks the transition.
+- Next: provide and verify an awaitable Scene workspace/background teardown before claiming full CC-010D or the complete cross-route lease.
 
 ### CC-010E — Exclusive route lease integration
 
-- Lane: disabled historical Terra / High classification for the one-time cross-route migration; current and subsequent shell slices remain visible Luna / Max threads, with no Terra worker-thread route.
-- State: `blocked_by_CC-007`.
+- Lane: Luna / Max; the historical Terra / High classification is not a current worker-thread route.
+- State: `partially_accepted`.
 - Objective: commercial shell owns a serialized `none / cameraCoach / sceneMode` lease and never activates a new route before the previous owner releases.
+- Bounded contract: the Camera route owns the existing `CameraViewModel`; repeated deactivation calls share one idempotent task, and the shell awaits `stopAndWait` before removing the Camera child or constructing the next route. The Scene library root releases to Camera; a deeper Scene workspace or any presented modal returns blocked and does not construct Camera because AR/persistence teardown remains non-awaitable.
+- Evidence: commit `ff9ce3e`; generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`; focused workspace result `/private/tmp/shafin-cc010e-workspace-derived/Logs/Test/Test-shafinMultitool-2026.08.16_00-55-36-+0300.xcresult` passed 22/22 on iPhone 17 Pro / iOS Simulator 26.5, with 11 `CommercialShellLaunchCompositionTests` and 11 `CommercialShellRoutingTests`. The earlier 20/20 run is historical; this final 22/22 result is authoritative for the bounded slice.
+- Boundary: this is not full CC-010E and does not complete CC-010D. It does not establish a true UI-test target, portrait/landscape launch, saved-project actual smoke, physical-device behavior, full-suite health, legal/provenance clearance or release readiness.
 
 ### CC-010F — Orientation continuity
 
@@ -338,10 +345,11 @@
 ### CC-011C — Real UI-test target and launch smoke
 
 - Lane: Luna / Max after the CC-007 commercial shell.
-- State: `blocked_by_CC-007`.
-- Dependencies: implemented CC-007 commercial shell; CC-008 is already accepted.
+- State: `ready`.
+- Dependencies: bounded CC-007 commercial shell launch is implemented; CC-008 is already accepted.
 - Objective: implement the target/file-membership/scheme packet from CC-005 and replace the unit-hosted pseudo-UI smoke with true process-launch tests.
 - Acceptance: Camera Coach default launch, permission-state launch arguments, both orientations and Scene Mode entry run in a separate UI-test process.
+- Boundary: this task is not complete. The `ff9ce3e` evidence does not claim a real UI-test target, portrait/landscape launch or saved-project actual smoke.
 
 ### CC-011D — Gate accepted provenance records
 
@@ -363,7 +371,7 @@
 - Failure taxonomy: pseudo-UI tests have no target application; opt-in local-model and physical benchmark suites execute by default; Settings fixtures hit force unwraps; real-image Camera Coach evaluation depends on simulator Vision/Espresso and absent never-tracked assets; legacy parser, persistence and fixtures fail independently.
 - Integrated evidence: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Additional repetitions: Scene 18/18 twice plus DB performance 4/4; DeepCritic 20/20; subtitle/config 22 with 1 intended skip; Hybrid 7/7; Semantic 8/8.
 - Canonical clean release gate passed all stages on `6ff225d553ae654298dda70b9c779c1226c31800`: Release 72,032 KiB; 2 privacy manifests; only `SnapKit.framework` and `llama.framework`; 5 material contributors; 5 blockers; 2 provenance validators; 6/6 contamination fixtures.
-- Next: CC-007A and CC-008A are accepted slices. Continue the remaining parent CC-007 commercial-shell/default-route work and dependent CC-011C true UI target/default smoke as listed in this backlog; full test topology and configured real-image evaluation remain separate unresolved lanes.
+- Next: the bounded CC-007/CC-010E launch integration is accepted in `ff9ce3e`; continue CC-011C true UI target/default smoke and the remaining CC-007 product/UI evidence as listed in this backlog. Full test topology, configured real-image evaluation and CC-010D awaitable teardown remain separate unresolved lanes.
 
 #### CC-011E1 — Opt-in execution gates
 

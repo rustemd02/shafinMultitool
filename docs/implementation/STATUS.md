@@ -26,7 +26,7 @@
 ## Baseline snapshot
 
 - Git: ветка `store`, base `018ceab` до bootstrap-коммита.
-- Текущий принятый baseline: ветка `store`, `6ff225d553ae654298dda70b9c779c1226c31800`; CC-011E committed and accepted.
+- Текущий принятый integration baseline: ветка `store`, `ff9ce3e`; CC-011E remains accepted at its historical baseline, and the bounded CC-007/CC-010E integration is recorded on top.
 - Tracked source до bootstrap не изменён.
 - `xcodebuild ... build-for-testing` для `generic/platform=iOS` прошёл 15 августа 2026 года.
 - В проекте есть app target и unit-test target; отдельного UI-test target нет.
@@ -36,7 +36,7 @@
 - Core ML models: около 47 МБ в исходном дереве.
 - `PrivacyInfo.xcprivacy` не найден.
 - Usage descriptions существуют, но их UX, язык, фактическая необходимость и denied/restricted flow не проверены.
-- Единственный runtime entry открывает `SOModuleBuilder` через `SceneDelegate`; Camera Coach не является default product route.
+- `SceneDelegate` сохраняет benchmark branch первым; normal non-benchmark branch теперь открывает `CommercialShell` с Camera Coach route. True UI launch smoke, portrait/landscape launch checks and saved-project access remain unverified.
 - Deep Research принят с рекомендацией `NARROW`; публичная монетизация отложена до instrumented beta.
 
 ## Очередь первой волны
@@ -53,7 +53,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 | CC-004 | accepted | Luna / Max | accepted audit baseline | 16 provenance dispositions accepted; 8 missing, 2 exclude, 4 development-only, 2 verified |
 | CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
 | CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
-| CC-007 | decomposed | Sol → Luna | CC-006, CC-008 | Commercial app shell и Camera Coach default route |
+| CC-007 | partially_accepted | Sol → Luna | CC-006, CC-008 | Normal Camera Coach launch portion accepted at `ff9ce3e`; true UI, orientation and saved-project evidence remain open |
 | CC-007A | accepted | Luna / Max | CC-006, CC-008 | Single-child shell routing contract принят; launch graph не изменён, release-ready не заявляется |
 | CC-008 | accepted | Sol | product baseline | UX state machine принята явным запуском полного автономного implementation pipeline и предыдущими product/UI решениями owner |
 | CC-008A | accepted | Luna / Max | CC-008, CC-010B | Truthful live surface для уже доказуемых S04/S06/S07/S10c принят; release-ready не заявляется |
@@ -67,8 +67,8 @@ The queue below preserves historical lane labels and evidence for traceability. 
 | CC-010B1 | accepted | Luna / Max | CC-010B | Coherent latest-frame envelope и session-local reset приняты; 12/12 focused tests прошли |
 | CC-010C | partially_accepted | Sol → Luna / Max | CC-009, recording policy | Policy-neutral serialized recorder core принято; production wiring/save policy остаются gated |
 | CC-010C-A | accepted | Luna / Max | CC-009 | Изолированное recorder core принято после Sol-review, canonical build и 29/29 simulator tests |
-| CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
-| CC-010E | blocked_by_CC-007 | disabled historical Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
+| CC-010D | draft | Luna / Max | CC-010C | Awaited Scene exit/background AR and persistence teardown remains incomplete |
+| CC-010E | partially_accepted | Luna / Max | CC-007, CC-010A, CC-010D | Bounded exclusive lease accepted at `ff9ce3e`; Scene library root may release, deeper workspace/modal remains blocked |
 | CC-010F | ready | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata готовы к реализации |
 | CC-010G | accepted | Luna / Max | CC-010A | Stateless thermal budget принят; worker `3212923` → `6bfd3a4`, 6/6 focused tests прошли |
 | CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
@@ -92,6 +92,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 - Raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed, 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. Классы отказов: unit-hosted pseudo-UI без target app, default-запуск opt-in model/physical benchmark, Settings force unwraps, real-image Camera Coach evaluation с simulator Vision/Espresso и отсутствующими never-tracked assets, legacy parser/persistence/fixture failures.
 - CC-011E accepted at `6ff225d553ae654298dda70b9c779c1226c31800`: E1 opt-in gates; E2 metadata persistence и dialogue parser/subtitle presentation; E3 neural/domain fixture corrections; E4 DeepCritic/Hybrid/Semantic truth. Интегрированный Luna gate: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Дополнительно: Scene 18/18 два последовательных раза и DB performance 4/4; DeepCritic 20/20; subtitle/config 22 с одним intended skip; Hybrid 7/7; Semantic 8/8.
 - CC-011E contracts: nil map сохраняет metadata и не меняет legacy `_map`, без заявления о pair transaction; parser arrays параллельны, subtitle отображает `Иван: Привет.`; отсутствующая benchmark-конфигурация означает skip, некорректная — fail; certainty validation учитывает русские формы и calibrated language; non-whitelisted semantic actions подавляются; Hybrid production не изменён.
+- CC-007/CC-010E bounded integration accepted at `ff9ce3e`: normal `SceneDelegate` non-benchmark launch opens the commercial shell with Camera selected while the benchmark branch remains first; the Camera route retains the existing `CameraViewModel`, awaits `stopAndWait` before shell removal/next construction, and shares repeated deactivation calls through one idempotent task. The Scene library root can release to Camera; a deeper Scene workspace or any modal blocks without constructing Camera because AR/persistence teardown is still non-awaitable. Generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`; focused workspace tests passed 22/22 (11 `CommercialShellLaunchCompositionTests`, 11 `CommercialShellRoutingTests`). Full CC-010E/CC-010D, true UI target, portrait/landscape and saved-project smoke remain incomplete.
 - CC-010A4 accepted: task `01a006af-8d1a-7941-a294-84a330bb1e01`, worker `993510e`, accepted `b38f9fb`; Sol прошёл 15/15 lens transaction/presentation/lifecycle tests.
 - CC-010G accepted: task `01a006b4-a0bf-7e52-b870-bb3c77505063`, worker `3212923`, accepted `6bfd3a4`; Sol прошёл 6/6 focused thermal policy/concurrency tests.
 - CC-010A3 accepted: task `01a006a4-5560-7851-acfc-730223da26e8`, worker `85fc422`, accepted `15aa4e5`; Sol прошёл 16/16 transaction/manager/view-model tests.
@@ -113,7 +114,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 - CC-011A: accepted, task `01a005c4-6a4d-7e63-a8d2-cd7199ea921f`, worker commit `a49c234`, accepted commit `c1e6646`; Sol повторил Release build, validator и negative self-test: ровно два manifests, 71 888 КБ, no unexpected paths.
 - CC-011B: accepted, task `01a005d8-ac86-7d02-98ec-8b41b398bbe8`, worker commit `1223e01`, accepted commit `f56b7b7`; Sol повторил полный public gate на clean HEAD: Debug/Release прошли, Release = 71 900 КБ, 2 privacy manifests, 5 material contributors, 5 known provenance blockers и 6/6 contamination fixtures.
 - CC-008: accepted evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; owner явно потребовал запустить полный автономный implementation pipeline после серии подтверждённых product/UI решений.
-- CC-007A: accepted slice — custom single-child container с системным `UITabBar`, ленивые routes, awaited teardown, blocked-transition rollback, rapid-tap coalescing и 11 focused routing tests. Пакет не меняет launch graph; parent CC-007/default-route integration и true UI launch smoke остаются отдельной работой.
+- CC-007A: accepted slice — custom single-child container с системным `UITabBar`, ленивые routes, awaited teardown, blocked-transition rollback, rapid-tap coalescing и 11 focused routing tests. Пакет сам не меняет launch graph; normal parent launch integration принята отдельно в `ff9ce3e`, а true UI launch smoke, portrait/landscape checks and saved-project access остаются отдельной работой.
 - CC-008A: accepted slice — typed presentation только для S04/S06/S07/S10c, один lower-third coaching surface, action-linked guides, production-safe copy, accessibility и Reduce Motion/Transparency. Пакет не обещает subject clarification, verification, recording, Deep Review или persistence; эти состояния остаются вне slice.
 - CC-013B1: accepted, Luna / Max task `01a00603-9514-7ea0-81f3-21361862bc87`, worker twice-amended commit `ac97f6e`, accepted commit `d7fff1b`. После двух Sol fix-first loops зафиксированы только exact artifact traceability и existing build-output match; clean rebuild не заявлен. На основной ветке прошли 15 llama fixtures, offline/optional-upstream validators и совместные 25 provenance tests; legal/redistribution и archive proof остаются открыты.
 - CC-011D: accepted, Luna / Max task `01a00631-d259-7c22-aa35-7e6ef95e8e1b`, worker commit `4802b9c`, accepted commit `7891fec`. Fresh Sol-review дал `ship`; orchestration test подтвердил pre-build order, fail-fast, offline args, отдельные логи и paths with spaces. Sol повторил полный gate на clean main: Debug/Release, 2 privacy manifests, 2 provenance validators, Release 71 968 KiB, 5 material contributors, 5 честных blockers и 6/6 contamination fixtures.
@@ -123,7 +124,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 
 ## Ворота следующего шага
 
-Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008, CC-011E, CC-007A и CC-008A приняты как ограниченные slices; следующий шаг остаётся в соответствии с `BACKLOG.md`. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
+Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008, CC-011E, CC-007A, CC-008A и bounded CC-007/CC-010E integration приняты в заявленных границах; следующий шаг остаётся в соответствии с `BACKLOG.md`. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
 
 ## Внешние блокеры
 
