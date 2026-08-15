@@ -40,10 +40,10 @@ final class CameraViewModel: ObservableObject {
     private let analysisPipeline: AnalysisPipeline
     private var cancellables = Set<AnyCancellable>()
     private var featurePollingCancellable: AnyCancellable?
-    private var hasRegistered = false
     private var pauseRequestToken: UUID?
     private var lifecycleTask: Task<Void, Never>?
     private var lifecycleIntent = UUID()
+    private var releaseTask: Task<Void, Never>?
 
     init(cameraManager: CameraManager,
          analysisPipeline: AnalysisPipeline) {
@@ -77,16 +77,29 @@ final class CameraViewModel: ObservableObject {
 
     func start() {
         let intent = beginLifecycleRequest(.starting)
-        startCaptureRegistrationIfNeeded()
+        let pendingRelease = releaseTask
         lifecycleTask = Task { [weak self] in
             guard let self else { return }
+            if let pendingRelease {
+                await pendingRelease.value
+            }
+            guard !Task.isCancelled, self.lifecycleIntent == intent else { return }
+            guard self.startCaptureRegistrationIfNeeded(for: intent) else {
+                return
+            }
             await self.performStart(intent: intent)
         }
     }
 
     func startAndWait() async {
         let intent = beginLifecycleRequest(.starting)
-        startCaptureRegistrationIfNeeded()
+        if let releaseTask {
+            await releaseTask.value
+        }
+        guard !Task.isCancelled, lifecycleIntent == intent else { return }
+        guard startCaptureRegistrationIfNeeded(for: intent) else {
+            return
+        }
         await performStart(intent: intent)
     }
 
@@ -108,8 +121,41 @@ final class CameraViewModel: ObservableObject {
     func releaseAndWait() async {
         let intent = beginLifecycleRequest(.stopping)
         stopFeaturePolling()
-        await cameraManager.releaseAndWait()
+        pauseRequestToken = nil
+
+        let operation: Task<Void, Never>
+        if let existing = releaseTask {
+            operation = existing
+        } else {
+            operation = Task { [weak self] in
+                guard let self else { return }
+
+                // Full release order: stop frame production, fence pipeline work and
+                // registrations, then release the camera configuration.
+                await self.cameraManager.stopAndWait()
+                await self.analysisPipeline.releaseAndWait()
+                await self.cameraManager.releaseAndWait()
+            }
+            releaseTask = operation
+        }
+
+        await operation.value
+        if releaseTask != nil {
+            releaseTask = nil
+        }
+
         guard lifecycleIntent == intent else { return }
+        isPaused = false
+        previewSuggestions = []
+        pauseCritique = nil
+        overlayState = .init(primaryBoundingBox: nil,
+                             horizonAngle: 0,
+                             horizonConfidence: 0,
+                             saliencyBalance: 0)
+        suggestion = nil
+        legacySuggestion = nil
+        liveHint = nil
+        overlayAnnotations = []
         lifecycleState = .idle
         lifecycleError = nil
         availableLenses = []
@@ -152,12 +198,14 @@ final class CameraViewModel: ObservableObject {
         lifecycleError = cameraManager.lifecycleError
     }
 
-    private func startCaptureRegistrationIfNeeded() {
-        if !hasRegistered {
-            analysisPipeline.register(with: cameraManager)
-            hasRegistered = true
+    private func startCaptureRegistrationIfNeeded(for intent: UUID) -> Bool {
+        let didRegister = analysisPipeline.register(with: cameraManager)
+        guard didRegister, !Task.isCancelled, lifecycleIntent == intent else {
+            stopFeaturePolling()
+            return false
         }
         startFeaturePolling()
+        return true
     }
     
     func toggleDebug() {

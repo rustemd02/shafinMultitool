@@ -3279,6 +3279,15 @@ final class AnalysisPipeline: ObservableObject {
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
     private let lowQueue = DispatchQueue(label: "AnalysisPipeline.low", qos: .utility)
+    private let lifecycleLock = NSLock()
+    private let registrationLock = NSLock()
+    private let taskLock = NSLock()
+
+    private var lifecycleGeneration: UInt64 = 0
+    private var acceptsFrameWork = true
+    private var releaseInProgress = false
+    private var releaseTask: Task<Void, Never>?
+    private weak var registrationManager: CameraManager?
 
     private var features = CoachingFeatures()
     private var debugData = DebugData()
@@ -3446,49 +3455,315 @@ final class AnalysisPipeline: ObservableObject {
     private lazy var lowConsumer = LowStream(pipeline: self)
 
     private var registrations: [UUID] = []
+#if DEBUG
+    private var directFrameAcceptanceCountForTesting = 0
+#endif
 
-    func register(with manager: CameraManager) {
-        registrations = [
+    private struct ReleaseSnapshot {
+        let generation: UInt64
+        let manager: CameraManager?
+        let registrations: [UUID]
+        let tasks: [Task<Void, Never>]
+    }
+
+    @discardableResult
+    func register(with manager: CameraManager) -> Bool {
+        registrationLock.lock()
+        defer { registrationLock.unlock() }
+
+        lifecycleLock.lock()
+        guard !releaseInProgress else {
+            lifecycleLock.unlock()
+            return false
+        }
+
+        let alreadyRegistered = acceptsFrameWork
+            && registrationManager === manager
+            && registrations.count == 3
+        if alreadyRegistered {
+            lifecycleLock.unlock()
+            return true
+        }
+
+        let previousManager = registrationManager
+        let previousRegistrations = registrations
+        registrations = []
+        registrationManager = nil
+        acceptsFrameWork = false
+        lifecycleGeneration &+= 1
+        lifecycleLock.unlock()
+
+        previousRegistrations.forEach { previousManager?.unregister(id: $0) }
+
+        let newRegistrations = [
             manager.register(consumer: highConsumer, priority: .high, targetFrequency: 15),
             manager.register(consumer: mediumConsumer, priority: .medium, targetFrequency: 8),
             manager.register(consumer: lowConsumer, priority: .low, targetFrequency: 0.8, requiresStability: true)
         ]
+
+        lifecycleLock.lock()
+        registrations = newRegistrations
+        registrationManager = manager
+        acceptsFrameWork = true
+        lifecycleGeneration &+= 1
+        lifecycleLock.unlock()
+        return true
+    }
+
+    func releaseAndWait() async {
+        let operation = makeReleaseOperation()
+        await operation.value
+    }
+
+    private func makeReleaseOperation() -> Task<Void, Never> {
+        registrationLock.lock()
+        lifecycleLock.lock()
+        if let existing = releaseTask, releaseInProgress {
+            lifecycleLock.unlock()
+            registrationLock.unlock()
+            return existing
+        }
+
+        lifecycleGeneration &+= 1
+        let releaseGeneration = lifecycleGeneration
+        let manager = registrationManager
+        let ownedRegistrations = registrations
+        registrations = []
+        registrationManager = nil
+        acceptsFrameWork = false
+        featureQueue.sync {
+            pauseAnalysisRevision += 1
+        }
+        let ownedTasks = takeOwnedTasksAndCancel()
+        let snapshot = ReleaseSnapshot(
+            generation: releaseGeneration,
+            manager: manager,
+            registrations: ownedRegistrations,
+            tasks: ownedTasks
+        )
+        releaseInProgress = true
+        let operation = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            await self.performRelease(snapshot)
+        }
+        releaseTask = operation
+        lifecycleLock.unlock()
+        registrationLock.unlock()
+        return operation
+    }
+
+    private func performRelease(_ snapshot: ReleaseSnapshot) async {
+        snapshot.registrations.forEach { snapshot.manager?.unregister(id: $0) }
+        await snapshot.manager?.drainSchedulerAndWait()
+
+        await drainQueue(highQueue)
+        await drainQueue(mediumQueue)
+        await drainQueue(lowQueue)
+
+        for task in snapshot.tasks {
+            _ = await task.value
+        }
+
+        await MainActor.run { [weak self] in
+            guard let self, self.isGenerationCurrent(snapshot.generation) else { return }
+            self.clearPresentationStateOnMainActor()
+        }
+        await waitForMainQueueFence()
+
+        markReleaseFinished()
+    }
+
+    private func markReleaseFinished() {
+        lifecycleLock.lock()
+        releaseInProgress = false
+        lifecycleLock.unlock()
+    }
+
+    private func drainQueue(_ queue: DispatchQueue) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                continuation.resume()
+            }
+        }
+    }
+
+    private func waitForMainQueueFence() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
+    }
+
+    private func takeOwnedTasksAndCancel() -> [Task<Void, Never>] {
+        taskLock.lock()
+        let tasks = [pauseReasoningTask, liveNeuralInferenceTask, pauseNeuralInferenceTask].compactMap { $0 }
+        pauseReasoningTask = nil
+        liveNeuralInferenceTask = nil
+        pauseNeuralInferenceTask = nil
+        taskLock.unlock()
+
+        tasks.forEach { $0.cancel() }
+        return tasks
+    }
+
+    private func cancelPauseReasoningTask() {
+        taskLock.lock()
+        let task = pauseReasoningTask
+        pauseReasoningTask = nil
+        taskLock.unlock()
+        task?.cancel()
+    }
+
+    private func cancelLiveNeuralInferenceTask() {
+        taskLock.lock()
+        let task = liveNeuralInferenceTask
+        liveNeuralInferenceTask = nil
+        taskLock.unlock()
+        task?.cancel()
+    }
+
+    private func cancelPauseNeuralInferenceTask() {
+        taskLock.lock()
+        let task = pauseNeuralInferenceTask
+        pauseNeuralInferenceTask = nil
+        taskLock.unlock()
+        task?.cancel()
+    }
+
+    private func installPauseReasoningTask(_ task: Task<Void, Never>, generation: UInt64) -> Bool {
+        lifecycleLock.lock()
+        guard acceptsFrameWork, lifecycleGeneration == generation else {
+            lifecycleLock.unlock()
+            task.cancel()
+            return false
+        }
+        taskLock.lock()
+        let previous = pauseReasoningTask
+        pauseReasoningTask = task
+        taskLock.unlock()
+        lifecycleLock.unlock()
+        previous?.cancel()
+        return true
+    }
+
+    private func installLiveNeuralInferenceTask(_ task: Task<Void, Never>, generation: UInt64) -> Bool {
+        lifecycleLock.lock()
+        guard acceptsFrameWork, lifecycleGeneration == generation else {
+            lifecycleLock.unlock()
+            task.cancel()
+            return false
+        }
+        taskLock.lock()
+        let previous = liveNeuralInferenceTask
+        liveNeuralInferenceTask = task
+        taskLock.unlock()
+        lifecycleLock.unlock()
+        previous?.cancel()
+        return true
+    }
+
+    private func installPauseNeuralInferenceTask(_ task: Task<Void, Never>, generation: UInt64) -> Bool {
+        lifecycleLock.lock()
+        guard acceptsFrameWork, lifecycleGeneration == generation else {
+            lifecycleLock.unlock()
+            task.cancel()
+            return false
+        }
+        taskLock.lock()
+        let previous = pauseNeuralInferenceTask
+        pauseNeuralInferenceTask = task
+        taskLock.unlock()
+        lifecycleLock.unlock()
+        previous?.cancel()
+        return true
     }
 
     func ingestHigh(context: FrameContext) {
-        handleHigh(context: context)
+        handleHigh(context: context, requiresRegistration: false)
     }
 
     func ingestMedium(context: FrameContext) {
-        handleMedium(context: context)
+        handleMedium(context: context, requiresRegistration: false)
     }
 
     func ingestLow(context: FrameContext) {
-        handleLow(context: context)
+        handleLow(context: context, requiresRegistration: false)
     }
 
     fileprivate func handleHigh(context: FrameContext) {
+        handleHigh(context: context, requiresRegistration: true)
+    }
+
+    private func handleHigh(context: FrameContext, requiresRegistration: Bool) {
+        guard let generation = acquireFrameGeneration(requiresRegistration: requiresRegistration) else { return }
+#if DEBUG
+        if !requiresRegistration {
+            lifecycleLock.lock()
+            directFrameAcceptanceCountForTesting += 1
+            lifecycleLock.unlock()
+        }
+#endif
         highQueue.async { [weak self] in
-            guard let self else { return }
-            self.performHigh(context: context)
+            guard let self, self.isGenerationCurrent(generation) else { return }
+            self.performHigh(context: context, generation: generation)
         }
     }
 
     fileprivate func handleMedium(context: FrameContext) {
+        handleMedium(context: context, requiresRegistration: true)
+    }
+
+    private func handleMedium(context: FrameContext, requiresRegistration: Bool) {
+        guard let generation = acquireFrameGeneration(requiresRegistration: requiresRegistration) else { return }
         mediumQueue.async { [weak self] in
-            guard let self else { return }
-            self.performMedium(context: context)
+            guard let self, self.isGenerationCurrent(generation) else { return }
+            self.performMedium(context: context, generation: generation)
         }
     }
 
     fileprivate func handleLow(context: FrameContext) {
+        handleLow(context: context, requiresRegistration: true)
+    }
+
+    private func handleLow(context: FrameContext, requiresRegistration: Bool) {
+        guard let generation = acquireFrameGeneration(requiresRegistration: requiresRegistration) else { return }
         lowQueue.async { [weak self] in
-            guard let self else { return }
-            self.performLow(context: context)
+            guard let self, self.isGenerationCurrent(generation) else { return }
+            self.performLow(context: context, generation: generation)
         }
     }
 
-    private func performHigh(context: FrameContext) {
+    private func acquireFrameGeneration(requiresRegistration: Bool) -> UInt64? {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard acceptsFrameWork else { return nil }
+        if requiresRegistration, registrations.count != 3 || registrationManager == nil {
+            return nil
+        }
+        return lifecycleGeneration
+    }
+
+    private func currentGeneration() -> UInt64 {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return lifecycleGeneration
+    }
+
+    private func isGenerationCurrent(_ generation: UInt64) -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return lifecycleGeneration == generation
+    }
+
+    private func isFrameWorkActive(_ generation: UInt64) -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return acceptsFrameWork && lifecycleGeneration == generation
+    }
+
+    private func performHigh(context: FrameContext, generation: UInt64) {
+        guard isGenerationCurrent(generation) else { return }
         // Запомним последний кадр для режима предпросмотра
         self.lastPixelBuffer = context.pixelBuffer
         self.lastOrientation = context.orientation
@@ -3595,11 +3870,12 @@ final class AnalysisPipeline: ObservableObject {
         )
 
         Task { @MainActor in
+            guard self.isGenerationCurrent(generation) else { return }
             self.overlayState = OverlayState(primaryBoundingBox: primarySubject?.boundingBox,
                                              horizonAngle: horizon.angle,
                                              horizonConfidence: horizon.confidence,
                                              saliencyBalance: saliencyBalance)
-            await self.emitSuggestion()
+            await self.emitSuggestion(generation: generation)
         }
 
         Telemetry.shared.recordFrameProcessed()
@@ -3646,7 +3922,8 @@ final class AnalysisPipeline: ObservableObject {
         )
     }
 
-    private func performMedium(context: FrameContext) {
+    private func performMedium(context: FrameContext, generation: UInt64) {
+        guard isGenerationCurrent(generation) else { return }
         guard let bbox = overlayState.primaryBoundingBox else { return }
         
         let startTime = CACurrentMediaTime()
@@ -3692,11 +3969,13 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         Task { @MainActor in
-            await self.emitSuggestion()
+            guard self.isGenerationCurrent(generation) else { return }
+            await self.emitSuggestion(generation: generation)
         }
     }
 
-    private func performLow(context: FrameContext) {
+    private func performLow(context: FrameContext, generation: UInt64) {
+        guard isGenerationCurrent(generation) else { return }
         lowFrameCount += 1
         let now = Date()
         let budget = thermalGovernor.nextBudget()
@@ -3766,6 +4045,7 @@ final class AnalysisPipeline: ObservableObject {
                 }
 
                 guard let self else { return }
+                guard self.isGenerationCurrent(generation) else { return }
 
                 let priorityDetections = self.compositionPriorityDetections(detections)
                 print(
@@ -3802,6 +4082,7 @@ final class AnalysisPipeline: ObservableObject {
                         "top=\(self.debugDetection(top)) overlay=\(self.debugRect(didUseDetrSubjectSnapshot ? top.boundingBox : self.overlayState.primaryBoundingBox))"
                     )
                     Task { @MainActor in
+                        guard self.isGenerationCurrent(generation) else { return }
                         if didUseDetrSubjectSnapshot {
                             if CameraLog.detr {
                                 os_log("🎯 DETR PRIORITY: Using %{public}@ (conf=%.2f) for composition",
@@ -3816,7 +4097,7 @@ final class AnalysisPipeline: ObservableObject {
                                        type: .debug, top.label)
                             }
                         }
-                        await self.emitSuggestion()
+                        await self.emitSuggestion(generation: generation)
                     }
                 } else {
                     if CameraLog.detr {
@@ -3850,10 +4131,11 @@ final class AnalysisPipeline: ObservableObject {
                         "top=none overlay=\(self.debugRect(shouldClearDetrOverlaySnapshot ? nil : self.overlayState.primaryBoundingBox))"
                     )
                     Task { @MainActor in
+                        guard self.isGenerationCurrent(generation) else { return }
                         if shouldClearDetrOverlaySnapshot {
                             self.overlayState.primaryBoundingBox = nil
                         }
-                        await self.emitSuggestion()
+                        await self.emitSuggestion(generation: generation)
                     }
                 }
             }
@@ -3869,7 +4151,7 @@ final class AnalysisPipeline: ObservableObject {
                 Telemetry.shared.recordLatency(label: "Aesthetic", duration: aestheticLatency)
                 Telemetry.shared.setActiveModule("Aesthetic", active: false)
 
-                guard let self, let score else { return }
+                guard let self, let score, self.isGenerationCurrent(generation) else { return }
                 if CameraLog.detr {
                     os_log("🎨 Aesthetic score: %.2f (in %.0fms)",
                            log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
@@ -3893,7 +4175,8 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     @MainActor
-    private func emitSuggestion() async {
+    private func emitSuggestion(generation: UInt64) async {
+        guard isGenerationCurrent(generation) else { return }
         let now = Date()
         let localFeatures = featureQueue.sync { features }
         
@@ -3960,7 +4243,8 @@ final class AnalysisPipeline: ObservableObject {
                 snapshot: snapshot,
                 semantics: semantics,
                 deterministicCritique: deterministicCritique,
-                forcePauseExecution: false
+                forcePauseExecution: false,
+                generation: generation
             )
         } else {
             fusionOutput = hybridFusionService.fuse(
@@ -3974,6 +4258,7 @@ final class AnalysisPipeline: ObservableObject {
             )
             liveNeuralOutcome = nil
         }
+        guard isGenerationCurrent(generation) else { return }
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
         let semanticTips = semanticTipPlanner.plan(
@@ -5063,29 +5348,55 @@ final class AnalysisPipeline: ObservableObject {
         return String(first).uppercased() + String(text.dropFirst())
     }
 
+    @MainActor
+    private func clearPresentationStateOnMainActor() {
+        overlayState = OverlayState(primaryBoundingBox: nil,
+                                     horizonAngle: 0,
+                                     horizonConfidence: 0,
+                                     saliencyBalance: 0)
+        currentSuggestion = nil
+        currentLiveHint = nil
+        currentPauseCritique = nil
+        currentOverlayAnnotations = []
+        liveHintShownAt = .distantPast
+        liveHintExpiresAt = .distantPast
+        lastLiveMotionBecameUnstableAt = nil
+        lastOverlayPublishAt = .distantPast
+        currentPauseTraceBundle = nil
+        currentLiveFusionTraceBundle = nil
+        currentDemoOverlayAnnotations = []
+        demoSubjectTrack = nil
+    }
+
     func clearPausePresentationState() {
         featureQueue.sync {
             pauseAnalysisRevision += 1
         }
-        if pauseReasoningTask != nil {
+        taskLock.lock()
+        let hasPauseReasoningTask = pauseReasoningTask != nil
+        taskLock.unlock()
+        if hasPauseReasoningTask {
             os_log(
                 "reasoning.cancel.pause_exit",
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: .debug
             )
         }
-        pauseReasoningTask?.cancel()
-        pauseReasoningTask = nil
+        cancelPauseReasoningTask()
         lastRefinedPauseFrameId = nil
         currentPauseTraceBundle = nil
+        let generation = currentGeneration()
         DispatchQueue.main.async {
+            guard self.isGenerationCurrent(generation) else { return }
             self.currentPauseCritique = nil
             self.currentOverlayAnnotations = []
         }
     }
 
     func clearLivePresentationState() {
+        let generation = currentGeneration()
         DispatchQueue.main.async {
+            guard self.isGenerationCurrent(generation) else { return }
             self.currentLiveHint = nil
             self.liveHintShownAt = .distantPast
             self.liveHintExpiresAt = .distantPast
@@ -5099,12 +5410,13 @@ final class AnalysisPipeline: ObservableObject {
 
     // Полный прогон heavy‑модулей на последнем кадре; возвращает legacy suggestions + structured pause critique.
     func runPauseAnalysis(completion: @escaping ([Suggestion], PauseCritiquePresentation?) -> Void) {
+        let generation = currentGeneration()
+        guard isFrameWorkActive(generation) else { return }
         guard let pixelBuffer = lastPixelBuffer else {
             completion([], nil)
             return
         }
-        pauseReasoningTask?.cancel()
-        pauseReasoningTask = nil
+        cancelPauseReasoningTask()
         lastRefinedPauseFrameId = nil
         currentPauseTraceBundle = nil
         let revision = featureQueue.sync { () -> Int in
@@ -5117,7 +5429,7 @@ final class AnalysisPipeline: ObservableObject {
         let sendablePixelBuffer = SendablePixelBuffer(value: pixelBuffer)
         let baseAdapterState = currentAdapterState()
         lowQueue.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.isGenerationCurrent(generation) else { return }
             let pauseStateQueue = DispatchQueue(label: "AnalysisPipeline.pauseState")
             var localFeatures = baseAdapterState.features
             var localDebugData = baseAdapterState.debugData
@@ -5175,7 +5487,7 @@ final class AnalysisPipeline: ObservableObject {
 
             group.notify(queue: .main) {
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
+                    guard let self, self.isGenerationCurrent(generation) else { return }
 
                     let isCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
                     guard isCurrentRevision else { return }
@@ -5220,8 +5532,10 @@ final class AnalysisPipeline: ObservableObject {
                         snapshot: snapshot,
                         semantics: semantics,
                         deterministicCritique: deterministicCritique,
-                        forcePauseExecution: true
+                        forcePauseExecution: true,
+                        generation: generation
                     )
+                    guard self.isGenerationCurrent(generation) else { return }
                     let stillCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
                     guard stillCurrentRevision else { return }
 
@@ -5234,6 +5548,7 @@ final class AnalysisPipeline: ObservableObject {
                         plan: plan,
                         neuralOutcome: pauseNeuralOutcome
                     )
+                    guard self.isGenerationCurrent(generation) else { return }
                     let stillCurrentAfterEvidence = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
                     guard stillCurrentAfterEvidence else { return }
                     let validatedVisualEvidence = self.logAndExtractValidatedVisualEvidence(
@@ -5271,6 +5586,7 @@ final class AnalysisPipeline: ObservableObject {
                             snapshot: snapshot,
                             semantics: semantics
                        ) {
+                        guard self.isGenerationCurrent(generation) else { return }
                         self.currentPauseTraceBundle = nil
                         self.currentPauseCritique = technicalPauseCritique
                         self.currentOverlayAnnotations = []
@@ -5288,6 +5604,7 @@ final class AnalysisPipeline: ObservableObject {
                             legacySuggestions: list,
                             forceLegacyOnly: true
                         )
+                        guard self.isGenerationCurrent(generation) else { return }
                         self.currentPauseCritique = nil
                         self.currentOverlayAnnotations = fallbackAnnotations
                         self.currentPauseTraceBundle = nil
@@ -5310,8 +5627,6 @@ final class AnalysisPipeline: ObservableObject {
                         neuralSnapshot: self.executedNeuralSnapshot(from: pauseNeuralOutcome),
                         fusionOutput: fusionOutput
                     )
-                    self.currentPauseTraceBundle = pauseTrace
-                    self.currentPauseCritique = pauseCritique
                     let pauseAnnotations = self.makeOverlayAnnotations(
                         frameId: snapshot.frameId,
                         critique: critique,
@@ -5320,6 +5635,9 @@ final class AnalysisPipeline: ObservableObject {
                         mode: .pause,
                         legacySuggestions: list
                     )
+                    guard self.isGenerationCurrent(generation) else { return }
+                    self.currentPauseTraceBundle = pauseTrace
+                    self.currentPauseCritique = pauseCritique
                     self.currentOverlayAnnotations = pauseAnnotations
                     completion(list, pauseCritique)
 
@@ -5330,7 +5648,11 @@ final class AnalysisPipeline: ObservableObject {
                         pauseDraft: pauseCritique,
                         trace: pauseTrace
                     )
-                    self.schedulePauseReasoningRefinement(request: reasoningRequest, revision: revision)
+                    self.schedulePauseReasoningRefinement(
+                        request: reasoningRequest,
+                        revision: revision,
+                        generation: generation
+                    )
                 }
             }
         }
@@ -9061,12 +9383,17 @@ final class AnalysisPipeline: ObservableObject {
         return rawValue == "1" || rawValue == "true" || rawValue == "yes" || rawValue == "on"
     }
 
-    private func schedulePauseReasoningRefinement(request: ReasoningRequest, revision: Int) {
-        pauseReasoningTask?.cancel()
-        pauseReasoningTask = Task(priority: .utility) { [weak self] in
+    private func schedulePauseReasoningRefinement(request: ReasoningRequest,
+                                                  revision: Int,
+                                                  generation: UInt64? = nil) {
+        let effectiveGeneration = generation ?? currentGeneration()
+        guard isFrameWorkActive(effectiveGeneration) else { return }
+        cancelPauseReasoningTask()
+        let task = Task(priority: .utility) { [weak self] in
             guard let self else { return }
             let result = await self.pauseReasoningCoordinator.refine(request: request)
             guard !Task.isCancelled else { return }
+            guard self.isGenerationCurrent(effectiveGeneration) else { return }
 
             switch result {
             case let .skipped(reason, diagnostics):
@@ -9115,9 +9442,10 @@ final class AnalysisPipeline: ObservableObject {
                 return
             case let .refined(presentation, optionalTraceItems, diagnostics):
                 let isCurrentRevision = self.featureQueue.sync { self.pauseAnalysisRevision == revision }
-                guard isCurrentRevision else { return }
+                guard isCurrentRevision, self.isGenerationCurrent(effectiveGeneration) else { return }
 
                 await MainActor.run {
+                    guard self.isGenerationCurrent(effectiveGeneration) else { return }
                     guard self.lastRefinedPauseFrameId != request.frameId else { return }
                     guard let current = self.currentPauseCritique, current.frameId == request.frameId else { return }
                     let merged = self.mergePauseCritiqueRefinement(current: current, refined: presentation)
@@ -9141,6 +9469,7 @@ final class AnalysisPipeline: ObservableObject {
                 }
             }
         }
+        _ = installPauseReasoningTask(task, generation: effectiveGeneration)
     }
 
     private func mergePauseCritiqueRefinement(current: PauseCritiquePresentation,
@@ -10072,7 +10401,8 @@ final class AnalysisPipeline: ObservableObject {
                                                       orientation: CGImagePropertyOrientation,
                                                       snapshot: FrameFeatureSnapshot,
                                                       semantics: SceneSemanticsReport,
-                                                      forcePauseExecution: Bool) {
+                                                      forcePauseExecution: Bool,
+                                                      generation: UInt64? = nil) {
         guard let neuralEvidenceService,
               let pixelBuffer,
               let request = makeNeuralEvidenceInferenceRequest(
@@ -10085,22 +10415,51 @@ final class AnalysisPipeline: ObservableObject {
                 forcePauseExecution: forcePauseExecution
               ) else { return }
 
+        if let generation, !isGenerationCurrent(generation) { return }
         recordRequestedNeuralFrame(frameId: frameId, mode: mode)
 
         switch mode {
         case .live:
-            liveNeuralInferenceTask?.cancel()
-            liveNeuralInferenceTask = Task { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else { return }
                 let outcome = await neuralEvidenceService.infer(request: request)
-                self.recordNeuralOutcomeIfCurrent(outcome, mode: mode, frameId: frameId)
+                guard generation.map({ self.isGenerationCurrent($0) }) ?? true else { return }
+                self.recordNeuralOutcomeIfCurrent(
+                    outcome,
+                    mode: mode,
+                    frameId: frameId,
+                    generation: generation
+                )
+            }
+            if let generation {
+                _ = installLiveNeuralInferenceTask(task, generation: generation)
+            } else {
+                taskLock.lock()
+                let previous = liveNeuralInferenceTask
+                liveNeuralInferenceTask = task
+                taskLock.unlock()
+                previous?.cancel()
             }
         case .pause:
-            pauseNeuralInferenceTask?.cancel()
-            pauseNeuralInferenceTask = Task { [weak self] in
+            let task = Task { [weak self] in
                 guard let self else { return }
                 let outcome = await neuralEvidenceService.infer(request: request)
-                self.recordNeuralOutcomeIfCurrent(outcome, mode: mode, frameId: frameId)
+                guard generation.map({ self.isGenerationCurrent($0) }) ?? true else { return }
+                self.recordNeuralOutcomeIfCurrent(
+                    outcome,
+                    mode: mode,
+                    frameId: frameId,
+                    generation: generation
+                )
+            }
+            if let generation {
+                _ = installPauseNeuralInferenceTask(task, generation: generation)
+            } else {
+                taskLock.lock()
+                let previous = pauseNeuralInferenceTask
+                pauseNeuralInferenceTask = task
+                taskLock.unlock()
+                previous?.cancel()
             }
         }
     }
@@ -10136,7 +10495,8 @@ final class AnalysisPipeline: ObservableObject {
                                             orientation: CGImagePropertyOrientation,
                                             snapshot: FrameFeatureSnapshot,
                                             semantics: SceneSemanticsReport,
-                                            forcePauseExecution: Bool) async -> NeuralEvidenceRecordedOutcome? {
+                                            forcePauseExecution: Bool,
+                                            generation: UInt64? = nil) async -> NeuralEvidenceRecordedOutcome? {
         guard let neuralEvidenceService,
               let request = makeNeuralEvidenceInferenceRequest(
                 mode: mode,
@@ -10148,9 +10508,16 @@ final class AnalysisPipeline: ObservableObject {
                 forcePauseExecution: forcePauseExecution
               ) else { return nil }
 
+        if let generation, !isGenerationCurrent(generation) { return nil }
         recordRequestedNeuralFrame(frameId: snapshot.frameId, mode: mode)
         let outcome = await neuralEvidenceService.infer(request: request)
-        recordNeuralOutcomeIfCurrent(outcome, mode: mode, frameId: snapshot.frameId)
+        if let generation, !isGenerationCurrent(generation) { return nil }
+        recordNeuralOutcomeIfCurrent(
+            outcome,
+            mode: mode,
+            frameId: snapshot.frameId,
+            generation: generation
+        )
         return NeuralEvidenceRecordedOutcome(outcome)
     }
 
@@ -10161,7 +10528,8 @@ final class AnalysisPipeline: ObservableObject {
                                                  snapshot: FrameFeatureSnapshot,
                                                  semantics: SceneSemanticsReport,
                                                  deterministicCritique: CritiqueReport,
-                                                 forcePauseExecution: Bool) async -> (HybridFusionOutput, NeuralEvidenceRecordedOutcome?) {
+                                                 forcePauseExecution: Bool,
+                                                 generation: UInt64? = nil) async -> (HybridFusionOutput, NeuralEvidenceRecordedOutcome?) {
         guard let pixelBuffer else {
             return (
                 hybridFusionService.fuse(
@@ -10184,7 +10552,8 @@ final class AnalysisPipeline: ObservableObject {
             orientation: orientation,
             snapshot: snapshot,
             semantics: semantics,
-            forcePauseExecution: forcePauseExecution
+            forcePauseExecution: forcePauseExecution,
+            generation: generation
         )
         return (
             hybridFusionService.fuse(
@@ -10223,7 +10592,9 @@ final class AnalysisPipeline: ObservableObject {
 
     private func recordNeuralOutcomeIfCurrent(_ outcome: NeuralEvidenceInferenceOutcome,
                                               mode: AnalysisMode,
-                                              frameId: String) {
+                                              frameId: String,
+                                              generation: UInt64? = nil) {
+        if let generation, !isGenerationCurrent(generation) { return }
         let recorded = NeuralEvidenceRecordedOutcome(outcome)
         featureQueue.sync {
             switch mode {
@@ -10465,12 +10836,9 @@ extension AnalysisPipeline {
         currentOverlayAnnotations = []
         currentPauseTraceBundle = nil
         currentLiveFusionTraceBundle = nil
-        pauseReasoningTask?.cancel()
-        pauseReasoningTask = nil
-        liveNeuralInferenceTask?.cancel()
-        liveNeuralInferenceTask = nil
-        pauseNeuralInferenceTask?.cancel()
-        pauseNeuralInferenceTask = nil
+        cancelPauseReasoningTask()
+        cancelLiveNeuralInferenceTask()
+        cancelPauseNeuralInferenceTask()
         lastRefinedPauseFrameId = nil
 
         featureQueue.sync {
@@ -11499,13 +11867,15 @@ extension AnalysisPipeline {
     @MainActor
     func testingPreparePauseState(critique: PauseCritiquePresentation,
                                   traceBundle: ExplainabilityTraceBundle,
-                                  revision: Int) {
+                                  revision: Int,
+                                  overlayAnnotations: [OverlayAnnotationPresentation] = []) {
         featureQueue.sync {
             pauseAnalysisRevision = revision
         }
         currentPauseCritique = critique
         currentPauseTraceBundle = traceBundle
         lastRefinedPauseFrameId = nil
+        currentOverlayAnnotations = overlayAnnotations
     }
 
     func testingSchedulePauseReasoningRefinement(request: ReasoningRequest, revision: Int) {
@@ -11613,7 +11983,89 @@ extension AnalysisPipeline {
     }
 
     var testingHasPauseReasoningTask: Bool {
-        pauseReasoningTask != nil
+        taskLock.lock()
+        defer { taskLock.unlock() }
+        return pauseReasoningTask != nil
+    }
+
+    var testingHasLiveNeuralInferenceTask: Bool {
+        taskLock.lock()
+        defer { taskLock.unlock() }
+        return liveNeuralInferenceTask != nil
+    }
+
+    var testingHasPauseNeuralInferenceTask: Bool {
+        taskLock.lock()
+        defer { taskLock.unlock() }
+        return pauseNeuralInferenceTask != nil
+    }
+
+    var testingOwnedTaskCount: Int {
+        taskLock.lock()
+        defer { taskLock.unlock() }
+        return [pauseReasoningTask, liveNeuralInferenceTask, pauseNeuralInferenceTask]
+            .compactMap { $0 }
+            .count
+    }
+
+    var testingLifecycleGeneration: UInt64 {
+        currentGeneration()
+    }
+
+    var testingDirectFrameAcceptanceCount: Int {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return directFrameAcceptanceCountForTesting
+    }
+
+    var testingReleaseInProgress: Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return releaseInProgress
+    }
+
+    @MainActor
+    func testingEnqueueLivePresentation(_ candidate: LiveHintPresentation?, now: Date = Date()) {
+        let generation = currentGeneration()
+        guard isFrameWorkActive(generation) else { return }
+        testingEnqueueLivePresentationForGeneration(generation,
+                                                    candidate: candidate,
+                                                    now: now)
+    }
+
+    @MainActor
+    func testingEnqueueLivePresentationForGeneration(_ generation: UInt64,
+                                                     candidate: LiveHintPresentation?,
+                                                     now: Date = Date()) {
+        Task { @MainActor [weak self] in
+            guard let self,
+                  self.isFrameWorkActive(generation) else { return }
+            self.applyLiveHint(candidate: candidate, now: now)
+        }
+    }
+
+    func testingStartOwnedCancellableTasks() {
+        let generation = currentGeneration()
+        guard isFrameWorkActive(generation) else { return }
+
+        let pauseReasoningTask = Task<Void, Never> {
+            while !Task.isCancelled {
+                await Task.yield()
+            }
+        }
+        let liveNeuralInferenceTask = Task<Void, Never> {
+            while !Task.isCancelled {
+                await Task.yield()
+            }
+        }
+        let pauseNeuralInferenceTask = Task<Void, Never> {
+            while !Task.isCancelled {
+                await Task.yield()
+            }
+        }
+        _ = installPauseReasoningTask(pauseReasoningTask, generation: generation)
+        _ = installLiveNeuralInferenceTask(liveNeuralInferenceTask, generation: generation)
+        _ = installPauseNeuralInferenceTask(pauseNeuralInferenceTask, generation: generation)
     }
 
     func testingIsAllowedDemoLiveSemanticAction(_ actionType: SemanticActionType) -> Bool {

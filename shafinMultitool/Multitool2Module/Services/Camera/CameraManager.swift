@@ -236,6 +236,14 @@ final class CameraManager: NSObject, @unchecked Sendable {
                            requiresStability: requiresStability)
     }
 
+    func unregister(id: UUID) {
+        scheduler.unregister(id: id)
+    }
+
+    func drainSchedulerAndWait() async {
+        await scheduler.drainAndWait()
+    }
+
     private func startOnSessionQueue() throws {
         if sessionRunner.isRunning, isConfigured {
             if !isFrameDeliveryEnabled() {

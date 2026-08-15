@@ -50,6 +50,9 @@ final class RealtimeScheduler {
 
     private var registrations: [UUID: Registration] = [:]
     private let queue = DispatchQueue(label: "RealtimeScheduler", qos: .userInitiated)
+#if DEBUG
+    private var drainGateForTesting: DispatchSemaphore?
+#endif
 
     func register(consumer: FrameConsumer,
                   priority: SchedulerPriority,
@@ -74,6 +77,22 @@ final class RealtimeScheduler {
         }
     }
 
+    /// Completes after every scheduler block enqueued before this fence has run.
+    /// The fence does not retain or invoke any consumer by itself.
+    func drainAndWait() async {
+#if DEBUG
+        let drainGate = queue.sync { drainGateForTesting }
+#endif
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+#if DEBUG
+                drainGate?.wait()
+#endif
+                continuation.resume()
+            }
+        }
+    }
+
     func dispatch(context: FrameContext, budget: ThermalGovernor.Budget) {
         queue.async { [weak self] in
             self?.dispatchInternal(context: context, budget: budget)
@@ -81,6 +100,16 @@ final class RealtimeScheduler {
     }
 
 #if DEBUG
+    var registrationCountForTesting: Int {
+        queue.sync { registrations.count }
+    }
+
+    func setDrainGateForTesting(_ gate: DispatchSemaphore?) {
+        queue.sync {
+            drainGateForTesting = gate
+        }
+    }
+
     func dispatchSynchronouslyForTesting(context: FrameContext, budget: ThermalGovernor.Budget) {
         queue.sync {
             dispatchInternal(context: context, budget: budget)

@@ -96,6 +96,50 @@ final class RealtimeSchedulerTests: XCTestCase {
         XCTAssertEqual(lowConsumer.count, 0)
     }
 
+    func testUnregisterIsIdempotentAndPostUnregisterDispatchDoesNotInvokeConsumer() {
+        let scheduler = RealtimeScheduler()
+        let consumer = CountingFrameConsumer()
+        let registration = scheduler.register(consumer: consumer,
+                                               priority: .high,
+                                               targetFrequency: 60)
+
+        scheduler.unregister(id: registration)
+        scheduler.unregister(id: registration)
+        scheduler.dispatchSynchronouslyForTesting(
+            context: makeFrameContext(isStable: true),
+            budget: unrestrictedBudget
+        )
+
+        XCTAssertEqual(scheduler.registrationCountForTesting, 0)
+        XCTAssertEqual(consumer.count, 0)
+    }
+
+    func testDrainAndWaitFencesQueuedDispatch() async {
+        let scheduler = RealtimeScheduler()
+        let consumer = CountingFrameConsumer()
+        let registration = scheduler.register(consumer: consumer,
+                                               priority: .high,
+                                               targetFrequency: 60)
+
+        scheduler.dispatch(
+            context: makeFrameContext(isStable: true),
+            budget: unrestrictedBudget
+        )
+        await scheduler.drainAndWait()
+
+        XCTAssertEqual(consumer.count, 1)
+        scheduler.unregister(id: registration)
+    }
+
+    private var unrestrictedBudget: ThermalGovernor.Budget {
+        ThermalGovernor.Budget(
+            highPriorityFrequency: 60,
+            mediumPriorityFrequency: 60,
+            lowPriorityFrequency: 60,
+            heavyModelsEnabled: true
+        )
+    }
+
     private func makeFrameContext(isStable: Bool) -> FrameContext {
         FrameContext(
             pixelBuffer: makePixelBuffer(),
