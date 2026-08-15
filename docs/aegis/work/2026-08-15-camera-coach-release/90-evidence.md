@@ -31,6 +31,7 @@
 - CC-010B1 latest-frame evidence: worker `b38ef12`, accepted `8b20380`; correction worker `772fe33`, accepted `ee019f0`. Integrated generic build and 12/12 focused release/store tests passed.
 - CC-010A2 atomic motion snapshot: worker `9fb974e`, accepted `caef74b`; correction worker `f80e1a3`, accepted `b76f217`. Integrated generic build and 4/4 `MotionGateTests` passed, including concurrent tuple coherence.
 - CC-010A1 failed-start rollback: worker `7169d85`, accepted `d7c4e98`; correction worker `f49953a`, accepted `9a63f69`. Sol source-reviewed the lifecycle identity/generation fence, independently passed the integrated generic build and 22/22 focused simulator tests across CameraViewModel, pipeline release and camera manager lifecycle suites.
+- CC-010A3 transactional lens input: worker `85fc422`, accepted `15aa4e5`; one generic helper closes replace/restore/rollback mechanics, both manager APIs share one session-queue owner, worker generic build passed and Sol independently passed 16/16 focused simulator tests.
 - Recorder evidence covers an isolated policy-neutral core only; production camera wiring, Photos export and retention/background behavior are not claimed.
 
 ## Proposed but not accepted

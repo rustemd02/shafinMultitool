@@ -200,13 +200,24 @@
 #### CC-010A3 — Transactional camera input replacement
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a006a4-5560-7851-acfc-730223da26e8`.
 - Ownership: `CameraManager.swift`, new `CameraInputReplacementTransaction.swift` and new `CameraLensSwitchTransactionTests.swift` only.
 - Objective: a rejected lens replacement restores the prior active input instead of leaving the capture graph inputless while state still claims the old lens.
 - Contract: one session-queue owner; typed async result plus compatibility wrapper; remove/can-add/add/restore transaction commits exactly once; ordinary unavailable/rejected lenses preserve lifecycle and prior input/lens; catastrophic rollback loss is explicit and releases the broken configuration.
 - Tests: pure generic operation-order fixtures for replace/restore/rollback failure plus generic iOS build; no fake `AVCaptureDeviceInput`, physical-device claim, UI state or lens matrix.
 - Follow-up: CC-010A4 will consume the typed result so `CameraViewModel.currentLens` changes only after confirmed success and rapid taps cannot publish stale state.
+- Evidence: worker `85fc422`, accepted `15aa4e5`; exact three-file source review, worker generic build and Sol 16/16 simulator tests across transaction, manager lifecycle and view-model lifecycle suites.
+
+#### CC-010A4 — Confirmed lens presentation state
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Task: `01a006af-8d1a-7941-a294-84a330bb1e01`.
+- Ownership: `CameraViewModel.swift` and new `CameraViewModelLensSwitchTests.swift` only.
+- Objective: lens UI state changes only after CC-010A3 confirms the actual active lens; rejected or stale results never highlight an inactive lens.
+- Contract: one in-flight waiter plus lifecycle/intent fence; success/no-op use reported active lens; ordinary failure retains reported active lens; nil-active/catastrophic result resets presentation; start/release define wide/empty presentation boundaries; no UI copy before CC-008.
+- Tests: no optimistic update, failure retains actual lens, out-of-order rapid requests, release late-result fence, no-op and nil-active mapping; deterministic async operation injection, no physical camera.
 
 ### CC-010B — Scheduler and pipeline release
 

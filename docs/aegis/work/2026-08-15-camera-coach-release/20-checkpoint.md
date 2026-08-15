@@ -29,13 +29,13 @@
 
 ## Active slice
 
-CC-010A3 transactional camera input replacement is active in Luna / Max task `01a006a4-5560-7851-acfc-730223da26e8` after the post-CC-010A1 audit identified the existing remove-before-restore lens failure path.
+CC-010A4 confirmed lens presentation is active in Luna / Max task `01a006af-8d1a-7941-a294-84a330bb1e01` after CC-010A3 transactional input replacement passed 16/16 intersecting tests.
 
 Slice Card:
 
 - Goal: advance the local Camera Coach RC without bypassing owner-gated UX or model composition.
 - Parent plan/spec: `docs/app-store-product-plan.md`, `docs/implementation/STATUS.md`, `docs/implementation/BACKLOG.md`.
-- Files: `CameraManager.swift`, new `CameraInputReplacementTransaction.swift` and new `CameraLensSwitchTransactionTests.swift` only.
+- Files: `CameraViewModel.swift` and new `CameraViewModelLensSwitchTests.swift` only.
 - Boundary: no user-facing UI, third-party Core ML exclusion, asset/legal approval, provider, payment, push or publication decision.
 - Verification: source/test evidence, exact Luna packet, primary diff review, focused tests and canonical main verification.
 - Stop: accept and integrate one coherent slice; otherwise record the genuine gate and choose another independent slice.
@@ -49,9 +49,9 @@ Slice Card:
 
 ## Next
 
-1. Monitor and independently review CC-010A3; keep corrections in its original task.
-2. Integrate only after focused transaction evidence and generic main build pass.
-3. Launch CC-010A4 to make the UI consume confirmed lens results, then reconcile the conflicting Core ML recommendations into one explicit owner decision.
+1. Monitor and independently review CC-010A4; keep corrections in its original task.
+2. Integrate only after lens-state and lifecycle focused evidence plus generic main build pass.
+3. Reconcile the conflicting Core ML recommendations into one explicit owner decision and continue the next ungated production slice.
 
 ## Drift check
 
