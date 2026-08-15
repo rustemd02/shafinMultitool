@@ -38,8 +38,10 @@
 | CC-004 | accepted | Luna / Max | accepted audit baseline | 16 provenance dispositions accepted; 8 missing, 2 exclude, 4 development-only, 2 verified |
 | CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
 | CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
-| CC-007 | draft | Sol → Luna | CC-006, UX spec | Commercial app shell и Camera Coach default route |
+| CC-007 | decomposed | Sol → Luna | CC-006, CC-008 | Commercial app shell и Camera Coach default route |
+| CC-007A | ready_after_CC-008 | Luna / Max | CC-006, CC-008 | Single-child shell routing contract без смены launch graph |
 | CC-008 | proposed_for_owner_acceptance | Sol | product baseline | 610-строчная UX state machine подготовлена; implementation gate ждёт осмысленного owner acceptance |
+| CC-008A | ready_after_CC-008 | Luna / Max | CC-008, CC-010B | Production-safe live surface только для уже доказуемых S04/S06/S07/S10c |
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
 | CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
 | CC-010B | accepted | Luna / Max | CC-010A | Детерминированный unregister/drain, release/re-register и stale-result fences; 23/23 focused tests прошли |
@@ -53,8 +55,8 @@
 | CC-012 | decomposed | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
 | CC-012A | accepted | Luna / Max | CC-003, CC-008 | 12 instrumentation owners, 59 active events, 63 properties; activation требует action + independent verification |
 | CC-013A | accepted | Luna / Max | CC-004 | ARVideoKit удалён; SnapKit 5.7.1 privacy bundle доказан в Release app |
-| CC-013B | blocked_by_owner | Sol → implementation | CC-004 | Provenance/keep-replace решения для llama, GGUF и Core ML |
-| CC-013C | blocked_by_owner | Sol → implementation | CC-004, CC-008 | Provenance или замена material images/USDZ |
+| CC-013B | partially_in_progress | Sol → Luna / Max | CC-004 | Техническая provenance llama выполняется; GGUF/Core ML и legal keep/replace остаются owner-gated |
+| CC-013C | partially_in_progress | Sol → Luna / Max | CC-004, CC-008 | Техническая source-linkage Circle выполняется; права/Person/images/замены остаются owner-gated |
 
 ## Активная работа
 
@@ -73,6 +75,10 @@
 - CC-011A: accepted, task `01a005c4-6a4d-7e63-a8d2-cd7199ea921f`, worker commit `a49c234`, accepted commit `c1e6646`; Sol повторил Release build, validator и negative self-test: ровно два manifests, 71 888 КБ, no unexpected paths.
 - CC-011B: accepted, task `01a005d8-ac86-7d02-98ec-8b41b398bbe8`, worker commit `1223e01`, accepted commit `f56b7b7`; Sol повторил полный public gate на clean HEAD: Debug/Release прошли, Release = 71 900 КБ, 2 privacy manifests, 5 material contributors, 5 known provenance blockers и 6/6 contamination fixtures.
 - CC-008: proposed evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; до owner acceptance UI source tasks не запускаются.
+- CC-007A: точный post-acceptance packet подготовлен: custom single-child container с системным `UITabBar`, ленивые routes, awaited teardown, blocked-transition rollback, rapid-tap coalescing и 10 focused routing tests. Пакет не меняет launch graph и не запускается до CC-008.
+- CC-008A: точный post-acceptance packet подготовлен: typed presentation только для S04/S06/S07/S10c, один lower-third coaching surface, action-linked guides, production-safe copy, accessibility и Reduce Motion/Transparency. Пакет не обещает subject clarification, verification, recording, Deep Review или persistence и не запускается до CC-008.
+- CC-013B1: Luna / Max task `01a00603-9514-7ea0-81f3-21361862bc87` выполняет offline-verifiable record, validator и fixture tests для точного `llama.xcframework`; legal/redistribution approval явно вне пакета.
+- CC-013C1: Luna / Max task `01a00603-9514-7ea0-81f3-2140ad032657` выполняет offline-verifiable source/export linkage record для `Circle.rcproject` и `Circle.usdz`; deterministic export recipe и creator/rights declaration явно вне пакета.
 
 ## Ворота следующего шага
 
@@ -80,7 +86,7 @@
 
 ## Внешние блокеры
 
-Сейчас внешних блокеров для M0 нет. Физические устройства, Apple Developer credentials, privacy processor/region и платная инфраструктура потребуются на последующих milestones.
+Единственный текущий product gate для коммерческого UI — owner acceptance CC-008 фразой `принимаю CC-008`. Для окончательного release candidate также потребуются asset/model rights decisions, физические устройства, Apple Developer credentials, privacy processor/region и платная инфраструктура; они не нужны для текущих технических пакетов.
 
 ## Resume hint
 

@@ -91,6 +91,19 @@
 - Verification: unit/navigation tests, true UI smoke when target exists, portrait/landscape launch checks and Scene Mode saved-project access.
 - Acceptance: no scene-first onboarding, no dead end, no regression in opening existing scenes, no vibe-code navigation patterns.
 
+### CC-007A — Single-active-route shell contract
+
+- Lane: Luna / Max after CC-008 owner acceptance.
+- State: `ready_after_CC-008`.
+- Dependencies: CC-006, CC-008.
+- Ownership: create only `shafinMultitool/CommercialShell/CommercialShellViewController.swift` and `shafinMultitoolTests/CommercialShellRoutingTests.swift`.
+- Non-edits: `SceneDelegate`, `ContentView`, camera/session internals, Scene Mode routers, recorder, project file and existing UI. This slice does not change the launch graph.
+- Contract: `CommercialSection` has exactly `camera`, `scenes`, `history`; `CommercialRoute` exposes one `viewController` and awaited `deactivateAndWait()` returning a typed released/blocked result.
+- Behavior: custom single-child container with a system `UITabBar`; Camera selected by default; Scenes and History are lazy; exactly one active child and retained route; selection is disabled during teardown; a blocked teardown retains the current child and selection; rapid taps coalesce to the last pending section; repeated current selection is a no-op.
+- Focused tests: default selection, lazy construction, one-child invariant, teardown-before-create ordering, blocked rollback, interaction lock, rapid-tap coalescing, repeat-selection no-op, child containment lifecycle and route release on container teardown.
+- Acceptance: deterministic routing contract passes focused tests and generic iOS build-for-testing without changing runtime launch behavior.
+- Rollback: remove the two owned files; no production route is connected by this slice.
+
 ## CC-008 — UI/UX state specification
 
 - Lane: Sol owns decisions; bounded Luna tasks may produce artifacts after specification.
@@ -99,6 +112,21 @@
 - Must specify: onboarding, permissions, live Coach, one-tip lifecycle, tap-to-clarify, action detected, before/after verification, keep-as-is, abstention, pause summary, recording, offline, thermal, server consent/timeout/quota, History if retained, Scene Mode entry and both orientations.
 - Visual constraints: native hierarchy, semantic system materials/colors, restrained motion/haptics, no dashboard-card grid, gradient-everything, fake AI glow, oversized marketing hero inside tools, decorative glass stacks or arbitrary pill overload.
 - Acceptance: every state has entry/exit, primary action, recovery, accessibility, analytics event and screenshot acceptance criteria; no open decision is delegated to Luna.
+
+### CC-008A — Truthful production live coaching surface
+
+- Lane: Luna / Max after CC-008 owner acceptance.
+- State: `ready_after_CC-008`.
+- Dependencies: CC-008, CC-010B.
+- Ownership: `CameraOverlayUXPresentation.swift`, `SuggestionChip.swift`, `OverlayView.swift`, `ZoomControlView.swift`, `CameraOverlayUXPresentationTests.swift` and at most one narrow rendering test under existing target membership.
+- Non-edits: `ContentView`, `CameraViewModel`, `CameraManager`, `AnalysisPipeline`, `RealtimeScheduler`, `SuggestionListView`, `SceneDelegate`, Scene Mode, recorder, Deep Review, persistence and `project.pbxproj`.
+- Supported product states: only live seeking S04, stable tip S06, explanation S07 and keep-as-is S10c, mapped from existing `LiveHint` data. Incomplete payload degrades to one safe line.
+- Explicitly unsupported in this slice: onboarding/permissions, subject clarification, action observation, before/after verification, pause summary, recording/save, Deep Review, thermal/offline policy, shell/history and paid state. UI and copy must not imply these exist.
+- Surface: one lower-third hierarchy with observation, one physical action and inline `Почему?`; no permanent grid/bounding box, confidence percentage, reserve badge, raw trace/pipeline terms, GOOD/REVIEW labels, card stack, fake AI glow or decorative gradients. Guides appear only when tied to the current action. Debug UI is compiled only under `#if DEBUG`.
+- Accessibility: stable identifiers, preview hidden from VoiceOver, icon controls labelled, 44×44 pt targets, Dynamic Type, Reduce Motion and Reduce Transparency behavior.
+- Tests: exhaustive presentation mapping, incomplete-payload fallback, negative forbidden-copy assertions (`%`, trace, semantic, reserve, GOOD/REVIEW), deterministic portrait/landscape rendering attachments and focused build/test verification.
+- Acceptance: the live surface communicates only evidence the current pipeline actually owns, remains legible in both orientations and passes the banned-pattern/screenshot gates from CC-008.
+- Rollback: revert only the owned presentation/UI files and focused tests; no camera lifecycle rollback is required.
 
 ## CC-009 — Camera/session owner and lifecycle audit
 
@@ -241,9 +269,25 @@
 - Scope: `llama.xcframework`, GGUF release candidate, `compact_neural_evidence_net`, DETR and NIMA.
 - Acceptance: each retained component has exact upstream source/checkpoint, conversion/build recipe, checksum and applicable licence/NOTICE evidence; otherwise its consumer and bundle payload are excluded or replaced.
 
+#### CC-013B1 — llama framework technical provenance
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Task: `01a00603-9514-7ea0-81f3-21361862bc87`.
+- Scope: exact upstream URL/commit, build recipe metadata, sorted file-hash record, MIT notice evidence, offline validator and contamination-style fixture tests for `Frameworks/llama.xcframework`.
+- Boundary: technical identity and reproducibility may become complete; legal/redistribution owner approval, GGUF selection and all Core ML keep/replace decisions remain open. The task must not claim App Store readiness.
+
 ### CC-013C — Product media provenance or replacement
 
 - Lane: Sol design packet, Luna implementation, owner approval.
 - State: `blocked_by_asset_owner_decisions`.
 - Scope: material app icon/logo/background images and Person/Circle USDZ assets.
 - Acceptance: source/creation/export and permission record per retained asset, or provenance-cleared replacement plus archive allowlist proof.
+
+#### CC-013C1 — Circle source/export technical linkage
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Task: `01a00603-9514-7ea0-81f3-2140ad032657`.
+- Scope: machine-checkable hashes and shared identifiers linking tracked `Circle.rcproject` to runtime `Circle.usdz`, plus offline validator and fixture tests.
+- Boundary: the packet must preserve the runtime asset, must not invent a deterministic export command, author or rights claim, and must leave creator/rights approval, Person provenance and image-family provenance open.
