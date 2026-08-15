@@ -8,23 +8,24 @@
 - Current branch/HEAD after the accepted correction wave: `store` at `6ff225d553ae654298dda70b9c779c1226c31800`.
 - Upstream: `origin/store`; the local product branch intentionally contains the accepted orchestration commits not yet pushed.
 - Main worktree: no active Git operation; CC-011E is committed and accepted at `6ff225d553ae654298dda70b9c779c1226c31800`.
-- Additional detached Codex worktrees are retained execution evidence; they are not integration owners.
+- Additional detached Codex worktrees are retained as historical execution evidence; they are not current worker routing or integration owners. A new thread continuing this checkout must use the project-local environment.
 - Push, PR, TestFlight/App Store submission, paid actions and legal decisions remain outside automatic authority.
 
 ## Durable goal-policy amendment
 
 The active system goal text is immutable through the goal API while it is active. This checkpoint and `10-intent.md` are the durable amendment to that active goal.
 
-- Every spawned subagent for this project MUST be GPT-5.6 Luna / Max. Never spawn a Sol, Terra or inherited-model subagent; if Luna / Max is unavailable, fail closed rather than substituting another model.
+- Every new executor, reviewer, correction-loop or verification worker MUST be a separate USER-VISIBLE Codex chat/thread, never a hidden collaboration subagent.
+- When continuing the current checkout, create the thread with `environment.type=local`, explicit `model=gpt-5.6-luna` and `thinking=max`; do not use hidden collaboration spawning.
 - The main chat is the sole Sol orchestrator.
-- Luna / Max owns all implementation, testing, correction loops, task-level independent review and verification.
-- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It MUST NOT spawn any Sol reviewer, advisor or implementer subagent.
-- Until explicit owner-confirmed adapter reinstall/reload, every spawn uses `fork_turns=none`, `model=gpt-5.6-luna`, `reasoning_effort=max`; do not use inherited/native Sol Advisor roles. The logical profile is `ready`/`valid`, but the installed adapter target state differs.
+- Visible Luna / Max threads own all implementation, testing, correction loops, task-level independent review and verification.
+- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It may create/manage visible Luna / Max threads, but MUST NOT create hidden workers or any Sol, Terra or inherited-model worker thread.
+- If a visible Luna / Max thread cannot be created, fail closed. The installed native adapter is not reinstalled/reloaded, so native Sol Advisor roles are not a valid execution path; never silently substitute a hidden task or another model.
 - Past Sol-review or Sol-verification statements below remain historical evidence and are preserved as historical evidence; they do not authorize current task-level Sol review or routing.
 
 ## Completed
 
-- Sol Advisor project profile is `ready`; explicit app-task lane is GPT-5.6 Luna / Max.
+- Sol Advisor logical project profile is `ready`; its Luna / Max app-task setting is descriptive configuration evidence, not the current hidden execution route.
 - Product/Deep Research baseline and M0 tracker are accepted.
 - Release research contamination is excluded: GGUF and DeviceBenchmark remain available to development paths but absent from Release.
 - Privacy manifest, deterministic clean-HEAD Debug/Release bundle gate and six contamination fixtures are accepted.

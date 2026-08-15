@@ -1,4 +1,4 @@
-# Автономная реализация: Sol Advisor и Luna task lane
+# Автономная реализация: Sol Advisor logical profile и visible Luna thread lane
 
 Статус: `active`.
 
@@ -6,15 +6,15 @@
 
 ## 1. Цель
 
-Основная Sol-сессия автономно доводит Camera Coach до проверенного release candidate: поддерживает исполнимый backlog, создаёт задачи для Luna / Max, контролирует зависимости, принимает structured handoff с task-level evidence, возвращает исправления исполнителям и продолжает работу до выполнения релизных ворот или появления настоящего внешнего блокера. Реализацию, тестирование, correction loops, task-level independent review и verification полностью выполняет Luna / Max.
+Основная Sol-сессия автономно доводит Camera Coach до проверенного release candidate: поддерживает исполнимый backlog, создаёт user-visible Codex threads для Luna / Max, контролирует зависимости, принимает structured handoff с task-level evidence, возвращает исправления в новые visible threads и продолжает работу до выполнения релизных ворот или появления настоящего внешнего блокера. Реализацию, тестирование, correction loops, task-level independent review и verification полностью выполняют видимые Luna / Max threads.
 
-Глобальная цель назначается main-chat Sol-оркестратору. Luna / Max получает только полностью специфицированные task packets и не выбирает архитектуру или следующий milestone.
+Глобальная цель назначается main-chat Sol-оркестратору. Видимый Luna / Max thread получает только полностью специфицированный task packet и не выбирает архитектуру или следующий milestone.
 
 ## Durable goal-policy boundary
 
 The active system goal text is immutable through the goal API while it is active. The durable goal-policy amendment is recorded in `docs/aegis/work/2026-08-15-camera-coach-release/10-intent.md` and `20-checkpoint.md`.
 
-The main chat is the sole Sol orchestrator. Every spawned subagent for this project MUST be GPT-5.6 Luna / Max. Never spawn a Sol, Terra or inherited-model subagent; if Luna / Max is unavailable, fail closed rather than substituting another model. The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only, and MUST NOT spawn any Sol reviewer, advisor or implementer subagent.
+The main chat is the sole Sol orchestrator. Every new executor, reviewer, correction-loop or verification worker MUST be a separate USER-VISIBLE Codex chat/thread, never a hidden collaboration subagent. When continuing the current checkout, create the thread with `environment.type=local`, explicit `model=gpt-5.6-luna` and `thinking=max`; hidden collaboration spawning is forbidden. If the visible Luna / Max thread cannot be created, fail closed rather than using a hidden task or substituting another model. The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only, and may create/manage visible Luna / Max threads; it MUST NOT create hidden workers or any Sol, Terra or inherited-model worker thread.
 
 ## 2. Зафиксированная конфигурация Sol Advisor
 
@@ -55,9 +55,9 @@ The main chat is the sole Sol orchestrator. Every spawned subagent for this proj
 }
 ```
 
-Luna / Max is the only current spawned-subagent route, for routine, high-complexity, implementation, review and verification work. The saved profile's `inherit` orchestrator is the main-chat Sol coordinator only; it is never a spawned-subagent route. There is no Terra/native or inherited-model subagent fallback. Unavailability of Luna / Max is a hard stop.
+The JSON above is the logical profile: its orchestrator remains `inherit` with a `gpt-5.6-sol` / `high` recommendation, while routine, high and advisor profiles remain `gpt-5.6-luna` / `max`, with fail-closed fallbacks. It does not authorize native role execution.
 
-Until the saved adapter is explicitly reinstalled/reloaded after owner confirmation, every spawn MUST use explicit args `fork_turns=none`, `model=gpt-5.6-luna`, `reasoning_effort=max`; do not use inherited/native Sol Advisor roles. The logical profile is `ready`/`valid`, but the installed adapter target state differs.
+The current execution route is a new user-visible Codex chat/thread for every executor, reviewer, correction loop and verification worker. When continuing the current checkout, its required settings are project-local (`environment.type=local`), explicit `model=gpt-5.6-luna`, `thinking=max`, and no hidden collaboration spawning. The installed native adapter is not reinstalled/reloaded, so native Sol/Terra/inherited-model roles are not a valid execution path; if the visible Luna / Max thread cannot be created, stop fail-closed.
 
 ## 3. Routing policy
 
@@ -72,11 +72,11 @@ Parent/main-chat Sol владеет только:
 - tracker;
 - одной bounded risk-based milestone acceptance после Luna / Max evidence.
 
-Parent/main-chat Sol does not perform task-level independent review or verification and MUST NOT spawn any Sol reviewer, advisor or implementer subagent. It may consume Luna / Max evidence for the single bounded milestone acceptance only.
+Parent/main-chat Sol does not perform task-level independent review or verification and MUST NOT create hidden workers or any Sol reviewer, advisor or implementer thread. It may create/manage visible Luna / Max threads and consume their evidence for the single bounded milestone acceptance only.
 
 ### Luna / Max
 
-Luna / Max — единственный spawned-subagent исполнитель и task-level reviewer/verifier для полностью специфицированных задач, включая:
+Luna / Max — единственный visible-thread исполнитель и task-level reviewer/verifier для полностью специфицированных задач, включая:
 
 - локальные компоненты и сервисы с утверждённым контрактом;
 - всю реализацию и тесты для утверждённого поведения;
@@ -86,7 +86,7 @@ Luna / Max — единственный spawned-subagent исполнитель 
 - механические миграции без открытой продуктовой или архитектурной развилки;
 - correction loops и task-level independent review/verification по конкретным замечаниям main-chat Sol.
 
-Каждая Luna / Max задача получает полный task packet и отдельный user-visible Codex task. Она не наследует контекст основной сессии, не меняет архитектуру, не расширяет scope и не подменяется другим model lane.
+Каждая Luna / Max задача получает полный task packet и отдельный user-visible Codex chat/thread с явными `environment.type=local` (если продолжается текущий checkout), `model=gpt-5.6-luna` и `thinking=max`. Она не наследует контекст основной сессии, не меняет архитектуру, не расширяет scope и не подменяется hidden/native/другим model lane.
 
 ### Terra / High (historical classification; disabled)
 
@@ -100,20 +100,20 @@ Luna / Max — единственный spawned-subagent исполнитель 
 - широкий refactor с несколькими runtime owners;
 - повторная неудача Luna, указывающая на недостаточную спецификацию или сложность, а не на механическую ошибку.
 
-Ни один пункт не разрешает запуск Terra: текущая политика запрещает Terra subagents, Sol subagents и inherited-model subagents. Если задача остаётся сложной, Luna / Max получает уточнённый packet или task-level correction loop; при недоступности Luna / Max работа завершается fail-closed.
+Ни один пункт не разрешает создание Terra worker thread: текущая политика запрещает Terra, Sol и inherited-model worker threads. Если задача остаётся сложной, создаётся новый visible Luna / Max thread с уточнённым packet или correction loop; при невозможности создать его работа завершается fail-closed.
 
 ## 4. Автономный цикл
 
 1. Sol читает product source of truth, текущий tracker, git state и evidence предыдущего gate.
 2. Sol раскрывает только ближайший milestone и создаёт готовые task packets.
-3. Независимые задачи с непересекающимся ownership могут выполняться Luna параллельно в отдельных worktrees.
+3. Независимые задачи с непересекающимся ownership могут выполняться в отдельных user-visible Luna / Max threads только при явно безопасном project-local checkout; thread, продолжающий текущий checkout, использует `environment.type=local`.
 4. Задачи с общими файлами или зависимостями выполняются последовательно.
-5. Luna / Max возвращает structured handoff с фактическими изменениями, task-level review/verification evidence, командами, результатами и git state.
-6. Luna / Max выполняет независимую task-level review/verification; parent/main-chat Sol принимает evidence, не создавая Sol reviewer/advisor/implementer subagent.
-7. Ошибки возвращаются в ту же Luna / Max задачу как точечная correction; новый model lane не создаётся ради обхода исправления.
+5. Видимый Luna / Max thread возвращает structured handoff с фактическими изменениями, task-level review/verification evidence, командами, результатами и git state.
+6. Отдельный visible Luna / Max thread выполняет независимую task-level review/verification; parent/main-chat Sol принимает evidence, не создавая скрытый или Sol/Terra/inherited-model worker.
+7. Ошибки передаются в новый visible Luna / Max correction thread как точечная correction; hidden task или новый запрещённый model lane не создаётся.
 8. После task-level verification parent/main-chat Sol обновляет tracker и запускает следующий ready packet.
 9. После завершения milestone parent/main-chat Sol выполняет только одну bounded risk-based milestone acceptance на Luna / Max evidence, обновляет планы и только затем раскрывает следующую волну.
-10. Цикл продолжается до release candidate или настоящего блокера, требующего внешнего действия, решения владельца или Luna / Max, причём недоступность Luna / Max означает fail-closed stop.
+10. Цикл продолжается до release candidate или настоящего блокера, требующего внешнего действия, решения владельца или Luna / Max; невозможность создать очередной visible Luna / Max thread означает fail-closed stop.
 
 ## 5. Планирование
 
@@ -127,7 +127,7 @@ Luna / Max — единственный spawned-subagent исполнитель 
 
 ## 6. Приёмка и полномочия
 
-Worker-отчёт считается утверждением, а не доказательством. Task-level статус получает `accepted` только после независимой review/verification Luna / Max; parent/main-chat Sol не выполняет task-level acceptance и может учесть evidence только в одной bounded risk-based milestone acceptance.
+Worker-отчёт считается утверждением, а не доказательством. Task-level статус получает `accepted` только после независимой review/verification в отдельном visible Luna / Max thread; parent/main-chat Sol не выполняет task-level acceptance и может учесть evidence только в одной bounded risk-based milestone acceptance.
 
 Luna / Max не могут без отдельного разрешения:
 
@@ -151,17 +151,15 @@ Luna / Max не могут без отдельного разрешения:
 
 Research остаётся provisional для willingness to pay, подписки, Deep Review superiority и численных quality thresholds. Эти пункты закрываются benchmark и instrumented beta, а не выдуманными значениями.
 
-## 8. Bootstrap после перезапуска Codex
+## 8. Resume/bootstrap после перезапуска Codex
 
 1. Проверить `get_setup_status` и `get_preferences` через MCP `sol-advisor`.
 2. Сохранить project-scoped logical preferences из раздела 2.
-3. Выполнить `render_client_adapter` для указанного workspace.
-4. Показать точные destination paths, полный content, warnings и install token.
-5. Установить adapter только после повторения владельцем точного confirmation token.
-6. Не активировать native Sol/Terra/inherited-model subagent roles; после установки adapter проверить, что единственный spawned-subagent route — GPT-5.6 Luna / Max с `max` effort.
-7. Проверить доступность Codex app-task tools и поддержку `gpt-5.6-luna` / `max`.
-8. Зафиксировать product baseline в Git: untracked документы и внешний research не видны изолированным worktrees.
-9. Создать tracker, первую волну задач и глобальную Sol-цель отдельными проверяемыми шагами.
+3. Не выполнять `render_client_adapter`, reinstall или reload: установленный native adapter остаётся без переустановки/перезагрузки, а его native role paths не являются допустимым execution path.
+4. Для каждого нового executor, reviewer, correction loop или verification worker создать отдельный USER-VISIBLE Codex chat/thread с `model=gpt-5.6-luna` и `thinking=max`; при продолжении текущего checkout выбрать project-local `environment.type=local`.
+5. Проверить, что видимый thread создан и доступен владельцу; если видимый Luna / Max thread недоступен, завершить работу fail-closed без hidden collaboration worker и без model substitution.
+6. Зафиксировать product baseline в Git: untracked документы и внешний research не видны изолированным worktrees.
+7. Создать tracker, первую волну задач и глобальную Sol-цель отдельными проверяемыми шагами.
 
 ## 9. Текущий технический статус
 
@@ -170,7 +168,7 @@ Research остаётся provisional для willingness to pay, подписк�
 - Каталог данных плагина приведён к обязательному приватному режиму `0700`.
 - MCP-инструменты Sol Advisor доступны.
 - Project-scoped logical configuration сохранена и повторно прочитана через MCP.
-- Историческая запись bootstrap: native adapter был установлен без предупреждений и резервных копий; имена ролей `sol_advisor_routine`, `sol_advisor_high` и `sol_advisor_advisor` не являются текущими subagent routes.
+- Историческая запись bootstrap: native adapter был установлен без предупреждений и резервных копий; имена ролей `sol_advisor_routine`, `sol_advisor_high` и `sol_advisor_advisor` не являются текущими worker-thread routes.
 - MCP-валидация после установки вернула `status: ready` и `valid: true`; фактические хеши всех трёх файлов совпадают с отрендеренным adapter.
-- Native role discovery и Codex app-task lane подтверждены рабочими задачами; текущая policy разрешает только GPT-5.6 Luna / Max для spawned subagents.
-- Автономный цикл запущен: main-chat Sol выдаёт contracts и обновляет tracker, а Luna / Max выполняет реализацию, тестирование, correction loops, task-level review и verification в отдельных worktrees.
+- Native role discovery и Codex app-task lane подтверждены историческими рабочими задачами; это не разрешает native или hidden execution. Текущая policy требует отдельные user-visible Codex threads с явными `model=gpt-5.6-luna` и `thinking=max`.
+- Автономный цикл запущен: main-chat Sol выдаёт contracts и обновляет tracker, а visible Luna / Max threads выполняют реализацию, тестирование, correction loops, task-level review и verification; при продолжении current checkout используется project-local environment.

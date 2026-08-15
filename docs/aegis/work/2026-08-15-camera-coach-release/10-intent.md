@@ -2,16 +2,18 @@
 
 ## Requested outcome
 
-Запустить автономный pipeline main-chat Sol-оркестратор → GPT-5.6 Luna / Max исполнители и довести всю систему до production-level, submission-ready App Store candidate по `docs/implementation/PRODUCTION_ACCEPTANCE.md`.
+Запустить автономный pipeline main-chat Sol-оркестратор → отдельные user-visible Codex threads GPT-5.6 Luna / Max и довести всю систему до production-level, submission-ready App Store candidate по `docs/implementation/PRODUCTION_ACCEPTANCE.md`.
 
 ## Durable orchestration policy amendment
 
 The active system goal text is immutable through the goal API while it is active. This file and `20-checkpoint.md` are the durable goal-policy amendment for the orchestration boundary.
 
-- Every spawned subagent for this project MUST use GPT-5.6 Luna / Max. Sol, Terra and inherited-model subagents are forbidden; if Luna / Max is unavailable, fail closed and do not substitute another model.
+- Every new executor, reviewer, correction-loop or verification worker for this project MUST be created as a separate USER-VISIBLE Codex chat/thread, never as a hidden collaboration subagent.
+- When continuing the current checkout, create that thread in the project-local environment (`environment.type=local`) with explicit `model=gpt-5.6-luna` and `thinking=max`. Hidden collaboration spawning is forbidden.
 - The main chat is the sole Sol orchestrator.
-- Luna / Max owns all implementation, testing, correction loops, task-level independent review and verification.
-- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It MUST NOT spawn any Sol reviewer, advisor or implementer subagent.
+- Visible Luna / Max threads own all implementation, testing, correction loops, task-level independent review and verification.
+- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It may create/manage visible Luna / Max threads, but MUST NOT create hidden workers or any Sol, Terra or inherited-model worker thread.
+- If a visible Luna / Max thread cannot be created, fail closed. Never silently use a hidden task/subagent or substitute another model.
 - Existing mentions of past Sol reviews or verification in checkpoint, status and backlog evidence are historical evidence only; they are not current routing permission and must not be rewritten as if they were current policy.
 
 ## Goal and stop condition
@@ -20,7 +22,7 @@ The active system goal text is immutable through the goal API while it is active
 - `blocked`: вся доступная безопасная независимая работа исчерпана, а продолжение требует отсутствующей внешней зависимости, полномочия, устройства, пользователя или решения владельца.
 - `needs-verification`: реализация существует, но benchmark/device/beta/privacy/legal/commercial/release evidence недостаточно; это не завершение цели.
 - `scope-exceeded`: продолжение требует push/PR, расходов, публикации, юридического решения, необратимой миграции или изменения утверждённого product scope.
-- `orchestration-stop`: если GPT-5.6 Luna / Max недоступен, работа останавливается в fail-closed состоянии; Sol не создаёт и не подменяет его Sol-, Terra- или inherited-model subagent.
+- `orchestration-stop`: если отдельный user-visible thread GPT-5.6 Luna / Max нельзя создать, работа останавливается в fail-closed состоянии; Sol не использует скрытый task/subagent и не подменяет его другой моделью или native role.
 
 ## Scope and non-goals
 

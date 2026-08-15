@@ -2,11 +2,13 @@
 
 ## Current orchestration evidence
 
-- Sol Advisor `get_setup_status`: `ready` on 15 August 2026.
-- Sol Advisor `validate_configuration`: `valid: true`.
+- Sol Advisor logical profile `get_setup_status`: `ready` on 15 August 2026.
+- Sol Advisor logical profile `validate_configuration`: `valid: true`.
 - Codex project ID: `ac45e24e-80ce-4fad-803a-731a0a84ee27`; `isGitRepository: true`.
-- Luna app-task toolchain exposed: list/create/wait/read/send tools; host advertises `gpt-5.6-luna` with `max`.
-- Saved project profile: orchestrator inherits parent; app-task lane is enabled at `gpt-5.6-luna` / `max`; fallback policy is fail-closed.
+- Historical Luna app-task evidence records host support for `gpt-5.6-luna` / `max`; it is not a current hidden execution route.
+- Saved logical profile: orchestrator inherits parent with a `gpt-5.6-sol` / `high` recommendation; routine, high and advisor profiles are `gpt-5.6-luna` / `max`; fallback policy is fail-closed.
+- Current execution success criterion: every new executor, reviewer, correction-loop or verification worker appears as a separate user-visible Codex chat/thread using the project-local environment when continuing this checkout, explicit `model=gpt-5.6-luna` and `thinking=max`. A missing visible thread is a stop, not permission to use a hidden task or substitute model.
+- The installed native adapter was not reinstalled/reloaded for this policy amendment; native role paths are not a valid execution path.
 - Current accepted baseline: `store` at `6ff225d553ae654298dda70b9c779c1226c31800`; CC-011E is committed and accepted.
 
 ## Accepted product and release evidence

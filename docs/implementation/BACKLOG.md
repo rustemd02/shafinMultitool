@@ -4,11 +4,12 @@
 
 ## Current orchestration amendment
 
-- Every spawned subagent for this project MUST use GPT-5.6 Luna / Max. Never spawn a Sol, Terra or inherited-model subagent; if Luna / Max is unavailable, fail closed rather than substituting another model.
+- Every new executor, reviewer, correction-loop or verification worker MUST be a separate USER-VISIBLE Codex chat/thread, never a hidden collaboration subagent.
+- When continuing the current checkout, create the thread in the project-local environment (`environment.type=local`) with explicit `model=gpt-5.6-luna` and `thinking=max`; hidden collaboration spawning is forbidden. If the visible Luna / Max thread cannot be created, fail closed rather than substituting a hidden task or another model.
 - The main chat is the sole Sol orchestrator.
-- Luna / Max owns all implementation, testing, correction loops, task-level independent review and verification.
-- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It MUST NOT spawn any Sol reviewer, advisor or implementer subagent.
-- Historical lane labels and evidence below are preserved for traceability. Past references to Sol review/verification or Terra routing are historical evidence only and are not current authorization for a Sol/Terra subagent.
+- Visible Luna / Max threads own all implementation, testing, correction loops, task-level independent review and verification.
+- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It may create/manage visible Luna / Max threads, but MUST NOT create hidden workers or any Sol, Terra or inherited-model worker thread. The installed native adapter is not reinstalled/reloaded, so native roles are not a valid execution path.
+- Historical lane labels and evidence below are preserved for traceability. Past references to Sol review/verification or Terra routing are historical evidence only and are not current authorization for a Sol/Terra worker thread.
 - The active system goal text is immutable through the goal API while active; the durable amendment is recorded in `docs/aegis/work/2026-08-15-camera-coach-release/10-intent.md` and `20-checkpoint.md`.
 
 ## CC-000 — синхронизировать Product и Deep Research
@@ -155,7 +156,7 @@
 
 ## CC-009 — Camera/session owner and lifecycle audit
 
-- Lane: Luna / Max audit; implementation remains Luna / Max under the current hard policy. The former Terra / High classification is historical/disabled and is not a spawn route.
+- Lane: Luna / Max audit; implementation remains Luna / Max under the current hard policy. The former Terra / High classification is historical/disabled and is not a current visible-thread route.
 - State: `accepted`.
 - Ownership: create only `docs/implementation/audits/camera-session-ownership.md`.
 - Read: `CameraManager`, `CameraViewModel`, recording service, AR camera shell/container, overlays and app lifecycle/orientation hooks.
@@ -166,7 +167,7 @@
 
 ## CC-010 — Camera foundation migration program
 
-- Lane: Luna / Max for bounded mechanics and all current spawned work. The former Terra / High recorder/route-integration route is historical/disabled; no Terra subagent may be spawned under the current hard policy.
+- Lane: Luna / Max for bounded mechanics and all current worker threads. The former Terra / High recorder/route-integration route is historical/disabled; no Terra worker thread may be created under the current hard policy.
 - State: `decomposed`.
 - Dependencies: CC-009; individual slices below add their own gates.
 - Objective: one camera/session owner with reliable lifecycle, recording, rotation and resource cleanup.
@@ -280,7 +281,7 @@
 
 ### CC-010E — Exclusive route lease integration
 
-- Lane: disabled historical Terra / High classification for the one-time cross-route migration; current and subsequent shell slices remain Luna / Max, with no Terra spawn route.
+- Lane: disabled historical Terra / High classification for the one-time cross-route migration; current and subsequent shell slices remain visible Luna / Max threads, with no Terra worker-thread route.
 - State: `blocked_by_CC-007`.
 - Objective: commercial shell owns a serialized `none / cameraCoach / sceneMode` lease and never activates a new route before the previous owner releases.
 

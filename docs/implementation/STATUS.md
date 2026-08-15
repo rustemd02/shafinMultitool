@@ -4,16 +4,18 @@
 
 ## Глобальная цель
 
-Автономно довести всю систему до production-level, submission-ready App Store candidate по `docs/implementation/PRODUCTION_ACCEPTANCE.md`. Camera Coach остаётся первичным продуктом, Scene Mode — вторичным; parent/main-chat Sol владеет архитектурой, low-level task contracts, tracker и одной bounded risk-based milestone acceptance, а GPT-5.6 Luna / Max владеет всей реализацией, тестированием, correction loops, task-level independent review и verification. Task/milestone/build completion не закрывают глобальную цель. Push, PR, платные действия, TestFlight/App Store submission и юридические решения не разрешены автоматически.
+Автономно довести всю систему до production-level, submission-ready App Store candidate по `docs/implementation/PRODUCTION_ACCEPTANCE.md`. Camera Coach остаётся первичным продуктом, Scene Mode — вторичным; parent/main-chat Sol владеет архитектурой, low-level task contracts, tracker и одной bounded risk-based milestone acceptance, а отдельные user-visible Codex threads GPT-5.6 Luna / Max владеют всей реализацией, тестированием, correction loops, task-level independent review и verification. Task/milestone/build completion не закрывают глобальную цель. Push, PR, платные действия, TestFlight/App Store submission и юридические решения не разрешены автоматически.
 
 ## Hard orchestration policy (current)
 
-- Every spawned subagent for this project MUST use GPT-5.6 Luna / Max. Never spawn a Sol, Terra or inherited-model subagent; if Luna / Max is unavailable, fail closed rather than substituting another model.
+- Every new executor, reviewer, correction-loop or verification worker MUST be a separate USER-VISIBLE Codex chat/thread, never a hidden collaboration subagent.
+- When continuing the current checkout, create the thread in the project-local environment (`environment.type=local`) with explicit `model=gpt-5.6-luna` and `thinking=max`; hidden collaboration spawning is forbidden.
 - The main chat is the sole Sol orchestrator.
-- Luna / Max owns all implementation, testing, correction loops, task-level independent review and verification.
-- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It MUST NOT spawn any Sol reviewer, advisor or implementer subagent.
+- Visible Luna / Max threads own all implementation, testing, correction loops, task-level independent review and verification.
+- The parent/main-chat Sol may own architecture, low-level task contracts, the tracker and one bounded risk-based milestone acceptance only. It may create/manage visible Luna / Max threads, but MUST NOT create hidden workers or any Sol, Terra or inherited-model worker thread.
+- If a visible Luna / Max thread cannot be created, fail closed; never silently use a hidden task/subagent or substitute another model. The installed native adapter is not reinstalled/reloaded, so native roles are not a valid execution path.
 - The active system goal text is immutable through the goal API while active; the durable goal-policy amendment is recorded in `docs/aegis/work/2026-08-15-camera-coach-release/10-intent.md` and `20-checkpoint.md`.
-- Existing historical queue labels and evidence that mention past Sol reviews or verification are preserved as historical evidence only. They are not current routing permission and do not authorize task-level Sol review or any Sol/Terra subagent.
+- Existing historical queue labels and evidence that mention past Sol reviews or verification are preserved as historical evidence only. They are not current routing permission and do not authorize task-level Sol review or any Sol/Terra worker thread.
 
 ## Текущий milestone
 
@@ -39,7 +41,7 @@
 
 ## Очередь первой волны
 
-The queue below preserves historical lane labels and evidence for traceability. The current hard policy above supersedes any historical `Sol verification`, `Sol review`, `Terra / High` or similar wording: all current/future spawned work, including review and verification, is Luna / Max only; the parent/main-chat Sol has only the bounded milestone acceptance described above.
+The queue below preserves historical lane labels and evidence for traceability. The current hard policy above supersedes any historical `Sol verification`, `Sol review`, `Terra / High` or similar wording: all current/future executor, reviewer, correction-loop and verification work must be separate visible Luna / Max threads; the parent/main-chat Sol has only the bounded milestone acceptance described above.
 
 | ID | Состояние | Lane | Зависимости | Краткий результат |
 | --- | --- | --- | --- | --- |
@@ -83,7 +85,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 
 ## Активная работа
 
-- Luna / Max выполняет реализацию, коррекции и основное тестирование; Sol ограничен архитектурными решениями, трекером и короткой risk-based приёмкой интегрированного evidence, без дублирования каждого worker run.
+- Visible Luna / Max threads выполняют реализацию, коррекции и основное тестирование; Sol ограничен архитектурными решениями, трекером и короткой risk-based приёмкой интегрированного evidence, без дублирования каждого worker run.
 - Canonical clean release gate прошёл на `store` / `6ff225d553ae654298dda70b9c779c1226c31800`; all stages passed: offline llama and Circle provenance, privacy self-tests, Debug build-for-testing, Release build и bundle validation; Release 72 032 KiB, 2 privacy manifests, only SnapKit.framework and llama.framework, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures.
 - Raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed, 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. Классы отказов: unit-hosted pseudo-UI без target app, default-запуск opt-in model/physical benchmark, Settings force unwraps, real-image Camera Coach evaluation с simulator Vision/Espresso и отсутствующими never-tracked assets, legacy parser/persistence/fixture failures.
 - CC-011E accepted at `6ff225d553ae654298dda70b9c779c1226c31800`: E1 opt-in gates; E2 metadata persistence и dialogue parser/subtitle presentation; E3 neural/domain fixture corrections; E4 DeepCritic/Hybrid/Semantic truth. Интегрированный Luna gate: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Дополнительно: Scene 18/18 два последовательных раза и DB performance 4/4; DeepCritic 20/20; subtitle/config 22 с одним intended skip; Hybrid 7/7; Semantic 8/8.
@@ -119,7 +121,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 
 ## Ворота следующего шага
 
-Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008 и CC-011E приняты; Luna / Max теперь может запускать CC-007A и CC-008A. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
+Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008 и CC-011E приняты; новая user-visible Luna / Max thread теперь может запускать CC-007A и CC-008A. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
 
 ## Внешние блокеры
 
@@ -127,4 +129,4 @@ CC-008 больше не блокирует коммерческий UI. CC-013B
 
 ## Resume hint
 
-При возобновлении прочитать этот файл, `docs/app-store-product-plan.md`, `docs/implementation/BACKLOG.md`, затем сравнить Git HEAD/status с последним принятым task evidence. Не продолжать из памяти.
+При возобновлении прочитать этот файл, `docs/app-store-product-plan.md`, `docs/implementation/BACKLOG.md`, затем сравнить Git HEAD/status с последним принятым task evidence. Перед любой новой реализацией, review, correction loop или verification создать отдельный user-visible Codex thread в project-local environment (`environment.type=local`) с `model=gpt-5.6-luna` и `thinking=max`; если такой thread нельзя создать, остановиться fail-closed и не использовать hidden/native route. Не продолжать из памяти.
