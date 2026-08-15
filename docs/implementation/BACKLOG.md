@@ -310,7 +310,8 @@
 #### CC-013C1 — Circle source/export technical linkage
 
 - Lane: Luna / Max, Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a00603-9514-7ea0-81f3-2140ad032657`.
-- Scope: machine-checkable hashes and shared identifiers linking tracked `Circle.rcproject` to runtime `Circle.usdz`, plus offline validator and fixture tests.
-- Boundary: the packet must preserve the runtime asset, must not invent a deterministic export command, author or rights claim, and must leave creator/rights approval, Person provenance and image-family provenance open.
+- Scope: machine-checkable hashes, member sets, metadata predicates and shared UUID establish repository correlation between tracked `Circle.rcproject` and runtime `Circle.usdz`; offline validator and 10 fixtures protect those exact bytes and the evidence boundary.
+- Boundary: repository correlation does not prove source-to-export causality. Deterministic export command, author/rights/legal approval, Person provenance and image-family provenance remain open.
+- Evidence: worker amended commit `81f50c2`, accepted commit `c8601ba`; Sol reviewer returned no remaining findings after correction, and main repeated 10/10 pytest plus the real validator.
