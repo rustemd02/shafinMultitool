@@ -14,9 +14,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F45CE91AABA41FC6A2D62AA39C6E4FBD"
-               BuildableName = "ARVideoKit.framework"
-               BlueprintName = "ARVideoKit"
+               BlueprintIdentifier = "8A8DB685241263AFDF5E6B20FE67B93A"
+               BuildableName = "SnapKit_Privacy.bundle"
+               BlueprintName = "SnapKit-SnapKit_Privacy"
                ReferencedContainer = "container:Pods.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
