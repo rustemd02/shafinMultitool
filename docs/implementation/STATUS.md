@@ -57,6 +57,7 @@
 | CC-012A | accepted | Luna / Max | CC-003, CC-008 | 12 instrumentation owners, 59 active events, 63 properties; activation требует action + independent verification |
 | CC-013A | accepted | Luna / Max | CC-004 | ARVideoKit удалён; SnapKit 5.7.1 privacy bundle доказан в Release app |
 | CC-013B | partially_in_progress | Sol → Luna / Max | CC-004 | Техническая provenance llama выполняется; GGUF/Core ML и legal keep/replace остаются owner-gated |
+| CC-013B2 | proposed_for_owner_acceptance | Sol → Luna / Max | CC-004 | Минимальный RC без third-party Core ML; Vision/saliency + deterministic critique сохраняются |
 | CC-013C | partially_in_progress | Sol → Luna / Max | CC-004, CC-008 | Техническая source-linkage Circle выполняется; права/Person/images/замены остаются owner-gated |
 
 ## Активная работа
@@ -81,6 +82,7 @@
 - CC-013B1: Luna / Max task `01a00603-9514-7ea0-81f3-21361862bc87` выполняет offline-verifiable record, validator и fixture tests для точного `llama.xcframework`; legal/redistribution approval явно вне пакета.
 - CC-013C1: Luna / Max task `01a00603-9514-7ea0-81f3-2140ad032657` выполняет offline-verifiable source/export linkage record для `Circle.rcproject` и `Circle.usdz`; deterministic export recipe и creator/rights declaration явно вне пакета.
 - CC-010C-A: Luna / Max task `01a00609-a689-7373-b2d4-d0eb245a6c66` выполняет policy-neutral serialized recorder core и fake-driven concurrency tests. `CameraService`, Scene/Camera call sites, Photos, permission UI и runtime behavior не входят в пакет.
+- CC-013B2: source audit исправил прежнее предположение: DETR и NIMA компилируются в Release app-root `.mlmodelc`; исключённый `Resources/Models` к ним не относится. Sol рекомендует RC без DETR/NIMA/compact neural fusion: сохранить Apple Vision/saliency и deterministic critique, явно отключить production consumers и сделать Release gate zero-Core-ML. Implementation ждёт owner acceptance, потому что продукт осознанно теряет object-aware DETR labels и model aesthetic score.
 
 ## Ворота следующего шага
 

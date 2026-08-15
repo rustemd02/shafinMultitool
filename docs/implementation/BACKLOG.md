@@ -289,6 +289,17 @@
 - Scope: exact upstream URL/commit, build recipe metadata, sorted file-hash record, MIT notice evidence, offline validator and contamination-style fixture tests for `Frameworks/llama.xcframework`.
 - Boundary: technical identity and reproducibility may become complete; legal/redistribution owner approval, GGUF selection and all Core ML keep/replace decisions remain open. The task must not claim App Store readiness.
 
+#### CC-013B2 — Exclude unproven third-party Core ML from minimal RC
+
+- Lane: Sol decision packet, owner acceptance, then Luna / Max implementation.
+- State: `proposed_for_owner_acceptance`.
+- Decision: Camera Coach RC ships without DETR object-aware labels, NIMA aesthetic score and compact neural fusion. Apple Vision subject/saliency and deterministic critique remain production signals; absence is represented as unavailable, never fabricated zero/positive confidence.
+- Evidence: DETR and NIMA live below `Multitool2Module/Models/CoreML`, compile to app-root `.mlmodelc` and are currently required by the Release validator. The absent compact model already defaults unavailable. DETR has a no-crash nil fallback but an insufficiently proven output/confidence contract; NIMA nil/zero/fallback semantics can change preserve/correct decisions inconsistently, and a thrown Vision request can omit its callback and leave pause analysis waiting indefinitely.
+- Ownership after acceptance: exact two model exclusions in `project.pbxproj`; explicit nil/off production dependencies in `AnalysisPipeline.swift`; zero-Core-ML Release allowlist and DETR/NIMA/compact contamination fixtures; focused presentation/domain/neural/fusion/critique tests.
+- Non-goals: replacement model search, network inference, provenance/legal approval, new advice semantics or removal of Apple Vision/saliency.
+- Acceptance: default pipeline requests none of the three models; missing aesthetic/object/neural signals remain unavailable; hard deterministic technical advice is not suppressed by fake scores; Vision subject/saliency paths survive; Release contains zero `.mlmodelc`/`.mlpackage`; focused suites and full release gate pass.
+- Owner gate: accept the trade-off that minimal RC has no object-aware DETR labels, no model aesthetic score and no neural fusion. If object-aware coaching is mandatory, DETR needs a separate provenance, output-contract and calibration program instead of this slice.
+
 ### CC-013C — Product media provenance or replacement
 
 - Lane: Sol design packet, Luna implementation, owner approval.
