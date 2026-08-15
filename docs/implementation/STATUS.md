@@ -34,24 +34,25 @@
 | CC-000 | accepted | Sol | — | Product/research baseline синхронизирован |
 | CC-001 | in_progress | Luna / Max | bootstrap commit | Release bundle inventory и allowlist proposal |
 | CC-002 | draft | Luna / Max | CC-001 | Benchmark/test assets исключены из Release без поломки DEBUG harness |
-| CC-003 | in_progress | Luna / Max | bootstrap commit | Privacy/permission inventory и executable gap list |
+| CC-003 | accepted | Luna / Max | bootstrap commit | Все permission/data paths инвентаризированы; подтверждены отсутствующие denied/restricted/Settings flows и privacy manifest |
 | CC-004 | ready | Luna / Max | bootstrap commit | Dependency/model/media provenance inventory |
-| CC-005 | in_progress | Luna / Max | bootstrap commit | Test topology и UI-test target implementation plan |
+| CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
 | CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
 | CC-007 | draft | Sol → Luna | CC-006, UX spec | Commercial app shell и Camera Coach default route |
 | CC-008 | in_progress | Sol | product baseline | UI/UX state specification без vibe-code patterns |
-| CC-009 | ready | Luna / Max | bootstrap commit | Camera/session owner and lifecycle audit |
+| CC-009 | in_progress | Luna / Max | CC-003, CC-006 | Camera/session owner and lifecycle audit запущен из принятой store baseline |
 | CC-010 | draft | Terra / High | CC-009 | Camera foundation migration plan при подтверждённой сложности |
 | CC-011 | draft | Luna / Max | CC-001, CC-005 | Reproducible local/CI release gates |
 | CC-012 | draft | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
 
 ## Активная работа
 
-- Sol: принял CC-006 после проверки diff, исходных ссылок и повторной generic iOS test build; освободившийся слот передаётся CC-009.
-- CC-001: task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worktree `/Users/unterlantas/.codex/worktrees/f179/shafinMultitool`.
-- CC-003: task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worktree `/Users/unterlantas/.codex/worktrees/5496/shafinMultitool`.
-- CC-005: task `01a0055c-a4b4-70e2-bb46-5381f4f0acf1`, worktree `/Users/unterlantas/.codex/worktrees/f619/shafinMultitool`.
+- Sol: принял CC-003, CC-005 и CC-006 после diff/source/build checks; CC-001 возвращён тому же worker на сверку clean worktree с локальным ignored GGUF.
+- CC-001: correction in progress, task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worktree `/Users/unterlantas/.codex/worktrees/f179/shafinMultitool`; parent Release partial app = 1 198 316 КБ, GGUF = 1 094 912 КБ, Release compile blocker воспроизведён.
+- CC-003: accepted, task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worker commit `a91a290`, accepted commit `e3b3712`, evidence `docs/implementation/audits/privacy-permissions-inventory.md`.
+- CC-005: accepted, task `01a0055c-a4b4-70e2-bb46-5381f4f0acf1`, worker commit `05cad36`, accepted commit `e8f8615`, evidence `docs/implementation/audits/test-topology.md`.
 - CC-006: accepted, task `01a0055c-a4b4-70e2-bb46-536ebdfd5585`, worker commit `caefe22`, accepted commit `67ede42`, evidence `docs/implementation/audits/runtime-entry-routing.md`.
+- CC-009: task `01a00572-424a-7211-85df-c1719caf6108`, worktree `/Users/unterlantas/.codex/worktrees/39f4/shafinMultitool`.
 
 ## Ворота следующего шага
 

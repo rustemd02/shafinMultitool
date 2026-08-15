@@ -35,13 +35,14 @@
 ## CC-003 — Privacy and permissions inventory
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `accepted`.
 - Ownership: create only `docs/implementation/audits/privacy-permissions-inventory.md`.
 - Read: usage descriptions, camera/microphone/Speech/Photos call sites, telemetry/offloading code, dependencies and App Store privacy requirements already cited in product docs.
 - Must report per permission/data type: trigger, purpose, timing, allowed/denied/restricted behavior, stored/transmitted fields, current user-facing copy, missing tests, privacy manifest/API-reason impact, and exact production owner candidate.
 - Must not invent processor, region, retention or legal claims.
 - Verification: exhaustive `rg` call-site queries recorded; plist validation; `git diff --check`.
 - Acceptance: every permission and external-data path has a disposition and executable follow-up; unknowns are explicit.
+- Evidence: `docs/implementation/audits/privacy-permissions-inventory.md`; accepted after path-only diff, plist validation and parent negative/call-site checks.
 
 ## CC-004 — Dependency, model and media provenance inventory
 
@@ -57,12 +58,13 @@
 ## CC-005 — Test topology and UI-test target plan
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `accepted`.
 - Ownership: create only `docs/implementation/audits/test-topology.md`.
 - Read: Xcode targets/schemes, all test files, test host settings, benchmark/UI-labelled tests and existing test documentation.
 - Must report: which tests compile/run under which target; UI tests incorrectly living in unit target; conditional skips/false-green risks; simulator/device requirements; exact new UI-test target/file membership/scheme plan; minimal CI matrix.
 - Verification: `xcodebuild -list`; build-for-testing; targeted dry enumeration where supported; `git diff --check`.
 - Acceptance: report provides a mechanical implementation packet for a true UI-test target and separates unit, integration, benchmark and device-only gates.
+- Evidence: `docs/implementation/audits/test-topology.md`; accepted after path-only diff, generic iOS test build and parent workspace enumeration.
 
 ## CC-006 — Runtime entry and legacy route audit
 
@@ -98,7 +100,7 @@
 ## CC-009 — Camera/session owner and lifecycle audit
 
 - Lane: Luna / Max audit; implementation may route to Terra / High.
-- State: `ready`.
+- State: `in_progress`.
 - Ownership: create only `docs/implementation/audits/camera-session-ownership.md`.
 - Read: `CameraManager`, `CameraViewModel`, recording service, AR camera shell/container, overlays and app lifecycle/orientation hooks.
 - Must report: session creation/destruction, queues/actors, frame consumers, record/save owner, background/foreground behavior, rotation path, permission assumptions, thermal/memory controls, duplicated ownership and concurrency risks.
