@@ -1,0 +1,231 @@
+{
+  "build": {
+    "architectures": {
+      "ios-arm64": [
+        "arm64"
+      ],
+      "ios-arm64_x86_64-simulator": [
+        "arm64",
+        "x86_64"
+      ]
+    },
+    "cmake_options": {
+      "BUILD_SHARED_LIBS": false,
+      "GGML_BLAS_DEFAULT": true,
+      "GGML_METAL": true,
+      "GGML_METAL_EMBED_LIBRARY": true,
+      "GGML_METAL_USE_BF16": true,
+      "GGML_NATIVE": false,
+      "GGML_OPENMP": false,
+      "LLAMA_BUILD_EXAMPLES": false,
+      "LLAMA_BUILD_SERVER": false,
+      "LLAMA_BUILD_TESTS": false,
+      "LLAMA_BUILD_TOOLS": false,
+      "LLAMA_OPENSSL": false
+    },
+    "command": "./build-ios-only.sh",
+    "configuration": "Release",
+    "generator": "Xcode",
+    "minimum_os_version": "16.4",
+    "output": "build-apple/llama.xcframework",
+    "platform": "iOS",
+    "source_checkout": "llama.cpp",
+    "source_script": "build-ios-only.sh",
+    "source_script_sha256": "fba0661d8efc621b1116c0d3365e43fd536833af61417424aa363dd3cccf8673",
+    "preserved_recipe_path": "docs/implementation/provenance/llama/build-ios-only.sh",
+    "preserved_recipe_sha256": "fba0661d8efc621b1116c0d3365e43fd536833af61417424aa363dd3cccf8673"
+  },
+  "build_metadata": {
+    "device": {
+      "architectures": [
+        "arm64"
+      ],
+      "build_info_path": "build-ios-device/common/build-info.cpp",
+      "build_info_sha256": "2db48f66ed50cc61c52f5925aba2180d169bad5a5841731ded94d4971830da68",
+      "build_target": "iOS ",
+      "build_number": 1,
+      "cmake_generator": "Xcode",
+      "compiler": "AppleClang 17.0.0.17000319",
+      "configuration": "Release",
+      "deployment_target": "16.4",
+      "llama_commit": "8f974d2",
+      "sysroot": "iphoneos",
+      "system_name": "iOS"
+    },
+    "simulator": {
+      "architectures": [
+        "arm64",
+        "x86_64"
+      ],
+      "build_info_path": "build-ios-sim/common/build-info.cpp",
+      "build_info_sha256": "2db48f66ed50cc61c52f5925aba2180d169bad5a5841731ded94d4971830da68",
+      "build_target": "iOS ",
+      "build_number": 1,
+      "cmake_generator": "Xcode",
+      "compiler": "AppleClang 17.0.0.17000319",
+      "configuration": "Release",
+      "deployment_target": "16.4",
+      "llama_commit": "8f974d2",
+      "sysroot": "iphonesimulator",
+      "system_name": "iOS"
+    }
+  },
+  "build_observation": {
+    "current_host_mismatch": true,
+    "rebuild_reason": "No clean rebuild was run; the current host toolchain and SDK metadata differ from the historical build output metadata.",
+    "rebuild_status": "not_proven",
+    "status": "existing_build_output_match"
+  },
+  "component": "llama.xcframework",
+  "license": {
+    "notice_path": "docs/implementation/third-party-notices/llama-cpp/LICENSE",
+    "notice_sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+    "spdx_id": "MIT",
+    "upstream_path": "LICENSE",
+    "upstream_sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+  },
+  "manifest": {
+    "algorithm": "sha256",
+    "file_count": 25,
+    "files": [
+      {
+        "path": "Info.plist",
+        "sha256": "d627efae4a23e59d7c007e3de77109b1a616512a17087715e8c2caeca2c43a7d"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/ggml-alloc.h",
+        "sha256": "3793a2175be355619cc426982706b7fa94ad801b66d2aeef4b95e68c434ba0ef"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/ggml-backend.h",
+        "sha256": "f7f511270a8260859146e87544f64ef97f80e98bff179ae3ab02ca27cf7299c7"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/ggml-blas.h",
+        "sha256": "e76cb8594dc9866d99e7d63191b9fff6ab8b50244b4a28ce3af0f962964a6b5b"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/ggml-cpu.h",
+        "sha256": "1aafe97e576ea38c0da57517fb2492955d0b69c1a799842481fc069d6d9d28ef"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/ggml-metal.h",
+        "sha256": "322f36cd30f3e9e7aad7b5b9bc63078012fd0b7706ac4e24f5721b604f3d8980"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/ggml-opt.h",
+        "sha256": "3586de1bc8a934b5c72339e2b6937b0641e8f149b512231e666f67de0736eea2"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/ggml.h",
+        "sha256": "ee0efed8e051df66838aa6a72296bc9bb8a5f21a68afc866e028e5aae8375f89"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/gguf.h",
+        "sha256": "d2eec8b938aa04ccec9bc4ce8a6a6dcf70d942c37d2bb3113e426d9307d51385"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Headers/llama.h",
+        "sha256": "ea3739fb87d7c676dda746bdd0e9fa26ea6cb93a467ad2dc300e56ea1d7062eb"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Info.plist",
+        "sha256": "37905f3a249c754041bab4c4c84c7089566e8feecbc8e70a4e4dec0246147af1"
+      },
+      {
+        "path": "ios-arm64/llama.framework/Modules/module.modulemap",
+        "sha256": "5bbb098702d1dddc5a580341eeef870637dfeff73b56fa0ae2ae448800fa2810"
+      },
+      {
+        "path": "ios-arm64/llama.framework/llama",
+        "sha256": "a1b7a3743d31f19dce2bffd9cf8ea873c43449dd3c8cc12d03aff698611a2066"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/ggml-alloc.h",
+        "sha256": "3793a2175be355619cc426982706b7fa94ad801b66d2aeef4b95e68c434ba0ef"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/ggml-backend.h",
+        "sha256": "f7f511270a8260859146e87544f64ef97f80e98bff179ae3ab02ca27cf7299c7"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/ggml-blas.h",
+        "sha256": "e76cb8594dc9866d99e7d63191b9fff6ab8b50244b4a28ce3af0f962964a6b5b"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/ggml-cpu.h",
+        "sha256": "1aafe97e576ea38c0da57517fb2492955d0b69c1a799842481fc069d6d9d28ef"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/ggml-metal.h",
+        "sha256": "322f36cd30f3e9e7aad7b5b9bc63078012fd0b7706ac4e24f5721b604f3d8980"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/ggml-opt.h",
+        "sha256": "3586de1bc8a934b5c72339e2b6937b0641e8f149b512231e666f67de0736eea2"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/ggml.h",
+        "sha256": "ee0efed8e051df66838aa6a72296bc9bb8a5f21a68afc866e028e5aae8375f89"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/gguf.h",
+        "sha256": "d2eec8b938aa04ccec9bc4ce8a6a6dcf70d942c37d2bb3113e426d9307d51385"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Headers/llama.h",
+        "sha256": "ea3739fb87d7c676dda746bdd0e9fa26ea6cb93a467ad2dc300e56ea1d7062eb"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Info.plist",
+        "sha256": "37905f3a249c754041bab4c4c84c7089566e8feecbc8e70a4e4dec0246147af1"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/Modules/module.modulemap",
+        "sha256": "5bbb098702d1dddc5a580341eeef870637dfeff73b56fa0ae2ae448800fa2810"
+      },
+      {
+        "path": "ios-arm64_x86_64-simulator/llama.framework/llama",
+        "sha256": "ad72b38fc0c5073aa90794506c4abdd68b4423e54b5702eb6d5e18841c95054a"
+      }
+    ],
+    "path_format": "posix-relative",
+    "root": "Frameworks/llama.xcframework"
+  },
+  "redistribution": {
+    "scope": "exact vendored binary and applicable upstream notice",
+    "status": "owner_approval_pending"
+  },
+  "schema_version": 1,
+  "technical_provenance": {
+    "offline_gate": "manifest-and-license-hash",
+    "status": "traceability_complete_rebuild_unproven",
+    "upstream_check": "explicit-checkout-only"
+  },
+  "tool_metadata": {
+    "apple_clang": "AppleClang 17.0.0.17000319",
+    "cmake_executable": "/opt/homebrew/bin/cmake",
+    "cmake_generator": "Xcode",
+    "current_host": {
+      "compiler": "AppleClang 21.0.0 (clang-2100.1.1.101)",
+      "device_sdk": "iPhoneOS26.5",
+      "simulator_sdk": "iPhoneSimulator26.5",
+      "xcode_build": "17F113",
+      "xcode_version": "26.6"
+    },
+    "historical": {
+      "cmake_version": "4.2.3",
+      "compiler": "AppleClang 17.0.0.17000319",
+      "device_sdk": "iPhoneOS26.0",
+      "simulator_sdk": "iPhoneSimulator26.0",
+      "xcode_build": "17A324",
+      "xcode_version": "26.0"
+    }
+  },
+  "upstream": {
+    "commit": "8f974d2392da4e6fa422a67050e90f1471d72966",
+    "remote": "origin",
+    "url": "https://github.com/ggerganov/llama.cpp.git"
+  },
+  "vendored_path": "Frameworks/llama.xcframework"
+}
