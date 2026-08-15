@@ -176,12 +176,13 @@
 #### CC-010A1 — Failed-start registration rollback
 
 - Lane: Luna / Max after CC-010B1 acceptance; Sol verification and acceptance.
-- State: `in_progress`.
+- State: `accepted`.
 - Task: `01a00683-dd24-72b1-a914-302c7b59db9f`.
 - Ownership: `CameraViewModel.swift` and a new isolated `CameraViewModelLifecycleTests.swift`; no `AnalysisPipeline`, `CameraManager`, UI or route edits.
 - Objective: when an actual current camera start fails after pipeline registration, await a cleanup boundary that releases those registrations and session-local presentation/evidence before publishing the typed failure; a superseded start must not release a newer retry registration.
 - Contract: retries and `releaseAndWait` wait any failed-start rollback; successful start semantics and ordinary pause/stop behavior remain unchanged; failed start leaves zero scheduler registrations; one retry creates exactly three fresh registrations.
 - Acceptance: focused failed/superseded/retry/release races and generic build pass. This slice does not add permission UI or classify a system permission itself.
+- Evidence: worker `7169d85`, accepted `d7c4e98`; test correction `f49953a`, accepted `9a63f69`. Sol found and corrected one deterministic gated-queue test deadlock plus one scheduler-dependent legacy poll, then independently passed the integrated generic build and 22/22 focused simulator tests: 5 `CameraViewModelLifecycleTests`, 10 `AnalysisPipelineReleaseTests` and 7 `CameraManagerLifecycleTests`.
 
 #### CC-010A2 — Atomic motion snapshot
 

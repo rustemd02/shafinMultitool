@@ -4,7 +4,7 @@
 
 ## Глобальная цель
 
-Автономно довести приложение до проверенного Camera Coach release candidate. Sol владеет архитектурой, декомпозицией, проверкой и приёмкой; Luna / Max выполняет полностью специфицированные задачи. Push, PR, платные действия, TestFlight/App Store submission и юридические решения не разрешены автоматически.
+Автономно довести всю систему до production-level, submission-ready App Store candidate по `docs/implementation/PRODUCTION_ACCEPTANCE.md`. Camera Coach остаётся первичным продуктом, Scene Mode — вторичным; Sol владеет архитектурой, декомпозицией, проверкой и приёмкой, Luna / Max выполняет полностью специфицированные задачи. Task/milestone/build completion не закрывают глобальную цель. Push, PR, платные действия, TestFlight/App Store submission и юридические решения не разрешены автоматически.
 
 ## Текущий milestone
 
@@ -45,7 +45,7 @@
 | CC-008A | ready_after_CC-008 | Luna / Max | CC-008, CC-010B | Production-safe live surface только для уже доказуемых S04/S06/S07/S10c |
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
 | CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
-| CC-010A1 | in_progress | Luna / Max | CC-010A, CC-010B1 | Failed-start rollback task `01a00683-dd24-72b1-a914-302c7b59db9f` запущен на принятой release boundary |
+| CC-010A1 | accepted | Luna / Max | CC-010A, CC-010B1 | Failed-start rollback принят после correction loop; generic build и 22/22 пересекающихся focused tests прошли |
 | CC-010A2 | accepted | Luna / Max | CC-010A | Atomic motion snapshot принят после correction loop; 4/4 focused tests прошли |
 | CC-010B | accepted | Luna / Max | CC-010A | Детерминированный unregister/drain, release/re-register и stale-result fences; 23/23 focused tests прошли |
 | CC-010B1 | accepted | Luna / Max | CC-010B | Coherent latest-frame envelope и session-local reset приняты; 12/12 focused tests прошли |
@@ -68,7 +68,7 @@
 ## Активная работа
 
 - Sol: ведёт rolling-wave оркестрацию и принимает каждый Luna / Max пакет только после независимых diff/source/build/test checks на основной ветке.
-- CC-010A1 task `01a00683-dd24-72b1-a914-302c7b59db9f`: Luna / Max реализует failed-start rollback после принятия финальной CC-010B1 release boundary. Ownership ограничен `CameraViewModel.swift` и новым focused test-файлом; UI, AnalysisPipeline, CameraManager, Core ML и продуктовая политика не меняются.
+- CC-010A1 accepted: task `01a00683-dd24-72b1-a914-302c7b59db9f`, worker `7169d85`, accepted `d7c4e98`, correction `f49953a` → `9a63f69`; Sol прошёл generic build и 22/22 пересекающихся lifecycle/release tests.
 - CC-003A accepted: task `01a0064b-e81f-71f0-ac7e-661725dd3011`, worker `322faeb`, accepted `f246ada`; Sol прошёл generic integrated build и 10/10 `PermissionFoundationTests`.
 - CC-010B1 accepted: task `01a0064f-3d5a-7452-a196-5ce39f1fae8b`, worker `b38ef12`, accepted `8b20380`, correction `772fe33` → `ee019f0`; Sol прошёл 12/12 focused tests.
 - CC-010A2 accepted: task `01a0064f-d087-7b92-9424-8a90cebb989e`, worker `9fb974e`, accepted `caef74b`, correction `f80e1a3` → `b76f217`; Sol прошёл 4/4 `MotionGateTests`.
