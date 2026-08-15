@@ -133,7 +133,7 @@
 ### CC-010B — Scheduler and pipeline release
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `in_progress`.
 - Objective: own registration tokens, unregister deterministically, cancel/await outstanding analysis work and fence stale presentation updates.
 - Acceptance: register/release/re-register and stale-result tests pass without changing recommendation semantics.
 
