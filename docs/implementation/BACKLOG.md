@@ -116,7 +116,7 @@
 - Verification: unit/navigation tests, true UI smoke when target exists, portrait/landscape launch checks and Scene Mode saved-project access.
 - Acceptance: bounded normal launch integration must avoid scene-first onboarding and duplicate camera ownership; full acceptance still requires true UI smoke, portrait/landscape launch checks and saved-project access.
 - Evidence: commit `ff9ce3e` connects the normal non-benchmark `SceneDelegate` branch to `CommercialShell` with Camera selected; the DEBUG benchmark branch remains first when configured. Generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`; focused workspace tests passed 22/22 on iPhone 17 Pro / iOS Simulator 26.5: `CommercialShellLaunchCompositionTests` 11/11 and `CommercialShellRoutingTests` 11/11. Full evidence: `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
-- Boundary: normal Camera Coach launch is accepted as a bounded portion only. True UI-test target/default smoke, portrait/landscape checks, saved-project access, full CC-010E/CC-010D teardown and release readiness remain unclaimed.
+- Boundary: normal Camera Coach launch is accepted as a bounded portion only. The bounded CC-011C target/root smoke is recorded separately; full CC-010E/CC-010D teardown, permission UX, portrait/landscape product behavior, saved-project access and release readiness remain unclaimed.
 
 ### CC-007A — Single-active-route shell contract
 
@@ -345,11 +345,13 @@
 ### CC-011C — Real UI-test target and launch smoke
 
 - Lane: Luna / Max after the CC-007 commercial shell.
-- State: `ready`.
+- State: `partially_accepted`.
 - Dependencies: bounded CC-007 commercial shell launch is implemented; CC-008 is already accepted.
 - Objective: implement the target/file-membership/scheme packet from CC-005 and replace the unit-hosted pseudo-UI smoke with true process-launch tests.
 - Acceptance: Camera Coach default launch, permission-state launch arguments, both orientations and Scene Mode entry run in a separate UI-test process.
-- Boundary: this task is not complete. The `ff9ce3e` evidence does not claim a real UI-test target, portrait/landscape launch or saved-project actual smoke.
+- Evidence: commit `9f2f5f2` adds the `shafinMultitoolUITests` target, shared scheme membership and a real process XCTest replacement without `TEST_HOST` or `BUNDLE_LOADER`. DEBUG-only `SHAFIN_UI_TESTING=1` composes the real `CommercialShellComposition` / `ContentView` with the existing deterministic `CameraManager` failure `.noWideCamera`; the benchmark branch remains first, no permission/hardware prompt is requested, the root/analysis are not faked and the path is absent from Release.
+- Evidence result: workspace `build-for-testing` succeeded; `/private/tmp/shafin-cc011c-ui-tests-20260816.xcresult` records 4/4 passed with 0 failures on iPhone 17 Pro / iOS 26.5: normal Camera shell, real Scene library root → Camera return, portrait root no crash and landscape root no crash.
+- Boundary: the accepted slice is limited to the real UI target and bounded root smoke. It does not claim full portrait behavior, camera permission UX, live capture continuity, completed analysis, deeper Scene workspace switching, full-suite health, physical-device behavior or release readiness.
 
 ### CC-011D — Gate accepted provenance records
 
@@ -371,7 +373,7 @@
 - Failure taxonomy: pseudo-UI tests have no target application; opt-in local-model and physical benchmark suites execute by default; Settings fixtures hit force unwraps; real-image Camera Coach evaluation depends on simulator Vision/Espresso and absent never-tracked assets; legacy parser, persistence and fixtures fail independently.
 - Integrated evidence: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Additional repetitions: Scene 18/18 twice plus DB performance 4/4; DeepCritic 20/20; subtitle/config 22 with 1 intended skip; Hybrid 7/7; Semantic 8/8.
 - Canonical clean release gate passed all stages on `6ff225d553ae654298dda70b9c779c1226c31800`: Release 72,032 KiB; 2 privacy manifests; only `SnapKit.framework` and `llama.framework`; 5 material contributors; 5 blockers; 2 provenance validators; 6/6 contamination fixtures.
-- Next: the bounded CC-007/CC-010E launch integration is accepted in `ff9ce3e`; continue CC-011C true UI target/default smoke and the remaining CC-007 product/UI evidence as listed in this backlog. Full test topology, configured real-image evaluation and CC-010D awaitable teardown remain separate unresolved lanes.
+- Next: the bounded CC-007/CC-010E launch integration is accepted in `ff9ce3e` and the bounded CC-011C target/root smoke is accepted in `9f2f5f2`; continue the remaining CC-007 product/UI evidence as listed in this backlog. Full test topology, configured real-image evaluation and CC-010D awaitable teardown remain separate unresolved lanes.
 
 #### CC-011E1 — Opt-in execution gates
 

@@ -9,14 +9,14 @@
 - Saved logical profile: orchestrator inherits parent with a `gpt-5.6-sol` / `high` recommendation; routine, high and advisor profiles are `gpt-5.6-luna` / `max`; fallback policy is fail-closed.
 - Current execution success criterion: every new executor, reviewer, correction-loop or verification worker appears as a separate user-visible Codex chat/thread using the project-local environment when continuing this checkout, explicit `model=gpt-5.6-luna` and `thinking=max`. A missing visible thread is a stop, not permission to use a hidden task or substitute model.
 - The installed native adapter was not reinstalled/reloaded for this policy amendment; native role paths are not a valid execution path.
-- Current accepted integration baseline: `store` at `ff9ce3e`; CC-011E remains committed and accepted at its historical baseline, with bounded CC-007/CC-010E launch evidence on top.
+- Current accepted integration baseline: `store` at `9f2f5f2`; CC-011E remains committed and accepted at its historical baseline, bounded CC-007/CC-010E launch evidence remains at `ff9ce3e`, and bounded CC-011C UI evidence is recorded on top.
 
 ## Accepted product and release evidence
 
 - Product/research baseline: `docs/app-store-product-plan.md`, CC-000 accepted.
 - Release inventory and isolation: CC-001/CC-002 accepted; Release excludes GGUF, DeviceBenchmark and development `Resources/Models` payloads.
 - Privacy and permissions inventory: `docs/implementation/audits/privacy-permissions-inventory.md`, CC-003 accepted.
-- Test topology and runtime entry: CC-005/CC-006 accepted; normal non-benchmark Camera Coach shell launch is covered by bounded `ff9ce3e` evidence, while the true UI-test target, portrait/landscape launch and saved-project smoke remain future-gated work.
+- Test topology and runtime entry: CC-005/CC-006 accepted; normal non-benchmark Camera Coach shell launch is covered by bounded `ff9ce3e` evidence, and the true UI-test target/root smoke is covered by bounded `9f2f5f2` evidence. Full portrait behavior, camera permission UX and saved-project/deeper Scene smoke remain future-gated work.
 - Privacy manifest and bundle gate: CC-011A/CC-011B accepted.
 - Earlier canonical clean release gate passed on `6ff225d553ae654298dda70b9c779c1226c31800`; all stages passed: Release 72,032 KiB, 2 privacy manifests, only `SnapKit.framework` and `llama.framework`, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures.
 - Host-retry canonical release gate passed on clean HEAD `5e5dfef859c7db220864076aead9c0de44181a8d`: `scripts/run_release_gates.sh --derived-data-root /private/tmp/shafin-release-gate.20260816-host-retry` exited 0 with `dirty=false`. Passed: Debug build-for-testing, Release build, 2 provenance validators, privacy validation, bundle validation and 6 contamination fixtures. Values: `manifest_count=2`, `TOTAL_APP_KIB=72104`, `KNOWN_BLOCKER_COUNT=5`. Logs: `/private/tmp/shafin-release-gate.20260816-host-retry/shafin-release-gates/{debug-build.log,release-build.log,release-validation.log,release-fixtures.log}`.
@@ -56,11 +56,18 @@
 - The Scene library root can release to Camera. A deeper Scene workspace or any presented modal returns blocked and does not construct Camera because the existing AR/persistence teardown boundary is not awaitable.
 - Generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`.
 - Focused workspace tests passed 22/22 on iPhone 17 Pro / iOS Simulator 26.5: `CommercialShellLaunchCompositionTests` 11/11 and `CommercialShellRoutingTests` 11/11. Final result bundle: `/private/tmp/shafin-cc010e-workspace-derived/Logs/Test/Test-shafinMultitool-2026.08.16_00-55-36-+0300.xcresult`. The earlier 20/20 result is retained as historical evidence; this final 22/22 run is preferred.
-- Boundary: full CC-010E and CC-010D are not complete. This evidence does not establish a true UI-test target, portrait/landscape launch, saved-project actual smoke, physical-device behavior, full-suite health, legal/provenance clearance or App Store/release readiness.
+- Boundary: full CC-010E and CC-010D are not complete. This evidence does not establish a true UI-test target, portrait/landscape launch, saved-project actual smoke, physical-device behavior, full-suite health, legal/provenance clearance or App Store/release readiness; the bounded CC-011C evidence below is separate.
+
+## CC-011C bounded true UI target/root smoke evidence
+
+- Commit `9f2f5f2` adds the `shafinMultitoolUITests` target, shared scheme membership and a real process XCTest replacement for the unit-hosted pseudo-UI test. The target has neither `TEST_HOST` nor `BUNDLE_LOADER`.
+- DEBUG-only `SHAFIN_UI_TESTING=1` composes the real `CommercialShellComposition` / `ContentView` with the existing deterministic `CameraManager` failure `.noWideCamera`; the benchmark branch still comes first, so no permission/hardware prompt is requested. The root and analysis are not faked, and this path does not ship in Release.
+- Workspace `build-for-testing` succeeded. True process evidence `/private/tmp/shafin-cc011c-ui-tests-20260816.xcresult` passed 4/4 with 0 failures on iPhone 17 Pro / iOS 26.5: normal Camera shell, real Scene library root → Camera return, portrait root no crash and landscape root no crash.
+- Boundary: this bounded slice does not claim full portrait behavior, camera permission UX, live capture continuity, completed analysis, deeper Scene workspace switching, full-suite health, physical-device behavior or release readiness. CC-011C remains partial for its broader acceptance, and remaining CC-007 product/UI evidence stays open.
 
 ## Current test and contract evidence
 
-- Raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed and 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. The failures include pseudo-UI without target app, default execution of opt-in model/physical benchmark lanes, Settings force unwraps, real-image Camera Coach evaluation with simulator Vision/Espresso plus absent never-tracked assets, and legacy parser/persistence/fixture failures. The full suite is not green.
+- Pre-CC-011C raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed and 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. The failures included pseudo-UI without target app, default execution of opt-in model/physical benchmark lanes, Settings force unwraps, real-image Camera Coach evaluation with simulator Vision/Espresso plus absent never-tracked assets, and legacy parser/persistence/fixture failures. The full suite is not green.
 - CC-011E accepted on `6ff225d553ae654298dda70b9c779c1226c31800`: integrated Luna gate 104 executed, 102 passed, 2 intended skips and 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Repeated evidence: Scene 18/18 twice and DB performance 4/4; DeepCritic 20/20; subtitle/config 22 with one intended skip; Hybrid 7/7; Semantic 8/8. The earlier canonical clean release gate then passed all stages with Release 72,032 KiB, 2 privacy manifests, only `SnapKit.framework` and `llama.framework`, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures.
 - E1 gates local-model and physical-device benchmark execution: absent configuration skips before work, while invalid benchmark configuration fails.
 - E2 persists metadata for nil maps while preserving legacy `_map`, without claiming a transactional map/data pair; dialogue arrays remain parallel and subtitle presentation emits `Иван: Привет.`.
@@ -71,7 +78,7 @@
 ## Product decisions and remaining owner gates
 
 - CC-008: `docs/implementation/ux/camera-coach-state-spec.md` is accepted based on the owner's explicit instruction to launch the full autonomous implementation pipeline and the earlier affirmative product/UI decisions.
-- CC-007A/CC-008A: accepted implementation slices with the focused evidence above; the bounded parent shell/default-route integration is recorded separately below, while true UI launch smoke and unsupported product states remain outside the accepted slices. They are not release-ready.
+- CC-007A/CC-008A: accepted implementation slices with the focused evidence above; the bounded parent shell/default-route integration and bounded CC-011C target/root smoke are recorded separately below, while unsupported product states remain outside the accepted slices. They are not release-ready.
 - CC-007/CC-010E: the normal launch portion and bounded exclusive lease are accepted at `ff9ce3e` within the evidence above; full CC-010E/CC-010D and the remaining product/UI evidence boundaries remain open.
 - CC-013B2: recommended minimal RC excludes DETR, NIMA and compact neural fusion while retaining Apple Vision/saliency and deterministic critique; implementation is gated by owner acceptance.
 
