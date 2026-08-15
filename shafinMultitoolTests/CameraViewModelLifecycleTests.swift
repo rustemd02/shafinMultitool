@@ -9,8 +9,12 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         let fixture = makeFixture(startPlans: [
             .init(succeeds: false)
         ])
-        let rollbackGate = DispatchSemaphore(value: 0)
-        fixture.scheduler.setDrainGateForTesting(rollbackGate)
+        let rollbackGate = CameraViewModelTestGate()
+        fixture.scheduler.setDrainGateForTesting(rollbackGate.semaphore)
+        defer {
+            rollbackGate.signal()
+            fixture.scheduler.setDrainGateForTesting(nil)
+        }
 
         let start = Task { @MainActor in
             await fixture.viewModel.startAndWait()
@@ -20,7 +24,7 @@ final class CameraViewModelLifecycleTests: XCTestCase {
             fixture.pipeline.testingReleaseInProgress
         }
         XCTAssertTrue(rollbackStarted)
-        XCTAssertEqual(fixture.scheduler.registrationCountForTesting, 0)
+        XCTAssertEqual(fixture.runner.registrationCountsAtStart, [3])
         XCTAssertFalse(isFailed(fixture.viewModel.lifecycleState))
         XCTAssertNil(fixture.viewModel.lifecycleError)
 
@@ -40,8 +44,12 @@ final class CameraViewModelLifecycleTests: XCTestCase {
             .init(succeeds: false),
             .init(succeeds: true)
         ])
-        let rollbackGate = DispatchSemaphore(value: 0)
-        fixture.scheduler.setDrainGateForTesting(rollbackGate)
+        let rollbackGate = CameraViewModelTestGate()
+        fixture.scheduler.setDrainGateForTesting(rollbackGate.semaphore)
+        defer {
+            rollbackGate.signal()
+            fixture.scheduler.setDrainGateForTesting(nil)
+        }
 
         let failedStart = Task { @MainActor in
             await fixture.viewModel.startAndWait()
@@ -50,6 +58,7 @@ final class CameraViewModelLifecycleTests: XCTestCase {
             fixture.pipeline.testingReleaseInProgress
         }
         XCTAssertTrue(rollbackStarted)
+        XCTAssertEqual(fixture.runner.registrationCountsAtStart, [3])
 
         // start() captures the in-flight rollback synchronously and must not reach
         // CameraManager while the pipeline release boundary is held.
@@ -58,7 +67,6 @@ final class CameraViewModelLifecycleTests: XCTestCase {
             fixture.runner.startCount == 2
         }
         XCTAssertFalse(secondStartBeforeRollback)
-        XCTAssertEqual(fixture.scheduler.registrationCountForTesting, 0)
 
         rollbackGate.signal()
         await failedStart.value
@@ -74,12 +82,15 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(fixture.scheduler.registrationCountForTesting, 3)
         XCTAssertEqual(fixture.viewModel.lifecycleState, .running)
         XCTAssertNil(fixture.viewModel.lifecycleError)
+        XCTAssertEqual(fixture.runner.registrationCountsAtStart, [3, 3])
+        XCTAssertFalse(fixture.runner.didTimeoutWaitingForStartGate)
 
         await fixture.viewModel.releaseAndWait()
     }
 
     func testSupersededStaleFailureCannotReleaseNewRunningRegistrationSet() async {
-        let firstStartGate = DispatchSemaphore(value: 0)
+        let firstStartGate = CameraViewModelTestGate()
+        defer { firstStartGate.signal() }
         let fixture = makeFixture(startPlans: [
             .init(succeeds: false, gate: firstStartGate),
             .init(succeeds: true)
@@ -106,6 +117,8 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(fixture.scheduler.registrationCountForTesting, 3)
         XCTAssertEqual(fixture.viewModel.lifecycleState, .running)
         XCTAssertNil(fixture.viewModel.lifecycleError)
+        XCTAssertEqual(fixture.runner.registrationCountsAtStart, [3, 3])
+        XCTAssertFalse(fixture.runner.didTimeoutWaitingForStartGate)
 
         await fixture.viewModel.releaseAndWait()
     }
@@ -114,8 +127,12 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         let fixture = makeFixture(startPlans: [
             .init(succeeds: false)
         ])
-        let rollbackGate = DispatchSemaphore(value: 0)
-        fixture.scheduler.setDrainGateForTesting(rollbackGate)
+        let rollbackGate = CameraViewModelTestGate()
+        fixture.scheduler.setDrainGateForTesting(rollbackGate.semaphore)
+        defer {
+            rollbackGate.signal()
+            fixture.scheduler.setDrainGateForTesting(nil)
+        }
 
         let failedStart = Task { @MainActor in
             await fixture.viewModel.startAndWait()
@@ -152,6 +169,7 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         XCTAssertNil(fixture.viewModel.lifecycleError)
         XCTAssertEqual(fixture.scheduler.registrationCountForTesting, 0)
         XCTAssertEqual(fixture.manager.configurationState, .unconfigured)
+        XCTAssertEqual(fixture.runner.registrationCountsAtStart, [3])
     }
 
     func testSuccessfulStartRemainsRunningWithExactlyThreeRegistrations() async {
@@ -172,7 +190,10 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         let scheduler = RealtimeScheduler()
         let thermalGovernor = ThermalGovernor(thermalStateProvider: { .nominal },
                                                batteryLevelProvider: { 1.0 })
-        let runner = CameraViewModelTestSessionRunner(startPlans: startPlans)
+        let runner = CameraViewModelTestSessionRunner(
+            startPlans: startPlans,
+            registrationCountProvider: { scheduler.registrationCountForTesting }
+        )
         let manager = CameraManager(scheduler: scheduler,
                                     thermalGovernor: thermalGovernor,
                                     motionGate: MotionGate(startMotionUpdates: false),
@@ -223,9 +244,9 @@ final class CameraViewModelLifecycleTests: XCTestCase {
 
 private struct CameraViewModelStartPlan {
     let succeeds: Bool
-    let gate: DispatchSemaphore?
+    let gate: CameraViewModelTestGate?
 
-    init(succeeds: Bool, gate: DispatchSemaphore? = nil) {
+    init(succeeds: Bool, gate: CameraViewModelTestGate? = nil) {
         self.succeeds = succeeds
         self.gate = gate
     }
@@ -262,9 +283,14 @@ private final class CameraViewModelTestSessionRunner: CameraSessionRunner {
     private var starts = 0
     private var stops = 0
     private var running = false
+    private var registrationCountsAtStartStorage: [Int] = []
+    private var didTimeoutWaitingForStartGateStorage = false
+    private let registrationCountProvider: () -> Int
 
-    init(startPlans: [CameraViewModelStartPlan]) {
+    init(startPlans: [CameraViewModelStartPlan],
+         registrationCountProvider: @escaping () -> Int) {
         self.startPlans = startPlans
+        self.registrationCountProvider = registrationCountProvider
     }
 
     var startCount: Int {
@@ -285,17 +311,39 @@ private final class CameraViewModelTestSessionRunner: CameraSessionRunner {
         return running
     }
 
+    var registrationCountsAtStart: [Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        return registrationCountsAtStartStorage
+    }
+
+    var didTimeoutWaitingForStartGate: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return didTimeoutWaitingForStartGateStorage
+    }
+
     func startRunning() {
         lock.lock()
-        starts += 1
         let plan = startPlans.isEmpty
             ? CameraViewModelStartPlan(succeeds: true)
             : startPlans.removeFirst()
+        let registrationCountProvider = self.registrationCountProvider
         lock.unlock()
 
-        plan.gate?.wait()
+        let registrationCount = registrationCountProvider()
 
         lock.lock()
+        starts += 1
+        registrationCountsAtStartStorage.append(registrationCount)
+        lock.unlock()
+
+        let didOpenGate = plan.gate?.wait() ?? true
+
+        lock.lock()
+        if !didOpenGate {
+            didTimeoutWaitingForStartGateStorage = true
+        }
         running = plan.succeeds
         lock.unlock()
     }
@@ -305,5 +353,32 @@ private final class CameraViewModelTestSessionRunner: CameraSessionRunner {
         stops += 1
         running = false
         lock.unlock()
+    }
+}
+
+private final class CameraViewModelTestGate: @unchecked Sendable {
+    let semaphore = DispatchSemaphore(value: 0)
+
+    private let lock = NSLock()
+    private var didSignal = false
+
+    func signal() {
+        lock.lock()
+        guard !didSignal else {
+            lock.unlock()
+            return
+        }
+        didSignal = true
+        lock.unlock()
+        semaphore.signal()
+    }
+
+    @discardableResult
+    func wait() -> Bool {
+        semaphore.wait(timeout: .now() + .seconds(2)) == .success
+    }
+
+    deinit {
+        signal()
     }
 }

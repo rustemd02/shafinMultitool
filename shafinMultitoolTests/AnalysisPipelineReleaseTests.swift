@@ -198,13 +198,13 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         await release.value
         scheduler.setDrainGateForTesting(nil)
 
-        for _ in 0..<1_000 {
-            if runner.startCount == 2 && scheduler.registrationCountForTesting == 3 {
-                break
-            }
-            await Task.yield()
+        let replacementRunning = await waitUntil {
+            runner.startCount == 2
+                && scheduler.registrationCountForTesting == 3
+                && viewModel.lifecycleState == .running
         }
 
+        XCTAssertTrue(replacementRunning)
         XCTAssertEqual(runner.startCount, 2)
         XCTAssertEqual(scheduler.registrationCountForTesting, 3)
         XCTAssertEqual(viewModel.lifecycleState, .running)
