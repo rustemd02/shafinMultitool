@@ -1,0 +1,177 @@
+{
+  "asset": "Circle",
+  "claims": {
+    "deterministic_source_to_export_recipe": "missing",
+    "explicit_creator_declaration": "missing",
+    "explicit_rights_or_permission_declaration": "missing",
+    "legal_release_owner_decision": "blocked",
+    "redistribution_approval": "not_claimed",
+    "repository_correlation": "verified",
+    "source_to_export_causality": "not_proven"
+  },
+  "exported_usdz": {
+    "member_count": 1,
+    "members": [
+      {
+        "path": "4646EE66-A797-4665-895A-1D353AE06283.usdc",
+        "sha256": "46fa822816945b19076553d6ab5b3222127f086b1835aa726102c038f29630ec",
+        "size": 60553
+      }
+    ],
+    "metadata": {
+      "member_format": "PXR-USDC",
+      "member_identifier": "4646EE66-A797-4665-895A-1D353AE06283",
+      "rcfoundation_metadata_key": "com.apple.RCFoundation Vers",
+      "rcfoundation_version": "1.5 (192.5)"
+    },
+    "path": "shafinMultitool/Resources/Circle.usdz",
+    "sha256": "8099ec655334ebeb2a1bd078df6fbb725386cdd870d6c00cd56671f49ea8aa30",
+    "size": 60847
+  },
+  "git_lineage": [
+    {
+      "commit": "655a860820171139d14e59c2a04f7a3ba0f144c1",
+      "paths": [
+        "shafinMultitool/Resources/Circle.rcproject/Library/ProjectLibrary/Contents.json",
+        "shafinMultitool/Resources/Circle.rcproject/Library/ProjectLibrary/Version.json",
+        "shafinMultitool/Resources/Circle.rcproject/SceneThumbnails/5257E5E9-184E-45B6-825C-D7279DC8F698.thumbnails/square",
+        "shafinMultitool/Resources/Circle.rcproject/SceneThumbnails/5257E5E9-184E-45B6-825C-D7279DC8F698.thumbnails/wide",
+        "shafinMultitool/Resources/Circle.rcproject/com.apple.RCFoundation.Project"
+      ],
+      "role": "source_project_members_first_tracked_at_current_path",
+      "subject": "Elapsed time added"
+    },
+    {
+      "commit": "24754f6a035f4d35b14fd27a9163056cce6580c2",
+      "paths": [
+        "shafinMultitool/Resources/Circle.rcproject/Library/ProjectLibrary/Version.json",
+        "shafinMultitool/Resources/Circle.rcproject/SceneThumbnails/5257E5E9-184E-45B6-825C-D7279DC8F698.thumbnails/square",
+        "shafinMultitool/Resources/Circle.rcproject/SceneThumbnails/5257E5E9-184E-45B6-825C-D7279DC8F698.thumbnails/wide",
+        "shafinMultitool/Resources/Circle.rcproject/com.apple.RCFoundation.Project",
+        "shafinMultitool/Resources/Circle.usdz"
+      ],
+      "role": "source_project_modified_and_exported_usdz_added",
+      "subject": "UX changes"
+    }
+  ],
+  "record_notes": [
+    "Git lineage is repository history only; it does not identify the asset creator or grant redistribution rights.",
+    "No deterministic export command was found in the repository; source-to-export causality is not proven.",
+    "The validator verifies recorded bytes, member sets, metadata predicates and shared-UUID correlation only; it does not verify Git history, source lines or project.pbxproj membership."
+  ],
+  "human_reviewed_annotations": [
+    {
+      "evidence_boundary": "Git commit/path history was reviewed as repository evidence; it is not machine-verified and does not prove export causality.",
+      "field": "git_lineage",
+      "status": "human_reviewed",
+      "validator_scope": "shape_only"
+    },
+    {
+      "evidence_boundary": "Runtime consumer paths and line references were reviewed against source; the validator does not read or verify those source lines.",
+      "field": "runtime_consumers",
+      "status": "human_reviewed",
+      "validator_scope": "shape_only"
+    },
+    {
+      "evidence_boundary": "Tracked/excluded target status was reviewed against project.pbxproj; the validator does not verify project membership.",
+      "field": "source_project.target_boundary",
+      "status": "human_reviewed",
+      "validator_scope": "shape_only"
+    }
+  ],
+  "runtime_consumers": [
+    {
+      "evidence": "ModelEntity.loadModel(named: entityName) resolves the runtime resource name and returns the Circle model unchanged.",
+      "lines": "131-141",
+      "path": "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+    },
+    {
+      "evidence": "ARSession anchors named Circle are routed to addPoint, which loads the Circle model.",
+      "lines": "450-458",
+      "path": "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+    },
+    {
+      "evidence": "Persisted world-map anchors whose names contain Circle are restored through addPoint.",
+      "lines": "489-515",
+      "path": "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+    },
+    {
+      "evidence": "New point placement creates an ARAnchor named Circle, establishing the same runtime lookup path.",
+      "lines": "537-541",
+      "path": "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift"
+    }
+  ],
+  "schema": "circle-asset-provenance",
+  "schema_version": 1,
+  "shared_identifiers": [
+    {
+      "export_member": "4646EE66-A797-4665-895A-1D353AE06283.usdc",
+      "export_value": "44109F702E63424991FD37EDDF809807",
+      "name": "scene_object_uuid",
+      "normalization": "uppercase_uuid_without_hyphens",
+      "source_member": "com.apple.RCFoundation.Project",
+      "source_value": "44109F70-2E63-4249-91FD-37EDDF809807"
+    }
+  ],
+  "source_project": {
+    "member_count": 5,
+    "members": [
+      {
+        "path": "Library/ProjectLibrary/Contents.json",
+        "sha256": "ace810d7e2cbb4f8c40ce09dc8e191ae466adb4e1a7d49c59f2215b411d38b05",
+        "size": 4
+      },
+      {
+        "path": "Library/ProjectLibrary/Version.json",
+        "sha256": "875afbac1f90283660316c2bd0f6f5c65751f6ee1bf49420308697e937add1d6",
+        "size": 79
+      },
+      {
+        "path": "SceneThumbnails/5257E5E9-184E-45B6-825C-D7279DC8F698.thumbnails/square",
+        "sha256": "344d6971e9314a7f2d8d0a4cf1040ea0ea6e57737f8c384ca28a4e588794ecaa",
+        "size": 189640
+      },
+      {
+        "path": "SceneThumbnails/5257E5E9-184E-45B6-825C-D7279DC8F698.thumbnails/wide",
+        "sha256": "fb1dd7f8f9f88d231a3b50623e83318fe55128e9976171fe9dcf8df9d965071a",
+        "size": 419318
+      },
+      {
+        "path": "com.apple.RCFoundation.Project",
+        "sha256": "04c82cdd9506ec2fb0bb3a14ac8457f2e7c0a21f0acfa8d1d4d3ff8a3d693c8d",
+        "size": 6694
+      }
+    ],
+    "metadata": {
+      "project_document": {
+        "member": "com.apple.RCFoundation.Project",
+        "format": "com.apple.RCFoundation.Project",
+        "object_identifier": "44109F70-2E63-4249-91FD-37EDDF809807",
+        "primitive_factory": {
+          "identifier": "com.apple.rc.af.CoreAssetFactories.PrimitiveShapeAssetFactory",
+          "version": "1.0"
+        },
+        "primitive_type": "cylinder",
+        "project_version": 1,
+        "runtime_identifier": "10EDD530-6AAB-4110-A6D0-2DFFCC1982B4",
+        "scene_identifier": "5257E5E9-184E-45B6-825C-D7279DC8F698",
+        "scene_material": "concrete",
+        "scene_version": 5,
+        "title": "Scene",
+        "material": "paintEnamelMatte"
+      },
+      "version_json": {
+        "library_id": "4F5C3128-F4DC-4B81-BB49-9452E0AB4D28",
+        "member": "Library/ProjectLibrary/Version.json",
+        "version": "1.0"
+      }
+    },
+    "path": "shafinMultitool/Resources/Circle.rcproject",
+    "target_boundary": {
+      "evidence": "shafinMultitool.xcodeproj/project.pbxproj:57-60,69-88",
+      "source_project_target_membership": "excluded",
+      "source_project_tracked": true
+    },
+    "total_size": 615735
+  }
+}

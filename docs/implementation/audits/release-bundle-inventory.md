@@ -36,7 +36,7 @@ The proposed Release contract is:
 | `Assets.xcassets` | **Measured** 2,504 KB source and 2,296 KB `Assets.car`; `background.png` alone is 1,864 KB. | **KEEP in Release and Debug.** |
 | `Frameworks/llama.xcframework` | **Measured** 14,252 KB for both slices; 4,684 KB device framework output. | **KEEP the device runtime framework** while local Scene Mode parsing remains product scope; this is the small runtime, not the GGUF payload. |
 | `ARVideoKit`, `SnapKit`, generated Pods framework | **Observed/Measured** Release products of 1,340 KB, 912 KB, and 20 KB respectively. | **KEEP as current link/embed dependencies.** |
-| `Circle.usdz`, `Person.usdz` | **Measured** 60 KB and 404 KB; both enter through synchronized-root membership. No direct current source reference was found. | **EXCLUDE from Release on current source evidence; retain in the repository until the Scene Mode owner proves a runtime/serialized dependency.** |
+| `Circle.usdz`, `Person.usdz` | **Measured** 60 KB and 404 KB; both enter through synchronized-root membership and are present in the partial product. Dynamic runtime consumers are observed: `Circle` is loaded by `CameraScreenInteractor.swift:131-141` and routed through named anchors at `:450-458,489-515,537-541`; `Person` is loaded by `SceneGeneratorViewModel.swift:1766-1774` and the same interactor's named-anchor/model path. A literal `.usdz` search alone misses these name-based lookups. | **SUPERSEDED:** the prior source-reference-based EXCLUDE recommendation is no longer sufficient. This correction makes no new KEEP/EXCLUDE decision; current partial-product membership remains observed pending owner review. |
 | `Circle.rcproject` | **Observed** as a synchronized-group membership exception and not present in the partial app. | **KEEP excluded from the app target.** No change was made. |
 
 The most important result is that the approximately 1.0 GB GGUF and the
@@ -389,20 +389,26 @@ verify both a clean tracked checkout and a contaminated developer checkout.
   `<app>.app/Circle.usdz` (60 KB) and `<app>.app/Person.usdz` (404 KB); it does
   not contain `Circle.rcproject`.
 - **Why they enter:** the two USDZ files are under the synchronized root and
-  are not excluded. No direct `Circle.usdz`/`Person.usdz` source reference was
-  found; the current project file explicitly excludes only the `.rcproject`.
-- **Debug/Release necessity:** no current direct runtime consumer was
-  evidenced. They are therefore not proven necessary for either configuration.
+  are not excluded. No literal `Circle.usdz`/`Person.usdz` source reference
+  was found, but the runtime uses name-based RealityKit lookups: Circle through
+  `CameraScreenInteractor.swift:131-141` and its Circle anchor paths at
+  `:450-458,489-515,537-541`; Person through
+  `SceneGeneratorViewModel.swift:1766-1774` and the interactor's Person anchor
+  path. The current project file explicitly excludes only the `.rcproject`.
+- **Debug/Release necessity:** these dynamic/serialized runtime paths establish
+  that both assets are runtime consumers in the relevant Scene/AR flows. This
+  inventory does not infer necessity for every configuration or approve Release
+  membership.
 - **Provenance/license:** no source/license metadata was found. Status:
   **unknown**.
-- **Disposition:** **EXCLUDE from Release on current source evidence; retain in
-  the repository until a Scene Mode owner proves a dynamic or serialized
-  dependency.** Keep `Circle.rcproject` excluded as it is now. This is a
-  bundle-ownership recommendation, not a product decision to remove Scene
-  Mode.
-- **Risk:** an unsearched serialized/dynamic reference could make a Scene Mode
-  asset unavailable. The next implementation must run the existing Scene Mode
-  smoke path before enforcing this exclusion.
+- **Disposition:** **SUPERSEDED:** the prior **EXCLUDE from Release** conclusion
+  was based on a static source-reference search that missed these dynamic
+  consumers. This correction records no new KEEP/EXCLUDE reclassification;
+  the current partial-product membership remains an observed fact pending the
+  owner decision. Keep `Circle.rcproject` excluded as it is now.
+- **Risk:** enforcing the old exclusion could make the observed Scene/AR runtime
+  paths unable to load either asset. The next owner decision must reconcile
+  runtime behavior with provenance/rights review before changing membership.
 
 ## Reconciliation of the partial Release products
 
@@ -564,9 +570,10 @@ product instead.
   Debug/device flows. The repository says to download ignored GGUF files
   separately and the runtime already supports explicit paths. Download URL,
   checksum, version policy, storage policy, and license are unresolved.
-- USDZ files are classified as Release exclusions only because no current
-  source reference was found. A Scene Mode dynamic/serialized reference would
-  change their disposition to KEEP and must be checked before implementation.
+- The earlier Release exclusion recommendation for both USDZ files was based on
+  a static search that missed observed dynamic/serialized consumers and is
+  superseded. This correction makes no new bundle disposition; provenance,
+  rights, and the final owner decision remain open.
 - Core ML and llama artifacts have incomplete local provenance/license evidence;
   the partial DETR metadata is not a substitute for a full notice review.
 - The required Release build is blocked by the pre-existing compile errors
