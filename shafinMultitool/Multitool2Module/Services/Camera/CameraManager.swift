@@ -8,7 +8,7 @@
 import AVFoundation
 import CoreMotion
 
-enum CameraLens: CGFloat, CaseIterable {
+enum CameraLens: CGFloat, CaseIterable, Equatable, Sendable {
     case ultraWide = 0.5
     case wide = 1.0
     case telephoto2x = 2.0
@@ -30,6 +30,22 @@ enum CameraLens: CGFloat, CaseIterable {
         case .telephoto3x: return "3×"
         }
     }
+}
+
+enum CameraLensSwitchResult: Equatable, Sendable {
+    enum FailureReason: Equatable, Sendable {
+        case notConfigured
+        case unavailable
+        case inputConstructionFailed
+        case replacementRejected
+        case rollbackFailed
+    }
+
+    case success(activeLens: CameraLens)
+    case noOp(activeLens: CameraLens)
+    case failure(requestedLens: CameraLens,
+                 lastKnownActiveLens: CameraLens?,
+                 reason: FailureReason)
 }
 
 enum CameraManagerError: Error, Equatable, Sendable, CustomStringConvertible {
@@ -114,7 +130,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
 
     private var isConfigured = false
     private var currentInput: AVCaptureDeviceInput?
-    private var currentLens: CameraLens = .wide
+    private var currentLens: CameraLens?
     private var desiredVideoOrientation: AVCaptureVideoOrientation = .landscapeLeft
 
     private let stateLock = NSLock()
@@ -353,7 +369,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
         session.commitConfiguration()
 
         currentInput = nil
-        currentLens = .wide
+        currentLens = nil
         isConfigured = false
         setAvailableLenses([])
         setLifecycleState(.idle, configuration: .unconfigured)
@@ -414,6 +430,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
                 session.removeInput(input)
             }
             currentInput = nil
+            currentLens = nil
             setAvailableLenses([])
             isConfigured = false
             markUnconfigured()
@@ -428,7 +445,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
             session.addOutput(videoOutput)
         }
         currentInput = nil
-        currentLens = .wide
+        currentLens = nil
         setAvailableLenses([.wide])
         isConfigured = true
         markConfigured()
@@ -519,38 +536,94 @@ final class CameraManager: NSObject, @unchecked Sendable {
     
     func switchLens(to lens: CameraLens) {
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            guard self.isConfigured,
-                  self.currentInput != nil,
-                  self.availableLenses.contains(lens) else { return }
-            guard lens != self.currentLens else { return }
-            
-            guard let newCamera = self.findCamera(for: lens),
-                  let newInput = try? AVCaptureDeviceInput(device: newCamera) else {
-                return
-            }
-            
-            self.session.beginConfiguration()
-            
-            if let oldInput = self.currentInput {
-                self.session.removeInput(oldInput)
-            }
-            
-            if self.session.canAddInput(newInput) {
-                self.session.addInput(newInput)
-                self.currentInput = newInput
-                self.currentLens = lens
-                
-                if let connection = self.videoOutput.connection(with: .video) {
-                    connection.preferredVideoStabilizationMode = .cinematicExtended
-                    if connection.isVideoOrientationSupported {
-                        connection.videoOrientation = self.desiredVideoOrientation
-                    }
-                }
-            }
-            
-            self.session.commitConfiguration()
+            guard let self else { return }
+            _ = self.switchLensOnSessionQueue(to: lens)
         }
+    }
+
+    func switchLensAndWait(to lens: CameraLens) async -> CameraLensSwitchResult {
+        await withCheckedContinuation { (continuation: CheckedContinuation<CameraLensSwitchResult, Never>) in
+            sessionQueue.async { [weak self] in
+                let result = self?.switchLensOnSessionQueue(to: lens)
+                    ?? .failure(requestedLens: lens,
+                                lastKnownActiveLens: nil,
+                                reason: .notConfigured)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    private func switchLensOnSessionQueue(to lens: CameraLens) -> CameraLensSwitchResult {
+        guard isConfigured,
+              let oldInput = currentInput,
+              let oldLens = currentLens else {
+            return .failure(requestedLens: lens,
+                            lastKnownActiveLens: nil,
+                            reason: .notConfigured)
+        }
+
+        guard lens != oldLens else {
+            return .noOp(activeLens: oldLens)
+        }
+
+        guard availableLenses.contains(lens),
+              let newCamera = findCamera(for: lens) else {
+            return .failure(requestedLens: lens,
+                            lastKnownActiveLens: oldLens,
+                            reason: .unavailable)
+        }
+
+        let newInput: AVCaptureDeviceInput
+        do {
+            newInput = try AVCaptureDeviceInput(device: newCamera)
+        } catch {
+            return .failure(requestedLens: lens,
+                            lastKnownActiveLens: oldLens,
+                            reason: .inputConstructionFailed)
+        }
+
+        let outcome = replaceInputOnSessionQueue(oldInput: oldInput, newInput: newInput)
+        switch outcome {
+        case .replaced:
+            currentInput = newInput
+            currentLens = lens
+            configureVideoConnection()
+            return .success(activeLens: lens)
+        case .restored:
+            return .failure(requestedLens: lens,
+                            lastKnownActiveLens: oldLens,
+                            reason: .replacementRejected)
+        case .rollbackFailed:
+            currentInput = nil
+            currentLens = nil
+            releaseOnSessionQueue()
+            return .failure(requestedLens: lens,
+                            lastKnownActiveLens: nil,
+                            reason: .rollbackFailed)
+        }
+    }
+
+    private func replaceInputOnSessionQueue(
+        oldInput: AVCaptureDeviceInput,
+        newInput: AVCaptureDeviceInput
+    ) -> CameraInputReplacementTransaction<AVCaptureDeviceInput>.Outcome {
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+
+        let transaction = CameraInputReplacementTransaction(
+            oldInput: oldInput,
+            newInput: newInput,
+            removeInput: { [session] input in
+                session.removeInput(input)
+            },
+            canAddInput: { [session] input in
+                session.canAddInput(input)
+            },
+            addInput: { [session] input in
+                session.addInput(input)
+            }
+        )
+        return transaction.perform()
     }
 
     func setVideoOrientation(_ orientation: AVCaptureVideoOrientation) {
