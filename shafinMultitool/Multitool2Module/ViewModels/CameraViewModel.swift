@@ -10,6 +10,16 @@ import Foundation
 
 @MainActor
 final class CameraViewModel: ObservableObject {
+    private final class FailedStartRollbackOperation {
+        let generation: UInt64
+        let task: Task<Void, Never>
+
+        init(generation: UInt64, task: Task<Void, Never>) {
+            self.generation = generation
+            self.task = task
+        }
+    }
+
     @Published private(set) var lifecycleState: CameraLifecycleState = .idle
     @Published private(set) var lifecycleError: CameraManagerError?
 
@@ -44,6 +54,8 @@ final class CameraViewModel: ObservableObject {
     private var lifecycleTask: Task<Void, Never>?
     private var lifecycleIntent = UUID()
     private var releaseTask: Task<Void, Never>?
+    private var failedStartRollbackOperation: FailedStartRollbackOperation?
+    private var nextFailedStartRollbackGeneration: UInt64 = 0
 
     init(cameraManager: CameraManager,
          analysisPipeline: AnalysisPipeline) {
@@ -77,11 +89,17 @@ final class CameraViewModel: ObservableObject {
 
     func start() {
         let intent = beginLifecycleRequest(.starting)
+        let pendingRollback = failedStartRollbackOperation
         let pendingRelease = releaseTask
         lifecycleTask = Task { [weak self] in
             guard let self else { return }
+            if let pendingRollback {
+                await self.awaitFailedStartRollback(pendingRollback)
+                guard !Task.isCancelled, self.lifecycleIntent == intent else { return }
+            }
             if let pendingRelease {
                 await pendingRelease.value
+                guard !Task.isCancelled, self.lifecycleIntent == intent else { return }
             }
             guard !Task.isCancelled, self.lifecycleIntent == intent else { return }
             guard self.startCaptureRegistrationIfNeeded(for: intent) else {
@@ -93,8 +111,13 @@ final class CameraViewModel: ObservableObject {
 
     func startAndWait() async {
         let intent = beginLifecycleRequest(.starting)
+        if let pendingRollback = failedStartRollbackOperation {
+            await awaitFailedStartRollback(pendingRollback)
+            guard !Task.isCancelled, lifecycleIntent == intent else { return }
+        }
         if let releaseTask {
             await releaseTask.value
+            guard !Task.isCancelled, lifecycleIntent == intent else { return }
         }
         guard !Task.isCancelled, lifecycleIntent == intent else { return }
         guard startCaptureRegistrationIfNeeded(for: intent) else {
@@ -127,8 +150,13 @@ final class CameraViewModel: ObservableObject {
         if let existing = releaseTask {
             operation = existing
         } else {
+            let pendingRollback = failedStartRollbackOperation
             operation = Task { [weak self] in
                 guard let self else { return }
+
+                if let pendingRollback {
+                    await self.awaitFailedStartRollback(pendingRollback)
+                }
 
                 // Full release order: stop frame production, fence pipeline work and
                 // registrations, then release the camera configuration.
@@ -178,17 +206,52 @@ final class CameraViewModel: ObservableObject {
             lifecycleError = nil
             availableLenses = cameraManager.availableLenses
         } catch let error as CameraManagerError {
-            guard !Task.isCancelled, lifecycleIntent == intent else { return }
+            guard lifecycleIntent == intent else { return }
             stopFeaturePolling()
+            // A cancelled waiter still owns this current intent's registrations;
+            // finish their rollback, but never publish after the boundary if it was
+            // cancelled or superseded while the cleanup was in flight.
+            let rollback = makeFailedStartRollback()
+            await awaitFailedStartRollback(rollback)
+            guard !Task.isCancelled, lifecycleIntent == intent else { return }
             lifecycleState = .failed(error)
             lifecycleError = error
         } catch {
-            guard !Task.isCancelled, lifecycleIntent == intent else { return }
+            guard lifecycleIntent == intent else { return }
             stopFeaturePolling()
+            let rollback = makeFailedStartRollback()
+            await awaitFailedStartRollback(rollback)
+            guard !Task.isCancelled, lifecycleIntent == intent else { return }
             let typedError = CameraManagerError.startFailed
             lifecycleState = .failed(typedError)
             lifecycleError = typedError
         }
+    }
+
+    private func makeFailedStartRollback() -> FailedStartRollbackOperation {
+        if let failedStartRollbackOperation {
+            return failedStartRollbackOperation
+        }
+
+        nextFailedStartRollbackGeneration &+= 1
+        let generation = nextFailedStartRollbackGeneration
+        let pipeline = analysisPipeline
+        let task = Task {
+            await pipeline.releaseAndWait()
+        }
+        let operation = FailedStartRollbackOperation(generation: generation, task: task)
+        failedStartRollbackOperation = operation
+        return operation
+    }
+
+    private func awaitFailedStartRollback(_ operation: FailedStartRollbackOperation) async {
+        // Awaiting a shared unstructured task does not cancel it when one waiter is
+        // cancelled; every waiter observes the same cleanup boundary.
+        await operation.task.value
+        guard let current = failedStartRollbackOperation,
+              current === operation,
+              current.generation == operation.generation else { return }
+        failedStartRollbackOperation = nil
     }
 
     private func performStop(intent: UUID) async {
