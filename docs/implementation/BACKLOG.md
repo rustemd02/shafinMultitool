@@ -206,11 +206,12 @@
 ### CC-012A — Coaching-loop event contract inventory
 
 - Lane: Luna / Max audit; Sol accepts semantics before source implementation.
-- State: `in_progress`.
+- State: `accepted`.
 - Ownership: create only `docs/implementation/audits/coaching-loop-event-contract-inventory.md`.
 - Objective: map every accepted/proposed Coach state and observable transition to a low-cardinality, privacy-safe event contract centered on the first verified helpful loop.
 - Constraints: no raw media, transcript, free-form user text, hidden persistent identifier, provider/region/retention/legal invention or causal overclaim.
 - Acceptance: exact event/property dictionary, deterministic activation derivation, source/test seams, negative privacy tests and bounded Luna implementation slices are all repository-grounded.
+- Evidence: worker commit `2c75c53`, accepted commit `7a7c55b`, `docs/implementation/audits/coaching-loop-event-contract-inventory.md`; 12 existing instrumentation owner families, 59 active proposed events, 63 properties and 14 explicit blocker/decision rows. The derived activation event remains unavailable until an observable action seam and independent before/after verifier exist.
 
 ## CC-013 — Dependency and provenance remediation
 
@@ -222,7 +223,7 @@
 ### CC-013A — Remove ARVideoKit and update SnapKit privacy support
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `in_progress`.
 - Repository evidence: no production `import ARVideoKit`, `RecordAR` or `RenderAR` call site exists; current SnapKit 5.6.0 has no `PrivacyInfo.xcprivacy`.
 - Decision: remove unused ARVideoKit from app dependency graph; update both SnapKit declarations to 5.7.1, whose official release states CocoaPods privacy-manifest support.
 - Apple authority: SnapKit appears in Apple’s [SDKs requiring a privacy manifest and signature](https://developer.apple.com/support/third-party-SDK-requirements/).

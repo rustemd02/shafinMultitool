@@ -48,9 +48,9 @@
 | CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
 | CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
-| CC-012 | draft | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
-| CC-012A | in_progress | Luna / Max | CC-003, CC-008 | Source-grounded coaching-loop event/schema inventory |
-| CC-013A | ready | Luna / Max | CC-004 | Удалить unused ARVideoKit; обновить SnapKit до 5.7.1 с privacy manifest |
+| CC-012 | decomposed | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
+| CC-012A | accepted | Luna / Max | CC-003, CC-008 | 12 instrumentation owners, 59 active events, 63 properties; activation требует action + independent verification |
+| CC-013A | in_progress | Luna / Max | CC-004 | Удалить unused ARVideoKit; обновить SnapKit до 5.7.1 с privacy manifest |
 | CC-013B | blocked_by_owner | Sol → implementation | CC-004 | Provenance/keep-replace решения для llama, GGUF и Core ML |
 | CC-013C | blocked_by_owner | Sol → implementation | CC-004, CC-008 | Provenance или замена material images/USDZ |
 
@@ -66,7 +66,8 @@
 - CC-004: accepted, task `01a00574-d6e4-7043-aafe-1cc3fd44eae6`, worker commit `c02cbea`, accepted commit `bfad2fa`, evidence `docs/implementation/audits/dependency-provenance-inventory.md`.
 - CC-010A: accepted, task `01a00586-0a90-7323-b195-21d7941ffc70`, worker commit `b93e4aa`, accepted commit `e0bd423`; Sol повторил 7/7 simulator tests.
 - CC-010B: task `01a0059d-6beb-71d3-a194-552d1e474f89`, worktree `/Users/unterlantas/.codex/worktrees/adcb/shafinMultitool`.
-- CC-012A: task `01a0058b-d2da-7491-b3f4-de880445997b`, worktree `/Users/unterlantas/.codex/worktrees/e75f/shafinMultitool`.
+- CC-012A: accepted, task `01a0058b-d2da-7491-b3f4-de880445997b`, worker commit `2c75c53`, accepted commit `7a7c55b`, evidence `docs/implementation/audits/coaching-loop-event-contract-inventory.md`; Sol correction loop removed a duplicate metric and reconciled accepted CC-010A lifecycle evidence.
+- CC-013A: task `01a005ae-36ec-7fe3-80ac-3fa10ed2703a`, worktree `/Users/unterlantas/.codex/worktrees/6331/shafinMultitool`.
 - CC-008: proposed evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; до owner acceptance UI source tasks не запускаются.
 
 ## Ворота следующего шага

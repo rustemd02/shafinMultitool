@@ -1,6 +1,6 @@
 # Автономная реализация: Sol Advisor и Luna task lane
 
-Статус: `pending_role_discovery_reload`.
+Статус: `active`.
 
 Дата: 15 августа 2026 года.
 
@@ -170,4 +170,5 @@ Research остаётся provisional для willingness to pay, подписк�
 - Project-scoped logical configuration сохранена и повторно прочитана через MCP.
 - Native adapter установлен без предупреждений и резервных копий: созданы роли `sol_advisor_routine`, `sol_advisor_high` и `sol_advisor_advisor`.
 - MCP-валидация после установки вернула `status: ready` и `valid: true`; фактические хеши всех трёх файлов совпадают с отрендеренным adapter.
-- Нужен новый Codex-чат или reload, чтобы native role discovery увидел установленные роли.
+- Native role discovery и Codex app-task lane подтверждены рабочими задачами.
+- Автономный цикл запущен: Sol принимает изменения и возвращает correction-пакеты, Luna / Max выполняет изолированные task packets в отдельных worktrees.
