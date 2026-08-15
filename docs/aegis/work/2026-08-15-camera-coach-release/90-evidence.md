@@ -38,6 +38,15 @@
 - CC-010G stateless thermal budget: worker `3212923`, accepted `6bfd3a4`; `lastBudget` was removed without policy changes, immutable Sendable values were adopted and Sol independently passed 6/6 focused tests including bounded concurrent reads.
 - Recorder evidence covers an isolated policy-neutral core only; production camera wiring, Photos export and retention/background behavior are not claimed.
 
+## CC-007A/CC-008A integrated evidence
+
+- Integrated Luna / Max run on iPhone 17 Pro / iOS Simulator 26.5: generic `build-for-testing` succeeded.
+- One ordinary `xcodebuild test` run used no `EXCLUDED_SOURCE_FILE_NAMES` and `-parallel-testing-enabled NO`; 19/19 tests passed: `CommercialShellRoutingTests` 11/11 and `CameraOverlayUXPresentationTests` 8/8.
+- DerivedData: `/private/tmp/shafin-cc007a-cc008a.F0EKEx`; result bundle: `/private/tmp/shafin-cc007a-cc008a.F0EKEx/cc-focused-tests.xcresult` (`cc-focused-tests.xcresult`).
+- `git diff --check` passed for the integrated slice.
+- Known non-fatal diagnostics are preserved: `appintentsmetadataprocessor` skipped metadata extraction because no `AppIntents.framework` dependency was found; Xcode reported no rule to process the `Resources/Circle.rcproject` folder for arm64; the app emitted the `UICollectionViewFlowLayoutBreakForInvalidSizes` symbolic-breakpoint diagnostic. These did not fail this focused run.
+- Boundary: this is focused simulator/unit-target evidence. It does not prove production launch-graph/default-route integration, a true UI-test target, full-suite health, configured real-image evaluation, physical-device behavior or App Store/release readiness. The raw full unit-target audit and other unresolved gates below remain in force.
+
 ## Current test and contract evidence
 
 - Raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed and 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. The failures include pseudo-UI without target app, default execution of opt-in model/physical benchmark lanes, Settings force unwraps, real-image Camera Coach evaluation with simulator Vision/Espresso plus absent never-tracked assets, and legacy parser/persistence/fixture failures. The full suite is not green.
@@ -51,7 +60,7 @@
 ## Product decisions and remaining owner gates
 
 - CC-008: `docs/implementation/ux/camera-coach-state-spec.md` is accepted based on the owner's explicit instruction to launch the full autonomous implementation pipeline and the earlier affirmative product/UI decisions.
-- CC-007A/CC-008A: exact shell/live-surface packets are `ready`, not implemented; Luna / Max launches them next.
+- CC-007A/CC-008A: accepted implementation slices with the focused evidence above; the parent shell/default-route integration, true UI launch smoke and unsupported product states remain outside these slices. They are not release-ready.
 - CC-013B2: recommended minimal RC excludes DETR, NIMA and compact neural fusion while retaining Apple Vision/saliency and deterministic critique; implementation is gated by owner acceptance.
 
 These records support continued execution. They do not prove App Store readiness, legal redistribution rights, physical-device behavior, external beta quality or completion of the full active goal.

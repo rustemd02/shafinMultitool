@@ -1,10 +1,3 @@
-//
-//  OverlayView.swift
-//  multitool2
-//
-//  Created by Рустем on 28.10.2025.
-//
-
 import SwiftUI
 import AVFoundation
 import UIKit
@@ -13,8 +6,10 @@ struct OverlayView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: CameraViewModel
     let cameraManager: CameraManager
-    @State private var decisionTrace: DecisionTracePresentation?
+
+#if DEBUG
     @State private var uiFPSTimer: Timer?
+#endif
     @State private var lifecycleTask: Task<Void, Never>?
 
     var body: some View {
@@ -22,114 +17,63 @@ struct OverlayView: View {
             CameraPreview(session: cameraManager.captureSession,
                           cameraManager: cameraManager)
                 .ignoresSafeArea()
+                .accessibilityHidden(true)
 
             GeometryReader { proxy in
-                let size = proxy.size
-                let overlay = viewModel.overlayState
-                let ux = CameraOverlayUXPresentation.make(
-                    isPaused: viewModel.isPaused,
+                let canvasSize = proxy.size
+                let presentation = CameraOverlayUXPresentation.make(
                     liveHint: viewModel.liveHint,
-                    pauseCritique: viewModel.pauseCritique,
-                    previewSuggestions: viewModel.previewSuggestions
+                    isPaused: viewModel.isPaused
+                )
+                let hasZoomControl = !viewModel.availableLenses.isEmpty
+                let lowerThirdInset = CameraOverlayUXPresentation.lowerThirdBottomInset(
+                    hasZoomControl: hasZoomControl
                 )
 
                 ZStack(alignment: .center) {
-                    // Правило третей (тонкие линии)
-                    if !viewModel.debugMode {
-                        ThirdsGridOverlay()
-                            .stroke(style: StrokeStyle(lineWidth: 0.8, dash: [6, 4]))
-                            .foregroundColor(Color.white.opacity(0.35))
+                    // A guide is allowed only when it is supplied by the
+                    // currently active corrective LiveHint. There is no
+                    // permanent grid, bounding box, annotation stack, or
+                    // legacy arrow fallback on the production surface.
+                    if !viewModel.isPaused,
+                       let overlayHint = presentation.overlayHint {
+                        ActionLinkedGuideView(
+                            hint: overlayHint,
+                            canvasSize: canvasSize
+                        )
                     }
 
-                    // Bounding box (только в non-debug режиме)
-                    if !viewModel.debugMode, let bbox = overlay.primaryBoundingBox {
-                        BBoxOverlay(boundingBox: bbox,
-                                    canvasSize: size)
-                            .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [8, 4]))
-                            .foregroundColor(.yellow)
+                    if !viewModel.isPaused {
+                        if viewModel.liveHint != nil {
+                            LiveHintChipView(
+                                liveHint: viewModel.liveHint,
+                                fallbackSuggestion: nil,
+                                boundingBox: nil,
+                                canvasSize: canvasSize
+                            )
+                            .padding(.bottom, lowerThirdInset)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        } else {
+                            LiveAnalysisStatusChip(title: presentation.observation)
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, lowerThirdInset)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        }
                     }
-                    
-                    // Debug: DETR детекции и метрики
+
+#if DEBUG
                     if viewModel.debugMode {
                         DebugVisualizationOverlay(
                             detrDetections: viewModel.detrDetections,
                             visionSubjects: viewModel.visionSubjects,
                             saliencyCenter: viewModel.saliencyCenter,
-                            canvasSize: size
+                            canvasSize: canvasSize
                         )
+                        DebugMetricsView(isVisible: true)
                     }
+#endif
 
-                    StructuredOverlayAnnotationsView(
-                        annotations: viewModel.overlayAnnotations,
-                        overlayState: overlay,
-                        canvasSize: size
-                    )
-                    
-                    // Стрелки-помощники
-                    if !viewModel.isPaused, viewModel.liveHint?.isFallback == true {
-                        let hasStructuredArrow = viewModel.overlayAnnotations.contains(where: { $0.kind == .arrow })
-                        if !hasStructuredArrow {
-                            let (directions, magnitude) = DirectionArrows.directions(
-                                for: viewModel.legacySuggestion,
-                                features: viewModel.features
-                            )
-                            if !directions.isEmpty {
-                                DirectionArrows(directions: directions, magnitude: magnitude)
-                            }
-                        }
-                    }
-                    
-                    // Live hint: показываем только стабилизированный structured/fallback-кандидат из pipeline.
-                    if !viewModel.isPaused, let liveHint = viewModel.liveHint {
-                        LiveHintChipView(liveHint: liveHint,
-                                         fallbackSuggestion: nil,
-                                         boundingBox: liveHintBoundingBox(
-                                            for: liveHint,
-                                            fallback: overlay.primaryBoundingBox
-                                         ),
-                                         canvasSize: size)
-                    }
-
-                    if !viewModel.isPaused, ux.showsLiveWaitingHint {
-                        LiveAnalysisStatusChip(
-                            title: ux.liveWaitingTitle ?? "Анализ кадра активен",
-                            message: ux.liveWaitingBody ?? "Подсказка появится при уверенном сигнале."
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, viewModel.availableLenses.isEmpty ? 32 : 86)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    }
-                    
-                    // Режим предпросмотра: список всех советов
-                    if viewModel.isPaused {
-                        if let pauseCritique = viewModel.pauseCritique {
-                            PauseCritiqueCardView(
-                                critique: pauseCritique,
-                                legacySuggestions: viewModel.previewSuggestions,
-                                maxHeight: pausePanelMaxHeight(for: size),
-                                onContinue: resumeFromPause,
-                                onExplain: ux.canShowDecisionTrace ? showDecisionTrace : nil
-                            )
-                                .padding(.bottom, 24)
-                                .frame(maxHeight: .infinity, alignment: .bottom)
-                        } else {
-                            PauseStatusPanelView(
-                                title: ux.pausePanelTitle ?? "Анализирую кадр",
-                                message: ux.pausePanelBody ?? "Можно продолжить и попробовать другой ракурс.",
-                                suggestions: viewModel.previewSuggestions,
-                                maxHeight: pausePanelMaxHeight(for: size),
-                                onContinue: resumeFromPause
-                            )
-                                .padding(.bottom, 24)
-                                .frame(maxHeight: .infinity, alignment: .bottom)
-                        }
-                    }
-
-                    // Debug overlay
-                    DebugMetricsView(isVisible: viewModel.debugMode)
-                    
-                    // Zoom control (внизу по центру)
-                    if !viewModel.isPaused && !viewModel.debugMode && !viewModel.availableLenses.isEmpty {
+                    if !viewModel.isPaused && hasZoomControl {
                         VStack {
                             Spacer()
                             ZoomControlView(
@@ -139,28 +83,33 @@ struct OverlayView: View {
                                     viewModel.switchLens(to: lens)
                                 }
                             )
-                            .padding(.bottom, 32)
+                            .padding(.bottom, 28)
                         }
                     }
 
-                    topControls(ux: ux)
+                    topControls
                         .zIndex(20)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+#if DEBUG
             .onTapGesture(count: 2) {
                 viewModel.toggleDebug()
             }
+#endif
         }
         .onAppear {
             lifecycleTask?.cancel()
             lifecycleTask = Task { @MainActor in
                 await viewModel.startAndWait()
             }
+#if DEBUG
             if viewModel.debugMode {
                 startUIFPSMonitoring()
             }
+#endif
         }
+#if DEBUG
         .onChange(of: viewModel.debugMode) { isDebugModeEnabled in
             if isDebugModeEnabled {
                 startUIFPSMonitoring()
@@ -168,62 +117,47 @@ struct OverlayView: View {
                 stopUIFPSMonitoring()
             }
         }
+#endif
         .onDisappear {
+#if DEBUG
             stopUIFPSMonitoring()
+#endif
             lifecycleTask?.cancel()
             lifecycleTask = Task { @MainActor in
                 await viewModel.stopAndWait()
             }
         }
-        .sheet(item: $decisionTrace) { trace in
-            DecisionTraceView(trace: trace)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
-    }
-
-    private var canShowDecisionTrace: Bool {
-        CameraOverlayUXPresentation.make(
-            isPaused: viewModel.isPaused,
-            liveHint: viewModel.liveHint,
-            pauseCritique: viewModel.pauseCritique,
-            previewSuggestions: viewModel.previewSuggestions
-        ).canShowDecisionTrace
     }
 
     @ViewBuilder
-    private func topControls(ux: CameraOverlayUXPresentation) -> some View {
+    private var topControls: some View {
         VStack {
             HStack(alignment: .top) {
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark")
-                        .foregroundColor(.black.opacity(0.88))
-                        .padding(10)
-                        .background(Color.white.opacity(0.92), in: Circle())
+                        .font(.body.weight(.semibold))
+                        .frame(width: CameraOverlayUXPresentation.minimumControlDimension,
+                               height: CameraOverlayUXPresentation.minimumControlDimension)
+                        .foregroundStyle(.primary)
+                        .background(.regularMaterial, in: Circle())
                 }
-                .accessibilityLabel("Закрыть режим съёмки")
-
-                if ux.canShowDecisionTrace {
-                    Button(action: showDecisionTrace) {
-                        Label("Почему?", systemImage: "questionmark.circle.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.black.opacity(0.88))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                            .background(Color.white.opacity(0.92), in: Capsule())
-                    }
-                    .accessibilityLabel("Показать почему приложение приняло решение")
-                }
+                .accessibilityIdentifier("camera_coach_close")
+                .accessibilityLabel("Закрыть камеру")
 
                 Spacer()
 
                 Button(action: { viewModel.togglePause() }) {
                     Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                        .foregroundColor(.black.opacity(0.88))
-                        .padding(10)
-                        .background(Color.white.opacity(0.92), in: Circle())
+                        .font(.body.weight(.semibold))
+                        .frame(width: CameraOverlayUXPresentation.minimumControlDimension,
+                               height: CameraOverlayUXPresentation.minimumControlDimension)
+                        .foregroundStyle(.primary)
+                        .background(.regularMaterial, in: Circle())
                 }
-                .accessibilityLabel(viewModel.isPaused ? "Продолжить анализировать кадр" : "Поставить кадр на паузу для разбора")
+                .accessibilityIdentifier("camera_coach_pause")
+                .accessibilityLabel(viewModel.isPaused ? "Продолжить анализ" : "Поставить анализ на паузу")
+                .accessibilityValue(viewModel.isPaused ? "Пауза включена" : "Анализ продолжается")
+                .accessibilityAddTraits(viewModel.isPaused ? .isSelected : [])
             }
             .padding(.top, 16)
             .padding(.horizontal, 16)
@@ -232,34 +166,10 @@ struct OverlayView: View {
         }
     }
 
-    private func resumeFromPause() {
-        guard viewModel.isPaused else { return }
-        decisionTrace = nil
-        viewModel.togglePause()
-    }
-
-    private func pausePanelMaxHeight(for size: CGSize) -> CGFloat {
-        max(260, size.height * 0.58)
-    }
-
-    private func showDecisionTrace() {
-        decisionTrace = DecisionTracePresentation.current(
-            liveHint: viewModel.liveHint,
-            pauseCritique: viewModel.pauseCritique,
-            isPaused: viewModel.isPaused,
-            overlayAnnotations: viewModel.overlayAnnotations,
-            debugSignals: DecisionTraceDebugSignals.make(
-                features: viewModel.features,
-                detrDetections: viewModel.detrDetections,
-                visionSubjects: viewModel.visionSubjects,
-                saliencyCenter: viewModel.saliencyCenter
-            )
-        )
-    }
-
+#if DEBUG
     private func startUIFPSMonitoring() {
         guard uiFPSTimer == nil else { return }
-        uiFPSTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
+        uiFPSTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
             Telemetry.shared.recordUIFrame()
         }
     }
@@ -268,132 +178,74 @@ struct OverlayView: View {
         uiFPSTimer?.invalidate()
         uiFPSTimer = nil
     }
-
-    private func liveHintBoundingBox(for liveHint: LiveHintPresentation?,
-                                     fallback: CGRect?) -> CGRect? {
-        if let region = liveHint?.targetRegion {
-            return CGRect(x: region.x, y: region.y, width: region.width, height: region.height)
-        }
-        return fallback
-    }
+#endif
 }
 
-private struct StructuredOverlayAnnotationsView: View {
-    let annotations: [OverlayAnnotationPresentation]
-    let overlayState: OverlayState
+private struct ActionLinkedGuideView: View {
+    let hint: OverlayHint
     let canvasSize: CGSize
 
     var body: some View {
         ZStack {
-            ForEach(annotations) { annotation in
-                switch annotation.kind {
-                case .arrow:
-                    if let direction = annotation.direction,
-                       let arrowDirection = arrowDirection(for: direction) {
-                        DirectionArrows(
-                            directions: [arrowDirection],
-                            magnitude: CGFloat(annotation.emphasis)
-                        )
-                    }
-                case .regionHighlight:
-                    if let targetRegion = annotation.targetRegion {
-                        let box = rect(from: targetRegion)
-                        ZStack(alignment: .topLeading) {
-                            BBoxOverlay(
-                                boundingBox: box,
-                                canvasSize: canvasSize
-                            )
-                            .stroke(style: StrokeStyle(lineWidth: max(2, CGFloat(annotation.emphasis) * 3), lineCap: .round, dash: [10, 4]))
-                            .foregroundColor(annotationColor(for: annotation))
+            if hint.kind == .regionHighlight, let targetRegion = hint.targetRegion {
+                BBoxOverlay(
+                    boundingBox: CGRect(
+                        x: targetRegion.x,
+                        y: targetRegion.y,
+                        width: targetRegion.width,
+                        height: targetRegion.height
+                    ),
+                    canvasSize: canvasSize
+                )
+                .stroke(Color.yellow.opacity(0.86), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [8, 4]))
+            }
 
-                            if let label = annotation.label {
-                                Text(label)
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(annotationColor(for: annotation).opacity(0.92), in: Capsule())
-                                    .position(labelPosition(for: box))
-                            }
-                        }
-                    }
-                case .horizonLine:
-                    HorizonOverlay(angle: overlayState.horizonAngle, confidence: overlayState.horizonConfidence)
-                        .stroke(style: StrokeStyle(lineWidth: 2.0, dash: [6, 4]))
-                        .foregroundColor(.cyan.opacity(0.9))
-                }
+            if hint.kind == .arrow, let direction = hint.direction {
+                Image(systemName: arrowSystemName(for: direction))
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.yellow)
+                    .shadow(color: .black.opacity(0.45), radius: 2)
+                    .frame(minWidth: CameraOverlayUXPresentation.minimumControlDimension,
+                           minHeight: CameraOverlayUXPresentation.minimumControlDimension)
             }
         }
+        .accessibilityHidden(true)
+        .transition(.opacity)
     }
 
-    private func rect(from region: NormalizedRect) -> CGRect {
-        CGRect(x: region.x, y: region.y, width: region.width, height: region.height)
-    }
-
-    private func annotationColor(for annotation: OverlayAnnotationPresentation) -> Color {
-        switch annotation.tone {
-        case .success:
-            return .green.opacity(0.9)
-        case .warning:
-            return .yellow.opacity(0.9)
-        case .danger:
-            return .red.opacity(0.92)
-        case .neutral:
-            switch annotation.kind {
-            case .arrow:
-                return .yellow.opacity(0.9)
-            case .regionHighlight:
-                return .orange.opacity(0.9)
-            case .horizonLine:
-                return .cyan.opacity(0.9)
-            }
-        }
-    }
-
-    private func labelPosition(for box: CGRect) -> CGPoint {
-        let x = max(36, min(canvasSize.width - 36, box.minX * canvasSize.width + 38))
-        let y = max(14, (1 - box.maxY) * canvasSize.height - 12)
-        return CGPoint(x: x, y: y)
-    }
-
-    private func arrowDirection(for direction: OverlayDirection) -> ArrowDirection? {
+    private func arrowSystemName(for direction: OverlayDirection) -> String {
         switch direction {
-        case .left: return .left
-        case .right: return .right
-        case .up: return .up
-        case .down: return .down
+        case .left:
+            return "arrow.left.circle.fill"
+        case .right:
+            return "arrow.right.circle.fill"
+        case .up:
+            return "arrow.up.circle.fill"
+        case .down:
+            return "arrow.down.circle.fill"
         }
     }
 }
 
 private struct LiveAnalysisStatusChip: View {
     let title: String
-    let message: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "waveform.path.ecg")
+        HStack(spacing: 10) {
+            Image(systemName: "viewfinder")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.96))
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.84))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .foregroundStyle(.primary)
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(CameraOverlayAccessibilityID.seeking)
         .accessibilityLabel(title)
-        .accessibilityValue(message)
+        .accessibilityValue("Ожидание устойчивого совета")
     }
 }
 
@@ -410,7 +262,6 @@ private struct CameraPreview: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
-        // Устанавливаем ориентацию здесь, когда connection точно существует
         uiView.updateOrientation()
     }
 }
@@ -441,19 +292,14 @@ final class PreviewView: UIView {
 
     func updateOrientation(force: Bool = false) {
         guard let connection = videoPreviewLayer.connection,
-              connection.isVideoOrientationSupported else {
-            return
-        }
-        
-        guard let interfaceOrientation = currentInterfaceOrientation(),
+              connection.isVideoOrientationSupported,
+              let interfaceOrientation = currentInterfaceOrientation(),
               let captureOrientation = AVCaptureVideoOrientation(interfaceOrientation: interfaceOrientation) else {
             return
         }
-        
-        if !force, let lastOrientation, lastOrientation == captureOrientation {
-            return
-        }
-        
+
+        guard force || lastOrientation != captureOrientation else { return }
+
         lastOrientation = captureOrientation
         connection.videoOrientation = captureOrientation
         cameraManager?.setVideoOrientation(captureOrientation)
@@ -468,28 +314,34 @@ final class PreviewView: UIView {
                 .compactMap { $0 as? UIWindowScene }
                 .first(where: { $0.activationState == .foregroundActive })?
                 .interfaceOrientation
-        } else {
-            var orientation: UIInterfaceOrientation?
-            DispatchQueue.main.sync {
-                orientation = UIApplication.shared.connectedScenes
-                    .compactMap { $0 as? UIWindowScene }
-                    .first(where: { $0.activationState == .foregroundActive })?
-                    .interfaceOrientation
-            }
-            return orientation
         }
+
+        var orientation: UIInterfaceOrientation?
+        DispatchQueue.main.sync {
+            orientation = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first(where: { $0.activationState == .foregroundActive })?
+                .interfaceOrientation
+        }
+        return orientation
     }
 }
 
 private extension AVCaptureVideoOrientation {
     init?(interfaceOrientation: UIInterfaceOrientation) {
         switch interfaceOrientation {
-        case .portrait: self = .portrait
-        case .portraitUpsideDown: self = .portraitUpsideDown
-        case .landscapeLeft: self = .landscapeLeft
-        case .landscapeRight: self = .landscapeRight
-        case .unknown: return nil
-        @unknown default: return nil
+        case .portrait:
+            self = .portrait
+        case .portraitUpsideDown:
+            self = .portraitUpsideDown
+        case .landscapeLeft:
+            self = .landscapeLeft
+        case .landscapeRight:
+            self = .landscapeRight
+        case .unknown:
+            return nil
+        @unknown default:
+            return nil
         }
     }
 }

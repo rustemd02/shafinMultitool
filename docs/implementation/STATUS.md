@@ -54,9 +54,9 @@ The queue below preserves historical lane labels and evidence for traceability. 
 | CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
 | CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
 | CC-007 | decomposed | Sol → Luna | CC-006, CC-008 | Commercial app shell и Camera Coach default route |
-| CC-007A | ready | Luna / Max | CC-006, CC-008 | Single-child shell routing contract без смены launch graph готов к реализации |
+| CC-007A | accepted | Luna / Max | CC-006, CC-008 | Single-child shell routing contract принят; launch graph не изменён, release-ready не заявляется |
 | CC-008 | accepted | Sol | product baseline | UX state machine принята явным запуском полного автономного implementation pipeline и предыдущими product/UI решениями owner |
-| CC-008A | ready | Luna / Max | CC-008, CC-010B | Truthful live surface для уже доказуемых S04/S06/S07/S10c готов к реализации |
+| CC-008A | accepted | Luna / Max | CC-008, CC-010B | Truthful live surface для уже доказуемых S04/S06/S07/S10c принят; release-ready не заявляется |
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
 | CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
 | CC-010A1 | accepted | Luna / Max | CC-010A, CC-010B1 | Failed-start rollback принят после correction loop; generic build и 22/22 пересекающихся focused tests прошли |
@@ -111,8 +111,8 @@ The queue below preserves historical lane labels and evidence for traceability. 
 - CC-011A: accepted, task `01a005c4-6a4d-7e63-a8d2-cd7199ea921f`, worker commit `a49c234`, accepted commit `c1e6646`; Sol повторил Release build, validator и negative self-test: ровно два manifests, 71 888 КБ, no unexpected paths.
 - CC-011B: accepted, task `01a005d8-ac86-7d02-98ec-8b41b398bbe8`, worker commit `1223e01`, accepted commit `f56b7b7`; Sol повторил полный public gate на clean HEAD: Debug/Release прошли, Release = 71 900 КБ, 2 privacy manifests, 5 material contributors, 5 known provenance blockers и 6/6 contamination fixtures.
 - CC-008: accepted evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; owner явно потребовал запустить полный автономный implementation pipeline после серии подтверждённых product/UI решений.
-- CC-007A: ready Luna / Max packet — custom single-child container с системным `UITabBar`, ленивые routes, awaited teardown, blocked-transition rollback, rapid-tap coalescing и 10 focused routing tests. Пакет не меняет launch graph.
-- CC-008A: ready Luna / Max packet — typed presentation только для S04/S06/S07/S10c, один lower-third coaching surface, action-linked guides, production-safe copy, accessibility и Reduce Motion/Transparency. Пакет не обещает subject clarification, verification, recording, Deep Review или persistence.
+- CC-007A: accepted slice — custom single-child container с системным `UITabBar`, ленивые routes, awaited teardown, blocked-transition rollback, rapid-tap coalescing и 11 focused routing tests. Пакет не меняет launch graph; parent CC-007/default-route integration и true UI launch smoke остаются отдельной работой.
+- CC-008A: accepted slice — typed presentation только для S04/S06/S07/S10c, один lower-third coaching surface, action-linked guides, production-safe copy, accessibility и Reduce Motion/Transparency. Пакет не обещает subject clarification, verification, recording, Deep Review или persistence; эти состояния остаются вне slice.
 - CC-013B1: accepted, Luna / Max task `01a00603-9514-7ea0-81f3-21361862bc87`, worker twice-amended commit `ac97f6e`, accepted commit `d7fff1b`. После двух Sol fix-first loops зафиксированы только exact artifact traceability и existing build-output match; clean rebuild не заявлен. На основной ветке прошли 15 llama fixtures, offline/optional-upstream validators и совместные 25 provenance tests; legal/redistribution и archive proof остаются открыты.
 - CC-011D: accepted, Luna / Max task `01a00631-d259-7c22-aa35-7e6ef95e8e1b`, worker commit `4802b9c`, accepted commit `7891fec`. Fresh Sol-review дал `ship`; orchestration test подтвердил pre-build order, fail-fast, offline args, отдельные логи и paths with spaces. Sol повторил полный gate на clean main: Debug/Release, 2 privacy manifests, 2 provenance validators, Release 71 968 KiB, 5 material contributors, 5 честных blockers и 6/6 contamination fixtures.
 - CC-013C1: accepted, Luna / Max task `01a00603-9514-7ea0-81f3-2140ad032657`, worker amended commit `81f50c2`, accepted commit `c8601ba`. После Sol fix-first review claim сужен до repository correlation; 10/10 fixtures и реальный offline validator повторно прошли на основной ветке. Source-to-export causality, deterministic recipe и creator/rights/legal decision остаются открыты.
@@ -121,7 +121,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 
 ## Ворота следующего шага
 
-Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008 и CC-011E приняты; новая user-visible Luna / Max thread теперь может запускать CC-007A и CC-008A. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
+Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008, CC-011E, CC-007A и CC-008A приняты как ограниченные slices; следующий шаг остаётся в соответствии с `BACKLOG.md`. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
 
 ## Внешние блокеры
 

@@ -119,7 +119,7 @@
 ### CC-007A — Single-active-route shell contract
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `accepted`.
 - Dependencies: CC-006, CC-008.
 - Ownership: create only `shafinMultitool/CommercialShell/CommercialShellViewController.swift` and `shafinMultitoolTests/CommercialShellRoutingTests.swift`.
 - Non-edits: `SceneDelegate`, `ContentView`, camera/session internals, Scene Mode routers, recorder, project file and existing UI. This slice does not change the launch graph.
@@ -127,6 +127,8 @@
 - Behavior: custom single-child container with a system `UITabBar`; Camera selected by default; Scenes and History are lazy; exactly one active child and retained route; selection is disabled during teardown; a blocked teardown retains the current child and selection; rapid taps coalesce to the last pending section; repeated current selection is a no-op.
 - Focused tests: default selection, lazy construction, one-child invariant, teardown-before-create ordering, blocked rollback, interaction lock, rapid-tap coalescing, repeat-selection no-op, child containment lifecycle and route release on container teardown.
 - Acceptance: deterministic routing contract passes focused tests and generic iOS build-for-testing without changing runtime launch behavior.
+- Evidence: integrated Luna / Max run on iPhone 17 Pro / iOS Simulator 26.5 passed generic `build-for-testing`; the ordinary `xcodebuild test` run passed `CommercialShellRoutingTests` 11/11 as part of 19/19. Full evidence and retained diagnostics: `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
+- Boundary: accepted slice only, not release-ready. The production launch graph/default-route integration and dependent true UI target/default smoke remain outside this slice; full test topology and real-image evaluation remain separate unresolved lanes.
 - Rollback: remove the two owned files; no production route is connected by this slice.
 
 ## CC-008 — UI/UX state specification
@@ -142,7 +144,7 @@
 ### CC-008A — Truthful production live coaching surface
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `accepted`.
 - Dependencies: CC-008, CC-010B.
 - Ownership: `CameraOverlayUXPresentation.swift`, `SuggestionChip.swift`, `OverlayView.swift`, `ZoomControlView.swift`, `CameraOverlayUXPresentationTests.swift` and at most one narrow rendering test under existing target membership.
 - Non-edits: `ContentView`, `CameraViewModel`, `CameraManager`, `AnalysisPipeline`, `RealtimeScheduler`, `SuggestionListView`, `SceneDelegate`, Scene Mode, recorder, Deep Review, persistence and `project.pbxproj`.
@@ -152,6 +154,8 @@
 - Accessibility: stable identifiers, preview hidden from VoiceOver, icon controls labelled, 44×44 pt targets, Dynamic Type, Reduce Motion and Reduce Transparency behavior.
 - Tests: exhaustive presentation mapping, incomplete-payload fallback, negative forbidden-copy assertions (`%`, trace, semantic, reserve, GOOD/REVIEW), deterministic portrait/landscape rendering attachments and focused build/test verification.
 - Acceptance: the live surface communicates only evidence the current pipeline actually owns, remains legible in both orientations and passes the banned-pattern/screenshot gates from CC-008.
+- Evidence: the same integrated Luna / Max run on iPhone 17 Pro / iOS Simulator 26.5 passed `CameraOverlayUXPresentationTests` 8/8 as part of 19/19; full evidence and retained diagnostics: `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
+- Boundary: accepted slice only, not release-ready. Unsupported states above, production shell/default-route integration, true UI launch smoke, full test topology and configured real-image evaluation remain outside this slice.
 - Rollback: revert only the owned presentation/UI files and focused tests; no camera lifecycle rollback is required.
 
 ## CC-009 — Camera/session owner and lifecycle audit
@@ -359,7 +363,7 @@
 - Failure taxonomy: pseudo-UI tests have no target application; opt-in local-model and physical benchmark suites execute by default; Settings fixtures hit force unwraps; real-image Camera Coach evaluation depends on simulator Vision/Espresso and absent never-tracked assets; legacy parser, persistence and fixtures fail independently.
 - Integrated evidence: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Additional repetitions: Scene 18/18 twice plus DB performance 4/4; DeepCritic 20/20; subtitle/config 22 with 1 intended skip; Hybrid 7/7; Semantic 8/8.
 - Canonical clean release gate passed all stages on `6ff225d553ae654298dda70b9c779c1226c31800`: Release 72,032 KiB; 2 privacy manifests; only `SnapKit.framework` and `llama.framework`; 5 material contributors; 5 blockers; 2 provenance validators; 6/6 contamination fixtures.
-- Next: launch ready CC-007A and CC-008A through Luna / Max. A true UI target/default test topology and configured real-image evaluation remain separate unresolved lanes.
+- Next: CC-007A and CC-008A are accepted slices. Continue the remaining parent CC-007 commercial-shell/default-route work and dependent CC-011C true UI target/default smoke as listed in this backlog; full test topology and configured real-image evaluation remain separate unresolved lanes.
 
 #### CC-011E1 — Opt-in execution gates
 

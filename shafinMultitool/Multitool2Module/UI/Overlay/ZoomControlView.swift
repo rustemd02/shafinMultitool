@@ -1,61 +1,75 @@
-//
-//  ZoomControlView.swift
-//  multitool2
-//
-//  Created by Рустем on 28.10.2025.
-//
-
 import SwiftUI
+import UIKit
 
 struct ZoomControlView: View {
     let availableLenses: [CameraLens]
     let currentLens: CameraLens
     let onLensChange: (CameraLens) -> Void
-    
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     var body: some View {
-        HStack(spacing: 16) {
-            ForEach(availableLenses, id: \.self) { lens in
+        HStack(spacing: 8) {
+            ForEach(availableLenses, id: \.rawValue) { lens in
                 ZoomButton(
                     lens: lens,
                     isSelected: lens == currentLens,
+                    reduceMotion: reduceMotion,
                     action: { onLensChange(lens) }
                 )
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .cornerRadius(24)
+        .padding(8)
+        .background(
+            reduceTransparency
+                ? AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
+                : AnyShapeStyle(.regularMaterial),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .separator).opacity(0.55), lineWidth: 0.7)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("camera_coach_zoom_control")
+        .accessibilityLabel("Выбор масштаба камеры")
     }
 }
 
 private struct ZoomButton: View {
     let lens: CameraLens
     let isSelected: Bool
+    let reduceMotion: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Text(lens.displayName)
-                .font(.system(size: 16, weight: isSelected ? .semibold : .regular, design: .rounded))
-                .foregroundColor(isSelected ? .black : .white)
-                .frame(minWidth: 44, minHeight: 44)
+                .font(.body.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .frame(minWidth: CameraOverlayUXPresentation.minimumControlDimension,
+                       minHeight: CameraOverlayUXPresentation.minimumControlDimension)
                 .background(
-                    Circle()
-                        .fill(isSelected ? Color.white : Color.white.opacity(0.2))
+                    isSelected ? Color.accentColor.opacity(0.18) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                 )
         }
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Масштаб \(lens.displayName)")
+        .accessibilityValue(isSelected ? "Выбран" : "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isSelected)
     }
 }
 
 #Preview {
     ZStack {
         Color.black.ignoresSafeArea()
-        
+
         VStack {
             Spacer()
-            
+
             ZoomControlView(
                 availableLenses: [.ultraWide, .wide, .telephoto2x, .telephoto3x],
                 currentLens: .wide,
@@ -65,4 +79,3 @@ private struct ZoomButton: View {
         }
     }
 }
-

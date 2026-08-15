@@ -1,39 +1,44 @@
-//
-//  SuggestionChip.swift
-//  multitool2
-//
-//  Created by Рустем on 28.10.2025.
-//
-
 import SwiftUI
+import UIKit
 
+enum CameraOverlayAccessibilityID {
+    static let surface = "camera_coach_live_surface"
+    static let observation = "camera_coach_observation"
+    static let action = "camera_coach_action"
+    static let why = "camera_coach_why"
+    static let explanation = "camera_coach_explanation"
+    static let seeking = "camera_coach_seeking_status"
+    static let zoom = "camera_coach_zoom_control"
+}
+
+/// Compatibility view for legacy callers. The live Camera Coach uses
+/// `LiveHintChipView` and never renders an arbitrary legacy suggestion.
 struct SuggestionChipView: View {
     let suggestion: Suggestion?
     let boundingBox: CGRect?
     let canvasSize: CGSize
 
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     var body: some View {
-        VStack {
-            if let suggestion {
-                Text(suggestion.text)
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .frame(width: chipWidth, alignment: .leading)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .shadow(radius: 6)
-                    .padding(.top, 24)
-                    .frame(maxWidth: .infinity, alignment: .top)
-                    .transition(.opacity)
-            }
+        if let suggestion {
+            Text(suggestion.text)
+                .font(.headline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: CameraOverlayUXPresentation.surfaceWidth(for: canvasSize), alignment: .leading)
+                .padding(16)
+                .foregroundStyle(.primary)
+                .background(surfaceBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
+                .accessibilityLabel(suggestion.text)
         }
-        .animation(.easeInOut(duration: 0.2), value: suggestion?.id)
     }
 
-    private var chipWidth: CGFloat {
-        min(360, max(160, canvasSize.width - 48))
+    private var surfaceBackground: AnyShapeStyle {
+        reduceTransparency
+            ? AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
+            : AnyShapeStyle(.regularMaterial)
     }
 }
 
@@ -42,163 +47,123 @@ struct LiveHintChipView: View {
     let fallbackSuggestion: Suggestion?
     let boundingBox: CGRect?
     let canvasSize: CGSize
-    @State private var isExpanded: Bool = false
 
-    private var displayText: String? {
-        liveHint?.text ?? fallbackSuggestion?.text
-    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AccessibilityFocusState private var whyFocused: Bool
+    @AccessibilityFocusState private var explanationFocused: Bool
+    @State private var isExpanded = false
 
-    private var expandedVerdict: LiveExpandedVerdictPresentation? {
-        liveHint?.expandedVerdict
-    }
-
-    private var canExpand: Bool {
-        expandedVerdict != nil
+    private var presentation: CameraOverlayUXPresentation {
+        if let liveHint {
+            return CameraOverlayUXPresentation.make(liveHint: liveHint, isExpanded: isExpanded)
+        }
+        if fallbackSuggestion != nil {
+            return CameraOverlayUXPresentation.safeFallbackPresentation
+        }
+        return CameraOverlayUXPresentation.make(liveHint: nil)
     }
 
     var body: some View {
-        VStack {
-            if let displayText {
-                hintBody(text: displayText)
-            }
-        }
-        .padding(.top, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.easeInOut(duration: 0.18), value: isExpanded)
-    }
+        let currentPresentation = presentation
 
-    @ViewBuilder
-    private func hintBody(text: String) -> some View {
-        let content = VStack(alignment: .leading, spacing: 10) {
-            if let confidence = liveHint?.confidencePresentation {
-                LiveConfidenceBadge(confidence: confidence)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(currentPresentation.observation)
+                .font(.headline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier(CameraOverlayAccessibilityID.observation)
+
+            if let supportingObservation = currentPresentation.supportingObservation,
+               currentPresentation.baseState == .keepAsIs {
+                Text(supportingObservation)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(CameraOverlayAccessibilityID.observation)_basis")
             }
 
-            HStack(alignment: .top, spacing: 10) {
-                Text(text)
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(isExpanded ? nil : 2)
+            if let actionInstruction = currentPresentation.actionInstruction {
+                Text(actionInstruction)
+                    .font(.body.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier(CameraOverlayAccessibilityID.action)
+            }
 
-                if canExpand {
-                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+            if currentPresentation.showsWhy {
+                Button(action: toggleExplanation) {
+                    Text(isExpanded ? "Скрыть объяснение" : "Почему?")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.95))
-                        .padding(.top, 1)
+                        .frame(minWidth: CameraOverlayUXPresentation.minimumControlDimension,
+                               minHeight: CameraOverlayUXPresentation.minimumControlDimension,
+                               alignment: .leading)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityIdentifier(CameraOverlayAccessibilityID.why)
+                .accessibilityLabel(isExpanded ? "Скрыть объяснение" : "Почему?")
+                .accessibilityValue(isExpanded ? "Объяснение открыто" : "Объяснение скрыто")
+                .accessibilityHint(isExpanded
+                    ? "Свернуть объяснение совета."
+                    : "Открыть краткое объяснение совета.")
+                .accessibilityFocused($whyFocused)
             }
 
-            if isExpanded, let expandedVerdict {
-                LiveExpandedVerdictContent(expandedVerdict: expandedVerdict)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(width: chipWidth, alignment: .leading)
-        .background(
-            .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: isExpanded ? 18 : 28, style: .continuous)
-        )
-        .overlay(alignment: .topTrailing) {
-            if liveHint?.isFallback == true {
-                Text("резерв")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.yellow.opacity(0.9), in: Capsule())
-                    .offset(x: 6, y: -10)
-            }
-        }
-        .shadow(radius: 6)
-        .contentShape(Rectangle())
-        .transition(.opacity)
-
-        if canExpand {
-            Button(action: { isExpanded.toggle() }) {
-                content
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(displayText ?? "Подсказка кадра")
-            .accessibilityHint(isExpanded ? "Свернуть подробное объяснение." : "Открыть подробное объяснение.")
-        } else {
-            content
+            if isExpanded,
+               currentPresentation.state == .explanation,
+               let explanation = currentPresentation.explanation {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Почему это помогает")
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text(explanation)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityIdentifier(CameraOverlayAccessibilityID.explanation)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(displayText ?? "Подсказка кадра")
-        }
-    }
-
-    private var chipWidth: CGFloat {
-        if isExpanded {
-            return min(420, max(180, canvasSize.width - 32))
-        }
-        return min(360, max(160, canvasSize.width - 48))
-    }
-}
-
-private struct LiveConfidenceBadge: View {
-    let confidence: ConfidencePresentation
-
-    var body: some View {
-        Text("Уверенность \(confidence.label)")
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(foregroundColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(toneColor.opacity(0.72), in: Capsule())
-            .accessibilityLabel(confidence.accessibilityText)
-    }
-
-    private var toneColor: Color {
-        switch confidence.tone {
-        case .high:
-            return .green
-        case .medium:
-            return .orange
-        case .low:
-            return .yellow
-        }
-    }
-
-    private var foregroundColor: Color {
-        switch confidence.tone {
-        case .low:
-            return .black.opacity(0.82)
-        case .high, .medium:
-            return .white.opacity(0.95)
-        }
-    }
-}
-
-private struct LiveExpandedVerdictContent: View {
-    let expandedVerdict: LiveExpandedVerdictPresentation
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(expandedVerdict.shortVerdict)
-                .font(.subheadline.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let supportingText = expandedVerdict.supportingText {
-                Text(supportingText)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.92))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let actionText = expandedVerdict.actionText {
-                Text(actionText)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.95))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if expandedVerdict.fallbackUsed {
-                Text("Структурный разбор ограничен")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.yellow.opacity(0.95))
+                .accessibilityFocused($explanationFocused)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .frame(width: CameraOverlayUXPresentation.surfaceWidth(for: canvasSize), alignment: .leading)
+        .foregroundStyle(.primary)
+        .background(surfaceBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .separator).opacity(reduceTransparency ? 0.75 : 0.45), lineWidth: 0.7)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
+        .accessibilityLabel(currentPresentation.accessibilityLabel)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isExpanded)
+        .onChange(of: liveHint?.id) { _ in
+            isExpanded = false
+            whyFocused = false
+            explanationFocused = false
+        }
+    }
+
+    private var surfaceBackground: AnyShapeStyle {
+        reduceTransparency
+            ? AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
+            : AnyShapeStyle(.regularMaterial)
+    }
+
+    private func toggleExplanation() {
+        let shouldExpand = !isExpanded
+        if reduceMotion {
+            isExpanded = shouldExpand
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isExpanded = shouldExpand
+            }
+        }
+
+        whyFocused = !shouldExpand
+        explanationFocused = shouldExpand
     }
 }

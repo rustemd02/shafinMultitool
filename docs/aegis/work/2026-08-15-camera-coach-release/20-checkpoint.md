@@ -38,19 +38,19 @@ The active system goal text is immutable through the goal API while it is active
 - Policy-neutral permission foundation is accepted after Sol review, integrated build and 10/10 simulator tests.
 - Coherent latest-frame evidence/session reset and atomic motion snapshot are accepted after two evidence-driven correction loops; 12/12 and 4/4 focused tests pass respectively.
 - Failed camera starts now await a shared pipeline rollback before publishing failure; retry, stale-start and release races are accepted after a correction loop, generic build and 22/22 intersecting tests.
-- CC-008 UX state specification is owner-accepted by the explicit instruction to launch the full autonomous implementation pipeline and the earlier affirmative product/UI decisions. CC-007A and CC-008A packets are ready, not implemented.
+- CC-008 UX state specification is owner-accepted by the explicit instruction to launch the full autonomous implementation pipeline and the earlier affirmative product/UI decisions. CC-007A and CC-008A are accepted implementation slices with bounded evidence; they are not release-ready.
 
 ## Active slice
 
-The clean accepted baseline is `6ff225d553ae654298dda70b9c779c1226c31800`. CC-011E test/contract hygiene is committed and accepted; CC-008 is accepted and the next UI wave is ready. CC-013B2 Core ML composition remains owner-gated.
+The clean accepted baseline is `6ff225d553ae654298dda70b9c779c1226c31800`. CC-011E test/contract hygiene is committed and accepted; CC-008, CC-007A and CC-008A are accepted with bounded evidence. CC-013B2 Core ML composition remains owner-gated.
 
 Slice Card:
 
-- Goal: launch CC-007A/CC-008A through Luna / Max without bypassing the separate model-composition gate.
+- Goal: continue the remaining parent CC-007 commercial-shell/default-route work and dependent CC-011C lane after accepting CC-007A/CC-008A, without bypassing the separate model-composition gate.
 - Parent plan/spec: `docs/app-store-product-plan.md`, `docs/implementation/STATUS.md`, `docs/implementation/BACKLOG.md`.
-- Files: CC-011E code/tests and tracker evidence are accepted; CC-007A/CC-008A now begin from the accepted clean baseline.
+- Files: CC-011E code/tests and tracker evidence are accepted; CC-007A/CC-008A implementation slices and their status evidence are accepted within their stated boundaries.
 - Boundary: no third-party Core ML exclusion, asset/legal approval, provider, payment, push or publication decision.
-- Verification: Luna / Max owns the integrated correction gate and task-level verification; the canonical clean release gate has passed on the accepted commit, with the parent/main-chat Sol limited to the one bounded risk-based milestone acceptance.
+- Verification: Luna / Max owns the integrated correction gate and task-level verification; the focused CC-007A/CC-008A evidence is recorded in `90-evidence.md`, while the canonical clean release gate remains separate and no release-ready claim is made.
 - Stop: accept and integrate one coherent slice; otherwise record the genuine gate and choose another independent slice.
 
 ## Blockers
@@ -62,9 +62,11 @@ Slice Card:
 
 ## Next
 
-1. Launch the ready CC-007A Camera-first shell contract and CC-008A truthful live coaching surface through Luna / Max.
+1. Continue the remaining parent CC-007 commercial-shell/default-route work and dependent CC-011C true UI target/default smoke as listed in `docs/implementation/BACKLOG.md`.
 2. Keep full test topology and real-image evaluation as separate unresolved lanes; obtain the independent CC-013B2 minimal-RC decision before changing Core ML composition.
 3. Continue remaining production gates without claiming physical-device, beta, signing, provider, payment or legal evidence prematurely.
+
+The next work remains the current `BACKLOG.md`; this checkpoint introduces no new implementation plan.
 
 ## Drift check
 
@@ -73,4 +75,4 @@ Slice Card:
 - Baseline: product plan, STATUS, BACKLOG and accepted audits were re-read from current main.
 - Compatibility: saved Scene Mode data and existing routes remain protected.
 - Owner boundaries: CC-013B2 and legal/privacy/provider/payment decisions remain explicit; CC-008 is accepted.
-- Evidence state: the canonical full release gate passed on accepted commit `6ff225d553ae654298dda70b9c779c1226c31800` with all stages passed, Release 72,032 KiB, 2 privacy manifests, only `SnapKit.framework` and `llama.framework`, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures. The raw full unit target remains unresolved at 593 total / 496 passed / 94 failed / 3 skipped; do not claim it green. CC-011E integrated Luna evidence remains 104 executed / 102 passed / 2 intended skips / 0 failures at `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`.
+- Evidence state: the canonical full release gate passed on accepted commit `6ff225d553ae654298dda70b9c779c1226c31800` with all stages passed, Release 72,032 KiB, 2 privacy manifests, only `SnapKit.framework` and `llama.framework`, 5 material contributors, 5 blockers, 2 provenance validators and 6/6 contamination fixtures. The raw full unit target remains unresolved at 593 total / 496 passed / 94 failed / 3 skipped; do not claim it green. CC-011E integrated Luna evidence remains 104 executed / 102 passed / 2 intended skips / 0 failures at `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`; CC-007A/CC-008A focused evidence is 19/19 on iPhone 17 Pro / iOS Simulator 26.5, with known non-fatal diagnostics retained in `90-evidence.md`.
