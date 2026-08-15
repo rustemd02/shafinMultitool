@@ -185,9 +185,10 @@
 ### CC-011B — Deterministic build and bundle gate script
 
 - Lane: Luna / Max after CC-002 and CC-011A.
-- State: `in_progress`.
+- State: `accepted`.
 - Objective: one documented command produces Debug test build and Release build, validates privacy manifests, checks the release allowlist/denylist, reports material size contributors and fails on DeviceBenchmark, GGUF, unknown model/media families or missing acknowledgements.
 - Acceptance: a clean checkout and a deliberately contaminated checkout produce deterministic pass/fail; output paths stay under an explicit derived-data root.
+- Evidence: worker commit `1223e01`, accepted commit `f56b7b7`. Public command `scripts/run_release_gates.sh --derived-data-root <explicit-root>` owns only a validated child and runs privacy self-tests, Debug `build-for-testing`, Release build, exact bundle/acknowledgement/provenance/size validation and six copied-app contamination fixtures. Sol independently passed the full command on clean HEAD: Release 71 900 КБ, exactly two privacy manifests, five material contributors, five explicit unresolved provenance blockers and all six negative fixtures.
 
 ### CC-011C — Real UI-test target and launch smoke
 

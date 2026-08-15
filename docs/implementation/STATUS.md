@@ -49,7 +49,7 @@
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
 | CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
 | CC-011A | accepted | Luna / Max | CC-013A | App-owned manifest и validator приняты; Release содержит ровно app + SnapKit manifests |
-| CC-011B | in_progress | Luna / Max | CC-002, CC-011A | Один воспроизводимый Debug/Release/privacy/bundle gate и contamination self-test |
+| CC-011B | accepted | Luna / Max | CC-002, CC-011A | Единый clean-HEAD gate принят: Debug, Release, privacy, allowlists, sizes и 6 contamination fixtures |
 | CC-012 | decomposed | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
 | CC-012A | accepted | Luna / Max | CC-003, CC-008 | 12 instrumentation owners, 59 active events, 63 properties; activation требует action + independent verification |
 | CC-013A | accepted | Luna / Max | CC-004 | ARVideoKit удалён; SnapKit 5.7.1 privacy bundle доказан в Release app |
@@ -71,7 +71,7 @@
 - CC-012A: accepted, task `01a0058b-d2da-7491-b3f4-de880445997b`, worker commit `2c75c53`, accepted commit `7a7c55b`, evidence `docs/implementation/audits/coaching-loop-event-contract-inventory.md`; Sol correction loop removed a duplicate metric and reconciled accepted CC-010A lifecycle evidence.
 - CC-013A: accepted, task `01a005ae-36ec-7fe3-80ac-3fa10ed2703a`, worker commit `3a7731f`, accepted commit `c4275da`; Sol повторил Release build и bundle assertions на основной ветке: 71 848 КБ, SnapKit manifest присутствует, ARVideoKit/DeviceBenchmark/Models/GGUF отсутствуют.
 - CC-011A: accepted, task `01a005c4-6a4d-7e63-a8d2-cd7199ea921f`, worker commit `a49c234`, accepted commit `c1e6646`; Sol повторил Release build, validator и negative self-test: ровно два manifests, 71 888 КБ, no unexpected paths.
-- CC-011B: task `01a005d8-ac86-7d02-98ec-8b41b398bbe8`, worktree `/Users/unterlantas/.codex/worktrees/e36c/shafinMultitool`; Luna / Max реализует единый детерминированный release-gate entrypoint и шесть contamination fixtures.
+- CC-011B: accepted, task `01a005d8-ac86-7d02-98ec-8b41b398bbe8`, worker commit `1223e01`, accepted commit `f56b7b7`; Sol повторил полный public gate на clean HEAD: Debug/Release прошли, Release = 71 900 КБ, 2 privacy manifests, 5 material contributors, 5 known provenance blockers и 6/6 contamination fixtures.
 - CC-008: proposed evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; до owner acceptance UI source tasks не запускаются.
 
 ## Ворота следующего шага
