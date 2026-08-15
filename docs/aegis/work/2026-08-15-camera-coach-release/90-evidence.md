@@ -11,5 +11,11 @@
 - Largest bundled file: `dataset_v9_event_sft_q4_k_m.gguf`, approximately 1,0 ГБ.
 - `shafinMultitool/Resources/DeviceBenchmark`: approximately 51 МБ, 182 files.
 - Xcode project exposes app and unit-test native targets; no UI-test product type found.
+- CC-006 accepted evidence: `docs/implementation/audits/runtime-entry-routing.md`; generic iOS test build repeated successfully.
+- CC-003 accepted evidence: `docs/implementation/audits/privacy-permissions-inventory.md`; usage descriptions validated, app-owned permission status/recovery paths and privacy manifest absent.
+- CC-005 accepted evidence: `docs/implementation/audits/test-topology.md`; 29 test files mapped, `UITests.swift` confirmed inside app-hosted unit target, workspace enumeration repeated on parent host.
+- CC-001 accepted evidence: `docs/implementation/audits/release-bundle-inventory.md`; clean partial app 103 404 КБ, contaminated partial app 1 198 316 КБ, ignored GGUF 1 094 912 КБ.
+- Parent Release build reproduced the blocker at `DeviceBenchmarkCoordinator.swift:465/499`: a Debug-only `AnalysisPipeline.testingReplayStillImageForSemanticEval` API leaks into Release compilation.
+- CC-008 proposed evidence: `docs/implementation/ux/camera-coach-state-spec.md`; 610 lines covering S00–S25a, recovery, accessibility, analytics and screenshot gates.
 
 These records are execution evidence, not authoritative App Store completion.
