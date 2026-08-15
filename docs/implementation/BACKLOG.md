@@ -197,6 +197,17 @@
 - Acceptance: focused tests and generic iOS build-for-testing pass; existing lifecycle/scheduler tests remain green.
 - Evidence: worker commit `9fb974e`, accepted commit `caef74b`; correction worker `f80e1a3`, accepted correction `b76f217`. Sol independently passed the generic integrated build and 4/4 `MotionGateTests`. The correction preserved production code and replaced a floating-point-unstable exact-`0.40` test input with `0.4001` after proving the inherited EMA rounding path.
 
+#### CC-010A3 — Transactional camera input replacement
+
+- Lane: Luna / Max, Sol verification and acceptance.
+- State: `in_progress`.
+- Task: `01a006a4-5560-7851-acfc-730223da26e8`.
+- Ownership: `CameraManager.swift`, new `CameraInputReplacementTransaction.swift` and new `CameraLensSwitchTransactionTests.swift` only.
+- Objective: a rejected lens replacement restores the prior active input instead of leaving the capture graph inputless while state still claims the old lens.
+- Contract: one session-queue owner; typed async result plus compatibility wrapper; remove/can-add/add/restore transaction commits exactly once; ordinary unavailable/rejected lenses preserve lifecycle and prior input/lens; catastrophic rollback loss is explicit and releases the broken configuration.
+- Tests: pure generic operation-order fixtures for replace/restore/rollback failure plus generic iOS build; no fake `AVCaptureDeviceInput`, physical-device claim, UI state or lens matrix.
+- Follow-up: CC-010A4 will consume the typed result so `CameraViewModel.currentLens` changes only after confirmed success and rapid taps cannot publish stale state.
+
 ### CC-010B — Scheduler and pipeline release
 
 - Lane: Luna / Max.
