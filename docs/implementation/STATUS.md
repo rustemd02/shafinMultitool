@@ -32,8 +32,8 @@
 | ID | Состояние | Lane | Зависимости | Краткий результат |
 | --- | --- | --- | --- | --- |
 | CC-000 | accepted | Sol | — | Product/research baseline синхронизирован |
-| CC-001 | in_progress | Luna / Max | bootstrap commit | Release bundle inventory и allowlist proposal |
-| CC-002 | draft | Luna / Max | CC-001 | Benchmark/test assets исключены из Release без поломки DEBUG harness |
+| CC-001 | accepted | Luna / Max | bootstrap commit | Clean/contaminated bundle inventory принят; Release partial = 1 198 316 КБ, GGUF contamination = 1 094 912 КБ |
+| CC-002 | in_progress | Luna / Max | CC-001 | Детерминированная Release resource boundary и Debug-only benchmark provisioning |
 | CC-003 | accepted | Luna / Max | bootstrap commit | Все permission/data paths инвентаризированы; подтверждены отсутствующие denied/restricted/Settings flows и privacy manifest |
 | CC-004 | in_progress | Luna / Max | accepted audit baseline | Dependency/model/media provenance inventory |
 | CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
@@ -48,7 +48,8 @@
 ## Активная работа
 
 - Sol: принял CC-003, CC-005 и CC-006 после diff/source/build checks; CC-001 возвращён тому же worker на сверку clean worktree с локальным ignored GGUF.
-- CC-001: correction in progress, task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worktree `/Users/unterlantas/.codex/worktrees/f179/shafinMultitool`; parent Release partial app = 1 198 316 КБ, GGUF = 1 094 912 КБ, Release compile blocker воспроизведён.
+- CC-001: accepted, task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worker commits `c96b679`, `25bf140`, accepted commits `d8061aa`, `d4c4873`, evidence `docs/implementation/audits/release-bundle-inventory.md`.
+- CC-002: task `01a00578-f7d5-75d3-ba32-3796ce136c1b`, worktree `/Users/unterlantas/.codex/worktrees/9bd3/shafinMultitool`.
 - CC-003: accepted, task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worker commit `a91a290`, accepted commit `e3b3712`, evidence `docs/implementation/audits/privacy-permissions-inventory.md`.
 - CC-005: accepted, task `01a0055c-a4b4-70e2-bb46-5381f4f0acf1`, worker commit `05cad36`, accepted commit `e8f8615`, evidence `docs/implementation/audits/test-topology.md`.
 - CC-006: accepted, task `01a0055c-a4b4-70e2-bb46-536ebdfd5585`, worker commit `caefe22`, accepted commit `67ede42`, evidence `docs/implementation/audits/runtime-entry-routing.md`.

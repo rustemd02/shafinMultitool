@@ -13,7 +13,7 @@
 ## CC-001 — Release bundle inventory
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `accepted`.
 - Dependencies: bootstrap commit.
 - Ownership: create only `docs/implementation/audits/release-bundle-inventory.md`.
 - Read: `project.pbxproj`, build phases, asset catalogs, model/resource references, current built app under a fresh worker-derived directory.
@@ -21,11 +21,12 @@
 - Must not edit: Xcode project, source, resources or product plan.
 - Verification: clean generic Release build with signing disabled if buildable; `du`/bundle inventory commands; `git diff --check`.
 - Acceptance: report explains the 1,0 ГБ GGUF, benchmark packs and all material bundle contributors and provides an exact implementation sequence without deleting files.
+- Evidence: `docs/implementation/audits/release-bundle-inventory.md`; accepted after correction loop and independent clean/contaminated Release partial-product reconciliation.
 
 ## CC-002 — Exclude research assets from Release
 
 - Lane: Luna / Max.
-- State: `draft` until CC-001 accepted.
+- State: `in_progress`.
 - Ownership: exact project/resource files named by accepted CC-001; focused regression tests if needed.
 - Objective: Release contains only explicitly allowed production resources while DEBUG/device benchmark flows remain reproducible.
 - Constraints: no deletion of datasets or models; no loss of test/eval evidence; no change to product behavior beyond resource availability by configuration.
