@@ -13,6 +13,21 @@ import NaturalLanguage
 final class Lemmatizer {
     
     private let tagger: NLTagger
+
+    // NLTagger does not consistently return the infinitive for this irregular
+    // present-tense verb, so keep the exception narrow and deterministic.
+    private static let irregularLemmas: [String: String] = [
+        "идёт": "идти",
+        "идет": "идти",
+        "идут": "идти",
+        "иду": "идти",
+        "идём": "идти",
+        "идем": "идти",
+        "идёшь": "идти",
+        "идешь": "идти",
+        "идёте": "идти",
+        "идете": "идти"
+    ]
     
     init() {
         tagger = NLTagger(tagSchemes: [.lemma, .lexicalClass])
@@ -27,6 +42,11 @@ final class Lemmatizer {
         guard !word.isEmpty else { return word }
         
         let lowercasedWord = word.lowercased()
+
+        if let irregularLemma = Self.irregularLemmas[lowercasedWord] {
+            return irregularLemma
+        }
+
         tagger.string = lowercasedWord
         
         // Используем безопасный подход: проверяем границы перед использованием
@@ -50,7 +70,8 @@ final class Lemmatizer {
             }
             
             if let lemma = tag?.rawValue, !lemma.isEmpty {
-                lemmatizedWord = lemma.lowercased()
+                let normalizedLemma = lemma.lowercased()
+                lemmatizedWord = Self.irregularLemmas[normalizedLemma] ?? normalizedLemma
             }
             return false // Останавливаемся после первого слова
         }
@@ -100,7 +121,8 @@ final class Lemmatizer {
             }
             
             if let lemma = tag?.rawValue, !lemma.isEmpty {
-                lemmatizedParts.append(lemma.lowercased())
+                let normalizedLemma = lemma.lowercased()
+                lemmatizedParts.append(Self.irregularLemmas[normalizedLemma] ?? normalizedLemma)
             } else {
                 // Fallback: используем lemmatize для отдельного слова
                 lemmatizedParts.append(self.lemmatize(originalWord))

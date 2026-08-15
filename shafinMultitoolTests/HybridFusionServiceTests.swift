@@ -36,8 +36,8 @@ final class HybridFusionServiceTests: XCTestCase {
             scalarOverrides: [
                 .subjectProminence: (0.92, 0.88, .available),
                 .backgroundClutter: (0.12, 0.79, .available),
-                .balanceConfidence: (0.76, 0.71, .available),
-                .depthSeparation: (0.82, 0.74, .available),
+                .balanceConfidence: (0.20, 0.95, .available),
+                .depthSeparation: (0.95, 0.95, .available),
                 .lightingQuality: (0.70, 0.68, .available),
                 .faceSaliency: (0.85, 0.83, .available)
             ]
@@ -62,7 +62,19 @@ final class HybridFusionServiceTests: XCTestCase {
             output.critique.traceRefs,
             ["trc_\(snapshot.frameId)_crit_s01", "trc_\(snapshot.frameId)_crit_s02", "trc_\(snapshot.frameId)_crit_summary_main"]
         )
-        XCTAssertTrue(output.appliedDecisions.contains(where: { $0.targetId == "str_isolation" }))
+
+        guard let focusDecision = output.decisions.first(where: { $0.targetId == "str_focus" }),
+              let isolationDecision = output.decisions.first(where: { $0.targetId == "str_isolation" }) else {
+            XCTFail("Expected fusion decisions for both strengths")
+            return
+        }
+        XCTAssertEqual(focusDecision.appliedHeadIds, [.subjectProminence, .backgroundClutter, .balanceConfidence])
+        XCTAssertEqual(isolationDecision.appliedHeadIds, [.subjectProminence, .backgroundClutter, .depthSeparation])
+        XCTAssertTrue(focusDecision.applied)
+        XCTAssertTrue(isolationDecision.applied)
+        XCTAssertGreaterThan(isolationDecision.fusedConfidenceAfter, focusDecision.fusedConfidenceAfter)
+        XCTAssertEqual(output.critique.strengths[0].confidence, isolationDecision.fusedConfidenceAfter, accuracy: 0.0001)
+        XCTAssertEqual(output.critique.strengths[1].confidence, focusDecision.fusedConfidenceAfter, accuracy: 0.0001)
     }
 
     func testIssueRankingChangesOnlyInsideExactSeverityTies() {

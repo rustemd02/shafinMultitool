@@ -60,8 +60,8 @@ final class SceneSaveLoadTests: XCTestCase {
             script: "Иван: Привет. Мария: Как дела?"
         )
         
-        // Создаем минимальный ARWorldMap (в реальности это требует AR сессии)
-        // Для теста используем nil, так как создание реального ARWorldMap требует AR сессии
+        // Создание реального ARWorldMap требует AR-сессии, поэтому проверяем
+        // сохранение метаданных сцены без карты.
         let arWorldMap: ARWorldMap? = nil
         
         // Проверяем, что метод не падает с nil
@@ -70,17 +70,18 @@ final class SceneSaveLoadTests: XCTestCase {
             "Сохранение не должно вызывать ошибку даже с nil map"
         )
         
-        // Проверяем, что SceneData сохранилась
-        if let loaded = dbService.loadARWorldMap(sceneName: testSceneName) {
-            XCTAssertEqual(loaded.1.name, sceneData.name, "Имя сцены должно совпадать")
-            XCTAssertEqual(loaded.1.script, sceneData.script, "Сценарий должен совпадать")
-            XCTAssertEqual(loaded.1.actors?.count, sceneData.actors?.count, "Количество актеров должно совпадать")
+        guard let loaded = dbService.loadSceneData(sceneName: testSceneName) else {
+            XCTFail("Сохраненные данные сцены не должны быть nil")
+            return
         }
+        XCTAssertEqual(loaded.name, sceneData.name, "Имя сцены должно совпадать")
+        XCTAssertEqual(loaded.script, sceneData.script, "Сценарий должен совпадать")
+        XCTAssertEqual(loaded.actors?.count, sceneData.actors?.count, "Количество актеров должно совпадать")
     }
     
-    // MARK: - Тест 2: Загрузка существующей карты
+    // MARK: - Тест 2: Загрузка существующих метаданных без карты
     
-    func testLoadExistingMap() throws {
+    func testLoadExistingMetadataOnlyScene() throws {
         let sceneData = SceneData(
             name: testSceneName,
             actors: [ActorData(id: 1, name: "Тестовый актер", red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)],
@@ -91,12 +92,15 @@ final class SceneSaveLoadTests: XCTestCase {
         try dbService.saveARWorldMap(map: nil, sceneData: sceneData)
         
         // Загружаем
-        let loaded = dbService.loadARWorldMap(sceneName: testSceneName)
+        let loaded = dbService.loadSceneData(sceneName: testSceneName)
         
-        XCTAssertNotNil(loaded, "Загруженные данные не должны быть nil")
-        XCTAssertEqual(loaded?.1.name, sceneData.name, "Имя должно совпадать")
-        XCTAssertEqual(loaded?.1.script, sceneData.script, "Сценарий должен совпадать")
-        XCTAssertEqual(loaded?.1.actors?.first?.name, sceneData.actors?.first?.name, "Имя актера должно совпадать")
+        guard let loaded else {
+            XCTFail("Загруженные данные не должны быть nil")
+            return
+        }
+        XCTAssertEqual(loaded.name, sceneData.name, "Имя должно совпадать")
+        XCTAssertEqual(loaded.script, sceneData.script, "Сценарий должен совпадать")
+        XCTAssertEqual(loaded.actors?.first?.name, sceneData.actors?.first?.name, "Имя актера должно совпадать")
     }
     
     // MARK: - Тест 3: Загрузка несуществующей карты
@@ -108,9 +112,9 @@ final class SceneSaveLoadTests: XCTestCase {
         XCTAssertNil(loaded, "Загрузка несуществующей карты должна возвращать nil")
     }
     
-    // MARK: - Тест 4: Сохранение SceneData вместе с картой
+    // MARK: - Тест 4: Сохранение SceneData без карты
     
-    func testSaveSceneDataWithMap() throws {
+    func testSaveSceneDataWithoutMap() throws {
         let actors = [
             ActorData(id: 1, name: "Актер1", red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0),
             ActorData(id: 2, name: "Актер2", red: 0.8, green: 0.2, blue: 0.3, alpha: 1.0)
@@ -124,22 +128,24 @@ final class SceneSaveLoadTests: XCTestCase {
         
         try dbService.saveARWorldMap(map: nil, sceneData: sceneData)
         
-        if let loaded = dbService.loadARWorldMap(sceneName: testSceneName) {
-            let loadedSceneData = loaded.1
-            
-            XCTAssertEqual(loadedSceneData.name, sceneData.name)
-            XCTAssertEqual(loadedSceneData.script, sceneData.script)
-            XCTAssertEqual(loadedSceneData.actors?.count, actors.count)
-            
-            if let loadedActors = loadedSceneData.actors {
-                XCTAssertEqual(loadedActors[0].name, actors[0].name)
-                XCTAssertEqual(loadedActors[0].id, actors[0].id)
-                XCTAssertEqual(loadedActors[1].name, actors[1].name)
-                XCTAssertEqual(loadedActors[1].id, actors[1].id)
-            }
-        } else {
+        guard let loaded = dbService.loadSceneData(sceneName: testSceneName) else {
             XCTFail("Не удалось загрузить сохраненные данные")
+            return
         }
+        let loadedSceneData = loaded
+
+        XCTAssertEqual(loadedSceneData.name, sceneData.name)
+        XCTAssertEqual(loadedSceneData.script, sceneData.script)
+        XCTAssertEqual(loadedSceneData.actors?.count, actors.count)
+
+        guard let loadedActors = loadedSceneData.actors else {
+            XCTFail("Сохраненные актеры не должны быть nil")
+            return
+        }
+        XCTAssertEqual(loadedActors[0].name, actors[0].name)
+        XCTAssertEqual(loadedActors[0].id, actors[0].id)
+        XCTAssertEqual(loadedActors[1].name, actors[1].name)
+        XCTAssertEqual(loadedActors[1].id, actors[1].id)
     }
     
     // MARK: - Тест 5: Получение списка всех названий сцен
@@ -154,16 +160,21 @@ final class SceneSaveLoadTests: XCTestCase {
         
         try dbService.saveARWorldMap(map: nil, sceneData: scene1)
         try dbService.saveARWorldMap(map: nil, sceneData: scene2)
+
+        defer {
+            dbService.deleteMap(with: scene1Name) { _ in }
+            dbService.deleteMap(with: scene2Name) { _ in }
+        }
         
         let sceneNames = dbService.getAllARWorldMapTitles()
         
-        XCTAssertNotNil(sceneNames, "Список сцен не должен быть nil")
-        XCTAssertTrue(sceneNames?.contains(scene1Name) ?? false, "Должна содержаться сцена 1")
-        XCTAssertTrue(sceneNames?.contains(scene2Name) ?? false, "Должна содержаться сцена 2")
+        guard let sceneNames else {
+            XCTFail("Список сцен не должен быть nil")
+            return
+        }
+        XCTAssertTrue(sceneNames.contains(scene1Name), "Должна содержаться сцена 1")
+        XCTAssertTrue(sceneNames.contains(scene2Name), "Должна содержаться сцена 2")
         
-        // Очистка
-        dbService.deleteMap(with: scene1Name) { _ in }
-        dbService.deleteMap(with: scene2Name) { _ in }
     }
     
     // MARK: - Тест 6: Удаление существующей сцены
@@ -179,7 +190,7 @@ final class SceneSaveLoadTests: XCTestCase {
         try dbService.saveARWorldMap(map: nil, sceneData: sceneData)
         
         // Проверяем, что сцена существует
-        let beforeDelete = dbService.loadARWorldMap(sceneName: testSceneName)
+        let beforeDelete = dbService.loadSceneData(sceneName: testSceneName)
         XCTAssertNotNil(beforeDelete, "Сцена должна существовать перед удалением")
         
         // Удаляем
@@ -192,7 +203,7 @@ final class SceneSaveLoadTests: XCTestCase {
         wait(for: [expectation], timeout: 2.0)
         
         // Проверяем, что сцена удалена
-        let afterDelete = dbService.loadARWorldMap(sceneName: testSceneName)
+        let afterDelete = dbService.loadSceneData(sceneName: testSceneName)
         XCTAssertNil(afterDelete, "Сцена должна быть удалена")
     }
     
@@ -234,12 +245,12 @@ final class SceneSaveLoadTests: XCTestCase {
         
         try dbService.saveARWorldMap(map: nil, sceneData: sceneData)
         
-        if let loaded = dbService.loadARWorldMap(sceneName: testSceneName) {
-            XCTAssertNil(loaded.1.actors, "Актеры должны быть nil")
-            XCTAssertEqual(loaded.1.script, sceneData.script)
-        } else {
+        guard let loaded = dbService.loadSceneData(sceneName: testSceneName) else {
             XCTFail("Не удалось загрузить сцену")
+            return
         }
+        XCTAssertNil(loaded.actors, "Актеры должны быть nil")
+        XCTAssertEqual(loaded.script, sceneData.script)
     }
     
 //    // MARK: - Тест 10: Сохранение сцены без сценария
@@ -278,14 +289,17 @@ final class SceneSaveLoadTests: XCTestCase {
         
         try dbService.saveARWorldMap(map: nil, sceneData: sceneData)
         
-        if let loaded = dbService.loadARWorldMap(sceneName: testSceneName),
-           let loadedActor = loaded.1.actors?.first {
-            XCTAssertEqual(loadedActor.anchorIDs.count, 2, "Должно быть 2 якоря")
-            XCTAssertEqual(loadedActor.anchorIDs[0], anchorID1)
-            XCTAssertEqual(loadedActor.anchorIDs[1], anchorID2)
-        } else {
+        guard let loaded = dbService.loadSceneData(sceneName: testSceneName) else {
             XCTFail("Не удалось загрузить актера с якорями")
+            return
         }
+        guard let loadedActor = loaded.actors?.first else {
+            XCTFail("Сохраненный актер не должен быть nil")
+            return
+        }
+        XCTAssertEqual(loadedActor.anchorIDs.count, 2, "Должно быть 2 якоря")
+        XCTAssertEqual(loadedActor.anchorIDs[0], anchorID1)
+        XCTAssertEqual(loadedActor.anchorIDs[1], anchorID2)
     }
     
     // MARK: - Тест 12: Целостность данных при множественных сохранениях
@@ -311,12 +325,101 @@ final class SceneSaveLoadTests: XCTestCase {
         
         try dbService.saveARWorldMap(map: nil, sceneData: updatedSceneData)
         
-        if let loaded = dbService.loadARWorldMap(sceneName: testSceneName) {
-            XCTAssertEqual(loaded.1.actors?.count, 2, "Должно быть 2 актера после обновления")
-            XCTAssertEqual(loaded.1.script, "Обновленный сценарий", "Сценарий должен быть обновлен")
-        } else {
+        guard let loaded = dbService.loadSceneData(sceneName: testSceneName) else {
             XCTFail("Не удалось загрузить обновленную сцену")
+            return
         }
+        XCTAssertEqual(loaded.actors?.count, 2, "Должно быть 2 актера после обновления")
+        XCTAssertEqual(loaded.script, "Обновленный сценарий", "Сценарий должен быть обновлен")
+    }
+
+    func testNewMetadataOnlySceneIsListedButDoesNotLoadAsWorldMap() throws {
+        let sceneData = SceneData(name: testSceneName, actors: nil, script: "Metadata only")
+
+        try dbService.saveARWorldMap(map: nil, sceneData: sceneData)
+
+        XCTAssertEqual(dbService.loadSceneData(sceneName: testSceneName)?.script, "Metadata only")
+        XCTAssertNil(dbService.loadARWorldMap(sceneName: testSceneName))
+        XCTAssertTrue(dbService.getAllARWorldMapTitles()?.contains(testSceneName) == true)
+    }
+
+    func testMetadataOnlyUpdatePreservesExistingMapBytes() throws {
+        let originalMapData = Data([0x01, 0x23, 0x45, 0x67])
+        let initial = SceneData(name: testSceneName, actors: nil, script: "Initial")
+        let updated = SceneData(name: testSceneName, actors: nil, script: "Updated")
+
+        try dbService.saveLegacyScene(mapData: originalMapData, sceneData: initial)
+        try dbService.saveARWorldMap(map: nil, sceneData: updated)
+
+        guard let stored = dbService.loadLegacySceneFiles(sceneName: testSceneName) else {
+            XCTFail("Map/data pair must remain loadable after a metadata-only update")
+            return
+        }
+        XCTAssertEqual(stored.mapData, originalMapData)
+        XCTAssertEqual(stored.sceneData.script, "Updated")
+    }
+
+    func testAddingMapToMetadataOnlySceneProducesLoadableFilePair() throws {
+        let mapData = Data([0x89, 0xab, 0xcd, 0xef])
+        let sceneData = SceneData(name: testSceneName, actors: nil, script: "First without map")
+
+        try dbService.saveARWorldMap(map: nil, sceneData: sceneData)
+        XCTAssertNil(dbService.loadLegacySceneFiles(sceneName: testSceneName))
+
+        try dbService.saveLegacyScene(mapData: mapData, sceneData: sceneData)
+
+        guard let stored = dbService.loadLegacySceneFiles(sceneName: testSceneName) else {
+            XCTFail("Adding map bytes must produce a complete map/data pair")
+            return
+        }
+        XCTAssertEqual(stored.mapData, mapData)
+        XCTAssertEqual(stored.sceneData.script, sceneData.script)
+    }
+
+    func testSceneTitlesAreDeduplicatedAndSortedAcrossMapAndDataFiles() throws {
+        let prefix = "TitlePolicy_\(UUID().uuidString)_"
+        let firstName = prefix + "A"
+        let lastName = prefix + "Z"
+        defer {
+            dbService.deleteMap(with: firstName) { _ in }
+            dbService.deleteMap(with: lastName) { _ in }
+        }
+
+        try dbService.saveLegacyScene(
+            mapData: Data([0x01]),
+            sceneData: SceneData(name: lastName, actors: nil, script: "")
+        )
+        try dbService.saveARWorldMap(
+            map: nil,
+            sceneData: SceneData(name: firstName, actors: nil, script: "")
+        )
+        try dbService.saveARWorldMap(
+            map: nil,
+            sceneData: SceneData(name: lastName, actors: nil, script: "Updated")
+        )
+
+        let matchingTitles = dbService.getAllARWorldMapTitles()?.filter { $0.hasPrefix(prefix) }
+        XCTAssertEqual(matchingTitles, [firstName, lastName])
+    }
+
+    func testDeleteRemovesBothMapAndMetadataFiles() throws {
+        let mapData = Data([0xfe, 0xdc, 0xba, 0x98])
+        let sceneData = SceneData(name: testSceneName, actors: nil, script: "Before deletion")
+        try dbService.saveLegacyScene(mapData: mapData, sceneData: sceneData)
+
+        var deletionResult: Bool?
+        dbService.deleteMap(with: testSceneName) { deletionResult = $0 }
+
+        XCTAssertEqual(deletionResult, true)
+        XCTAssertNil(dbService.loadSceneData(sceneName: testSceneName))
+        XCTAssertFalse(dbService.getAllARWorldMapTitles()?.contains(testSceneName) == true)
+
+        // Recreate metadata only. A stale `_map` would make this a complete pair.
+        try dbService.saveARWorldMap(
+            map: nil,
+            sceneData: SceneData(name: testSceneName, actors: nil, script: "After deletion")
+        )
+        XCTAssertNil(dbService.loadLegacySceneFiles(sceneName: testSceneName))
     }
 
     func testCreateListAndDeleteUnifiedSceneProject() throws {

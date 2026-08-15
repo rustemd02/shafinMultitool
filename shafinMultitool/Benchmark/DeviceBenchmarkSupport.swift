@@ -75,6 +75,20 @@ struct DeviceBenchmarkSoftThresholds: Codable, Equatable {
     static let `default` = DeviceBenchmarkSoftThresholds(scenePassRate: 0.60)
 }
 
+enum DeviceBenchmarkConfigEnvironmentError: Error, Equatable, LocalizedError {
+    case invalidBase64
+    case invalidConfiguration
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidBase64:
+            return "\(DeviceBenchmarkConfig.environmentKey) is not valid Base64."
+        case .invalidConfiguration:
+            return "\(DeviceBenchmarkConfig.environmentKey) does not contain a valid device benchmark configuration."
+        }
+    }
+}
+
 struct DeviceBenchmarkConfig: Codable, Equatable {
     static let environmentKey = "DEVICE_BENCHMARK_CONFIG_BASE64"
 
@@ -118,13 +132,23 @@ struct DeviceBenchmarkConfig: Codable, Equatable {
     }
 
     static func fromEnvironment(_ environment: [String: String] = ProcessInfo.processInfo.environment) -> DeviceBenchmarkConfig? {
+        try? loadFromEnvironment(environment)
+    }
+
+    static func loadFromEnvironment(
+        _ environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> DeviceBenchmarkConfig? {
         guard let encoded = environment[environmentKey], !encoded.isEmpty else {
             return nil
         }
         guard let data = Data(base64Encoded: encoded) else {
-            return nil
+            throw DeviceBenchmarkConfigEnvironmentError.invalidBase64
         }
-        return try? JSONDecoder().decode(DeviceBenchmarkConfig.self, from: data)
+        do {
+            return try JSONDecoder().decode(DeviceBenchmarkConfig.self, from: data)
+        } catch {
+            throw DeviceBenchmarkConfigEnvironmentError.invalidConfiguration
+        }
     }
 
     func toBase64() throws -> String {

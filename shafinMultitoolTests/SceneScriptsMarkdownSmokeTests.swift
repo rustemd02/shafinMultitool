@@ -53,6 +53,10 @@ final class SceneScriptsMarkdownSmokeTests: XCTestCase {
     }
 
     func testRunLocalModelOnScriptsMarkdownCases() async throws {
+        guard ProcessInfo.processInfo.environment["SG_RUN_SCRIPTS_MD_SMOKE"] == "1" else {
+            throw XCTSkip("Set SG_RUN_SCRIPTS_MD_SMOKE=1 to run the live scripts.md local-model smoke test.")
+        }
+
         let scriptCases = try loadScriptCases()
         XCTAssertEqual(scriptCases.count, 3, "Expected exactly 3 non-empty script cases in scripts.md")
         XCTAssertTrue(FileManager.default.fileExists(atPath: modelPath), "Expected local V9 GGUF model")

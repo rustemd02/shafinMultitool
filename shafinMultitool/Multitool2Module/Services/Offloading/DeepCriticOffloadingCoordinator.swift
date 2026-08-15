@@ -1003,7 +1003,6 @@ actor DeepCriticOffloadingCoordinator {
 
     private func detectLowFaithfulness(patch: DeepCriticExplanationPatch,
                                        request: DeepCriticOffloadRequest) -> Bool {
-        let certaintySensitiveWords = ["точно", "однозначно", "гарантированно", "безошибочно", "идеально"]
         let strengthSources = Dictionary(uniqueKeysWithValues: request.localBundle.critique.strengths.map { ($0.id, $0.rationale) })
         let issueSources = Dictionary(uniqueKeysWithValues: request.localBundle.critique.issues.map { ($0.id, $0.rationale) })
         let actions = [request.localBundle.plan.primaryAction].compactMap { $0 }
@@ -1037,16 +1036,96 @@ actor DeepCriticOffloadingCoordinator {
             }
         }
 
-        if request.localBundle.critique.verdictConfidence < 0.55 {
-            let normalized = ([patch.shortVerdictOverride].compactMap { $0 }
-                + patch.whyGoodByStrengthId.map(\.text)
-                + patch.whyProblematicByIssueId.map(\.text)
-                + patch.actionRationaleByActionId.map(\.text))
-                .joined(separator: " ")
-                .lowercased()
-            if certaintySensitiveWords.contains(where: { normalized.contains($0) }) {
-                return true
+        let explanationTexts = ([patch.shortVerdictOverride].compactMap { $0 }
+            + patch.whyGoodByStrengthId.map(\.text)
+            + patch.whyProblematicByIssueId.map(\.text)
+            + patch.actionRationaleByActionId.map(\.text))
+        if containsForbiddenCertaintyMarker(in: explanationTexts) {
+            return true
+        }
+
+        return false
+    }
+
+    private func containsForbiddenCertaintyMarker(in texts: [String]) -> Bool {
+        // Treat every patch field independently, then bound negation to a clause. This prevents
+        // a disclaimer in one sentence/field from licensing an absolute assertion elsewhere.
+        // Within a clause we allow only explicit local negation/calibration and the narrow
+        // "нельзя считать/назвать/..." disclaimer construction.
+        for text in texts {
+            for tokens in certaintyClauses(in: text) {
+                for (index, token) in tokens.enumerated() where isCertaintyFamilyToken(token) {
+                    if certaintyMarkerIsCalibrated(at: index, in: tokens) {
+                        continue
+                    }
+                    return true
+                }
             }
+        }
+        return false
+    }
+
+    private func certaintyClauses(in text: String) -> [[String]] {
+        let punctuationBounded = text
+            .lowercased()
+            .components(separatedBy: CharacterSet.punctuationCharacters.union(.newlines))
+
+        let contrastiveConjunctions: Set<String> = ["но", "однако", "зато"]
+        var clauses: [[String]] = []
+
+        for component in punctuationBounded {
+            let tokens = component
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }
+            var current: [String] = []
+            for token in tokens {
+                if contrastiveConjunctions.contains(token) {
+                    if !current.isEmpty { clauses.append(current) }
+                    current = []
+                } else {
+                    current.append(token)
+                }
+            }
+            if !current.isEmpty { clauses.append(current) }
+        }
+
+        return clauses
+    }
+
+    private func isCertaintyFamilyToken(_ token: String) -> Bool {
+        // `точн-` also produces neutral/comparative product vocabulary such as
+        // `точность` and `точнее`, so enumerate only adjective/adverb absolute forms.
+        let exactCertaintyForms: Set<String> = [
+            "точно", "точный", "точная", "точное", "точные", "точен", "точна", "точны",
+            "точного", "точной", "точных", "точному", "точным", "точную", "точными", "точном"
+        ]
+        if exactCertaintyForms.contains(token) {
+            return true
+        }
+
+        let unambiguousCertaintyStems = ["однозначн", "гарантирован", "безошибочн", "идеальн"]
+        return unambiguousCertaintyStems.contains(where: { token.hasPrefix($0) })
+    }
+
+    private func certaintyMarkerIsCalibrated(at index: Int, in tokens: [String]) -> Bool {
+        guard index > 0 else { return false }
+
+        let previous = tokens[index - 1]
+        if previous == "не" || previous == "почти" || previous == "условно" {
+            return true
+        }
+
+        if index > 1,
+           tokens[index - 2] == "не",
+           ["всегда", "совсем", "полностью"].contains(previous) {
+            return true
+        }
+
+        let reportingVerbs: Set<String> = ["считать", "назвать", "утверждать", "говорить"]
+        let precedingTokens = tokens[..<index]
+        if let denialIndex = precedingTokens.lastIndex(of: "нельзя"),
+           tokens[denialIndex..<index].contains(where: { reportingVerbs.contains($0) }) {
+            return true
         }
 
         return false

@@ -33,9 +33,11 @@ final class ScriptParsingTests: XCTestCase {
         
         XCTAssertEqual(result.names[0], "Иван", "Первое имя должно быть 'Иван'")
         XCTAssertEqual(result.names[1], "Мария", "Второе имя должно быть 'Мария'")
+        XCTAssertEqual(result.names.count, result.phrases.count,
+                       "Имя и фраза должны быть параллельными массивами")
         
-        XCTAssertEqual(result.phrases[0], ": Привет.", "Первая фраза должна быть 'Привет.'")
-        XCTAssertEqual(result.phrases[1], ": Как дела?", "Вторая фраза должна быть 'Как дела?'")
+        XCTAssertEqual(result.phrases[0], "Привет.", "Первая фраза должна быть 'Привет.'")
+        XCTAssertEqual(result.phrases[1], "Как дела?", "Вторая фраза должна быть 'Как дела?'")
     }
     
     // MARK: - Тест 2: Парсинг многострочного сценария
@@ -72,9 +74,9 @@ final class ScriptParsingTests: XCTestCase {
         XCTAssertEqual(result.names[1], "Иван")
         XCTAssertEqual(result.names[2], "Иван")
         
-        XCTAssertEqual(result.phrases[0], ": Привет.")
-        XCTAssertEqual(result.phrases[1], ": Как дела?")
-        XCTAssertEqual(result.phrases[2], ": Что нового?")
+        XCTAssertEqual(result.phrases[0], "Привет.")
+        XCTAssertEqual(result.phrases[1], "Как дела?")
+        XCTAssertEqual(result.phrases[2], "Что нового?")
     }
     
     // MARK: - Тест 4: Обработка пустого сценария
@@ -180,9 +182,8 @@ final class ScriptParsingTests: XCTestCase {
         let script = "Иван:"
         let result = interactor.reformatScript(script: script)
         
-        XCTAssertEqual(result.names.count, 1, "Должно быть одно имя")
-        XCTAssertEqual(result.names[0], "Иван")
-        // Может быть пустая фраза или без фразы
+        XCTAssertEqual(result.names.count, 0, "Без фразы имя не должно создавать неполную пару")
+        XCTAssertEqual(result.phrases.count, 0, "Без фразы не должно быть элемента")
     }
     
     // MARK: - Тест 12: Парсинг сценария с несколькими предложениями в одной реплике
@@ -191,7 +192,39 @@ final class ScriptParsingTests: XCTestCase {
         let script = "Иван: Первое предложение. Второе предложение? Третье предложение!"
         let result = interactor.reformatScript(script: script)
         
-        XCTAssertEqual(result.names.count, 1)
+        XCTAssertEqual(result.names.count, 3)
         XCTAssertEqual(result.phrases.count, 3, "Должно быть 3 фразы из-за трех знаков препинания")
+        XCTAssertEqual(result.names, ["Иван", "Иван", "Иван"])
+        XCTAssertEqual(result.names.count, result.phrases.count,
+                       "Имя должно повторяться для каждой фразы реплики")
+    }
+
+    func testParseParallelNamesAcrossSpeakerTransition() throws {
+        let script = "Иван: Первое. Второе? Мария: Третье!"
+        let result = interactor.reformatScript(script: script)
+
+        XCTAssertEqual(result.names, ["Иван", "Иван", "Мария"])
+        XCTAssertEqual(result.phrases, ["Первое.", "Второе?", "Третье!"])
+        XCTAssertEqual(result.names.count, result.phrases.count,
+                       "Имя и фраза должны оставаться параллельными при смене говорящего")
+    }
+
+    func testParseDialoguePreservesColonsInsidePhrase() throws {
+        let script = "Иван: Время: 12:00. Мария: Ответ."
+        let result = interactor.reformatScript(script: script)
+
+        XCTAssertEqual(result.names, ["Иван", "Мария"])
+        XCTAssertEqual(result.phrases, ["Время: 12:00.", "Ответ."])
+    }
+
+    func testSubtitlePresentationRestoresStructuralSeparatorOutsideParsedPhrase() {
+        let presentation = CameraScreenViewController.subtitlePresentation(
+            name: "Иван",
+            phrase: "Привет."
+        )
+
+        XCTAssertEqual(presentation.speakerText, "Иван:")
+        XCTAssertEqual(presentation.phraseText, "Привет.")
+        XCTAssertEqual(presentation.accessibilityLabel, "Иван: Привет.")
     }
 }

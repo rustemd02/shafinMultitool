@@ -754,7 +754,7 @@ final class NeuralEvidenceDomainContractTests: XCTestCase {
             modelVersion: "h05.v1",
             preprocessingVersion: "prep.v2",
             thresholdProfile: "default_pause_v1",
-            producedAt: snapshot.capturedAt.addingTimeInterval(0.133),
+            producedAt: isoDate("2026-04-22T10:15:31.615Z"),
             latencyMs: nil,
             roiStrategy: nil,
             failureReason: nil
@@ -862,10 +862,10 @@ private extension NeuralEvidenceDomainContractTests {
             }
 
             let defaultSignals: [EvidenceHeadId: [SupportingSignalTag]] = [
-                .subjectProminence: [.subjectReadability, .subjectScale],
+                .subjectProminence: [.subjectScale, .subjectReadability],
                 .backgroundClutter: [.attentionCompetition],
-                .lightingQuality: [.tonalStructure, .subjectExposureReadability],
-                .faceSaliency: [.eyeRegionVisibility, .faceAttentionPull],
+                .lightingQuality: [.subjectExposureReadability, .tonalStructure],
+                .faceSaliency: [.faceAttentionPull, .eyeRegionVisibility],
                 .balanceConfidence: [.frameBalance],
                 .depthSeparation: [.subjectBackgroundContrast],
                 .cinematicExpressiveness: [.visualHarmonyResidual]

@@ -9,9 +9,55 @@ import XCTest
 @testable import shafinMultitool
 
 final class DeviceBenchmarkHarnessTests: XCTestCase {
+    func testBenchmarkConfigEnvironmentTreatsAbsentAndEmptyValuesAsNotConfigured() throws {
+        XCTAssertNil(try DeviceBenchmarkConfig.loadFromEnvironment([:]))
+        XCTAssertNil(
+            try DeviceBenchmarkConfig.loadFromEnvironment(
+                [DeviceBenchmarkConfig.environmentKey: ""]
+            )
+        )
+    }
+
+    func testBenchmarkConfigEnvironmentRejectsInvalidBase64() {
+        XCTAssertThrowsError(
+            try DeviceBenchmarkConfig.loadFromEnvironment(
+                [DeviceBenchmarkConfig.environmentKey: "not-valid-base64"]
+            )
+        ) { error in
+            XCTAssertEqual(error as? DeviceBenchmarkConfigEnvironmentError, .invalidBase64)
+        }
+    }
+
+    func testBenchmarkConfigEnvironmentRejectsBase64PayloadThatIsNotJSON() {
+        let nonJSONPayload = Data("not-json".utf8).base64EncodedString()
+
+        XCTAssertThrowsError(
+            try DeviceBenchmarkConfig.loadFromEnvironment(
+                [DeviceBenchmarkConfig.environmentKey: nonJSONPayload]
+            )
+        ) { error in
+            XCTAssertEqual(error as? DeviceBenchmarkConfigEnvironmentError, .invalidConfiguration)
+        }
+    }
+
+    func testBenchmarkConfigEnvironmentRejectsDecodableBase64WithInvalidConfig() {
+        let incompleteConfig = Data("{}".utf8).base64EncodedString()
+
+        XCTAssertThrowsError(
+            try DeviceBenchmarkConfig.loadFromEnvironment(
+                [DeviceBenchmarkConfig.environmentKey: incompleteConfig]
+            )
+        ) { error in
+            XCTAssertEqual(error as? DeviceBenchmarkConfigEnvironmentError, .invalidConfiguration)
+        }
+    }
+
     @MainActor
     func testRunConfiguredDeviceBenchmark() async throws {
-        let config = DeviceBenchmarkConfig.fromEnvironment() ?? DeviceBenchmarkConfig.defaultQuick
+        guard let config = try DeviceBenchmarkConfig.loadFromEnvironment() else {
+            throw XCTSkip("Set DEVICE_BENCHMARK_CONFIG_BASE64 to run the physical-device benchmark harness.")
+        }
+
         let artifactStore = DeviceBenchmarkArtifactStore(runId: config.runId)
         let coordinator = DeviceBenchmarkCoordinator(config: config)
 

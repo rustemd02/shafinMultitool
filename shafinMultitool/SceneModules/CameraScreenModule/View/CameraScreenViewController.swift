@@ -21,6 +21,21 @@ protocol CameraScreenViewProtocol: AnyObject {
 }
 
 class CameraScreenViewController: UIViewController {
+    typealias SubtitlePresentation = (
+        speakerText: String,
+        phraseText: String,
+        accessibilityLabel: String
+    )
+
+    static func subtitlePresentation(name: String, phrase: String) -> SubtitlePresentation {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPhrase = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        let speakerText = normalizedName.isEmpty ? "" : "\(normalizedName):"
+        let accessibilityLabel = [speakerText, normalizedPhrase]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return (speakerText, normalizedPhrase, accessibilityLabel)
+    }
     
     // MARK: - Properties
     var presenter: CameraScreenPresenterProtocol?
@@ -827,14 +842,20 @@ extension CameraScreenViewController: CameraScreenViewProtocol {
     
     func displayDialogue(names: [String], curNameIndex: Int, phrases: [String], curPhraseIndex: Int) {
         if names.isEmpty || phrases.isEmpty { return }
-        subtitlesNameLabel.text = names[curNameIndex]
-        subtitlesPhraseLabel.text = phrases[curPhraseIndex]
+        let presentation = Self.subtitlePresentation(
+            name: names[curNameIndex],
+            phrase: phrases[curPhraseIndex]
+        )
+        subtitlesNameLabel.text = presentation.speakerText
+        subtitlesPhraseLabel.text = presentation.phraseText
         
         let subtitlesStackView = UIStackView(arrangedSubviews: [subtitlesNameLabel, subtitlesPhraseLabel])
         subtitlesStackView.axis = .horizontal
         subtitlesStackView.alignment = .firstBaseline
         subtitlesStackView.distribution = .fill
-        subtitlesStackView.spacing = 0
+        subtitlesStackView.spacing = 4
+        subtitlesStackView.isAccessibilityElement = true
+        subtitlesStackView.accessibilityLabel = presentation.accessibilityLabel
         view.addSubview(subtitlesStackView)
         
         subtitlesStackView.snp.makeConstraints { make in

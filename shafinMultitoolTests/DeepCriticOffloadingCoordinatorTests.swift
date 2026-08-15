@@ -332,12 +332,15 @@ final class DeepCriticOffloadingCoordinatorTests: XCTestCase {
             )
         }
         let coordinator = DeepCriticOffloadingCoordinator(provider: provider)
-        let request = makeRequest(constraints: DeepCriticConstraints(
-            maxLatencyMs: 2_500,
-            allowTextRefinement: true,
-            allowTeacherEvidence: false,
-            allowActionReorderingAdvice: false
-        ))
+        let request = makeRequest(
+            critiqueVerdictConfidence: 0.9,
+            constraints: DeepCriticConstraints(
+                maxLatencyMs: 2_500,
+                allowTextRefinement: true,
+                allowTeacherEvidence: false,
+                allowActionReorderingAdvice: false
+            )
+        )
 
         let outcome = await coordinator.offload(
             request: request,
@@ -348,6 +351,324 @@ final class DeepCriticOffloadingCoordinatorTests: XCTestCase {
             return XCTFail("Expected failed validation")
         }
         XCTAssertEqual(failure.reason, .validationFailed)
+    }
+
+    func testKeepsCalibratedHighConfidenceExplanationPatchWithSupportedRefs() async {
+        let provider = MockDeepCriticProvider { _ in
+            self.makeCompletedResponse(
+                advisory: DeepCriticAdvisory(
+                    disposition: .advisoryRefinement,
+                    issueReviews: [],
+                    strengthReviews: [],
+                    actionReviews: [],
+                    explanationPatch: DeepCriticExplanationPatch(
+                        shortVerdictOverride: "Кадр почти готов, но стоит мягко усилить фокус.",
+                        shortVerdictEvidenceRefs: ["trace.issue.1"],
+                        whyGoodByStrengthId: [],
+                        whyProblematicByIssueId: [],
+                        actionRationaleByActionId: []
+                    ),
+                    teacherEvidence: nil,
+                    teacherEvidenceMetadata: nil,
+                    hardCaseTags: [],
+                    confidence: 0.9
+                )
+            )
+        }
+        let coordinator = DeepCriticOffloadingCoordinator(provider: provider)
+        let request = makeRequest(
+            critiqueVerdictConfidence: 0.9,
+            constraints: DeepCriticConstraints(
+                maxLatencyMs: 2_500,
+                allowTextRefinement: true,
+                allowTeacherEvidence: false,
+                allowActionReorderingAdvice: false
+            )
+        )
+
+        let outcome = await coordinator.offload(
+            request: request,
+            context: makeContext(currentPauseFrameId: request.frameId)
+        )
+
+        guard case let .completed(response) = outcome else {
+            return XCTFail("Expected completed response")
+        }
+        XCTAssertEqual(
+            response.advisory?.explanationPatch?.shortVerdictOverride,
+            "Кадр почти готов, но стоит мягко усилить фокус."
+        )
+    }
+
+    func testRejectsCertaintyMarkersAcrossExplanationPatchFields() async {
+        let cases: [(label: String, patch: DeepCriticExplanationPatch)] = [
+            (
+                "short verdict: точно",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: "Кадр точно готов к работе.",
+                    shortVerdictEvidenceRefs: ["trace.issue.1"],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "short verdict: точная",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: "Это точная оценка: кадр готов, а фокус на объекте достаточный.",
+                    shortVerdictEvidenceRefs: ["trace.issue.1"],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "why good: однозначный",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "strength-1",
+                            text: "Свет даёт однозначный результат и помогает отделить объект от фона.",
+                            evidenceRefs: ["strength-1"]
+                        )
+                    ],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "why problematic: гарантированный",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "issue-1",
+                            text: "Главный объект имеет гарантированный провал и читается слабее.",
+                            evidenceRefs: ["issue-1"]
+                        )
+                    ],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "action rationale: безошибочным",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "action-1",
+                            text: "Сделайте главный объект крупнее — это станет безошибочным решением и усилит фокус.",
+                            evidenceRefs: ["trace.act.1"]
+                        )
+                    ]
+                )
+            ),
+            (
+                "why good: идеальная",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "strength-1",
+                            text: "Идеальная схема света помогает отделить объект от фона.",
+                            evidenceRefs: ["strength-1"]
+                        )
+                    ],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "negation does not license a later absolute clause",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: "Кадр не идеально сбалансирован, но свет идеальный и фокус на объекте читается.",
+                    shortVerdictEvidenceRefs: ["trace.issue.1"],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            )
+        ]
+
+        for testCase in cases {
+            let provider = MockDeepCriticProvider { _ in
+                self.makeCompletedResponse(
+                    advisory: DeepCriticAdvisory(
+                        disposition: .advisoryRefinement,
+                        issueReviews: [],
+                        strengthReviews: [],
+                        actionReviews: [],
+                        explanationPatch: testCase.patch,
+                        teacherEvidence: nil,
+                        teacherEvidenceMetadata: nil,
+                        hardCaseTags: [],
+                        confidence: 0.9
+                    )
+                )
+            }
+            let coordinator = DeepCriticOffloadingCoordinator(provider: provider)
+            let request = makeRequest(
+                critiqueVerdictConfidence: 0.9,
+                constraints: DeepCriticConstraints(
+                    maxLatencyMs: 2_500,
+                    allowTextRefinement: true,
+                    allowTeacherEvidence: false,
+                    allowActionReorderingAdvice: false
+                )
+            )
+
+            let outcome = await coordinator.offload(
+                request: request,
+                context: makeContext(currentPauseFrameId: request.frameId)
+            )
+
+            guard case let .failed(failure) = outcome else {
+                XCTFail("Expected validation failure for \(testCase.label)")
+                continue
+            }
+            XCTAssertEqual(failure.reason, .validationFailed, testCase.label)
+        }
+    }
+
+    func testKeepsNegatedCalibratedAndNonAbsoluteWording() async {
+        let cases: [(label: String, patch: DeepCriticExplanationPatch)] = [
+            (
+                "short verdict: неточно",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: "Кадр неточно описан, но фокус на объекте читается.",
+                    shortVerdictEvidenceRefs: ["trace.issue.1"],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "why good: не идеально",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "strength-1",
+                            text: "Свет настроен не идеально, но помогает отделить объект от фона.",
+                            evidenceRefs: ["strength-1"]
+                        )
+                    ],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "why problematic: не всегда идеально",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "issue-1",
+                            text: "Главный объект не всегда идеально читается.",
+                            evidenceRefs: ["issue-1"]
+                        )
+                    ],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "action rationale: нельзя считать однозначно",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "action-1",
+                            text: "Нельзя считать кадр однозначно готовым; сделайте главный объект крупнее, чтобы усилить фокус.",
+                            evidenceRefs: ["trace.act.1"]
+                        )
+                    ]
+                )
+            ),
+            (
+                "why good: точность экспозиции",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "strength-1",
+                            text: "Точность экспозиции стабильна: свет помогает отделить объект от фона.",
+                            evidenceRefs: ["strength-1"]
+                        )
+                    ],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: []
+                )
+            ),
+            (
+                "action rationale: точнее сместить кадр",
+                DeepCriticExplanationPatch(
+                    shortVerdictOverride: nil,
+                    shortVerdictEvidenceRefs: [],
+                    whyGoodByStrengthId: [],
+                    whyProblematicByIssueId: [],
+                    actionRationaleByActionId: [
+                        DeepCriticExplanationPatchEntry(
+                            targetId: "action-1",
+                            text: "Точнее сместить кадр и сделать главный объект крупнее, чтобы усилить фокус.",
+                            evidenceRefs: ["trace.act.1"]
+                        )
+                    ]
+                )
+            )
+        ]
+
+        for testCase in cases {
+            let provider = MockDeepCriticProvider { _ in
+                self.makeCompletedResponse(
+                    advisory: DeepCriticAdvisory(
+                        disposition: .advisoryRefinement,
+                        issueReviews: [],
+                        strengthReviews: [],
+                        actionReviews: [],
+                        explanationPatch: testCase.patch,
+                        teacherEvidence: nil,
+                        teacherEvidenceMetadata: nil,
+                        hardCaseTags: [],
+                        confidence: 0.9
+                    )
+                )
+            }
+            let coordinator = DeepCriticOffloadingCoordinator(provider: provider)
+            let request = makeRequest(
+                critiqueVerdictConfidence: 0.9,
+                constraints: DeepCriticConstraints(
+                    maxLatencyMs: 2_500,
+                    allowTextRefinement: true,
+                    allowTeacherEvidence: false,
+                    allowActionReorderingAdvice: false
+                )
+            )
+
+            let outcome = await coordinator.offload(
+                request: request,
+                context: makeContext(currentPauseFrameId: request.frameId)
+            )
+
+            guard case let .completed(response) = outcome else {
+                return XCTFail("Expected calibrated patch to survive: \(testCase.label)")
+            }
+            XCTAssertEqual(response.advisory?.explanationPatch, testCase.patch, testCase.label)
+        }
     }
 
     func testRejectsExplanationPatchWithUnsupportedEvidenceRefs() async {
@@ -646,6 +967,7 @@ private extension DeepCriticOffloadingCoordinatorTests {
                      frameId: String = "frame-1",
                      trigger: DeepCriticTrigger = .ambiguousLocalCase,
                      preferredPrivacyTier: DeepCriticPrivacyTier = .structuredOnly,
+                     critiqueVerdictConfidence: Double = 0.46,
                      semanticsOverride: SceneSemanticsReport? = nil,
                      visualAttachmentCandidate: DeepCriticVisualAttachmentCandidate? = nil,
                      constraints: DeepCriticConstraints = .automaticDefault) -> DeepCriticOffloadRequest {
@@ -699,7 +1021,7 @@ private extension DeepCriticOffloadingCoordinatorTests {
             frameId: frameId,
             mode: mode,
             verdict: .mixed,
-            verdictConfidence: 0.46,
+            verdictConfidence: critiqueVerdictConfidence,
             strengths: [strength],
             issues: [issue],
             summary: CritiqueSummary(

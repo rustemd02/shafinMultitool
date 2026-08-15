@@ -50,7 +50,7 @@
 
 - Lane: Luna / Max, Sol verification and acceptance.
 - State: `accepted`.
-- Dependencies: accepted CC-003 audit. Runtime/UI integration remains gated by CC-008 and canonical route ownership.
+- Dependencies: accepted CC-003 audit and CC-008; runtime/UI integration still requires canonical route ownership.
 - Ownership: create only `shafinMultitool/Services/Permissions/PermissionContracts.swift`, `shafinMultitool/Services/Permissions/SystemPermissionClient.swift` and `shafinMultitoolTests/PermissionFoundationTests.swift`.
 - Objective: provide a deterministic typed boundary for camera, microphone, Speech and Photos add-only authorization/availability without choosing user copy, request timing or fallback UX.
 - Contract: `AppPermission` has camera/microphone/speechRecognition/photosAddOnly; authorization preserves notDetermined/authorized/limited/denied/restricted and unknown future status; availability distinguishes available from concrete camera hardware, microphone hardware and Speech service unavailability. Public values are Equatable/Sendable and each snapshot names its permission.
@@ -108,8 +108,8 @@
 
 ### CC-007A — Single-active-route shell contract
 
-- Lane: Luna / Max after CC-008 owner acceptance.
-- State: `ready_after_CC-008`.
+- Lane: Luna / Max.
+- State: `ready`.
 - Dependencies: CC-006, CC-008.
 - Ownership: create only `shafinMultitool/CommercialShell/CommercialShellViewController.swift` and `shafinMultitoolTests/CommercialShellRoutingTests.swift`.
 - Non-edits: `SceneDelegate`, `ContentView`, camera/session internals, Scene Mode routers, recorder, project file and existing UI. This slice does not change the launch graph.
@@ -122,16 +122,17 @@
 ## CC-008 — UI/UX state specification
 
 - Lane: Sol owns decisions; bounded Luna tasks may produce artifacts after specification.
-- State: `proposed_for_owner_acceptance`.
+- State: `accepted`.
 - Ownership: `docs/implementation/ux/**` only until implementation packets are approved.
 - Must specify: onboarding, permissions, live Coach, one-tip lifecycle, tap-to-clarify, action detected, before/after verification, keep-as-is, abstention, pause summary, recording, offline, thermal, server consent/timeout/quota, History if retained, Scene Mode entry and both orientations.
 - Visual constraints: native hierarchy, semantic system materials/colors, restrained motion/haptics, no dashboard-card grid, gradient-everything, fake AI glow, oversized marketing hero inside tools, decorative glass stacks or arbitrary pill overload.
 - Acceptance: every state has entry/exit, primary action, recovery, accessibility, analytics event and screenshot acceptance criteria; no open decision is delegated to Luna.
+- Evidence: `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; owner acceptance следует из явного поручения запустить полный автономный implementation pipeline и предшествующей серии подтверждённых product/UI решений.
 
 ### CC-008A — Truthful production live coaching surface
 
-- Lane: Luna / Max after CC-008 owner acceptance.
-- State: `ready_after_CC-008`.
+- Lane: Luna / Max.
+- State: `ready`.
 - Dependencies: CC-008, CC-010B.
 - Ownership: `CameraOverlayUXPresentation.swift`, `SuggestionChip.swift`, `OverlayView.swift`, `ZoomControlView.swift`, `CameraOverlayUXPresentationTests.swift` and at most one narrow rendering test under existing target membership.
 - Non-edits: `ContentView`, `CameraViewModel`, `CameraManager`, `AnalysisPipeline`, `RealtimeScheduler`, `SuggestionListView`, `SceneDelegate`, Scene Mode, recorder, Deep Review, persistence and `project.pbxproj`.
@@ -276,8 +277,9 @@
 
 ### CC-010F — Orientation continuity
 
-- Lane: Luna / Max after CC-008 and CC-010A.
-- State: `blocked_by_CC-008`.
+- Lane: Luna / Max.
+- State: `ready`.
+- Dependencies: accepted CC-008 and CC-010A.
 - Objective: portrait/landscape reflow and capture/writer/AR transforms change in place without session, analysis, recording or settings reset.
 
 ### CC-010G — Stateless thermal budget
@@ -321,8 +323,9 @@
 
 ### CC-011C — Real UI-test target and launch smoke
 
-- Lane: Luna / Max after CC-007/CC-008 commercial shell.
-- State: `blocked_by_CC-007_CC-008`.
+- Lane: Luna / Max after the CC-007 commercial shell.
+- State: `blocked_by_CC-007`.
+- Dependencies: implemented CC-007 commercial shell; CC-008 is already accepted.
 - Objective: implement the target/file-membership/scheme packet from CC-005 and replace the unit-hosted pseudo-UI smoke with true process-launch tests.
 - Acceptance: Camera Coach default launch, permission-state launch arguments, both orientations and Scene Mode entry run in a separate UI-test process.
 
@@ -336,6 +339,36 @@
 - Reporting: llama and Circle remain among the five release blockers, but their technical status is no longer generically unresolved; final summary reports two provenance validators and preserves six contamination fixtures.
 - Acceptance: syntax/orchestration tests and canonical full release gate pass on main; a drift in either accepted record stops before Xcode build; existing privacy/build/bundle/safety behavior is unchanged.
 - Evidence: worker commit `4802b9c`, accepted commit `7891fec`; fresh Sol-review verdict `ship`. Sol independently passed orchestration fixtures, 15/15 llama tests, 10/10 Circle tests, both real offline validators and the canonical clean-main release gate with 2 validators, 2 privacy manifests, 5 blockers and all 6 contamination fixtures.
+
+### CC-011E — Test and contract hygiene correction wave
+
+- Lane: Luna / Max; Sol performs bounded acceptance only.
+- State: `correction_wave_uncommitted`.
+- Baseline: `store` at `bf666f44d3791ef34d577a10a69bb1a2a00addeb`; changes are not accepted evidence until coherently committed and followed by the clean canonical release gate.
+- Trigger evidence: the raw full unit target ran 593 tests: 496 passed, 94 failed and 3 skipped. XCResult: `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. This is an audit result, not a green gate.
+- Failure taxonomy: pseudo-UI tests have no target application; opt-in local-model and physical benchmark suites execute by default; Settings fixtures hit force unwraps; real-image Camera Coach evaluation depends on simulator Vision/Espresso and absent never-tracked assets; legacy parser, persistence and fixtures fail independently.
+- Integrated evidence: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Additional repetitions: Scene 18/18 twice plus DB performance 4/4; DeepCritic 20/20; subtitle/config 22 with 1 intended skip; Hybrid 7/7; Semantic 8/8.
+- Next: commit this coherent correction wave, repeat `scripts/run_release_gates.sh` on the resulting clean commit, then launch ready CC-007A and CC-008A through Luna / Max. A true UI target/default test topology and configured real-image evaluation remain separate unresolved lanes.
+
+#### CC-011E1 — Opt-in execution gates
+
+- State: `accepted_in_uncommitted_wave`.
+- Contract: absent local-model or device-benchmark configuration skips before work begins; explicitly invalid benchmark environment fails rather than silently falling back; configured runs retain their prior semantics.
+
+#### CC-011E2 — Metadata persistence and dialogue presentation
+
+- State: `accepted_in_uncommitted_wave`.
+- Contract: a nil AR map still writes scene metadata while preserving any legacy `_map`; this does not claim an atomic map/data pair transaction. Parser name/phrase arrays are parallel, and presentation renders `Иван: Привет.` rather than exposing the structural colon as content.
+
+#### CC-011E3 — Neural/domain fixture correction
+
+- State: `accepted_in_uncommitted_wave`.
+- Contract: fixtures use canonical signal ordering and exact timestamp relationships; production neural inference semantics are unchanged.
+
+#### CC-011E4 — DeepCritic, Hybrid and Semantic truth
+
+- State: `accepted_in_uncommitted_wave`.
+- Contract: Russian certainty validation catches inflected absolute language while allowing calibrated phrasing; semantic actions outside the live whitelist remain suppressed; Hybrid production remains unchanged and the ranking fixture is made unambiguous.
 
 ## CC-012 — Coaching-loop analytics contract
 

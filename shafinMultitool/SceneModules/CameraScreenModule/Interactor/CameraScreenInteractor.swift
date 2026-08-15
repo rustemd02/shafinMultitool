@@ -721,6 +721,12 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
                                       curNameIndex: Int,
                                       phrases: [String],
                                       curPhraseIndex: Int) {
+        guard names.count == phrases.count,
+              curPhraseIndex >= 0,
+              curPhraseIndex < phrases.count,
+              curNameIndex >= 0,
+              curNameIndex < names.count else { return }
+
         let lastTwoWordsRecognised = recognised
             .split(separator: " ")
             .suffix(2)
@@ -737,14 +743,12 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
             .lowercased()
 
         if lastTwoWordsScript.elementsEqual(lastTwoWordsRecognised) {
-            var newNameIndex = curNameIndex
             let newPhraseIndex = curPhraseIndex + 1
 
-            guard newPhraseIndex < phrases.count else { return }
+            guard newPhraseIndex < phrases.count,
+                  newPhraseIndex < names.count else { return }
 
-            if phrases[newPhraseIndex].contains(":") {
-                newNameIndex += 1
-            }
+            let newNameIndex = newPhraseIndex
 
             speechRecognitionService.stopRecognition()
             isSpeechRecognitionActive = false
@@ -783,53 +787,63 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     
     func reformatScript(script: String) -> (names: [String], phrases: [String]) {
         return autoreleasepool {
-            var currentName: String = ""
-            var currentMessage: String = ""
-            let text = script
+            var currentSpeaker: String?
+            var currentMessage = ""
+            var pendingText = ""
             var names: [String] = []
             var phrases: [String] = []
-            
-            var readingName = true
-            var possibleName = false
-            
-            for char in text {
-                if char != ":" && readingName {
-                    if char != " " {
-                        currentName.append(char)
-                    }
-                    if possibleName {
-                        if (char == " " && !currentName.isEmpty) || char == "," {
-                            possibleName = false
-                            readingName = false
-                            currentName = ""
-                        }
-                        currentMessage.append(char)
-                    }
-                    
-                } else if (char != ":" && char != "." && char != "?" && char != "!") && !readingName {
-                    currentMessage.append(char)
-                    
-                } else {
+
+            var readingHeader = true
+
+            func appendPhrase(_ text: String) {
+                guard let speaker = currentSpeaker else { return }
+                let phrase = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !phrase.isEmpty else { return }
+
+                // Keep the arrays parallel: every phrase carries its speaker.
+                names.append(speaker)
+                phrases.append(phrase)
+            }
+
+            for char in script {
+                if readingHeader {
                     if char == ":" {
-                        currentName = currentName.replacingOccurrences(of: "\n", with: "")
-                        names.append(currentName)
+                        let name = pendingText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !name.isEmpty else {
+                            pendingText = ""
+                            continue
+                        }
+
+                        currentSpeaker = name
+                        pendingText = ""
                         currentMessage = ""
+                        readingHeader = false
+                        continue
                     }
-                    currentName = ""
-                    readingName = false
-                    
-                    if char != "." && char != "?" && char != "!" {
-                        currentMessage.append(char)
-                        
-                    } else {
-                        currentMessage.append(char)
-                        phrases.append(currentMessage)
-                        currentMessage = ""
-                        readingName = true
-                        possibleName = true
+
+                    if char == "." || char == "?" || char == "!" {
+                        if currentSpeaker != nil {
+                            pendingText.append(char)
+                            appendPhrase(pendingText)
+                        }
+                        pendingText = ""
+                        continue
                     }
+
+                    pendingText.append(char)
+                } else if char == "." || char == "?" || char == "!" {
+                    currentMessage.append(char)
+                    appendPhrase(currentMessage)
+                    currentMessage = ""
+                    pendingText = ""
+                    readingHeader = true
+                } else {
+                    // A colon in an active dialogue is part of the phrase;
+                    // only the heading delimiter above is structural.
+                    currentMessage.append(char)
                 }
             }
+
             return (names, phrases)
         }
     }

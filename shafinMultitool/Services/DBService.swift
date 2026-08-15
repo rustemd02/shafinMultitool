@@ -31,16 +31,28 @@ class DBService {
     }
     
     func saveARWorldMap(map: ARWorldMap?, sceneData: SceneData) throws {
-        guard let map = map else { return }
-        let arMapsDirectory = try legacyScenesDirectoryURL()
-        
-        let mapURL = arMapsDirectory.appendingPathComponent(sceneData.name + "_map")
-        let dataMap = try NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
-        try dataMap.write(to: mapURL, options: [.atomic])
-        
-        let sceneDataURL = arMapsDirectory.appendingPathComponent(sceneData.name + "_data")
-        let dataScene = try JSONEncoder().encode(sceneData)
-        try dataScene.write(to: sceneDataURL, options: [.atomic])
+        let mapData = try map.map {
+            try NSKeyedArchiver.archivedData(withRootObject: $0, requiringSecureCoding: true)
+        }
+        try saveLegacyScene(mapData: mapData, sceneData: sceneData)
+    }
+
+    /// Persists the existing `_map`/`_data` file contract without requiring an AR session.
+    /// A nil map is a metadata-only update and intentionally leaves an existing map untouched.
+    /// Encoding finishes before either file changes. Each write is atomic, but a non-nil save
+    /// remains a two-file legacy operation and is not an atomic transaction across both files.
+    func saveLegacyScene(mapData: Data?, sceneData: SceneData) throws {
+        try createLegacyScenesDirectory()
+        let directory = try legacyScenesDirectoryURL()
+        let encodedSceneData = try JSONEncoder().encode(sceneData)
+
+        if let mapData {
+            let mapURL = directory.appendingPathComponent(sceneData.name + "_map")
+            try mapData.write(to: mapURL, options: [.atomic])
+        }
+
+        let sceneDataURL = directory.appendingPathComponent(sceneData.name + "_data")
+        try encodedSceneData.write(to: sceneDataURL, options: [.atomic])
     }
     
     func getAllARWorldMapTitles() -> [String]? {
@@ -51,15 +63,15 @@ class DBService {
 
             let fileURLs = try fileManager.contentsOfDirectory(at: arMapsDirectory, includingPropertiesForKeys: nil)
             
-            var fileNames: [String] = []
-            
-            for fileURL in fileURLs where fileURL.path.hasSuffix("_map") {
-                let fileName = fileURL.deletingPathExtension().lastPathComponent
-                let cleanFileName = fileName.replacingOccurrences(of: "_map", with: "")
-                fileNames.append(cleanFileName)
+            let fileNames = fileURLs.compactMap { fileURL -> String? in
+                let fileName = fileURL.lastPathComponent
+                if fileName.hasSuffix("_data") {
+                    return String(fileName.dropLast("_data".count))
+                }
+                return nil
             }
-            
-            return fileNames
+
+            return Array(Set(fileNames)).sorted()
         } catch {
             print(error)
             return nil
@@ -67,20 +79,33 @@ class DBService {
     }
     
     func loadARWorldMap(sceneName: String) -> (ARWorldMap, SceneData)? {
+        guard let stored = loadLegacySceneFiles(sceneName: sceneName),
+              let worldMap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self,
+                                                                     from: stored.mapData) else {
+            return nil
+        }
+        return (worldMap, stored.sceneData)
+    }
+
+    func loadSceneData(sceneName: String) -> SceneData? {
         do {
-            let arMapsDirectory = try legacyScenesDirectoryURL()
-            
-            let mapURL = arMapsDirectory.appendingPathComponent(sceneName + "_map")
-            let mapData = try Data(contentsOf: mapURL)
-            guard let unarchivedMap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: mapData) else { return nil }
-            
-            let sceneDataURL = arMapsDirectory.appendingPathComponent(sceneName + "_data")
+            let directory = try legacyScenesDirectoryURL()
+            let sceneDataURL = directory.appendingPathComponent(sceneName + "_data")
             let sceneData = try Data(contentsOf: sceneDataURL)
-            let sceneDataDecoded = try JSONDecoder().decode(SceneData.self, from: sceneData)
-            
-            return (unarchivedMap, sceneDataDecoded)
+            return try JSONDecoder().decode(SceneData.self, from: sceneData)
         } catch {
-            print("Error loading ARWorldMap: \(error)")
+            print("Error loading scene data: \(error)")
+            return nil
+        }
+    }
+
+    func loadLegacySceneFiles(sceneName: String) -> (mapData: Data, sceneData: SceneData)? {
+        do {
+            let directory = try legacyScenesDirectoryURL()
+            let mapData = try Data(contentsOf: directory.appendingPathComponent(sceneName + "_map"))
+            let sceneData = try Data(contentsOf: directory.appendingPathComponent(sceneName + "_data"))
+            return (mapData, try JSONDecoder().decode(SceneData.self, from: sceneData))
+        } catch {
             return nil
         }
     }
@@ -89,31 +114,33 @@ class DBService {
         do {
             let arMapsDirectory = try legacyScenesDirectoryURL()
             
-            let mapURL = arMapsDirectory.appendingPathComponent(name + "_map")
-            if fileManager.fileExists(atPath: mapURL.path) {
-                try fileManager.removeItem(at: mapURL)
-            }
-            
-            let sceneDataURL = arMapsDirectory.appendingPathComponent(name + "_data")
-            if fileManager.fileExists(atPath: sceneDataURL.path) {
-                try fileManager.removeItem(at: sceneDataURL)
+            let storedFiles = [
+                arMapsDirectory.appendingPathComponent(name + "_map"),
+                arMapsDirectory.appendingPathComponent(name + "_data")
+            ]
+            for storedFile in storedFiles where fileManager.fileExists(atPath: storedFile.path) {
+                try fileManager.removeItem(at: storedFile)
             }
             
             completion(true)
         } catch {
             print(error)
+            completion(false)
         }
     }
     
     func createARMapsDirectory() {
         do {
-            let arMapsDirectory = try legacyScenesDirectoryURL()
-            
-            if !fileManager.fileExists(atPath: arMapsDirectory.path) {
-                try fileManager.createDirectory(at: arMapsDirectory, withIntermediateDirectories: true, attributes: nil)
-            }
+            try createLegacyScenesDirectory()
         } catch {
             print("Error creating ARMaps directory: \(error)")
+        }
+    }
+
+    private func createLegacyScenesDirectory() throws {
+        let arMapsDirectory = try legacyScenesDirectoryURL()
+        if !fileManager.fileExists(atPath: arMapsDirectory.path) {
+            try fileManager.createDirectory(at: arMapsDirectory, withIntermediateDirectories: true, attributes: nil)
         }
     }
 

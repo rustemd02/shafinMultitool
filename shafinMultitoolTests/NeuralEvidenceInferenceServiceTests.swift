@@ -40,7 +40,7 @@ final class NeuralEvidenceInferenceServiceTests: XCTestCase {
         let provider = MockNeuralEvidenceProvider { _ in
             self.makeProviderOutput()
         }
-        var now = Date(timeIntervalSince1970: 1_771_111_000)
+        var now = Date(timeIntervalSince1970: 1_771_111_100)
         let service = NeuralEvidenceInferenceService(
             configuration: makeEnabledConfiguration(),
             provider: provider,
@@ -68,7 +68,7 @@ final class NeuralEvidenceInferenceServiceTests: XCTestCase {
             try await Task.sleep(nanoseconds: 30_000_000)
             return self.makeProviderOutput(actualROIStrategy: .fullFrameOnly)
         }
-        let now = Date(timeIntervalSince1970: 1_771_111_000)
+        let now = Date(timeIntervalSince1970: 1_771_111_100)
         let service = NeuralEvidenceInferenceService(
             configuration: makeEnabledConfiguration(),
             provider: provider,

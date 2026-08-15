@@ -367,7 +367,7 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(output.pauseExpandedTips.first?.tipType, .clarifyMainSubjectFocus)
     }
 
-    func testPipelineLivePresentationUsesSemanticTipCopy() async {
+    func testPipelineLivePresentationSuppressesNonWhitelistedSemanticTip() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(
             frameId: "pipeline-live",
@@ -405,12 +405,27 @@ final class SemanticTipPlannerTests: XCTestCase {
             noChangeRationale: nil,
             planConfidence: 0.88
         )
+        let semantics = makeSemantics(frameId: critique.frameId, mode: .live, subjectKind: .person)
+        let semanticOutput = planner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: critique.frameId,
+                mode: .live,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: semantics
+            )
+        )
+
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.tipType, .createLookSpaceLeft)
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.actionType, .shiftFrameLeft)
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.liveText, "Смести камеру чуть левее.")
 
         await MainActor.run {
             pipeline.testingPublishLivePresentation(
                 frameId: critique.frameId,
                 critique: critique,
                 plan: plan,
+                semantics: semantics,
                 legacySuggestion: nil,
                 structuredAvailable: true,
                 now: Date(timeIntervalSince1970: 1_772_000_100)
@@ -418,12 +433,11 @@ final class SemanticTipPlannerTests: XCTestCase {
         }
 
         await MainActor.run {
-            XCTAssertEqual(pipeline.currentLiveHint?.text, "Смести камеру чуть левее.")
-            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .moveFrameLeft)
+            XCTAssertNil(pipeline.currentLiveHint)
         }
     }
 
-    func testPipelineLivePresentationMarksSemanticFallbackForGenericObjectTip() async {
+    func testPipelineLivePresentationSuppressesGenericObjectSemanticFallback() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(
             frameId: "pipeline-object-fallback",
@@ -461,13 +475,28 @@ final class SemanticTipPlannerTests: XCTestCase {
             noChangeRationale: nil,
             planConfidence: 0.88
         )
+        let semantics = makeSemantics(frameId: critique.frameId, mode: .live, subjectKind: .object)
+        let semanticOutput = planner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: critique.frameId,
+                mode: .live,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: semantics
+            )
+        )
+
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.tipType, .moveObjectOffRightEdge)
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.actionType, .moveObjectLeft)
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.liveText, "Сдвинь предмет левее.")
+        XCTAssertTrue(semanticOutput.fallbackUsed)
 
         await MainActor.run {
             pipeline.testingPublishLivePresentation(
                 frameId: critique.frameId,
                 critique: critique,
                 plan: plan,
-                semantics: makeSemantics(frameId: critique.frameId, mode: .live, subjectKind: .object),
+                semantics: semantics,
                 legacySuggestion: nil,
                 structuredAvailable: true,
                 now: Date(timeIntervalSince1970: 1_772_000_200)
@@ -475,10 +504,7 @@ final class SemanticTipPlannerTests: XCTestCase {
         }
 
         await MainActor.run {
-            XCTAssertEqual(pipeline.currentLiveHint?.text, "Сдвинь предмет левее.")
-            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .moveFrameLeft)
-            XCTAssertEqual(pipeline.currentLiveHint?.isFallback, true)
-            XCTAssertEqual(pipeline.currentLiveHint?.expandedVerdict?.fallbackUsed, true)
+            XCTAssertNil(pipeline.currentLiveHint)
         }
     }
 
