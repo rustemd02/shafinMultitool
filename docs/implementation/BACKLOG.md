@@ -48,13 +48,14 @@
 ## CC-004 — Dependency, model and media provenance inventory
 
 - Lane: Luna / Max.
-- State: `in_progress`.
+- State: `accepted`.
 - Ownership: create only `docs/implementation/audits/dependency-provenance-inventory.md`.
 - Read: `Podfile`, `Podfile.lock`, vendored frameworks/packages, Core ML packages, GGUF, images, USDZ/Reality Composer assets and acknowledgements.
 - Must report: component, version/hash where observable, runtime role, source, license evidence path, redistribution status, privacy/network behavior, bundle impact and disposition `verified / missing / replace / exclude`.
 - Must not assert a license from filename or memory.
 - Verification: filesystem/hash/package metadata commands and `git diff --check`.
 - Acceptance: every shipped third-party binary/model/media family is covered; missing provenance becomes a blocking follow-up rather than guessed approval.
+- Evidence: `docs/implementation/audits/dependency-provenance-inventory.md`; accepted after path-only diff inspection, independent SHA-256 spot checks and explicit separation of repository evidence from legal approval.
 
 ## CC-005 — Test topology and UI-test target plan
 
@@ -121,7 +122,7 @@
 ### CC-010A — Awaitable Coach capture lifecycle
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `in_progress`.
 - Ownership candidate: `CameraManager.swift`, `CameraViewModel.swift`, minimal `OverlayView.swift` call-site changes and focused lifecycle tests selected in the task packet.
 - Objective: serialize capture start/stop, make completion awaitable and idempotent, publish typed failure/state, drain/detach the video delegate before stop returns, and prevent post-release frames from reaching the scheduler.
 - Non-goals: permissions UI, recording, Scene Mode, route shell, orientation redesign and scheduler/pipeline unregister.
