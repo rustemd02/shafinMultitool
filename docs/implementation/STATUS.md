@@ -33,7 +33,7 @@
 | --- | --- | --- | --- | --- |
 | CC-000 | accepted | Sol | — | Product/research baseline синхронизирован |
 | CC-001 | accepted | Luna / Max | bootstrap commit | Clean/contaminated bundle inventory принят; Release partial = 1 198 316 КБ, GGUF contamination = 1 094 912 КБ |
-| CC-002 | in_progress | Luna / Max | CC-001 | Детерминированная Release resource boundary и Debug-only benchmark provisioning |
+| CC-002 | accepted | Luna / Max | CC-001 | Release = 72 728 КБ без DeviceBenchmark/GGUF; Debug сохраняет оба benchmark-пака |
 | CC-003 | accepted | Luna / Max | bootstrap commit | Все permission/data paths инвентаризированы; подтверждены отсутствующие denied/restricted/Settings flows и privacy manifest |
 | CC-004 | accepted | Luna / Max | accepted audit baseline | 16 provenance dispositions accepted; 8 missing, 2 exclude, 4 development-only, 2 verified |
 | CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
@@ -41,26 +41,28 @@
 | CC-007 | draft | Sol → Luna | CC-006, UX spec | Commercial app shell и Camera Coach default route |
 | CC-008 | proposed_for_owner_acceptance | Sol | product baseline | 610-строчная UX state machine подготовлена; implementation gate ждёт осмысленного owner acceptance |
 | CC-009 | accepted | Luna / Max | CC-003, CC-006 | Подтверждены три media contour и отсутствие awaited exclusive route/session owner |
-| CC-010A | in_progress | Luna / Max | CC-009 | Awaitable idempotent Coach capture lifecycle и late-callback fence |
-| CC-010B | draft | Luna / Max | CC-010A | Scheduler registration ownership и pipeline release |
+| CC-010A | accepted | Luna / Max | CC-009 | Awaitable lifecycle, typed failures и late-callback fence; 7/7 focused tests прошли |
+| CC-010B | ready | Luna / Max | CC-010A | Scheduler registration ownership и pipeline release |
 | CC-010C | draft | Terra / High | CC-009, recording policy | Serialized recorder ownership и typed save result |
 | CC-010D | draft | Luna / Max | CC-010C | Scene exit/background teardown с сохранением project state |
 | CC-010E | blocked_by_CC-007 | Terra / High | CC-007, CC-010A, CC-010D | Exclusive route lease integration в commercial shell |
 | CC-010F | blocked_by_CC-008 | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata |
 | CC-011 | draft | Luna / Max | CC-001, CC-005 | Reproducible local/CI release gates |
 | CC-012 | draft | Sol → Luna | CC-008 | Privacy-safe activation and coaching-loop event contract |
+| CC-012A | in_progress | Luna / Max | CC-003, CC-008 | Source-grounded coaching-loop event/schema inventory |
 
 ## Активная работа
 
 - Sol: принял CC-003, CC-005 и CC-006 после diff/source/build checks; CC-001 возвращён тому же worker на сверку clean worktree с локальным ignored GGUF.
 - CC-001: accepted, task `01a0055c-a4b4-70e2-bb46-53a03f9a57e0`, worker commits `c96b679`, `25bf140`, accepted commits `d8061aa`, `d4c4873`, evidence `docs/implementation/audits/release-bundle-inventory.md`.
-- CC-002: task `01a00578-f7d5-75d3-ba32-3796ce136c1b`, worktree `/Users/unterlantas/.codex/worktrees/9bd3/shafinMultitool`.
+- CC-002: accepted, task `01a00578-f7d5-75d3-ba32-3796ce136c1b`, worker commit `c2b8d4c`, accepted commit `2d7c26e`; parent Release и Debug build/bundle assertions прошли.
 - CC-003: accepted, task `01a0055c-a4b2-7e82-93db-5d7098bc664d`, worker commit `a91a290`, accepted commit `e3b3712`, evidence `docs/implementation/audits/privacy-permissions-inventory.md`.
 - CC-005: accepted, task `01a0055c-a4b4-70e2-bb46-5381f4f0acf1`, worker commit `05cad36`, accepted commit `e8f8615`, evidence `docs/implementation/audits/test-topology.md`.
 - CC-006: accepted, task `01a0055c-a4b4-70e2-bb46-536ebdfd5585`, worker commit `caefe22`, accepted commit `67ede42`, evidence `docs/implementation/audits/runtime-entry-routing.md`.
 - CC-009: accepted, task `01a00572-424a-7211-85df-c1719caf6108`, worker commit `addb184`, accepted commit `07a449a`, evidence `docs/implementation/audits/camera-session-ownership.md`.
 - CC-004: accepted, task `01a00574-d6e4-7043-aafe-1cc3fd44eae6`, worker commit `c02cbea`, accepted commit `bfad2fa`, evidence `docs/implementation/audits/dependency-provenance-inventory.md`.
-- CC-010A: task `01a00586-0a90-7323-b195-21d7941ffc70`, worktree `/Users/unterlantas/.codex/worktrees/d635/shafinMultitool`.
+- CC-010A: accepted, task `01a00586-0a90-7323-b195-21d7941ffc70`, worker commit `b93e4aa`, accepted commit `e0bd423`; Sol повторил 7/7 simulator tests.
+- CC-012A: task `01a0058b-d2da-7491-b3f4-de880445997b`, worktree `/Users/unterlantas/.codex/worktrees/e75f/shafinMultitool`.
 - CC-008: proposed evidence `docs/implementation/ux/camera-coach-state-spec.md`, commit `c1f6920`; до owner acceptance UI source tasks не запускаются.
 
 ## Ворота следующего шага

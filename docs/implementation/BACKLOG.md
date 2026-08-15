@@ -26,12 +26,13 @@
 ## CC-002 — Exclude research assets from Release
 
 - Lane: Luna / Max.
-- State: `in_progress`.
+- State: `accepted`.
 - Ownership: exact project/resource files named by accepted CC-001; focused regression tests if needed.
 - Objective: Release contains only explicitly allowed production resources while DEBUG/device benchmark flows remain reproducible.
 - Constraints: no deletion of datasets or models; no loss of test/eval evidence; no change to product behavior beyond resource availability by configuration.
 - Verification: Debug build-for-testing; Release build/archive-equivalent; bundle inventory asserts forbidden assets absent and required assets present.
 - Acceptance: Release bundle size reduction is measured, resource access fails explicitly outside supported configurations, tests pass.
+- Evidence: worker commit `c2b8d4c`, accepted commit `2d7c26e`; parent Release build produced a 72 728 КБ app without `DeviceBenchmark`, `Models` or GGUF, and parent Debug test build retained both nested benchmark manifests plus the Debug marker.
 
 ## CC-003 — Privacy and permissions inventory
 
@@ -122,16 +123,17 @@
 ### CC-010A — Awaitable Coach capture lifecycle
 
 - Lane: Luna / Max.
-- State: `in_progress`.
+- State: `accepted`.
 - Ownership candidate: `CameraManager.swift`, `CameraViewModel.swift`, minimal `OverlayView.swift` call-site changes and focused lifecycle tests selected in the task packet.
 - Objective: serialize capture start/stop, make completion awaitable and idempotent, publish typed failure/state, drain/detach the video delegate before stop returns, and prevent post-release frames from reaching the scheduler.
 - Non-goals: permissions UI, recording, Scene Mode, route shell, orientation redesign and scheduler/pipeline unregister.
 - Acceptance: repeated/racing start-stop tests pass; generic iOS test build passes; existing Camera Coach frame flow remains intact.
+- Evidence: worker commit `b93e4aa`, accepted commit `e0bd423`; generic build-for-testing passed, and Sol independently reran `CameraManagerLifecycleTests` on iPhone 17 Pro simulator with 7/7 passing.
 
 ### CC-010B — Scheduler and pipeline release
 
 - Lane: Luna / Max.
-- State: `draft` until CC-010A.
+- State: `ready`.
 - Objective: own registration tokens, unregister deterministically, cancel/await outstanding analysis work and fence stale presentation updates.
 - Acceptance: register/release/re-register and stale-result tests pass without changing recommendation semantics.
 
@@ -171,8 +173,17 @@
 ## CC-012 — Coaching-loop analytics contract
 
 - Lane: Sol defines semantics, Luna / Max implements after UX spec.
-- State: `draft`.
+- State: `decomposed`.
 - Dependencies: CC-008, privacy boundary from CC-003.
 - Required events: first verified helpful loop, tip shown/stable/rejected, subject clarification, action detected, verification result, keep-as-is, abstention, record success/failure, Deep Review consent/request/lift/exhaustion, server latency/error/cost and crash/thermal signals.
 - Constraints: no raw media or hidden identifier by default; event properties must not claim causality the client cannot observe.
 - Acceptance: schema is versioned, testable, privacy-mapped and sufficient for subscription-versus-credits decision after beta.
+
+### CC-012A — Coaching-loop event contract inventory
+
+- Lane: Luna / Max audit; Sol accepts semantics before source implementation.
+- State: `in_progress`.
+- Ownership: create only `docs/implementation/audits/coaching-loop-event-contract-inventory.md`.
+- Objective: map every accepted/proposed Coach state and observable transition to a low-cardinality, privacy-safe event contract centered on the first verified helpful loop.
+- Constraints: no raw media, transcript, free-form user text, hidden persistent identifier, provider/region/retention/legal invention or causal overclaim.
+- Acceptance: exact event/property dictionary, deterministic activation derivation, source/test seams, negative privacy tests and bounded Luna implementation slices are all repository-grounded.
