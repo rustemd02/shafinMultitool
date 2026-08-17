@@ -47,8 +47,8 @@ public final class CommercialShellViewController: UIViewController {
     public private(set) var selectedSection: CommercialSection = .camera
     public private(set) var isTransitioning = false
 
-    /// The visual section control; route truth remains owned by this shell.
-    private(set) var sectionSwitcher = CommercialShellSectionSwitcher()
+    /// The visual mode control; route truth remains owned by this shell.
+    private(set) var modeControl = CommercialShellModeControl()
 
     /// The route currently retained by the shell, if one has been installed.
     public var activeRoute: (any CommercialRoute)? {
@@ -84,14 +84,14 @@ public final class CommercialShellViewController: UIViewController {
 
     public override func loadView() {
         let rootView = UIView()
-        rootView.backgroundColor = CommercialShellSectionSwitcher.surfaceColor
+        rootView.backgroundColor = CommercialShellModeControl.surfaceColor
         rootView.accessibilityIdentifier = "commercial-shell"
         view = rootView
     }
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        configureSectionSwitcher()
+        configureModeControl()
 
         // A container that has already been released must never resurrect a route when
         // UIKit later loads its view.
@@ -193,17 +193,23 @@ public final class CommercialShellViewController: UIViewController {
         return result
     }
 
-    private func configureSectionSwitcher() {
-        sectionSwitcher.translatesAutoresizingMaskIntoConstraints = false
-        sectionSwitcher.onSelectionRequested = { [weak self] section in
-            self?.requestSelection(section)
+    private func configureModeControl() {
+        modeControl.translatesAutoresizingMaskIntoConstraints = false
+        modeControl.onIntentRequested = { [weak self] intent in
+            switch intent {
+            case .openScenes:
+                self?.requestSelection(.scenes)
+            case .returnCamera:
+                self?.requestSelection(.camera)
+            }
         }
 
-        view.addSubview(sectionSwitcher)
+        view.addSubview(modeControl)
         NSLayoutConstraint.activate([
-            sectionSwitcher.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            sectionSwitcher.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            sectionSwitcher.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            modeControl.centerXAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerXAnchor),
+            modeControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            modeControl.widthAnchor.constraint(equalToConstant: 44),
+            modeControl.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
 
@@ -258,7 +264,7 @@ public final class CommercialShellViewController: UIViewController {
             return
         }
 
-        // A blocked route remains the active owner. The old child and tab selection are
+        // A blocked route remains the active owner. The old child and mode state are
         // deliberately left untouched so the caller can retry or recover in place.
         guard result == .released else {
             pendingSection = nil
@@ -284,7 +290,7 @@ public final class CommercialShellViewController: UIViewController {
     }
 
     private func renderSectionChrome() {
-        sectionSwitcher.render(
+        modeControl.render(
             selectedSection: selectedSection,
             isInteractionLocked: isTearingDown || isTransitioning
         )
@@ -305,12 +311,12 @@ public final class CommercialShellViewController: UIViewController {
 
         addChild(child)
         child.view.translatesAutoresizingMaskIntoConstraints = false
-        view.insertSubview(child.view, belowSubview: sectionSwitcher)
+        view.insertSubview(child.view, belowSubview: modeControl)
         NSLayoutConstraint.activate([
             child.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             child.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             child.view.topAnchor.constraint(equalTo: view.topAnchor),
-            child.view.bottomAnchor.constraint(equalTo: sectionSwitcher.topAnchor)
+            child.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         child.didMove(toParent: self)
 

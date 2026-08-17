@@ -19,7 +19,7 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         ).makeShell()
 
         XCTAssertEqual(shell.selectedSection, .camera)
-        XCTAssertEqual(shell.sectionSwitcher.selectedSection, .camera)
+        XCTAssertEqual(shell.modeControl.renderedSection, .camera)
         XCTAssertEqual(shell.children.count, 1)
         XCTAssertEqual(shell.view.accessibilityIdentifier, "commercial-shell")
         XCTAssertTrue(shell.activeRoute is CommercialCameraCoachRoute)
@@ -27,6 +27,34 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertNil(shell.activeRoute as? CommercialHistoryRoute)
         XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.portrait))
         XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.landscape))
+    }
+
+    func testCameraChildFillsShellAndModeControlUsesTopSafeAreaOverlay() throws {
+        let shell = CommercialShellComposition(
+            cameraCoachBuilder: {
+                CommercialCameraCoachRoute(
+                    viewController: UIViewController(),
+                    stopAndWait: {}
+                )
+            },
+            sceneLibraryBuilder: { UIViewController() },
+            historyBuilder: { CommercialHistoryEmptyViewController() }
+        ).makeShell()
+        shell.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        shell.view.layoutIfNeeded()
+
+        let child = try XCTUnwrap(shell.activeViewController)
+        XCTAssertEqual(child.view.frame, shell.view.bounds)
+        XCTAssertEqual(shell.modeControl.bounds.size, CGSize(width: 44, height: 44))
+        XCTAssertEqual(
+            shell.modeControl.frame.midX,
+            shell.view.safeAreaLayoutGuide.layoutFrame.midX,
+            accuracy: 0.5
+        )
+        XCTAssertGreaterThanOrEqual(
+            shell.modeControl.frame.minY,
+            shell.view.safeAreaLayoutGuide.layoutFrame.minY
+        )
     }
 
     func testScenesRouteUsesInjectedLibraryBuilderInsideNavigationContainer() async throws {

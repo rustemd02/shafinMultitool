@@ -43,7 +43,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         analysisPipeline: analysisPipeline
                     )
                 )
-                let viewController = UIHostingController(
+                let viewController = CommercialCameraCoachHostingController(
                     rootView: ContentView(dependencies: dependencies)
                 )
                 return CommercialCameraCoachRoute(

@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 final class CameraCoachLaunchUITests: XCTestCase {
@@ -16,10 +17,10 @@ final class CameraCoachLaunchUITests: XCTestCase {
         super.tearDown()
     }
 
-    func testNormalLaunchShowsCommercialShellWithCameraCoachSelected() {
+    func testCameraPortraitShowsFullscreenFrameAndCompactScenesControl() {
         launchApp(orientation: .portrait)
         assertCameraCoachRoot()
-        attachScreenshot(named: "CC-007B Camera portrait")
+        captureScreenshot(named: "CC-007C Camera portrait", expectedShape: .portrait)
 
         XCTAssertFalse(
             element(withIdentifier: "deviceBenchmarkStatusLabel").exists,
@@ -27,14 +28,26 @@ final class CameraCoachLaunchUITests: XCTestCase {
         )
     }
 
-    func testScenesTabOpensProductionSceneLibraryAndReturnsToCamera() {
+    func testCameraLandscapeLeftHasPhysicalLandscapeGeometryAndReadableUprightUI() {
+        launchApp(orientation: .landscapeLeft)
+        assertCameraCoachRoot()
+        captureScreenshot(named: "CC-007C Camera landscape left", expectedShape: .landscape)
+    }
+
+    func testCameraLandscapeRightHasPhysicalLandscapeGeometryAndReadableUprightUI() {
+        launchApp(orientation: .landscapeRight)
+        assertCameraCoachRoot()
+        captureScreenshot(named: "CC-007C Camera landscape right", expectedShape: .landscape)
+    }
+
+    func testSceneLibraryLandscapeHasPhysicalLandscapeGeometryAndReturnsToCamera() {
         launchApp(orientation: .landscapeLeft)
         assertCameraCoachRoot()
 
-        let scenesTab = element(withIdentifier: "commercial-shell-section-scenes")
-        XCTAssertTrue(scenesTab.waitForExistence(timeout: launchTimeout))
-        XCTAssertTrue(scenesTab.isHittable)
-        scenesTab.tap()
+        let openScenesControl = element(withIdentifier: "commercial-shell-open-scenes")
+        XCTAssertTrue(openScenesControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertTrue(openScenesControl.isHittable)
+        openScenesControl.tap()
 
         let sceneLibraryTitle = app.staticTexts["Выберите сцену:"]
         XCTAssertTrue(
@@ -45,50 +58,18 @@ final class CameraCoachLaunchUITests: XCTestCase {
             app.collectionViews.firstMatch.waitForExistence(timeout: launchTimeout),
             "The existing Scene library collection must be reachable."
         )
-        attachScreenshot(named: "CC-007B Scene library landscape")
 
-        let cameraTab = element(withIdentifier: "commercial-shell-section-camera")
-        cameraTab.tap()
-        XCTAssertTrue(cameraTab.waitForExistence(timeout: launchTimeout))
-        XCTAssertTrue(cameraTab.isSelected)
+        let returnCameraControl = element(withIdentifier: "commercial-shell-return-camera")
+        XCTAssertTrue(returnCameraControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertEqual(returnCameraControl.label, "Камера")
+        XCTAssertTrue(returnCameraControl.isHittable)
+        XCTAssertFalse(element(withIdentifier: "commercial-shell-open-scenes").exists)
+        captureScreenshot(named: "CC-007C Scene library landscape", expectedShape: .landscape)
+
+        returnCameraControl.tap()
         XCTAssertTrue(element(withIdentifier: "camera_coach_pause").waitForExistence(timeout: launchTimeout))
-    }
-
-    func testHistoryShowsHonestEmptyStateAndReturnsToCamera() {
-        launchApp(orientation: .portrait)
-        assertCameraCoachRoot()
-
-        let historyButton = element(withIdentifier: "commercial-shell-section-history")
-        XCTAssertTrue(historyButton.waitForExistence(timeout: launchTimeout))
-        XCTAssertTrue(historyButton.isHittable)
-        historyButton.tap()
-
-        let historyView = element(withIdentifier: "commercial-history-empty")
-        XCTAssertTrue(historyView.waitForExistence(timeout: launchTimeout))
-        XCTAssertTrue(app.staticTexts["История"].waitForExistence(timeout: launchTimeout))
-        XCTAssertTrue(
-            app.staticTexts["Завершённые разборы этой сессии появятся здесь."]
-                .waitForExistence(timeout: launchTimeout)
-        )
-        XCTAssertEqual(historyView.buttons.count, 0)
-        attachScreenshot(named: "CC-007B History empty portrait")
-
-        let cameraButton = element(withIdentifier: "commercial-shell-section-camera")
-        cameraButton.tap()
-        XCTAssertTrue(cameraButton.waitForExistence(timeout: launchTimeout))
-        XCTAssertTrue(cameraButton.isSelected)
-        XCTAssertTrue(element(withIdentifier: "camera_coach_pause").waitForExistence(timeout: launchTimeout))
-    }
-
-    func testPortraitLaunchShowsAppRootWithoutClaimingPortraitProductSupport() {
-        launchApp(orientation: .portrait)
-        assertCameraCoachRoot()
-    }
-
-    func testLandscapeLaunchShowsAppRootWithoutCrash() {
-        launchApp(orientation: .landscapeLeft)
-        assertCameraCoachRoot()
-        attachScreenshot(named: "CC-007B Camera landscape")
+        XCTAssertTrue(element(withIdentifier: "commercial-shell-open-scenes").waitForExistence(timeout: launchTimeout))
+        XCTAssertFalse(element(withIdentifier: "commercial-shell-return-camera").exists)
     }
 
     func testCameraCoachSurfaceSurvivesPortraitLandscapeRotation() {
@@ -102,10 +83,21 @@ final class CameraCoachLaunchUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeRight
         XCTAssertTrue(pauseControl.waitForExistence(timeout: launchTimeout))
         XCTAssertTrue(pauseControl.isHittable)
+        XCTAssertTrue(element(withIdentifier: "commercial-shell-open-scenes").isHittable)
+    }
+
+    private enum ScreenshotShape {
+        case portrait
+        case landscape
     }
 
     private func launchApp(orientation: UIDeviceOrientation? = nil) {
         if let orientation {
+            if orientation.isLandscape {
+                // Force a real device-orientation transition for repeated runs;
+                // a no-op assignment does not notify the scene on iOS 26.
+                XCUIDevice.shared.orientation = .portrait
+            }
             XCUIDevice.shared.orientation = orientation
         }
 
@@ -126,24 +118,26 @@ final class CameraCoachLaunchUITests: XCTestCase {
     private func assertCameraCoachRoot() {
         XCTAssertTrue(element(withIdentifier: "commercial-shell").waitForExistence(timeout: launchTimeout))
 
-        let cameraTab = element(withIdentifier: "commercial-shell-section-camera")
-        XCTAssertTrue(cameraTab.waitForExistence(timeout: launchTimeout))
-        XCTAssertTrue(cameraTab.isSelected, "Camera must be the default commercial-shell section.")
+        let openScenesControl = element(withIdentifier: "commercial-shell-open-scenes")
+        XCTAssertTrue(openScenesControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertEqual(openScenesControl.label, "Сцены")
+        XCTAssertTrue(openScenesControl.isHittable, "The compact mode control must be hittable.")
+        XCTAssertGreaterThanOrEqual(openScenesControl.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(openScenesControl.frame.height, 44)
+        XCTAssertLessThan(
+            abs(openScenesControl.frame.midX - app.frame.midX),
+            24,
+            "The Camera mode control must remain top-centred."
+        )
+        XCTAssertFalse(element(withIdentifier: "commercial-shell-return-camera").exists)
+        XCTAssertFalse(app.buttons["История"].exists)
 
-        for identifier in [
-            "commercial-shell-section-camera",
-            "commercial-shell-section-scenes",
-            "commercial-shell-section-history"
-        ] {
-            let sectionButton = element(withIdentifier: identifier)
-            XCTAssertTrue(sectionButton.waitForExistence(timeout: launchTimeout))
-            XCTAssertTrue(sectionButton.isHittable, "Section control \(identifier) must be hittable.")
-        }
-
+        let pauseControl = element(withIdentifier: "camera_coach_pause")
         XCTAssertTrue(
-            element(withIdentifier: "camera_coach_pause").waitForExistence(timeout: launchTimeout),
+            pauseControl.waitForExistence(timeout: launchTimeout),
             "The production Camera Coach surface must be reachable."
         )
+        XCTAssertTrue(pauseControl.isHittable, "Camera Coach controls must remain readable and usable.")
         XCTAssertTrue(
             element(withIdentifier: "camera_coach_seeking_status").waitForExistence(timeout: launchTimeout),
             "The UI smoke must observe the normal seeking state, not a completed analysis."
@@ -154,10 +148,24 @@ final class CameraCoachLaunchUITests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
-    private func attachScreenshot(named name: String) {
-        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    private func captureScreenshot(named name: String, expectedShape: ScreenshotShape) {
+        let screenshot = app.screenshot()
+        guard let image = UIImage(data: screenshot.pngRepresentation),
+              let cgImage = image.cgImage else {
+            XCTFail("Could not decode XCTest screenshot \(name)")
+            return
+        }
+
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+
+        switch expectedShape {
+        case .portrait:
+            XCTAssertGreaterThan(cgImage.height, cgImage.width, "\(name) must be physically portrait.")
+        case .landscape:
+            XCTAssertGreaterThan(cgImage.width, cgImage.height, "\(name) must be physically landscape.")
+        }
     }
 }

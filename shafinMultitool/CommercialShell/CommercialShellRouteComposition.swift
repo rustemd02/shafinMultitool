@@ -251,7 +251,7 @@ final class CommercialHistoryEmptyViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        view.backgroundColor = CommercialShellSectionSwitcher.surfaceColor
+        view.backgroundColor = CommercialShellModeControl.surfaceColor
         view.accessibilityIdentifier = "commercial-history-empty"
 
         titleLabel.text = emptyStateTitle

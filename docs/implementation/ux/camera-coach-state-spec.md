@@ -613,10 +613,10 @@ Luna не принимает визуальные или продуктовые 
 
 - Camera-first shell с нативными разделами `Камера / Сцены / История`;
 - одна подсказка и бесплатная проверка результата;
-- существующий SnapKit/UIKit cinematic instrument language с `systemYellow` как функциональным акцентом; CC-007B rail — opaque full-width bottom safe-area control с тремя равными section buttons, тонким top indicator, Dynamic Type и hit target ≥44×44;
+- существующий SnapKit/UIKit cinematic instrument language с `systemYellow` как функциональным акцентом; the invalidated CC-007B rail is not part of the current shell; the fullscreen successor uses one quiet icon-first top-safe-area mode control with a 44×44 hit target and no persistent bottom navigation;
 - спокойный, неантропоморфный coaching language;
 - отсутствие paywall до отдельного beta evidence decision;
 - Scene Mode как вторичный landscape-only route;
 - перечисленные banned vibe-code patterns и screenshot gates.
 
-CC-007B реализует и валидирует описанный shell в bounded simulator evidence: focused shell tests 30/30, production UI smoke 6/6 и просмотренные XCTest screenshot attachments зафиксированы в `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`. Фактическая usability, качество советов, physical-device camera/AR behavior, legal/provenance и release readiness этим документом не объявляются доказанными.
+CC-007B rail evidence remains historical and invalidated. The fullscreen successor's focused shell contract passes 31/31; its required upright landscape screenshot gate remains open because the current iOS 26.5 XCTest/simulator capture path produced portrait/rotated or split/black artifacts. Фактическая usability, качество советов, physical-device camera/AR behavior, legal/provenance и release readiness этим документом не объявляются доказанными.

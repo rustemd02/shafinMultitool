@@ -143,6 +143,16 @@
 - Replacement: `docs/aegis/plans/2026-08-17-camera-coach-fullscreen-navigation.md` is the authoritative compact fullscreen contract. It removes the rail, keeps one small Scene Mode entry/return control, and hides empty History from persistent navigation until it has real saved-result value.
 - Legal, monetisation and privacy boundaries remain unchanged; this item does not imply release readiness.
 
+### CC-007C — Fullscreen compact mode correction
+
+- Lane: visible Luna / Max.
+- State: `blocked_by_ui_orientation_capture`.
+- Dependencies: CC-007A, invalidated CC-007B mechanics, CC-008 and the existing Camera Coach visual owners.
+- Implemented scope: delete the retired rail and its tests; add the isolated `CommercialShellModeControl`; preserve shell-owned route lifecycle, teardown, rollback, coalescing and orientation policy; pin the active child to all shell edges; expose only the top-centre Scene Mode/Camera control; keep History internal and undiscoverable; and use `CommercialCameraCoachHostingController` in the DEBUG UI-test root.
+- Visual direction: icon-first transparent 44×44 target, 17pt semibold SF Symbol matching the existing Camera Coach top-control density, no visible label/container/material/blur/gradient/shadow/card/pill/dashboard treatment.
+- Evidence: focused control/routing/composition command passed 31/31 at `/private/tmp/shafin-cc007c-focused-final.xcresult`. The required true UI landscape artifacts are not accepted: `/private/tmp/shafin-cc007c-ui-max-left-attachments/F2D0F144-2904-47BB-986B-9696C6209DB7.png` is 1320×2868 with rotated UI; `/private/tmp/shafin-cc007c-ui-max-left-appshot-attachments/20EDE29D-E301-4D32-B876-948659426B38.png` is 2868×1320 but visually split/rotated; `/private/tmp/shafin-cc007c-ui-max-left-active-attachments/0182816D-F9B6-4DC7-AA5B-671FEB3FDA4E.png` is 2868×1320 and black. The DEBUG host correction is verified in diagnostics by landscape `window/root` bounds 956×440; the remaining failure is the iOS 26.5 XCTest/simulator capture/runner path, not a permission to claim visual acceptance.
+- Acceptance boundary: do not mark CC-007C implemented until the complete Camera portrait, Camera landscape-left, Camera landscape-right and Scene landscape class passes and every retained PNG is physically checked and visually upright. This slice does not claim full-suite, physical-device, permission, legal/provenance, monetisation or release readiness.
+
 ## CC-008 — UI/UX state specification
 
 - Lane: Sol owns decisions; bounded Luna tasks may produce artifacts after specification.
