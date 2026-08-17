@@ -12,6 +12,21 @@
 - Historical lane labels and evidence below are preserved for traceability. Past references to Sol review/verification or Terra routing are historical evidence only and are not current authorization for a Sol/Terra worker thread.
 - The active system goal text is immutable through the goal API while active; the durable amendment is recorded in `docs/aegis/work/2026-08-15-camera-coach-release/10-intent.md` and `20-checkpoint.md`.
 
+## Core-first task discipline
+
+- Select the next task by the first missing or unproven state in the complete
+  local coaching loop, not by the smallest UI, tracker or release-hygiene task.
+- A task packet must name one user-visible vertical outcome, ownership, a
+  bounded verification set and stop condition. Do not produce exhaustive
+  implementation prose for a secondary screen.
+- A Luna slice has one implementation pass and no more than one correction loop
+  driven by evidence from the same user journey. Record further findings as
+  separately prioritized backlog items unless they are P0/P1 blockers of that
+  exact journey.
+- Final screenshot review checks the anti-AI-slop bar once; it does not grant
+  scope to iterate on decorative details or shell architecture while core flow
+  remains incomplete.
+
 ## CC-000 — синхронизировать Product и Deep Research
 
 - Lane: Sol.

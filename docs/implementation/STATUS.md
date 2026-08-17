@@ -17,6 +17,23 @@
 - The active system goal text is immutable through the goal API while active; the durable goal-policy amendment is recorded in `docs/aegis/work/2026-08-15-camera-coach-release/10-intent.md` and `20-checkpoint.md`.
 - Existing historical queue labels and evidence that mention past Sol reviews or verification are preserved as historical evidence only. They are not current routing permission and do not authorize task-level Sol review or any Sol/Terra worker thread.
 
+## Core-first execution rule (current)
+
+- The next executable work must improve or prove the end-to-end local Camera
+  Coach loop: permitted camera → useful advice → action → honest verification;
+  then pause/resume and record/finalize/save recovery. Onboarding polish, shell
+  chrome, documentation expansion and screenshot capture are secondary.
+- One visible Luna / Max chat owns one vertical slice. It gets one implementation
+  pass, bounded verification and at most one evidence-driven correction loop.
+  Further unrelated findings go to the backlog unless they are P0/P1 blockers
+  of that same journey.
+- Sol writes the packet and performs one final factual acceptance review. It
+  must not continuously supervise individual compiler/test events or transform
+  secondary UI work into an open-ended architecture exercise.
+- Anti-AI-slop remains blocking visual acceptance, but receives one deliberate
+  screenshot review at the end of a slice—not repeated aesthetic iterations
+  while core product behaviour remains unproven.
+
 ## Текущий milestone
 
 `M0 — product and release baseline`

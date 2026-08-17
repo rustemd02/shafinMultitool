@@ -16,6 +16,36 @@ The active system goal text is immutable through the goal API while it is active
 - If a visible Luna / Max thread cannot be created, fail closed. Never silently use a hidden task/subagent or substitute another model.
 - Existing mentions of past Sol reviews or verification in checkpoint, status and backlog evidence are historical evidence only; they are not current routing permission and must not be rewritten as if they were current policy.
 
+## Core-first delivery mode (owner directive, 17 August 2026)
+
+The purpose of this mode is to ship a useful Camera Coach, not to optimize
+isolated release-hardening artifacts before the product loop works.
+
+- Prioritize the complete local coaching loop over onboarding polish, shell
+  chrome, screenshot-perfect evidence, tracker maintenance or speculative
+  architecture: allowed camera → useful live advice → user action → honest
+  verification/result; then pause/resume and record/finalize/save recovery.
+- A Luna task must be one vertical product slice with an explicit user-visible
+  outcome, narrow ownership and a bounded test set. Do not create a large plan
+  or a long task tree for a secondary screen when a core-loop state is still
+  missing or unproven.
+- Every slice gets one implementation pass and at most one evidence-driven
+  correction loop. A second issue is a new backlog item unless it blocks the
+  same user journey with P0/P1 severity. Never turn visual polish into an
+  open-ended shell/lifecycle refactor during the same slice.
+- Sol does not poll, narrate or intervene on each intermediate compiler/test
+  event. It provides the contract, waits for the bounded worker result, then
+  performs one factual acceptance review of the final diff and evidence.
+- UI must remain free of AI-slop/VibeCode patterns, but visual review happens
+  once at the slice boundary. It may reject a shipped screen, not delay core
+  implementation through iterative aesthetic micro-tuning.
+- Tests are proportional evidence, not the product objective. A green narrow
+  suite cannot justify expanding a secondary task; a failed core journey takes
+  priority over a cosmetic or host-capture issue.
+- New docs are written only for a genuine new owner, contract, compatibility,
+  privacy, persistence or release boundary. Routine task narration and
+  duplicated tracker prose are forbidden.
+
 ## Goal and stop condition
 
 - `done`: все обязательные gates из `docs/implementation/PRODUCTION_ACCEPTANCE.md` подтверждены fresh evidence; task/milestone/build completion недостаточны.
