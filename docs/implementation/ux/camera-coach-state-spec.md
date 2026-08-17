@@ -41,15 +41,11 @@ Runtime boundary: `docs/implementation/audits/runtime-entry-routing.md`
 
 ### 3.1. Commercial shell
 
-Базовая оболочка — Camera-first коммерческая shell с тремя разделами:
+Базовая оболочка — fullscreen Camera-first коммерческая shell. `Камера` — default selection и единственный владелец Camera Coach session. `Сцены` — вторичный, только альбомный маршрут к существующей Scene Mode library, доступный одним компактным верхним mode control. `История` не показывается в постоянной навигации, пока у неё нет фактических сохранённых разборов.
 
-1. `Камера` — default selection и единственный владелец Camera Coach session.
-2. `Сцены` — вторичный, только альбомный маршрут к существующей Scene Mode library.
-3. `История` — честно пустой маршрут до реализации соответствующего scope; он не обещает постоянную историю заранее.
+Предыдущее предпочтение системного `UITabBar` и поздний full-width bottom rail — исторические и инвалидированные visual решения: они не являются доказательством принятия UI и не могут отнимать значимую область live frame. Коммерческая shell сохраняет проверенную механику single-active-route и awaited teardown: текущий route полностью деактивируется до создания следующего, а blocked teardown удерживает текущий route и selection. Сохранённый view controller не означает сохранённую работающую camera/AR session.
 
-Предыдущее предпочтение системного `UITabBar` — историческое и инвалидированное визуальное решение; оно не является доказательством принятия UI. Коммерческая shell сохраняет проверенную механику single-active-route и awaited teardown: текущий route полностью деактивируется до создания следующего, а blocked teardown удерживает текущий route и selection. Сохранённый view controller не означает сохранённую работающую camera/AR session.
-
-CC-007B фиксирует визуальный контракт chrome shell: `CommercialShellSectionSwitcher` — внутренний SnapKit/UIKit `UIView`, представляющий full-width opaque near-black rail, привязанный к нижнему safe area. В rail находятся три равных control в порядке `Камера / Сцены / История`, с SF Symbols `camera.fill / square.stack.3d.up / clock`, русскими подписями, Dynamic Type и hit target не менее 44×44. Выбранный раздел использует `systemYellow`, semibold и тонкий 2 pt indicator по верхнему краю; остальные controls — restrained white/gray regular. Стабильные identifiers: `commercial-shell-section-switcher`, `commercial-shell-section-camera`, `commercial-shell-section-scenes`, `commercial-shell-section-history`. Rail не использует `UITabBar`, blur/glass, gradient, pill/card treatment, shadow или neon; route owner, transition lock и selection truth остаются в `CommercialShellViewController`.
+Текущий визуальный контракт находится в `docs/aegis/plans/2026-08-17-camera-coach-fullscreen-navigation.md`: `Сцены` и `Камера` используют один компактный top-safe-area control, не уменьшающий preview; постоянная нижняя section navigation запрещена. Route owner, transition lock и selection truth остаются в `CommercialShellViewController`.
 
 Во время активной записи переключение разделов недоступно. Пользователь сначала завершает или отменяет запись. Во время незавершённой проверки советы не теряются: при уходе из `Камеры` сохраняется компактный session summary, а live camera останавливается.
 
@@ -62,7 +58,7 @@ CC-007B фиксирует визуальный контракт chrome shell: `
 3. Верхний status bar: состояние анализа, flash/lens при фактической поддержке, вход в Pro Controls. Внутренняя телеметрия отсутствует.
 4. Один coaching surface в нижней трети, не закрывающий главный субъект. Это не dashboard и не stack карточек.
 5. Нижние camera actions: pause/resume, record, Deep Review. Zoom использует системно узнаваемый control рядом с preview или record controls.
-6. Навигация shell в safe area, кроме полноэкранного recording focus state, если design packet и прототип докажут необходимость скрытия; точная форма control определяется отдельно на базе существующих SnapKit/UIKit owners.
+6. На Camera — один компактный top-safe-area Scene Mode control, не уменьшающий preview и не перекрывающий существующие camera actions; на Scene Mode — тот же return-to-Camera control. Постоянная нижняя navigation запрещена.
 
 Coaching surface содержит не более четырёх смысловых элементов:
 
