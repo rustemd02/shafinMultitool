@@ -242,7 +242,8 @@ final class CommercialNavigationInteractivePopGuard: NSObject, UIGestureRecogniz
 final class CommercialHistoryEmptyViewController: UIViewController {
     let isEmptyState = true
     let persistenceAction: (() -> Void)? = nil
-    let emptyStateMessage = "Completed coaching results will appear here."
+    let emptyStateTitle = "История"
+    let emptyStateMessage = "Завершённые разборы этой сессии появятся здесь."
 
     private let titleLabel = UILabel()
     private let messageLabel = UILabel()
@@ -250,17 +251,19 @@ final class CommercialHistoryEmptyViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = CommercialShellSectionSwitcher.surfaceColor
         view.accessibilityIdentifier = "commercial-history-empty"
 
-        titleLabel.text = "History"
+        titleLabel.text = emptyStateTitle
         titleLabel.font = .preferredFont(forTextStyle: .title2)
-        titleLabel.textColor = .label
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.textColor = .white
         titleLabel.textAlignment = .center
 
         messageLabel.text = emptyStateMessage
         messageLabel.font = .preferredFont(forTextStyle: .body)
-        messageLabel.textColor = .secondaryLabel
+        messageLabel.adjustsFontForContentSizeCategory = true
+        messageLabel.textColor = .white.withAlphaComponent(0.72)
         messageLabel.numberOfLines = 0
         messageLabel.textAlignment = .center
 

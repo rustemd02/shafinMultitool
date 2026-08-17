@@ -12,8 +12,12 @@ final class CommercialShellRoutingTests: XCTestCase {
         XCTAssertEqual(factory.constructedSections, [.camera])
         XCTAssertEqual(shell.selectedSection, .camera)
         XCTAssertEqual(shell.children.count, 1)
-        XCTAssertEqual(shell.tabBar.items?.count, 3)
-        XCTAssertEqual(shell.tabBar.items?.map(\.tag), CommercialSection.allCases.map(\.rawValue))
+        XCTAssertEqual(shell.sectionSwitcher.selectedSection, .camera)
+        XCTAssertEqual(sectionButtons(in: shell).map(\.accessibilityIdentifier), [
+            "commercial-shell-section-camera",
+            "commercial-shell-section-scenes",
+            "commercial-shell-section-history"
+        ])
         XCTAssertIdentical(shell.activeViewController, factory.route(for: .camera)?.viewController)
         XCTAssertNil(factory.route(for: .scenes))
         XCTAssertNil(factory.route(for: .history))
@@ -88,12 +92,13 @@ final class CommercialShellRoutingTests: XCTestCase {
         XCTAssertIdentical(shell.activeViewController, cameraRoute.viewController)
         XCTAssertIdentical(shell.children.first, cameraRoute.viewController)
         XCTAssertEqual(shell.selectedSection, .camera)
-        XCTAssertEqual(shell.tabBar.selectedItem?.tag, CommercialSection.camera.rawValue)
+        XCTAssertEqual(shell.sectionSwitcher.selectedSection, .camera)
+        XCTAssertTrue(sectionButton(in: shell, identifier: "commercial-shell-section-camera").accessibilityTraits.contains(.selected))
         XCTAssertFalse(shell.isTransitioning)
-        XCTAssertTrue(shell.tabBar.isUserInteractionEnabled)
+        XCTAssertTrue(sectionButtons(in: shell).allSatisfy(\.isUserInteractionEnabled))
     }
 
-    func testTabBarInteractionIsLockedDuringSwitch() async throws {
+    func testSectionSwitcherInteractionIsLockedDuringSwitch() async throws {
         let deactivationGate = CommercialTestGate()
         let (shell, factory) = makeShell(plans: [
             .camera: [CommercialRoutePlan(gate: deactivationGate)]
@@ -104,13 +109,17 @@ final class CommercialShellRoutingTests: XCTestCase {
         await cameraRoute.deactivationStarted.wait()
 
         XCTAssertTrue(shell.isTransitioning)
-        XCTAssertFalse(shell.tabBar.isUserInteractionEnabled)
+        XCTAssertFalse(sectionButtons(in: shell).contains(where: \.isUserInteractionEnabled))
         XCTAssertEqual(shell.selectedSection, .camera)
-        XCTAssertEqual(shell.tabBar.selectedItem?.tag, CommercialSection.camera.rawValue)
+        XCTAssertEqual(shell.sectionSwitcher.selectedSection, .camera)
+        XCTAssertTrue(sectionButton(in: shell, identifier: "commercial-shell-section-camera").accessibilityTraits.contains(.selected))
 
         deactivationGate.open()
         await shell.waitForTransition()
-        XCTAssertTrue(shell.tabBar.isUserInteractionEnabled)
+        XCTAssertEqual(shell.selectedSection, .scenes)
+        XCTAssertEqual(shell.sectionSwitcher.selectedSection, .scenes)
+        XCTAssertTrue(sectionButton(in: shell, identifier: "commercial-shell-section-scenes").accessibilityTraits.contains(.selected))
+        XCTAssertTrue(sectionButtons(in: shell).allSatisfy(\.isUserInteractionEnabled))
     }
 
     func testRapidSelectionsCoalesceToLastRequestedSection() async throws {
@@ -144,7 +153,7 @@ final class CommercialShellRoutingTests: XCTestCase {
         XCTAssertEqual(cameraRoute.deactivationCallCount, 0)
         XCTAssertIdentical(shell.activeViewController, cameraRoute.viewController)
         XCTAssertFalse(shell.isTransitioning)
-        XCTAssertTrue(shell.tabBar.isUserInteractionEnabled)
+        XCTAssertTrue(sectionButtons(in: shell).allSatisfy(\.isUserInteractionEnabled))
     }
 
     func testContainmentLifecycleIsBalanced() async throws {
@@ -191,7 +200,7 @@ final class CommercialShellRoutingTests: XCTestCase {
         XCTAssertNil(shell.activeRoute)
         XCTAssertNil(shell.activeViewController)
         XCTAssertTrue(shell.children.isEmpty)
-        XCTAssertFalse(shell.tabBar.isUserInteractionEnabled)
+        XCTAssertFalse(sectionButtons(in: shell).contains(where: \.isUserInteractionEnabled))
     }
 
     func testContainerTeardownSuppressesStalePendingSelection() async throws {
@@ -221,6 +230,7 @@ final class CommercialShellRoutingTests: XCTestCase {
         XCTAssertNil(factory.route(for: .history))
         XCTAssertTrue(shell.children.isEmpty)
         XCTAssertEqual(shell.selectedSection, .camera)
+        XCTAssertEqual(shell.sectionSwitcher.selectedSection, .camera)
     }
 
     private func makeShell(
@@ -232,6 +242,28 @@ final class CommercialShellRoutingTests: XCTestCase {
         }
         shell.loadViewIfNeeded()
         return (shell, factory)
+    }
+
+    private func sectionButtons(in shell: CommercialShellViewController) -> [UIButton] {
+        allViews(in: shell.sectionSwitcher)
+            .compactMap { $0 as? UIButton }
+            .filter { $0.accessibilityIdentifier?.hasPrefix("commercial-shell-section-") == true }
+            .sorted { $0.frame.minX < $1.frame.minX }
+    }
+
+    private func sectionButton(
+        in shell: CommercialShellViewController,
+        identifier: String
+    ) -> UIButton {
+        guard let button = sectionButtons(in: shell).first(where: { $0.accessibilityIdentifier == identifier }) else {
+            XCTFail("Missing shell section control \(identifier)")
+            return UIButton(type: .system)
+        }
+        return button
+    }
+
+    private func allViews(in root: UIView) -> [UIView] {
+        [root] + root.subviews.flatMap(allViews)
     }
 }
 

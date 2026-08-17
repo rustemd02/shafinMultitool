@@ -41,13 +41,14 @@ public final class CommercialShellViewController: UIViewController {
     private var pendingSection: CommercialSection?
     private var requestedSectionBeforeLoad: CommercialSection?
     private var lastTransitionResult: CommercialRouteDeactivationResult?
+    private let selectionFeedbackGenerator = UISelectionFeedbackGenerator()
 
     private(set) var isTearingDown = false
     public private(set) var selectedSection: CommercialSection = .camera
     public private(set) var isTransitioning = false
 
-    /// The system tab bar used to select the active route.
-    public private(set) var tabBar = UITabBar()
+    /// The visual section control; route truth remains owned by this shell.
+    private(set) var sectionSwitcher = CommercialShellSectionSwitcher()
 
     /// The route currently retained by the shell, if one has been installed.
     public var activeRoute: (any CommercialRoute)? {
@@ -83,19 +84,19 @@ public final class CommercialShellViewController: UIViewController {
 
     public override func loadView() {
         let rootView = UIView()
-        rootView.backgroundColor = .systemBackground
+        rootView.backgroundColor = CommercialShellSectionSwitcher.surfaceColor
         rootView.accessibilityIdentifier = "commercial-shell"
         view = rootView
     }
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        configureTabBar()
+        configureSectionSwitcher()
 
         // A container that has already been released must never resurrect a route when
         // UIKit later loads its view.
         guard !isTearingDown else {
-            tabBar.isUserInteractionEnabled = false
+            renderSectionChrome()
             return
         }
 
@@ -166,8 +167,7 @@ public final class CommercialShellViewController: UIViewController {
         isTearingDown = true
         pendingSection = nil
         requestedSectionBeforeLoad = nil
-        tabBar.isUserInteractionEnabled = false
-        tabBar.selectedItem = item(for: selectedSection)
+        renderSectionChrome()
 
         // Cancellation prevents a pending selection from becoming active, while the
         // transition still awaits the route's own deactivation boundary.
@@ -189,27 +189,21 @@ public final class CommercialShellViewController: UIViewController {
         }
 
         isTransitioning = false
-        tabBar.isUserInteractionEnabled = !isTearingDown
-        tabBar.selectedItem = item(for: selectedSection)
+        renderSectionChrome()
         return result
     }
 
-    private func configureTabBar() {
-        tabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.delegate = self
-        tabBar.items = CommercialSection.allCases.map { section in
-            UITabBarItem(title: title(for: section),
-                         image: image(for: section),
-                         tag: section.rawValue)
+    private func configureSectionSwitcher() {
+        sectionSwitcher.translatesAutoresizingMaskIntoConstraints = false
+        sectionSwitcher.onSelectionRequested = { [weak self] section in
+            self?.requestSelection(section)
         }
-        tabBar.selectedItem = item(for: .camera)
-        tabBar.accessibilityIdentifier = "commercial-shell-tab-bar"
 
-        view.addSubview(tabBar)
+        view.addSubview(sectionSwitcher)
         NSLayoutConstraint.activate([
-            tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            sectionSwitcher.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            sectionSwitcher.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            sectionSwitcher.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
@@ -222,23 +216,22 @@ public final class CommercialShellViewController: UIViewController {
         }
 
         if isTransitioning {
-            // UIKit normally updates selectedItem before calling its delegate. Keep the
-            // visual selection aligned with the still-active route and retain only the
-            // last request made during deactivation.
+            // Keep visual selection aligned with the still-active route and retain only
+            // the last request made during deactivation.
             pendingSection = section
-            tabBar.selectedItem = item(for: selectedSection)
+            renderSectionChrome()
             return
         }
 
         guard section != selectedSection else {
-            tabBar.selectedItem = item(for: selectedSection)
+            renderSectionChrome()
             return
         }
 
+        emitSelectionFeedback()
         pendingSection = nil
         isTransitioning = true
-        tabBar.isUserInteractionEnabled = false
-        tabBar.selectedItem = item(for: selectedSection)
+        renderSectionChrome()
 
         transitionTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -269,7 +262,6 @@ public final class CommercialShellViewController: UIViewController {
         // deliberately left untouched so the caller can retry or recover in place.
         guard result == .released else {
             pendingSection = nil
-            tabBar.selectedItem = item(for: selectedSection)
             finishTransition()
             return
         }
@@ -282,14 +274,26 @@ public final class CommercialShellViewController: UIViewController {
         pendingSection = nil
         installRoute(for: finalSection)
         selectedSection = finalSection
-        tabBar.selectedItem = item(for: finalSection)
         finishTransition()
     }
 
     private func finishTransition() {
         transitionTask = nil
         isTransitioning = false
-        tabBar.isUserInteractionEnabled = !isTearingDown
+        renderSectionChrome()
+    }
+
+    private func renderSectionChrome() {
+        sectionSwitcher.render(
+            selectedSection: selectedSection,
+            isInteractionLocked: isTearingDown || isTransitioning
+        )
+    }
+
+    private func emitSelectionFeedback() {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        selectionFeedbackGenerator.prepare()
+        selectionFeedbackGenerator.selectionChanged()
     }
 
     private func installRoute(for section: CommercialSection) {
@@ -301,12 +305,12 @@ public final class CommercialShellViewController: UIViewController {
 
         addChild(child)
         child.view.translatesAutoresizingMaskIntoConstraints = false
-        view.insertSubview(child.view, belowSubview: tabBar)
+        view.insertSubview(child.view, belowSubview: sectionSwitcher)
         NSLayoutConstraint.activate([
             child.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             child.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             child.view.topAnchor.constraint(equalTo: view.topAnchor),
-            child.view.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
+            child.view.bottomAnchor.constraint(equalTo: sectionSwitcher.topAnchor)
         ])
         child.didMove(toParent: self)
 
@@ -327,38 +331,5 @@ public final class CommercialShellViewController: UIViewController {
         activeChildStorage = nil
         activeRouteStorage = nil
         setNeedsUpdateOfSupportedInterfaceOrientations()
-    }
-
-    private func item(for section: CommercialSection) -> UITabBarItem? {
-        tabBar.items?.first { $0.tag == section.rawValue }
-    }
-
-    private func title(for section: CommercialSection) -> String {
-        switch section {
-        case .camera:
-            return "Camera"
-        case .scenes:
-            return "Scenes"
-        case .history:
-            return "History"
-        }
-    }
-
-    private func image(for section: CommercialSection) -> UIImage? {
-        switch section {
-        case .camera:
-            return UIImage(systemName: "camera")
-        case .scenes:
-            return UIImage(systemName: "square.stack.3d.up")
-        case .history:
-            return UIImage(systemName: "clock")
-        }
-    }
-}
-
-extension CommercialShellViewController: UITabBarDelegate {
-    public func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
-        guard let section = CommercialSection(rawValue: item.tag) else { return }
-        requestSelection(section)
     }
 }

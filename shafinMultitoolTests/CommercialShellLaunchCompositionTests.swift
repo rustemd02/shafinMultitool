@@ -19,6 +19,7 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         ).makeShell()
 
         XCTAssertEqual(shell.selectedSection, .camera)
+        XCTAssertEqual(shell.sectionSwitcher.selectedSection, .camera)
         XCTAssertEqual(shell.children.count, 1)
         XCTAssertEqual(shell.view.accessibilityIdentifier, "commercial-shell")
         XCTAssertTrue(shell.activeRoute is CommercialCameraCoachRoute)
@@ -121,9 +122,10 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertTrue(emptyViewController.isEmptyState)
         XCTAssertNil(emptyViewController.persistenceAction)
         XCTAssertFalse(emptyViewController.view.subviews.contains { $0 is UIButton })
+        XCTAssertEqual(emptyViewController.emptyStateTitle, "История")
         XCTAssertEqual(
             emptyViewController.emptyStateMessage,
-            "Completed coaching results will appear here."
+            "Завершённые разборы этой сессии появятся здесь."
         )
     }
 

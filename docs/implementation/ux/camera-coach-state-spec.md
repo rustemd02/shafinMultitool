@@ -49,7 +49,7 @@ Runtime boundary: `docs/implementation/audits/runtime-entry-routing.md`
 
 Предыдущее предпочтение системного `UITabBar` — историческое и инвалидированное визуальное решение; оно не является доказательством принятия UI. Коммерческая shell сохраняет проверенную механику single-active-route и awaited teardown: текущий route полностью деактивируется до создания следующего, а blocked teardown удерживает текущий route и selection. Сохранённый view controller не означает сохранённую работающую camera/AR session.
 
-Визуальный chrome shell должен использовать существующий в репозитории язык SnapKit/UIKit и его кинематографические инструментальные primitives. Конкретная геометрия нового control, его placement и способ визуализации разделов остаются решением pending design packet; этот документ не проектирует replacement заранее.
+CC-007B фиксирует визуальный контракт chrome shell: `CommercialShellSectionSwitcher` — внутренний SnapKit/UIKit `UIView`, представляющий full-width opaque near-black rail, привязанный к нижнему safe area. В rail находятся три равных control в порядке `Камера / Сцены / История`, с SF Symbols `camera.fill / square.stack.3d.up / clock`, русскими подписями, Dynamic Type и hit target не менее 44×44. Выбранный раздел использует `systemYellow`, semibold и тонкий 2 pt indicator по верхнему краю; остальные controls — restrained white/gray regular. Стабильные identifiers: `commercial-shell-section-switcher`, `commercial-shell-section-camera`, `commercial-shell-section-scenes`, `commercial-shell-section-history`. Rail не использует `UITabBar`, blur/glass, gradient, pill/card treatment, shadow или neon; route owner, transition lock и selection truth остаются в `CommercialShellViewController`.
 
 Во время активной записи переключение разделов недоступно. Пользователь сначала завершает или отменяет запись. Во время незавершённой проверки советы не теряются: при уходе из `Камеры` сохраняется компактный session summary, а live camera останавливается.
 
@@ -523,11 +523,11 @@ stateDiagram-v2
 ### S25 — Current session history
 
 - Вход: user selects History or opens from pause/result.
-- UI: chronological editorial list of coaching cases: observed issue, action, result, optional user-owned thumbnail if storage/privacy scope permits. Не analytics dashboard и не grid cards.
+- UI: CC-007B сейчас показывает честный empty state с заголовком `История` и сообщением `Завершённые разборы этой сессии появятся здесь.`; list/detail scope остаётся будущим. Не analytics dashboard и не grid cards.
 - Главный action: select a case to inspect.
 - Secondary: clear current session with confirmation; export only if implemented.
 - Выход: case → S25a; Camera tab → S24.
-- Recovery: empty state explains that completed advice/results appear here; primary `Открыть камеру`.
+- Recovery: пользователь возвращается через shell control `Камера`; empty state не добавляет fake data, persistence action, button или upsell.
 - Accessibility: sections use headings/time labels; before/after images have meaningful alt labels.
 - Analytics: `history_viewed`, `history_case_opened`; contents not duplicated into telemetry.
 - Screenshot acceptance: empty/populated/long-copy states; no subscription lock on user-owned results.
@@ -617,10 +617,10 @@ Luna не принимает визуальные или продуктовые 
 
 - Camera-first shell с нативными разделами `Камера / Сцены / История`;
 - одна подсказка и бесплатная проверка результата;
-- существующий SnapKit/UIKit cinematic instrument language с `systemYellow` как функциональным акцентом, без заранее зафиксированной геометрии replacement control;
+- существующий SnapKit/UIKit cinematic instrument language с `systemYellow` как функциональным акцентом; CC-007B rail — opaque full-width bottom safe-area control с тремя равными section buttons, тонким top indicator, Dynamic Type и hit target ≥44×44;
 - спокойный, неантропоморфный coaching language;
 - отсутствие paywall до отдельного beta evidence decision;
 - Scene Mode как вторичный landscape-only route;
 - перечисленные banned vibe-code patterns и screenshot gates.
 
-Визуальный shell не считается спроектированным, реализованным или валидированным этим документом: его восстановление — следующая pending product/UI работа по отдельному design packet. Фактическая usability и качество советов всё равно проверяются внешней beta; этот документ не объявляет их доказанными заранее.
+CC-007B реализует и валидирует описанный shell в bounded simulator evidence: focused shell tests 30/30, production UI smoke 6/6 и просмотренные XCTest screenshot attachments зафиксированы в `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`. Фактическая usability, качество советов, physical-device camera/AR behavior, legal/provenance и release readiness этим документом не объявляются доказанными.

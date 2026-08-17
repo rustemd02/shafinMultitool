@@ -135,12 +135,13 @@
 
 ### CC-007B — Commercial shell visual restoration
 
-- Lane: visible Luna / Max only after the owner design packet is available.
-- State: `pending_product_ui_work`.
+- Lane: visible Luna / Max.
+- State: `implemented`.
 - Dependencies: CC-007A, CC-008 and the existing SnapKit/UIKit visual owners.
-- Objective: restore the commercial shell’s visual chrome in the repository’s existing cinematic instrument language while preserving the accepted single-active-route and awaited-teardown mechanics.
-- Boundary: the design packet must decide the exact control geometry and placement; this tracker does not claim that a replacement has been designed, implemented or validated. Camera remains default, Scenes remain secondary/landscape-only and History remains honest/empty until implemented.
-- Acceptance: wow is demonstrated through hierarchy, live-frame/negative-space composition, precise typography/spacing/alignment and purposeful feedback/motion/haptics; no decorative wow or isolated visual system; the full anti-vibe-code checklist and portrait/landscape permission/error/route screenshot gates pass.
+- Objective: restore the commercial shell’s visual chrome in the repository’s existing SnapKit/UIKit instrument language while preserving the accepted single-active-route, lazy secondary construction, awaited teardown, blocked rollback and pending coalescing mechanics.
+- Boundary: `CommercialShellSectionSwitcher` owns only visual rendering and selection events; `CommercialShellViewController` remains canonical route owner. Camera remains default, Scenes remain secondary/landscape-only and History remains an honest empty state with no persistence action or upsell. Camera Coach SwiftUI, permissions, recorder, persistence, backend, monetisation, Scene UI and models are not changed.
+- Acceptance: opaque full-width bottom safe-area rail with three equal Russian-labeled controls, systemYellow selection and 2 pt top indicator; Dynamic Type, accessibility state/IDs and ≥44×44 hit targets; no `UITabBar`, blur/glass, gradients, pills, cards, shadows, neon or fake AI/dashboard treatment. Exact screenshot and route gates are recorded below.
+- Evidence: final handoff commit SHA is supplied by the Git receipt; exact focused shell run passed 30/30 (7 switcher, 11 routing, 12 launch composition) with 0 failures/skips on iPhone 17 Pro / iOS Simulator 26.5, production `CameraCoachLaunchUITests` passed 6/6 with 0 failures/skips, and generic workspace `build-for-testing` passed. Four retained XCTest screenshot attachments were exported and visually inspected; details and paths are in `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
 - Legal, monetisation and privacy boundaries remain unchanged; this item does not imply release readiness.
 
 ## CC-008 — UI/UX state specification
