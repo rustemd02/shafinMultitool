@@ -9,7 +9,7 @@
 - Saved logical profile: orchestrator inherits parent with a `gpt-5.6-sol` / `high` recommendation; routine, high and advisor profiles are `gpt-5.6-luna` / `max`; fallback policy is fail-closed.
 - Current execution success criterion: every new executor, reviewer, correction-loop or verification worker appears as a separate user-visible Codex chat/thread using the project-local environment when continuing this checkout, explicit `model=gpt-5.6-luna` and `thinking=max`. A missing visible thread is a stop, not permission to use a hidden task or substitute model.
 - The installed native adapter was not reinstalled/reloaded for this policy amendment; native role paths are not a valid execution path.
-- Current accepted integration baseline: `store` at `9f2f5f2`; CC-011E remains committed and accepted at its historical baseline, bounded CC-007/CC-010E launch evidence remains at `ff9ce3e`, and bounded CC-011C UI evidence is recorded on top.
+- Current accepted integration baseline: `store` at `277170d`; CC-011E remains committed and accepted at its historical baseline, bounded CC-007/CC-010E launch evidence remains at `ff9ce3e`, bounded CC-011C UI evidence remains at `9f2f5f2`, and bounded CC-010F orientation evidence is recorded at `277170d`.
 
 ## Accepted product and release evidence
 
@@ -38,6 +38,9 @@
 - CC-010A3 transactional lens input: worker `85fc422`, accepted `15aa4e5`; one generic helper closes replace/restore/rollback mechanics, both manager APIs share one session-queue owner, worker generic build passed and Sol independently passed 16/16 focused simulator tests.
 - CC-010A4 confirmed lens presentation: worker `993510e`, accepted `b38f9fb`; Sol reviewed the MainActor task/intent fence and result mapping, then independently passed 15/15 lens presentation, transaction and lifecycle simulator tests. Physical lens matrix and CC-008 feedback UI remain unclaimed.
 - CC-010G stateless thermal budget: worker `3212923`, accepted `6bfd3a4`; `lastBudget` was removed without policy changes, immutable Sendable values were adopted and Sol independently passed 6/6 focused tests including bounded concurrent reads.
+- CC-010F bounded orientation continuity: commit `277170d`. Camera Coach supports portrait/landscape; `CameraManager` maps and applies orientation on the existing session queue without reconfigure/restart; `Overlay` observes rotation; the AR container refreshes viewport/display transform in place. The target allows all orientations, while `CommercialShell` forwards active child policy: Camera Coach all, Scene navigation landscape-only, including the blocked deep Scene route.
+- CC-010F evidence: workspace `build-for-testing` passed; CameraManager lifecycle/orientation tests passed 10/10; the UI portrait→landscape transition passed 1/1; shell tests passed 23/23 (12 launch composition + 11 routing).
+- CC-010F boundary: this is a bounded acceptance only. It does not claim physical-device camera/AR behavior, `CameraService` writer metadata/transforms, deep Scene workspace rotation, recorder behavior, full-suite health, legal clearance or release readiness.
 - Recorder evidence covers an isolated policy-neutral core only; production camera wiring, Photos export and retention/background behavior are not claimed.
 
 ## CC-007A/CC-008A integrated evidence (pre-`ff9ce3e` slice)
@@ -63,7 +66,7 @@
 - Commit `9f2f5f2` adds the `shafinMultitoolUITests` target, shared scheme membership and a real process XCTest replacement for the unit-hosted pseudo-UI test. The target has neither `TEST_HOST` nor `BUNDLE_LOADER`.
 - DEBUG-only `SHAFIN_UI_TESTING=1` composes the real `CommercialShellComposition` / `ContentView` with the existing deterministic `CameraManager` failure `.noWideCamera`; the benchmark branch still comes first, so no permission/hardware prompt is requested. The root and analysis are not faked, and this path does not ship in Release.
 - Workspace `build-for-testing` succeeded. True process evidence `/private/tmp/shafin-cc011c-ui-tests-20260816.xcresult` passed 4/4 with 0 failures on iPhone 17 Pro / iOS 26.5: normal Camera shell, real Scene library root → Camera return, portrait root no crash and landscape root no crash.
-- Boundary: this bounded slice does not claim full portrait behavior, camera permission UX, live capture continuity, completed analysis, deeper Scene workspace switching, full-suite health, physical-device behavior or release readiness. CC-011C remains partial for its broader acceptance, and remaining CC-007 product/UI evidence stays open.
+- Boundary: this bounded slice does not claim broader Camera Coach product behavior, camera permission UX, live capture continuity, completed analysis, deeper Scene workspace switching, full-suite health, physical-device behavior or release readiness. CC-011C remains partial for its broader acceptance, and remaining CC-007 product/UI evidence stays open; the bounded CC-010F orientation evidence is recorded separately above.
 
 ## Current test and contract evidence
 
@@ -80,6 +83,7 @@
 - CC-008: `docs/implementation/ux/camera-coach-state-spec.md` is accepted based on the owner's explicit instruction to launch the full autonomous implementation pipeline and the earlier affirmative product/UI decisions.
 - CC-007A/CC-008A: accepted implementation slices with the focused evidence above; the bounded parent shell/default-route integration and bounded CC-011C target/root smoke are recorded separately below, while unsupported product states remain outside the accepted slices. They are not release-ready.
 - CC-007/CC-010E: the normal launch portion and bounded exclusive lease are accepted at `ff9ce3e` within the evidence above; full CC-010E/CC-010D and the remaining product/UI evidence boundaries remain open.
+- CC-010F: the orientation-continuity slice is accepted at `277170d` within the bounded evidence above; writer metadata/transforms, deep Scene workspace rotation, recorder behavior, physical-device camera/AR behavior, full-suite health, legal clearance and release readiness remain unclaimed.
 - CC-013B2: recommended minimal RC excludes DETR, NIMA and compact neural fusion while retaining Apple Vision/saliency and deterministic critique; implementation is gated by owner acceptance.
 
 These records support continued execution. They do not prove App Store readiness, legal redistribution rights, physical-device behavior, external beta quality or completion of the full active goal.

@@ -299,9 +299,13 @@
 ### CC-010F — Orientation continuity
 
 - Lane: Luna / Max.
-- State: `ready`.
+- State: `partially_accepted`.
 - Dependencies: accepted CC-008 and CC-010A.
 - Objective: portrait/landscape reflow and capture/writer/AR transforms change in place without session, analysis, recording or settings reset.
+- Bounded acceptance: commit `277170d`. Camera Coach supports portrait/landscape; `CameraManager` maps and applies orientation on the existing session queue without reconfigure/restart; `Overlay` observes rotation; the AR container refreshes viewport/display transform in place. The target allows all orientations, while `CommercialShell` forwards active child policy: Camera Coach all, Scene navigation landscape-only, including the blocked deep Scene route.
+- Evidence: workspace `build-for-testing` passed; CameraManager lifecycle/orientation tests passed 10/10; the UI portrait→landscape transition passed 1/1; shell tests passed 23/23 (12 launch composition + 11 routing).
+- Boundary: this bounded slice does not claim physical-device camera/AR behavior, `CameraService` writer metadata/transforms, deep Scene workspace rotation, recorder behavior, full-suite health, legal clearance or release readiness. CC-010D awaitable Scene teardown and the remaining route/product gates remain open.
+- Next: continue the remaining CC-007 product/UI evidence as listed in this backlog; keep CC-010D awaitable Scene workspace/background teardown, full test topology and configured real-image evaluation as separate unresolved lanes.
 
 ### CC-010G — Stateless thermal budget
 
@@ -373,7 +377,7 @@
 - Failure taxonomy: pseudo-UI tests have no target application; opt-in local-model and physical benchmark suites execute by default; Settings fixtures hit force unwraps; real-image Camera Coach evaluation depends on simulator Vision/Espresso and absent never-tracked assets; legacy parser, persistence and fixtures fail independently.
 - Integrated evidence: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Additional repetitions: Scene 18/18 twice plus DB performance 4/4; DeepCritic 20/20; subtitle/config 22 with 1 intended skip; Hybrid 7/7; Semantic 8/8.
 - Canonical clean release gate passed all stages on `6ff225d553ae654298dda70b9c779c1226c31800`: Release 72,032 KiB; 2 privacy manifests; only `SnapKit.framework` and `llama.framework`; 5 material contributors; 5 blockers; 2 provenance validators; 6/6 contamination fixtures.
-- Next: the bounded CC-007/CC-010E launch integration is accepted in `ff9ce3e` and the bounded CC-011C target/root smoke is accepted in `9f2f5f2`; continue the remaining CC-007 product/UI evidence as listed in this backlog. Full test topology, configured real-image evaluation and CC-010D awaitable teardown remain separate unresolved lanes.
+- Next: the bounded CC-007/CC-010E launch integration is accepted in `ff9ce3e`, the bounded CC-011C target/root smoke is accepted in `9f2f5f2` and bounded CC-010F orientation continuity is accepted in `277170d`; continue the remaining CC-007 product/UI evidence as listed in this backlog. Full test topology, configured real-image evaluation and CC-010D awaitable teardown remain separate unresolved lanes.
 
 #### CC-011E1 — Opt-in execution gates
 

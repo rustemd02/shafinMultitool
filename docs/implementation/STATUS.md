@@ -1,6 +1,6 @@
 # Camera Coach execution status
 
-Последнее обновление: 16 августа 2026 года.
+Последнее обновление: 17 августа 2026 года.
 
 ## Глобальная цель
 
@@ -26,7 +26,7 @@
 ## Baseline snapshot
 
 - Git: ветка `store`, base `018ceab` до bootstrap-коммита.
-- Текущий принятый integration baseline: ветка `store`, `9f2f5f2`; CC-011E remains accepted at its historical baseline, the bounded CC-007/CC-010E integration remains recorded at `ff9ce3e`, and the bounded CC-011C UI slice is recorded at `9f2f5f2`.
+- Текущий принятый integration baseline: ветка `store`, `277170d`; CC-011E remains accepted at its historical baseline, the bounded CC-007/CC-010E integration remains recorded at `ff9ce3e`, the bounded CC-011C UI slice at `9f2f5f2`, and bounded CC-010F orientation continuity at `277170d`.
 - Tracked source до bootstrap не изменён.
 - `xcodebuild ... build-for-testing` для `generic/platform=iOS` прошёл 15 августа 2026 года.
 - В проекте есть app target, unit-test target и отдельный `shafinMultitoolUITests` target; CC-011C принимает только bounded real-process root smoke.
@@ -36,7 +36,7 @@
 - Core ML models: около 47 МБ в исходном дереве.
 - `PrivacyInfo.xcprivacy` не найден.
 - Usage descriptions существуют, но их UX, язык, фактическая необходимость и denied/restricted flow не проверены.
-- `SceneDelegate` сохраняет benchmark branch первым; normal non-benchmark branch теперь открывает `CommercialShell` с Camera Coach route. CC-011C bounded true-process root smoke, включая portrait/landscape root no-crash checks, принят; full portrait behavior, camera permission UX and saved-project access remain unverified.
+- `SceneDelegate` сохраняет benchmark branch первым; normal non-benchmark branch теперь открывает `CommercialShell` с Camera Coach route. CC-011C bounded true-process root smoke, включая portrait/landscape root no-crash checks, принят; bounded CC-010F Camera Coach orientation continuity is accepted at `277170d`; camera permission UX, physical-device camera/AR behavior and saved-project access remain unverified.
 - Deep Research принят с рекомендацией `NARROW`; публичная монетизация отложена до instrumented beta.
 
 ## Очередь первой волны
@@ -53,7 +53,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 | CC-004 | accepted | Luna / Max | accepted audit baseline | 16 provenance dispositions accepted; 8 missing, 2 exclude, 4 development-only, 2 verified |
 | CC-005 | accepted | Luna / Max | bootstrap commit | 29 test files классифицированы; подтверждён unit-hosted pseudo-UI test и механический план настоящего UI-test target |
 | CC-006 | accepted | Luna / Max | bootstrap commit | Проверен launch graph; принят `SceneDelegate` commercial-shell seam, persistence/benchmark boundaries зафиксированы |
-| CC-007 | partially_accepted | Sol → Luna | CC-006, CC-008 | Normal Camera Coach launch and bounded CC-011C root smoke are accepted separately; full product/UI, permission, orientation and saved-project evidence remain open |
+| CC-007 | partially_accepted | Sol → Luna | CC-006, CC-008 | Normal Camera Coach launch, bounded CC-011C root smoke and bounded CC-010F orientation continuity are accepted separately; full product/UI, permission and saved-project evidence remain open |
 | CC-007A | accepted | Luna / Max | CC-006, CC-008 | Single-child shell routing contract принят; launch graph не изменён, release-ready не заявляется |
 | CC-008 | accepted | Sol | product baseline | UX state machine принята явным запуском полного автономного implementation pipeline и предыдущими product/UI решениями owner |
 | CC-008A | accepted | Luna / Max | CC-008, CC-010B | Truthful live surface для уже доказуемых S04/S06/S07/S10c принят; release-ready не заявляется |
@@ -69,7 +69,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 | CC-010C-A | accepted | Luna / Max | CC-009 | Изолированное recorder core принято после Sol-review, canonical build и 29/29 simulator tests |
 | CC-010D | draft | Luna / Max | CC-010C | Awaited Scene exit/background AR and persistence teardown remains incomplete |
 | CC-010E | partially_accepted | Luna / Max | CC-007, CC-010A, CC-010D | Bounded exclusive lease accepted at `ff9ce3e`; Scene library root may release, deeper workspace/modal remains blocked |
-| CC-010F | ready | Luna / Max | CC-008, CC-010A | In-place orientation continuity и media metadata готовы к реализации |
+| CC-010F | partially_accepted | Luna / Max | CC-008, CC-010A | Bounded orientation continuity accepted at `277170d`: Camera Coach portrait/landscape; CameraManager maps and applies orientation on the existing session queue without reconfigure/restart; Overlay observes rotation; AR container refreshes viewport/display transform in place; shell policy is Camera Coach all orientations and Scene navigation landscape-only, including the blocked deep Scene route. Evidence: workspace build-for-testing, CameraManager lifecycle/orientation 10/10, UI portrait→landscape 1/1 and shell 23/23 (12 launch composition + 11 routing). Writer metadata/transforms, deep Scene workspace rotation and physical behavior remain unclaimed |
 | CC-010G | accepted | Luna / Max | CC-010A | Stateless thermal budget принят; worker `3212923` → `6bfd3a4`, 6/6 focused tests прошли |
 | CC-011 | decomposed | Luna / Max | CC-001, CC-005 | Privacy manifest, deterministic bundle gate и real UI-test target разложены |
 | CC-011A | accepted | Luna / Max | CC-013A | App-owned manifest и validator приняты; Release содержит ровно app + SnapKit manifests |
@@ -93,8 +93,9 @@ The queue below preserves historical lane labels and evidence for traceability. 
 - Pre-CC-011C raw full unit-target audit remains unresolved: 593 total, 496 passed, 94 failed, 3 skipped; XCResult `/private/tmp/shafin-main-complete-tests/Logs/Test/Test-shafinMultitool-2026.08.15_21-53-59-+0300.xcresult`. Классы отказов включали unit-hosted pseudo-UI без target app, default-запуск opt-in model/physical benchmark, Settings force unwraps, real-image Camera Coach evaluation с simulator Vision/Espresso и отсутствующими never-tracked assets, legacy parser/persistence/fixture failures.
 - CC-011E accepted at `6ff225d553ae654298dda70b9c779c1226c31800`: E1 opt-in gates; E2 metadata persistence и dialogue parser/subtitle presentation; E3 neural/domain fixture corrections; E4 DeepCritic/Hybrid/Semantic truth. Интегрированный Luna gate: 104 executed, 102 passed, 2 intended skips, 0 failures; XCResult `/private/tmp/shafin-test-hygiene-final-luna/Logs/Test/Test-shafinMultitool-2026.08.15_22-52-30-+0300.xcresult`. Дополнительно: Scene 18/18 два последовательных раза и DB performance 4/4; DeepCritic 20/20; subtitle/config 22 с одним intended skip; Hybrid 7/7; Semantic 8/8.
 - CC-011E contracts: nil map сохраняет metadata и не меняет legacy `_map`, без заявления о pair transaction; parser arrays параллельны, subtitle отображает `Иван: Привет.`; отсутствующая benchmark-конфигурация означает skip, некорректная — fail; certainty validation учитывает русские формы и calibrated language; non-whitelisted semantic actions подавляются; Hybrid production не изменён.
-- CC-007/CC-010E bounded integration accepted at `ff9ce3e`: normal `SceneDelegate` non-benchmark launch opens the commercial shell with Camera selected while the benchmark branch remains first; the Camera route retains the existing `CameraViewModel`, awaits `stopAndWait` before shell removal/next construction, and shares repeated deactivation calls through one idempotent task. The Scene library root can release to Camera; a deeper Scene workspace or any modal blocks without constructing Camera because AR/persistence teardown is still non-awaitable. Generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`; focused workspace tests passed 22/22 (11 `CommercialShellLaunchCompositionTests`, 11 `CommercialShellRoutingTests`). Full CC-010E/CC-010D, permission-state UX, full portrait/landscape product behavior and saved-project/deeper Scene smoke remain incomplete.
+- CC-007/CC-010E bounded integration accepted at `ff9ce3e`: normal `SceneDelegate` non-benchmark launch opens the commercial shell with Camera selected while the benchmark branch remains first; the Camera route retains the existing `CameraViewModel`, awaits `stopAndWait` before shell removal/next construction, and shares repeated deactivation calls through one idempotent task. The Scene library root can release to Camera; a deeper Scene workspace or any modal blocks without constructing Camera because AR/persistence teardown is still non-awaitable. Generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`; focused workspace tests passed 22/22 (11 `CommercialShellLaunchCompositionTests`, 11 `CommercialShellRoutingTests`). Full CC-010E/CC-010D, permission-state UX and saved-project/deeper Scene smoke remain incomplete; bounded CC-010F orientation continuity is recorded separately below.
 - CC-011C bounded true-process UI evidence accepted at `9f2f5f2`: the new `shafinMultitoolUITests` target is a shared-scheme member with neither `TEST_HOST` nor `BUNDLE_LOADER`, replacing the unit-hosted pseudo-UI test. DEBUG-only `SHAFIN_UI_TESTING=1` composes the real `CommercialShellComposition` and `ContentView` with the existing deterministic `CameraManager` failure `.noWideCamera`; the benchmark branch still comes first, no permission/hardware prompt is requested, and Release does not contain this path. Workspace `build-for-testing` succeeded. `/private/tmp/shafin-cc011c-ui-tests-20260816.xcresult` records 4/4 passed with 0 failures on iPhone 17 Pro / iOS 26.5: normal Camera shell, real Scene library root → Camera return, portrait root no crash and landscape root no crash. This does not claim full portrait behavior, camera permission UX, live capture continuity, completed analysis, deeper Scene workspace switching, full-suite health, physical-device behavior or release readiness.
+- CC-010F bounded orientation continuity accepted at `277170d`: Camera Coach supports portrait/landscape; `CameraManager` maps and applies orientation on the existing session queue without reconfigure/restart; `Overlay` observes rotation; the AR container refreshes viewport/display transform in place. The target allows all orientations, while `CommercialShell` forwards active child policy: Camera Coach all, Scene navigation landscape-only, including the blocked deep Scene route. Workspace `build-for-testing` passed; CameraManager lifecycle/orientation tests passed 10/10; the UI portrait→landscape transition passed 1/1; shell tests passed 23/23 (12 launch composition + 11 routing). This does not claim physical-device camera/AR behavior, `CameraService` writer metadata/transforms, deep Scene workspace rotation, recorder behavior, full-suite health, legal clearance or release readiness.
 - CC-010A4 accepted: task `01a006af-8d1a-7941-a294-84a330bb1e01`, worker `993510e`, accepted `b38f9fb`; Sol прошёл 15/15 lens transaction/presentation/lifecycle tests.
 - CC-010G accepted: task `01a006b4-a0bf-7e52-b870-bb3c77505063`, worker `3212923`, accepted `6bfd3a4`; Sol прошёл 6/6 focused thermal policy/concurrency tests.
 - CC-010A3 accepted: task `01a006a4-5560-7851-acfc-730223da26e8`, worker `85fc422`, accepted `15aa4e5`; Sol прошёл 16/16 transaction/manager/view-model tests.
@@ -126,7 +127,7 @@ The queue below preserves historical lane labels and evidence for traceability. 
 
 ## Ворота следующего шага
 
-Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008, CC-011E, CC-007A, CC-008A и bounded CC-007/CC-010E integration приняты в заявленных границах; следующий шаг остаётся в соответствии с `BACKLOG.md`. Full test topology и real-image evaluation остаются отдельными незакрытыми lanes.
+Перед исходными Release/UI изменениями должны быть приняты CC-001, CC-003, CC-005 и CC-006. Перед изменениями camera lifecycle — CC-009 и отдельная high-complexity классификация. CC-008, CC-011E, CC-007A, CC-008A, bounded CC-007/CC-010E integration и bounded CC-010F orientation continuity приняты в заявленных границах; следующий шаг остаётся в соответствии с `BACKLOG.md`. Full test topology, real-image evaluation, CC-010D awaitable teardown and the remaining route/product gates остаются отдельными незакрытыми lanes.
 
 ## Внешние блокеры
 
