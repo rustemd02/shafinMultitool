@@ -180,6 +180,15 @@
 - Boundary: accepted slice only, not release-ready. Unsupported states above, production shell/default-route integration, true UI launch smoke, full test topology and configured real-image evaluation remain outside this slice.
 - Rollback: revert only the owned presentation/UI files and focused tests; no camera lifecycle rollback is required.
 
+### CC-008 — First-launch permission implementation packet (Tasks 1–3)
+
+- Lane: visible Luna / Max implementation; bounded evidence only.
+- State: implemented with the landscape visual gate blocked by the iOS 26.5 host capture path.
+- Scope: one entry-flow state owner over the existing `PermissionClient`, S01 intro, S02 camera-only request context, S03 denied/restricted/unavailable/unknown recovery, and `ContentView` gating of the existing `OverlayView` until `.ready`.
+- Evidence: Task 1 focused model tests passed 7/7; Task 2 focused model/presentation/lifecycle tests passed 19/19; the real `CameraCoachEntryFlowUITests` process class passed 6/6 on iPhone 17 Pro / iOS 26.5; generic no-sign simulator `build-for-testing` passed. Exact commands and XCResults are recorded in `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
+- Visual acceptance: manually inspected five exported PNGs. S01, S02 and denied S03 are physically portrait and pass the restrained anti-slop contract; the ready attachment is existing live-surface evidence only. The landscape attachment is physically `2622×1206` but rotated/vertical on black, so it is retained as host evidence and not accepted.
+- Boundary: no microphone/Photos/Speech request, camera/session owner change, route/Scene change, payment/backend/analytics change, Info.plist/project change or Release UI-test hook. Physical-device permission/camera behavior, full-suite health, legal/provenance and release readiness remain open.
+
 ## CC-009 — Camera/session owner and lifecycle audit
 
 - Lane: Luna / Max audit; implementation remains Luna / Max under the current hard policy. The former Terra / High classification is historical/disabled and is not a current visible-thread route.

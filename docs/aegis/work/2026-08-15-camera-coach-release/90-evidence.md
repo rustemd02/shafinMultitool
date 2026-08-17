@@ -123,4 +123,68 @@
 - CC-010F: the orientation-continuity slice is accepted at `277170d` within the bounded evidence above; writer metadata/transforms, deep Scene workspace rotation, recorder behavior, physical-device camera/AR behavior, full-suite health, legal clearance and release readiness remain unclaimed.
 - CC-013B2: recommended minimal RC excludes DETR, NIMA and compact neural fusion while retaining Apple Vision/saliency and deterministic critique; implementation is gated by owner acceptance.
 
+## CC-008 first-launch permission packet — Task 1 evidence
+
+- Command: `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:shafinMultitoolTests/CameraCoachEntryFlowModelTests test`.
+- Result: exit 0; 7 total, 7 passed, 0 failed, 0 skipped on iPhone 17 Pro / iOS Simulator 26.5. XCResult: `/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Logs/Test/Test-shafinMultitool-2026.08.17_19-54-46-+0300.xcresult`.
+- Covered: first-launch intro precedence, exact snapshot/request boundaries, all camera mappings, one explicit request, concurrent request coalescing, Settings recheck recovery and exclusion of microphone/Speech/Photos requests.
+- Boundary: this is Task 1 contract evidence only; presentation, ContentView gating, true-process launch states, screenshots, generic build-for-testing and physical-device behavior remain open.
+
+## CC-008 first-launch permission packet — Task 2 evidence
+
+- The packet’s parallel focused command was attempted but stalled in the iOS
+  26.5 host `simctl diagnose` phase before test output; it was stopped without
+  treating the host state as a test result.
+- Bounded rerun command: `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -parallel-testing-enabled NO -derivedDataPath /private/tmp/shafin-cc-task2-derived -only-testing:shafinMultitoolTests/CameraCoachEntryFlowModelTests -only-testing:shafinMultitoolTests/CameraCoachEntryPresentationTests -only-testing:shafinMultitoolTests/CameraViewModelLifecycleTests test`.
+- Result: exit 0; 19 total, 19 passed, 0 failed, 0 skipped on iPhone 17 Pro / iOS Simulator 26.5. XCResult: `/tmp/shafin-cc-task2-derived/Logs/Test/Test-shafinMultitool-2026.08.17_20-05-34-+0300.xcresult`.
+- Covered: exact Russian S01/S02/S03 copy, one primary action per state, stable root/action IDs, no fake preview/material/card/gradient source markers, ContentView’s ready gate through integration compilation, and existing camera lifecycle 5/5 regression tests.
+- Boundary: source contracts are not visual acceptance. Real process launch states, screenshots, generic no-sign build-for-testing, anti-slop visual inspection and physical-device behavior remain open.
+
+## CC-008 first-launch permission packet — Task 3 evidence
+
+- The first UI command used the packet’s exact destination and reached app
+  compilation, then the iOS 26.5 host failed to launch the XCTest runner with
+  `FBSOpenApplicationServiceErrorDomain` / `RequestDenied`; it was stopped and
+  yielded no test-result evidence. A bounded serial workaround was then used
+  rather than waiting indefinitely.
+- The first bounded serial run reached real app processes and exposed one
+  genuine S03 failure at `CameraCoachEntryFlowUITests.swift:61`: the denied
+  Recheck control was outside the scroll surface. That run was terminated by
+  its hard alarm before the class completed; it is not counted as acceptance.
+  The layout was corrected without changing any owner boundary, and the
+  narrow retry passed 1/1:
+  `/tmp/shafin-cc-task3-ui-denied/Logs/Test/Test-shafinMultitool-2026.08.17_20-17-47-+0300.xcresult`.
+- Final bounded UI command: `perl -e 'alarm 180; exec @ARGV' -- xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -parallel-testing-enabled NO -derivedDataPath /private/tmp/shafin-cc-task3-ui-full -only-testing:shafinMultitoolUITests/CameraCoachEntryFlowUITests test`.
+- Final UI result: exit 0; 6 total, 6 passed, 0 failed, 0 skipped on iPhone 17
+  Pro / iOS Simulator 26.5. Coverage: S01→S02, authorized returning user,
+  denied, restricted, unavailable and the landscape host-evidence path.
+  XCResult: `/tmp/shafin-cc-task3-ui-full/Logs/Test/Test-shafinMultitool-2026.08.17_20-18-50-+0300.xcresult`.
+- Attachments: `xcrun xcresulttool export attachments` exported five PNGs to
+  `/private/tmp/shafin-cc-task3-ui-full-attachments` with manifest
+  `/private/tmp/shafin-cc-task3-ui-full-attachments/manifest.json`. Four
+  portrait captures are `1206×2622` (S01, S02, denied S03 and existing ready
+  Overlay); the landscape capture is `2622×1206`.
+- Manual visual inspection: S01 is a black neutral surface with a clear title,
+  body and one `Открыть камеру` action; S02 uses the same hierarchy with one
+  `Продолжить` action and the local-processing sentence; denied S03 shows
+  `Открыть Настройки` plus visible `Проверить снова`. None uses a card, pill,
+  material/blur, gradient, shadow, fake preview, progress theatre, dashboard,
+  default navigation chrome or floating icon-plus-label treatment. The ready
+  PNG is existing live-surface evidence and not used to accept the new entry
+  visual contract.
+- Landscape visual gate: the `2622×1206` PNG is rotated/vertical on black,
+  despite physical landscape dimensions. This reproduces the known iOS 26.5
+  capture defect and is retained only as `blocked_by_host_capture`; no rotated,
+  split or black image is accepted as landscape completion.
+- Generic no-sign build command: `xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO -derivedDataPath /private/tmp/shafin-cc-task3-build build-for-testing`.
+- Generic build result: exit 0, `** TEST BUILD SUCCEEDED **`; no signing was
+  requested. `git diff --check` passed after the evidence run. Known existing
+  non-fatal diagnostics include iOS 26.5 capture/CoreSimulator messages,
+  deprecation warnings and the existing `Circle.rcproject` processing warning;
+  none changed the packet result.
+- Boundary: this is a coherent, focused simulator implementation slice, not
+  physical-device permission/camera proof, full-suite health, legal/privacy
+  approval or release readiness. Microphone, Photos, Speech, recording,
+  backend, analytics, Scene Mode and payment remain untouched.
+
 These records support continued execution. They do not prove App Store readiness, legal redistribution rights, physical-device behavior, external beta quality or completion of the full active goal.

@@ -4,6 +4,15 @@
 
 ## TaskStartSnapshot
 
+- CC-008 Camera Coach first-launch permission packet start: root
+  `/Users/unterlantas/Documents/XCode/shafinMultitool`; branch `store`; HEAD
+  `a01fed1c1a75d22189852f1c984a56a657f66720`; upstream `origin/store`, ahead
+  85 / behind 0. Worktree was clean with no staged, unstaged or untracked
+  paths, no active merge/cherry-pick/revert operation, and only the main
+  worktree listed. This snapshot preserves the older historical snapshots
+  below; it is the baseline for Tasks 1–3 in the approved
+  `2026-08-17-camera-coach-first-launch-permission.md` packet.
+
 - Root: `/Users/unterlantas/Documents/XCode/shafinMultitool`.
 - Current branch/HEAD at CC-007B start: `store` at `a2eec22f4d1a58a0a8f0639d8462514459b97cfc`; the accepted bounded CC-010D1 implementation baseline remains `f45377b3b4ab39ee79782436afcfb8d644b6a300`.
 - Upstream: `origin/store`; the local product branch intentionally contains the accepted orchestration commits not yet pushed.
@@ -76,6 +85,77 @@ Slice Card:
 3. Continue remaining production gates without claiming physical-device camera/AR behavior, CameraService writer metadata/transforms, deep Scene workspace rotation, recorder behavior, full-suite, beta, signing, provider, payment or legal/release evidence prematurely.
 
 The next work remains the current `BACKLOG.md`; this checkpoint introduces no new implementation plan.
+
+## CC-008 first-launch permission packet — Task 1 checkpoint
+
+- Task 1 is complete: `CameraCoachEntryFlowModel` owns only entry phase and
+  intro persistence, reuses `PermissionClient`, maps camera availability and
+  authorization deterministically, and coalesces concurrent explicit camera
+  requests. No camera/session or other-permission owner changed.
+- Evidence: the packet command for
+  `CameraCoachEntryFlowModelTests` passed 7/7, 0 failures and 0 skips on iPhone
+  17 Pro / iOS Simulator 26.5; XCResult
+  `/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Logs/Test/Test-shafinMultitool-2026.08.17_19-54-46-+0300.xcresult`.
+- Drift check: intent lock, camera-only scope fence, single permission adapter,
+  one intro key and no automatic request remain intact. New owner count is one;
+  no fallback, route, lifecycle or Release test seam was added.
+- Next: implement S01/S02/S03 presentation and gate `OverlayView` on `.ready`.
+
+## CC-008 first-launch permission packet — Task 2 checkpoint
+
+- Task 2 is complete: `CameraCoachEntryView` renders restrained S01/S02/S03
+  states with stable accessibility IDs, honest blocker copy, Settings fallback
+  handling and no camera-preview/live-control surface. `ContentView` owns one
+  entry model and only renders the existing `OverlayView` for `.ready`.
+- Evidence: the exact parallel focused command reached the known iOS 26.5
+  `simctl diagnose` host stall before test output. The bounded serial rerun
+  with `-parallel-testing-enabled NO` passed 19/19, 0 failures and 0 skips on
+  iPhone 17 Pro / iOS Simulator 26.5: 7 entry-model, 7 presentation and 5
+  CameraViewModel lifecycle tests; XCResult
+  `/tmp/shafin-cc-task2-derived/Logs/Test/Test-shafinMultitool-2026.08.17_20-05-34-+0300.xcresult`.
+- Drift check: only ContentView and the new entry presentation/test owners
+  changed; permission foundation, camera/session owners, route ownership and
+  Release composition remain untouched. No fake preview, card/pill/material
+  surface, extra permission or fallback camera start was introduced.
+- Next: add deterministic DEBUG/UI-test launch state injection, real process
+  state assertions and screenshot evidence.
+
+## CC-008 first-launch permission packet — Task 3 checkpoint
+
+- Task 3 is complete within the approved packet: the existing DEBUG
+  `SHAFIN_UI_TESTING=1` composition now accepts explicit camera snapshot and
+  intro-seen launch arguments through a DEBUG-only test client/store. Release
+  composition is unchanged. The real process UI class covers S01 → S02,
+  authorized returning users and denied/restricted/unavailable recovery; no
+  Settings app, system alert or real hardware permission is automated.
+- Host history is retained honestly: the initial UI invocation built but the
+  iOS 26.5 XCTest runner failed to launch with
+  `FBSOpenApplicationServiceErrorDomain`/`RequestDenied` and produced no test
+  result. The first bounded serial run reached the app and exposed a real S03
+  layout assertion because Recheck was outside the scroll surface; it was
+  stopped by the deliberate timeout after incomplete execution. The narrow
+  denied rerun then passed 1/1 after moving both recovery actions into the
+  same entry layout.
+- Evidence: the final bounded serial UI command passed 6/6, 0 failures and 0
+  skips on iPhone 17 Pro / iOS Simulator 26.5; XCResult
+  `/tmp/shafin-cc-task3-ui-full/Logs/Test/Test-shafinMultitool-2026.08.17_20-18-50-+0300.xcresult`.
+  Generic no-sign `build-for-testing` passed with
+  `CODE_SIGNING_ALLOWED=NO`; log `/private/tmp/shafin-cc-task3-build.log`.
+  Five PNG attachments were exported to
+  `/private/tmp/shafin-cc-task3-ui-full-attachments` and inspected.
+- Visual result: S01, S02 and denied S03 are portrait `1206×2622`, readable,
+  neutral and free of cards, pills, material/blur, gradients, shadows, fake
+  camera preview and dashboard/navigation chrome. The ready attachment is
+  existing Overlay evidence only. Landscape is `2622×1206` but rotated and
+  vertical on black, reproducing the known iOS 26.5 capture defect; it is
+  `blocked_by_host_capture`, never accepted as landscape UI evidence.
+- Drift check: only the packet-owned entry files, `ContentView`, the DEBUG
+  `SceneDelegate` seam, focused tests and named tracker/evidence documents
+  changed. Camera/session owners, permission foundation, routes, Scene Mode,
+  Release composition and other permissions remain outside scope.
+- Next: keep the landscape host/device visual gate, physical-device camera and
+  permission behavior, full-suite health, provenance/privacy and release
+  acceptance as separate unresolved gates.
 
 ## Drift check
 

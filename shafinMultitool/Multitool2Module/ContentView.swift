@@ -12,9 +12,24 @@ struct ContentView: View {
     struct CameraCoachDependencies {
         let cameraManager: CameraManager
         let viewModel: CameraViewModel
+        let permissionClient: any PermissionClient
+        let introStore: any CameraCoachIntroStore
+
+        init(
+            cameraManager: CameraManager,
+            viewModel: CameraViewModel,
+            permissionClient: any PermissionClient = SystemPermissionClient(),
+            introStore: any CameraCoachIntroStore = UserDefaultsCameraCoachIntroStore()
+        ) {
+            self.cameraManager = cameraManager
+            self.viewModel = viewModel
+            self.permissionClient = permissionClient
+            self.introStore = introStore
+        }
     }
 
     @StateObject private var viewModel: CameraViewModel
+    @StateObject private var entryFlowModel: CameraCoachEntryFlowModel
     private let cameraManager: CameraManager
 
     init() {
@@ -23,6 +38,12 @@ struct ContentView: View {
 
     init(dependencies: CameraCoachDependencies) {
         _viewModel = StateObject(wrappedValue: dependencies.viewModel)
+        _entryFlowModel = StateObject(
+            wrappedValue: CameraCoachEntryFlowModel(
+                permissionClient: dependencies.permissionClient,
+                introStore: dependencies.introStore
+            )
+        )
         self.cameraManager = dependencies.cameraManager
     }
 
@@ -42,13 +63,41 @@ struct ContentView: View {
         return CameraCoachDependencies(
             cameraManager: cameraManager,
             viewModel: CameraViewModel(cameraManager: cameraManager,
-                                       analysisPipeline: pipeline)
+                                       analysisPipeline: pipeline),
+            permissionClient: SystemPermissionClient(),
+            introStore: UserDefaultsCameraCoachIntroStore()
         )
     }
 
     var body: some View {
-        OverlayView(viewModel: viewModel, cameraManager: cameraManager)
-            .preferredColorScheme(.dark)
+        Group {
+            if entryFlowModel.phase == .ready {
+                OverlayView(viewModel: viewModel, cameraManager: cameraManager)
+            } else {
+                CameraCoachEntryView(
+                    phase: entryFlowModel.phase,
+                    onOpenCamera: {
+                        Task { @MainActor in
+                            await entryFlowModel.openCameraTapped()
+                        }
+                    },
+                    onContinuePermissionRequest: {
+                        Task { @MainActor in
+                            await entryFlowModel.continuePermissionRequest()
+                        }
+                    },
+                    onRecheckCameraAccess: {
+                        Task { @MainActor in
+                            await entryFlowModel.recheckCameraAccess()
+                        }
+                    }
+                )
+            }
+        }
+        .preferredColorScheme(.dark)
+        .task { @MainActor in
+            await entryFlowModel.resolveInitialState()
+        }
     }
 }
 
