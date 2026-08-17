@@ -24,6 +24,8 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertTrue(shell.activeRoute is CommercialCameraCoachRoute)
         XCTAssertNil(shell.activeRoute as? CommercialSceneLibraryRoute)
         XCTAssertNil(shell.activeRoute as? CommercialHistoryRoute)
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.portrait))
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.landscape))
     }
 
     func testScenesRouteUsesInjectedLibraryBuilderInsideNavigationContainer() async throws {
@@ -59,6 +61,25 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
             navigationController.interactivePopGestureRecognizer?.delegate
                 is CommercialNavigationInteractivePopGuard
         )
+        XCTAssertEqual(navigationController.supportedInterfaceOrientations, .landscape)
+        XCTAssertEqual(shell.supportedInterfaceOrientations, .landscape)
+    }
+
+    func testSwitchingSelectedRouteUpdatesShellOrientationPolicy() async throws {
+        let shell = CommercialShellComposition(
+            sceneLibraryBuilder: { UIViewController() },
+            historyBuilder: { UIViewController() }
+        ).makeShell()
+
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.portrait))
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.landscape))
+
+        await shell.selectAndWait(.scenes)
+        XCTAssertEqual(shell.supportedInterfaceOrientations, .landscape)
+
+        await shell.selectAndWait(.camera)
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.portrait))
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.landscape))
     }
 
     func testCameraRouteUsesContentViewAndNotBenchmarkOrLegacyCameraScreen() throws {
@@ -73,6 +94,10 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertTrue(viewController is UIHostingController<ContentView>)
         XCTAssertFalse(viewController is UIHostingController<DeviceBenchmarkRootView>)
         XCTAssertFalse(viewController is CameraScreenViewController)
+        XCTAssertTrue(viewController.supportedInterfaceOrientations.contains(.portrait))
+        XCTAssertTrue(viewController.supportedInterfaceOrientations.contains(.landscape))
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.portrait))
+        XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.landscape))
     }
 
     func testHistoryRouteIsExplicitEmptyStateWithoutPersistenceAction() async throws {
@@ -257,6 +282,7 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertEqual(shell.selectedSection, .scenes)
         XCTAssertEqual(sceneRoute.navigationController.viewControllers.count, 2)
         XCTAssertEqual(shell.children.count, 1)
+        XCTAssertEqual(shell.supportedInterfaceOrientations, .landscape)
     }
 
     func testPresentedSceneModalBlocksAndDoesNotConstructCamera() async throws {

@@ -1,4 +1,7 @@
 import XCTest
+import AVFoundation
+import ImageIO
+import UIKit
 @testable import shafinMultitool
 
 final class CameraManagerLifecycleTests: XCTestCase {
@@ -110,6 +113,65 @@ final class CameraManagerLifecycleTests: XCTestCase {
 
         await manager.releaseAndWait()
         XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+    }
+
+    func testOrientationMappingKeepsInterfaceCaptureAndImageSemanticsTogether() throws {
+        let cases: [(UIInterfaceOrientation, AVCaptureVideoOrientation, CGImagePropertyOrientation)] = [
+            (.portrait, .portrait, .right),
+            (.portraitUpsideDown, .portraitUpsideDown, .left),
+            (.landscapeLeft, .landscapeLeft, .down),
+            (.landscapeRight, .landscapeRight, .up)
+        ]
+
+        for (interfaceOrientation, captureOrientation, imageOrientation) in cases {
+            let orientation = try XCTUnwrap(
+                CameraCoachOrientation(interfaceOrientation: interfaceOrientation)
+            )
+            XCTAssertEqual(orientation.captureOrientation, captureOrientation)
+            XCTAssertEqual(orientation.interfaceOrientation, interfaceOrientation)
+            XCTAssertEqual(orientation.imageOrientation, imageOrientation)
+            XCTAssertEqual(
+                CameraCoachOrientation(captureOrientation: captureOrientation),
+                orientation
+            )
+        }
+    }
+
+    func testOrientationChangesInPlaceWithoutLifecycleReset() async throws {
+        let (manager, runner) = makeManager()
+        let sessionIdentity = ObjectIdentifier(manager.captureSession)
+
+        try await manager.startAndWait()
+        let configurationCount = manager.configurationCountForTesting
+
+        await manager.setVideoOrientationAndWait(.portrait)
+        let portraitOrientation = await manager.videoOrientationAndWait()
+
+        XCTAssertEqual(portraitOrientation, .portrait)
+        XCTAssertEqual(manager.lifecycleState, .running)
+        XCTAssertEqual(manager.configurationCountForTesting, configurationCount)
+        XCTAssertEqual(ObjectIdentifier(manager.captureSession), sessionIdentity)
+
+        await manager.setVideoOrientationAndWait(.landscapeRight)
+        let landscapeOrientation = await manager.videoOrientationAndWait()
+
+        XCTAssertEqual(landscapeOrientation, .landscapeRight)
+        XCTAssertEqual(manager.lifecycleState, .running)
+        XCTAssertEqual(manager.configurationCountForTesting, configurationCount)
+        XCTAssertEqual(ObjectIdentifier(manager.captureSession), sessionIdentity)
+        XCTAssertEqual(runner.startCount, 1)
+        XCTAssertEqual(runner.stopCount, 0)
+    }
+
+    func testOrientationSetBeforeStartIsAppliedWhenConfigurationIsCreated() async throws {
+        let (manager, _) = makeManager()
+
+        await manager.setVideoOrientationAndWait(.portraitUpsideDown)
+        try await manager.startAndWait()
+
+        let orientation = await manager.videoOrientationAndWait()
+        XCTAssertEqual(orientation, .portraitUpsideDown)
+        XCTAssertEqual(manager.lifecycleState, .running)
     }
 
     @MainActor

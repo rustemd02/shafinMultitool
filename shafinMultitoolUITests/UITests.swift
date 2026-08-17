@@ -62,6 +62,19 @@ final class CameraCoachLaunchUITests: XCTestCase {
         assertCameraCoachRoot()
     }
 
+    func testCameraCoachSurfaceSurvivesPortraitLandscapeRotation() {
+        launchApp(orientation: .landscapeLeft)
+        assertCameraCoachRoot()
+
+        let pauseControl = element(withIdentifier: "camera_coach_pause")
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(pauseControl.waitForExistence(timeout: launchTimeout))
+
+        XCUIDevice.shared.orientation = .landscapeRight
+        XCTAssertTrue(pauseControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertTrue(pauseControl.isHittable)
+    }
+
     private func launchApp(orientation: UIDeviceOrientation? = nil) {
         if let orientation {
             XCUIDevice.shared.orientation = orientation

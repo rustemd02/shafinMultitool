@@ -7,6 +7,8 @@
 
 import AVFoundation
 import CoreMotion
+import ImageIO
+import UIKit
 
 enum CameraLens: CGFloat, CaseIterable, Equatable, Sendable {
     case ultraWide = 0.5
@@ -67,6 +69,87 @@ enum CameraManagerError: Error, Equatable, Sendable, CustomStringConvertible {
             return "The video output could not be added to the session."
         case .startFailed:
             return "The capture session did not start running."
+        }
+    }
+}
+
+/// Shared orientation vocabulary for the Camera Coach capture and AR
+/// presentation seams. Keeping the mappings together prevents preview,
+/// capture analysis, and display transforms from drifting during rotation.
+enum CameraCoachOrientation: CaseIterable, Equatable, Sendable {
+    case portrait
+    case portraitUpsideDown
+    case landscapeLeft
+    case landscapeRight
+
+    init?(interfaceOrientation: UIInterfaceOrientation) {
+        switch interfaceOrientation {
+        case .portrait:
+            self = .portrait
+        case .portraitUpsideDown:
+            self = .portraitUpsideDown
+        case .landscapeLeft:
+            self = .landscapeLeft
+        case .landscapeRight:
+            self = .landscapeRight
+        case .unknown:
+            return nil
+        @unknown default:
+            return nil
+        }
+    }
+
+    init(captureOrientation: AVCaptureVideoOrientation) {
+        switch captureOrientation {
+        case .portrait:
+            self = .portrait
+        case .portraitUpsideDown:
+            self = .portraitUpsideDown
+        case .landscapeLeft:
+            self = .landscapeLeft
+        case .landscapeRight:
+            self = .landscapeRight
+        @unknown default:
+            self = .portrait
+        }
+    }
+
+    var interfaceOrientation: UIInterfaceOrientation {
+        switch self {
+        case .portrait:
+            return .portrait
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        }
+    }
+
+    var captureOrientation: AVCaptureVideoOrientation {
+        switch self {
+        case .portrait:
+            return .portrait
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        }
+    }
+
+    var imageOrientation: CGImagePropertyOrientation {
+        switch self {
+        case .portrait:
+            return .right
+        case .portraitUpsideDown:
+            return .left
+        case .landscapeRight:
+            return .up
+        case .landscapeLeft:
+            return .down
         }
     }
 }
@@ -628,13 +711,37 @@ final class CameraManager: NSObject, @unchecked Sendable {
 
     func setVideoOrientation(_ orientation: AVCaptureVideoOrientation) {
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.desiredVideoOrientation = orientation
-            guard self.isConfigured,
-                  let connection = self.videoOutput.connection(with: .video),
-                  connection.isVideoOrientationSupported else { return }
-            connection.videoOrientation = orientation
+            self?.setVideoOrientationOnSessionQueue(orientation)
         }
+    }
+
+    /// Applies an orientation to the existing capture connection and waits for
+    /// the session-queue mutation to finish. No capture graph or lifecycle
+    /// state is recreated by this operation.
+    func setVideoOrientationAndWait(_ orientation: AVCaptureVideoOrientation) async {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                self?.setVideoOrientationOnSessionQueue(orientation)
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Test/diagnostic read paired with `setVideoOrientationAndWait`.
+    func videoOrientationAndWait() async -> AVCaptureVideoOrientation {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                continuation.resume(returning: self?.desiredVideoOrientation ?? .landscapeLeft)
+            }
+        }
+    }
+
+    private func setVideoOrientationOnSessionQueue(_ orientation: AVCaptureVideoOrientation) {
+        desiredVideoOrientation = orientation
+        guard isConfigured,
+              let connection = videoOutput.connection(with: .video),
+              connection.isVideoOrientationSupported else { return }
+        connection.videoOrientation = orientation
     }
 }
 
@@ -644,7 +751,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
                        from connection: AVCaptureConnection) {
         guard isFrameDeliveryEnabled() else { return }
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let orientation = CGImagePropertyOrientation(connection.videoOrientation)
+        let orientation = CameraCoachOrientation(captureOrientation: connection.videoOrientation).imageOrientation
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let motionSnapshot = motionGate.snapshot()
         let context = FrameContext(pixelBuffer: pixelBuffer,
@@ -679,15 +786,3 @@ extension CameraManager {
     }
 }
 #endif
-
-private extension CGImagePropertyOrientation {
-    init(_ orientation: AVCaptureVideoOrientation) {
-        switch orientation {
-        case .portrait: self = .right
-        case .portraitUpsideDown: self = .left
-        case .landscapeRight: self = .up
-        case .landscapeLeft: self = .down
-        @unknown default: self = .right
-        }
-    }
-}

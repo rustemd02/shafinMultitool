@@ -118,6 +118,8 @@ struct ARSceneContainer: UIViewRepresentable {
         private var viewportSize: CGSize = .zero
         private var interfaceOrientation: UIInterfaceOrientation = .portrait
         private var lastCameraAnalysisGeometryLogTimestamp: TimeInterval = 0
+        private var orientationObserver: NSObjectProtocol?
+        private var isGeneratingOrientationNotifications = false
         private var frameProcessingInterval: TimeInterval {
             switch ProcessInfo.processInfo.thermalState {
             case .serious, .critical:
@@ -133,6 +135,25 @@ struct ARSceneContainer: UIViewRepresentable {
         
         init(viewModel: SceneGeneratorViewModel) {
             self.viewModel = viewModel
+            super.init()
+            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+            isGeneratingOrientationNotifications = true
+            orientationObserver = NotificationCenter.default.addObserver(
+                forName: UIDevice.orientationDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.scheduleOrientationRefresh()
+            }
+        }
+
+        deinit {
+            if let orientationObserver {
+                NotificationCenter.default.removeObserver(orientationObserver)
+            }
+            if isGeneratingOrientationNotifications {
+                UIDevice.current.endGeneratingDeviceOrientationNotifications()
+            }
         }
 
         func updateSessionState(for arView: ARView,
@@ -144,8 +165,7 @@ struct ARSceneContainer: UIViewRepresentable {
                                 isARSessionReady: Bool,
                                 force: Bool = false) {
             self.arView = arView
-            viewportSize = arView.bounds.size
-            interfaceOrientation = Self.currentInterfaceOrientation(for: arView) ?? interfaceOrientation
+            refreshOrientation(for: arView)
             self.shouldForwardCapturedImage = shouldForwardCapturedImage && !isGenerating
             self.isSceneGenerated = isSceneGenerated
             updateCoachingOverlay(isSceneGenerated: isSceneGenerated, isARSessionReady: isARSessionReady)
@@ -161,6 +181,24 @@ struct ARSceneContainer: UIViewRepresentable {
 
             isGenerationActive = false
             configureSessionIfNeeded(for: arView, configuration: configuration, depthEnabled: depthEnabled, force: force)
+        }
+
+        private func scheduleOrientationRefresh() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let arView = self.arView else { return }
+                self.refreshOrientation(for: arView)
+            }
+        }
+
+        /// Refreshes only cached presentation geometry. Rotation never reruns
+        /// or pauses the AR session, so world tracking and project state stay
+        /// continuous while the display transform follows the new viewport.
+        private func refreshOrientation(for arView: ARView) {
+            viewportSize = arView.bounds.size
+            if let orientation = Self.currentInterfaceOrientation(for: arView),
+               orientation != .unknown {
+                interfaceOrientation = orientation
+            }
         }
 
         func configureSessionIfNeeded(for arView: ARView,

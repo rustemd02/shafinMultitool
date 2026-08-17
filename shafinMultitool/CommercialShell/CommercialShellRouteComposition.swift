@@ -17,7 +17,7 @@ struct CommercialShellComposition {
     init(
         cameraCoachBuilder: @escaping CameraCoachRouteBuilder = {
             let dependencies = ContentView.makeCameraCoachDependencies()
-            let viewController = UIHostingController(
+            let viewController = CommercialCameraCoachHostingController(
                 rootView: ContentView(dependencies: dependencies)
             )
             return CommercialCameraCoachRoute(
@@ -58,6 +58,13 @@ struct CommercialShellComposition {
         }
         shell.loadViewIfNeeded()
         return shell
+    }
+}
+
+@MainActor
+final class CommercialCameraCoachHostingController<Content: View>: UIHostingController<Content> {
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        .all
     }
 }
 
@@ -121,7 +128,7 @@ final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
     private let interactivePopGuard: CommercialNavigationInteractivePopGuard
 
     init(sceneLibraryViewController: UIViewController) {
-        let navigationController = UINavigationController(
+        let navigationController = CommercialSceneNavigationController(
             rootViewController: sceneLibraryViewController
         )
         navigationController.navigationBar.isHidden = true
@@ -157,6 +164,15 @@ final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
             || navigationController.viewControllers.contains {
                 $0.presentedViewController != nil
             }
+    }
+}
+
+/// Scene Mode keeps its fixed 16:9 workspace in landscape while the application
+/// target remains free to expose portrait for Camera Coach.
+@MainActor
+final class CommercialSceneNavigationController: UINavigationController {
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        .landscape
     }
 }
 

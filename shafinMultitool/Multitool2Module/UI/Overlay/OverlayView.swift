@@ -271,6 +271,8 @@ final class PreviewView: UIView {
 
     weak var cameraManager: CameraManager?
     private var lastOrientation: AVCaptureVideoOrientation?
+    private var orientationObserver: NSObjectProtocol?
+    private var isGeneratingOrientationNotifications = false
 
     var videoPreviewLayer: AVCaptureVideoPreviewLayer {
         layer as! AVCaptureVideoPreviewLayer
@@ -279,9 +281,10 @@ final class PreviewView: UIView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil {
-            DispatchQueue.main.async { [weak self] in
-                self?.updateOrientation(force: true)
-            }
+            startOrientationObservationIfNeeded()
+            scheduleOrientationUpdate()
+        } else {
+            stopOrientationObservation()
         }
     }
 
@@ -294,9 +297,10 @@ final class PreviewView: UIView {
         guard let connection = videoPreviewLayer.connection,
               connection.isVideoOrientationSupported,
               let interfaceOrientation = currentInterfaceOrientation(),
-              let captureOrientation = AVCaptureVideoOrientation(interfaceOrientation: interfaceOrientation) else {
+              let coachOrientation = CameraCoachOrientation(interfaceOrientation: interfaceOrientation) else {
             return
         }
+        let captureOrientation = coachOrientation.captureOrientation
 
         guard force || lastOrientation != captureOrientation else { return }
 
@@ -305,8 +309,43 @@ final class PreviewView: UIView {
         cameraManager?.setVideoOrientation(captureOrientation)
     }
 
+    private func startOrientationObservationIfNeeded() {
+        guard orientationObserver == nil else { return }
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        isGeneratingOrientationNotifications = true
+        orientationObserver = NotificationCenter.default.addObserver(
+            forName: UIDevice.orientationDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleOrientationUpdate()
+        }
+    }
+
+    private func stopOrientationObservation() {
+        if let orientationObserver {
+            NotificationCenter.default.removeObserver(orientationObserver)
+            self.orientationObserver = nil
+        }
+        if isGeneratingOrientationNotifications {
+            UIDevice.current.endGeneratingDeviceOrientationNotifications()
+            isGeneratingOrientationNotifications = false
+        }
+    }
+
+    private func scheduleOrientationUpdate() {
+        DispatchQueue.main.async { [weak self] in
+            self?.updateOrientation(force: true)
+        }
+    }
+
+    deinit {
+        stopOrientationObservation()
+    }
+
     private func currentInterfaceOrientation() -> UIInterfaceOrientation? {
-        if let orientation = window?.windowScene?.interfaceOrientation {
+        if let orientation = window?.windowScene?.interfaceOrientation,
+           orientation != .unknown {
             return orientation
         }
         if Thread.isMainThread {
@@ -324,24 +363,5 @@ final class PreviewView: UIView {
                 .interfaceOrientation
         }
         return orientation
-    }
-}
-
-private extension AVCaptureVideoOrientation {
-    init?(interfaceOrientation: UIInterfaceOrientation) {
-        switch interfaceOrientation {
-        case .portrait:
-            self = .portrait
-        case .portraitUpsideDown:
-            self = .portraitUpsideDown
-        case .landscapeLeft:
-            self = .landscapeLeft
-        case .landscapeRight:
-            self = .landscapeRight
-        case .unknown:
-            return nil
-        @unknown default:
-            return nil
-        }
     }
 }

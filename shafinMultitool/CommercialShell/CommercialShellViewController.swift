@@ -59,6 +59,13 @@ public final class CommercialShellViewController: UIViewController {
         activeChildStorage
     }
 
+    /// UIKit asks the container for the orientations supported by the currently
+    /// visible route. Before the first route is installed, keep Camera Coach's
+    /// portrait-and-landscape launch policy.
+    public override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        activeViewController?.supportedInterfaceOrientations ?? .all
+    }
+
     public init(routeFactory: @escaping CommercialRouteFactory) {
         self.routeFactory = routeFactory
         super.init(nibName: nil, bundle: nil)
@@ -305,6 +312,7 @@ public final class CommercialShellViewController: UIViewController {
 
         activeRouteStorage = route
         activeChildStorage = child
+        setNeedsUpdateOfSupportedInterfaceOrientations()
     }
 
     private func removeActiveRoute() {
@@ -318,6 +326,7 @@ public final class CommercialShellViewController: UIViewController {
         child.removeFromParent()
         activeChildStorage = nil
         activeRouteStorage = nil
+        setNeedsUpdateOfSupportedInterfaceOrientations()
     }
 
     private func item(for section: CommercialSection) -> UITabBarItem? {
