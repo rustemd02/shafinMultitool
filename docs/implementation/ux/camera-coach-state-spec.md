@@ -1,6 +1,6 @@
 # CC-008 — Camera Coach UX state specification
 
-Статус: `proposed_for_owner_acceptance`  
+Статус: поведенческий контракт принят; визуальное восстановление shell ожидает design packet
 Дата: 15 августа 2026 года  
 Product authority: `docs/app-store-product-plan.md`  
 Runtime boundary: `docs/implementation/audits/runtime-entry-routing.md`
@@ -41,13 +41,15 @@ Runtime boundary: `docs/implementation/audits/runtime-entry-routing.md`
 
 ### 3.1. Commercial shell
 
-Базовая оболочка — нативная трёхсекционная навигация:
+Базовая оболочка — Camera-first коммерческая shell с тремя разделами:
 
 1. `Камера` — default selection и единственный владелец Camera Coach session.
-2. `Сцены` — существующая Scene Mode library.
-3. `История` — результаты текущей сессии; постоянная история появляется только если отдельно входит в реализованный scope.
+2. `Сцены` — вторичный, только альбомный маршрут к существующей Scene Mode library.
+3. `История` — честно пустой маршрут до реализации соответствующего scope; он не обещает постоянную историю заранее.
 
-Предпочтительный визуальный паттерн — системный tab bar без плавающей капсулы, glow или кастомного glass-контейнера. Реализация обязана лениво создавать media route и явно деактивировать текущий route до активации другого. Сохранённый view controller не означает сохранённую работающую camera/AR session.
+Предыдущее предпочтение системного `UITabBar` — историческое и инвалидированное визуальное решение; оно не является доказательством принятия UI. Коммерческая shell сохраняет проверенную механику single-active-route и awaited teardown: текущий route полностью деактивируется до создания следующего, а blocked teardown удерживает текущий route и selection. Сохранённый view controller не означает сохранённую работающую camera/AR session.
+
+Визуальный chrome shell должен использовать существующий в репозитории язык SnapKit/UIKit и его кинематографические инструментальные primitives. Конкретная геометрия нового control, его placement и способ визуализации разделов остаются решением pending design packet; этот документ не проектирует replacement заранее.
 
 Во время активной записи переключение разделов недоступно. Пользователь сначала завершает или отменяет запись. Во время незавершённой проверки советы не теряются: при уходе из `Камеры` сохраняется компактный session summary, а live camera останавливается.
 
@@ -60,7 +62,7 @@ Runtime boundary: `docs/implementation/audits/runtime-entry-routing.md`
 3. Верхний status bar: состояние анализа, flash/lens при фактической поддержке, вход в Pro Controls. Внутренняя телеметрия отсутствует.
 4. Один coaching surface в нижней трети, не закрывающий главный субъект. Это не dashboard и не stack карточек.
 5. Нижние camera actions: pause/resume, record, Deep Review. Zoom использует системно узнаваемый control рядом с preview или record controls.
-6. System tab bar в safe area, кроме полноэкранного recording focus state, если прототип докажет необходимость скрытия.
+6. Навигация shell в safe area, кроме полноэкранного recording focus state, если design packet и прототип докажут необходимость скрытия; точная форма control определяется отдельно на базе существующих SnapKit/UIKit owners.
 
 Coaching surface содержит не более четырёх смысловых элементов:
 
@@ -80,6 +82,18 @@ Coaching surface содержит не более четырёх смыслов�
 - Blur используется локально для контраста текста над preview, а не как декоративная стеклянная архитектура.
 - Haptic: light для выбора субъекта/переключения точного control; success только для подтверждённого улучшения или сохранения; warning для interruption/нехватки места; запись использует один чёткий impact на start/stop.
 - Motion: 180–260 ms, системные easing; transition объясняет изменение состояния, не украшает его. Reduce Motion заменяет spatial animation на crossfade.
+
+### 3.4. Операционное определение wow и anti-vibe-code
+
+Wow — это измеримое качество решения задачи, а не декоративная интенсивность. Новый или изменённый UI обязан демонстрировать:
+
+- ясную визуальную иерархию: один главный task и один primary action;
+- кинематографичное использование live frame и negative space: controls не спорят с содержанием кадра и освобождают полезное пространство;
+- точные typography, spacing и alignment, согласованные с контекстом кадра и существующими owners;
+- purposeful state feedback, motion и haptics только тогда, когда они объясняют действие или результат;
+- повторное использование существующих визуальных primitives репозитория, а не изобретение изолированной visual system.
+
+Wow не должен создаваться декорацией. Любой визуальный приём обязан улучшать понимание текущего действия, состояния или результата; иначе он не принимается.
 
 ## 4. Глобальные правила поведения
 
@@ -577,6 +591,8 @@ CC-008 defines semantic moments, not the final transport schema. CC-012 must ver
 - цвет является единственным признаком записи, успеха или ошибки;
 - переход между Camera и Scene оставляет два media owner активными.
 
+Каждый screenshot set для portrait и landscape, а также для ключевых permission, error и route states, обязан показывать одну task hierarchy, читаемые hit targets, отсутствие визуального столкновения с camera content и отсутствие любого forbidden anti-vibe-code pattern из product plan.
+
 ## 14. Implementation slicing
 
 Luna не принимает визуальные или продуктовые решения. После owner acceptance Sol преобразует этот документ в независимые packets:
@@ -597,14 +613,14 @@ Luna не принимает визуальные или продуктовые 
 
 ## 15. Owner acceptance checklist
 
-Перед переводом CC-008 в `accepted` владелец продукта подтверждает единым решением:
+Поведенческая часть CC-008 принята. Для принятия отдельного визуального shell-пакета владелец продукта должен подтвердить единым решением:
 
 - Camera-first shell с нативными разделами `Камера / Сцены / История`;
 - одна подсказка и бесплатная проверка результата;
-- системный тёмный camera-tool стиль с `systemYellow` как функциональным акцентом;
+- существующий SnapKit/UIKit cinematic instrument language с `systemYellow` как функциональным акцентом, без заранее зафиксированной геометрии replacement control;
 - спокойный, неантропоморфный coaching language;
 - отсутствие paywall до отдельного beta evidence decision;
 - Scene Mode как вторичный landscape-only route;
 - перечисленные banned vibe-code patterns и screenshot gates.
 
-После подтверждения открытых визуальных решений для Luna нет. Фактическая usability и качество советов всё равно проверяются внешней beta; этот документ не объявляет их доказанными заранее.
+Визуальный shell не считается спроектированным, реализованным или валидированным этим документом: его восстановление — следующая pending product/UI работа по отдельному design packet. Фактическая usability и качество советов всё равно проверяются внешней beta; этот документ не объявляет их доказанными заранее.

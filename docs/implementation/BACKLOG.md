@@ -126,12 +126,22 @@
 - Ownership: create only `shafinMultitool/CommercialShell/CommercialShellViewController.swift` and `shafinMultitoolTests/CommercialShellRoutingTests.swift`.
 - Non-edits: `SceneDelegate`, `ContentView`, camera/session internals, Scene Mode routers, recorder, project file and existing UI. This slice does not change the launch graph.
 - Contract: `CommercialSection` has exactly `camera`, `scenes`, `history`; `CommercialRoute` exposes one `viewController` and awaited `deactivateAndWait()` returning a typed released/blocked result.
-- Behavior: custom single-child container with a system `UITabBar`; Camera selected by default; Scenes and History are lazy; exactly one active child and retained route; selection is disabled during teardown; a blocked teardown retains the current child and selection; rapid taps coalesce to the last pending section; repeated current selection is a no-op.
+- Behavior: custom single-child container with Camera selected by default; Scenes and History are lazy; exactly one active child and retained route; selection is disabled during teardown; a blocked teardown retains the current child and selection; rapid taps coalesce to the last pending section; repeated current selection is a no-op. The historical implementation used a system `UITabBar`, but that visual choice is invalidated and is not UI acceptance. Commercial-shell chrome must use the existing SnapKit/UIKit cinematic instrument language; exact control geometry remains pending a design packet. Scenes stay secondary and landscape-only; History stays honest/empty until implemented.
 - Focused tests: default selection, lazy construction, one-child invariant, teardown-before-create ordering, blocked rollback, interaction lock, rapid-tap coalescing, repeat-selection no-op, child containment lifecycle and route release on container teardown.
 - Acceptance: deterministic routing contract passes focused tests and generic iOS build-for-testing without changing runtime launch behavior.
 - Evidence: integrated Luna / Max run on iPhone 17 Pro / iOS Simulator 26.5 passed generic `build-for-testing`; the ordinary `xcodebuild test` run passed `CommercialShellRoutingTests` 11/11 as part of 19/19. The later bounded parent launch integration is recorded separately under `ff9ce3e`; full evidence and retained diagnostics: `docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md`.
 - Boundary: accepted slice only, not release-ready. The slice itself does not change the launch graph; the later bounded parent integration does not prove a true UI-test target/default smoke, portrait/landscape launch, saved-project access, full test topology or configured real-image evaluation.
 - Rollback: remove the two owned files; no production route is connected by this slice.
+
+### CC-007B — Commercial shell visual restoration
+
+- Lane: visible Luna / Max only after the owner design packet is available.
+- State: `pending_product_ui_work`.
+- Dependencies: CC-007A, CC-008 and the existing SnapKit/UIKit visual owners.
+- Objective: restore the commercial shell’s visual chrome in the repository’s existing cinematic instrument language while preserving the accepted single-active-route and awaited-teardown mechanics.
+- Boundary: the design packet must decide the exact control geometry and placement; this tracker does not claim that a replacement has been designed, implemented or validated. Camera remains default, Scenes remain secondary/landscape-only and History remains honest/empty until implemented.
+- Acceptance: wow is demonstrated through hierarchy, live-frame/negative-space composition, precise typography/spacing/alignment and purposeful feedback/motion/haptics; no decorative wow or isolated visual system; the full anti-vibe-code checklist and portrait/landscape permission/error/route screenshot gates pass.
+- Legal, monetisation and privacy boundaries remain unchanged; this item does not imply release readiness.
 
 ## CC-008 — UI/UX state specification
 
