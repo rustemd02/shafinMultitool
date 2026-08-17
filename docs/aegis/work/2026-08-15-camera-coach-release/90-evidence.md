@@ -9,7 +9,7 @@
 - Saved logical profile: orchestrator inherits parent with a `gpt-5.6-sol` / `high` recommendation; routine, high and advisor profiles are `gpt-5.6-luna` / `max`; fallback policy is fail-closed.
 - Current execution success criterion: every new executor, reviewer, correction-loop or verification worker appears as a separate user-visible Codex chat/thread using the project-local environment when continuing this checkout, explicit `model=gpt-5.6-luna` and `thinking=max`. A missing visible thread is a stop, not permission to use a hidden task or substitute model.
 - The installed native adapter was not reinstalled/reloaded for this policy amendment; native role paths are not a valid execution path.
-- Current accepted integration baseline: `store` at `277170d`; CC-011E remains committed and accepted at its historical baseline, bounded CC-007/CC-010E launch evidence remains at `ff9ce3e`, bounded CC-011C UI evidence remains at `9f2f5f2`, and bounded CC-010F orientation evidence is recorded at `277170d`.
+- Current accepted integration baseline: `store` at `f45377b`; CC-011E remains committed and accepted at its historical baseline, bounded CC-007/CC-010E launch evidence remains at `ff9ce3e`, bounded CC-011C UI evidence remains at `9f2f5f2`, bounded CC-010F orientation evidence is recorded at `277170d`, and bounded CC-010D/CC-010E awaitable Scene workspace teardown is recorded at `f45377b`.
 
 ## Accepted product and release evidence
 
@@ -52,14 +52,26 @@
 - Known non-fatal diagnostics are preserved: `appintentsmetadataprocessor` skipped metadata extraction because no `AppIntents.framework` dependency was found; Xcode reported no rule to process the `Resources/Circle.rcproject` folder for arm64; the app emitted the `UICollectionViewFlowLayoutBreakForInvalidSizes` symbolic-breakpoint diagnostic. These did not fail this focused run.
 - Boundary: this is focused simulator/unit-target evidence. It does not prove production launch-graph/default-route integration, a true UI-test target, full-suite health, configured real-image evaluation, physical-device behavior or App Store/release readiness. The raw full unit-target audit and other unresolved gates below remain in force.
 
-## CC-007 / CC-010E bounded launch integration evidence
+## Historical pre-`f45377b` CC-007 / CC-010E bounded launch integration evidence
 
 - Commit `ff9ce3e` completes the normal Camera Coach launch portion of CC-007 and records a bounded CC-010E exclusive lease integration. In `SceneDelegate`, the DEBUG benchmark branch remains first when a benchmark configuration is present; the normal non-benchmark branch opens `CommercialShell` with Camera selected.
 - The Camera route owns the existing `CameraViewModel` used by `ContentView` and awaits `stopAndWait` before the shell removes that route or constructs the next route. Repeated Camera deactivation calls share one idempotent task.
-- The Scene library root can release to Camera. A deeper Scene workspace or any presented modal returns blocked and does not construct Camera because the existing AR/persistence teardown boundary is not awaitable.
+- At that pre-`f45377b` baseline, the Scene library root could release to Camera. A deeper Scene workspace or any presented modal returned blocked and did not construct Camera because the existing AR/persistence teardown boundary was not awaitable. The current awaitable deep-workspace contract is recorded below.
 - Generic workspace `build-for-testing` passed with derived data at `/private/tmp/shafin-cc010e-derived`.
 - Focused workspace tests passed 22/22 on iPhone 17 Pro / iOS Simulator 26.5: `CommercialShellLaunchCompositionTests` 11/11 and `CommercialShellRoutingTests` 11/11. Final result bundle: `/private/tmp/shafin-cc010e-workspace-derived/Logs/Test/Test-shafinMultitool-2026.08.16_00-55-36-+0300.xcresult`. The earlier 20/20 result is retained as historical evidence; this final 22/22 run is preferred.
-- Boundary: full CC-010E and CC-010D are not complete. This evidence does not establish a true UI-test target, portrait/landscape launch, saved-project actual smoke, physical-device behavior, full-suite health, legal/provenance clearance or App Store/release readiness; the bounded CC-011C evidence below is separate.
+- Historical boundary: full CC-010E and CC-010D were not complete at this baseline. This evidence did not establish a true UI-test target, portrait/landscape launch, saved-project actual smoke, physical-device behavior, full-suite health, legal/provenance clearance or release readiness; the bounded CC-011C evidence below is separate.
+
+## CC-010D / CC-010E awaitable Scene workspace teardown evidence
+
+- Commit `f45377b3b4ab39ee79782436afcfb8d644b6a300` (`Wire awaitable Scene workspace teardown`) is the bounded CC-010D1 implementation slice. `SceneGeneratorViewModel` is the real awaitable Scene workspace owner.
+- One idempotent operation stops existing legacy recording if active and existing playback if active, awaits the unified project/world-map snapshot and pauses the AR session plus clears its delegate/detaches the AR view only after success. Repeated and concurrent callers share one task.
+- Snapshot/world-map and persistence failures become typed blocked results. `CommercialSceneLibraryRoute` does not construct Camera and retains the deep Scene route on failure. The route finds its provider from the actual `LandscapeHostingController` created by `SORouter`; on success it reduces navigation to the Scene library root before returning release.
+- A presented Scene modal blocks before teardown. `SceneGeneratorView.onDisappear`, the Scene `scenePhase` background hook and `CommercialSceneLibraryRoute.handleDidEnterBackground()` invoke the same awaitable operation; this does not claim that iOS grants enough background execution time for completion.
+- Coordinator independent acceptance rerun command: `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' -derivedDataPath /private/tmp/shafin-cc010d1-sol-accept -only-testing:shafinMultitoolTests/SceneWorkspaceTeardownTests -only-testing:shafinMultitoolTests/CommercialShellLaunchCompositionTests -only-testing:shafinMultitoolTests/CommercialShellRoutingTests`.
+- Authoritative XCResult: `/private/tmp/shafin-cc010d1-sol-accept/Logs/Test/Test-shafinMultitool-2026.08.17_16-29-39-+0300.xcresult`; summary: 31 total, 31 passed, 0 failed, 0 skipped on iPhone 17 Pro / iOS Simulator 26.5. The 31 tests are 8 `SceneWorkspaceTeardownTests`, 12 `CommercialShellLaunchCompositionTests` and 11 `CommercialShellRoutingTests`.
+- Worker evidence additionally records focused teardown/composition 20/20, existing `CommercialShellRoutingTests` 11/11 and generic iOS `build-for-testing` success across the 6-target dependency graph. Visible Luna / Max owns implementation, correction and primary tests; Sol remains limited to architecture, tracker and bounded risk-based acceptance, with no Sol subagent or task-level Sol worker added.
+- State: CC-010D moves from `draft` to `partially_accepted`; CC-010E remains `partially_accepted`. A real deep Scene workspace can now release only under this tested awaitable contract. The slice is not fully accepted or RC-ready.
+- Boundary: modal handling, physical-device AR/world-map behavior, actual OS background allowance, recorder finalization/media policy, the full Scene Mode user journey, UI physical evidence, full-suite health, legal/provenance, privacy and release readiness remain open. No true background completion, TestFlight/App Store readiness or full product release readiness is claimed.
 
 ## CC-011C bounded true UI target/root smoke evidence
 
@@ -82,7 +94,8 @@
 
 - CC-008: `docs/implementation/ux/camera-coach-state-spec.md` is accepted based on the owner's explicit instruction to launch the full autonomous implementation pipeline and the earlier affirmative product/UI decisions.
 - CC-007A/CC-008A: accepted implementation slices with the focused evidence above; the bounded parent shell/default-route integration and bounded CC-011C target/root smoke are recorded separately below, while unsupported product states remain outside the accepted slices. They are not release-ready.
-- CC-007/CC-010E: the normal launch portion and bounded exclusive lease are accepted at `ff9ce3e` within the evidence above; full CC-010E/CC-010D and the remaining product/UI evidence boundaries remain open.
+- Historical pre-`f45377b` CC-007/CC-010E: the normal launch portion and bounded exclusive lease are accepted at `ff9ce3e` within the historical evidence above; the deeper Scene workspace remained blocked at that baseline because teardown was not awaitable.
+- Current CC-010D/CC-010E: the `f45377b` awaitable Scene workspace teardown is partially accepted within the evidence above; deep workspace release is proven only under the tested provider/teardown contract, while the listed modal, physical-device, background, recorder/media, full-journey, UI, full-suite, legal/provenance, privacy and release boundaries remain open.
 - CC-010F: the orientation-continuity slice is accepted at `277170d` within the bounded evidence above; writer metadata/transforms, deep Scene workspace rotation, recorder behavior, physical-device camera/AR behavior, full-suite health, legal clearance and release readiness remain unclaimed.
 - CC-013B2: recommended minimal RC excludes DETR, NIMA and compact neural fusion while retaining Apple Vision/saliency and deterministic critique; implementation is gated by owner acceptance.
 
