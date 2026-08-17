@@ -74,17 +74,24 @@ struct ARSceneContainer: UIViewRepresentable {
         
         return arView
     }
-    
+
     func updateUIView(_ uiView: ARView, context: Context) {
-        context.coordinator.updateSessionState(
-            for: uiView,
-            configuration: viewModel.makeSessionConfiguration(depthEnabled: viewModel.isDepthMarkingEnabled),
-            depthEnabled: viewModel.isDepthMarkingEnabled,
-            isGenerating: viewModel.isGenerating,
-            shouldForwardCapturedImage: viewModel.isRecording || viewModel.isHintsEnabled,
-            isSceneGenerated: viewModel.plannedScene != nil,
-            isARSessionReady: viewModel.isARSessionReady
-        )
+        MainActor.assumeIsolated {
+            guard !viewModel.isWorkspaceReleased else {
+                uiView.session.pause()
+                uiView.session.delegate = nil
+                return
+            }
+            context.coordinator.updateSessionState(
+                for: uiView,
+                configuration: viewModel.makeSessionConfiguration(depthEnabled: viewModel.isDepthMarkingEnabled),
+                depthEnabled: viewModel.isDepthMarkingEnabled,
+                isGenerating: viewModel.isGenerating,
+                shouldForwardCapturedImage: viewModel.isRecording || viewModel.isHintsEnabled,
+                isSceneGenerated: viewModel.plannedScene != nil,
+                isARSessionReady: viewModel.isARSessionReady
+            )
+        }
     }
 
     static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {

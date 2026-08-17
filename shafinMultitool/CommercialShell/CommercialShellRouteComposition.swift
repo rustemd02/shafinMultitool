@@ -120,9 +120,11 @@ final class CommercialCameraCoachRoute: CommercialViewControllerRoute {
 final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
     enum DeactivationBlockReason: Equatable, Sendable {
         case sceneWorkspaceTeardownIsNotAwaitable
+        case sceneWorkspaceTeardownFailed(SceneWorkspaceTeardownFailure)
     }
 
-    let deactivationBlockReason: DeactivationBlockReason = .sceneWorkspaceTeardownIsNotAwaitable
+    private(set) var deactivationBlockReason: DeactivationBlockReason = .sceneWorkspaceTeardownIsNotAwaitable
+    private(set) var lastSceneWorkspaceTeardownResult: SceneWorkspaceTeardownResult?
     let navigationController: UINavigationController
     private let sceneLibraryRootViewController: UIViewController
     private let interactivePopGuard: CommercialNavigationInteractivePopGuard
@@ -144,19 +146,48 @@ final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
     }
 
     override func deactivateAndWait() async -> CommercialRouteDeactivationResult {
-        guard navigationController.viewControllers.count == 1,
-              navigationController.viewControllers.first === sceneLibraryRootViewController,
-              !hasPresentedControllerInRoute
-        else {
-            // The existing Scene Mode workspace owns AR and persistence cleanup, but it
-            // exposes no awaitable release boundary in this slice. Keep the route active
-            // rather than claiming that those resources have been released.
+        guard !hasPresentedControllerInRoute else { return .blocked }
+        guard navigationController.viewControllers.count > 1 else {
+            // The library root owns no AR/session or saved-project workspace.
+            lastSceneWorkspaceTeardownResult = nil
+            return .released
+        }
+
+        guard let workspaceProvider = currentSceneWorkspaceProvider else {
+            deactivationBlockReason = .sceneWorkspaceTeardownIsNotAwaitable
+            lastSceneWorkspaceTeardownResult = .blocked(.workspaceOwnerUnavailable)
             return .blocked
         }
 
-        // The library root owns no AR/session or saved-project workspace, so it can
-        // safely release to the Camera route.
-        return .released
+        let result = await workspaceProvider.teardownAndWait()
+        lastSceneWorkspaceTeardownResult = result
+        switch result {
+        case .released:
+            navigationController.setViewControllers([sceneLibraryRootViewController], animated: false)
+            return .released
+        case .blocked(let failure):
+            deactivationBlockReason = .sceneWorkspaceTeardownFailed(failure)
+            return .blocked
+        }
+    }
+
+    /// Explicit scene-owned background hook. The workspace owns the one teardown
+    /// operation; the route can await the same result without a global app delegate.
+    func handleDidEnterBackground() async -> CommercialRouteDeactivationResult {
+        guard !hasPresentedControllerInRoute else { return .blocked }
+        guard let workspaceProvider = currentSceneWorkspaceProvider else {
+            return navigationController.viewControllers.count > 1 ? .blocked : .released
+        }
+
+        let result = await workspaceProvider.teardownAndWait()
+        lastSceneWorkspaceTeardownResult = result
+        switch result {
+        case .released:
+            return .released
+        case .blocked(let failure):
+            deactivationBlockReason = .sceneWorkspaceTeardownFailed(failure)
+            return .blocked
+        }
     }
 
     private var hasPresentedControllerInRoute: Bool {
@@ -164,6 +195,14 @@ final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
             || navigationController.viewControllers.contains {
                 $0.presentedViewController != nil
             }
+    }
+
+    private var currentSceneWorkspaceProvider: (any SceneWorkspaceTeardownProviding)? {
+        guard let hostingController = navigationController.topViewController
+                as? SceneWorkspaceHostingControllerProviding else {
+            return nil
+        }
+        return hostingController.sceneWorkspaceTeardownProvider
     }
 }
 

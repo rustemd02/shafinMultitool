@@ -210,6 +210,7 @@ protocol InteractivePopGestureControlling: AnyObject {
     var disablesInteractivePopGesture: Bool { get }
 }
 
-class LandscapeHostingController<Content: View>: UIHostingController<Content>, InteractivePopGestureControlling {
+class LandscapeHostingController<Content: View>: UIHostingController<Content>, InteractivePopGestureControlling, SceneWorkspaceHostingControllerProviding {
     var disablesInteractivePopGesture = false
+    var sceneWorkspaceTeardownProvider: (any SceneWorkspaceTeardownProviding)?
 }

@@ -28,9 +28,13 @@ class SORouter: SORouterProtocol {
             }
         }
 
+        let viewModel = MainActor.assumeIsolated {
+            SceneGeneratorViewModel(projectName: title, isNewProject: false)
+        }
         let vc = LandscapeHostingController(
-            rootView: SceneGeneratorView(projectName: title, isNewProject: false)
+            rootView: SceneGeneratorView(viewModel: viewModel)
         )
+        vc.sceneWorkspaceTeardownProvider = viewModel
         vc.disablesInteractivePopGesture = true
         view?.navigationController?.pushViewController(vc, animated: true)
     }

@@ -149,7 +149,7 @@ enum SceneWorkspaceMode: Equatable {
 
 /// ViewModel для управления генерацией AR сцены из текстового описания
 @MainActor
-final class SceneGeneratorViewModel: ObservableObject {
+final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownProviding {
     // MARK: - Published Properties
     
     /// Текущее описание сцены
@@ -309,6 +309,33 @@ final class SceneGeneratorViewModel: ObservableObject {
     
     /// Ссылка на ARView (устанавливается из ARSceneContainer)
     weak var arView: ARView?
+
+    /// Once released, AR callbacks and SwiftUI updates must not reattach the session.
+    private(set) var isWorkspaceReleased = false
+
+    /// Legacy stopRecording() persists for ordinary user actions. Teardown owns the
+    /// one awaited persistence operation and suppresses that fire-and-forget side effect.
+    private var suppressAutomaticPersistence = false
+
+    private lazy var workspaceTeardownCoordinator = SceneWorkspaceTeardownCoordinator(
+        stopRecordingIfNeeded: { [weak self] in
+            guard let self, self.isRecording else { return }
+            self.stopRecording()
+        },
+        stopPlaybackIfNeeded: { [weak self] in
+            guard let self, self.isPlaying else { return }
+            self.stopScene()
+        },
+        persist: { [weak self] in
+            guard let self else {
+                return .failure(.workspaceOwnerUnavailable)
+            }
+            return await self.persistProjectSnapshot()
+        },
+        pauseAndDetach: { [weak self] in
+            self?.pauseAndDetachARSession()
+        }
+    )
 
     /// Сохранённая world map для восстановления проекта
     private var initialWorldMap: ARWorldMap?
@@ -563,6 +590,7 @@ final class SceneGeneratorViewModel: ObservableObject {
     /// Обновляет только лёгкий presentation-layer AR: 2D object labels и billboard-подписи.
     /// Этот путь вызывается на каждый AR frame, в отличие от тяжёлого `processARFrameSnapshot`.
     func updateARPresentationFrame(cameraTransform: simd_float4x4, timestamp: TimeInterval) {
+        guard !isWorkspaceReleased else { return }
         if timestamp < lastPresentationFrameTimestamp {
             guard lastPresentationFrameTimestamp - timestamp > 2 else { return }
         }
@@ -583,6 +611,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         interfaceOrientation: UIInterfaceOrientation? = nil,
         displayTransform: CGAffineTransform? = nil
     ) {
+        guard !isWorkspaceReleased else { return }
         currentCameraTransform = cameraTransform
         if let interfaceOrientation, interfaceOrientation != .unknown {
             arInterfaceOrientation = interfaceOrientation
@@ -630,10 +659,33 @@ final class SceneGeneratorViewModel: ObservableObject {
     }
 
     func persistWorkspaceState() {
-        Task { await persistProjectSnapshot() }
+        Task { _ = await persistProjectSnapshot() }
+    }
+
+    func teardownAndWait() async -> SceneWorkspaceTeardownResult {
+        suppressAutomaticPersistence = true
+        let result = await workspaceTeardownCoordinator.teardownAndWait()
+        if result == .released {
+            isWorkspaceReleased = true
+        }
+        return result
+    }
+
+    private func pauseAndDetachARSession() {
+        guard let arView else {
+            isWorkspaceReleased = true
+            return
+        }
+
+        arView.session.pause()
+        arView.session.delegate = nil
+        self.arView = nil
+        isWorkspaceReleased = true
+        SceneGeneratorDiagnosticsLogger.shared.log("[AR] session paused and detached for workspace teardown")
     }
 
     func attachARView(_ arView: ARView) {
+        guard !isWorkspaceReleased else { return }
         let isNewAttachment = self.arView !== arView
         self.arView = arView
         prepareWorkspaceIfNeeded()
@@ -1068,7 +1120,7 @@ final class SceneGeneratorViewModel: ObservableObject {
         resetPlaybackUIState(clearTimeline: true)
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        Task { await persistProjectSnapshot() }
+        Task { _ = await persistProjectSnapshot() }
     }
     
     /// Показывает sheet ввода
@@ -3453,7 +3505,9 @@ final class SceneGeneratorViewModel: ObservableObject {
         recordingTimer = nil
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        Task { await persistProjectSnapshot() }
+        if !suppressAutomaticPersistence {
+            Task { _ = await persistProjectSnapshot() }
+        }
     }
 
     private func processHintFrameIfNeeded(pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) {
@@ -3662,28 +3716,38 @@ final class SceneGeneratorViewModel: ObservableObject {
         }
     }
 
-    private func persistProjectSnapshot() async {
+    private func persistProjectSnapshot() async -> Result<Void, SceneWorkspaceTeardownFailure> {
         currentProject = buildCurrentProject()
-        let worldMap = await captureCurrentWorldMap() ?? initialWorldMap
+        let worldMap: ARWorldMap?
+        switch await captureCurrentWorldMap() {
+        case .success(let capturedWorldMap):
+            worldMap = capturedWorldMap ?? initialWorldMap
+        case .failure(let failure):
+            return .failure(failure)
+        }
         if let worldMap {
             initialWorldMap = worldMap
         }
 
         do {
             try projectStore.saveUnifiedSceneProject(currentProject, worldMap: worldMap)
+            return .success(())
         } catch {
             print("Error saving unified scene snapshot: \(error)")
+            return .failure(.persistenceFailed)
         }
     }
 
-    private func captureCurrentWorldMap() async -> ARWorldMap? {
-        guard let arView else { return initialWorldMap }
+    private func captureCurrentWorldMap() async -> Result<ARWorldMap?, SceneWorkspaceTeardownFailure> {
+        guard let arView else { return .success(initialWorldMap) }
         return await withCheckedContinuation { continuation in
             arView.session.getCurrentWorldMap { worldMap, error in
                 if let error {
                     print("Error capturing current world map: \(error)")
+                    continuation.resume(returning: .failure(.worldMapSnapshotFailed))
+                    return
                 }
-                continuation.resume(returning: worldMap)
+                continuation.resume(returning: .success(worldMap))
             }
         }
     }

@@ -10,24 +10,39 @@ import SwiftUI
 struct SceneGeneratorView: View {
     @StateObject private var viewModel: SceneGeneratorViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     init(projectName: String = "Новая сцена", isNewProject: Bool = true) {
-        _viewModel = StateObject(
-            wrappedValue: SceneGeneratorViewModel(projectName: projectName, isNewProject: isNewProject)
+        self.init(
+            viewModel: SceneGeneratorViewModel(projectName: projectName, isNewProject: isNewProject)
         )
+    }
+
+    init(viewModel: SceneGeneratorViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel)
     }
 
     var body: some View {
         LegacySceneGeneratorCameraShell(viewModel: viewModel) {
-            viewModel.persistWorkspaceState()
-            dismiss()
+            Task { @MainActor in
+                guard await viewModel.teardownAndWait() == .released else { return }
+                dismiss()
+            }
         }
         .ignoresSafeArea()
         .onAppear {
             viewModel.prepareWorkspace()
         }
         .onDisappear {
-            viewModel.persistWorkspaceState()
+            Task { @MainActor in
+                _ = await viewModel.teardownAndWait()
+            }
+        }
+        .onChange(of: scenePhase) { phase in
+            guard phase == .background else { return }
+            Task { @MainActor in
+                _ = await viewModel.teardownAndWait()
+            }
         }
         .sheet(isPresented: $viewModel.showInputSheet) {
             SceneInputSheet(viewModel: viewModel)
