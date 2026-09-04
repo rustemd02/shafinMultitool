@@ -14,6 +14,117 @@ private final class LensHapticRecorder: SETHapticPerforming {
 @MainActor
 final class CameraViewModelLensSwitchTests: XCTestCase {
 
+    func testProductionPipelineStreamReachesVerificationAfterRecommendationDisappears() async {
+        let fixture = makeFixture { _ in
+            .noOp(activeLens: .wide)
+        }
+        let base = Date(timeIntervalSince1970: 10_000)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(id: "episode-f0", x: 0.20, capturedAt: base))
+        )
+        let baselinePublished = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+        }
+        XCTAssertTrue(baselinePublished)
+
+        let movement1 = makeEpisodeObservation(
+            id: "episode-f1",
+            x: 0.26,
+            capturedAt: base.addingTimeInterval(0.05)
+        )
+        let movement2 = makeEpisodeObservation(
+            id: "episode-f2",
+            x: 0.32,
+            capturedAt: base.addingTimeInterval(0.10)
+        )
+        let stable1 = makeEpisodeObservation(
+            id: "episode-f3",
+            x: 0.32,
+            capturedAt: base.addingTimeInterval(0.15)
+        )
+        let stable2 = makeEpisodeObservation(
+            id: "episode-f4",
+            x: 0.32,
+            capturedAt: base.addingTimeInterval(0.20)
+        )
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .frame(movement1.asFrameEvidence(currentActionID: SemanticActionType.moveSubjectRight.rawValue)!)
+        )
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .frame(movement2.asFrameEvidence(currentActionID: SemanticActionType.moveSubjectRight.rawValue)!)
+        )
+        // The recommendation has disappeared, but the frozen baseline still
+        // owns the episode and these are valid fresh after-frames.
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .frame(stable1.asFrameEvidence(currentActionID: nil)!)
+        )
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .frame(stable2.asFrameEvidence(currentActionID: nil)!)
+        )
+
+        let ready = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .readyForVerification
+        }
+        XCTAssertTrue(ready)
+        XCTAssertEqual(fixture.viewModel.coachingEpisodeState.baseline?.frameID, "episode-f0")
+        XCTAssertEqual(fixture.viewModel.coachingEpisodeState.movementFrames, 2)
+        XCTAssertEqual(fixture.viewModel.coachingEpisodeState.stableAfterFrames, 2)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testNoOpLensRequestCancelsPipelineStreamAndAllowsFreshBaselineToken() async {
+        let gate = LensSwitchTestGate()
+        let fixture = makeFixture { lens in
+            await gate.wait(for: lens)
+        }
+        fixture.viewModel.availableLenses = [.wide, .telephoto]
+        let base = Date(timeIntervalSince1970: 20_000)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(id: "lens-f0", x: 0.20, capturedAt: base))
+        )
+        let baselinePublished = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+        }
+        XCTAssertTrue(baselinePublished)
+        let oldToken = fixture.viewModel.coachingEpisodeState.token
+        XCTAssertNotNil(oldToken)
+
+        fixture.viewModel.switchLens(to: .telephoto)
+        XCTAssertEqual(fixture.pipeline.currentCoachingEpisodeEvent, .cancel(.lensChange))
+        let cancellationPublished = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.cancellationReason == .lensChange
+        }
+        XCTAssertTrue(cancellationPublished)
+
+        guard let request = await request(from: gate, count: 1) else {
+            await fixture.viewModel.releaseAndWait()
+            return
+        }
+        await gate.resolve(request.id, with: .noOp(activeLens: .wide))
+        let noOpCompleted = await completed(request, on: gate)
+        XCTAssertTrue(noOpCompleted)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(
+                id: "lens-fresh",
+                x: 0.20,
+                capturedAt: base.addingTimeInterval(0.10)
+            ))
+        )
+        let recovered = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "lens-fresh"
+        }
+        XCTAssertTrue(recovered)
+        XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.token, oldToken)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
     func testLensSelectionHapticOnlyFiresAfterSuccessfulPhysicalChange() async {
         let gate = LensSwitchTestGate()
         let haptic = LensHapticRecorder()
@@ -288,6 +399,83 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         return CameraViewModelLensSwitchFixture(manager: manager,
                                                  pipeline: pipeline,
                                                  viewModel: viewModel)
+    }
+
+    private func makeEpisodeObservation(
+        id: String,
+        x: Double,
+        capturedAt: Date,
+        actionID: String = SemanticActionType.moveSubjectRight.rawValue
+    ) -> CoachingEpisodeObservation {
+        let identity = SubjectTrackIdentity(
+            trackID: "episode-subject",
+            firstSeenFrameID: "episode-f0",
+            generation: 7
+        )
+        let region = NormalizedRect(x: x, y: 0.30, width: 0.20, height: 0.40)
+        let binding = UserMovementSubjectBinding(
+            identity: identity,
+            frameID: id,
+            region: region,
+            source: .vision,
+            coordinateSpace: .subjectTarget,
+            measuredAt: capturedAt,
+            confidence: 0.92
+        )!
+        let families = UserMovementActionFamily.allCases
+        let evidence = UserMovementEvidence(
+            capturedAt: capturedAt,
+            evaluatedAt: capturedAt,
+            lensGeneration: 7,
+            subjectTrackID: identity.trackID,
+            subjectBinding: binding,
+            orientation: .portrait,
+            isCalibrated: true,
+            calibrationVersion: "cal1",
+            featureMeasuredAt: Dictionary(uniqueKeysWithValues: families.map { ($0, capturedAt) }),
+            featureConfidence: Dictionary(uniqueKeysWithValues: families.map { ($0, 0.92) }),
+            sourceAvailability: Dictionary(uniqueKeysWithValues: families.map { ($0, true) })
+        )
+        let frame = UserMovementFrame(
+            frameID: id,
+            subjectRegion: region,
+            meanLuma: 0.5,
+            motionIsStill: true,
+            metrics: UserMovementMetrics(),
+            evidence: evidence
+        )
+        let track = SubjectTrackState(
+            identity: identity,
+            phase: .active,
+            lastRegion: region,
+            lastSeenFrameID: id,
+            lostSinceFrameID: nil,
+            missedFrames: 0,
+            reconciliations: 0,
+            redetectionDue: false
+        )
+        let lifecycle = SubjectTrackLifecycleContext(
+            generation: 7,
+            orientation: .portrait,
+            lensID: "wide",
+            routeActive: true,
+            isAppBackgrounded: false,
+            sceneSignature: "episode-scene"
+        )
+        let advice = StabilizedAdvice(
+            decision: .correct,
+            actionID: actionID,
+            frameID: id,
+            targetX: 0.5,
+            targetY: 0.5
+        )
+        return CoachingEpisodeObservation(
+            frame: frame,
+            stabilizedAdvice: advice,
+            subjectTrack: track,
+            lifecycle: lifecycle,
+            isStable: true
+        )!
     }
 
     private static func makeManager() -> CameraManager {

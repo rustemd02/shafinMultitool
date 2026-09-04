@@ -3519,9 +3519,6 @@ final class AnalysisPipeline: ObservableObject {
     @Published private(set) var currentOverlayAnnotations: [OverlayAnnotationPresentation] = []
     /// Immutable handoff from the bounded planner + AdviceStabilizer into the
     /// episode owner. The value contains one frame's evidence, typed subject
-    /// identity, lifecycle context, and stabilized action; consumers must not
-    /// reconstruct it from live text, timers, or mutable UI samples.
-    @Published private(set) var currentCoachingEpisodeObservation: CoachingEpisodeObservation?
     /// Typed stream boundary for the production before/after episode. A
     /// baseline freezes advice once; frame events carry fresh evidence even
     /// when the current recommendation disappears; cancellation is explicit.
@@ -4679,19 +4676,26 @@ final class AnalysisPipeline: ObservableObject {
             let technicalSignal = technicalQualitySignal(for: frameEvidence.pixelBuffer)
             let stabilityIssue = admittedTechnicalStabilityIssue(from: technicalSignal)
             let enteringMotion = lastLiveMotionBecameUnstableAt == nil
+            let activeEpisodeIsOrdinary = liveEpisodeActionID.map {
+                UserMovementObserver.actionFamily(for: $0) != .stability
+            } ?? false
             resetLiveSpatialConfirmation()
             resetLiveTechnicalConfirmation()
-            if enteringMotion || stabilityIssue == nil {
-                // Drop ordinary advice once motion starts. When a typed
-                // stability signal is present, preserve only its pending
-                // hysteresis across subsequent moving frames.
+            if !activeEpisodeIsOrdinary && (enteringMotion || stabilityIssue == nil) {
+                // No ordinary episode exists yet: drop presentation advice
+                // once motion starts. When a typed stability signal is
+                // present, preserve only its pending hysteresis across
+                // subsequent moving frames. An active ordinary episode is a
+                // frame-evidence transaction and must survive this transient
+                // motion boundary; the next still frame can then publish its
+                // fresh after-frame evidence.
                 clearLiveCoachingEpisodeObservation(reason: "camera_motion")
             }
             if lastLiveMotionBecameUnstableAt == nil {
                 lastLiveMotionBecameUnstableAt = now
             }
 
-            if stabilityIssue != nil {
+            if stabilityIssue != nil && !activeEpisodeIsOrdinary {
                 let snapshot = makeFeatureSnapshot(
                     mode: .live,
                     frameId: frameEvidence.sourceFrameId,
@@ -5924,7 +5928,6 @@ final class AnalysisPipeline: ObservableObject {
                                      saliencyBalance: 0)
         currentSuggestion = nil
         currentLiveHint = nil
-        currentCoachingEpisodeObservation = nil
         currentCoachingEpisodeEvent = .cancel(.routeExit)
         _ = liveAdviceStabilizer.invalidate(frameID: "release", reason: "release")
         liveSubjectTracker.reset()
@@ -6032,30 +6035,30 @@ final class AnalysisPipeline: ObservableObject {
     /// is the only advice-bearing event; frame evidence and cancellation are
     /// explicit so a missing recommendation is not conflated with stale data.
     @MainActor
-    func publishCoachingEpisodeObservation(_ observation: CoachingEpisodeObservation?) {
-        if let observation {
-            publishLiveCoachingEpisodeEvent(.baseline(observation))
-        } else {
-            publishLiveCoachingEpisodeEvent(.cancel(.staleEvidence))
-        }
-    }
-
-    @MainActor
     func publishCoachingEpisodeEvent(_ event: CoachingEpisodeStreamEvent) {
         publishLiveCoachingEpisodeEvent(event)
+    }
+
+    /// Invalidates the pipeline-owned episode before an external capture
+    /// boundary (for example a lens request) starts. This keeps the stream
+    /// identity and the ViewModel projection on the same owner; a no-op lens
+    /// result can therefore accept a genuinely fresh baseline and token.
+    @MainActor
+    func cancelCoachingEpisode(reason: CoachingEpisodeCancellationReason) {
+        _ = liveAdviceStabilizer.invalidate(
+            frameID: "episode_boundary",
+            reason: reason.rawValue
+        )
+        publishLiveCoachingEpisodeEvent(.cancel(reason))
+        liveSubjectTracker.reset()
+        liveSubjectLifecycleContext = nil
+        liveSubjectSource = nil
+        resetLiveEpisodeStream()
     }
 
     @MainActor
     private func publishLiveCoachingEpisodeEvent(_ event: CoachingEpisodeStreamEvent) {
         currentCoachingEpisodeEvent = event
-        switch event {
-        case .baseline(let observation):
-            currentCoachingEpisodeObservation = observation
-        case .frame, .cancel:
-            // Kept only for source compatibility; consumers must use the
-            // typed stream because a frame has no mutable advice payload.
-            currentCoachingEpisodeObservation = nil
-        }
     }
 
     // MARK: - M2-024 live episode handoff

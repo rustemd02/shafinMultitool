@@ -768,6 +768,12 @@ final class CameraViewModel: ObservableObject {
                 return
             }
 
+            // With no manager-confirmed lens there is no safe physical input
+            // to present. Clear the inventory and fall back to the neutral
+            // wide label; retaining the previous selection would make the
+            // HUD claim a lens that the session no longer owns.
+            currentLens = .wide
+            availableLenses = []
             if reason == .rollbackFailed {
                 lifecycleState = cameraManager.lifecycleState
                 lifecycleError = cameraManager.lifecycleError
@@ -806,6 +812,10 @@ final class CameraViewModel: ObservableObject {
     }
 
     private func cancelCoachingEpisode(reason: CoachingEpisodeCancellationReason) {
+        // The pipeline owns the stream identity. Invalidate it before the
+        // ViewModel's local projection so an async lens result cannot reopen
+        // the old episode after a no-op or failed switch.
+        analysisPipeline.cancelCoachingEpisode(reason: reason)
         coachingEpisodeState = coachingEpisodeCoordinator.cancel(reason: reason)
     }
 

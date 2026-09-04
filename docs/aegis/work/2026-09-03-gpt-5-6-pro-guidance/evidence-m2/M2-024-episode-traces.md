@@ -49,8 +49,13 @@ path after recommendation planning, the safety gate, bounded planning, and
 action when the recommendation disappears), and `.cancel` is an explicit
 terminal boundary. `CameraViewModel` consumes this stream, owns the
 coordinator, cancels it on route/lens/background teardown, and exposes only
-`coachingEpisodeState` to presentation. A terminal episode cannot be reopened
-by a late frame; only a fresh baseline event resets it and issues a new token.
+`coachingEpisodeState` to presentation. The pipeline owner is cancelled before
+the ViewModel projection at a lens boundary, so a no-op result cannot leave a
+second live stream behind. A terminal episode cannot be reopened by a late
+frame; only a fresh baseline event resets it and issues a new token. During an
+active ordinary episode, camera motion hides the presentation and forbids a
+new ordinary baseline, but does not discard the frozen transaction; the next
+valid still frames can complete its movement and stable-after evidence.
 
 Vision-person and DETR-object bindings are source-isolated. A selected source,
 track identity, binding region, frame region, capture generation, orientation,
@@ -99,6 +104,60 @@ Result: `TEST SUCCEEDED`, 73/73 tests passed, 0 failures, 0 skipped, on
 `iPhone 17e` iOS Simulator 26.5. The prohibited `iPhone 17 Pro` was not used
 or targeted. Durable result bundle:
 `/tmp/setos-camera-b1-final-20260904d.xcresult`.
+
+### Correction2 verification
+
+Correction2 added the production pipeline-to-ViewModel stream regression and
+closed the asynchronous lens boundary. The rollback-failure test initially
+reproduced a fail-closed presentation mismatch: a result with no
+manager-confirmed active lens left the old ViewModel lens inventory visible.
+The production fix restores the established contract by presenting the neutral
+wide label with an empty inventory when no active lens is known. The focused
+rerun passed 1/1 on the allowed `iPhone 17e`:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-camera-b1-correction2-rollbackfix-derived-20260904a \
+  -resultBundlePath /tmp/setos-camera-b1-correction2-rollbackfix-20260904a.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests/testRollbackFailureClearsPresentationAndSynchronizesManagerLifecycle test
+```
+
+Result: `TEST SUCCEEDED`, 1/1 passed, 0 failures, 0 skipped, on `iPhone 17e`
+iOS Simulator 26.5. Durable result bundle:
+`/tmp/setos-camera-b1-correction2-rollbackfix-20260904a.xcresult`.
+
+The production-path and full M2-024 focused rerun passed 82/82 on the same
+allowed simulator:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-camera-b1-correction2-final-derived-20260904b \
+  -resultBundlePath /tmp/setos-camera-b1-correction2-final-20260904b.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests \
+  -only-testing:shafinMultitoolTests/AdviceStabilizerTests \
+  -only-testing:shafinMultitoolTests/SubjectTrackLifecycleTests \
+  -only-testing:shafinMultitoolTests/UserMovementObserverTests \
+  -only-testing:shafinMultitoolTests/CameraAdviceSafetyGateTests \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests test
+```
+
+Result: `TEST SUCCEEDED`, 82/82 passed, 0 failures, 0 skipped, on `iPhone 17e`
+iOS Simulator 26.5. Durable result bundle:
+`/tmp/setos-camera-b1-correction2-final-20260904b.xcresult`.
+The two new integration tests prove recommendation disappearance followed by
+movement and stable-after frames reaches `readyForVerification`, and that a
+no-op lens request cancels both owners before a fresh baseline receives a new
+token. A temporary diagnostic rerun was stopped after the simulator's
+`simctl diagnose` stalled; it is not counted as product evidence. No iPhone 17
+Pro or physical device was used.
 
 A preceding `-9` run on the same allowed iPhone 17e built and launched, but
 reported 53/54 because the uncertain-case test fixture force-unwrapped an
