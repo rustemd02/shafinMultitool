@@ -76,17 +76,21 @@ struct SceneRecordingReference: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         recordingID = try container.decode(UUID.self, forKey: .recordingID)
-        relativePath = try container.decode(String.self, forKey: .relativePath)
+        let decodedPath = try container.decode(String.self, forKey: .relativePath)
+        guard Self.isSafeRelativePath(decodedPath) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .relativePath,
+                in: container,
+                debugDescription: "Recording reference path must be relative and safe"
+            )
+        }
+        relativePath = decodedPath
         duration = try container.decodeIfPresent(TimeInterval.self, forKey: .duration)
         hasAudio = try container.decodeIfPresent(Bool.self, forKey: .hasAudio) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
-        let pathComponents = relativePath.split(separator: "/", omittingEmptySubsequences: false)
-        guard !relativePath.isEmpty,
-              !relativePath.hasPrefix("/"),
-              !relativePath.contains("\0"),
-              !pathComponents.contains(where: { $0 == "." || $0 == ".." || $0.isEmpty }) else {
+        guard Self.isSafeRelativePath(relativePath) else {
             throw EncodingError.invalidValue(
                 relativePath,
                 .init(codingPath: [], debugDescription: "Recording reference path must be relative and safe")
@@ -97,6 +101,14 @@ struct SceneRecordingReference: Codable, Equatable, Sendable {
         try container.encode(relativePath, forKey: .relativePath)
         try container.encodeIfPresent(duration, forKey: .duration)
         try container.encode(hasAudio, forKey: .hasAudio)
+    }
+
+    private static func isSafeRelativePath(_ path: String) -> Bool {
+        let pathComponents = path.split(separator: "/", omittingEmptySubsequences: false)
+        return !path.isEmpty &&
+            !path.hasPrefix("/") &&
+            !path.contains("\0") &&
+            !pathComponents.contains(where: { $0 == "." || $0 == ".." || $0.isEmpty })
     }
 }
 

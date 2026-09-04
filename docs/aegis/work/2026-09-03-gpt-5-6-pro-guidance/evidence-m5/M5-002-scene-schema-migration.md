@@ -1,8 +1,8 @@
 # M5-002 — Unified Scene project schema migration
 
 Status: implementation and focused simulator verification complete on the task
-branch. This receipt does not claim physical-device, ARWorldMap, media, or
-App Store qualification.
+branch, including the fresh Sol fix-first corrections. This receipt does not
+claim physical-device, ARWorldMap, media, or App Store qualification.
 
 ## Contract implemented
 
@@ -18,13 +18,25 @@ App Store qualification.
 - Existing-file validation happens before the atomic project write, so a
   malformed/future record and an invalid recording reference leave the previous
   project bytes and recording references untouched.
+- `SceneRecordingReference` uses one shared safe-relative-path validator on
+  both decode and encode; persisted traversal/absolute/NUL paths are rejected
+  before the aggregate can be returned to a caller.
 - Filename UUID fencing, malformed-envelope no-fallback, corrupt-record
   isolation, legacy world-map sidecar behavior, optimistic stale snapshots,
   overlapping saves, and safe relative recording-path encoding remain covered.
+- A manually authored frozen v0 fixture exercises nonempty marked objects,
+  actors, objects, ordered beats/actions, cameras, spatial relations, planned
+  actor paths/poses/cameras/annotations/beat IDs, planned objects, overlays,
+  chunk continuity state, and recording references through both raw and
+  unversioned-envelope migrations.
+- A future-version fixture owns a promoted recording artifact; failed load,
+  list, save, and delete paths preserve both the project bytes and artifact
+  bytes.
 
 ## Changed files
 
 - `shafinMultitool/Services/DBService.swift`
+- `shafinMultitool/Entity/SceneData.swift`
 - `shafinMultitoolTests/SceneProjectSchemaMigrationTests.swift`
 - `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m5/M5-002-scene-schema-migration.md`
 
@@ -39,17 +51,17 @@ Source state before the task edit: `f8ada4d state: start scene schema migration`
 Command:
 
 ```text
-xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/SceneProjectSchemaMigrationTests -only-testing:shafinMultitoolTests/SceneSaveLoadTests -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests -derivedDataPath /tmp/setos-m5-002-run-yGJRxf/DerivedData -resultBundlePath /tmp/setos-m5-002-run-yGJRxf/M5-002.xcresult
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/SceneProjectSchemaMigrationTests -only-testing:shafinMultitoolTests/SceneSaveLoadTests -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests -derivedDataPath /tmp/setos-m5-002-fix-full-VwfPXc/DerivedData -resultBundlePath /tmp/setos-m5-002-fix-full-VwfPXc/M5-002-fix.xcresult
 ```
 
-Result: `** TEST SUCCEEDED **`; 39/39 test cases passed:
+Result: `** TEST SUCCEEDED **`; 41/41 test cases passed:
 
-- `SceneProjectSchemaMigrationTests`: 6/6
+- `SceneProjectSchemaMigrationTests`: 8/8
 - `SceneSaveLoadTests`: 28/28
 - `DBServiceConcurrencyTests`: 5/5
 
 Destination was an ordinary iPhone 17 simulator, not iPhone 17 Pro. Result
-bundle: `/tmp/setos-m5-002-run-yGJRxf/M5-002.xcresult`.
+bundle: `/tmp/setos-m5-002-fix-full-VwfPXc/M5-002-fix.xcresult`.
 
 Additional check: `git diff --check` passed.
 
