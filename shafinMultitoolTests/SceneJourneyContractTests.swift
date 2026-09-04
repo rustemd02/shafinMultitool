@@ -13,19 +13,22 @@ final class SceneJourneyContractTests: XCTestCase {
         "generator.progress-reading", "generator.progress-anchors", "generator.progress-frame",
         "generator.cancelling", "generator.paused", "generator.background-cancel", "generator.failure-parse",
         "generator.failure-quota", "generator.failure-malformed", "generator.failure-persistence", "generator.failure-network",
-        "generator.failure-model", "generator.retry", "generator.success", "ar.preparing",
+        "generator.failure-model", "generator.retry", "generator.background-recovery", "generator.failure-timeout",
+        "generator.failure-compilation", "generator.success", "ar.preparing",
         "ar.ready", "ar.surface-search", "ar.placement", "ar.playback", "ar.marking",
         "ar.live-hints", "ar.hint-pause", "ar.hint-playback", "ar.recording",
-        "ar.recording-review", "ar.interruption", "ar.error", "ar.teardown",
+        "ar.recording-review", "ar.interruption", "ar.error", "ar.relocalization", "ar.reset",
+        "ar.world-map-recovery", "ar.teardown",
         "storyboard.tray-collapsed", "storyboard.tray-expanded", "storyboard.selection-reflow",
         "storyboard.planning", "storyboard.validation", "storyboard.result", "storyboard.inspector", "storyboard.editor-medium",
         "storyboard.editor-large", "storyboard.saving", "storyboard.reorder", "storyboard.validation-failure",
         "storyboard.delete-confirmation", "sheet.scene-name", "sheet.marker-name",
         "sheet.screenplay-input", "sheet.decision-trace", "recording.idle", "recording.preflight", "recording.permission",
         "recording.preparing", "recording.ready", "recording.starting", "recording.stopping", "recording.finalizing",
-        "recording.promoting", "recording.completed", "recording.failed", "recording.cancelled",
-        "recording.released", "recording.playback", "recording.recovery", "recording.exporting", "recording.exported",
-        "recording.export-cancelled", "recording.export-failure"
+        "recording.promoting", "recording.completed", "recording.failed", "recording.failed-recoverable", "recording.cancelled",
+        "recording.released", "recording.playback", "recording.recovery", "recording.share", "recording.exporting", "recording.exported",
+        "recording.export-cancelled", "recording.export-failure", "recording.photos-exporting", "recording.photos-exported",
+        "recording.photos-export-cancelled", "recording.photos-export-failure"
     ]
 
     func testProductionContractIsCompleteAndTyped() {
@@ -36,6 +39,7 @@ final class SceneJourneyContractTests: XCTestCase {
         XCTAssertEqual(contract.states.count, expectedCanonicalStateIDs.count)
         XCTAssertEqual(contract.sourceVocabulary, SceneJourneySourceState.allCases)
         XCTAssertEqual(contract.entryStates, [.libraryEmpty, .libraryLoaded])
+        XCTAssertTrue(contract.outerNavigationEdgesAreWhitelisted())
         XCTAssertTrue(contract.states.allSatisfy {
             !$0.owner.rawValue.isEmpty
                 && !$0.persistence.rawValue.isEmpty
@@ -44,6 +48,18 @@ final class SceneJourneyContractTests: XCTestCase {
         })
         let expectedReachable = Set(contract.states.filter { $0.availability != .unreachable }.map(\.state))
         XCTAssertEqual(contract.reachableStates(), expectedReachable)
+        for state in [
+            SceneJourneyState.generatorValidating, .generatorAccepted, .generatorQueued,
+            .generatorLeader, .generatorProgressReading, .generatorProgressAnchors,
+            .generatorProgressFrame, .generatorCancelling, .generatorPaused,
+            .generatorBackgroundCancel, .generatorFailureParse, .generatorFailureQuota,
+            .generatorFailureMalformed, .generatorFailurePersistence, .generatorFailureNetwork,
+            .generatorFailureModel, .generatorRetry, .generatorBackgroundRecovery,
+            .generatorFailureTimeout, .generatorFailureCompilation
+        ] {
+            XCTAssertEqual(contract.state(state)?.availability, .pending, "generator runtime state is planned")
+        }
+        XCTAssertTrue(contract.sourceVocabulary.contains { $0.rawValue.hasPrefix("planned:") })
     }
 
     func testExpectedOwnerPersistenceAndArtifactMappings() {
@@ -55,11 +71,14 @@ final class SceneJourneyContractTests: XCTestCase {
         XCTAssertEqual(contract.state(.libraryDuplicateName)?.artifact(.project)?.status, .missing)
         XCTAssertEqual(contract.state(.libraryMissingPreview)?.artifact(.preview)?.status, .missing)
         XCTAssertEqual(contract.state(.generatorInputKeyboard)?.owner, .keyboard)
-        XCTAssertEqual(contract.state(.generatorValidating)?.owner, .generatorExecution)
-        XCTAssertEqual(contract.state(.generatorQueued)?.owner, .generatorExecution)
+        XCTAssertEqual(contract.state(.generatorValidating)?.owner, .generatorStateMachine)
+        XCTAssertEqual(contract.state(.generatorQueued)?.owner, .generatorStateMachine)
         XCTAssertEqual(contract.state(.generatorFailureQuota)?.sourceStates, [.generationQuotaFailure])
         XCTAssertEqual(contract.state(.generatorFailureMalformed)?.sourceStates, [.generationMalformedFailure])
         XCTAssertEqual(contract.state(.generatorFailurePersistence)?.owner, .generatorPersistence)
+        XCTAssertEqual(contract.state(.generatorBackgroundRecovery)?.owner, .generatorRecovery)
+        XCTAssertEqual(contract.state(.generatorFailureTimeout)?.owner, .generatorTimeout)
+        XCTAssertEqual(contract.state(.generatorFailureCompilation)?.owner, .generatorCompilation)
         XCTAssertEqual(contract.state(.generatorSuccess)?.persistence, .project)
         XCTAssertEqual(contract.state(.generatorSuccess)?.artifact(.script)?.status, .validated)
         XCTAssertEqual(contract.state(.generatorSuccess)?.artifact(.storyboard)?.status, .pending)
@@ -70,12 +89,20 @@ final class SceneJourneyContractTests: XCTestCase {
         XCTAssertEqual(contract.state(.recordingPermission)?.owner, .recording)
         XCTAssertEqual(contract.state(.recordingPlayback)?.owner, .recordingPlayback)
         XCTAssertEqual(contract.state(.recordingRecovery)?.owner, .recording)
-        XCTAssertEqual(contract.state(.recordingExported)?.artifact(.recordingExport)?.status, .promoted)
+        XCTAssertEqual(contract.state(.recordingFailure)?.artifact(.recording)?.status, .missing)
+        XCTAssertEqual(contract.state(.recordingFailureRecoverable)?.artifact(.recording)?.status, .promoted)
+        XCTAssertEqual(contract.state(.recordingExported)?.owner, .export)
+        XCTAssertEqual(contract.state(.recordingExported)?.artifact(.recordingExport)?.status, .optional)
         XCTAssertEqual(contract.state(.recordingExportCancelled)?.artifact(.recording)?.status, .promoted)
         XCTAssertEqual(contract.state(.recordingExportFailure)?.artifact(.recording)?.status, .promoted)
+        XCTAssertEqual(contract.state(.recordingShare)?.owner, .export)
         XCTAssertEqual(contract.state(.recordingExporting)?.owner, .export)
         XCTAssertTrue(contract.state(.recordingExporting)?.owner.rawValue.contains("LegacySceneGeneratorCameraShell") == true)
         XCTAssertFalse(contract.state(.recordingExporting)?.owner.rawValue.contains("RecordingArtifactStore") == true)
+        XCTAssertEqual(contract.state(.recordingPhotosExporting)?.owner, .photosExport)
+        XCTAssertEqual(contract.state(.recordingPhotosExported)?.artifact(.recordingExport)?.status, .promoted)
+        XCTAssertTrue(contract.state(.recordingPhotosExporting)?.owner.rawValue.contains("PHPhotoLibrary") == true)
+        XCTAssertTrue(contract.state(.recordingPhotosExporting)?.sourceStates.contains(.recordingPhotosExport) == true)
         XCTAssertEqual(contract.state(.recordingReleased)?.artifact(.recording)?.status, .optional)
         XCTAssertEqual(contract.state(.recordingReleased)?.persistence, .project)
     }
@@ -90,8 +117,9 @@ final class SceneJourneyContractTests: XCTestCase {
             .arPlayback, .recordingPreflight, .recordingPermission, .recordingIdle,
             .recordingPreparing, .recordingReady, .recordingStarting, .recordingInProgress, .recordingStopping,
             .recordingFinalizing, .recordingPromoting, .recordingCompleted, .recordingReview,
-            .recordingExporting, .recordingExported, .recordingReleased
+            .recordingShare, .recordingExporting, .recordingExported, .recordingReleased
         ])
+        assertTrace([.recordingReview, .recordingPhotosExporting, .recordingPhotosExported, .recordingReleased])
         assertTrace([.generatorSuccess, .storyboardPlanning, .storyboardValidation, .storyboardResult])
         assertTrace([.arPreparing, .arReady, .arSurfaceSearch, .arPlacement, .arLiveHints, .arHintPause, .arHintPlayback, .arLiveHints, .arPlacement])
         XCTAssertTrue(RecordingLifecycleState.isLegalTransition(from: .stopping, to: .finalizing))
@@ -100,6 +128,8 @@ final class SceneJourneyContractTests: XCTestCase {
         XCTAssertTrue(RecordingLifecycleState.isLegalTransition(from: .completed, to: .released))
         XCTAssertFalse(SceneJourneyContract.production.allows(.recordingPromoting, .recordingReleased))
         XCTAssertFalse(SceneJourneyContract.production.allows(.recordingFailure, .recordingReady))
+        XCTAssertFalse(SceneJourneyContract.production.allows(.recordingInProgress, .arInterruption))
+        XCTAssertFalse(SceneJourneyContract.production.allows(.recordingInProgress, .arTeardown))
     }
 
     func testFailureRecoveryAndTeardownTraces() {
@@ -113,22 +143,31 @@ final class SceneJourneyContractTests: XCTestCase {
             .generatorProgressReading, .generatorFailureNetwork, .generatorRetry,
             .generatorAccepted, .generatorQueued, .generatorCancelling, .generatorInputEditing
         ])
+        assertTrace([.generatorBackgroundCancel, .generatorBackgroundRecovery, .generatorProgressReading, .generatorFailureTimeout, .generatorRetry, .generatorAccepted])
+        assertTrace([.generatorValidating, .generatorFailureCompilation, .generatorRetry, .generatorAccepted])
         assertTrace([.generatorValidating, .generatorFailureMalformed, .generatorRetry, .generatorAccepted])
         assertTrace([.generatorValidating, .generatorFailureQuota, .generatorRetry, .generatorAccepted])
         assertTrace([.generatorValidating, .generatorFailurePersistence, .generatorRetry, .generatorAccepted])
         assertTrace([.arReady, .arInterruption, .arPreparing, .arError, .arPreparing])
+        assertTrace([.arReady, .arRelocalization, .arWorldMapRecovery, .arReset, .arRelocalization, .arReady])
+        assertTrace([.arReady, .arReset, .arPreparing])
         assertTrace([.arPlacement, .arTeardown, .librarySelected])
         assertTrace([.storyboardEditorMedium, .storyboardValidationFailure, .storyboardEditorLarge])
         assertTrace([.storyboardEditorMedium, .storyboardDeleteConfirmation, .storyboardResult])
         assertTrace([.recordingFinalizing, .recordingFailure, .recordingRecovery, .recordingPreflight, .recordingPermission, .recordingIdle, .recordingPreparing, .recordingReady])
+        assertTrace([.recordingPromoting, .recordingFailureRecoverable, .recordingReview])
         assertTrace([.recordingStarting, .recordingCancelled, .recordingReleased])
         assertTrace([.recordingCompleted, .recordingReview, .recordingPlayback, .recordingReview])
-        assertTrace([.recordingReview, .recordingExporting, .recordingExportCancelled, .recordingExporting, .recordingExportFailure, .recordingReview])
+        assertTrace([.recordingReview, .recordingShare, .recordingExporting, .recordingExportCancelled, .recordingShare, .recordingExporting, .recordingExportFailure, .recordingReview])
+        assertTrace([.recordingReview, .recordingPhotosExporting, .recordingPhotosExportCancelled, .recordingPhotosExporting, .recordingPhotosExportFailure, .recordingReview])
+        assertTrace([.recordingInProgress, .recordingStopping, .recordingFailure, .arInterruption, .arRelocalization, .arWorldMapRecovery, .arReady])
+        assertTrace([.recordingInProgress, .recordingStopping, .recordingFailure, .arTeardown, .librarySelected])
     }
 
     func testRecordingTransitionsAreExhaustiveAndTyped() {
         let contract = SceneJourneyContract.production
 
+        XCTAssertTrue(contract.outerNavigationEdgesAreWhitelisted())
         XCTAssertTrue(contract.recordingLifecycleTransitionsAreConsistent())
         for state in contract.states {
             for transition in state.transitions {
@@ -176,6 +215,26 @@ final class SceneJourneyContractTests: XCTestCase {
         )
         XCTAssertFalse(
             SceneJourneyContract(sourceVocabulary: contract.sourceVocabulary, states: malformedStates).validate()
+        )
+
+        var illegalOuterStates = contract.states
+        illegalOuterStates[0] = SceneJourneyStateContract(
+            state: first.state,
+            availability: first.availability,
+            owner: first.owner,
+            sourceStates: first.sourceStates,
+            entry: first.entry,
+            primaryAction: first.primaryAction,
+            recovery: first.recovery,
+            exit: first.exit,
+            persistence: first.persistence,
+            artifacts: first.artifacts,
+            transitions: first.transitions + [
+                SceneJourneyTransition(to: .recordingReleased, kind: .outerNavigation, trigger: "unapproved outer edge")
+            ]
+        )
+        XCTAssertFalse(
+            SceneJourneyContract(sourceVocabulary: contract.sourceVocabulary, states: illegalOuterStates).validate()
         )
 
         XCTAssertTrue(contract.allows(.recordingCompleted, .recordingReleased))

@@ -7,13 +7,15 @@ non-owning, typed catalog for the fixed production journey:
 
 `Library → Generator → AR → Storyboard → recording → Library`.
 
-It freezes 84 stable, unique state IDs. The catalog covers every relevant
+It freezes 96 stable, unique state IDs. The catalog covers every relevant
 Visual Policy v2.6 row for Library, Generator input/execution, AR, Storyboard,
 the scene/marker/screenplay/decision-trace sheets, and recording lifecycle and
 export. Library rename and missing-preview outcomes are explicit, with a
 rename-duplicate state that retains the validated existing project. Generator
-validation, queueing, pause/cancel, quota/malformed/persistence failures, and
-storyboard planning/validation/reorder are also explicit contract states.
+validation, queueing, pause/cancel, background recovery, timeout, compilation,
+quota/malformed/persistence failures, and storyboard planning/validation/reorder
+are also explicit contract states. AR relocalization, reset, and world-map
+recovery are explicit rather than inferred from a generic error row.
 
 Each state carries a typed owner and typed source vocabulary, explicit entry,
 action, recovery, exit, persistence, artifact relations, and typed transitions.
@@ -36,9 +38,11 @@ generator success has a validated script and plan but a pending storyboard;
 `storyboard.validation`, and only a validated relation reaches the result. AR
 recording is pending until its owner publishes media, and review requires a
 promoted/resolvable recording. Preflight, permission, playback, recovery, and
-recording export-cancel/export-failure are explicit. Export is owned by
-`LegacySceneGeneratorCameraShell/UIActivityViewController` (Photos is future),
-while both export failures preserve the promoted source recording.
+recording share/Photos export-cancel/export-failure are explicit. The current
+share path is owned by
+`LegacySceneGeneratorCameraShell/UIActivityViewController`; Photos export is a
+separate future `PHPhotoLibrary` owner. Share and Photos failure/cancel outcomes
+preserve the promoted source recording.
 `recording.released` retains project-owned media as an optional relation and
 project persistence; it is not encoded as artifact deletion. This preserves
 the same terminal owner state for both cancelled/no-artifact and
@@ -48,10 +52,15 @@ The catalog declares `library.empty` and `library.contact-sheet` as real entry
 states and validates graph reachability from those entries. Every non-
 `.unreachable` state is reachable, including live-hint pause/playback,
 recording idle/preparing, scene-name/marker-name sheets, and the pending typed
-clarification path. Recorder-backed states map to `RecordingLifecycleState`;
-cross-owner review/export/recovery edges use the explicit
-`.outer-navigation` classification. The illegal promoting→released and
-failed→ready edges are absent.
+clarification path. An active recording interruption or teardown first enters
+`recording.stopping`, then a terminal recording outcome; it has no direct
+active-recording→AR interruption/teardown edge. Recorder-backed states map to
+`RecordingLifecycleState`; cross-owner review/share/Photos/recovery edges use
+the explicit `.outer-navigation` classification, and the validator accepts
+only the closed allowlist. The illegal promoting→released and failed→ready
+edges are absent. The pre-artifact failure state is distinct from the
+recoverable-artifact failure state, so a recoverable recording is never marked
+`.missing`.
 
 This is contract-only work. It adds no runtime reducer, route, persisted field,
 schema migration, UI styling, fake data, database behavior, or simulator/device
@@ -62,19 +71,24 @@ runtime ownership is a later task rather than claiming they already exist.
 
 | Check | Result |
 |---|---|
-| `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5' -only-testing:shafinMultitoolTests/SceneJourneyContractTests -derivedDataPath /tmp/setos-m5-001-correction2-kigyvT/DerivedData-fix1 -resultBundlePath /tmp/setos-m5-001-correction2-kigyvT/SceneJourneyContractTests-fix1.xcresult CODE_SIGNING_ALLOWED=NO` | PASS; 6 focused cases passed on iPhone 17e; `** TEST SUCCEEDED **` |
+| `xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5' -only-testing:shafinMultitoolTests/SceneJourneyContractTests -derivedDataPath /tmp/setos-m5-001-correction3-postcommit-20260904/DerivedData -resultBundlePath /tmp/setos-m5-001-correction3-postcommit-20260904/SceneJourneyContractTests.xcresult CODE_SIGNING_ALLOWED=NO` | PASS; 6/6 focused cases passed on iPhone 17e (simulator, OS 26.5), exit 0 |
 | `git diff --check` | PASS after correction and evidence update |
-| canonical ID set, graph reachability, typed source/owner/persistence/artifact mappings | PASS in `testProductionContractIsCompleteAndTyped` and `testExpectedOwnerPersistenceAndArtifactMappings` |
-| full success/export route, storyboard validation route, and failure/recovery/teardown traces | PASS in `testSuccessExportTraceUsesLegalTypedEdges` and `testFailureRecoveryAndTeardownTraces` |
-| exhaustive recorder lifecycle edge classification and legal transition check | PASS in `testRecordingTransitionsAreExhaustiveAndTyped`; outer navigation is explicit and no illegal promoting→released or failed→ready edge exists |
+| canonical 96-ID set, graph reachability from both Library entries, typed source/owner/persistence/artifact mappings | PASS in `testProductionContractIsCompleteAndTyped` and `testExpectedOwnerPersistenceAndArtifactMappings` |
+| full success/current-share/Photos route, storyboard validation route, and generator/AR/recording failure/recovery/teardown traces | PASS in `testSuccessExportTraceUsesLegalTypedEdges` and `testFailureRecoveryAndTeardownTraces` |
+| exhaustive recorder lifecycle edge classification and legal transition check | PASS in `testRecordingTransitionsAreExhaustiveAndTyped`; outer navigation is explicit and allowlisted, with no active-recording→AR shortcut or illegal promoting→released/failed→ready edge |
 | truncated/malformed custom contracts fail closed | PASS in `testCustomContractValidationFailsClosed` |
 | completed → released does not imply recording cleanup | PASS: `recording.completed → recording.released` is legal while released recording status is `.optional` and persistence remains `.project` |
+| future state ownership does not overclaim production | PASS: generator/AR/recording future states carry `.pending` availability and explicit `planned:` source/owner labels where downstream ownership is not proven; current share owner remains the only claimed external export owner |
 | forbidden shortcut/scope scan | PASS by inspection: only the owned contract, focused test, and this evidence changed; no `EXECUTION_STATE`, project file, runtime route, reducer, persisted field, database, fake data, or UI styling changes |
 
-The first correction build exposed and fixed one Swift `guard` closure syntax
-error before the final receipt above. The final test emitted pre-existing Xcode
-warnings (including device build-number metadata and an unprocessed
-`Circle.rcproject` folder); none failed the focused target. The receipt is
-simulator compilation/execution evidence only. It does not prove physical AR,
-recording media integrity, backend quality, or end-to-end device
+The correction3 validation runs also exposed a canonical-ID spelling mismatch
+in the closed outer-navigation allowlist; it was corrected to the existing
+`ar.recording-review` ID before the passing receipt above. A separate earlier
+run hung in Xcode/CoreSimulator diagnostics while concurrent simulator work was
+active; it was terminated as infrastructure-only and is not counted as a
+product result. The final test emitted pre-existing Xcode warnings (including
+device build-number metadata and an unprocessed `Circle.rcproject` folder);
+none failed the focused target. The receipt is simulator
+compilation/execution evidence only. It does not prove physical AR, recording
+media integrity, backend quality, Photos integration, or end-to-end device
 qualification; those belong to later milestone tasks.
