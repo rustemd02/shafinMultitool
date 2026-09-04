@@ -99,16 +99,20 @@ final class ActionVerifierTests: XCTestCase {
         beforeLifecycle: SubjectTrackLifecycleContext? = nil,
         afterLifecycle: SubjectTrackLifecycleContext? = nil,
         subjectIdentity: SubjectTrackIdentity? = nil,
+        includeExpectedSubjectIdentity: Bool = true,
         safetyRegressions: [ActionVerificationSafetyRegression] = []
     ) -> ActionVerificationInput {
-        ActionVerificationInput(
+        let expectedSubjectIdentity = includeExpectedSubjectIdentity
+            ? (subjectIdentity ?? (UserMovementObserver.actionFamily(for: actionID)?.requiresSubjectBinding == true ? identity : nil))
+            : nil
+        return ActionVerificationInput(
             token: CoachingEpisodeToken(rawValue: UUID(), generation: generation),
             actionID: actionID,
             before: before,
             after: after,
             beforeLifecycle: beforeLifecycle ?? lifecycle(generation: generation),
             afterLifecycle: afterLifecycle ?? lifecycle(generation: generation),
-            subjectIdentity: subjectIdentity,
+            subjectIdentity: expectedSubjectIdentity,
             safetyRegressions: safetyRegressions
         )
     }
@@ -325,6 +329,37 @@ final class ActionVerifierTests: XCTestCase {
     func testSubjectIdentitySourceAndCoordinateSpaceMustContinue() {
         let action = SemanticActionType.moveSubjectRight.rawValue
         let before = frame(id: "subject-before", capturedAt: startDate, actionID: action)
+        let sameSubjectAfter = frame(
+            id: "same-subject-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            x: 0.30
+        )
+
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: sameSubjectAfter,
+                includeExpectedSubjectIdentity: false
+            ))),
+            .incomparable(reason: .subjectBindingMissing)
+        )
+        let wrongExpectedIdentity = SubjectTrackIdentity(
+            trackID: "expected-but-not-observed",
+            firstSeenFrameID: "subject-before",
+            generation: 9
+        )
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: sameSubjectAfter,
+                subjectIdentity: wrongExpectedIdentity
+            ))),
+            .incomparable(reason: .subjectIdentityMismatch)
+        )
+
         var after = frame(
             id: "subject-after",
             capturedAt: startDate.addingTimeInterval(0.1),
@@ -523,6 +558,27 @@ final class ActionVerifierTests: XCTestCase {
             after: frame(id: "lifecycle-after", capturedAt: startDate.addingTimeInterval(0.1), actionID: action, x: 0.30)
         ))
         XCTAssertEqual(decision(missingLifecycle), .incomparable(reason: .lifecycleUnavailable))
+    }
+
+    func testStaleAtEachFramesOwnEvaluationTimeRemainsIncomparable() {
+        let action = SemanticActionType.moveSubjectRight.rawValue
+        let result = ActionVerifier.verify(input(
+            actionID: action,
+            before: frame(
+                id: "stale-before",
+                capturedAt: startDate,
+                actionID: action,
+                measuredAt: startDate.addingTimeInterval(-1.0)
+            ),
+            after: frame(
+                id: "fresh-after",
+                capturedAt: startDate.addingTimeInterval(0.4),
+                actionID: action,
+                x: 0.30
+            )
+        ))
+
+        XCTAssertEqual(decision(result), .incomparable(reason: .evidenceStale))
     }
 
     func testUnsupportedAndEmptyActionsDoNotProduceDeltas() {

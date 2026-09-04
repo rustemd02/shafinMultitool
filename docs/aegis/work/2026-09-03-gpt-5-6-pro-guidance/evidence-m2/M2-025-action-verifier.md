@@ -80,6 +80,55 @@ attempt also caught and corrected only test argument/optional-value mistakes.
 
 Repository check: `git diff --check` passed after the final focused run.
 
+## Sol `fix-first` correction
+
+The review finding was valid at the M2-024→M2-025 seam. The original verifier
+called the single-time `UserMovementObserver.compare(..., asOf: after)` API;
+that API intentionally ages both samples to one observation time for live
+movement classification. Reusing it for an episode pair made a valid frozen
+baseline look stale when `f4` arrived more than the 0.25-second Vision window
+after `f0`.
+
+The owner-level correction adds
+`UserMovementObserver.compareAtOwnEvaluationTimes(...)`. It reuses the same
+action mapping, deadbands and freshness windows, but validates feature and
+subject-binding measurements against `before.evaluatedAt` and
+`after.evaluatedAt` independently. A measurement stale at its own frame time,
+future relative to that frame, unavailable, low-confidence, uncalibrated or
+non-finite still fails closed. The legacy single-`asOf` API remains available
+for the M2-023 tracker/coordinator behavior.
+
+The verifier now also requires `subjectIdentity` on every subject-bound input;
+the coordinator supplies its frozen episode identity, while frame-global
+horizon/stability actions continue to accept nil. New regressions cover the
+real coordinator f0→f4 +0.40-second seam, stale-at-baseline-time evidence,
+missing expected identity and mismatched expected identity.
+
+Fresh correction verification:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-m2-025-correction-dd2 \
+  -resultBundlePath /tmp/setos-m2-025-correction-2.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/ActionVerifierTests \
+  -only-testing:shafinMultitoolTests/UserMovementObserverTests \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests test
+```
+
+Result: `** TEST SUCCEEDED **`; 58/58 tests passed, 0 failures, 0 skipped on
+ordinary `iPhone 17e` iOS 26.5 Simulator. The breakdown is 13
+`ActionVerifierTests`, 15 `CoachingEpisodeCoordinatorTests`, and 30
+`UserMovementObserverTests`. Result bundle:
+`/tmp/setos-m2-025-correction-2.xcresult`.
+
+The first correction compile attempt failed only because the test helper gained
+a local expected-identity value without an explicit return. The return was
+added; no production behavior was weakened. `git diff --check` passes.
+
 ## Honest boundaries
 
 - This packet supplies the pure result owner and the coordinator handoff. It

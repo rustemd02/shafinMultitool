@@ -493,6 +493,30 @@ enum UserMovementObserver {
         return evaluate(previous: previous, current: current, intent: intent)
     }
 
+    /// Compares a coordinator baseline and final frame without re-aging the
+    /// baseline against the final callback. Each accepted frame is validated
+    /// against its own evaluation time; this keeps the observer's freshness
+    /// policy intact while allowing a bounded episode to span several frames.
+    static func compareAtOwnEvaluationTimes(previous: UserMovementFrame,
+                                            current: UserMovementFrame,
+                                            actionID: String) -> UserMovementComparison {
+        guard let intent = intent(for: actionID) else {
+            return .uncertain(reason: "unsupported_action")
+        }
+        if let reason = evidenceFailureAtOwnEvaluationTimes(
+            previous: previous,
+            current: current,
+            family: intent.family
+        ) {
+            return .uncertain(
+                reason: reason,
+                family: intent.family,
+                metric: metricID(for: intent.metric, displacement: intent.displacement)
+            )
+        }
+        return evaluate(previous: previous, current: current, intent: intent)
+    }
+
     /// Descriptive alias for callers that want to make the before/after
     /// boundary explicit at the call site.
     static func detailedComparison(previous: UserMovementFrame,
@@ -601,6 +625,35 @@ enum UserMovementObserver {
                                         current: UserMovementFrame,
                                         family: UserMovementActionFamily,
                                         asOf: Date?) -> String? {
+        let observedAt = asOf ?? current.evidence?.evaluatedAt
+        return evidenceFailure(
+            previous: previous,
+            current: current,
+            family: family,
+            previousAsOf: observedAt,
+            currentAsOf: observedAt
+        )
+    }
+
+    private static func evidenceFailureAtOwnEvaluationTimes(
+        previous: UserMovementFrame,
+        current: UserMovementFrame,
+        family: UserMovementActionFamily
+    ) -> String? {
+        evidenceFailure(
+            previous: previous,
+            current: current,
+            family: family,
+            previousAsOf: previous.evidence?.evaluatedAt,
+            currentAsOf: current.evidence?.evaluatedAt
+        )
+    }
+
+    private static func evidenceFailure(previous: UserMovementFrame,
+                                        current: UserMovementFrame,
+                                        family: UserMovementActionFamily,
+                                        previousAsOf: Date?,
+                                        currentAsOf: Date?) -> String? {
         guard let previousEvidence = previous.evidence,
               let currentEvidence = current.evidence else {
             return "evidence_missing"
@@ -656,10 +709,15 @@ enum UserMovementObserver {
             return "evidence_time"
         }
 
-        let observedAt = asOf ?? currentEvidence.evaluatedAt
-        guard observedAt.timeIntervalSinceReferenceDate.isFinite,
-              currentEvidence.capturedAt <= observedAt,
+        guard let previousObservedAt = previousAsOf,
+              let currentObservedAt = currentAsOf,
+              previousObservedAt.timeIntervalSinceReferenceDate.isFinite,
+              currentObservedAt.timeIntervalSinceReferenceDate.isFinite,
+              previousEvidence.capturedAt <= previousObservedAt,
+              currentEvidence.capturedAt <= currentObservedAt,
               currentEvidence.evaluatedAt.timeIntervalSinceReferenceDate.isFinite,
+              previousEvidence.evaluatedAt.timeIntervalSinceReferenceDate.isFinite,
+              previousEvidence.capturedAt <= previousEvidence.evaluatedAt,
               currentEvidence.capturedAt <= currentEvidence.evaluatedAt,
               let previousMeasuredAt = previousEvidence.featureMeasuredAt[family],
               let currentMeasuredAt = currentEvidence.featureMeasuredAt[family],
@@ -673,8 +731,8 @@ enum UserMovementObserver {
         }
         guard previousMeasuredAt.timeIntervalSinceReferenceDate.isFinite,
               currentMeasuredAt.timeIntervalSinceReferenceDate.isFinite,
-              previousMeasuredAt <= observedAt,
-              currentMeasuredAt <= observedAt else {
+              previousMeasuredAt <= previousObservedAt,
+              currentMeasuredAt <= currentObservedAt else {
             return "stale_evidence"
         }
         let previousFreshnessWindow = freshnessWindow(for: family, evidence: previousEvidence)
@@ -683,8 +741,8 @@ enum UserMovementObserver {
         let currentBindingFreshnessWindow = subjectBindingFreshnessWindow(for: currentEvidence)
         if let previousFreshnessWindow,
            let currentFreshnessWindow {
-            guard observedAt.timeIntervalSince(previousMeasuredAt) <= previousFreshnessWindow,
-                  observedAt.timeIntervalSince(currentMeasuredAt) <= currentFreshnessWindow else {
+            guard previousObservedAt.timeIntervalSince(previousMeasuredAt) <= previousFreshnessWindow,
+                  currentObservedAt.timeIntervalSince(currentMeasuredAt) <= currentFreshnessWindow else {
                 return "stale_evidence"
             }
         }
@@ -693,14 +751,14 @@ enum UserMovementObserver {
                   let currentBinding = currentEvidence.subjectBinding,
                   previousBinding.measuredAt.timeIntervalSinceReferenceDate.isFinite,
                   currentBinding.measuredAt.timeIntervalSinceReferenceDate.isFinite,
-                  previousBinding.measuredAt <= observedAt,
-                  currentBinding.measuredAt <= observedAt else {
+                  previousBinding.measuredAt <= previousObservedAt,
+                  currentBinding.measuredAt <= currentObservedAt else {
                 return "stale_evidence"
             }
             if let previousBindingFreshnessWindow,
                let currentBindingFreshnessWindow {
-                guard observedAt.timeIntervalSince(previousBinding.measuredAt) <= previousBindingFreshnessWindow,
-                      observedAt.timeIntervalSince(currentBinding.measuredAt) <= currentBindingFreshnessWindow else {
+                guard previousObservedAt.timeIntervalSince(previousBinding.measuredAt) <= previousBindingFreshnessWindow,
+                      currentObservedAt.timeIntervalSince(currentBinding.measuredAt) <= currentBindingFreshnessWindow else {
                     return "stale_evidence"
                 }
             }

@@ -242,6 +242,11 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         XCTAssertEqual(verificationInput.before.frameID, "f0")
         XCTAssertEqual(verificationInput.after.frameID, "f4")
         XCTAssertEqual(verificationInput.before, coordinator.state.baseline?.frame)
+        XCTAssertEqual(
+            ActionVerifier.verify(verificationInput).decision,
+            .comparable(outcome: .improved),
+            "the baseline must be checked at f0's own evaluation time, not re-aged to f4"
+        )
 
         // A ready episode is terminal until an explicit retry baseline; a
         // late callback cannot replace the final accepted stable frame.

@@ -107,14 +107,15 @@ enum ActionVerifier {
 
         if family.requiresSubjectBinding {
             guard let beforeBinding = beforeEvidence.subjectBinding,
-                  let afterBinding = afterEvidence.subjectBinding else {
+                  let afterBinding = afterEvidence.subjectBinding,
+                  let expectedSubjectIdentity = input.subjectIdentity else {
                 return result(input, decision: .incomparable(reason: .subjectBindingMissing))
             }
             guard beforeBinding.identity == afterBinding.identity else {
                 return result(input, decision: .incomparable(reason: .subjectIdentityMismatch))
             }
-            if let expected = input.subjectIdentity,
-               expected != beforeBinding.identity || expected != afterBinding.identity {
+            if expectedSubjectIdentity != beforeBinding.identity ||
+                expectedSubjectIdentity != afterBinding.identity {
                 return result(input, decision: .incomparable(reason: .subjectIdentityMismatch))
             }
             guard beforeBinding.source == afterBinding.source else {
@@ -135,11 +136,10 @@ enum ActionVerifier {
         }
         safetyRegressions = unique(safetyRegressions)
 
-        let comparison = UserMovementObserver.compare(
+        let comparison = UserMovementObserver.compareAtOwnEvaluationTimes(
             previous: input.before,
             current: input.after,
-            actionID: actionID,
-            asOf: afterEvidence.evaluatedAt
+            actionID: actionID
         )
         if case .uncertain(let reason) = comparison.verdict {
             if reason == "camera_motion" {
