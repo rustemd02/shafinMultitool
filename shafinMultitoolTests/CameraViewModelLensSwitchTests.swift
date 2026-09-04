@@ -122,6 +122,51 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         await fixture.viewModel.releaseAndWait()
     }
 
+    func testProductionSubjectChangeResetsOwnerBeforeFreshResolutionBaseline() async {
+        let fixture = makeFixture { _ in
+            .noOp(activeLens: .wide)
+        }
+        let base = Date(timeIntervalSince1970: 35_000)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(
+                id: "subject-old-f0",
+                x: 0.20,
+                capturedAt: base
+            ))
+        )
+        let baselinePublished = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+        }
+        XCTAssertTrue(baselinePublished)
+        let oldToken = fixture.viewModel.coachingEpisodeState.token
+
+        // Exercise the production invalidation publisher and its ordering,
+        // rather than injecting `.cancel(.subjectChanged)` into the stream.
+        fixture.pipeline.testingInvalidateLiveCoachingEpisodeForSubjectChange()
+        let cancelled = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .cancelled
+                && fixture.viewModel.coachingEpisodeState.cancellationReason == .subjectChanged
+        }
+        XCTAssertTrue(cancelled)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(
+                id: "subject-fresh-f0",
+                x: 0.32,
+                capturedAt: base.addingTimeInterval(0.10)
+            ))
+        )
+        let recovered = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-fresh-f0"
+        }
+        XCTAssertTrue(recovered)
+        XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.token, oldToken)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
     func testProductionExpiryResetsPipelineBeforeFreshBaseline() async {
         let fixture = makeFixture { _ in
             .noOp(activeLens: .wide)

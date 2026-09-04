@@ -224,6 +224,70 @@ lens-switch cancellation, technical-signal reuse (no second full-resolution
 exposure traversal in the episode handoff), and teardown integration; there is
 no hardware-camera or physical-device proof in this package.
 
+### Correction4 verification
+
+Correction4 closes the terminal-publication ordering gap. Every live episode
+boundary now resets the pipeline-owned stabilizer, subject tracker, lifecycle
+context, source provenance, and action metadata before publishing the queued
+typed cancellation event. The ViewModel's retry reset remains idempotent for a
+coordinator-owned terminal, but no longer relies on `liveEpisodeActionID` alone
+to decide whether stale lifecycle state exists. A baseline publication also
+records lifecycle provenance at the typed owner boundary and refuses to
+overwrite an uncleared lifecycle owner. The live handoff defers lifecycle
+ownership until a baseline is actually admitted, so pre-baseline Vision/DETR
+resolution cannot block the first valid episode.
+
+The new production-path regression starts with an old subject baseline, invokes
+the pipeline's subject-resolution invalidation method (which calls the same
+production `clearLiveCoachingEpisodeObservation` path rather than injecting a
+typed cancel), waits for the queued `.subjectChanged` terminal, and then
+publishes a fresh resolved baseline. The fresh baseline is accepted with a new
+token only when the pipeline reset occurred before event delivery; this
+specifically guards against the old identity surviving behind a cleared action
+ID.
+
+The seam regression passed 1/1 on the allowed `iPhone 17e` iOS Simulator 26.5:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-camera-b1-correction4-seam-derived-20260904e \
+  -resultBundlePath /tmp/setos-camera-b1-correction4-seam-20260904e.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests/testProductionSubjectChangeResetsOwnerBeforeFreshResolutionBaseline test
+```
+
+Result: `TEST SUCCEEDED`, 1/1 passed, 0 failures, 0 skipped. Durable result
+bundle: `/tmp/setos-camera-b1-correction4-seam-20260904e.xcresult`.
+
+The complete M2-024 focused suite then passed 85/85, 0 failures, 0 skipped on
+the same allowed simulator:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-camera-b1-correction4-final-derived-20260904e \
+  -resultBundlePath /tmp/setos-camera-b1-correction4-final-20260904e.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests \
+  -only-testing:shafinMultitoolTests/AdviceStabilizerTests \
+  -only-testing:shafinMultitoolTests/SubjectTrackLifecycleTests \
+  -only-testing:shafinMultitoolTests/UserMovementObserverTests \
+  -only-testing:shafinMultitoolTests/CameraAdviceSafetyGateTests \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests test
+```
+
+Result: `TEST SUCCEEDED`, 85/85 passed, 0 failures, 0 skipped. Durable result
+bundle: `/tmp/setos-camera-b1-correction4-final-20260904e.xcresult`. The run
+used only `iPhone 17e`; no iPhone 17 Pro, physical device, or CUA was used.
+`git diff --check`: passed. The simulator emitted the existing CoreMotion and
+FigCaptureSourceSimulator diagnostics during launch; they did not affect the
+85/85 deterministic result and are not hardware-camera proof.
+
 ## Known boundary
 
 The actual device path still requires M2-025/M2-026 for four-way verification,

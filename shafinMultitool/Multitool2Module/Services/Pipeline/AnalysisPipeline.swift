@@ -6015,12 +6015,15 @@ final class AnalysisPipeline: ObservableObject {
         DispatchQueue.main.async {
             guard self.isGenerationCurrent(generation) else { return }
             self.currentLiveHint = nil
+            // Clear the pipeline-owned identity before publishing the queued
+            // terminal event. The ViewModel may consume that event later on
+            // the main queue; it must never observe an already-cleared action
+            // while a subject/lifecycle owner is still alive.
+            self.resetLiveCoachingEpisodeOwner(
+                frameID: "live_clear",
+                reason: "live_clear"
+            )
             self.publishLiveCoachingEpisodeEvent(.cancel(.routeExit))
-            _ = self.liveAdviceStabilizer.invalidate(frameID: "live_clear", reason: "live_clear")
-            self.liveSubjectTracker.reset()
-            self.liveSubjectLifecycleContext = nil
-            self.liveSubjectSource = nil
-            self.resetLiveEpisodeStream()
             self.liveHintShownAt = .distantPast
             self.liveHintExpiresAt = .distantPast
             self.lastLiveMotionBecameUnstableAt = nil
@@ -6045,15 +6048,11 @@ final class AnalysisPipeline: ObservableObject {
     /// result can therefore accept a genuinely fresh baseline and token.
     @MainActor
     func cancelCoachingEpisode(reason: CoachingEpisodeCancellationReason) {
-        _ = liveAdviceStabilizer.invalidate(
+        resetLiveCoachingEpisodeOwner(
             frameID: "episode_boundary",
             reason: reason.rawValue
         )
         publishLiveCoachingEpisodeEvent(.cancel(reason))
-        liveSubjectTracker.reset()
-        liveSubjectLifecycleContext = nil
-        liveSubjectSource = nil
-        resetLiveEpisodeStream()
     }
 
     /// Clears only the pipeline-side episode transaction after the coordinator
@@ -6062,15 +6061,22 @@ final class AnalysisPipeline: ObservableObject {
     /// and cannot recursively re-enter the ViewModel subscriber.
     @MainActor
     func resetCoachingEpisodeAfterTerminal() {
-        guard liveEpisodeActionID != nil else { return }
-        _ = liveAdviceStabilizer.invalidate(
+        // `clearLiveCoachingEpisodeObservation` resets the owner before its
+        // cancellation event is delivered. Keep this method idempotent for
+        // the other terminal path where the coordinator is the first owner
+        // to observe cancellation, and do not key the reset only to actionID.
+        guard liveEpisodeActionID != nil
+                || liveEpisodeGeneration != nil
+                || liveEpisodeOrientation != nil
+                || liveEpisodeSource != nil
+                || liveSubjectLifecycleContext != nil
+                || liveSubjectSource != nil else {
+            return
+        }
+        resetLiveCoachingEpisodeOwner(
             frameID: "episode_terminal",
             reason: "episode_terminal"
         )
-        liveSubjectTracker.reset()
-        liveSubjectLifecycleContext = nil
-        liveSubjectSource = nil
-        resetLiveEpisodeStream()
     }
 
     @MainActor
@@ -6080,13 +6086,25 @@ final class AnalysisPipeline: ObservableObject {
         // adapter sets these values before publishing; this assignment makes
         // the typed boundary itself preserve the same invariant.
         if case .baseline(let observation) = event {
-            guard liveEpisodeActionID == nil else { return }
+            guard liveEpisodeActionID == nil,
+                  liveSubjectLifecycleContext == nil else { return }
             liveEpisodeActionID = observation.stabilizedAdvice.actionID
             liveEpisodeGeneration = observation.lifecycle.generation
             liveEpisodeOrientation = observation.lifecycle.orientation
             liveEpisodeSource = observation.frame.evidence?.subjectBinding?.source
+            liveSubjectLifecycleContext = observation.lifecycle
+            liveSubjectSource = observation.frame.evidence?.subjectBinding?.source
         }
         currentCoachingEpisodeEvent = event
+    }
+
+    /// Deterministic fixture seam for the live subject resolver's invalidation
+    /// path. This intentionally enters the same production cancellation
+    /// publisher used when an active subject can no longer be resolved; tests
+    /// must observe the ordering rather than inject a typed cancel event.
+    @MainActor
+    func testingInvalidateLiveCoachingEpisodeForSubjectChange() {
+        clearLiveCoachingEpisodeObservation(reason: "subject_unavailable")
     }
 
     // MARK: - M2-024 live episode handoff
@@ -6130,12 +6148,9 @@ final class AnalysisPipeline: ObservableObject {
            previous.orientation != lifecycle.orientation {
             // A new capture epoch/orientation cannot inherit either the
             // tracked subject or the temporal advice streak.
-            liveSubjectTracker.reset()
             clearLiveCoachingEpisodeObservation(reason: "capture_context_changed")
-            liveSubjectLifecycleContext = lifecycle
             return
         }
-        liveSubjectLifecycleContext = lifecycle
 
         guard plan.validate(expectedFrameId: snapshot.frameId).isEmpty else {
             clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
@@ -6574,8 +6589,19 @@ final class AnalysisPipeline: ObservableObject {
 
     @MainActor
     private func clearLiveCoachingEpisodeObservation(reason: String) {
-        _ = liveAdviceStabilizer.invalidate(frameID: "live", reason: reason)
+        // The owner reset is atomic with respect to the publication below.
+        // A queued ViewModel subscriber must never race a stale subject track
+        // or lifecycle context after the action ID has been cleared.
+        resetLiveCoachingEpisodeOwner(frameID: "live", reason: reason)
         publishLiveCoachingEpisodeEvent(.cancel(coachingEpisodeCancellationReason(for: reason)))
+    }
+
+    @MainActor
+    private func resetLiveCoachingEpisodeOwner(frameID: String, reason: String) {
+        _ = liveAdviceStabilizer.invalidate(frameID: frameID, reason: reason)
+        liveSubjectTracker.reset()
+        liveSubjectLifecycleContext = nil
+        liveSubjectSource = nil
         resetLiveEpisodeStream()
     }
 
