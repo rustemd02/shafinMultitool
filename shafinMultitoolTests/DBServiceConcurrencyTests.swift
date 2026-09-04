@@ -44,6 +44,43 @@ final class DBServiceConcurrencyTests: XCTestCase {
         XCTAssertEqual(dbService.listUnifiedSceneProjects().count, 1)
     }
 
+    func testTypedConcurrentCreatesReturnOneSnapshotAndTypedDuplicates() {
+        let name = "typed-dup-\(UUID().uuidString)"
+        let results = concurrentPerform(8) { _ in
+            self.dbService.createLibraryScene(named: name)
+        }
+
+        XCTAssertEqual(results.filter { if case .success = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(
+            results.filter {
+                if case .failure(.duplicateName(name: name, conflictingID: _)) = $0 { return true }
+                return false
+            }.count,
+            7
+        )
+        XCTAssertEqual(
+            dbService.loadLibrarySceneSnapshots().map { $0.filter { $0.name == name }.count },
+            .success(1)
+        )
+    }
+
+    func testLibrarySnapshotReportsMetadataAndNoArtifactsTruthfully() throws {
+        let name = "typed-snapshot-\(UUID().uuidString)"
+        let created = try XCTUnwrap(dbService.createLibraryScene(named: name).successValue)
+        XCTAssertEqual(created.preview.kind, .unavailable)
+        XCTAssertEqual(created.artifactHealth, .none)
+
+        var project = try XCTUnwrap(dbService.loadUnifiedSceneProject(named: name)?.0)
+        project.sceneDescription = "A marked room with a window."
+        try dbService.saveUnifiedSceneProject(project, worldMap: nil)
+
+        let loaded = try XCTUnwrap(dbService.loadLibrarySceneSnapshots().successValue)
+        let snapshot = try XCTUnwrap(loaded.first { $0.id == project.id })
+        XCTAssertEqual(snapshot.preview.kind, .metadataOnly)
+        XCTAssertEqual(snapshot.preview.recordingCount, 0)
+        XCTAssertEqual(snapshot.artifactHealth, .none)
+    }
+
     // MARK: - Optimistic conflict behavior
 
     func testStaleExpectedUpdatedAtThrowsRecoverableConflictAndKeepsStoredWrite() throws {
@@ -80,6 +117,95 @@ final class DBServiceConcurrencyTests: XCTestCase {
         try dbService.saveUnifiedSceneProject(third, worldMap: nil, expectedUpdatedAt: second.updatedAt)
         let reloaded = try XCTUnwrap(dbService.loadUnifiedSceneProject(named: "conflict-project"))
         XCTAssertEqual(reloaded.0.sceneDescription, "third write")
+    }
+
+    func testTypedRenamePreservesAggregateAndReturnsNewSnapshot() throws {
+        let project = try dbService.createUnifiedSceneProject(named: "rename-source-\(UUID().uuidString)")
+        let targetName = "rename-target-\(UUID().uuidString)"
+        let recordingID = UUID()
+        let reference = SceneRecordingReference(
+            recordingID: recordingID,
+            relativePath: "Recordings/Projects/\(project.id.uuidString)/\(recordingID.uuidString).mov",
+            duration: 12.5,
+            hasAudio: true
+        )
+        var enriched = project
+        enriched.sceneDescription = "A room, a window, a marked chair."
+        enriched.recordingReferences = [reference]
+        try dbService.saveUnifiedSceneProject(enriched, worldMap: nil)
+
+        let result = dbService.renameUnifiedSceneProject(
+            id: enriched.id,
+            to: targetName,
+            expectedUpdatedAt: enriched.updatedAt
+        )
+        let snapshot = try XCTUnwrap(result.successValue)
+        XCTAssertEqual(snapshot.id, enriched.id)
+        XCTAssertEqual(snapshot.name, targetName)
+        XCTAssertEqual(snapshot.preview.recordingCount, 1)
+        XCTAssertEqual(snapshot.artifactHealth, .missing, "a reference is not evidence of a healthy artifact")
+
+        let renamed = try XCTUnwrap(dbService.loadUnifiedSceneProject(named: snapshot.name)?.0)
+        XCTAssertEqual(renamed.id, enriched.id)
+        XCTAssertEqual(renamed.createdAt, enriched.createdAt)
+        XCTAssertEqual(renamed.sceneDescription, enriched.sceneDescription)
+        XCTAssertEqual(renamed.markedObjects, enriched.markedObjects)
+        XCTAssertEqual(renamed.parsedScript, enriched.parsedScript)
+        XCTAssertEqual(renamed.plannedScene, enriched.plannedScene)
+        XCTAssertEqual(renamed.sceneChunkState, enriched.sceneChunkState)
+        XCTAssertEqual(renamed.visualOverlays, enriched.visualOverlays)
+        XCTAssertEqual(renamed.recordingReferences, enriched.recordingReferences)
+        XCTAssertEqual(renamed.updatedAt, snapshot.updatedAt)
+        XCTAssertGreaterThan(renamed.updatedAt, enriched.updatedAt)
+        XCTAssertNil(dbService.loadUnifiedSceneProject(named: enriched.name))
+    }
+
+    func testTypedRenameRejectsStaleSnapshotWithoutMutation() throws {
+        let project = try dbService.createUnifiedSceneProject(named: "rename-stale-\(UUID().uuidString)")
+        let staleDate = project.updatedAt.addingTimeInterval(-1)
+
+        let result = dbService.renameUnifiedSceneProject(
+            id: project.id,
+            to: "must-not-land",
+            expectedUpdatedAt: staleDate
+        )
+        guard case .failure(.staleSnapshot(let expected, let stored)) = result else {
+            return XCTFail("expected typed stale snapshot, got \(result)")
+        }
+        XCTAssertEqual(expected, staleDate)
+        XCTAssertEqual(stored, project.updatedAt)
+        let unchanged = try XCTUnwrap(dbService.loadUnifiedSceneProject(named: project.name)?.0)
+        XCTAssertEqual(unchanged, project)
+    }
+
+    func testTypedDeletePreservesProjectWhenArtifactCleanupFails() throws {
+        let project = try dbService.createUnifiedSceneProject(named: "delete-artifact-failure-\(UUID().uuidString)")
+        let recordingID = UUID()
+        let reference = SceneRecordingReference(
+            recordingID: recordingID,
+            relativePath: "Recordings/Projects/\(project.id.uuidString)/\(recordingID.uuidString).mov"
+        )
+        var withRecording = project
+        withRecording.recordingReferences = [reference]
+        try dbService.saveUnifiedSceneProject(withRecording, worldMap: nil)
+
+        let store = try RecordingArtifactStore()
+        let projectArtifactsURL = store.projectsDirectoryURL.appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectArtifactsURL, withIntermediateDirectories: true)
+        let unexpectedEntry = projectArtifactsURL.appendingPathComponent("unexpected.txt")
+        try Data("not a movie".utf8).write(to: unexpectedEntry)
+        defer { try? FileManager.default.removeItem(at: projectArtifactsURL) }
+
+        var result: Result<Void, SETLibraryFailure>?
+        dbService.deleteUnifiedSceneProject(id: project.id, expectedUpdatedAt: withRecording.updatedAt) {
+            result = $0
+        }
+
+        guard case .failure(.artifactCleanup) = result else {
+            return XCTFail("expected typed artifact cleanup failure, got \(String(describing: result))")
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unexpectedEntry.path))
+        XCTAssertEqual(dbService.loadUnifiedSceneProject(named: project.name)?.0, withRecording)
     }
 
     func testMissingStoredFileIsAnInitialWriteNotAConflict() throws {
@@ -161,5 +287,12 @@ final class DBServiceConcurrencyTests: XCTestCase {
             box.set(body(index), at: index)
         }
         return box.values
+    }
+}
+
+private extension Result {
+    var successValue: Success? {
+        guard case .success(let value) = self else { return nil }
+        return value
     }
 }

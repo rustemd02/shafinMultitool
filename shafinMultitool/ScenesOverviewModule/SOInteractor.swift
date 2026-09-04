@@ -13,6 +13,19 @@ protocol SOInteractorProtocol: AnyObject {
     func getSceneSummaries() -> [UnifiedSceneProjectSummary]
     func createScene(named title: String) -> SETLibraryCreateOutcome
     func deleteScene(with title: String, completion: @escaping (Bool) -> Void)
+
+    func getLibrarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure>
+    func createLibraryScene(named title: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure>
+    func renameLibraryScene(
+        id: UUID,
+        to name: String,
+        expectedUpdatedAt: Date
+    ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure>
+    func deleteLibraryScene(
+        id: UUID,
+        expectedUpdatedAt: Date,
+        completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+    )
 }
 
 class SOInteractor {
@@ -55,6 +68,33 @@ extension SOInteractor: SOInteractorProtocol {
     func deleteScene(with title: String, completion: @escaping (Bool) -> Void) {
         DBService.shared.deleteUnifiedSceneProject(named: title) { deleted in
             completion(deleted)
+            self.presenter?.updateUI()
+        }
+    }
+
+    func getLibrarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
+        DBService.shared.loadLibrarySceneSnapshots()
+    }
+
+    func createLibraryScene(named title: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        DBService.shared.createLibraryScene(named: title)
+    }
+
+    func renameLibraryScene(
+        id: UUID,
+        to name: String,
+        expectedUpdatedAt: Date
+    ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        DBService.shared.renameUnifiedSceneProject(id: id, to: name, expectedUpdatedAt: expectedUpdatedAt)
+    }
+
+    func deleteLibraryScene(
+        id: UUID,
+        expectedUpdatedAt: Date,
+        completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+    ) {
+        DBService.shared.deleteUnifiedSceneProject(id: id, expectedUpdatedAt: expectedUpdatedAt) { result in
+            completion(result)
             self.presenter?.updateUI()
         }
     }

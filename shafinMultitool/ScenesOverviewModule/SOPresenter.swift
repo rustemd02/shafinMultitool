@@ -65,4 +65,41 @@ extension SOPresenter: SETLibrarySceneProviding {
     func libraryOpenScene(named name: String) {
         router.loadSceneWithName(title: name, newScene: false)
     }
+
+    func librarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
+        interactor.getLibrarySceneSnapshots()
+    }
+
+    func libraryCreateSceneResult(named name: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        interactor.createLibraryScene(named: name)
+    }
+
+    func libraryRenameSceneResult(
+        id: UUID,
+        to name: String,
+        expectedUpdatedAt: Date
+    ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        interactor.renameLibraryScene(id: id, to: name, expectedUpdatedAt: expectedUpdatedAt)
+    }
+
+    func libraryDeleteSceneResult(
+        id: UUID,
+        expectedUpdatedAt: Date,
+        completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+    ) {
+        interactor.deleteLibraryScene(id: id, expectedUpdatedAt: expectedUpdatedAt, completion: completion)
+    }
+
+    func libraryOpenSceneResult(id: UUID) -> Result<Void, SETLibraryFailure> {
+        switch interactor.getLibrarySceneSnapshots() {
+        case .success(let snapshots):
+            guard let snapshot = snapshots.first(where: { $0.id == id }) else {
+                return .failure(.missingProject(id: id))
+            }
+            router.loadSceneWithName(title: snapshot.name, newScene: false)
+            return .success(())
+        case .failure(let failure):
+            return .failure(failure)
+        }
+    }
 }

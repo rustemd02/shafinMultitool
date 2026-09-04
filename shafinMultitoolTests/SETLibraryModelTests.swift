@@ -7,6 +7,8 @@ final class SETLibraryModelTests: XCTestCase {
         var summaries: [UnifiedSceneProjectSummary] = []
         var createOutcome: SETLibraryCreateOutcome = .created
         var deleteResult = true
+        var snapshotsResult: Result<[SETLibrarySceneSnapshot], SETLibraryFailure>?
+        var renameResult: Result<SETLibrarySceneSnapshot, SETLibraryFailure>?
         private(set) var createdNames: [String] = []
         private(set) var deletedNames: [String] = []
         private(set) var openedNames: [String] = []
@@ -17,16 +19,86 @@ final class SETLibraryModelTests: XCTestCase {
 
         func libraryCreateScene(named name: String) -> SETLibraryCreateOutcome {
             createdNames.append(name)
+            if createOutcome == .created {
+                summaries.append(
+                    UnifiedSceneProjectSummary(id: UUID(), name: name, updatedAt: Date(timeIntervalSince1970: 1_787_000_000))
+                )
+            }
             return createOutcome
         }
 
         func libraryDeleteScene(named name: String, completion: @escaping (Bool) -> Void) {
             deletedNames.append(name)
+            if deleteResult {
+                summaries.removeAll { $0.name == name }
+            }
             completion(deleteResult)
         }
 
         func libraryOpenScene(named name: String) {
             openedNames.append(name)
+        }
+
+        func librarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
+            if let snapshotsResult { return snapshotsResult }
+            return .success(summaries.map {
+                SETLibrarySceneSnapshot(id: $0.id, name: $0.name, updatedAt: $0.updatedAt)
+            })
+        }
+
+        func libraryCreateSceneResult(named name: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+            switch libraryCreateScene(named: name) {
+            case .created:
+                guard let summary = summaries.first(where: { $0.name == name }) else { return .failure(.persistence) }
+                return .success(SETLibrarySceneSnapshot(id: summary.id, name: summary.name, updatedAt: summary.updatedAt))
+            case .invalidName: return .failure(.invalidName)
+            case .duplicateName: return .failure(.duplicateName(name: name, conflictingID: nil))
+            case .persistenceFailure: return .failure(.persistence)
+            }
+        }
+
+        func libraryRenameSceneResult(
+            id: UUID,
+            to name: String,
+            expectedUpdatedAt: Date
+        ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+            if let renameResult { return renameResult }
+            guard let index = summaries.firstIndex(where: { $0.id == id }) else { return .failure(.missingProject(id: id)) }
+            guard summaries[index].updatedAt == expectedUpdatedAt else {
+                return .failure(.staleSnapshot(expectedUpdatedAt: expectedUpdatedAt, storedUpdatedAt: summaries[index].updatedAt))
+            }
+            guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .failure(.invalidName) }
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let duplicate = summaries.first(where: { $0.id != id && $0.name == trimmed }) {
+                return .failure(.duplicateName(name: trimmed, conflictingID: duplicate.id))
+            }
+            let updated = UnifiedSceneProjectSummary(id: id, name: trimmed, updatedAt: Date())
+            summaries[index] = updated
+            return .success(SETLibrarySceneSnapshot(id: id, name: trimmed, updatedAt: updated.updatedAt))
+        }
+
+        func libraryDeleteSceneResult(
+            id: UUID,
+            expectedUpdatedAt: Date,
+            completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+        ) {
+            guard let scene = summaries.first(where: { $0.id == id }) else {
+                completion(.failure(.missingProject(id: id)))
+                return
+            }
+            guard scene.updatedAt == expectedUpdatedAt else {
+                completion(.failure(.staleSnapshot(expectedUpdatedAt: expectedUpdatedAt, storedUpdatedAt: scene.updatedAt)))
+                return
+            }
+            libraryDeleteScene(named: scene.name) { deleted in
+                completion(deleted ? .success(()) : .failure(.persistence))
+            }
+        }
+
+        func libraryOpenSceneResult(id: UUID) -> Result<Void, SETLibraryFailure> {
+            guard let scene = summaries.first(where: { $0.id == id }) else { return .failure(.missingProject(id: id)) }
+            libraryOpenScene(named: scene.name)
+            return .success(())
         }
     }
 
@@ -47,6 +119,17 @@ final class SETLibraryModelTests: XCTestCase {
         provider.summaries = [makeSummary("Б", id: UUID())]
         model.reload()
         XCTAssertNil(model.selectedScene, "A disappeared scene must clear the selection projection.")
+    }
+
+    func testTypedLoadFailureIsNotPresentedAsEmptyLibrary() {
+        let provider = MockProvider()
+        provider.snapshotsResult = .failure(.persistence)
+        let model = SETLibraryModel(controlling: provider)
+
+        model.reload()
+
+        XCTAssertTrue(model.scenes.isEmpty)
+        XCTAssertEqual(model.flow, .failure(.load(.persistence)))
     }
 
     func testSelectRequiresIdleFlow() {
@@ -75,7 +158,7 @@ final class SETLibraryModelTests: XCTestCase {
         XCTAssertEqual(model.flow, .idle)
     }
 
-    func testConfirmCreateIgnoresEmptyDraft() {
+    func testConfirmCreateReportsInvalidDraft() {
         let provider = MockProvider()
         let model = SETLibraryModel(controlling: provider)
         model.beginCreate()
@@ -83,7 +166,7 @@ final class SETLibraryModelTests: XCTestCase {
         model.confirmCreate()
 
         XCTAssertTrue(provider.createdNames.isEmpty)
-        XCTAssertEqual(model.flow, .creating)
+        XCTAssertEqual(model.flow, .failure(.create(.invalidName)))
     }
 
     func testLocalDuplicateEntersDuplicateFlowWithoutTouchingPersistence() {
@@ -118,13 +201,63 @@ final class SETLibraryModelTests: XCTestCase {
         model.createDraft = "СЦЕНА"
         model.confirmCreate()
 
-        XCTAssertEqual(model.flow, .failure(.create))
+        XCTAssertEqual(model.flow, .failure(.create(.persistence)))
 
         provider.createOutcome = .created
         model.retry()
         XCTAssertEqual(provider.createdNames, ["СЦЕНА", "СЦЕНА"], "Retry must honestly re-run the failed create.")
         XCTAssertEqual(provider.openedNames, ["СЦЕНА"])
         XCTAssertEqual(model.flow, .idle)
+    }
+
+    func testReloadDoesNotEraseMutationFailureRecovery() {
+        let provider = MockProvider()
+        provider.createOutcome = .persistenceFailure
+        let model = SETLibraryModel(controlling: provider)
+        model.beginCreate()
+        model.createDraft = "СЦЕНА"
+        model.confirmCreate()
+
+        XCTAssertEqual(model.flow, .failure(.create(.persistence)))
+        model.reload()
+        XCTAssertEqual(model.flow, .failure(.create(.persistence)))
+
+        provider.createOutcome = .created
+        model.retry()
+        XCTAssertEqual(model.flow, .idle)
+    }
+
+    func testRenameUsesStableIDAndExpectedSnapshot() {
+        let provider = MockProvider()
+        let id = UUID()
+        provider.summaries = [makeSummary("СТАРОЕ", id: id)]
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+        model.select(id)
+        model.beginRename(sceneID: id)
+        model.renameDraft = "  НОВОЕ  "
+
+        model.confirmRename()
+
+        XCTAssertEqual(model.selectedScene?.id, id)
+        XCTAssertEqual(model.selectedScene?.name, "НОВОЕ")
+        XCTAssertEqual(model.flow, .idle)
+    }
+
+    func testRenameDuplicateIsTypedAndDoesNotMutateProvider() {
+        let provider = MockProvider()
+        let firstID = UUID()
+        let secondID = UUID()
+        provider.summaries = [makeSummary("А", id: firstID), makeSummary("Б", id: secondID)]
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+        model.beginRename(sceneID: firstID)
+        model.renameDraft = "Б"
+
+        model.confirmRename()
+
+        XCTAssertEqual(model.flow, .renameDuplicate(conflictingName: "Б"))
+        XCTAssertEqual(provider.summaries.map(\.name), ["А", "Б"])
     }
 
     func testDeleteConfirmationReloadsOnlyOnSuccess() async {
@@ -135,10 +268,13 @@ final class SETLibraryModelTests: XCTestCase {
         model.select(model.scenes[0].id)
         model.beginDelete(sceneName: "А")
 
-        XCTAssertEqual(model.flow, .deleting(sceneName: "А"))
+        let expectedUpdatedAt = provider.summaries[0].updatedAt
+        XCTAssertEqual(
+            model.flow,
+            .deleting(sceneID: model.scenes[0].id, sceneName: "А", expectedUpdatedAt: expectedUpdatedAt)
+        )
 
         provider.deleteResult = true
-        provider.summaries = [makeSummary("Б")]
         model.confirmDelete()
         await drainMainActor()
         XCTAssertEqual(model.flow, .idle)
@@ -156,11 +292,10 @@ final class SETLibraryModelTests: XCTestCase {
         model.confirmDelete()
         await drainMainActor()
 
-        XCTAssertEqual(model.flow, .failure(.delete))
+        XCTAssertEqual(model.flow, .failure(.delete(.persistence)))
         XCTAssertEqual(model.scenes.map(\.name), ["А"], "A failed delete must not lose data.")
 
         provider.deleteResult = true
-        provider.summaries = []
         model.retry()
         await drainMainActor()
         XCTAssertEqual(provider.deletedNames, ["А", "А"], "Retry must re-run the failed delete.")
@@ -178,6 +313,7 @@ final class SETLibraryModelTests: XCTestCase {
 
     func testCancelFlowsReturnToIdleAndClearDraft() {
         let provider = MockProvider()
+        provider.summaries = [makeSummary("А")]
         let model = SETLibraryModel(controlling: provider)
         model.beginCreate()
         model.createDraft = "ЧЕРНОВИК"
@@ -186,6 +322,7 @@ final class SETLibraryModelTests: XCTestCase {
         XCTAssertEqual(model.flow, .idle)
         XCTAssertEqual(model.createDraft, "")
 
+        model.reload()
         model.beginDelete(sceneName: "А")
         model.cancelDelete()
         XCTAssertEqual(model.flow, .idle)

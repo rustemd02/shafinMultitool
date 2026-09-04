@@ -2,6 +2,76 @@ import SwiftUI
 
 // MARK: - Ownership contract
 
+/// Failure vocabulary shared by the Library presentation owner and the
+/// persistence owner. The associated identity/snapshot values keep recovery
+/// actionable without leaking raw NSError values into the UI.
+enum SETLibraryFailure: Error, Equatable, Sendable {
+    case invalidName
+    case duplicateName(name: String, conflictingID: UUID?)
+    case missingProject(id: UUID?)
+    case staleSnapshot(expectedUpdatedAt: Date, storedUpdatedAt: Date)
+    case inUse
+    case persistence
+    case artifactCleanup
+    case previewUnavailable
+    case unsupported
+}
+
+enum SETLibraryArtifactHealth: String, Codable, Equatable, Sendable {
+    case none
+    case healthy
+    case missing
+    case corrupt
+    case unavailable
+}
+
+/// Preview data is deliberately metadata-only until a real project-owned
+/// media preview exists. No fixture image or inferred thumbnail belongs here.
+struct SETLibraryPreviewMetadata: Codable, Equatable, Sendable {
+    enum Kind: String, Codable, Equatable, Sendable {
+        case storyboard
+        case screenplay
+        case metadataOnly = "metadata-only"
+        case unavailable
+    }
+
+    let kind: Kind
+    let beatCount: Int
+    let actorCount: Int
+    let objectCount: Int
+    let recordingCount: Int
+
+    static let unavailable = SETLibraryPreviewMetadata(
+        kind: .unavailable,
+        beatCount: 0,
+        actorCount: 0,
+        objectCount: 0,
+        recordingCount: 0
+    )
+}
+
+struct SETLibrarySceneSnapshot: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let name: String
+    let updatedAt: Date
+    let preview: SETLibraryPreviewMetadata
+    let artifactHealth: SETLibraryArtifactHealth
+
+    init(
+        id: UUID,
+        name: String,
+        updatedAt: Date,
+        preview: SETLibraryPreviewMetadata = .unavailable,
+        artifactHealth: SETLibraryArtifactHealth = .unavailable
+    ) {
+        self.id = id
+        self.name = name
+        self.updatedAt = updatedAt
+        self.preview = preview
+        self.artifactHealth = artifactHealth
+    }
+}
+
 /// Projection-only bridge from the existing library behavior owners
 /// (`SOViewController` + `SOPresenter`/`SOInteractor` + `SORouter`). The SET OS
 /// surface never becomes a new state owner: listing, persistence and routing
@@ -11,6 +81,22 @@ protocol SETLibrarySceneProviding: AnyObject {
     func libraryCreateScene(named name: String) -> SETLibraryCreateOutcome
     func libraryDeleteScene(named name: String, completion: @escaping (Bool) -> Void)
     func libraryOpenScene(named name: String)
+
+    /// Typed Package 3 contract. The legacy methods above remain available to
+    /// old callers; production models use these Result-based projections.
+    func librarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure>
+    func libraryCreateSceneResult(named name: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure>
+    func libraryRenameSceneResult(
+        id: UUID,
+        to name: String,
+        expectedUpdatedAt: Date
+    ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure>
+    func libraryDeleteSceneResult(
+        id: UUID,
+        expectedUpdatedAt: Date,
+        completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+    )
+    func libraryOpenSceneResult(id: UUID) -> Result<Void, SETLibraryFailure>
 }
 
 enum SETLibraryCreateOutcome: Equatable, Sendable {
@@ -18,6 +104,60 @@ enum SETLibraryCreateOutcome: Equatable, Sendable {
     case invalidName
     case duplicateName
     case persistenceFailure
+}
+
+extension SETLibrarySceneProviding {
+    func librarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
+        .success(librarySceneSummaries().map {
+            SETLibrarySceneSnapshot(id: $0.id, name: $0.name, updatedAt: $0.updatedAt)
+        })
+    }
+
+    func libraryCreateSceneResult(named name: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        switch libraryCreateScene(named: name) {
+        case .created:
+            guard let summary = librarySceneSummaries().first(where: { $0.name == name }) else {
+                return .failure(.persistence)
+            }
+            return .success(SETLibrarySceneSnapshot(id: summary.id, name: summary.name, updatedAt: summary.updatedAt))
+        case .invalidName:
+            return .failure(.invalidName)
+        case .duplicateName:
+            return .failure(.duplicateName(name: name, conflictingID: nil))
+        case .persistenceFailure:
+            return .failure(.persistence)
+        }
+    }
+
+    func libraryRenameSceneResult(
+        id: UUID,
+        to name: String,
+        expectedUpdatedAt: Date
+    ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        .failure(.unsupported)
+    }
+
+    func libraryDeleteSceneResult(
+        id: UUID,
+        expectedUpdatedAt: Date,
+        completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+    ) {
+        guard let summary = librarySceneSummaries().first(where: { $0.id == id }) else {
+            completion(.failure(.missingProject(id: id)))
+            return
+        }
+        libraryDeleteScene(named: summary.name) { deleted in
+            completion(deleted ? .success(()) : .failure(.persistence))
+        }
+    }
+
+    func libraryOpenSceneResult(id: UUID) -> Result<Void, SETLibraryFailure> {
+        guard let summary = librarySceneSummaries().first(where: { $0.id == id }) else {
+            return .failure(.missingProject(id: id))
+        }
+        libraryOpenScene(named: summary.name)
+        return .success(())
+    }
 }
 
 // MARK: - Presentation model
@@ -31,31 +171,55 @@ final class SETLibraryModel: ObservableObject {
         case idle
         case creating
         case duplicate(conflictingName: String)
-        case deleting(sceneName: String)
+        case renaming(sceneID: UUID, sceneName: String)
+        case renameDuplicate(conflictingName: String)
+        case deleting(sceneID: UUID, sceneName: String, expectedUpdatedAt: Date)
         case failure(FailureKind)
     }
 
     enum FailureKind: Equatable {
-        case create
-        case delete
+        case load(SETLibraryFailure)
+        case create(SETLibraryFailure)
+        case rename(SETLibraryFailure)
+        case delete(SETLibraryFailure)
+        case open(SETLibraryFailure)
+    }
+
+    private enum RetryOperation: Equatable {
+        case load
+        case create(name: String)
+        case rename(id: UUID, name: String, expectedUpdatedAt: Date)
+        case delete(id: UUID, name: String, expectedUpdatedAt: Date)
+        case open(id: UUID)
     }
 
     struct SceneRow: Identifiable, Equatable {
         let id: UUID
         let name: String
         let updatedAt: Date
+        let preview: SETLibraryPreviewMetadata
+        let artifactHealth: SETLibraryArtifactHealth
+
+        init(snapshot: SETLibrarySceneSnapshot) {
+            id = snapshot.id
+            name = snapshot.name
+            updatedAt = snapshot.updatedAt
+            preview = snapshot.preview
+            artifactHealth = snapshot.artifactHealth
+        }
     }
 
     @Published private(set) var scenes: [SceneRow] = []
     @Published private(set) var selectedSceneID: UUID?
     @Published private(set) var flow: FlowState = .idle
     @Published var createDraft: String = ""
+    @Published var renameDraft: String = ""
 
     let controlling: SETLibrarySceneProviding
 
-    /// Retry context so `library.persistence-failure` can honestly re-run the
-    /// failed operation instead of a generic refresh.
-    private var pendingRetry: FailureKind?
+    /// Retry context captures the immutable identity and snapshot used by the
+    /// failed operation; retry never re-derives a delete/rename from selection.
+    private var pendingRetry: RetryOperation?
 
     init(controlling: SETLibrarySceneProviding) {
         self.controlling = controlling
@@ -66,13 +230,24 @@ final class SETLibraryModel: ObservableObject {
     }
 
     func reload() {
-        scenes = controlling.librarySceneSummaries().map {
-            SceneRow(id: $0.id, name: $0.name, updatedAt: $0.updatedAt)
+        switch controlling.librarySceneSnapshots() {
+        case .success(let snapshots):
+            scenes = snapshots.map(SceneRow.init)
+            if case .failure(.load) = flow {
+                pendingRetry = nil
+                flow = .idle
+            } else if flow == .idle {
+                pendingRetry = nil
+            }
+        case .failure(let failure):
+            pendingRetry = .load
+            flow = .failure(.load(failure))
+            return
         }
         if let selectedSceneID, !scenes.contains(where: { $0.id == selectedSceneID }) {
             self.selectedSceneID = nil
         }
-        if case .deleting(let name) = flow, !scenes.contains(where: { $0.name == name }) {
+        if case .deleting(let id, _, _) = flow, !scenes.contains(where: { $0.id == id }) {
             flow = .idle
         }
     }
@@ -84,7 +259,7 @@ final class SETLibraryModel: ObservableObject {
 
     func openSelectedScene() {
         guard let selectedScene else { return }
-        controlling.libraryOpenScene(named: selectedScene.name)
+        openScene(id: selectedScene.id)
     }
 
     func beginCreate() {
@@ -106,28 +281,55 @@ final class SETLibraryModel: ObservableObject {
 
     func confirmCreate() {
         let trimmed = createDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else {
+            flow = .failure(.create(.invalidName))
+            pendingRetry = .create(name: trimmed)
+            return
+        }
         if scenes.contains(where: { $0.name == trimmed }) {
             flow = .duplicate(conflictingName: trimmed)
             return
         }
-        switch controlling.libraryCreateScene(named: trimmed) {
-        case .created:
-            controlling.libraryOpenScene(named: trimmed)
-            flow = .idle
-        case .duplicateName:
-            flow = .duplicate(conflictingName: trimmed)
-        case .invalidName:
-            break
-        case .persistenceFailure:
-            pendingRetry = .create
-            flow = .failure(.create)
+        performCreate(named: trimmed)
+    }
+
+    private func performCreate(named name: String) {
+        switch controlling.libraryCreateSceneResult(named: name) {
+        case .success(let snapshot):
+            scenes.removeAll { $0.id == snapshot.id }
+            scenes.append(SceneRow(snapshot: snapshot))
+            scenes.sort { $0.updatedAt > $1.updatedAt }
+            selectedSceneID = snapshot.id
+            switch controlling.libraryOpenSceneResult(id: snapshot.id) {
+            case .success:
+                pendingRetry = nil
+                flow = .idle
+            case .failure(let failure):
+                pendingRetry = .open(id: snapshot.id)
+                flow = .failure(.open(failure))
+            }
+        case .failure(let failure):
+            if case .duplicateName(let conflictingName, _) = failure {
+                flow = .duplicate(conflictingName: conflictingName)
+                pendingRetry = nil
+            } else {
+                pendingRetry = .create(name: name)
+                flow = .failure(.create(failure))
+            }
         }
     }
 
     func beginDelete(sceneName: String) {
-        guard flow == .idle else { return }
-        flow = .deleting(sceneName: sceneName)
+        guard let scene = scenes.first(where: { $0.name == sceneName }) else {
+            flow = .failure(.delete(.missingProject(id: nil)))
+            return
+        }
+        beginDelete(sceneID: scene.id)
+    }
+
+    func beginDelete(sceneID: UUID) {
+        guard flow == .idle, let scene = scenes.first(where: { $0.id == sceneID }) else { return }
+        flow = .deleting(sceneID: scene.id, sceneName: scene.name, expectedUpdatedAt: scene.updatedAt)
     }
 
     func cancelDelete() {
@@ -136,49 +338,122 @@ final class SETLibraryModel: ObservableObject {
     }
 
     func confirmDelete() {
-        guard case .deleting(let name) = flow else { return }
-        controlling.libraryDeleteScene(named: name) { [weak self] deleted in
+        guard case .deleting(let id, let name, let expectedUpdatedAt) = flow else { return }
+        pendingRetry = .delete(id: id, name: name, expectedUpdatedAt: expectedUpdatedAt)
+        controlling.libraryDeleteSceneResult(id: id, expectedUpdatedAt: expectedUpdatedAt) { [weak self] result in
             Task { @MainActor in
-                self?.handleDeleteResult(deleted, sceneName: name)
+                self?.handleDeleteResult(result, id: id, sceneName: name, expectedUpdatedAt: expectedUpdatedAt)
             }
         }
     }
 
-    private func handleDeleteResult(_ deleted: Bool, sceneName: String) {
-        guard case .deleting(let name) = flow, name == sceneName else { return }
-        if deleted {
+    private func handleDeleteResult(
+        _ result: Result<Void, SETLibraryFailure>,
+        id: UUID,
+        sceneName: String,
+        expectedUpdatedAt: Date
+    ) {
+        guard case .deleting(let flowID, let flowName, _) = flow,
+              flowID == id,
+              flowName == sceneName else { return }
+        switch result {
+        case .success:
             flow = .idle
             reload()
-        } else {
-            pendingRetry = .delete
-            flow = .failure(.delete)
+        case .failure(let failure):
+            pendingRetry = .delete(id: id, name: sceneName, expectedUpdatedAt: expectedUpdatedAt)
+            flow = .failure(.delete(failure))
+        }
+    }
+
+    func beginRename(sceneID: UUID) {
+        guard flow == .idle, let scene = scenes.first(where: { $0.id == sceneID }) else { return }
+        renameDraft = scene.name
+        flow = .renaming(sceneID: scene.id, sceneName: scene.name)
+    }
+
+    func cancelRename() {
+        guard isRenameFlow || isRenameDuplicateFlow else { return }
+        renameDraft = ""
+        flow = .idle
+    }
+
+    private var isRenameFlow: Bool {
+        if case .renaming = flow { return true }
+        return false
+    }
+
+    private var isRenameDuplicateFlow: Bool {
+        if case .renameDuplicate = flow { return true }
+        return false
+    }
+
+    func confirmRename() {
+        guard case .renaming(let id, _) = flow,
+              let scene = scenes.first(where: { $0.id == id }) else { return }
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            pendingRetry = .rename(id: id, name: trimmed, expectedUpdatedAt: scene.updatedAt)
+            flow = .failure(.rename(.invalidName))
+            return
+        }
+        if scenes.contains(where: { $0.id != id && $0.name == trimmed }) {
+            flow = .renameDuplicate(conflictingName: trimmed)
+            return
+        }
+        performRename(id: id, name: trimmed, expectedUpdatedAt: scene.updatedAt)
+    }
+
+    private func performRename(id: UUID, name: String, expectedUpdatedAt: Date) {
+        switch controlling.libraryRenameSceneResult(id: id, to: name, expectedUpdatedAt: expectedUpdatedAt) {
+        case .success(let snapshot):
+            scenes = scenes.map { $0.id == id ? SceneRow(snapshot: snapshot) : $0 }
+            renameDraft = ""
+            pendingRetry = nil
+            flow = .idle
+        case .failure(let failure):
+            if case .duplicateName(let conflictingName, _) = failure {
+                flow = .renameDuplicate(conflictingName: conflictingName)
+                pendingRetry = nil
+            } else {
+                pendingRetry = .rename(id: id, name: name, expectedUpdatedAt: expectedUpdatedAt)
+                flow = .failure(.rename(failure))
+            }
+        }
+    }
+
+    private func openScene(id: UUID) {
+        switch controlling.libraryOpenSceneResult(id: id) {
+        case .success:
+            pendingRetry = nil
+        case .failure(let failure):
+            pendingRetry = .open(id: id)
+            flow = .failure(.open(failure))
         }
     }
 
     func retry() {
-        let kind = pendingRetry
+        let operation = pendingRetry
         pendingRetry = nil
-        switch kind {
-        case .create:
+        switch operation {
+        case .load:
+            reload()
+        case .create(let name):
+            createDraft = name
             flow = .creating
             confirmCreate()
-        case .delete:
-            if let scene = scenes.first(where: { $0.name == retryableDeleteName }) {
-                flow = .deleting(sceneName: scene.name)
-                confirmDelete()
-            } else {
-                flow = .idle
-            }
+        case .rename(let id, let name, let expectedUpdatedAt):
+            renameDraft = name
+            flow = .renaming(sceneID: id, sceneName: name)
+            performRename(id: id, name: name, expectedUpdatedAt: expectedUpdatedAt)
+        case .delete(let id, let name, let expectedUpdatedAt):
+            flow = .deleting(sceneID: id, sceneName: name, expectedUpdatedAt: expectedUpdatedAt)
+            confirmDelete()
+        case .open(let id):
+            openScene(id: id)
         case nil:
             flow = .idle
         }
-    }
-
-    private var retryableDeleteName: String? {
-        if case .failure(.delete) = flow, let selected = selectedScene {
-            return selected.name
-        }
-        return nil
     }
 }
 
@@ -260,6 +535,83 @@ final class SETLibraryFixtureProvider: SETLibrarySceneProviding {
 
     func libraryOpenScene(named name: String) {
         openedSceneNames.append(name)
+    }
+
+    func librarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
+        .success(scenes.map {
+            SETLibrarySceneSnapshot(
+                id: $0.id,
+                name: $0.name,
+                updatedAt: $0.updatedAt,
+                preview: SETLibraryPreviewMetadata(
+                    kind: .metadataOnly,
+                    beatCount: 0,
+                    actorCount: 0,
+                    objectCount: 0,
+                    recordingCount: 0
+                ),
+                artifactHealth: .unavailable
+            )
+        })
+    }
+
+    func libraryCreateSceneResult(named name: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        switch libraryCreateScene(named: name) {
+        case .created:
+            guard let summary = scenes.first(where: { $0.name == name }) else { return .failure(.persistence) }
+            return librarySceneSnapshots().flatMap { snapshots in
+                guard let snapshot = snapshots.first(where: { $0.id == summary.id }) else { return .failure(.persistence) }
+                return .success(snapshot)
+            }
+        case .invalidName: return .failure(.invalidName)
+        case .duplicateName: return .failure(.duplicateName(name: name, conflictingID: scenes.first(where: { $0.name == name })?.id))
+        case .persistenceFailure: return .failure(.persistence)
+        }
+    }
+
+    func libraryRenameSceneResult(
+        id: UUID,
+        to name: String,
+        expectedUpdatedAt: Date
+    ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .failure(.invalidName) }
+        guard let index = scenes.firstIndex(where: { $0.id == id }) else { return .failure(.missingProject(id: id)) }
+        guard scenes[index].updatedAt == expectedUpdatedAt else {
+            return .failure(.staleSnapshot(expectedUpdatedAt: expectedUpdatedAt, storedUpdatedAt: scenes[index].updatedAt))
+        }
+        if let duplicate = scenes.first(where: { $0.id != id && $0.name == trimmed }) {
+            return .failure(.duplicateName(name: trimmed, conflictingID: duplicate.id))
+        }
+        scenes[index] = UnifiedSceneProjectSummary(id: id, name: trimmed, updatedAt: Date())
+        return librarySceneSnapshots().flatMap { snapshots in
+            guard let snapshot = snapshots.first(where: { $0.id == id }) else { return .failure(.persistence) }
+            return .success(snapshot)
+        }
+    }
+
+    func libraryDeleteSceneResult(
+        id: UUID,
+        expectedUpdatedAt: Date,
+        completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+    ) {
+        guard let scene = scenes.first(where: { $0.id == id }) else {
+            completion(.failure(.missingProject(id: id)))
+            return
+        }
+        guard scene.updatedAt == expectedUpdatedAt else {
+            completion(.failure(.staleSnapshot(expectedUpdatedAt: expectedUpdatedAt, storedUpdatedAt: scene.updatedAt)))
+            return
+        }
+        libraryDeleteScene(named: scene.name) { deleted in
+            completion(deleted ? .success(()) : .failure(.persistence))
+        }
+    }
+
+    func libraryOpenSceneResult(id: UUID) -> Result<Void, SETLibraryFailure> {
+        guard let scene = scenes.first(where: { $0.id == id }) else { return .failure(.missingProject(id: id)) }
+        libraryOpenScene(named: scene.name)
+        return .success(())
     }
 }
 
@@ -439,7 +791,7 @@ private struct SETLibraryFixtureSurface: View {
         case "library.delete-confirmation":
             let scene = provider.scenes[2]
             model.select(scene.id)
-            model.beginDelete(sceneName: scene.name)
+            model.beginDelete(sceneID: scene.id)
         case "library.persistence-failure":
             model.beginCreate()
             model.createDraft = SETLibraryLocalizedCopy.string(.librarySceneFour, locale: configuration.locale)
@@ -513,7 +865,11 @@ private struct SETLibraryContactSheet: View {
             SETLibraryCreatePanel(model: model, duplicateName: nil)
         case .duplicate(let conflictingName):
             SETLibraryCreatePanel(model: model, duplicateName: conflictingName)
-        case .deleting(let sceneName):
+        case .renaming, .renameDuplicate:
+            // Rename presentation is owned by the later Library rename slice;
+            // the contract still keeps these states distinct here.
+            EmptyView()
+        case .deleting(_, let sceneName, _):
             SETLibraryDeletePanel(model: model, sceneName: sceneName)
         case .failure(let kind):
             SETLibraryFailurePanel(model: model, kind: kind)
@@ -587,7 +943,7 @@ private struct SETLibrarySceneList: View {
                         },
                         onDelete: {
                             model.select(scene.id)
-                            model.beginDelete(sceneName: scene.name)
+                            model.beginDelete(sceneID: scene.id)
                         }
                     )
                 }
@@ -617,8 +973,8 @@ private struct SETLibrarySceneRow: View {
     }
 
     var body: some View {
-        Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: SETSpacing.x2) {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Button(action: onSelect) {
                 HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
                     Text(String(format: "%02d", position))
                         .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
@@ -639,29 +995,33 @@ private struct SETLibrarySceneRow: View {
                         .tracking(0.35)
                         .foregroundStyle(.setTextSecondary)
                 }
+                .padding(.horizontal, SETSpacing.x4)
+                .padding(.vertical, isSelected ? SETSpacing.x3 : SETSpacing.x2)
+                .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
-                if isSelected {
-                    selectedContent
-                }
-            }
-            .padding(.horizontal, SETSpacing.x4)
-            .padding(.vertical, isSelected ? SETSpacing.x3 : SETSpacing.x2)
-            .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.setSurfaceSolid)
-            .overlay(alignment: .top) {
-                // One cut seam marks the expanded-row boundary.
-                CutSeam(axis: .horizontal)
-            }
-            .overlay(alignment: .bottomLeading) {
-                SETReflowAnnotation(isVisible: isSelected) {
-                    SETLibraryMarkerNote(kind: .bracket, label: .libraryMarker)
-                    .padding(SETSpacing.x2)
-                }
-                .allowsHitTesting(false)
+            if isSelected {
+                selectedContent
+                    .padding(.horizontal, SETSpacing.x4)
+                    .padding(.bottom, SETSpacing.x3)
             }
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.setSurfaceSolid)
+        .overlay(alignment: .top) {
+            // One cut seam marks the expanded-row boundary.
+            CutSeam(axis: .horizontal)
+        }
+        .overlay(alignment: .bottomLeading) {
+            SETReflowAnnotation(isVisible: isSelected) {
+                SETLibraryMarkerNote(kind: .bracket, label: .libraryMarker)
+                .padding(SETSpacing.x2)
+            }
+            .allowsHitTesting(false)
+        }
         .animation(
             isMotionReduced
                 ? .easeOut(duration: SETMotion.reducedMotionCrossfadeDuration)
@@ -678,7 +1038,7 @@ private struct SETLibrarySceneRow: View {
             SETDigitalAction(title: .libraryOpen, action: onOpen)
                 .accessibilityIdentifier(SETLibraryAccessibilityID.sceneOpen)
 
-            Button(action: onDelete) {
+                        Button(action: onDelete) {
                 Text(SETCopyKey.libraryDelete.localizedTextKey)
                     .font(SETTypography.uiBodyFont(weight: .semibold))
                     .foregroundStyle(.setTextSecondary)
@@ -925,10 +1285,16 @@ private struct SETLibraryFailurePanel: View {
     }
 
     private var titleKey: SETCopyKey {
-        kind == .create ? .libraryFailureTitle : .libraryFailureDeleteTitle
+        switch kind {
+        case .delete: return .libraryFailureDeleteTitle
+        case .load, .create, .rename, .open: return .libraryFailureTitle
+        }
     }
 
     private var detailKey: SETCopyKey {
-        kind == .create ? .libraryFailureDetail : .libraryFailureDeleteDetail
+        switch kind {
+        case .delete: return .libraryFailureDeleteDetail
+        case .load, .create, .rename, .open: return .libraryFailureDetail
+        }
     }
 }

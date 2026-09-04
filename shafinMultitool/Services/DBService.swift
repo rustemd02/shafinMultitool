@@ -252,6 +252,107 @@ class DBService {
         }
     }
 
+    /// Typed Library projection. Unlike the legacy list API, a malformed
+    /// persisted project is a load failure and can never be mistaken for an
+    /// empty Library.
+    func loadLibrarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
+        persistenceQueue.sync {
+            do {
+                let projects = try loadUnifiedSceneProjectsOnQueue()
+                return .success(projects.map { makeLibrarySnapshotOnQueue(for: $0) })
+            } catch {
+                return .failure(libraryFailure(for: error))
+            }
+        }
+    }
+
+    /// Typed create path. Duplicate detection and the actual write share the
+    /// existing serial persistence queue, so two callers cannot both win.
+    func createLibraryScene(named name: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        persistenceQueue.sync {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return .failure(.invalidName) }
+
+            do {
+                let projects = try loadUnifiedSceneProjectsOnQueue()
+                if let duplicate = projects.first(where: { $0.name == trimmed }) {
+                    return .failure(.duplicateName(name: trimmed, conflictingID: duplicate.id))
+                }
+                let project = try createUnifiedSceneProjectOnQueue(named: trimmed)
+                return .success(makeLibrarySnapshotOnQueue(for: project))
+            } catch {
+                return .failure(libraryFailure(for: error))
+            }
+        }
+    }
+
+    /// Renames only the project identity fields. The aggregate (script,
+    /// planning, overlays and recording references) and any archived world-map
+    /// bytes are carried into the replacement envelope unchanged.
+    func renameUnifiedSceneProject(
+        id: UUID,
+        to name: String,
+        expectedUpdatedAt: Date
+    ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+        persistenceQueue.sync {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return .failure(.invalidName) }
+
+            do {
+                let directory = try unifiedSceneProjectsDirectoryURL()
+                try createUnifiedSceneProjectsDirectory()
+                guard let projectURL = try findUnifiedProjectFileURL(id: id, in: directory) else {
+                    return .failure(.missingProject(id: id))
+                }
+
+                let stored = try loadUnifiedSceneProjectFile(projectURL)
+                guard stored.project.updatedAt == expectedUpdatedAt else {
+                    return .failure(.staleSnapshot(
+                        expectedUpdatedAt: expectedUpdatedAt,
+                        storedUpdatedAt: stored.project.updatedAt
+                    ))
+                }
+                if let duplicate = try loadUnifiedSceneProjectsOnQueue().first(where: {
+                    $0.id != id && $0.name == trimmed
+                }) {
+                    return .failure(.duplicateName(name: trimmed, conflictingID: duplicate.id))
+                }
+
+                var renamed = stored.project
+                renamed.name = trimmed
+                renamed.updatedAt = Date()
+
+                // Legacy v0 projects may keep the map beside the JSON file.
+                // Promote those bytes into the new envelope so a rename does
+                // not silently sever the world-map relation.
+                let archivedWorldMap = try preservedWorldMapDataOnQueue(
+                    stored: stored,
+                    directory: directory
+                )
+                let data = try JSONEncoder().encode(
+                    UnifiedSceneProjectFile(project: renamed, archivedWorldMap: archivedWorldMap)
+                )
+                try data.write(to: projectURL, options: [.atomic])
+                return .success(makeLibrarySnapshotOnQueue(for: renamed))
+            } catch {
+                return .failure(libraryFailure(for: error))
+            }
+        }
+    }
+
+    /// UUID/snapshot based deletion for the production Library provider. All
+    /// filesystem work remains on the existing serial queue; an artifact
+    /// cleanup failure returns before mutating the project file.
+    func deleteUnifiedSceneProject(
+        id: UUID,
+        expectedUpdatedAt: Date,
+        completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
+    ) {
+        persistenceQueue.sync {
+            completion(deleteUnifiedSceneProjectOnQueue(id: id, expectedUpdatedAt: expectedUpdatedAt))
+        }
+    }
+
     private func listUnifiedSceneProjectsOnQueue() -> [UnifiedSceneProjectSummary] {
         do {
             try createUnifiedSceneProjectsDirectory()
@@ -271,6 +372,19 @@ class DBService {
             print("Error listing unified scene projects: \(error)")
             return []
         }
+    }
+
+    private func loadUnifiedSceneProjectsOnQueue() throws -> [UnifiedSceneProject] {
+        try createUnifiedSceneProjectsDirectory()
+        let directory = try unifiedSceneProjectsDirectoryURL()
+        let fileURLs = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        return try fileURLs
+            .filter { $0.lastPathComponent.hasSuffix("_project.json") }
+            .map { try loadUnifiedSceneProjectFile($0).project }
+            .sorted {
+                if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
     }
 
     func createUnifiedSceneProject(named name: String) throws -> UnifiedSceneProject {
@@ -386,28 +500,67 @@ class DBService {
 
     func deleteUnifiedSceneProject(named name: String, completion: @escaping (Bool) -> ()) {
         persistenceQueue.sync {
-            deleteUnifiedSceneProjectOnQueue(named: name, completion: completion)
+            do {
+                try createUnifiedSceneProjectsDirectory()
+                let directory = try unifiedSceneProjectsDirectoryURL()
+                guard let projectURL = try findUnifiedProjectFileURL(named: name, in: directory),
+                      let id = UUID(uuidString: String(projectURL.lastPathComponent.dropLast("_project.json".count))) else {
+                    completion(false)
+                    return
+                }
+                if case .success = deleteUnifiedSceneProjectOnQueue(id: id, expectedUpdatedAt: nil) {
+                    completion(true)
+                } else {
+                    completion(false)
+                }
+            } catch {
+                print("Error deleting unified scene project: \(error)")
+                completion(false)
+            }
         }
     }
 
-    private func deleteUnifiedSceneProjectOnQueue(named name: String, completion: @escaping (Bool) -> ()) {
+    private func deleteUnifiedSceneProjectOnQueue(
+        id: UUID,
+        expectedUpdatedAt: Date?
+    ) -> Result<Void, SETLibraryFailure> {
         do {
             try createUnifiedSceneProjectsDirectory()
             let directory = try unifiedSceneProjectsDirectoryURL()
-            guard let projectURL = try findUnifiedProjectFileURL(named: name, in: directory) else {
-                completion(false)
-                return
+            guard let projectURL = try findUnifiedProjectFileURL(id: id, in: directory) else {
+                return .failure(.missingProject(id: id))
             }
 
             let stored = try loadUnifiedSceneProjectFile(projectURL)
+            if let expectedUpdatedAt,
+               stored.project.updatedAt != expectedUpdatedAt {
+                return .failure(.staleSnapshot(
+                    expectedUpdatedAt: expectedUpdatedAt,
+                    storedUpdatedAt: stored.project.updatedAt
+                ))
+            }
             guard !projectLeases.isLeased(projectID: stored.project.id) else {
                 // M1-016: an active workspace owns this project; deleting it
                 // now would strand that workspace on a ghost project and let a
                 // later autosave resurrect partial state.
                 print("Deletion rejected: project \(stored.project.name) is open in an active workspace")
-                completion(false)
-                return
+                return .failure(.inUse)
             }
+
+            // Validate and remove owned artifacts before deleting the project
+            // record. RecordingArtifactStore validates the complete directory
+            // before unlinking, so a cleanup failure leaves project state intact.
+            if !stored.project.recordingReferences.isEmpty {
+                guard case .success(let artifactStore) = recordingArtifactStore else {
+                    return .failure(.artifactCleanup)
+                }
+                do {
+                    try artifactStore.removeProjectArtifacts(projectID: stored.project.id)
+                } catch {
+                    return .failure(.artifactCleanup)
+                }
+            }
+
             let mapURL = directory.appendingPathComponent(worldMapFilename(for: stored.project.id))
             if fileManager.fileExists(atPath: mapURL.path) {
                 try fileManager.removeItem(at: mapURL)
@@ -415,16 +568,9 @@ class DBService {
             if fileManager.fileExists(atPath: projectURL.path) {
                 try fileManager.removeItem(at: projectURL)
             }
-
-            do {
-                try recordingArtifactStore.get().removeProjectArtifacts(projectID: stored.project.id)
-            } catch {
-                print("Error deleting recording artifacts for unified scene project: \(error)")
-            }
-            completion(true)
+            return .success(())
         } catch {
-            print("Error deleting unified scene project: \(error)")
-            completion(false)
+            return .failure(libraryFailure(for: error))
         }
     }
 
@@ -511,6 +657,98 @@ class DBService {
             }
         }
         return nil
+    }
+
+    private func findUnifiedProjectFileURL(id: UUID, in directory: URL) throws -> URL? {
+        let projectURL = directory.appendingPathComponent(projectFilename(for: id))
+        return fileManager.fileExists(atPath: projectURL.path) ? projectURL : nil
+    }
+
+    private func makeLibrarySnapshotOnQueue(for project: UnifiedSceneProject) -> SETLibrarySceneSnapshot {
+        let preview: SETLibraryPreviewMetadata
+        if let plannedScene = project.plannedScene {
+            preview = SETLibraryPreviewMetadata(
+                kind: .storyboard,
+                beatCount: project.parsedScript?.beats.count ?? 0,
+                actorCount: plannedScene.placedActors.count,
+                objectCount: plannedScene.placedObjects.count,
+                recordingCount: project.recordingReferences.count
+            )
+        } else if let parsedScript = project.parsedScript {
+            preview = SETLibraryPreviewMetadata(
+                kind: .screenplay,
+                beatCount: parsedScript.beats.count,
+                actorCount: parsedScript.actors.count,
+                objectCount: parsedScript.objects.count,
+                recordingCount: project.recordingReferences.count
+            )
+        } else if !project.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            preview = SETLibraryPreviewMetadata(
+                kind: .metadataOnly,
+                beatCount: 0,
+                actorCount: 0,
+                objectCount: 0,
+                recordingCount: project.recordingReferences.count
+            )
+        } else {
+            preview = .unavailable
+        }
+
+        return SETLibrarySceneSnapshot(
+            id: project.id,
+            name: project.name,
+            updatedAt: project.updatedAt,
+            preview: preview,
+            artifactHealth: artifactHealthOnQueue(for: project)
+        )
+    }
+
+    private func artifactHealthOnQueue(for project: UnifiedSceneProject) -> SETLibraryArtifactHealth {
+        guard !project.recordingReferences.isEmpty else { return .none }
+        guard case .success(let artifactStore) = recordingArtifactStore else { return .unavailable }
+
+        var hasCorruptArtifact = false
+        for reference in project.recordingReferences {
+            guard let url = artifactStore.resolve(reference) else { return .missing }
+            guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+                  let fileSize = attributes[.size] as? NSNumber else {
+                return .missing
+            }
+            if fileSize.int64Value <= 0 {
+                hasCorruptArtifact = true
+            }
+        }
+        return hasCorruptArtifact ? .corrupt : .healthy
+    }
+
+    private func preservedWorldMapDataOnQueue(
+        stored: (project: UnifiedSceneProject, archivedWorldMap: Data?, isLegacy: Bool),
+        directory: URL
+    ) throws -> Data? {
+        if let archivedWorldMap = stored.archivedWorldMap {
+            return archivedWorldMap
+        }
+        guard stored.isLegacy else { return nil }
+        let mapURL = directory.appendingPathComponent(worldMapFilename(for: stored.project.id))
+        guard fileManager.fileExists(atPath: mapURL.path) else { return nil }
+        return try Data(contentsOf: mapURL)
+    }
+
+    private func libraryFailure(for error: Error) -> SETLibraryFailure {
+        if let error = error as? DBServiceError {
+            switch error {
+            case .staleSnapshot(let storedUpdatedAt):
+                return .staleSnapshot(expectedUpdatedAt: storedUpdatedAt, storedUpdatedAt: storedUpdatedAt)
+            }
+        }
+        if let error = error as NSError?, error.domain == "DBService" {
+            switch error.code {
+            case 1: return .invalidName
+            case 2: return .duplicateName(name: error.localizedFailureReason ?? "", conflictingID: nil)
+            default: break
+            }
+        }
+        return .persistence
     }
 
 }
