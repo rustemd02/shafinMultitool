@@ -685,6 +685,778 @@ struct SceneJourneyContract: Codable, Equatable {
     }
 }
 
+// MARK: - M6-001 AR Workspace product contract
+
+/// The M6-001 projection is deliberately smaller than `SceneJourneyContract`:
+/// it stores only the ordered AR state identities and typed policy tables.
+/// State metadata and transitions are always read from the production journey
+/// contract; this type is not a runtime reducer or an ARSession owner.
+enum ARWorkspaceDeviceClass: String, CaseIterable, Codable, Equatable {
+    case iPhone
+    case iPad
+}
+
+enum ARWorkspaceOrientation: String, CaseIterable, Codable, Equatable {
+    case landscapeLeft
+    case landscapeRight
+    case portrait
+    case portraitUpsideDown
+}
+
+enum ARWorkspacePortraitPolicy: String, Codable, Equatable {
+    case deferredToM10010 = "deferred to M10-010 iPad portrait/adaptive AR"
+}
+
+struct ARWorkspaceOrientationSupport: Codable, Equatable {
+    let device: ARWorkspaceDeviceClass
+    let supported: [ARWorkspaceOrientation]
+    let unsupported: [ARWorkspaceOrientation]
+
+    init(
+        device: ARWorkspaceDeviceClass,
+        supported: [ARWorkspaceOrientation],
+        unsupported: [ARWorkspaceOrientation]
+    ) {
+        self.device = device
+        self.supported = supported
+        self.unsupported = unsupported
+    }
+
+    var deviceClass: ARWorkspaceDeviceClass { device }
+    var supportedOrientations: [ARWorkspaceOrientation] { supported }
+    var unsupportedOrientations: [ARWorkspaceOrientation] { unsupported }
+}
+
+struct ARWorkspaceOrientationMatrix: Codable, Equatable {
+    let entries: [ARWorkspaceOrientationSupport]
+    let portraitPolicy: ARWorkspacePortraitPolicy
+
+    init(
+        entries: [ARWorkspaceOrientationSupport],
+        portraitPolicy: ARWorkspacePortraitPolicy = .deferredToM10010
+    ) {
+        self.entries = entries
+        self.portraitPolicy = portraitPolicy
+    }
+
+    static let canonical = ARWorkspaceOrientationMatrix(entries: [
+        ARWorkspaceOrientationSupport(
+            device: .iPhone,
+            supported: [.landscapeLeft, .landscapeRight],
+            unsupported: [.portrait, .portraitUpsideDown]
+        ),
+        ARWorkspaceOrientationSupport(
+            device: .iPad,
+            supported: [.landscapeLeft, .landscapeRight],
+            unsupported: [.portrait, .portraitUpsideDown]
+        )
+    ])
+
+    var deviceClasses: [ARWorkspaceDeviceClass] { entries.map(\.device) }
+    var iPadPortraitPolicy: ARWorkspacePortraitPolicy { portraitPolicy }
+
+    func support(for device: ARWorkspaceDeviceClass) -> ARWorkspaceOrientationSupport? {
+        entries.first { $0.device == device }
+    }
+
+    func supportedOrientations(for device: ARWorkspaceDeviceClass) -> [ARWorkspaceOrientation] {
+        support(for: device)?.supported ?? []
+    }
+
+    func supports(_ orientation: ARWorkspaceOrientation, on device: ARWorkspaceDeviceClass) -> Bool {
+        supportedOrientations(for: device).contains(orientation)
+    }
+
+    func validate() -> Bool {
+        let expectedDevices = Set(ARWorkspaceDeviceClass.allCases)
+        let expectedSupported: Set<ARWorkspaceOrientation> = [.landscapeLeft, .landscapeRight]
+        let expectedUnsupported: Set<ARWorkspaceOrientation> = [.portrait, .portraitUpsideDown]
+        guard entries.count == expectedDevices.count,
+              Set(deviceClasses).count == entries.count,
+              Set(deviceClasses) == expectedDevices,
+              portraitPolicy == .deferredToM10010 else { return false }
+
+        return entries.allSatisfy { entry in
+            Set(entry.supported).count == entry.supported.count
+                && Set(entry.unsupported).count == entry.unsupported.count
+                && Set(entry.supported) == expectedSupported
+                && Set(entry.unsupported) == expectedUnsupported
+                && Set(entry.supported).isDisjoint(with: entry.unsupported)
+        }
+    }
+}
+
+enum ARWorkspaceRuntimeConformance: String, Codable, Equatable {
+    case current = "existing owner; no runtime change in M6-001"
+    case pendingM6002 = "pending M6-002: runtime sole-ARSession ownership"
+}
+
+enum ARWorkspacePhysicalEvidenceStatus: String, Codable, Equatable {
+    case notRun = "not run; physical ARKit evidence is required"
+    case claimed = "physical evidence claimed"
+}
+
+enum ARWorkspaceOwnerRole: String, CaseIterable, Codable, Equatable, Identifiable {
+    case workspaceLifecycle = "workspace-lifecycle"
+    case arSessionLifecycle = "ar-session-lifecycle"
+    case presentation
+    case placementAnchors = "placement-anchors"
+    case marking
+    case hints
+    case playback
+    case recording
+    case persistence
+    case teardown
+
+    var id: String { rawValue }
+}
+
+/// References the existing behavior owners without creating replacement
+/// services or coordinators. The ARSession boundary remains pending M6-002.
+enum ARWorkspaceOwnerReference: String, CaseIterable, Codable, Equatable {
+    case workspaceLifecycle = "SceneGeneratorViewModel + SceneWorkspaceTeardownCoordinator"
+    case arSessionLifecycle = "ARSceneContainer (runtime sole ARSession ownership pending M6-002)"
+    case presentation = "CommercialShell routes + AR presentation"
+    case placementAnchors = "SceneGeneratorViewModel placement/anchors owner"
+    case marking = "SceneGeneratorViewModel marking owner"
+    case hints = "SceneGeneratorViewModel live-hints owner"
+    case playback = "SceneGeneratorViewModel + LegacySceneGeneratorCameraShell playback owners"
+    case recording = "SceneRecordingController + RecordingLifecycleOwner"
+    case persistence = "UnifiedSceneProject + existing world-map persistence owners"
+    case teardown = "SceneWorkspaceTeardownCoordinator"
+}
+
+struct ARWorkspaceOwnershipBoundary: Codable, Equatable, Identifiable {
+    let role: ARWorkspaceOwnerRole
+    let owner: ARWorkspaceOwnerReference
+    let runtimeConformance: ARWorkspaceRuntimeConformance
+
+    var id: String { role.id }
+}
+
+typealias ARWorkspaceOwnerBoundary = ARWorkspaceOwnershipBoundary
+
+struct ARWorkspaceOwnershipContract: Codable, Equatable {
+    let boundaries: [ARWorkspaceOwnershipBoundary]
+
+    init(boundaries: [ARWorkspaceOwnershipBoundary]) {
+        self.boundaries = boundaries
+    }
+
+    static let canonical = ARWorkspaceOwnershipContract(boundaries: [
+        ARWorkspaceOwnershipBoundary(
+            role: .workspaceLifecycle,
+            owner: .workspaceLifecycle,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .arSessionLifecycle,
+            owner: .arSessionLifecycle,
+            runtimeConformance: .pendingM6002
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .presentation,
+            owner: .presentation,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .placementAnchors,
+            owner: .placementAnchors,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .marking,
+            owner: .marking,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .hints,
+            owner: .hints,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .playback,
+            owner: .playback,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .recording,
+            owner: .recording,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .persistence,
+            owner: .persistence,
+            runtimeConformance: .current
+        ),
+        ARWorkspaceOwnershipBoundary(
+            role: .teardown,
+            owner: .teardown,
+            runtimeConformance: .current
+        )
+    ])
+
+    func boundary(for role: ARWorkspaceOwnerRole) -> ARWorkspaceOwnershipBoundary? {
+        boundaries.first { $0.role == role }
+    }
+
+    var arSessionOwners: [ARWorkspaceOwnershipBoundary] {
+        boundaries.filter { $0.owner == .arSessionLifecycle }
+    }
+
+    func validate() -> Bool {
+        let expectedRoles = Set(ARWorkspaceOwnerRole.allCases)
+        let roles = boundaries.map(\.role)
+        guard boundaries.count == expectedRoles.count,
+              Set(roles).count == roles.count,
+              Set(roles) == expectedRoles,
+              arSessionOwners.count == 1,
+              boundary(for: .arSessionLifecycle)?.owner == .arSessionLifecycle else {
+            return false
+        }
+        return boundaries.allSatisfy { boundary in
+            boundary.owner.rawValue.isEmpty == false
+                && (boundary.role == .arSessionLifecycle
+                    ? boundary.runtimeConformance == .pendingM6002
+                    : boundary.runtimeConformance == .current)
+        }
+    }
+}
+
+enum ARWorkspaceIdentityKind: String, CaseIterable, Codable, Equatable, Identifiable {
+    case workspace = "workspace.id"
+    case sessionGeneration = "session.generation"
+    case project = "project.id"
+    case plannedScene = "planned-scene.id"
+    case entity = "entity.id"
+    case anchor = "anchor.id"
+    case marker = "marker.id"
+    case recording = "recording.id"
+
+    var id: String { rawValue }
+}
+
+enum ARWorkspaceIdentityFenceRule: String, CaseIterable, Codable, Equatable {
+    case stableAcrossFrames = "stable-across-frames"
+    case boundToSessionGeneration = "bound-to-session-generation"
+    case rejectStaleGeneration = "reject-stale-generation"
+    case invalidatedByInterruption = "invalidated-by-interruption"
+    case invalidatedByReset = "invalidated-by-reset"
+    case revalidatedAfterRelocalization = "revalidated-after-relocalization"
+    case revalidatedAfterMapRestore = "revalidated-after-map-restore"
+    case invalidatedByTeardown = "invalidated-by-teardown"
+}
+
+struct ARWorkspaceIdentityFence: Codable, Equatable, Identifiable {
+    let identity: ARWorkspaceIdentityKind
+    let rules: [ARWorkspaceIdentityFenceRule]
+
+    init(identity: ARWorkspaceIdentityKind, rules: [ARWorkspaceIdentityFenceRule]) {
+        self.identity = identity
+        self.rules = rules
+    }
+
+    var id: String { identity.id }
+
+    func includes(_ rule: ARWorkspaceIdentityFenceRule) -> Bool {
+        rules.contains(rule)
+    }
+}
+
+struct ARWorkspaceIdentityFenceSummary: Codable, Equatable {
+    let requiredIdentities: [ARWorkspaceIdentityKind]
+    let staleGenerationRejected: Bool
+    let anchorIdentityBoundToSessionGeneration: Bool
+    let interruptionInvalidatesLiveIdentities: Bool
+    let resetInvalidatesLiveIdentities: Bool
+    let mapRestoreRevalidatesAnchors: Bool
+
+    var isComplete: Bool {
+        !requiredIdentities.isEmpty
+            && staleGenerationRejected
+            && anchorIdentityBoundToSessionGeneration
+            && interruptionInvalidatesLiveIdentities
+            && resetInvalidatesLiveIdentities
+            && mapRestoreRevalidatesAnchors
+    }
+}
+
+struct ARWorkspaceIdentityContract: Codable, Equatable {
+    let fences: [ARWorkspaceIdentityFence]
+    let initialSessionGeneration: UInt64
+
+    init(fences: [ARWorkspaceIdentityFence], initialSessionGeneration: UInt64 = 1) {
+        self.fences = fences
+        self.initialSessionGeneration = initialSessionGeneration
+    }
+
+    static let canonical = ARWorkspaceIdentityContract(fences: [
+        ARWorkspaceIdentityFence(
+            identity: .workspace,
+            rules: [.stableAcrossFrames, .invalidatedByTeardown]
+        ),
+        ARWorkspaceIdentityFence(
+            identity: .sessionGeneration,
+            rules: [
+                .stableAcrossFrames,
+                .rejectStaleGeneration,
+                .invalidatedByInterruption,
+                .invalidatedByReset,
+                .revalidatedAfterRelocalization,
+                .revalidatedAfterMapRestore,
+                .invalidatedByTeardown
+            ]
+        ),
+        ARWorkspaceIdentityFence(
+            identity: .project,
+            rules: [.stableAcrossFrames]
+        ),
+        ARWorkspaceIdentityFence(
+            identity: .plannedScene,
+            rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByReset, .revalidatedAfterMapRestore]
+        ),
+        ARWorkspaceIdentityFence(
+            identity: .entity,
+            rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByReset, .revalidatedAfterMapRestore]
+        ),
+        ARWorkspaceIdentityFence(
+            identity: .anchor,
+            rules: [
+                .stableAcrossFrames,
+                .boundToSessionGeneration,
+                .invalidatedByInterruption,
+                .invalidatedByReset,
+                .revalidatedAfterRelocalization,
+                .revalidatedAfterMapRestore
+            ]
+        ),
+        ARWorkspaceIdentityFence(
+            identity: .marker,
+            rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByReset, .revalidatedAfterMapRestore]
+        ),
+        ARWorkspaceIdentityFence(
+            identity: .recording,
+            rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByInterruption, .invalidatedByTeardown]
+        )
+    ])
+
+    func fence(for identity: ARWorkspaceIdentityKind) -> ARWorkspaceIdentityFence? {
+        fences.first { $0.identity == identity }
+    }
+
+    var summary: ARWorkspaceIdentityFenceSummary {
+        ARWorkspaceIdentityFenceSummary(
+            requiredIdentities: fences.map(\.identity),
+            staleGenerationRejected: fence(for: .sessionGeneration)?.includes(.rejectStaleGeneration) == true,
+            anchorIdentityBoundToSessionGeneration: fence(for: .anchor)?.includes(.boundToSessionGeneration) == true,
+            interruptionInvalidatesLiveIdentities: fence(for: .anchor)?.includes(.invalidatedByInterruption) == true,
+            resetInvalidatesLiveIdentities: fence(for: .anchor)?.includes(.invalidatedByReset) == true,
+            mapRestoreRevalidatesAnchors: fence(for: .anchor)?.includes(.revalidatedAfterMapRestore) == true
+        )
+    }
+
+    func validate() -> Bool {
+        let expected = Set(ARWorkspaceIdentityKind.allCases)
+        let identities = fences.map(\.identity)
+        guard initialSessionGeneration > 0,
+              fences.count == expected.count,
+              Set(identities).count == identities.count,
+              Set(identities) == expected,
+              fences.allSatisfy({ !$0.rules.isEmpty && Set($0.rules).count == $0.rules.count }) else {
+            return false
+        }
+
+        guard summary.isComplete else { return false }
+        guard fence(for: .plannedScene)?.includes(.boundToSessionGeneration) == true,
+              fence(for: .entity)?.includes(.boundToSessionGeneration) == true,
+              fence(for: .marker)?.includes(.boundToSessionGeneration) == true,
+              fence(for: .recording)?.includes(.boundToSessionGeneration) == true else {
+            return false
+        }
+        return true
+    }
+}
+
+enum ARWorkspaceTeardownStep: String, CaseIterable, Codable, Equatable {
+    case stopRecording = "stop-recording"
+    case stopPlayback = "stop-playback"
+    case persist = "persist"
+    case releaseRecording = "release-recording"
+    case pauseAndDetach = "pause-and-detach"
+}
+
+struct ARWorkspaceTeardownContract: Codable, Equatable {
+    let order: [ARWorkspaceTeardownStep]
+    let terminalState: SceneJourneyState
+    let terminalDestination: SceneJourneyState
+    let awaitsTerminalBeforeNavigation: Bool
+    let recordingStopState: SceneJourneyState
+
+    init(
+        order: [ARWorkspaceTeardownStep],
+        terminalState: SceneJourneyState,
+        terminalDestination: SceneJourneyState,
+        awaitsTerminalBeforeNavigation: Bool,
+        recordingStopState: SceneJourneyState
+    ) {
+        self.order = order
+        self.terminalState = terminalState
+        self.terminalDestination = terminalDestination
+        self.awaitsTerminalBeforeNavigation = awaitsTerminalBeforeNavigation
+        self.recordingStopState = recordingStopState
+    }
+
+    static let canonical = ARWorkspaceTeardownContract(
+        order: [.stopRecording, .stopPlayback, .persist, .releaseRecording, .pauseAndDetach],
+        terminalState: .arTeardown,
+        terminalDestination: .librarySelected,
+        awaitsTerminalBeforeNavigation: true,
+        recordingStopState: .recordingStopping
+    )
+
+    var steps: [ARWorkspaceTeardownStep] { order }
+}
+
+enum ARWorkspaceContractViolation: String, Codable, Equatable {
+    case missingState
+    case duplicateState
+    case noncanonicalState
+    case missingStateMetadata
+    case incompleteStateMetadata
+    case transitionOutsideCanonicalGraph
+    case transitionGraphMismatch
+    case incompleteOwnershipBoundaries
+    case secondARSessionOwner
+    case incompleteLandscapeMatrix
+    case portraitEnabledEarly
+    case recordingStopBypass
+    case nonterminalTeardown
+    case teardownNotAwaited
+    case incompleteRecoverySet
+    case missingIdentityFence
+    case staleGenerationNotRejected
+    case anchorIdentityNotGenerationFenced
+    case interruptionIdentityNotInvalidated
+    case resetIdentityNotInvalidated
+    case mapRestoreNotRevalidated
+    case persistenceBeforeReleaseNotGuaranteed
+    case runtimeConformancePending
+    case physicalEvidenceClaimed
+}
+
+struct ARWorkspaceContractValidationError: Error, Equatable {
+    let violations: [ARWorkspaceContractViolation]
+}
+
+/// A materialized evidence row for one state. It is created on demand from the
+/// canonical journey, so the AR projection cannot become a second transition
+/// graph or state owner.
+struct ARWorkspaceStateProjection: Codable, Equatable, Identifiable {
+    let state: SceneJourneyState
+    let currentAvailability: SceneJourneyAvailability
+    let behaviorOwner: SceneJourneyOwner
+    let typedInputs: [SceneJourneySourceState]
+    let artifacts: [SceneJourneyArtifactRelation]
+    let persistence: SceneJourneyPersistence
+    let allowedTransitions: [SceneJourneyTransition]
+    let identityFence: ARWorkspaceIdentityFenceSummary
+    let supportedDeviceOrientations: ARWorkspaceOrientationMatrix
+    let runtimeConformance: ARWorkspaceRuntimeConformance
+    let physicalEvidenceStatus: ARWorkspacePhysicalEvidenceStatus
+
+    var id: String { state.id }
+    var stateID: String { state.id }
+    var availability: SceneJourneyAvailability { currentAvailability }
+    var owner: SceneJourneyOwner { behaviorOwner }
+    var sourceStates: [SceneJourneySourceState] { typedInputs }
+    var artifactsOutputs: [SceneJourneyArtifactRelation] { artifacts }
+    var transitions: [SceneJourneyTransition] { allowedTransitions }
+    var supportedDeviceOrientation: ARWorkspaceOrientationMatrix { supportedDeviceOrientations }
+
+    fileprivate init(
+        state: SceneJourneyState,
+        source: SceneJourneyStateContract,
+        identityFence: ARWorkspaceIdentityFenceSummary,
+        orientationMatrix: ARWorkspaceOrientationMatrix,
+        runtimeConformance: ARWorkspaceRuntimeConformance,
+        physicalEvidenceStatus: ARWorkspacePhysicalEvidenceStatus
+    ) {
+        self.state = state
+        self.currentAvailability = source.availability
+        self.behaviorOwner = source.owner
+        self.typedInputs = source.sourceStates
+        self.artifacts = source.artifacts
+        self.persistence = source.persistence
+        self.allowedTransitions = source.transitions
+        self.identityFence = identityFence
+        self.supportedDeviceOrientations = orientationMatrix
+        self.runtimeConformance = runtimeConformance
+        self.physicalEvidenceStatus = physicalEvidenceStatus
+    }
+}
+
+typealias ARWorkspaceEvidenceRow = ARWorkspaceStateProjection
+
+struct ARWorkspaceContract: Codable, Equatable {
+    static let canonicalStates: [SceneJourneyState] = [
+        .arPreparing,
+        .arReady,
+        .arSurfaceSearch,
+        .arPlacement,
+        .arPlayback,
+        .arMarking,
+        .arLiveHints,
+        .arHintPause,
+        .arHintPlayback,
+        .recordingInProgress,
+        .recordingReview,
+        .arInterruption,
+        .arError,
+        .arRelocalization,
+        .arReset,
+        .arWorldMapRecovery,
+        .arTeardown
+    ]
+
+    static let canonicalStateIDs: [String] = canonicalStates.map(\.id)
+
+    static let canonicalRecoveryStates: [SceneJourneyState] = [
+        .arInterruption,
+        .arError,
+        .arRelocalization,
+        .arReset,
+        .arWorldMapRecovery
+    ]
+
+    let states: [SceneJourneyState]
+    let orientationMatrix: ARWorkspaceOrientationMatrix
+    let ownership: ARWorkspaceOwnershipContract
+    let identity: ARWorkspaceIdentityContract
+    let teardown: ARWorkspaceTeardownContract
+    let recoveryStates: [SceneJourneyState]
+    let runtimeConformance: ARWorkspaceRuntimeConformance
+    let physicalEvidenceStatus: ARWorkspacePhysicalEvidenceStatus
+
+    /// A malformed source can be supplied only to exercise fail-closed
+    /// validation. The projection never stores that graph: all production
+    /// lookups remain direct reads from `SceneJourneyContract.production`.
+    private let sourceContractMatchesProduction: Bool
+
+    init(
+        states: [SceneJourneyState] = ARWorkspaceContract.canonicalStates,
+        orientationMatrix: ARWorkspaceOrientationMatrix = .canonical,
+        ownership: ARWorkspaceOwnershipContract = .canonical,
+        identity: ARWorkspaceIdentityContract = .canonical,
+        teardown: ARWorkspaceTeardownContract = .canonical,
+        recoveryStates: [SceneJourneyState] = ARWorkspaceContract.canonicalRecoveryStates,
+        runtimeConformance: ARWorkspaceRuntimeConformance = .pendingM6002,
+        physicalEvidenceStatus: ARWorkspacePhysicalEvidenceStatus = .notRun,
+        sourceContract: SceneJourneyContract = .production
+    ) {
+        self.states = states
+        self.orientationMatrix = orientationMatrix
+        self.ownership = ownership
+        self.identity = identity
+        self.teardown = teardown
+        self.recoveryStates = recoveryStates
+        self.runtimeConformance = runtimeConformance
+        self.physicalEvidenceStatus = physicalEvidenceStatus
+        self.sourceContractMatchesProduction = sourceContract == .production
+    }
+
+    static let production = ARWorkspaceContract()
+
+    var stateIDs: [String] { states.map(\.id) }
+    var arStates: [SceneJourneyState] { states }
+    var evidenceRows: [ARWorkspaceEvidenceRow] {
+        states.compactMap { evidenceRow(for: $0) }
+    }
+    var stateProjections: [ARWorkspaceStateProjection] { evidenceRows }
+    var supportedDeviceOrientations: ARWorkspaceOrientationMatrix { orientationMatrix }
+    var ownerBoundaries: [ARWorkspaceOwnershipBoundary] { ownership.boundaries }
+    var identityContract: ARWorkspaceIdentityContract { identity }
+    var teardownOrder: [ARWorkspaceTeardownStep] { teardown.order }
+
+    /// The canonical state lookup remains owned by the existing journey
+    /// contract; this method adds only the AR subset gate.
+    func state(_ value: SceneJourneyState) -> SceneJourneyStateContract? {
+        guard states.contains(value) else { return nil }
+        return SceneJourneyContract.production.state(value)
+    }
+
+    func evidenceRow(for value: SceneJourneyState) -> ARWorkspaceEvidenceRow? {
+        guard let source = state(value) else { return nil }
+        return ARWorkspaceStateProjection(
+            state: value,
+            source: source,
+            identityFence: identity.summary,
+            orientationMatrix: orientationMatrix,
+            runtimeConformance: runtimeConformance,
+            physicalEvidenceStatus: physicalEvidenceStatus
+        )
+    }
+
+    func projectedState(_ value: SceneJourneyState) -> ARWorkspaceStateProjection? {
+        evidenceRow(for: value)
+    }
+
+    func allows(_ from: SceneJourneyState, _ to: SceneJourneyState) -> Bool {
+        SceneJourneyContract.production.allows(from, to)
+    }
+
+    func validationViolations() -> [ARWorkspaceContractViolation] {
+        var violations: [ARWorkspaceContractViolation] = []
+        let canonicalSet = Set(Self.canonicalStates)
+        let stateSet = Set(states)
+        let ids = states.map(\.id)
+
+        if states.count < Self.canonicalStates.count { violations.append(.missingState) }
+        if Set(ids).count != ids.count { violations.append(.duplicateState) }
+        if states.count > Self.canonicalStates.count || stateSet != canonicalSet {
+            violations.append(.noncanonicalState)
+        }
+
+        if !sourceContractMatchesProduction {
+            violations.append(.incompleteStateMetadata)
+        }
+
+        for arState in Self.canonicalStates {
+            guard let source = SceneJourneyContract.production.state(arState) else {
+                violations.append(.missingStateMetadata)
+                continue
+            }
+            guard !source.sourceStates.isEmpty,
+                  !source.entry.isEmpty,
+                  !source.primaryAction.isEmpty,
+                  !source.recovery.isEmpty,
+                  !source.exit.isEmpty,
+                  !source.artifacts.isEmpty else {
+                violations.append(.incompleteStateMetadata)
+                continue
+            }
+
+            if source.transitions.contains(where: {
+                SceneJourneyContract.production.state($0.to) == nil || $0.trigger.isEmpty
+            }) {
+                violations.append(.transitionOutsideCanonicalGraph)
+            }
+            if source.transitions != SceneJourneyContract.production.state(arState)?.transitions {
+                violations.append(.transitionGraphMismatch)
+            }
+        }
+
+        if !ownership.validate() {
+            violations.append(.incompleteOwnershipBoundaries)
+        }
+        if ownership.arSessionOwners.count != 1
+            || ownership.boundary(for: .arSessionLifecycle)?.owner != .arSessionLifecycle {
+            violations.append(.secondARSessionOwner)
+        }
+
+        if !orientationMatrix.validate() {
+            violations.append(.incompleteLandscapeMatrix)
+        }
+        if ARWorkspaceDeviceClass.allCases.contains(where: {
+            orientationMatrix.supportedOrientations(for: $0).contains(.portrait)
+                || orientationMatrix.supportedOrientations(for: $0).contains(.portraitUpsideDown)
+        }) {
+            violations.append(.portraitEnabledEarly)
+        }
+
+        if Set(recoveryStates) != Set(Self.canonicalRecoveryStates)
+            || recoveryStates.count != Self.canonicalRecoveryStates.count {
+            violations.append(.incompleteRecoverySet)
+        }
+
+        if !identity.validate() {
+            violations.append(.missingIdentityFence)
+        }
+        if identity.initialSessionGeneration == 0
+            || identity.fence(for: .sessionGeneration)?.includes(.rejectStaleGeneration) != true {
+            violations.append(.staleGenerationNotRejected)
+        }
+        if [.plannedScene, .entity, .anchor, .marker, .recording].contains(where: {
+            identity.fence(for: $0)?.includes(.boundToSessionGeneration) != true
+        }) {
+            violations.append(.anchorIdentityNotGenerationFenced)
+        }
+        if identity.fence(for: .anchor)?.includes(.invalidatedByInterruption) != true {
+            violations.append(.interruptionIdentityNotInvalidated)
+        }
+        if identity.fence(for: .anchor)?.includes(.invalidatedByReset) != true {
+            violations.append(.resetIdentityNotInvalidated)
+        }
+        if identity.fence(for: .anchor)?.includes(.revalidatedAfterMapRestore) != true {
+            violations.append(.mapRestoreNotRevalidated)
+        }
+
+        let activeRecording = SceneJourneyContract.production.state(.recordingInProgress)
+        let safeStop = activeRecording?.transitions.contains {
+            $0.to == .recordingStopping
+                && $0.kind == .recover
+                && $0.trigger.lowercased().contains("safe stop")
+        } == true
+        let bypassesStop = activeRecording?.transitions.contains {
+            $0.to == .arInterruption || $0.to == .arTeardown
+        } == true
+        if !safeStop || bypassesStop {
+            violations.append(.recordingStopBypass)
+        }
+
+        let expectedTeardownOrder: [ARWorkspaceTeardownStep] = [
+            .stopRecording,
+            .stopPlayback,
+            .persist,
+            .releaseRecording,
+            .pauseAndDetach
+        ]
+        if teardown.order != expectedTeardownOrder
+            || Set(teardown.order).count != expectedTeardownOrder.count
+            || teardown.order.first != .stopRecording
+            || teardown.order.firstIndex(of: .persist).map({
+                $0 < (teardown.order.firstIndex(of: .releaseRecording) ?? Int.max)
+            }) != true {
+            violations.append(.persistenceBeforeReleaseNotGuaranteed)
+        }
+        let teardownState = SceneJourneyContract.production.state(.arTeardown)
+        let terminalTransition = teardownState?.transitions
+            .filter { $0.to == teardown.terminalDestination }
+        if teardown.terminalState != .arTeardown
+            || teardown.terminalDestination != .librarySelected
+            || terminalTransition?.count != 1
+            || terminalTransition?.first?.kind != .teardown
+            || terminalTransition?.first?.trigger.lowercased().contains("teardown completes") != true {
+            violations.append(.nonterminalTeardown)
+        }
+        if !teardown.awaitsTerminalBeforeNavigation {
+            violations.append(.teardownNotAwaited)
+        }
+        if teardown.recordingStopState != .recordingStopping {
+            violations.append(.recordingStopBypass)
+        }
+
+        if runtimeConformance != .pendingM6002 {
+            violations.append(.runtimeConformancePending)
+        }
+        if physicalEvidenceStatus != .notRun {
+            violations.append(.physicalEvidenceClaimed)
+        }
+        return violations
+    }
+
+    func validate() -> Bool {
+        validationViolations().isEmpty
+    }
+
+    func validated() throws -> ARWorkspaceContract {
+        let violations = validationViolations()
+        guard violations.isEmpty else {
+            throw ARWorkspaceContractValidationError(violations: violations)
+        }
+        return self
+    }
+}
+
 enum SceneBundleParseMode: String, Codable, Equatable {
     case full
     case append
