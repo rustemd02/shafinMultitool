@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last integrated task head: `e585ecf` (M2-024; journal-only commits may follow; no push)
+- Last integrated task head: `4fdae56` (M12-033; journal-only commits may follow; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-025 action verifier; M5-003 library provider contract; M12-033 correction2 Sol audit
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-024, M3-001, M5-001, M5-002, M7-001, M7-003, M7-004]
-- In-progress: [M2-025, M5-003, M12-033]
+- Current task: M2-025 action verifier; M5-003 library provider contract
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-024, M3-001, M5-001, M5-002, M7-001, M7-003, M7-004, M12-033]
+- In-progress: [M2-025, M5-003]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -354,3 +354,9 @@
 ### 2026-09-04T19:10Z — M2-025 STARTED
 - Dedicated Luna worktree adds one pure `VerificationOwner` over immutable M2-024 before/final-stable evidence, producing fixed/improved/unchanged/worse or typed incomparable without a parallel episode state machine.
 - Scope preserves existing action mappings, provenance, deadbands and subject rules; time-only completion, invented aesthetic targets and unsupported focus/scene-cut claims are explicitly forbidden.
+
+### 2026-09-04T19:20Z — M12-033 CLOSED
+- Release component status is now machine-readable and fail-closed for all 19 M0 material families. Sixteen actually bundled/linked families remain dynamic blockers; GGUF, `Circle.rcproject` and `SETGrain.png` are explicitly excluded with provenance. Missing, duplicate, cross-family, unknown, deferred or legally pending states cannot silently pass.
+- `run_release_gates.sh` validates the registry before any `xcodebuild`; bundle validation consumes stable `KNOWN_BLOCKER` rows and exactly one dynamic count instead of a hard-coded five-item reporter.
+- Verification: 18/18 Python schema fixtures and 5/5 orchestration fixtures PASS; shell syntax, Python compilation, JSON validation and `git diff --check` PASS. Canonical validator intentionally exits 1 with 16 blockers. Final fresh Sol audit: `SHIP`. Integrated head: `4fdae56`.
+- Honest boundary: a fresh Release bundle still needs later full validation; historical bundle lacks the required root privacy manifest. Tracker total: 68/424 completed, 356 remaining.
