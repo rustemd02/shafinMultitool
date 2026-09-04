@@ -37,6 +37,22 @@ enum CoachingEpisodeCancellationReason: String, Codable, CaseIterable, Equatable
     case expired
 }
 
+extension CoachingEpisodeCancellationReason {
+    /// Evidence failures can recover on the next admissible frame in the
+    /// same capture. Capture and route boundaries remain explicit owners: the
+    /// camera/lens lifecycle must establish a new context before retrying.
+    var permitsAutomaticRetryWithinCapture: Bool {
+        switch self {
+        case .actionChanged, .subjectChanged, .staleEvidence, .outOfOrder,
+             .invalidObservation, .expired:
+            return true
+        case .cameraGenerationChange, .lensChange, .orientationChange,
+             .routeExit, .background, .sceneCut:
+            return false
+        }
+    }
+}
+
 /// Immutable configuration for one episode. Counts are frame counts, never
 /// time-based completion signals. `maxDuration` only provides a safety expiry.
 struct CoachingEpisodeConfiguration: Equatable, Sendable {

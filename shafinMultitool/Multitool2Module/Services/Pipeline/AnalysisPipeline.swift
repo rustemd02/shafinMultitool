@@ -6056,8 +6056,36 @@ final class AnalysisPipeline: ObservableObject {
         resetLiveEpisodeStream()
     }
 
+    /// Clears only the pipeline-side episode transaction after the coordinator
+    /// reaches a retryable terminal state. The coordinator already published
+    /// that terminal state, so this method deliberately emits no second event
+    /// and cannot recursively re-enter the ViewModel subscriber.
+    @MainActor
+    func resetCoachingEpisodeAfterTerminal() {
+        guard liveEpisodeActionID != nil else { return }
+        _ = liveAdviceStabilizer.invalidate(
+            frameID: "episode_terminal",
+            reason: "episode_terminal"
+        )
+        liveSubjectTracker.reset()
+        liveSubjectLifecycleContext = nil
+        liveSubjectSource = nil
+        resetLiveEpisodeStream()
+    }
+
     @MainActor
     private func publishLiveCoachingEpisodeEvent(_ event: CoachingEpisodeStreamEvent) {
+        // Keep the production stream owner aligned even when a deterministic
+        // integration seam supplies a complete baseline event. The real live
+        // adapter sets these values before publishing; this assignment makes
+        // the typed boundary itself preserve the same invariant.
+        if case .baseline(let observation) = event {
+            guard liveEpisodeActionID == nil else { return }
+            liveEpisodeActionID = observation.stabilizedAdvice.actionID
+            liveEpisodeGeneration = observation.lifecycle.generation
+            liveEpisodeOrientation = observation.lifecycle.orientation
+            liveEpisodeSource = observation.frame.evidence?.subjectBinding?.source
+        }
         currentCoachingEpisodeEvent = event
     }
 
@@ -6297,10 +6325,6 @@ final class AnalysisPipeline: ObservableObject {
                     clearLiveCoachingEpisodeObservation(reason: "observation_rejected")
                     return
                 }
-                liveEpisodeActionID = candidate.actionID
-                liveEpisodeGeneration = lifecycle.generation
-                liveEpisodeOrientation = lifecycle.orientation
-                liveEpisodeSource = binding?.source
                 publishLiveCoachingEpisodeEvent(.baseline(observation))
                 return
             }

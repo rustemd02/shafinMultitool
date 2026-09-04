@@ -75,6 +75,98 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         await fixture.viewModel.releaseAndWait()
     }
 
+    func testProductionTerminalCancellationResetsPipelineBeforeFreshBaseline() async {
+        let fixture = makeFixture { _ in
+            .noOp(activeLens: .wide)
+        }
+        let base = Date(timeIntervalSince1970: 30_000)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(id: "cancel-f0", x: 0.20, capturedAt: base))
+        )
+        let baselinePublished = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+        }
+        XCTAssertTrue(baselinePublished)
+        let oldToken = fixture.viewModel.coachingEpisodeState.token
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .frame(makeEpisodeObservation(
+                id: "cancel-f1",
+                x: 0.20,
+                capturedAt: base.addingTimeInterval(0.05)
+            ).asFrameEvidence(currentActionID: SemanticActionType.moveSubjectLeft.rawValue)!)
+        )
+        let cancelled = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .cancelled
+                && fixture.viewModel.coachingEpisodeState.cancellationReason == .actionChanged
+        }
+        XCTAssertTrue(cancelled)
+
+        // No manual coordinator reset: the terminal callback must clear the
+        // pipeline owner so this baseline is publishable and gets a new token.
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(
+                id: "cancel-fresh",
+                x: 0.20,
+                capturedAt: base.addingTimeInterval(0.10)
+            ))
+        )
+        let recovered = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "cancel-fresh"
+        }
+        XCTAssertTrue(recovered)
+        XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.token, oldToken)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testProductionExpiryResetsPipelineBeforeFreshBaseline() async {
+        let fixture = makeFixture { _ in
+            .noOp(activeLens: .wide)
+        }
+        let base = Date(timeIntervalSince1970: 40_000)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(id: "expire-f0", x: 0.20, capturedAt: base))
+        )
+        let baselinePublished = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+        }
+        XCTAssertTrue(baselinePublished)
+        let oldToken = fixture.viewModel.coachingEpisodeState.token
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .frame(makeEpisodeObservation(
+                id: "expire-f1",
+                x: 0.20,
+                capturedAt: base.addingTimeInterval(13)
+            ).asFrameEvidence(currentActionID: nil)!)
+        )
+        let expired = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .expired
+                && fixture.viewModel.coachingEpisodeState.cancellationReason == .expired
+        }
+        XCTAssertTrue(expired)
+
+        fixture.pipeline.publishCoachingEpisodeEvent(
+            .baseline(makeEpisodeObservation(
+                id: "expire-fresh",
+                x: 0.20,
+                capturedAt: base.addingTimeInterval(13.05)
+            ))
+        )
+        let recovered = await waitUntil {
+            fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "expire-fresh"
+        }
+        XCTAssertTrue(recovered)
+        XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.token, oldToken)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
     func testNoOpLensRequestCancelsPipelineStreamAndAllowsFreshBaselineToken() async {
         let gate = LensSwitchTestGate()
         let fixture = makeFixture { lens in

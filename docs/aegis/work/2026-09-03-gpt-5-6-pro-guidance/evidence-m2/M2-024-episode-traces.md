@@ -159,6 +159,42 @@ token. A temporary diagnostic rerun was stopped after the simulator's
 `simctl diagnose` stalled; it is not counted as product evidence. No iPhone 17
 Pro or physical device was used.
 
+### Correction3 verification
+
+Correction3 closes the production terminal-boundary gap. When a coordinator
+terminal is caused by retryable evidence (`actionChanged`, `subjectChanged`,
+`staleEvidence`, `outOfOrder`, `invalidObservation`, or `expired`),
+`CameraViewModel` clears the pipeline-owned action, lifecycle, source, and
+stabilizer state exactly once without emitting a recursive cancellation event.
+Capture and route boundaries (`lensChange`, `routeExit`, `background`,
+orientation/generation changes, and `sceneCut`) remain explicit lifecycle
+owners. The typed baseline publisher also refuses to overwrite an active
+pipeline owner, so the production regression fails unless a fresh baseline is
+actually admitted after the terminal reset.
+
+The two production-path regressions passed 2/2 on the allowed `iPhone 17e`
+iOS Simulator 26.5, with no manual `resetForRetry`:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-camera-b1-correction3-seam-derived-20260904a \
+  -resultBundlePath /tmp/setos-camera-b1-correction3-seam-20260904a.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests/testProductionTerminalCancellationResetsPipelineBeforeFreshBaseline \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests/testProductionExpiryResetsPipelineBeforeFreshBaseline test
+```
+
+Result: `TEST SUCCEEDED`, 2/2 passed, 0 failures, 0 skipped. Durable result
+bundle: `/tmp/setos-camera-b1-correction3-seam-20260904a.xcresult`.
+
+The complete M2-024 focused suite (including the rollback/lens tests and both
+new terminal-boundary regressions) then passed 84/84, 0 failures, 0 skipped on
+the same `iPhone 17e` iOS Simulator 26.5. Durable result bundle:
+`/tmp/setos-camera-b1-correction3-final-20260904a.xcresult`.
+
 A preceding `-9` run on the same allowed iPhone 17e built and launched, but
 reported 53/54 because the uncertain-case test fixture force-unwrapped an
 observation that production correctly rejects (an unstable ordinary action).
@@ -169,8 +205,9 @@ run (`fix-1`) stopped at a test compile error from an optional fixture value;
 the duplicate/out-of-order spot check then exposed a test timestamp outside
 the declared Vision freshness window and was corrected to exercise ordering
 after a valid first frame. The focused spot check passed 1/1 in
-`/tmp/setos-camera-b1-fix-6-20260904c.xcresult`. The final run above compiled
-the production target and passed all 73 focused tests. Earlier simulator launch
+`/tmp/setos-camera-b1-fix-6-20260904c.xcresult`. The first correction run above
+compiled the production target and passed all 73 focused tests; correction3's
+84/84 result is recorded above. Earlier simulator launch
 stall output with repeated `DVTDeviceOperation: Encountered a build number
 ""` messages is recorded as infrastructure, not product proof.
 

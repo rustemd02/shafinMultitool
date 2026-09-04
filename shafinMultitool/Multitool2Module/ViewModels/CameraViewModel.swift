@@ -808,7 +808,26 @@ final class CameraViewModel: ObservableObject {
         // The coordinator owns the terminal-boundary rule: only a typed
         // baseline may reset a cancelled/expired episode. Frame events never
         // reopen a terminal state and never replace the frozen advice.
-        coachingEpisodeState = coachingEpisodeCoordinator.consume(event)
+        let previousPhase = coachingEpisodeCoordinator.phase
+        let nextState = coachingEpisodeCoordinator.consume(event)
+        coachingEpisodeState = nextState
+
+        let wasActive = previousPhase == .awaitingMovement
+            || previousPhase == .collectingStableAfterFrames
+        let reachedTerminal = nextState.phase == .cancelled
+            || nextState.phase == .expired
+        guard wasActive,
+              reachedTerminal,
+              let reason = nextState.cancellationReason,
+              reason.permitsAutomaticRetryWithinCapture else {
+            return
+        }
+
+        // The coordinator has already consumed the terminal frame. Clear the
+        // pipeline owner exactly once so its next admissible sample can be a
+        // fresh baseline with a new token; lifecycle boundaries use their own
+        // explicit cancellation/reset path above.
+        analysisPipeline.resetCoachingEpisodeAfterTerminal()
     }
 
     private func cancelCoachingEpisode(reason: CoachingEpisodeCancellationReason) {
