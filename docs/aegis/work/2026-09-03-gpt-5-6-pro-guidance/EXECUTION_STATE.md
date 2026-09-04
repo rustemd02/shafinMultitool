@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last integrated task head: `17e7410` (M7-003 + M7-004; journal-only commits may follow; no push)
+- Last integrated task head: `0cdc876` (M5-001; journal-only commits may follow; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-024 fix-first correction2; M5-001 fix-first correction6
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001, M7-001, M7-003, M7-004]
-- In-progress: [M2-024, M5-001]
+- Current task: M2-024 fix-first correction2; next dependency-ready batch selection
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001, M5-001, M7-001, M7-003, M7-004]
+- In-progress: [M2-024]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -318,3 +318,10 @@
 - Honest boundary: physical microphone/Bluetooth routes, interruptions/reset recovery, A/V sync and hardware timing remain later device qualification; no physical-device claim is made.
 - Temp hygiene: superseded M5, Camera and M7 DerivedData/xcresult runs were removed only after their evidence was consumed; user files and active/final evidence were preserved.
 - Tracker total: 64/424 completed, 360 remaining. M7-002 remains ready but overlaps `CameraService`; wait for M2-024 integration before scheduling it.
+
+### 2026-09-04T18:20Z — M5-001 CLOSED
+- Published the typed 96-state production Scene journey contract from both Library entry states through Generator, AR, Storyboard and recording, with explicit owner, artifact, persistence and recovery relations.
+- Six correction rounds closed concrete contract-truth gaps: background/timeout/compilation and AR recovery, safe recording stop edges, pending-vs-promoted media, distinct projection/editor failures, current share vs future Photos export, typed promotion retry and typed Photos export receipt.
+- Verification: 6/6 focused contract tests PASS on iPhone 17e simulator iOS 26.5; exact 96/96 reachability from both Library entries; `git diff --check` PASS. Final fresh Sol audit: `SHIP`. Integrated head: `0cdc876`.
+- Honest boundary: this is the umbrella contract; downstream M5/M6/M7/M8 tasks must conform to it rather than create parallel graphs. Physical Photos/media qualification is not claimed.
+- Tracker total: 65/424 completed, 359 remaining. M5-002 and M5-014 are now dependency-ready, subject to non-overlapping ownership scheduling.
