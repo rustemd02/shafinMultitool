@@ -91,6 +91,26 @@ final class ActionVerifierTests: XCTestCase {
         )
     }
 
+    private func geometry(
+        frameID: String,
+        orientation: CameraCoachOrientation = .portrait,
+        sourceSize: CGSize = CGSize(width: 1920, height: 1080),
+        destinationSize: CGSize = CGSize(width: 390, height: 844),
+        mirrored: Bool = false
+    ) -> ActionVerificationGeometryContext {
+        ActionVerificationGeometryContext(
+            frameID: frameID,
+            displayTransform: CameraDisplayTransform(
+                orientation: orientation,
+                isMirrored: mirrored
+            ),
+            aspectFillTransform: AspectFillTransform(
+                sourceSize: sourceSize,
+                destinationSize: destinationSize
+            )
+        )
+    }
+
     private func input(
         actionID: String,
         before: UserMovementFrame,
@@ -100,18 +120,52 @@ final class ActionVerifierTests: XCTestCase {
         afterLifecycle: SubjectTrackLifecycleContext? = nil,
         subjectIdentity: SubjectTrackIdentity? = nil,
         includeExpectedSubjectIdentity: Bool = true,
-        safetyRegressions: [ActionVerificationSafetyRegression] = []
+        safetyRegressions: [ActionVerificationSafetyRegression] = [],
+        includeGeometry: Bool = true,
+        beforeGeometry: ActionVerificationGeometryContext? = nil,
+        afterGeometry: ActionVerificationGeometryContext? = nil,
+        includeExposureEvidence: Bool = true,
+        beforeExposureState: ActionVerificationExposureState? = nil,
+        afterExposureState: ActionVerificationExposureState? = nil
     ) -> ActionVerificationInput {
+        let resolvedBeforeLifecycle = beforeLifecycle ?? lifecycle(generation: generation)
+        let resolvedAfterLifecycle = afterLifecycle ?? lifecycle(generation: generation)
+        let family = UserMovementObserver.actionFamily(for: actionID)
         let expectedSubjectIdentity = includeExpectedSubjectIdentity
             ? (subjectIdentity ?? (UserMovementObserver.actionFamily(for: actionID)?.requiresSubjectBinding == true ? identity : nil))
             : nil
+        let defaultGeometry: (ActionVerificationGeometryContext?, ActionVerificationGeometryContext?)
+        if includeGeometry, family?.requiresSubjectBinding == true {
+            defaultGeometry = (
+                geometry(
+                    frameID: before.frameID,
+                    orientation: resolvedBeforeLifecycle.orientation
+                ),
+                geometry(
+                    frameID: after.frameID,
+                    orientation: resolvedAfterLifecycle.orientation
+                )
+            )
+        } else {
+            defaultGeometry = (nil, nil)
+        }
+        let defaultExposureState: (ActionVerificationExposureState?, ActionVerificationExposureState?)
+        if includeExposureEvidence, family == .lightExposure {
+            defaultExposureState = (.stable, .stable)
+        } else {
+            defaultExposureState = (nil, nil)
+        }
         return ActionVerificationInput(
             token: CoachingEpisodeToken(rawValue: UUID(), generation: generation),
             actionID: actionID,
             before: before,
             after: after,
-            beforeLifecycle: beforeLifecycle ?? lifecycle(generation: generation),
-            afterLifecycle: afterLifecycle ?? lifecycle(generation: generation),
+            beforeLifecycle: resolvedBeforeLifecycle,
+            afterLifecycle: resolvedAfterLifecycle,
+            beforeGeometry: beforeGeometry ?? defaultGeometry.0,
+            afterGeometry: afterGeometry ?? defaultGeometry.1,
+            beforeExposureState: beforeExposureState ?? defaultExposureState.0,
+            afterExposureState: afterExposureState ?? defaultExposureState.1,
             subjectIdentity: expectedSubjectIdentity,
             safetyRegressions: safetyRegressions
         )
@@ -447,7 +501,7 @@ final class ActionVerifierTests: XCTestCase {
         XCTAssertEqual(decision(calibrationMismatch), .incomparable(reason: .calibrationMismatch))
     }
 
-    func testSceneMismatchRequiresTwoSignaturesButMissingOneDoesNotInventCut() {
+    func testSceneMismatchAndMissingProvenanceFailClosed() {
         let action = SemanticActionType.levelHorizon.rawValue
         let before = frame(
             id: "scene-before",
@@ -480,7 +534,159 @@ final class ActionVerifierTests: XCTestCase {
             beforeLifecycle: lifecycle(sceneSignature: nil),
             afterLifecycle: lifecycle(sceneSignature: "scene-b")
         ))
-        XCTAssertEqual(decision(missingOne), .comparable(outcome: .improved))
+        XCTAssertEqual(
+            decision(missingOne),
+            .incomparable(reason: .sceneProvenanceMissing)
+        )
+
+        let missingBoth = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            beforeLifecycle: lifecycle(sceneSignature: nil),
+            afterLifecycle: lifecycle(sceneSignature: nil)
+        ))
+        XCTAssertEqual(
+            decision(missingBoth),
+            .incomparable(reason: .sceneProvenanceMissing)
+        )
+    }
+
+    func testFramingProvenanceBlocksCropChangeAndAllowsSameContext() {
+        let action = SemanticActionType.moveSubjectRight.rawValue
+        let before = frame(
+            id: "geometry-before",
+            capturedAt: startDate,
+            actionID: action
+        )
+        let after = frame(
+            id: "geometry-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            x: 0.30
+        )
+
+        let unchangedFraming = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after
+        ))
+        XCTAssertEqual(
+            decision(unchangedFraming),
+            .comparable(outcome: .improved),
+            "a matching immutable transform/crop keeps the observer's directional result"
+        )
+
+        let changedCrop = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            beforeGeometry: geometry(
+                frameID: before.frameID,
+                destinationSize: CGSize(width: 390, height: 844)
+            ),
+            afterGeometry: geometry(
+                frameID: after.frameID,
+                destinationSize: CGSize(width: 844, height: 390)
+            )
+        ))
+        XCTAssertEqual(
+            decision(changedCrop),
+            .incomparable(reason: .geometryMismatch),
+            "a favorable box change cannot be credited across an aspect-fill crop change"
+        )
+
+        let missingProvenance = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            includeGeometry: false
+        ))
+        XCTAssertEqual(
+            decision(missingProvenance),
+            .incomparable(reason: .geometryProvenanceMissing)
+        )
+    }
+
+    func testInvalidFramingProvenanceFailsClosed() {
+        let action = SemanticActionType.moveSubjectRight.rawValue
+        let before = frame(id: "invalid-geometry-before", capturedAt: startDate, actionID: action)
+        let after = frame(
+            id: "invalid-geometry-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            x: 0.30
+        )
+        let invalidTransform = CameraDisplayTransform(
+            matrix: (.nan, 1, 0, -1, 0, 1),
+            orientation: .portrait,
+            isMirrored: false
+        )
+        let result = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            beforeGeometry: ActionVerificationGeometryContext(
+                frameID: before.frameID,
+                displayTransform: invalidTransform,
+                aspectFillTransform: AspectFillTransform(
+                    sourceSize: CGSize(width: 1920, height: 1080),
+                    destinationSize: CGSize(width: 390, height: 844)
+                )
+            )
+        ))
+        XCTAssertEqual(decision(result), .incomparable(reason: .geometryInvalid))
+    }
+
+    func testExposureAdjustmentEvidenceIsRequiredForLightActions() {
+        let action = TechnicalQualityActionType.reduceExposure.rawValue
+        let before = frame(
+            id: "exposure-state-before",
+            capturedAt: startDate,
+            actionID: action,
+            metrics: UserMovementMetrics(
+                exposureBiasHint: 0.20,
+                exposureFault: .overexposed
+            )
+        )
+        let after = frame(
+            id: "exposure-state-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            metrics: UserMovementMetrics(
+                exposureBiasHint: 0.10,
+                exposureFault: .clear
+            )
+        )
+
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: after
+            ))),
+            .comparable(outcome: .fixed),
+            "an explicit stable/not-adjusting pair retains the objective fixed predicate"
+        )
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: after,
+                includeExposureEvidence: false
+            ))),
+            .incomparable(reason: .exposureEvidenceMissing)
+        )
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: after,
+                beforeExposureState: .adjusting,
+                afterExposureState: .stable
+            ))),
+            .incomparable(reason: .exposureAdjusting)
+        )
     }
 
     func testSafetyRegressionBlocksPositiveAndKeepsMeasuredDelta() {

@@ -89,13 +89,49 @@ enum ActionVerifier {
                 safetyRegressions: input.safetyRegressions + [.lifecycleChanged]
             )
         }
-        // A scene signature is optional at this layer. A mismatch is material
-        // only when both producers supplied a signature; one missing value is
-        // not silently treated as a scene change.
-        if let beforeScene = beforeLifecycle.sceneSignature,
-           let afterScene = afterLifecycle.sceneSignature,
-           beforeScene != afterScene {
+        // A positive result needs comparable scene provenance. A changed pair
+        // is a scene cut; a missing side is not silently treated as the same
+        // scene and therefore cannot produce a favorable classification.
+        guard let beforeScene = beforeLifecycle.sceneSignature,
+              let afterScene = afterLifecycle.sceneSignature else {
+            return result(input, decision: .incomparable(reason: .sceneProvenanceMissing))
+        }
+        guard beforeScene == afterScene else {
             return result(input, decision: .incomparable(reason: .sceneMismatch))
+        }
+
+        if family.requiresSubjectBinding {
+            guard let beforeGeometry = input.beforeGeometry,
+                  let afterGeometry = input.afterGeometry else {
+                return result(input, decision: .incomparable(reason: .geometryProvenanceMissing))
+            }
+            guard beforeGeometry.isValid,
+                  afterGeometry.isValid else {
+                return result(input, decision: .incomparable(reason: .geometryInvalid))
+            }
+            guard beforeGeometry.frameID == beforeID,
+                  afterGeometry.frameID == afterID,
+                  beforeGeometry.displayTransform.orientation == beforeLifecycle.orientation,
+                  afterGeometry.displayTransform.orientation == afterLifecycle.orientation else {
+                return result(input, decision: .incomparable(reason: .geometryMismatch))
+            }
+            // The frame IDs are expected to differ. The immutable camera
+            // transform and aspect-fill crop must not differ between the pair.
+            guard beforeGeometry.displayTransform == afterGeometry.displayTransform,
+                  beforeGeometry.aspectFillTransform == afterGeometry.aspectFillTransform else {
+                return result(input, decision: .incomparable(reason: .geometryMismatch))
+            }
+        }
+
+        if family == .lightExposure {
+            guard let beforeExposureState = input.beforeExposureState,
+                  let afterExposureState = input.afterExposureState else {
+                return result(input, decision: .incomparable(reason: .exposureEvidenceMissing))
+            }
+            guard beforeExposureState == .stable,
+                  afterExposureState == .stable else {
+                return result(input, decision: .incomparable(reason: .exposureAdjusting))
+            }
         }
 
         guard beforeEvidence.isCalibrated,

@@ -89,6 +89,12 @@ struct CoachingEpisodeBaseline: Equatable, Sendable {
     let lensID: String?
     let captureGeneration: UInt64
     let subjectRegion: NormalizedRect?
+    /// Frozen geometry provenance, when the upstream camera owner has
+    /// supplied it. `ActionVerifier` fails closed for subject-bound actions
+    /// when either side is absent or changed.
+    let geometryContext: ActionVerificationGeometryContext?
+    /// Frozen exposure-settling evidence, when supplied by the capture owner.
+    let exposureState: ActionVerificationExposureState?
 }
 
 extension UserMovementActionFamily {
@@ -114,12 +120,16 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
     let subjectTrack: SubjectTrackState?
     let lifecycle: SubjectTrackLifecycleContext
     let isStable: Bool
+    let geometryContext: ActionVerificationGeometryContext?
+    let exposureState: ActionVerificationExposureState?
 
     init?(frame: UserMovementFrame,
           stabilizedAdvice: StabilizedAdvice,
           subjectTrack: SubjectTrackState?,
           lifecycle: SubjectTrackLifecycleContext,
-          isStable: Bool) {
+          isStable: Bool,
+          geometryContext: ActionVerificationGeometryContext? = nil,
+          exposureState: ActionVerificationExposureState? = nil) {
         guard stabilizedAdvice.decision == .correct,
               let actionID = stabilizedAdvice.actionID,
               !actionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -173,6 +183,8 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
         self.subjectTrack = subjectTrack
         self.lifecycle = lifecycle
         self.isStable = isStable
+        self.geometryContext = geometryContext
+        self.exposureState = exposureState
     }
 
     private static func isValidSubjectBinding(
@@ -207,7 +219,9 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
             subjectTrack: subjectTrack,
             lifecycle: lifecycle,
             isStable: isStable,
-            currentActionID: currentActionID
+            currentActionID: currentActionID,
+            geometryContext: geometryContext,
+            exposureState: exposureState
         )
     }
 }
@@ -222,12 +236,16 @@ struct CoachingEpisodeFrameEvidence: Equatable, Sendable {
     let lifecycle: SubjectTrackLifecycleContext
     let isStable: Bool
     let currentActionID: String?
+    let geometryContext: ActionVerificationGeometryContext?
+    let exposureState: ActionVerificationExposureState?
 
     init?(frame: UserMovementFrame,
           subjectTrack: SubjectTrackState?,
           lifecycle: SubjectTrackLifecycleContext,
           isStable: Bool,
-          currentActionID: String? = nil) {
+          currentActionID: String? = nil,
+          geometryContext: ActionVerificationGeometryContext? = nil,
+          exposureState: ActionVerificationExposureState? = nil) {
         let normalizedActionID = currentActionID?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedActionID,
            (normalizedActionID.isEmpty || UserMovementObserver.actionFamily(for: normalizedActionID) == nil) {
@@ -281,6 +299,8 @@ struct CoachingEpisodeFrameEvidence: Equatable, Sendable {
         self.lifecycle = lifecycle
         self.isStable = isStable
         self.currentActionID = normalizedActionID
+        self.geometryContext = geometryContext
+        self.exposureState = exposureState
     }
 }
 
@@ -354,6 +374,10 @@ struct CoachingEpisodeCoordinator {
             after: finalObservation.frame,
             beforeLifecycle: baseline.lifecycle,
             afterLifecycle: finalObservation.lifecycle,
+            beforeGeometry: baseline.geometryContext,
+            afterGeometry: finalObservation.geometryContext,
+            beforeExposureState: baseline.exposureState,
+            afterExposureState: finalObservation.exposureState,
             subjectIdentity: baseline.subjectIdentity
         )
     }
@@ -420,7 +444,9 @@ struct CoachingEpisodeCoordinator {
             orientation: observation.lifecycle.orientation,
             lensID: observation.lifecycle.lensID,
             captureGeneration: observation.lifecycle.generation,
-            subjectRegion: actionFamily.requiresSubjectBinding ? subjectRegion : nil
+            subjectRegion: actionFamily.requiresSubjectBinding ? subjectRegion : nil,
+            geometryContext: observation.geometryContext,
+            exposureState: observation.exposureState
         )
         state = CoachingEpisodeState(
             phase: .awaitingMovement,

@@ -100,12 +100,29 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
             targetX: 0.5,
             targetY: 0.5
         )
+        let geometryContext = ActionVerificationGeometryContext(
+            frameID: id,
+            displayTransform: CameraDisplayTransform(
+                orientation: orientation,
+                isMirrored: false
+            ),
+            aspectFillTransform: AspectFillTransform(
+                sourceSize: CGSize(width: 1920, height: 1080),
+                destinationSize: CGSize(width: 390, height: 844)
+            )
+        )
+        let exposureState: ActionVerificationExposureState? =
+            UserMovementObserver.actionFamily(for: actionID) == .lightExposure
+            ? .stable
+            : nil
         return CoachingEpisodeObservation(
             frame: frame,
             stabilizedAdvice: advice,
             subjectTrack: track,
             lifecycle: lifecycle,
-            isStable: stable
+            isStable: stable,
+            geometryContext: geometryContext,
+            exposureState: exposureState
         )!
     }
 
@@ -242,6 +259,10 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         XCTAssertEqual(verificationInput.before.frameID, "f0")
         XCTAssertEqual(verificationInput.after.frameID, "f4")
         XCTAssertEqual(verificationInput.before, coordinator.state.baseline?.frame)
+        XCTAssertEqual(verificationInput.beforeGeometry?.displayTransform,
+                       verificationInput.afterGeometry?.displayTransform)
+        XCTAssertEqual(verificationInput.beforeGeometry?.aspectFillTransform,
+                       verificationInput.afterGeometry?.aspectFillTransform)
         XCTAssertEqual(
             ActionVerifier.verify(verificationInput).decision,
             .comparable(outcome: .improved),

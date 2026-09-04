@@ -79,6 +79,12 @@ enum ActionVerificationIncomparableReason: String, Codable, CaseIterable, Sendab
     case subjectSourceMismatch = "subject_source_mismatch"
     case subjectSpaceMismatch = "subject_space_mismatch"
     case sceneMismatch = "scene_mismatch"
+    case sceneProvenanceMissing = "scene_provenance_missing"
+    case geometryProvenanceMissing = "geometry_provenance_missing"
+    case geometryMismatch = "geometry_mismatch"
+    case geometryInvalid = "geometry_invalid"
+    case exposureEvidenceMissing = "exposure_evidence_missing"
+    case exposureAdjusting = "exposure_adjusting"
     case featureUnavailable = "feature_unavailable"
     case featureConfidenceLow = "feature_confidence_low"
     case focusProvenanceMissing = "focus_provenance_missing"
@@ -106,6 +112,64 @@ enum ExposureFaultState: String, Codable, CaseIterable, Sendable, Equatable {
     case underexposed
     case overexposed
     case clear
+}
+
+/// Explicit capture-state evidence required before a light/exposure pair may
+/// be classified. A measured luma or bias change cannot prove that the camera
+/// has finished an automatic exposure adjustment.
+enum ActionVerificationExposureState: String, Codable, CaseIterable, Sendable, Equatable {
+    case stable
+    case adjusting
+}
+
+/// Immutable framing provenance attached to one exact frame. The display
+/// transform and aspect-fill transform are existing geometry owners; this
+/// value only composes them so the verifier can reject a favorable metric that
+/// was caused by a crop/preview change rather than by the user's action.
+struct ActionVerificationGeometryContext: Equatable, Sendable {
+    let frameID: String
+    let displayTransform: CameraDisplayTransform
+    let aspectFillTransform: AspectFillTransform
+
+    init(
+        frameID: String,
+        displayTransform: CameraDisplayTransform,
+        aspectFillTransform: AspectFillTransform
+    ) {
+        self.frameID = frameID.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.displayTransform = displayTransform
+        self.aspectFillTransform = aspectFillTransform
+    }
+
+    /// Geometry values are untrusted at the immutable boundary. Invalid or
+    /// degenerate values are not normalized into a plausible framing.
+    var isValid: Bool {
+        guard !frameID.isEmpty else { return false }
+        let matrix = [
+            displayTransform.a, displayTransform.b, displayTransform.tx,
+            displayTransform.c, displayTransform.d, displayTransform.ty
+        ]
+        let aspectFill = [
+            aspectFillTransform.sourcePixelWidth,
+            aspectFillTransform.sourcePixelHeight,
+            aspectFillTransform.destinationPixelWidth,
+            aspectFillTransform.destinationPixelHeight,
+            aspectFillTransform.fillScale,
+            aspectFillTransform.cropOffsetXPixels,
+            aspectFillTransform.cropOffsetYPixels
+        ]
+        let determinant = displayTransform.a * displayTransform.d
+            - displayTransform.b * displayTransform.c
+        return matrix.allSatisfy(\.isFinite)
+            && aspectFill.allSatisfy(\.isFinite)
+            && determinant.isFinite
+            && determinant != 0
+            && aspectFillTransform.sourcePixelWidth > 0
+            && aspectFillTransform.sourcePixelHeight > 0
+            && aspectFillTransform.destinationPixelWidth > 0
+            && aspectFillTransform.destinationPixelHeight > 0
+            && aspectFillTransform.fillScale > 0
+    }
 }
 
 /// A decision is either a classified comparable pair or an explicit
@@ -150,6 +214,15 @@ struct ActionVerificationInput: Sendable, Equatable {
     let after: UserMovementFrame
     let beforeLifecycle: SubjectTrackLifecycleContext?
     let afterLifecycle: SubjectTrackLifecycleContext?
+    /// Optional only at the producer boundary. Subject-bound comparisons
+    /// require both contexts; the verifier never guesses framing from similar
+    /// subject rectangles.
+    let beforeGeometry: ActionVerificationGeometryContext?
+    let afterGeometry: ActionVerificationGeometryContext?
+    /// Light/exposure comparisons require explicit evidence that automatic
+    /// adjustment has settled on each side of the pair.
+    let beforeExposureState: ActionVerificationExposureState?
+    let afterExposureState: ActionVerificationExposureState?
     /// Required only for subject-bound families; frame-global actions keep it
     /// nil and do not invent a subject sentinel.
     let subjectIdentity: SubjectTrackIdentity?
@@ -161,6 +234,10 @@ struct ActionVerificationInput: Sendable, Equatable {
          after: UserMovementFrame,
          beforeLifecycle: SubjectTrackLifecycleContext? = nil,
          afterLifecycle: SubjectTrackLifecycleContext? = nil,
+         beforeGeometry: ActionVerificationGeometryContext? = nil,
+         afterGeometry: ActionVerificationGeometryContext? = nil,
+         beforeExposureState: ActionVerificationExposureState? = nil,
+         afterExposureState: ActionVerificationExposureState? = nil,
          subjectIdentity: SubjectTrackIdentity? = nil,
          safetyRegressions: [ActionVerificationSafetyRegression] = []) {
         self.token = token
@@ -169,6 +246,10 @@ struct ActionVerificationInput: Sendable, Equatable {
         self.after = after
         self.beforeLifecycle = beforeLifecycle
         self.afterLifecycle = afterLifecycle
+        self.beforeGeometry = beforeGeometry
+        self.afterGeometry = afterGeometry
+        self.beforeExposureState = beforeExposureState
+        self.afterExposureState = afterExposureState
         self.subjectIdentity = subjectIdentity
         self.safetyRegressions = safetyRegressions
     }
