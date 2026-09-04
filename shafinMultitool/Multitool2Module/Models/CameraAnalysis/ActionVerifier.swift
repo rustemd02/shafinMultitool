@@ -53,31 +53,63 @@ enum ActionVerifier {
             return result(input, decision: .incomparable(reason: .outOfOrder))
         }
 
+        // Extract the observer-owned finite measurement before applying the
+        // higher-level confounder guards. A blocked decision must still retain
+        // diagnostics when the immutable pair itself contains a measurable
+        // before/after change; diagnostics never override the blocker.
+        let comparison = UserMovementObserver.compareAtOwnEvaluationTimes(
+            previous: input.before,
+            current: input.after,
+            actionID: actionID
+        )
+        let diagnosticDelta = metricDelta(for: comparison)
+        let diagnosticDeltas = diagnosticDelta.map { [$0] } ?? []
+
         // A production input must carry both lifecycle snapshots. Without the
         // pair, lens/route ownership cannot be compared honestly.
         guard let beforeLifecycle = input.beforeLifecycle,
               let afterLifecycle = input.afterLifecycle else {
-            return result(input, decision: .incomparable(reason: .lifecycleUnavailable))
+            return result(
+                input,
+                decision: .incomparable(reason: .lifecycleUnavailable),
+                deltas: diagnosticDeltas
+            )
         }
         guard input.token.generation != 0,
               beforeLifecycle.generation == input.token.generation,
               afterLifecycle.generation == input.token.generation,
               beforeEvidence.lensGeneration == input.token.generation,
               afterEvidence.lensGeneration == input.token.generation else {
-            return result(input, decision: .incomparable(reason: .tokenMismatch))
+            return result(
+                input,
+                decision: .incomparable(reason: .tokenMismatch),
+                deltas: diagnosticDeltas
+            )
         }
         guard beforeLifecycle.generation == afterLifecycle.generation else {
-            return result(input, decision: .incomparable(reason: .generationMismatch))
+            return result(
+                input,
+                decision: .incomparable(reason: .generationMismatch),
+                deltas: diagnosticDeltas
+            )
         }
         guard beforeLifecycle.orientation == afterLifecycle.orientation,
               beforeEvidence.orientation == beforeLifecycle.orientation,
               afterEvidence.orientation == afterLifecycle.orientation else {
-            return result(input, decision: .incomparable(reason: .orientationMismatch))
+            return result(
+                input,
+                decision: .incomparable(reason: .orientationMismatch),
+                deltas: diagnosticDeltas
+            )
         }
         guard let beforeLens = beforeLifecycle.lensID,
               let afterLens = afterLifecycle.lensID,
               beforeLens == afterLens else {
-            return result(input, decision: .incomparable(reason: .lensMismatch))
+            return result(
+                input,
+                decision: .incomparable(reason: .lensMismatch),
+                deltas: diagnosticDeltas
+            )
         }
         guard beforeLifecycle.routeActive,
               afterLifecycle.routeActive,
@@ -86,6 +118,7 @@ enum ActionVerifier {
             return result(
                 input,
                 decision: .incomparable(reason: .safetyRegression),
+                deltas: diagnosticDeltas,
                 safetyRegressions: input.safetyRegressions + [.lifecycleChanged]
             )
         }
@@ -93,44 +126,78 @@ enum ActionVerifier {
         // is a scene cut; a missing side is not silently treated as the same
         // scene and therefore cannot produce a favorable classification.
         guard let beforeScene = beforeLifecycle.sceneSignature,
-              let afterScene = afterLifecycle.sceneSignature else {
-            return result(input, decision: .incomparable(reason: .sceneProvenanceMissing))
+              let afterScene = afterLifecycle.sceneSignature,
+              !beforeScene.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !afterScene.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return result(
+                input,
+                decision: .incomparable(reason: .sceneProvenanceMissing),
+                deltas: diagnosticDeltas
+            )
         }
         guard beforeScene == afterScene else {
-            return result(input, decision: .incomparable(reason: .sceneMismatch))
+            return result(
+                input,
+                decision: .incomparable(reason: .sceneMismatch),
+                deltas: diagnosticDeltas
+            )
         }
 
         if family.requiresSubjectBinding {
             guard let beforeGeometry = input.beforeGeometry,
                   let afterGeometry = input.afterGeometry else {
-                return result(input, decision: .incomparable(reason: .geometryProvenanceMissing))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .geometryProvenanceMissing),
+                    deltas: diagnosticDeltas
+                )
             }
             guard beforeGeometry.isValid,
                   afterGeometry.isValid else {
-                return result(input, decision: .incomparable(reason: .geometryInvalid))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .geometryInvalid),
+                    deltas: diagnosticDeltas
+                )
             }
             guard beforeGeometry.frameID == beforeID,
                   afterGeometry.frameID == afterID,
                   beforeGeometry.displayTransform.orientation == beforeLifecycle.orientation,
                   afterGeometry.displayTransform.orientation == afterLifecycle.orientation else {
-                return result(input, decision: .incomparable(reason: .geometryMismatch))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .geometryMismatch),
+                    deltas: diagnosticDeltas
+                )
             }
             // The frame IDs are expected to differ. The immutable camera
             // transform and aspect-fill crop must not differ between the pair.
             guard beforeGeometry.displayTransform == afterGeometry.displayTransform,
                   beforeGeometry.aspectFillTransform == afterGeometry.aspectFillTransform else {
-                return result(input, decision: .incomparable(reason: .geometryMismatch))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .geometryMismatch),
+                    deltas: diagnosticDeltas
+                )
             }
         }
 
         if family == .lightExposure {
             guard let beforeExposureState = input.beforeExposureState,
                   let afterExposureState = input.afterExposureState else {
-                return result(input, decision: .incomparable(reason: .exposureEvidenceMissing))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .exposureEvidenceMissing),
+                    deltas: diagnosticDeltas
+                )
             }
             guard beforeExposureState == .stable,
                   afterExposureState == .stable else {
-                return result(input, decision: .incomparable(reason: .exposureAdjusting))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .exposureAdjusting),
+                    deltas: diagnosticDeltas
+                )
             }
         }
 
@@ -138,31 +205,59 @@ enum ActionVerifier {
               afterEvidence.isCalibrated,
               beforeEvidence.calibrationVersion == afterEvidence.calibrationVersion,
               beforeEvidence.calibrationVersion != nil else {
-            return result(input, decision: .incomparable(reason: .calibrationMismatch))
+            return result(
+                input,
+                decision: .incomparable(reason: .calibrationMismatch),
+                deltas: diagnosticDeltas
+            )
         }
 
         if family.requiresSubjectBinding {
             guard let beforeBinding = beforeEvidence.subjectBinding,
                   let afterBinding = afterEvidence.subjectBinding,
                   let expectedSubjectIdentity = input.subjectIdentity else {
-                return result(input, decision: .incomparable(reason: .subjectBindingMissing))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .subjectBindingMissing),
+                    deltas: diagnosticDeltas
+                )
             }
             guard beforeBinding.identity == afterBinding.identity else {
-                return result(input, decision: .incomparable(reason: .subjectIdentityMismatch))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .subjectIdentityMismatch),
+                    deltas: diagnosticDeltas
+                )
             }
             if expectedSubjectIdentity != beforeBinding.identity ||
                 expectedSubjectIdentity != afterBinding.identity {
-                return result(input, decision: .incomparable(reason: .subjectIdentityMismatch))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .subjectIdentityMismatch),
+                    deltas: diagnosticDeltas
+                )
             }
             guard beforeBinding.source == afterBinding.source else {
-                return result(input, decision: .incomparable(reason: .subjectSourceMismatch))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .subjectSourceMismatch),
+                    deltas: diagnosticDeltas
+                )
             }
             guard beforeBinding.coordinateSpace == afterBinding.coordinateSpace else {
-                return result(input, decision: .incomparable(reason: .subjectSpaceMismatch))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .subjectSpaceMismatch),
+                    deltas: diagnosticDeltas
+                )
             }
             guard beforeBinding.identity.generation == input.token.generation,
                   afterBinding.identity.generation == input.token.generation else {
-                return result(input, decision: .incomparable(reason: .generationMismatch))
+                return result(
+                    input,
+                    decision: .incomparable(reason: .generationMismatch),
+                    deltas: diagnosticDeltas
+                )
             }
         }
 
@@ -172,17 +267,13 @@ enum ActionVerifier {
         }
         safetyRegressions = unique(safetyRegressions)
 
-        let comparison = UserMovementObserver.compareAtOwnEvaluationTimes(
-            previous: input.before,
-            current: input.after,
-            actionID: actionID
-        )
         if case .uncertain(let reason) = comparison.verdict {
             if reason == "camera_motion" {
                 safetyRegressions.append(.cameraMoving)
                 return result(
                     input,
                     decision: .incomparable(reason: .safetyRegression),
+                    deltas: diagnosticDeltas,
                     safetyRegressions: unique(safetyRegressions)
                 )
             }
@@ -192,30 +283,18 @@ enum ActionVerifier {
                     for: reason,
                     family: family
                 )),
+                deltas: diagnosticDeltas,
                 safetyRegressions: unique(safetyRegressions)
             )
         }
 
-        guard let metric = comparison.metric,
-              let beforeValue = comparison.beforeValue,
-              let afterValue = comparison.afterValue,
-              let delta = comparison.delta,
-              let directedDelta = comparison.directedDelta,
-              let deadband = comparison.deadband,
-              [beforeValue, afterValue, delta, directedDelta, deadband].allSatisfy({ $0.isFinite }),
-              deadband.isFinite,
-              deadband >= 0 else {
-            return result(input, decision: .incomparable(reason: .nonFiniteMetric))
+        guard let metricDelta = diagnosticDelta else {
+            return result(
+                input,
+                decision: .incomparable(reason: .nonFiniteMetric),
+                deltas: diagnosticDeltas
+            )
         }
-
-        let metricDelta = ActionVerificationMetricDelta(
-            metric: metric,
-            before: beforeValue,
-            after: afterValue,
-            delta: delta,
-            directedDelta: directedDelta,
-            deadband: deadband
-        )
 
         if !safetyRegressions.isEmpty {
             return result(
@@ -242,7 +321,11 @@ enum ActionVerifier {
         case .uncertain:
             // The exhaustive guard above handles this case. Keep a fail-closed
             // fallback in case the enum grows without a matching contract.
-            return result(input, decision: .incomparable(reason: .metricUnavailable))
+            return result(
+                input,
+                decision: .incomparable(reason: .metricUnavailable),
+                deltas: diagnosticDeltas
+            )
         }
 
         return result(
@@ -250,6 +333,32 @@ enum ActionVerifier {
             decision: .comparable(outcome: outcome),
             deltas: [metricDelta],
             safetyRegressions: safetyRegressions
+        )
+    }
+
+    /// Retains only complete finite observer diagnostics. A delta is useful
+    /// for explaining a blocked result, but it never changes the decision.
+    private static func metricDelta(
+        for comparison: UserMovementComparison
+    ) -> ActionVerificationMetricDelta? {
+        guard let metric = comparison.metric,
+              let beforeValue = comparison.beforeValue,
+              let afterValue = comparison.afterValue,
+              let delta = comparison.delta,
+              let directedDelta = comparison.directedDelta,
+              let deadband = comparison.deadband,
+              [beforeValue, afterValue, delta, directedDelta, deadband]
+                .allSatisfy({ $0.isFinite }),
+              deadband >= 0 else {
+            return nil
+        }
+        return ActionVerificationMetricDelta(
+            metric: metric,
+            before: beforeValue,
+            after: afterValue,
+            delta: delta,
+            directedDelta: directedDelta,
+            deadband: deadband
         )
     }
 

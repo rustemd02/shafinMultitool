@@ -158,12 +158,16 @@ struct ActionVerificationGeometryContext: Equatable, Sendable {
             aspectFillTransform.cropOffsetXPixels,
             aspectFillTransform.cropOffsetYPixels
         ]
-        let determinant = displayTransform.a * displayTransform.d
-            - displayTransform.b * displayTransform.c
+        // CameraDisplayTransform's canonical orientation/mirroring initializer
+        // is the geometry validity owner. A raw matrix is accepted only when
+        // it is exactly one of those already-pinned transforms.
+        let canonicalDisplayTransform = CameraDisplayTransform(
+            orientation: displayTransform.orientation,
+            isMirrored: displayTransform.isMirrored
+        )
         return matrix.allSatisfy(\.isFinite)
             && aspectFill.allSatisfy(\.isFinite)
-            && determinant.isFinite
-            && determinant != 0
+            && displayTransform == canonicalDisplayTransform
             && aspectFillTransform.sourcePixelWidth > 0
             && aspectFillTransform.sourcePixelHeight > 0
             && aspectFillTransform.destinationPixelWidth > 0

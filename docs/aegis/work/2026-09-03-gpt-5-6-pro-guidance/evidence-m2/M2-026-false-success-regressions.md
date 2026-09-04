@@ -118,3 +118,63 @@ false-success bug this packet closes.
 Simulator results prove deterministic contract behavior only. ARKit, camera,
 microphone, thermal, hardware timing and physical A/V behavior remain outside
 this packet.
+
+## Sol/High correction
+
+The first Sol/High review found three correction points:
+
+1. Confounder guards returned before the observer comparison, which discarded
+   useful finite diagnostics. `ActionVerifier` now asks the existing observer
+   for its own-evaluation-time comparison once before applying the higher-level
+   crop, scene, exposure, lifecycle and identity blockers. A complete finite
+   `ActionVerificationMetricDelta` is retained on blocked results when the
+   observer can establish it; it never changes an incomparable decision. The
+   calibration blocker intentionally retains no invented delta when the
+   observer itself rejects the pair at its calibration-provenance gate.
+2. The duplicate determinant calculation was removed from
+   `ActionVerificationGeometryContext.isValid`. Validation now reuses the
+   canonical `CameraDisplayTransform(orientation:isMirrored:)` construction
+   and the existing `AspectFillTransform(sourceSize:destinationSize:)`
+   invariants; no new geometry formula was added.
+3. Scene signatures are considered missing only when absent or all whitespace.
+   Non-empty signatures, including surrounding whitespace, retain exact
+   identity semantics and are compared byte-for-byte.
+
+The first correction test invocation exposed one over-specific test assertion:
+the calibration-mismatch fixture expected a delta even though the canonical
+observer correctly fails closed before producing a numeric comparison. The
+test now asserts that any retained diagnostics are finite without bypassing
+that validation gate. A separate attempt hung in Xcode's automatic
+`simctl diagnose` collection after the tests completed; it was not a product
+failure. The final run disables only that harness diagnostics collection.
+
+Final correction verification used the ordinary iPhone 17e simulator,
+serially, with fresh task-specific paths:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /private/tmp/setos-m2-026-correction-dd \
+  -resultBundlePath /private/tmp/setos-m2-026-correction.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -collect-test-diagnostics never \
+  -only-testing:shafinMultitoolTests/ActionVerifierTests \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests \
+  -only-testing:shafinMultitoolTests/UserMovementObserverTests \
+  -only-testing:shafinMultitoolTests/CameraDisplayTransformTests \
+  -only-testing:shafinMultitoolTests/CameraCoordinateSpaceTests \
+  -only-testing:shafinMultitoolTests/SubjectTrackLifecycleTests \
+  -only-testing:shafinMultitoolTests/CameraAdviceSafetyGateTests test
+```
+
+Result: `** TEST SUCCEEDED **`; 96/96 tests passed, 0 failures, 0 skipped.
+The breakdown remained 16 ActionVerifier, 15 coordinator, 30 observer, 7
+display-transform, 8 camera-coordinate-space, 7 subject-lifecycle and 13
+safety-gate tests. Result bundle:
+`/private/tmp/setos-m2-026-correction.xcresult`.
+
+`git diff --check`: passed. The correction diff is limited to the original
+M2-026 production/test/evidence ownership; no `EXECUTION_STATE`, tracker,
+route, UI, project or protected file was changed.

@@ -175,6 +175,26 @@ final class ActionVerifierTests: XCTestCase {
         result.decision
     }
 
+    private func assertFiniteDiagnostics(
+        _ result: ActionVerificationResult,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(
+            result.deltas.allSatisfy {
+                $0.before.isFinite
+                    && $0.after.isFinite
+                    && $0.delta.isFinite
+                    && $0.directedDelta.isFinite
+                    && $0.deadband.isFinite
+                    && $0.deadband >= 0
+            },
+            "every retained diagnostic delta must be finite",
+            file: file,
+            line: line
+        )
+    }
+
     func testPlacementReturnsImprovedUnchangedAndWorse() {
         let action = SemanticActionType.moveSubjectRight.rawValue
         let before = frame(id: "placement-before", capturedAt: startDate, actionID: action)
@@ -468,6 +488,8 @@ final class ActionVerifierTests: XCTestCase {
             generation: 8
         ))
         XCTAssertEqual(decision(tokenMismatch), .incomparable(reason: .tokenMismatch))
+        XCTAssertEqual(tokenMismatch.deltas.count, 1)
+        assertFiniteDiagnostics(tokenMismatch)
 
         let orientationMismatch = ActionVerifier.verify(input(
             actionID: action,
@@ -477,6 +499,8 @@ final class ActionVerifierTests: XCTestCase {
             afterLifecycle: lifecycle(orientation: .landscapeLeft)
         ))
         XCTAssertEqual(decision(orientationMismatch), .incomparable(reason: .orientationMismatch))
+        XCTAssertEqual(orientationMismatch.deltas.count, 1)
+        assertFiniteDiagnostics(orientationMismatch)
 
         let lensMismatch = ActionVerifier.verify(input(
             actionID: action,
@@ -486,6 +510,8 @@ final class ActionVerifierTests: XCTestCase {
             afterLifecycle: lifecycle(lensID: "tele")
         ))
         XCTAssertEqual(decision(lensMismatch), .incomparable(reason: .lensMismatch))
+        XCTAssertEqual(lensMismatch.deltas.count, 1)
+        assertFiniteDiagnostics(lensMismatch)
 
         let calibrationMismatch = ActionVerifier.verify(input(
             actionID: action,
@@ -499,6 +525,11 @@ final class ActionVerifierTests: XCTestCase {
             )
         ))
         XCTAssertEqual(decision(calibrationMismatch), .incomparable(reason: .calibrationMismatch))
+        // The canonical observer rejects calibration provenance before it can
+        // expose a numeric comparison. The verifier must retain any such
+        // diagnostics when available, but must not invent one by bypassing the
+        // observer's fail-closed validation.
+        assertFiniteDiagnostics(calibrationMismatch)
     }
 
     func testSceneMismatchAndMissingProvenanceFailClosed() {
@@ -526,6 +557,8 @@ final class ActionVerifierTests: XCTestCase {
             afterLifecycle: lifecycle(sceneSignature: "scene-b")
         ))
         XCTAssertEqual(decision(mismatch), .incomparable(reason: .sceneMismatch))
+        XCTAssertEqual(mismatch.deltas.count, 1)
+        assertFiniteDiagnostics(mismatch)
 
         let missingOne = ActionVerifier.verify(input(
             actionID: action,
@@ -538,6 +571,8 @@ final class ActionVerifierTests: XCTestCase {
             decision(missingOne),
             .incomparable(reason: .sceneProvenanceMissing)
         )
+        XCTAssertEqual(missingOne.deltas.count, 1)
+        assertFiniteDiagnostics(missingOne)
 
         let missingBoth = ActionVerifier.verify(input(
             actionID: action,
@@ -549,6 +584,35 @@ final class ActionVerifierTests: XCTestCase {
         XCTAssertEqual(
             decision(missingBoth),
             .incomparable(reason: .sceneProvenanceMissing)
+        )
+        XCTAssertEqual(missingBoth.deltas.count, 1)
+        assertFiniteDiagnostics(missingBoth)
+
+        let whitespaceOnly = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            beforeLifecycle: lifecycle(sceneSignature: " \t\n"),
+            afterLifecycle: lifecycle(sceneSignature: "scene-b")
+        ))
+        XCTAssertEqual(
+            decision(whitespaceOnly),
+            .incomparable(reason: .sceneProvenanceMissing)
+        )
+        XCTAssertEqual(whitespaceOnly.deltas.count, 1)
+        assertFiniteDiagnostics(whitespaceOnly)
+
+        let nonEmptyWhitespaceIsIdentity = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            beforeLifecycle: lifecycle(sceneSignature: " scene-a "),
+            afterLifecycle: lifecycle(sceneSignature: " scene-a ")
+        ))
+        XCTAssertEqual(
+            decision(nonEmptyWhitespaceIsIdentity),
+            .comparable(outcome: .improved),
+            "non-empty scene identity is compared exactly; only all-whitespace values are missing"
         )
     }
 
@@ -595,6 +659,8 @@ final class ActionVerifierTests: XCTestCase {
             .incomparable(reason: .geometryMismatch),
             "a favorable box change cannot be credited across an aspect-fill crop change"
         )
+        XCTAssertEqual(changedCrop.deltas.count, 1)
+        assertFiniteDiagnostics(changedCrop)
 
         let missingProvenance = ActionVerifier.verify(input(
             actionID: action,
@@ -606,6 +672,8 @@ final class ActionVerifierTests: XCTestCase {
             decision(missingProvenance),
             .incomparable(reason: .geometryProvenanceMissing)
         )
+        XCTAssertEqual(missingProvenance.deltas.count, 1)
+        assertFiniteDiagnostics(missingProvenance)
     }
 
     func testInvalidFramingProvenanceFailsClosed() {
@@ -636,6 +704,8 @@ final class ActionVerifierTests: XCTestCase {
             )
         ))
         XCTAssertEqual(decision(result), .incomparable(reason: .geometryInvalid))
+        XCTAssertEqual(result.deltas.count, 1)
+        assertFiniteDiagnostics(result)
     }
 
     func testExposureAdjustmentEvidenceIsRequiredForLightActions() {
@@ -668,25 +738,32 @@ final class ActionVerifierTests: XCTestCase {
             .comparable(outcome: .fixed),
             "an explicit stable/not-adjusting pair retains the objective fixed predicate"
         )
+        let missingState = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            includeExposureEvidence: false
+        ))
         XCTAssertEqual(
-            decision(ActionVerifier.verify(input(
-                actionID: action,
-                before: before,
-                after: after,
-                includeExposureEvidence: false
-            ))),
+            decision(missingState),
             .incomparable(reason: .exposureEvidenceMissing)
         )
+        XCTAssertEqual(missingState.deltas.count, 1)
+        assertFiniteDiagnostics(missingState)
+
+        let adjustingState = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            beforeExposureState: .adjusting,
+            afterExposureState: .stable
+        ))
         XCTAssertEqual(
-            decision(ActionVerifier.verify(input(
-                actionID: action,
-                before: before,
-                after: after,
-                beforeExposureState: .adjusting,
-                afterExposureState: .stable
-            ))),
+            decision(adjustingState),
             .incomparable(reason: .exposureAdjusting)
         )
+        XCTAssertEqual(adjustingState.deltas.count, 1)
+        assertFiniteDiagnostics(adjustingState)
     }
 
     func testSafetyRegressionBlocksPositiveAndKeepsMeasuredDelta() {
@@ -764,6 +841,8 @@ final class ActionVerifierTests: XCTestCase {
             after: frame(id: "lifecycle-after", capturedAt: startDate.addingTimeInterval(0.1), actionID: action, x: 0.30)
         ))
         XCTAssertEqual(decision(missingLifecycle), .incomparable(reason: .lifecycleUnavailable))
+        XCTAssertEqual(missingLifecycle.deltas.count, 1)
+        assertFiniteDiagnostics(missingLifecycle)
     }
 
     func testStaleAtEachFramesOwnEvaluationTimeRemainsIncomparable() {
