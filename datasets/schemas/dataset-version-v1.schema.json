@@ -18,6 +18,10 @@
     "model_candidate",
     "rights_status",
     "unresolved_rights_count",
+    "unresolved_annotator_disagreement_count",
+    "cross_split_leak_count",
+    "quota_inflation_count",
+    "non_independent_derivative_count",
     "storage",
     "access_control",
     "retention",
@@ -59,6 +63,30 @@
     },
     "unresolved_rights_count": {
       "const": 0
+    },
+    "unresolved_annotator_disagreement_count": {
+      "type": "integer",
+      "minimum": 0,
+      "const": 0,
+      "description": "Unresolved annotation disagreements must be zero before release."
+    },
+    "cross_split_leak_count": {
+      "type": "integer",
+      "minimum": 0,
+      "const": 0,
+      "description": "Protected family overlap across splits must be zero before release."
+    },
+    "quota_inflation_count": {
+      "type": "integer",
+      "minimum": 0,
+      "const": 0,
+      "description": "Records counted toward quota without independent source evidence must be zero."
+    },
+    "non_independent_derivative_count": {
+      "type": "integer",
+      "minimum": 0,
+      "const": 0,
+      "description": "Non-independent derivatives counted as independent records must be zero."
     },
     "storage": {
       "type": "object",

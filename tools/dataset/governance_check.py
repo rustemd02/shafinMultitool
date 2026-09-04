@@ -32,6 +32,10 @@ TOP_LEVEL_KEYS = {
     *COMPONENTS,
     "rights_status",
     "unresolved_rights_count",
+    "unresolved_annotator_disagreement_count",
+    "cross_split_leak_count",
+    "quota_inflation_count",
+    "non_independent_derivative_count",
     "storage",
     "access_control",
     "retention",
@@ -67,6 +71,13 @@ ROLE_VALUES = {
     "ml-evaluator",
     "release-owner",
 }
+ZERO_REQUIRED_COUNTS = (
+    "unresolved_rights_count",
+    "unresolved_annotator_disagreement_count",
+    "cross_split_leak_count",
+    "quota_inflation_count",
+    "non_independent_derivative_count",
+)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
@@ -142,6 +153,10 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
         *COMPONENTS,
         "rights_status",
         "unresolved_rights_count",
+        "unresolved_annotator_disagreement_count",
+        "cross_split_leak_count",
+        "quota_inflation_count",
+        "non_independent_derivative_count",
         "storage",
         "access_control",
         "retention",
@@ -164,8 +179,12 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
 
     if manifest.get("rights_status") != "approved":
         errors.append("rights_status must be approved")
-    if manifest.get("unresolved_rights_count") != 0:
-        errors.append("unresolved_rights_count must be zero")
+    for field in ZERO_REQUIRED_COUNTS:
+        count = manifest.get(field)
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            errors.append(f"{field} must be a non-negative integer")
+        elif count != 0:
+            errors.append(f"{field} must be zero")
 
     storage = manifest.get("storage")
     if not isinstance(storage, dict):
@@ -292,6 +311,34 @@ def self_test() -> None:
     unknown_role = copy.deepcopy(fixture)
     unknown_role["access_control"]["reader_roles"] = ["unknown-role"]
     assert any("known roles" in error for error in validate_manifest(unknown_role))
+
+    disagreement = copy.deepcopy(fixture)
+    disagreement["unresolved_annotator_disagreement_count"] = 1
+    assert any(
+        "unresolved_annotator_disagreement_count" in error
+        for error in validate_manifest(disagreement)
+    )
+
+    cross_split_leak = copy.deepcopy(fixture)
+    cross_split_leak["cross_split_leak_count"] = 1
+    assert any(
+        "cross_split_leak_count" in error
+        for error in validate_manifest(cross_split_leak)
+    )
+
+    quota_inflation = copy.deepcopy(fixture)
+    quota_inflation["quota_inflation_count"] = 1
+    assert any(
+        "quota_inflation_count" in error
+        for error in validate_manifest(quota_inflation)
+    )
+
+    derivative_inflation = copy.deepcopy(fixture)
+    derivative_inflation["non_independent_derivative_count"] = 1
+    assert any(
+        "non_independent_derivative_count" in error
+        for error in validate_manifest(derivative_inflation)
+    )
 
     print(f"PASS M3-001 self-test fixture_sha256={digest}")
 

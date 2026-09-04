@@ -16,6 +16,12 @@ retention windows. A frozen receipt is retained permanently; deletion requires
 a new dataset version. The receipt digest covers the complete canonical JSON
 object except its own digest field.
 
+Release admission also requires these blocker counts to be zero:
+`unresolved_annotator_disagreement_count`, `cross_split_leak_count`,
+`quota_inflation_count`, and `non_independent_derivative_count`. The latter two
+make quota accounting fail closed when records are derivatives without
+independent source evidence.
+
 ## Changed files
 
 - `datasets/README.md` — governance rules, layout, and operational limits.
@@ -26,19 +32,29 @@ object except its own digest field.
 - `tools/dataset/governance_check.py` — stdlib-only schema declaration,
   fail-closed manifest, canonicalization, and SHA-256 checks.
 
+## Fix-first correction
+
+The correction starts from M3-001 commit `56e8d9995645eae1476889607c93bdcab1661d82`
+and adds required zero-valued blocker counts for unresolved annotator
+disagreement, cross-split family leakage, quota inflation, and
+non-independent derivatives. A non-zero or malformed count is rejected by both
+the schema contract and the validator; the self-test mutates each field to
+prove the fail-closed path.
+
 ## Baseline and narrow verification
 
 - Baseline: `e950e1934648a01f47ba19cf101f50d596745956`
   (`e950e19 checkpoint: SET OS through M2-023`), branch
   `codex/set-os-ml-b1`.
 - Command: `python3 tools/dataset/governance_check.py --self-test`
-  Result: `PASS M3-001 self-test fixture_sha256=ca09976a2c817d34bdf024723bf88d914dc900ccec5ea6e756280ae9381a09a5`.
+  Result: `PASS M3-001 self-test fixture_sha256=1ab4d8715ea1af6a98d30ed68b4831500cc747b2eb8a79b877cf9fccaa2a1bec`.
   This checks schema required-field declarations, a valid fixture, canonical
   manifest hash, JSON serialize/deserialize hash round-trip, and rejection of
   missing/unknown rights, stale version digest, missing component identity,
-  unknown fields, and unknown access roles.
+  unknown fields, unknown access roles, unresolved annotator disagreement,
+  cross-split leakage, quota inflation, and non-independent derivatives.
 - Command: `python3 tools/dataset/governance_check.py`
-  Result: `PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/ml-b1/datasets/schemas/fixtures/dataset-version-v1.valid.json manifest_sha256=ca09976a2c817d34bdf024723bf88d914dc900ccec5ea6e756280ae9381a09a5`.
+  Result: `PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/ml-b1/datasets/schemas/fixtures/dataset-version-v1.valid.json manifest_sha256=1ab4d8715ea1af6a98d30ed68b4831500cc747b2eb8a79b877cf9fccaa2a1bec`.
 - Command: `git diff --cached --check` (run after staging only the five files
   in the four task-owned path areas above)
   Result: pass, no output.

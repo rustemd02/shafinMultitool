@@ -22,6 +22,12 @@ The release is admitted only when `rights_status` is `approved` and
 `unresolved_rights_count` is zero. Missing, unknown, denied, or unresolved rights
 are fail-closed and cannot be represented as a frozen release.
 
+Admission also requires all dataset-quality blocker counts to be zero:
+`unresolved_annotator_disagreement_count`, `cross_split_leak_count`,
+`quota_inflation_count`, and `non_independent_derivative_count`. This prevents
+unresolved votes, protected-family overlap, and synthetic/crop/burst derivatives
+from inflating an independence quota.
+
 The manifest also records:
 
 - content-addressed storage and SHA-256 as the only release hash algorithm;
