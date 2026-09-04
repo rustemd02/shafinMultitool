@@ -29,20 +29,31 @@ replacement. The validator emits one stable row per blocking component and one
 as release evidence.
 
 The canonical current record contains 19 material component records and reports
-five Release blockers:
+16 Release blockers:
 
 | ID | component | scope | disposition | current blocker | owner |
 |---|---|---|---|---|---|
 | `circle-usdz` | `Circle.usdz` | `SCENE_ONLY` | `KEEP` | legal state pending | M12-038 |
 | `detr-segmentation-model` | `DETRResnet50SemanticSegmentationF16P8.mlmodelc` | `CAMERA_ONLY` | `REMOVE_AFTER_VERIFIED_REPLACEMENT` | legal state pending | M12-034 |
+| `font-bebasneue-regular` | `BebasNeue-Regular.ttf` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-036 |
+| `font-caveat-variable` | `Caveat-Variable.ttf` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-036 |
+| `font-jetbrainsmono-variable` | `JetBrainsMono-Variable.ttf` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-036 |
+| `font-oswald-variable` | `Oswald-Variable.ttf` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-036 |
+| `font-ptm55ft` | `PTM55FT.ttf` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-036 |
+| `info-plist-localization` | `InfoPlist.xcstrings` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-041 |
 | `llama-framework` | `Frameworks/llama.framework` | `SCENE_ONLY` | `REMOVE_AFTER_VERIFIED_REPLACEMENT` | legal state pending | M12-034 |
 | `nima-aesthetic-model` | `aesthetic_nima_mobilenet_fp16.mlmodelc` | `CAMERA_ONLY` | `REMOVE_AFTER_VERIFIED_REPLACEMENT` | legal state pending | M12-034 |
 | `person-usdz` | `Person.usdz` | `SCENE_ONLY` | `KEEP` | legal state pending | M12-038 |
+| `localized-resources` | `Localizable.xcstrings` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-041 |
+| `module-assets-catalog` | `Multitool2Module/Assets.xcassets` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-037 |
+| `privacy-manifest` | `PrivacyInfo.xcprivacy` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-027 |
+| `resource-assets-catalog` | `Resources/Assets.xcassets` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-037 |
+| `snapkit-dependency` | `Pods/SnapKit` | `CAMERA_ONLY,SCENE_ONLY` | `KEEP` | legal state pending | M12-039 |
 
-The five-row count is derived from the validator output, not from a shell
-constant. The other material records remain complete records with Release
-membership `deferred` or `excluded` while their dedicated M12 gates own the
-remaining provenance decisions.
+The 16-row count is derived from the validator output, not from a shell
+constant. The three excluded material records are explicit and absent from
+Release. No current record uses `deferred`; if a future record does, the
+validator treats that unresolved membership as a Release blocker.
 `validate_release_bundle.sh` still owns all existing privacy, bundle structure,
 payload, acknowledgement, manifest, size, and material-contributor checks.
 `run_release_gates.sh` still runs the existing offline llama and Circle
@@ -58,7 +69,8 @@ The record is anchored to the SHA-256 of the M0 source inventory:
 Each current model/framework/media/font/asset/dependency family is represented
 once by a full component record. The two explicit exclusions below are only
 benchmark and fixture resources, which are not public material components.
-`Release=deferred` is a typed membership state, not a legal approval claim.
+`Release=deferred` is a typed unresolved membership state that blocks Release;
+it is not a legal approval claim.
 
 | M0 material family | M12-033 representation | release treatment |
 |---|---|---|
@@ -69,14 +81,14 @@ benchmark and fixture resources, which are not public material components.
 | `Resources/Circle.usdz` | `circle-usdz` | full record; rights pending |
 | `Resources/Person.usdz` | `person-usdz` | full record; rights pending |
 | `Resources/Circle.rcproject` | `circle-rcproject` | full record; source project excluded from app bundle |
-| five bundled `.ttf` font files | `font-*` records (5) | full records; Release deferred to M12-036 |
-| `Resources/Assets.xcassets` | `resource-assets-catalog` | full record; Release deferred to M12-037 |
-| `Multitool2Module/Assets.xcassets` | `module-assets-catalog` | full record; Release deferred to M12-037 |
-| `Resources/Textures/SETGrain.png` | `set-grain-texture` | full record; Release deferred to M12-037 |
-| `Resources/Localizable.xcstrings` | `localized-resources` | full record; Release deferred to M12-041 |
-| `Resources/InfoPlist.xcstrings` | `info-plist-localization` | full record; Release deferred to M12-041 |
-| `PrivacyInfo.xcprivacy` | `privacy-manifest` | full record; Release deferred to M12-027 |
-| `Pods/SnapKit` | `snapkit-dependency` | full record; Release deferred to M12-039 |
+| five bundled `.ttf` font files | `font-*` records (5) | full records; Release bundled, pending M12-036 |
+| `Resources/Assets.xcassets` | `resource-assets-catalog` | full record; Release bundled, pending M12-037 |
+| `Multitool2Module/Assets.xcassets` | `module-assets-catalog` | full record; Release bundled, pending M12-037 |
+| `Resources/Textures/SETGrain.png` | `set-grain-texture` | full record; excluded from app target per M0 |
+| `Resources/Localizable.xcstrings` | `localized-resources` | full record; Release bundled, pending M12-041 |
+| `Resources/InfoPlist.xcstrings` | `info-plist-localization` | full record; Release bundled, pending M12-041 |
+| `PrivacyInfo.xcprivacy` | `privacy-manifest` | full record; Release bundled, pending M12-027 |
+| `Pods/SnapKit` | `snapkit-dependency` | full record; linked/bundled, pending M12-039 |
 | `Resources/DeviceBenchmark` | `device-benchmark-resources` exclusion | Release excluded; Debug/evaluation only |
 | `Resources/Fixtures` | `fixture-resources` exclusion | Release excluded; test-only |
 
@@ -91,13 +103,13 @@ Commands run in the isolated worktree:
 
 ```text
 python3 scripts/tests/test_validate_release_component_status.py
-→ exit 0; 16 tests passed
+→ exit 0; 17 tests passed
 
 python3 scripts/validate_release_component_status.py \
   --repo-root "$PWD" \
   --record docs/implementation/provenance/release-component-status.json
-→ exit 1 (expected: five pending legal/replacement blockers)
-→ 5 KNOWN_BLOCKER rows; exactly one KNOWN_BLOCKER_COUNT=5
+→ exit 1 (expected: 16 pending legal/replacement blockers)
+→ 16 KNOWN_BLOCKER rows; exactly one KNOWN_BLOCKER_COUNT=16
 
 bash -n scripts/validate_release_bundle.sh
 bash -n scripts/run_release_gates.sh

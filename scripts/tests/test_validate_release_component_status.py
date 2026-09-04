@@ -115,6 +115,18 @@ class ReleaseComponentStatusTests(unittest.TestCase):
         self.assertEqual([blocker["id"] for blocker in blockers], [component["id"]])
         self.assertEqual(blockers[0]["blocker"], "legal-state-pending")
 
+    def test_deferred_release_membership_blocks_until_concretely_resolved(self) -> None:
+        component = self.record["components"][0]
+        component["legal_state"] = "APPROVED"
+        component["release_config_membership"]["Release"] = "deferred"
+        if component["replacement_dependency"] is not None:
+            component["replacement_dependency"]["status"] = "VERIFIED"
+        self._write_record()
+
+        blockers = MODULE.validate_record(self.root, self.record_path)
+        blocker = next(row for row in blockers if row["id"] == component["id"])
+        self.assertEqual(blocker["blocker"], "release-membership-deferred")
+
     def test_unknown_disposition_fails_closed(self) -> None:
         self.record["components"][0]["disposition"] = "MAYBE"
         self._write_record()

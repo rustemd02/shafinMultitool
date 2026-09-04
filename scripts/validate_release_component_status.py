@@ -402,7 +402,9 @@ def _validate_component(
         _fail(f"malformed record: {label} cannot bundle an absent source")
 
     blocker: str | None = None
-    if membership["Release"] == "bundled":
+    if membership["Release"] == "deferred":
+        blocker = "release-membership-deferred"
+    elif membership["Release"] == "bundled":
         if legal_state != "APPROVED":
             blocker = f"legal-state-{legal_state.lower()}"
         elif disposition in REPLACEMENT_DISPOSITIONS and replacement is not None:
