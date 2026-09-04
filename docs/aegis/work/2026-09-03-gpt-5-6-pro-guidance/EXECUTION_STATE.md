@@ -5,17 +5,17 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- HEAD: `c61e988886499c84c9ff9ec760f9ace5759db001`
-- Upstream: `origin/store` (+0/-0 at bootstrap)
+- HEAD: `2ddfa33a050015716335d0a40bbc7ee7b3e4a994` (local integration through M3-001; no push)
+- Upstream: `origin/store` (+3/-0 after local checkpoint and M3-001 integration)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
   - Modified (staged-as-unstaged `1 .M`, ~75 paths): docs/aegis camera-release checkpoints, docs/cameraanalysis (05,06,24), scripts (copy_debug_device_benchmark_resources, test_release_bundle_gate, validate_privacy_manifest, validate_release_bundle), project.pbxproj, CommercialShell (3), Entity/SceneData, Info.plist, ContentView, EntryFlow (2), CameraAnalysisDomainContracts, CoreMLWrappers (AestheticScorer, DETRDetector), VisionTracking, CameraManager, AnalysisPipeline, LatestFrameEvidenceStore, RealtimeScheduler, SemanticTipPlanner, Telemetry, Overlay (6), CameraViewModel, PrivacyInfo.xcprivacy, SceneDelegate, SceneWorkspaceTeardown, SceneGeneratorDiagnosticsLogger, SceneGeneratorViewModel, ARSceneContainer, LegacySceneGeneratorCameraShell, SceneGeneratorView, SceneInputSheet, CameraScreenModule (3), ScenesOverviewModule (4), CameraService, DBService, RecorderContracts, SerializedMediaRecorder, ~18 Tests + 2 UITests.
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
-- Current milestone: M2 (camera product contract; M1 COMPLETE with GATE PASS)
-- Current task: checkpoint preparation after M2-023
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023]
-- In-progress: []
+- Current milestone: M2 camera closure in parallel with dependency-ready M3/M5 contracts (M1 COMPLETE with GATE PASS)
+- Current task: M2-024 implementation; M5-001 fix-first correction
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001]
+- In-progress: [M2-024, M5-001]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -296,3 +296,10 @@
 - Verification: 82/82 PASS, 0 failed/skipped, `** TEST SUCCEEDED **`, non-Pro iPhone 17 iOS 26.5 simulator. Suites: `CameraManagerLifecycleTests`, `UserMovementObserverTests`, `LatestFrameEnvelopeTests`, `LatestFrameEvidenceStoreTests`, `AnalysisPipelineReleaseTests`. Result: `/tmp/m2-023-provenance-root.HjIFkS/result5.xcresult` (transient; safe to delete after ledger publication).
 - Independent fresh Sol audit r4: `ship`. Evidence: `evidence-m2/M2-023-movement-observer.md`. Honest boundary: M2-024 owns production consumption/coaching episodes; delayed live DETR callback and pause-local DETR provenance are source-inspected rather than separately injected in this focused suite; typed focus/depth and lighting producer confidence remain fail-closed limitations.
 - M2 progress: 23/36 (001-023). Tracker total: 60/424 completed, 364 remaining. Next dependency-ready includes M2-024 [P0 coaching episode; deps 011✓+022✓+023✓].
+
+### 2026-09-04T16:05Z — M3-001 CLOSED
+- Published the shared dataset release-manifest contract: independent identities for data, label schema, split, rights manifest, feature schema, evaluator and model candidate; immutable canonical SHA-256 receipt; raw and rights-uncleared inputs remain outside Git.
+- Initial Sol audit returned `fix-first`: rights-only admission did not encode the tracker stop rules. Correction now requires zero unresolved annotator disagreements, cross-split family leaks, quota inflation and non-independent derivatives; all four gates are schema-required, validator-enforced and negative-tested.
+- Verification on integrated `store`: `python3 tools/dataset/governance_check.py --self-test` PASS and fixture check PASS, manifest SHA-256 `1ab4d8715ea1af6a98d30ed68b4831500cc747b2eb8a79b877cf9fccaa2a1bec`. Fresh Sol correction audit: `ship`.
+- Evidence: `evidence-m3/M3-001-dataset-governance.md`. Commits integrated locally without push: `2d819d1`, `2ddfa33`.
+- Tracker total: 61/424 completed, 363 remaining. M3-002 remains dependency-blocked by M2-025; M3-023 and M3-024 are newly dependency-ready from the M3 side but retain their other listed dependencies.
