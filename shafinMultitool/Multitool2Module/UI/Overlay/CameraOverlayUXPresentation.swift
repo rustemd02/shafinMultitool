@@ -11,8 +11,12 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         case keepAsIs = "S10c"
     }
 
-    static let seekingLine = "Ищу главное в кадре…"
-    static let safeFallbackLine = "Не могу надёжно оценить кадр. Продолжайте съёмку без подсказки."
+    static var seekingLine: String {
+        SETCopyKey.cameraSeeking.localizedString(locale: .current)
+    }
+    static var safeFallbackLine: String {
+        SETCopyKey.cameraFallback.localizedString(locale: .current)
+    }
     static let surfaceMaxWidth: CGFloat = 420
     static let surfaceHorizontalInset: CGFloat = 16
     static let minimumControlDimension: CGFloat = 44
@@ -48,7 +52,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     }
 
     static var safeFallbackPresentation: CameraOverlayUXPresentation {
-        fallback
+        fallback(locale: .current)
     }
 
     static func surfaceWidth(for canvasSize: CGSize) -> CGFloat {
@@ -63,14 +67,15 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     /// or keep-as-is. Invalid payloads never leak their raw copy.
     static func make(liveHint: LiveHintPresentation?,
                      isExpanded: Bool = false,
-                     isPaused _: Bool = false) -> CameraOverlayUXPresentation {
-        guard let liveHint else { return seeking }
-        guard let mapped = map(liveHint: liveHint, isExpanded: isExpanded) else {
-            return fallback
+                     isPaused _: Bool = false,
+                     locale: Locale = .current) -> CameraOverlayUXPresentation {
+        guard let liveHint else { return seeking(locale: locale) }
+        guard let mapped = map(liveHint: liveHint, isExpanded: isExpanded, locale: locale) else {
+            return fallback(locale: locale)
         }
 
         let mappedOverlayHint: OverlayHint?
-        if mapped.baseState == .stableTip {
+        if mapped.baseState == .stableTip, liveHint.actionType != nil {
             mappedOverlayHint = safeOverlayHint(from: liveHint.overlayHint)
         } else {
             mappedOverlayHint = nil
@@ -101,11 +106,11 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         let showsWhy: Bool
     }
 
-    private static var seeking: CameraOverlayUXPresentation {
+    private static func seeking(locale: Locale) -> CameraOverlayUXPresentation {
         CameraOverlayUXPresentation(
             state: .liveSeeking,
             baseState: .liveSeeking,
-            observation: seekingLine,
+            observation: SETCopyKey.cameraSeeking.localizedString(locale: locale),
             actionInstruction: nil,
             explanation: nil,
             supportingObservation: nil,
@@ -117,11 +122,11 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         )
     }
 
-    private static var fallback: CameraOverlayUXPresentation {
+    private static func fallback(locale: Locale) -> CameraOverlayUXPresentation {
         CameraOverlayUXPresentation(
             state: .liveSeeking,
             baseState: .liveSeeking,
-            observation: safeFallbackLine,
+            observation: SETCopyKey.cameraFallback.localizedString(locale: locale),
             actionInstruction: nil,
             explanation: nil,
             supportingObservation: nil,
@@ -134,50 +139,64 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     }
 
     private static func map(liveHint: LiveHintPresentation,
-                            isExpanded: Bool) -> MappedCopy? {
+                            isExpanded: Bool,
+                            locale: Locale) -> MappedCopy? {
         guard isValidIdentity(liveHint),
               liveHint.confidence.isFinite,
               (0...1).contains(liveHint.confidence),
-              let liveText = safeText(liveHint.text) else {
+              safeText(liveHint.text) != nil else {
             return nil
         }
 
+        if let expandedVerdict = liveHint.expandedVerdict {
+            guard safeText(expandedVerdict.shortVerdict) != nil,
+                  expandedVerdict.supportingText == nil || safeText(expandedVerdict.supportingText) != nil,
+                  expandedVerdict.actionText == nil || safeText(expandedVerdict.actionText) != nil else {
+                return nil
+            }
+        }
+
         if liveHint.actionType == .leaveFrameAsIs {
-            let basis = safeText(liveHint.expandedVerdict?.supportingText) ?? liveText
             return MappedCopy(
                 state: .keepAsIs,
                 baseState: .keepAsIs,
-                observation: "Кадр уже сбалансирован",
-                actionInstruction: "Снимайте",
+                observation: SETCopyKey.cameraKeep.localizedString(locale: locale),
+                actionInstruction: SETCopyKey.actionMain.localizedString(locale: locale),
                 explanation: nil,
-                supportingObservation: basis,
+                supportingObservation: nil,
                 showsWhy: false
             )
         }
 
-        guard let actionType = liveHint.actionType,
-              let actionInstruction = actionInstruction(for: actionType),
-              let expandedVerdict = liveHint.expandedVerdict,
+        guard let expandedVerdict = liveHint.expandedVerdict,
               let observation = safeText(expandedVerdict.shortVerdict) else {
             return nil
         }
 
-        let supportingObservation = safeText(expandedVerdict.supportingText)
-        let expectedEffect = safeText(expandedVerdict.actionText)
-        let explanationParts = [supportingObservation, expectedEffect]
-            .compactMap { $0 }
-            .filter { $0 != observation && $0 != actionInstruction }
-        guard !explanationParts.isEmpty else { return nil }
+        let actionKey: SETCopyKey
+        if let semanticActionType = liveHint.semanticActionType {
+            actionKey = SETCameraCopy.actionKey(for: semanticActionType)
+        } else if let technicalIssueType = liveHint.technicalIssueType {
+            actionKey = SETCameraCopy.technicalActionKey(for: technicalIssueType)
+        } else if let actionType = liveHint.actionType {
+            actionKey = SETCameraCopy.actionKey(for: actionType)
+        } else {
+            return nil
+        }
 
-        let explanation = explanationParts.joined(separator: " ")
+        let hasExplanation = safeText(expandedVerdict.supportingText) != nil
+            || safeText(expandedVerdict.actionText) != nil
+        let explanation = hasExplanation
+            ? SETCopyKey.cameraExplanation.localizedString(locale: locale)
+            : nil
         return MappedCopy(
-            state: isExpanded ? .explanation : .stableTip,
+            state: isExpanded && explanation != nil ? .explanation : .stableTip,
             baseState: .stableTip,
-            observation: observation,
-            actionInstruction: actionInstruction,
+            observation: SETCopyKey.cameraCorrectiveObservation.localizedString(locale: locale),
+            actionInstruction: actionKey.localizedString(locale: locale),
             explanation: explanation,
-            supportingObservation: supportingObservation,
-            showsWhy: true
+            supportingObservation: nil,
+            showsWhy: hasExplanation
         )
     }
 
@@ -214,7 +233,10 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
 
         switch hint.kind {
         case .arrow:
-            guard hint.direction != nil else { return nil }
+            // Runtime corrective geometry is valid only when the pipeline has
+            // supplied both an arrow direction and a non-degenerate target.
+            // Regionless/horizon advice remains text-only.
+            guard hint.direction != nil, targetRegion != nil else { return nil }
         case .regionHighlight:
             guard targetRegion != nil else { return nil }
         case .horizonLine:
@@ -236,28 +258,4 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         return region
     }
 
-    private static func actionInstruction(for actionType: ActionTypeV1) -> String? {
-        switch actionType {
-        case .moveFrameLeft:
-            return "Сместите камеру немного влево."
-        case .moveFrameRight:
-            return "Сместите камеру немного вправо."
-        case .moveFrameUp:
-            return "Поднимите камеру немного выше."
-        case .moveFrameDown:
-            return "Опустите камеру немного ниже."
-        case .increaseSubjectSize:
-            return "Подойдите ближе к главному объекту."
-        case .reduceBackgroundDistractions:
-            return "Упростите фон вокруг главного объекта."
-        case .changeAngle:
-            return "Измените угол съёмки."
-        case .improveFrontLight:
-            return "Добавьте мягкий свет спереди."
-        case .levelHorizon:
-            return "Выровняйте камеру."
-        case .leaveFrameAsIs:
-            return "Снимайте"
-        }
-    }
 }

@@ -1,131 +1,240 @@
 import SwiftUI
 
+/// `sheet.decision-trace` as a flat editorial цех surface. The hero is the
+/// traced decision itself: evidence rows, the chosen action and the trace
+/// IDs. Hierarchy is carried by exactly one annotation motif — a hand
+/// underline on the evidence the chosen action is linked to — and one
+/// accent — a single warm-white hairline section rule. Confidence reads as
+/// neutral mono copy, never a colored badge.
 struct DecisionTraceView: View {
     @Environment(\.dismiss) private var dismiss
     let trace: DecisionTracePresentation
 
+    /// The first evidence row linked by the highest-priority (chosen) action.
+    /// The sheet deliberately renders no more than one underline annotation.
+    private var chosenActionEvidenceId: String? {
+        // The SET sheet has one annotation motif. If a semantic action links
+        // to several evidence rows, choose the first canonical link rather
+        // than drawing multiple underlines that dilute the selection signal.
+        trace.actionRows.lazy.compactMap { $0.linkedEvidenceIds.first }.first
+    }
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    header
+        ScrollView {
+            VStack(alignment: .leading, spacing: SETSpacing.x6) {
+                titleRow
 
-                    if !trace.reasonLines.isEmpty {
-                        DecisionTraceSection(title: "Почему") {
-                            ForEach(trace.reasonLines) { row in
-                                DecisionTraceTextRow(title: row.title, text: row.text)
+                // The one accent: a single warm-white hairline between the
+                // sheet chrome and the traced decision below it.
+                DecisionTraceRule(isAccent: true)
+
+                summaryPanel
+
+                if !trace.evidenceRows.isEmpty {
+                    DecisionTraceRule()
+                    DecisionTraceSection(
+                        label: Text(SETCopyKey.traceEvidence.localizedTextKey),
+                        identifier: "trace_evidence_section"
+                    ) {
+                        DecisionTracePanel {
+                            ForEach(Array(trace.evidenceRows.enumerated()), id: \.element.id) { index, row in
+                                if index > 0 {
+                                    DecisionTraceRule()
+                                }
+                                DecisionTraceEvidenceRow(
+                                    row: row,
+                                    isChosenEvidence: row.sourceId == chosenActionEvidenceId
+                                )
                             }
                         }
                     }
+                }
 
-                    if !trace.evidenceRows.isEmpty {
-                        DecisionTraceSection(title: "Доказательства") {
-                            ForEach(trace.evidenceRows) { row in
-                                DecisionTraceEvidenceRow(row: row)
-                            }
-                        }
-                    }
-
-                    if !trace.actionRows.isEmpty {
-                        DecisionTraceSection(title: "Что выбрано") {
-                            ForEach(trace.actionRows) { row in
+                if !trace.actionRows.isEmpty {
+                    DecisionTraceRule()
+                    DecisionTraceSection(
+                        label: Text(SETCopyKey.traceChosen.localizedTextKey),
+                        identifier: "trace_chosen_section"
+                    ) {
+                        DecisionTracePanel {
+                            ForEach(Array(trace.actionRows.enumerated()), id: \.element.id) { index, row in
+                                if index > 0 {
+                                    DecisionTraceRule()
+                                }
                                 DecisionTraceActionRow(row: row)
                             }
                         }
                     }
+                }
 
-                    if !trace.signalRows.isEmpty {
-                        DecisionTraceSection(title: "Сигналы пайплайна") {
+                if !trace.traceIds.isEmpty {
+                    DecisionTraceRule()
+                    DecisionTraceSection(
+                        label: Text(SETCopyKey.traceIds.localizedTextKey),
+                        identifier: "trace_traceids_section"
+                    ) {
+                        DecisionTraceTokenList(tokens: trace.traceIds)
+                    }
+                }
+
+                if !trace.signalRows.isEmpty {
+                    DecisionTraceRule()
+                    DecisionTraceSection(
+                        label: Text(SETCopyKey.traceSignals.localizedTextKey),
+                        identifier: "trace_signals_section"
+                    ) {
+                        VStack(alignment: .leading, spacing: SETSpacing.x2) {
                             ForEach(trace.signalRows) { row in
                                 DecisionTraceSignalRow(row: row)
                             }
                         }
                     }
+                }
 
-                    if !trace.traceIds.isEmpty {
-                        DecisionTraceSection(title: "Trace IDs") {
-                            DecisionTraceTokenCloud(tokens: trace.traceIds)
-                        }
-                    }
-
-                    if !trace.limitationRows.isEmpty {
-                        DecisionTraceSection(title: "Ограничения") {
+                if !trace.limitationRows.isEmpty {
+                    DecisionTraceRule()
+                    DecisionTraceSection(
+                        label: Text(SETCopyKey.traceLimitations.localizedTextKey),
+                        identifier: "trace_limitations_section"
+                    ) {
+                        VStack(alignment: .leading, spacing: SETSpacing.x2) {
                             ForEach(trace.limitationRows) { row in
                                 Text(row.text)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                                    .font(SETTypography.uiBodyFont())
+                                    .foregroundStyle(.setTextSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                     }
                 }
-                .padding(20)
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Почему?")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") {
-                        dismiss()
-                    }
-                }
-            }
+            .padding(.horizontal, SETSpacing.x4)
+            .padding(.vertical, SETSpacing.x6)
         }
+        .background(Color.setInk.ignoresSafeArea())
+        .preferredColorScheme(.dark)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("decision_trace_sheet")
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(trace.modeLabel)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
+    private var titleRow: some View {
+        HStack(alignment: .top, spacing: SETSpacing.x4) {
+            Text(SETCopyKey.traceTitle.localizedTextKey)
+                .font(SETTypography.font(.display, size: SETTypographySize.title))
+                .fontWeight(.bold)
+                .setDisplayTracking()
+                .foregroundStyle(.setTextPrimary)
+                .fixedSize(horizontal: false, vertical: true)
 
-                    Text(trace.verdictLabel)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
+            Spacer(minLength: SETSpacing.x4)
 
-                    Text(trace.headline)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                dismiss()
+            } label: {
+                Text(SETCopyKey.commonDone.localizedTextKey)
+                    .font(SETTypography.uiBodyFont(weight: .semibold))
+                    .foregroundStyle(.setWarmWhite)
+                    .underline()
+                    .frame(minHeight: SETComponentMetric.minimumHitTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("trace_done_button")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("trace_title_row")
+    }
 
-                DecisionTraceConfidenceBadge(confidence: trace.confidence)
+    private var summaryPanel: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
+            Text(trace.modeLabel)
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                .tracking(0.35)
+                .monospacedDigit()
+                .foregroundStyle(.setTextSecondary)
+
+            Text(trace.verdictLabel)
+                .font(SETTypography.uiBodyFont(weight: .bold))
+                .foregroundStyle(.setTextPrimary)
+
+            Text(trace.headline)
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            DecisionTraceConfidenceText(confidence: trace.confidence)
+
+            ForEach(trace.reasonLines) { line in
+                DecisionTraceTextRow(title: line.title, text: line.text)
             }
 
-            Text("Панель показывает, какие признаки, issue/strength строки и semantic action привели к текущей подсказке.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Text(SETCopyKey.traceExplanation.localizedTextKey)
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(SETSpacing.x4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.setSurfaceSolid)
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("trace_summary_panel")
     }
 }
 
+// MARK: - Shared pieces
+
+/// Section rule. Every boundary uses the hairline token; the one accent rule
+/// is warm-white so the sheet carries exactly a single accent.
+private struct DecisionTraceRule: View {
+    var isAccent = false
+
+    var body: some View {
+        Rectangle()
+            .fill(isAccent ? Color.setWarmWhite : Color.setHairline)
+            .frame(height: SETStroke.hairline)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+    }
+}
+
+/// One mono section label above editorial content. Sections are separated by
+/// hairline rules at the owner level; no card wall of per-row panels.
 private struct DecisionTraceSection<Content: View>: View {
-    let title: String
+    let label: Text
+    let identifier: String
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
+            label
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                .tracking(0.35)
+                .foregroundStyle(.setTextSecondary)
 
-            VStack(alignment: .leading, spacing: 10) {
-                content
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+/// A single square-cornered surface panel. Rows inside carry their own
+/// padding and are divided by hairline rules, never by nested cards.
+private struct DecisionTracePanel<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.setSurfaceSolid)
+            .overlay {
+                Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+            }
     }
 }
 
@@ -134,65 +243,124 @@ private struct DecisionTraceTextRow: View {
     let text: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: SETSpacing.x1) {
             Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(SETTypography.uiBodyFont(weight: .semibold))
+                .foregroundStyle(.setTextSecondary)
             Text(text)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextPrimary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct DecisionTraceEvidenceRow: View {
-    let row: DecisionTracePresentation.EvidenceRow
+/// Neutral mono confidence read-out. The tone keys carry no color semantics;
+/// the original spoken label stays as the accessibility string.
+private struct DecisionTraceConfidenceText: View {
+    let confidence: ConfidencePresentation
+    @Environment(\.locale) private var locale
+
+    private var key: SETCopyKey {
+        switch confidence.tone {
+        case .high:
+            return .traceConfidenceHigh
+        case .medium:
+            return .traceConfidenceMedium
+        case .low:
+            return .traceConfidenceLow
+        }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(row.kindLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(row.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        (Text(key.localizedTextKey) + Text(verbatim: " · \(confidence.percent)%"))
+            .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+            .tracking(0.35)
+            .monospacedDigit()
+            .foregroundStyle(.setTextSecondary)
+            .accessibilityLabel(Text(verbatim: localizedConfidenceText(confidence, locale: locale)))
+    }
+}
 
-                DecisionTraceConfidenceBadge(confidence: row.confidence)
+private func localizedConfidenceText(_ confidence: ConfidencePresentation, locale: Locale) -> String {
+    let key: SETCopyKey
+    switch confidence.tone {
+    case .high:
+        key = .traceConfidenceHigh
+    case .medium:
+        key = .traceConfidenceMedium
+    case .low:
+        key = .traceConfidenceLow
+    }
+    return "\(key.localizedString(locale: locale)) · \(confidence.percent)%"
+}
+
+private struct DecisionTraceEvidenceRow: View {
+    let row: DecisionTracePresentation.EvidenceRow
+    let isChosenEvidence: Bool
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Text(row.kindLabel)
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                .tracking(0.35)
+                .monospacedDigit()
+                .foregroundStyle(.setTextSecondary)
+
+            ZStack(alignment: .bottom) {
+                Text(row.title)
+                    .font(SETTypography.uiBodyFont(weight: .semibold))
+                    .foregroundStyle(.setTextPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // The single annotation motif: a hand underline on the
+                // evidence the chosen action is linked to.
+                if isChosenEvidence {
+                    GlassMarkGuide(kind: .underline, color: .setWarmWhite)
+                        .frame(height: SETSpacing.x2)
+                        .padding(.horizontal, SETSpacing.x2)
+                }
             }
 
+            DecisionTraceConfidenceText(confidence: row.confidence)
+
             Text(row.text)
-                .font(.footnote)
-                .foregroundStyle(.primary)
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             metadataLine
         }
-        .padding(12)
-        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, SETSpacing.x4)
+        .padding(.vertical, SETSpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("trace_evidence_row_\(row.id)")
     }
 
     private var metadataLine: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("id: \(row.sourceId)")
+        VStack(alignment: .leading, spacing: SETSpacing.x1) {
+            metadataValue(.traceMetadataID, row.sourceId)
             if let severity = row.severity {
-                Text("severity: \(severity.shortText)")
+                metadataValue(.traceMetadataSeverity, localizedConfidenceText(severity, locale: locale))
             }
             if let regionDescription = row.regionDescription {
-                Text("region: \(regionDescription)")
+                metadataValue(.traceMetadataRegion, regionDescription)
             }
             if let traceId = row.traceId {
-                Text("trace: \(traceId)")
+                metadataValue(.traceMetadataTrace, traceId)
             }
         }
-        .font(.caption2.monospaced())
-        .foregroundStyle(.secondary)
+        .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+        .tracking(0.35)
+        .monospacedDigit()
+        .foregroundStyle(.setTextSecondary)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func metadataValue(_ key: SETCopyKey, _ value: String) -> some View {
+        Text(key.localizedTextKey) + Text(verbatim: ": \(value)")
     }
 }
 
@@ -200,49 +368,60 @@ private struct DecisionTraceActionRow: View {
     let row: DecisionTracePresentation.ActionRow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(row.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(row.semanticActionId)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                DecisionTraceConfidenceBadge(confidence: row.confidence)
-            }
-
-            Text(row.detail)
-                .font(.footnote)
-                .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Text(row.title)
+                .font(SETTypography.uiBodyFont(weight: .bold))
+                .foregroundStyle(.setTextPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 4) {
-                if let coarseActionId = row.coarseActionId {
-                    Text("coarse: \(coarseActionId)")
-                }
-                if !row.linkedEvidenceIds.isEmpty {
-                    Text("linked evidence: \(row.linkedEvidenceIds.joined(separator: ", "))")
-                }
-                if let targetDescription = row.targetDescription {
-                    Text("target: \(targetDescription)")
-                }
-                if let overlayHintId = row.overlayHintId {
-                    Text("overlay: \(overlayHintId)")
-                }
-                if let traceId = row.traceId {
-                    Text("trace: \(traceId)")
-                }
-            }
-            .font(.caption2.monospaced())
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(row.semanticActionId)
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                .tracking(0.35)
+                .monospacedDigit()
+                .foregroundStyle(.setTextSecondary)
+
+            DecisionTraceConfidenceText(confidence: row.confidence)
+
+            Text(row.detail)
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            metadataLine
         }
-        .padding(12)
-        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, SETSpacing.x4)
+        .padding(.vertical, SETSpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("trace_action_row_\(row.id)")
+    }
+
+    private var metadataLine: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x1) {
+            if let coarseActionId = row.coarseActionId {
+                metadataValue(.traceMetadataCoarse, coarseActionId)
+            }
+            if !row.linkedEvidenceIds.isEmpty {
+                metadataValue(.traceMetadataLinkedEvidence, row.linkedEvidenceIds.joined(separator: ", "))
+            }
+            if let targetDescription = row.targetDescription {
+                metadataValue(.traceMetadataTarget, targetDescription)
+            }
+            if let overlayHintId = row.overlayHintId {
+                metadataValue(.traceMetadataOverlay, overlayHintId)
+            }
+            if let traceId = row.traceId {
+                metadataValue(.traceMetadataTrace, traceId)
+            }
+        }
+        .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+        .tracking(0.35)
+        .monospacedDigit()
+        .foregroundStyle(.setTextSecondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func metadataValue(_ key: SETCopyKey, _ value: String) -> some View {
+        Text(key.localizedTextKey) + Text(verbatim: ": \(value)")
     }
 }
 
@@ -250,81 +429,75 @@ private struct DecisionTraceSignalRow: View {
     let row: DecisionTracePresentation.SignalRow
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: SETSpacing.x3) {
+            VStack(alignment: .leading, spacing: SETSpacing.x1) {
                 Text(row.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(SETTypography.uiBodyFont(weight: .semibold))
+                    .foregroundStyle(.setTextPrimary)
                 if let detail = row.detail {
                     Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(SETTypography.uiBodyFont())
+                        .foregroundStyle(.setTextSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(row.value)
-                .font(.caption.monospaced().weight(.semibold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(.tertiarySystemGroupedBackground), in: Capsule())
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .tracking(0.35)
+                .monospacedDigit()
+                .foregroundStyle(.setTextPrimary)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("trace_signal_row_\(row.id)")
     }
 }
 
-private struct DecisionTraceTokenCloud: View {
+/// Trace IDs as a quiet mono ledger, one line per id; no chip cloud.
+private struct DecisionTraceTokenList: View {
     let tokens: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: SETSpacing.x1) {
             ForEach(tokens, id: \.self) { token in
                 Text(token)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color(.tertiarySystemGroupedBackground), in: Capsule())
+                    .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                    .tracking(0.35)
+                    .monospacedDigit()
+                    .foregroundStyle(.setTextPrimary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("trace_token_list")
     }
 }
 
-private struct DecisionTraceConfidenceBadge: View {
-    let confidence: ConfidencePresentation
+#if DEBUG
+struct SETDecisionTraceFixtureConfiguration: Equatable {
+    let fixtureID: String
+    let locale: Locale
+    let reduceMotion: Bool
+    let reduceTransparency: Bool
+    let dynamicTypeSize: DynamicTypeSize
+}
+
+/// DEBUG root for the real DecisionTraceView. The presentation payload still
+/// comes from `DecisionTracePresentation`, including locale-specific copy.
+struct SETDecisionTraceFixtureRoot: View {
+    let configuration: SETDecisionTraceFixtureConfiguration
 
     var body: some View {
-        Text(confidence.shortText)
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(foregroundColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(toneColor.opacity(0.86), in: Capsule())
-            .accessibilityLabel(confidence.accessibilityText)
-    }
-
-    private var toneColor: Color {
-        switch confidence.tone {
-        case .high:
-            return .green
-        case .medium:
-            return .orange
-        case .low:
-            return .yellow
-        }
-    }
-
-    private var foregroundColor: Color {
-        switch confidence.tone {
-        case .low:
-            return .black.opacity(0.82)
-        case .high, .medium:
-            return .white.opacity(0.96)
-        }
+        DecisionTraceView(trace: DecisionTracePresentation.debugFixture(locale: configuration.locale))
+            .environment(\.locale, configuration.locale)
+            .environment(\.dynamicTypeSize, configuration.dynamicTypeSize)
+            .environment(\.setReduceMotionOverride, configuration.reduceMotion)
+            .environment(\.setReduceTransparencyOverride, configuration.reduceTransparency)
+            .background(Color.setInk.ignoresSafeArea())
     }
 }
+#endif
 
 #Preview {
     DecisionTraceView(

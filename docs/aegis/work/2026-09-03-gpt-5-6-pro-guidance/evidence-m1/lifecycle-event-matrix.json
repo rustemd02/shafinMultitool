@@ -1,0 +1,11 @@
+{
+  "task": "M1-004",
+  "adapter": "CommercialShellViewController (LifecycleCoordinatorOwner). Single UIKit entry: SceneDelegate.",
+  "events": [
+    {"event": "foreground didBecomeActive", "adapter_call": "shell.handleAppDidBecomeActive()", "reaches": "active camera route only (selectedSection guard); route rechecks entry iff phase != .ready", "removed_duplicate": "ContentView.scenePhase recheck (F2, blocked-only subset of F1) deleted; recheckCameraAccess self-coalesces via recheckTask", "test": "CommercialShellLifecycleAdapterTests.testForegroundRecheckStillReachesBlockedCameraEntry"},
+    {"event": "background didEnterBackground", "adapter_call": "shell.handleSceneDidEnterBackground() [NEW] <- SceneDelegate.sceneDidEnterBackground [NEW]", "reaches": "active route only: camera route -> reportSceneInactive (idempotent guard); scenes route -> handleDidEnterBackground (single-flight teardown); history -> nothing", "convergent_view_effects": "SETCameraCoachProductionView.scenePhase + SceneGeneratorView.scenePhase (owns dismiss UX) converge on same idempotent owners; dismiss fires once", "fixed_gaps": "legacy OverlayView path had NO background stop (capture leak); scenes route hook had NO caller (dead)", "test": "testBackgroundReachesActiveCameraRouteExactlyOncePerEvent + testBackgroundAfterRouteSwitchNeverReachesInactiveCameraRoute + testBackgroundReachesSceneWorkspaceProviderExactlyOnce"},
+    {"event": "capture interruption notification", "owner": "CameraManager.handleSessionFailure (object-identity + claim from starting/running only)", "adapter_change": "none; documented"},
+    {"event": "AR session interruption/failure", "owner": "ARSceneContainer delegate (generation-fenced Tasks)", "adapter_change": "none; documented"},
+    {"event": "termination sceneDidDisconnect", "owner": "none by design", "rationale": "no guaranteed background time; durable state via project snapshots; recording kill-recovery is M7/BL-P0-16 scope", "adapter_change": "none"}
+  ]
+}

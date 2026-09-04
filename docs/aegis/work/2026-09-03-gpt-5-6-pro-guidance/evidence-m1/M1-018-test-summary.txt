@@ -1,0 +1,12 @@
+Executed 2 tests, 0 failures (SubsystemErrorMappingTests, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-018.xcresult)
+(In the earlier combined run SceneParserServiceTests.testDiagnosticsConfidence failed — KNOWN PRE-EXISTING, registered in EXECUTION_STATE, out of scope.)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/SubsystemErrorMappingTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-018.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+Scope:
+1. FIXED raw-string leak: SceneGeneratorViewModel no longer publishes parser diagnostics notes (internal English 'router=…'/'trace:…') as errorMessage on low confidence; localized .generatorStatusLowConfidence remains the user signal, notes stay in diagnostics log + debug decision trace.
+2. NEW SubsystemErrorMappingTests: table-driven mapping of 12 reachable failure surfaces -> localization keys verified non-empty RU+EN against source Localizable.xcstrings (resolved via #filePath — bundle has only compiled .lproj); typed taxonomy enumeration assertions (RecorderFailure 11, TeardownFailure 3, ArtifactStoreError 7, DBServiceError).
+3. Stale-suppression verified by construction: CameraViewModel.handleCameraFailure guard hasActiveCaptureOrPauseWork; VM generation fence (M1-008); promotion ledger (M1-014); teardown single-flight (M1-009).
+
+Attempts: 1) vacuous source-reading test removed before shipping; 2) xcstrings not in bundle (compiled to .lproj) -> resolve source file via #filePath; 3) PASS.

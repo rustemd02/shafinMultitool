@@ -663,8 +663,8 @@ SemanticTipType
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `create_look_space_left` | `shift_frame_left` | `move_camera` | `whole_frame` | `left` | `insufficient_look_space` | `live`, `pause` | `degrade_to_generic_action_copy` |
 | `create_look_space_right` | `shift_frame_right` | `move_camera` | `whole_frame` | `right` | `insufficient_look_space` | `live`, `pause` | `degrade_to_generic_action_copy` |
-| `move_subject_off_left_edge` | `shift_frame_right` | `move_camera` | `primary_subject` | `right` | `subject_edge_pressure` | `live`, `pause` | `degrade_to_generic_action_copy` |
-| `move_subject_off_right_edge` | `shift_frame_left` | `move_camera` | `primary_subject` | `left` | `subject_edge_pressure` | `live`, `pause` | `degrade_to_generic_action_copy` |
+| `move_subject_off_left_edge` | `shift_frame_left` | `move_camera` | `primary_subject` | `left` | `subject_edge_pressure` | `live`, `pause` | `degrade_to_generic_action_copy` |
+| `move_subject_off_right_edge` | `shift_frame_right` | `move_camera` | `primary_subject` | `right` | `subject_edge_pressure` | `live`, `pause` | `degrade_to_generic_action_copy` |
 | `move_object_off_left_edge` | `move_object_right` | `move_object` | `foreground_object` | `right` | `object_edge_pressure` | `live`, `pause` | `degrade_to_generic_label` |
 | `move_object_off_right_edge` | `move_object_left` | `move_object` | `foreground_object` | `left` | `object_edge_pressure` | `live`, `pause` | `degrade_to_generic_label` |
 | `add_headroom` | `shift_frame_up` | `move_camera` | `primary_subject` | `up` | `tight_framing` | `live`, `pause` | `degrade_to_generic_action_copy` |

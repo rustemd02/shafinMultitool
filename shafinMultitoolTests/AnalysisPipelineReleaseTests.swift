@@ -77,6 +77,289 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         await pipeline.releaseAndWait()
     }
 
+    func testHighEvidencePreservesCallbackCaptureTimeAndAdapterState() async {
+        let (pipeline, _, _, _) = makeComponents()
+        let capturedAt = Date()
+
+        pipeline.ingestHigh(context: makeFrameContext(capturedAt: capturedAt, captureGeneration: 23))
+
+        let receivedFrame = await waitUntil {
+            pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_1000"
+        }
+        XCTAssertTrue(receivedFrame)
+        XCTAssertEqual(pipeline.testingLatestFrameEvidence?.capturedAt, capturedAt)
+        XCTAssertEqual(pipeline.testingLatestFrameEvidence?.lensGeneration, 23)
+        XCTAssertEqual(pipeline.testingLatestFrameEvidence?.makeEnvelope().lensGeneration, 23)
+        XCTAssertNotNil(pipeline.testingLatestFrameEvidence?.adapterState)
+
+        await pipeline.releaseAndWait()
+    }
+
+    func testOlderCaptureGenerationCannotReplaceNewLensEvidence() async {
+        let (pipeline, _, _, _) = makeComponents()
+        let firstCapturedAt = Date()
+
+        pipeline.ingestHigh(context: makeFrameContext(
+            timestamp: 2,
+            orientation: .up,
+            capturedAt: firstCapturedAt,
+            captureGeneration: 8
+        ))
+        let receivedNewGeneration = await waitUntil {
+            pipeline.testingLatestFrameEvidence?.lensGeneration == 8
+        }
+        XCTAssertTrue(receivedNewGeneration)
+
+        pipeline.ingestHigh(context: makeFrameContext(
+            timestamp: 3,
+            orientation: .right,
+            capturedAt: firstCapturedAt.addingTimeInterval(1),
+            captureGeneration: 7
+        ))
+        await pipeline.testingDrainHighQueue()
+
+        XCTAssertEqual(pipeline.testingLatestFrameEvidence?.sourceFrameId, "frame_2000")
+        XCTAssertEqual(pipeline.testingLatestFrameEvidence?.orientation, .up)
+        XCTAssertEqual(pipeline.testingLatestFrameEvidence?.lensGeneration, 8)
+        await pipeline.releaseAndWait()
+    }
+
+    func testNewerHighEvidenceCannotBeReplacedByOlderEvidence() async {
+        let (pipeline, _, _, _) = makeComponents()
+        let newerCapturedAt = Date()
+        let olderCapturedAt = newerCapturedAt.addingTimeInterval(-1.0)
+
+        pipeline.ingestHigh(
+            context: makeFrameContext(
+                timestamp: 2.0,
+                orientation: .up,
+                capturedAt: newerCapturedAt
+            )
+        )
+        let receivedNewerFrame = await waitUntil {
+            pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_2000"
+        }
+        XCTAssertTrue(receivedNewerFrame)
+
+        let newerFeatures = pipeline.currentFeatures
+        let newerVisionMeasuredAt = pipeline.currentDebugData.visionMeasuredAt
+
+        pipeline.ingestHigh(
+            context: makeFrameContext(
+                timestamp: 1.0,
+                orientation: .left,
+                capturedAt: olderCapturedAt
+            )
+        )
+
+        await pipeline.testingDrainHighQueue()
+        let evidence = pipeline.testingLatestFrameEvidence
+        XCTAssertEqual(evidence?.sourceFrameId, "frame_2000")
+        XCTAssertEqual(evidence?.orientation, .up)
+        XCTAssertEqual(evidence?.capturedAt, newerCapturedAt)
+
+        let featuresAfterOlder = pipeline.currentFeatures
+        XCTAssertEqual(featuresAfterOlder.horizon.angle, newerFeatures.horizon.angle)
+        XCTAssertEqual(featuresAfterOlder.horizon.confidence, newerFeatures.horizon.confidence)
+        XCTAssertEqual(featuresAfterOlder.motion.shakeLevel, newerFeatures.motion.shakeLevel)
+        XCTAssertEqual(featuresAfterOlder.subject.count, newerFeatures.subject.count)
+        XCTAssertEqual(pipeline.currentDebugData.visionMeasuredAt, newerVisionMeasuredAt)
+
+        await pipeline.releaseAndWait()
+    }
+
+    @MainActor
+    func testSuspendedLiveFusionCannotPublishAfterFrameReplacement() async {
+        let fusionGate = SuspendingNeuralEvidenceGate()
+        let provider = MockNeuralEvidenceProvider { request in
+            try await fusionGate.infer(request: request)
+        }
+        let service = NeuralEvidenceInferenceService(
+            configuration: makeLiveNeuralEvidenceConfiguration(),
+            provider: provider
+        )
+        let (pipeline, _, _, _) = makeComponents(
+            neuralEvidenceService: service,
+            liveHybridFusionEnabled: true
+        )
+        defer { fusionGate.releaseAll() }
+
+        pipeline.ingestHigh(
+            context: makeFrameContext(
+                timestamp: 1.0,
+                capturedAt: Date()
+            )
+        )
+        let firstFusionStarted = await waitUntil {
+            fusionGate.hasRequestedFrame("frame_1000")
+        }
+        XCTAssertTrue(firstFusionStarted)
+
+        pipeline.ingestHigh(
+            context: makeFrameContext(
+                timestamp: 2.0,
+                capturedAt: Date()
+            )
+        )
+        let replacementPublished = await waitUntil {
+            pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_2000"
+        }
+        XCTAssertTrue(replacementPublished)
+        let replacementFusionStarted = await waitUntil {
+            fusionGate.hasRequestedFrame("frame_2000")
+        }
+        XCTAssertTrue(replacementFusionStarted)
+
+        // Frame 2 is still suspended, so these values are the complete
+        // presentation baseline immediately before the stale frame resumes.
+        let hintBeforeResume = pipeline.currentLiveHint
+        let suggestionBeforeResume = pipeline.currentSuggestion
+        let annotationsBeforeResume = pipeline.currentOverlayAnnotations
+        let traceBeforeResume = pipeline.testingLiveFusionTraceBundle
+
+        fusionGate.release(frameId: "frame_1000")
+        let staleFusionFinished = await waitUntil {
+            fusionGate.hasCompletedFrame("frame_1000")
+        }
+        XCTAssertTrue(staleFusionFinished)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(pipeline.currentLiveHint, hintBeforeResume)
+        XCTAssertEqual(pipeline.currentSuggestion, suggestionBeforeResume)
+        XCTAssertEqual(pipeline.currentOverlayAnnotations, annotationsBeforeResume)
+        XCTAssertEqual(pipeline.testingLiveFusionTraceBundle, traceBeforeResume)
+
+        fusionGate.releaseAll()
+        await pipeline.releaseAndWait()
+    }
+
+    func testTypedPauseResultDistinguishesMissingEvidenceAndStaleCancellation() async {
+        let (pipeline, manager, _, _) = makeComponents()
+        var missingResult: PauseAnalysisResult?
+        pipeline.runPauseAnalysisResult(acceptedSnapshot: nil) { result, _, _ in
+            missingResult = result
+        }
+        XCTAssertEqual(missingResult, .failure(.noAcceptedEvidence))
+
+        await pipeline.releaseAndWait()
+        var staleResult: PauseAnalysisResult?
+        pipeline.runPauseAnalysisResult(acceptedSnapshot: nil) { result, _, _ in
+            staleResult = result
+        }
+        XCTAssertEqual(staleResult, .cancelled)
+        _ = manager
+    }
+
+    func testPauseTimeoutWinsExactlyOnceAndDoesNotBecomeEmpty() async {
+        let (pipeline, manager, _, _) = makeComponents()
+        XCTAssertTrue(pipeline.register(with: manager))
+        pipeline.ingestHigh(context: makeFrameContext(timestamp: 8.0))
+        let receivedFrame = await waitUntil {
+            pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_8000"
+        }
+        XCTAssertTrue(receivedFrame)
+        guard let acceptedSnapshot = pipeline.acceptPauseSnapshot() else {
+            return XCTFail("pause test requires an accepted frame")
+        }
+
+        var results: [PauseAnalysisResult] = []
+        pipeline.runPauseAnalysisResult(
+            acceptedSnapshot: acceptedSnapshot,
+            timeoutNanoseconds: 1
+        ) { result, _, _ in
+            results.append(result)
+        }
+
+        let completed = await waitUntil {
+            results.count == 1
+        }
+        XCTAssertTrue(completed)
+        XCTAssertEqual(results, [.failure(.timeout)])
+
+        // Keep the underlying work alive for a bounded window. A late
+        // callback must be fenced rather than publishing a critique or
+        // annotations after the timeout result has already won.
+        let timeoutObservedAt = ContinuousClock.now
+        let lateWorkSettled = await waitUntil {
+            results.count == 1
+                && ContinuousClock.now >= timeoutObservedAt.advanced(by: .milliseconds(250))
+        }
+        XCTAssertTrue(lateWorkSettled)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertNil(pipeline.currentPauseCritique)
+        XCTAssertTrue(pipeline.currentOverlayAnnotations.isEmpty)
+        await pipeline.releaseAndWait()
+    }
+
+    func testPauseTimeoutClaimsBeforeLateTerminalPublication() async {
+        let (pipeline, manager, _, _) = makeComponents()
+        XCTAssertTrue(pipeline.register(with: manager))
+        pipeline.ingestHigh(context: makeFrameContext(timestamp: 10.0))
+        let receivedFrame = await waitUntil {
+            pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_10000"
+        }
+        XCTAssertTrue(receivedFrame)
+        guard let acceptedSnapshot = pipeline.acceptPauseSnapshot() else {
+            return XCTFail("pause test requires an accepted frame")
+        }
+
+        let hookState = PauseClaimHookState()
+        pipeline.testingSetPauseAnalysisBeforeTerminalClaimHook {
+            hookState.enterAndWait()
+        }
+        defer {
+            hookState.release()
+            pipeline.testingSetPauseAnalysisBeforeTerminalClaimHook(nil)
+        }
+
+        var results: [PauseAnalysisResult] = []
+        pipeline.runPauseAnalysisResult(
+            acceptedSnapshot: acceptedSnapshot,
+            timeoutNanoseconds: 5_000_000_000
+        ) { result, _, _ in
+            results.append(result)
+        }
+
+        let hookEntered = await waitUntil { hookState.hasEntered }
+        XCTAssertTrue(hookEntered)
+        pipeline.testingTriggerPauseAnalysisTimeout()
+        hookState.release()
+
+        let completed = await waitUntil { results.count == 1 }
+        XCTAssertTrue(completed)
+        XCTAssertEqual(results, [.failure(.timeout)])
+        XCTAssertNil(pipeline.currentPauseCritique)
+        XCTAssertTrue(pipeline.currentOverlayAnnotations.isEmpty)
+        await pipeline.releaseAndWait()
+    }
+
+    func testTypedPauseResultReportsPipelineUnavailableSeparatelyFromEmpty() {
+        let store = LatestFrameEvidenceStore()
+        let pixelBuffer = makeFrameContext(timestamp: 9.0).pixelBuffer
+        XCTAssertTrue(store.publish(
+            pixelBuffer: pixelBuffer,
+            orientation: .up,
+            sourceFrameId: "pipeline-unavailable-frame",
+            capturedAt: Date(),
+            isStable: true
+        ))
+        guard let acceptedSnapshot = store.acceptCurrentSnapshot() else {
+            return XCTFail("pause test requires an accepted frame")
+        }
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil,
+            neuralHeavyModelsEnabledProvider: { true },
+            pauseAnalysisAvailabilityProvider: { false }
+        )
+        var result: PauseAnalysisResult?
+        pipeline.runPauseAnalysisResult(acceptedSnapshot: acceptedSnapshot) { pauseResult, _, _ in
+            result = pauseResult
+        }
+        XCTAssertEqual(result, .failure(.pipelineUnavailable))
+    }
+
     @MainActor
     func testReleaseInvalidatesQueuedPresentationAndClearsLivePauseAndOverlayState() async {
         let (pipeline, manager, scheduler, _) = makeComponents()
@@ -259,10 +542,13 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         XCTAssertEqual(scheduler.registrationCountForTesting, 0)
     }
 
-    private func makeComponents() -> (AnalysisPipeline,
-                                      CameraManager,
-                                      RealtimeScheduler,
-                                      ReleaseTestSessionRunner) {
+    private func makeComponents(
+        neuralEvidenceService: NeuralEvidenceInferenceService? = nil,
+        liveHybridFusionEnabled: Bool = false
+    ) -> (AnalysisPipeline,
+          CameraManager,
+          RealtimeScheduler,
+          ReleaseTestSessionRunner) {
         let scheduler = RealtimeScheduler()
         let thermalGovernor = ThermalGovernor(thermalStateProvider: { .nominal },
                                                batteryLevelProvider: { 1.0 })
@@ -275,13 +561,23 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
-            neuralEvidenceService: nil,
+            neuralEvidenceService: neuralEvidenceService,
             thermalGovernor: thermalGovernor,
             neuralHeavyModelsEnabledProvider: { true },
-            liveHybridFusionEnabled: false,
+            liveHybridFusionEnabled: liveHybridFusionEnabled,
             demoLiveCoachEnabled: false
         )
         return (pipeline, manager, scheduler, runner)
+    }
+
+    private func makeLiveNeuralEvidenceConfiguration() -> NeuralEvidenceInferenceConfiguration {
+        var configuration = NeuralEvidenceInferenceConfiguration.disabled
+        configuration.featureEnabled = true
+        configuration.liveModeEnabled = true
+        configuration.liveTimeout = 5.0
+        configuration.liveMinIntervalUnrestricted = 0
+        configuration.liveMinIntervalConstrained = 0
+        return configuration
     }
 
     private func makeLiveHint() -> LiveHintPresentation {
@@ -323,7 +619,9 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
 
     private func makeFrameContext(timestamp: Double = 1.0,
                                   orientation: CGImagePropertyOrientation = .up,
-                                  isStable: Bool = true) -> FrameContext {
+                                  isStable: Bool = true,
+                                  capturedAt: Date = Date(),
+                                  captureGeneration: UInt64 = 0) -> FrameContext {
         var pixelBuffer: CVPixelBuffer?
         let attributes: [String: Any] = [
             kCVPixelBufferWidthKey as String: 4,
@@ -346,7 +644,9 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
             orientation: orientation,
             isStable: isStable,
             shakeLevel: 0.05,
-            motionState: .still
+            motionState: .still,
+            capturedAt: capturedAt,
+            captureGeneration: captureGeneration
         )
     }
 
@@ -364,6 +664,94 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
             }
         }
         return condition()
+    }
+}
+
+private final class PauseClaimHookState: @unchecked Sendable {
+    private let lock = NSLock()
+    private let releaseGate = DispatchSemaphore(value: 0)
+    private var entered = false
+
+    var hasEntered: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return entered
+    }
+
+    func enterAndWait() {
+        lock.lock()
+        entered = true
+        lock.unlock()
+        releaseGate.wait()
+    }
+
+    func release() {
+        releaseGate.signal()
+    }
+}
+
+private final class SuspendingNeuralEvidenceGate: @unchecked Sendable {
+    private let stateQueue = DispatchQueue(label: "AnalysisPipelineReleaseTests.suspendingNeuralEvidence")
+    private var requestedFrameIds: Set<String> = []
+    private var completedFrameIds: Set<String> = []
+    private var releasedFrameIds: Set<String> = []
+
+    func infer(request: NeuralEvidenceProviderRequest) async throws -> NeuralEvidenceProviderOutput {
+        stateQueue.sync {
+            _ = requestedFrameIds.insert(request.frameId)
+        }
+
+        while true {
+            let isReleased = stateQueue.sync {
+                releasedFrameIds.contains(request.frameId)
+            }
+            if isReleased { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+
+        stateQueue.sync {
+            _ = completedFrameIds.insert(request.frameId)
+        }
+        return Self.output(actualROIStrategy: request.roiStrategy)
+    }
+
+    func hasRequestedFrame(_ frameId: String) -> Bool {
+        stateQueue.sync {
+            requestedFrameIds.contains(frameId)
+        }
+    }
+
+    func hasCompletedFrame(_ frameId: String) -> Bool {
+        stateQueue.sync {
+            completedFrameIds.contains(frameId)
+        }
+    }
+
+    func release(frameId: String) {
+        stateQueue.sync {
+            _ = releasedFrameIds.insert(frameId)
+        }
+    }
+
+    func releaseAll() {
+        stateQueue.sync {
+            releasedFrameIds.formUnion(requestedFrameIds)
+        }
+    }
+
+    private static func output(actualROIStrategy: NeuralEvidenceROIStrategy) -> NeuralEvidenceProviderOutput {
+        let row = Array(repeating: 0.7, count: NeuralEvidenceProviderOutput.supportingSignalCount)
+        return NeuralEvidenceProviderOutput(
+            scalarScores: Array(repeating: 0.7, count: NeuralEvidenceProviderOutput.scalarHeadCount),
+            scalarConfidences: Array(repeating: 0.8, count: NeuralEvidenceProviderOutput.scalarHeadCount),
+            supportingSignalScores: Array(
+                repeating: row,
+                count: NeuralEvidenceProviderOutput.scalarHeadCount
+            ),
+            shotTypeAffinities: Array(repeating: 0.5, count: NeuralEvidenceProviderOutput.shotTypeCount),
+            shotTypeConfidence: 0.8,
+            actualROIStrategy: actualROIStrategy
+        )
     }
 }
 

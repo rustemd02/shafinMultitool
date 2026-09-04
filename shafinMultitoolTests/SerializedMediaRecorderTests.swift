@@ -209,6 +209,32 @@ final class SerializedMediaRecorderTests: XCTestCase {
         XCTAssertEqual(fixture.writer.audioFrameOrdinals, Array(0..<32))
     }
 
+    func testAudioDriverCallbackUsesStartFence() async throws {
+        let fixture = makeFixture(audioMode: .required)
+        let configuration = makeConfiguration(audioMode: .required)
+
+        try await fixture.recorder.prepare(configuration)
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(
+            fence: fence,
+            timestamp: 1.0,
+            payload: TestVideoPayload(index: 0)
+        ))
+        fixture.audioDriver.emit(
+            timestamp: 1.0,
+            payload: TestAudioPayload(index: 7)
+        )
+        let result = await fixture.recorder.stop(reason: .user)
+
+        assertFinalized(result)
+        XCTAssertEqual(fixture.writer.audioAppendCount, 1)
+        XCTAssertEqual(fixture.writer.audioFrameOrdinals, [7])
+        XCTAssertEqual(fixture.writer.audioFrameFences, [fence])
+    }
+
     func testAppendedAudioCannotOverrideWriterMetadataFalse() async throws {
         let fixture = makeFixture(audioMode: .required)
         let configuration = makeConfiguration(audioMode: .required)
@@ -399,7 +425,7 @@ final class SerializedMediaRecorderTests: XCTestCase {
 
     func testVideoAppendFailureReturnsRecoverableArtifact() async throws {
         let fixture = makeFixture()
-        fixture.writer.videoAppendResult = false
+        fixture.writer.videoAppendResult = .failed
 
         try await fixture.recorder.prepare(makeConfiguration())
         try await fixture.recorder.start()
@@ -418,9 +444,30 @@ final class SerializedMediaRecorderTests: XCTestCase {
         }
     }
 
+    func testDroppedVideoDoesNotFailOrCountAsAcceptedFrame() async throws {
+        let fixture = makeFixture()
+        fixture.writer.videoAppendResult = .dropped
+
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+
+        let stateAfterDrop = await fixture.recorder.state
+        XCTAssertEqual(stateAfterDrop, .recording)
+
+        fixture.writer.videoAppendResult = .appended
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 2.0))
+        let result = await fixture.recorder.stop(reason: .user)
+
+        assertFinalized(result)
+        XCTAssertEqual(fixture.writer.videoAppendCount, 2)
+    }
+
     func testAudioAppendFailureReturnsTypedFailure() async throws {
         let fixture = makeFixture(audioMode: .required)
-        fixture.writer.audioAppendResult = false
+        fixture.writer.audioAppendResult = .failed
 
         try await fixture.recorder.prepare(makeConfiguration(audioMode: .required))
         try await fixture.recorder.start()
@@ -442,7 +489,7 @@ final class SerializedMediaRecorderTests: XCTestCase {
 
     func testAppendFailureStopsAudioImmediatelyAndOnlyOnce() async throws {
         let fixture = makeFixture(audioMode: .required)
-        fixture.writer.audioAppendResult = false
+        fixture.writer.audioAppendResult = .failed
 
         try await fixture.recorder.prepare(makeConfiguration(audioMode: .required))
         try await fixture.recorder.start()
@@ -838,12 +885,13 @@ private final class FakeWriter: RecordingWriter {
     private var storedMaximumConcurrentAppendCalls = 0
     private var storedVideoFrameOrdinals: [Int] = []
     private var storedAudioFrameOrdinals: [Int] = []
+    private var storedAudioFrameFences: [RecordingFrameFence] = []
     private var storedAppendQueueTokens: [UUID?] = []
     private var storedEvents: [String] = []
 
     var startResult = true
-    var videoAppendResult = true
-    var audioAppendResult = true
+    var videoAppendResult: RecordingAppendDisposition = .appended
+    var audioAppendResult: RecordingAppendDisposition = .appended
     var holdFinish = false
     var onFinish: (() -> Void)?
 
@@ -855,6 +903,7 @@ private final class FakeWriter: RecordingWriter {
     var maximumConcurrentAppendCalls: Int { lock.withLock { storedMaximumConcurrentAppendCalls } }
     var videoFrameOrdinals: [Int] { lock.withLock { storedVideoFrameOrdinals } }
     var audioFrameOrdinals: [Int] { lock.withLock { storedAudioFrameOrdinals } }
+    var audioFrameFences: [RecordingFrameFence] { lock.withLock { storedAudioFrameFences } }
     var appendQueueTokens: [UUID?] { lock.withLock { storedAppendQueueTokens } }
     var events: [String] { lock.withLock { storedEvents } }
 
@@ -870,8 +919,8 @@ private final class FakeWriter: RecordingWriter {
         return startResult
     }
 
-    func appendVideo(_ frame: RecordingVideoFrame) -> Bool {
-        let result: Bool
+    func appendVideo(_ frame: RecordingVideoFrame) -> RecordingAppendDisposition {
+        let result: RecordingAppendDisposition
         lock.lock()
         storedConcurrentAppendCalls += 1
         storedMaximumConcurrentAppendCalls = max(storedMaximumConcurrentAppendCalls,
@@ -890,8 +939,8 @@ private final class FakeWriter: RecordingWriter {
         return result
     }
 
-    func appendAudio(_ frame: RecordingAudioFrame) -> Bool {
-        let result: Bool
+    func appendAudio(_ frame: RecordingAudioFrame) -> RecordingAppendDisposition {
+        let result: RecordingAppendDisposition
         lock.lock()
         storedConcurrentAppendCalls += 1
         storedMaximumConcurrentAppendCalls = max(storedMaximumConcurrentAppendCalls,
@@ -900,6 +949,10 @@ private final class FakeWriter: RecordingWriter {
         if let payload = frame.payload as? TestAudioPayload {
             storedAudioFrameOrdinals.append(payload.index)
         }
+        storedAudioFrameFences.append(RecordingFrameFence(
+            recordingID: frame.recordingID,
+            generation: frame.generation
+        ))
         storedAppendQueueTokens.append(
             DispatchQueue.getSpecific(key: SerializedMediaRecorder.queueSpecificKey)
         )
@@ -994,17 +1047,24 @@ private final class FakeAudioDriverFactory: RecordingAudioDriverFactory {
 }
 
 private final class FakeAudioDriver: RecordingAudioDriver {
+    private var frameHandler: RecordingAudioFrameHandler?
     private(set) var startCount = 0
     private(set) var stopCount = 0
     var startResult = true
 
-    func start() -> Bool {
+    func start(onFrame: @escaping RecordingAudioFrameHandler) -> Bool {
         startCount += 1
+        frameHandler = onFrame
         return startResult
     }
 
     func stop() {
         stopCount += 1
+        frameHandler = nil
+    }
+
+    func emit(timestamp: TimeInterval, payload: any RecordingAudioFramePayload) {
+        frameHandler?(timestamp, payload)
     }
 }
 

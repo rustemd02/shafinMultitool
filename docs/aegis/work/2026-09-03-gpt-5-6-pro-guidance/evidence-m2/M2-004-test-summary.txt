@@ -1,0 +1,7 @@
+Executed 7 tests, 0 failures (SemanticDirectionBehaviorTests, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m2-004.xcresult, TEST SUCCEEDED).
+
+Scope: subject-displacement direction contract (SemanticDirection.subjectDisplacement(actionFrame:) — camera-framed in-plane directions invert optically; subject/object/light/depth preserve); SemanticTipDefinition.subjectDisplacementDirection (single published direction for text+markers); subjectTargetPoint (marker/text aim point from subject frame); copy migration set.trace.action.shift_left/right/up_down frame-semantics -> subject semantics (RU+EN, optical inversion: shift_left now says 'Сместите героя вправо'/'Move your subject right'; lower/raise/angle/step keep physical camera copy — stop gate bans duplicate LEFT/RIGHT camera semantics only).
+
+Behavioral matrix: 4 directions x 8 display states — scene-space direction invariant, rendered arrow = linear part of M2-003 golden matrices; catalog-level inversion pinned (createLookSpaceLeft -> subject right).
+
+Attempts: 1) compile: definition(for:) optional -> XCTUnwrap; 2) test-side bugs (accusative 'героя' substring; invariant compared to camera direction instead of subject direction) -> fixed; 3) 7/7 PASS.

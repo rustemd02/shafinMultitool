@@ -1,0 +1,13 @@
+{
+  "utc": "2026-09-03",
+  "macos": "27.0 (26A5416b)",
+  "xcode": "26.6 (17F113)",
+  "sdk": "iPhoneOS26.5",
+  "swift_project": "5.0",
+  "python": "3.11.9",
+  "cocoapods": "1.16.2 (ffi-1.17.0 broken warning; pod commands still work)",
+  "git": "2.50.1",
+  "sim_runtime": "iOS 26.5 (23F77)",
+  "meets_apple_upload_floor": "YES (Xcode 26+ / iOS 26 SDK per 2026-09-03 Apple requirements)",
+  "missing": []
+}

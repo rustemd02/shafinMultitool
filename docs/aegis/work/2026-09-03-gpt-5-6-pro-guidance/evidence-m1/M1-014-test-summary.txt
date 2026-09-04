@@ -1,0 +1,12 @@
+Executed 20 tests, 0 failures (RecordingArtifactPromotionTests 4 + SceneRecordingControllerTests 16, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-014.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/RecordingArtifactPromotionTests -only-testing:shafinMultitoolTests/SceneRecordingControllerTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-014.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+REAL RACE BUGS FOUND AND FIXED in RecordingArtifactStore.promoteFinalizedArtifact (concurrent test exposed them):
+1. Commit-window race: caller checked destination (ENOENT, winner not yet renamed), then reached source check AFTER winner's rename -> pendingSourceMissing although the transaction committed. Fix: source-ENOENT + regular destination present -> return reference (idempotent committed transaction).
+2. renameatx ENOENT race: caller stat'ed source OK, winner renamed, caller's renameatx failed ENOENT (handled only EEXIST before) -> fileSystemFailure. Fix: rename-ENOENT + regular destination -> return reference.
+
+Both were transient spurious failures for concurrent callers and crash-recovery retries of the SAME take; each promoted artifact is now stored exactly once per idempotency key (recording ID) with all callers converging on the same reference.
+
+Attempts: 1) compile (Set of non-Hashable, URL member) -> fixed; 2) 3/8 concurrent failures -> fix 1; 3) 2/8 -> instrumented, identified ENOENT path -> fix 2; 4) 20/20 PASS.

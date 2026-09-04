@@ -7,14 +7,20 @@
 
 import Foundation
 
+#if !DEBUG
+@inline(__always) func print(_ items: Any..., separator: String = " ", terminator: String = "\n") {}
+#endif
+
 final class SceneGeneratorDiagnosticsLogger {
     static let shared = SceneGeneratorDiagnosticsLogger()
 
     private init() {}
 
-    func log(_ message: String) {
-        let entry = "[\(Self.timestampFormatter.string(from: Date()))] \(message)"
+    func log(_ message: @autoclosure () -> String) {
+#if DEBUG
+        let entry = "[\(Self.timestampFormatter.string(from: Date()))] \(message())"
         print(entry)
+#endif
     }
 
     func flush() {

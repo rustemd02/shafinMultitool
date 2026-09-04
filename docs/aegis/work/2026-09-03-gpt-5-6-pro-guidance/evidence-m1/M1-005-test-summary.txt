@@ -1,0 +1,10 @@
+Executed 17 tests, 0 failures (PermissionCoordinatorTests 6 + CameraCoachEntryFlowModelTests 11, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-005.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/PermissionCoordinatorTests -only-testing:shafinMultitoolTests/CameraCoachEntryFlowModelTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-005.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+Implementation: NEW Services/Permissions/PermissionCoordinator.swift (actor; concurrent request() per permission coalesces into one client request via in-flight task fence; joined callers each receive the same snapshot once; cancelled initiator cannot drop/publish others' state; snapshot() stays live and bypasses the fence). Wired as the production default client in SceneGeneratorViewModel init + ContentView (both SystemPermissionClient sites wrapped; tests injecting fakes unaffected).
+
+Tests: 8 concurrent requests -> 1 client call, identical snapshots; sequential requests issue new calls; different permissions don't cross-coalesce; snapshot bypass; all 6 authorization states delivered verbatim; cancelled waiter leaves joined caller + single client call intact.
+
+Attempts: 1) Task.taskID/ObjectIdentifier unavailable (Task is a struct) -> actor-fence argument, unconditional clear; 2) missing await on Task.sleep -> fixed; 3) 17/17 PASS.

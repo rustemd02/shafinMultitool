@@ -345,6 +345,42 @@ final class CameraAnalysisDomainContractsTests: XCTestCase {
         XCTAssertTrue(errors.contains("non-leave actions must link at least one issue"))
     }
 
+    func testRecommendationPlannerUsesPhysicalHorizontalCameraDirection() {
+        let planner = RecommendationPlanner()
+        let positiveSnapshot = makeSnapshot(
+            composition: .init(
+                horizontalOffset: 0.70,
+                verticalOffset: 0,
+                subjectAreaRatio: 0.22,
+                saliencyLeftRightBalance: 0.70,
+                saliencyTopBottomBalance: 0
+            )
+        )
+        let negativeSnapshot = makeSnapshot(
+            composition: .init(
+                horizontalOffset: -0.70,
+                verticalOffset: 0,
+                subjectAreaRatio: 0.22,
+                saliencyLeftRightBalance: -0.70,
+                saliencyTopBottomBalance: 0
+            )
+        )
+
+        let positivePlan = planner.makePlan(
+            snapshot: positiveSnapshot,
+            critique: makeCritique(frameId: positiveSnapshot.frameId)
+        )
+        let negativePlan = planner.makePlan(
+            snapshot: negativeSnapshot,
+            critique: makeCritique(frameId: negativeSnapshot.frameId)
+        )
+
+        XCTAssertEqual(positivePlan.primaryAction?.actionType, .moveFrameRight)
+        XCTAssertEqual(positivePlan.primaryAction?.overlayHint?.direction, .right)
+        XCTAssertEqual(negativePlan.primaryAction?.actionType, .moveFrameLeft)
+        XCTAssertEqual(negativePlan.primaryAction?.overlayHint?.direction, .left)
+    }
+
     func testContractsCodableRoundTrip() throws {
         let snapshot = makeSnapshot()
         let semantics = makeSemantics(frameId: snapshot.frameId)
@@ -2601,6 +2637,62 @@ final class FeatureSnapshotAggregatorTests: XCTestCase {
         XCTAssertEqual(snapshot.technicalFlags, [.lowSceneConfidence, .lowSubjectConfidence])
     }
 
+    func testVisionVerticalOffsetUsesDisplayCoordinates() {
+        let aggregator = FeatureSnapshotAggregator()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_350)
+
+        let lowerDisplaySubject = aggregator.makeSnapshot(from: makeInput(
+            capturedAt: capturedAt,
+            vision: makeVisionSample(
+                measuredAt: capturedAt,
+                baseConfidence: 0.9,
+                subjects: [
+                    .init(
+                        boundingBox: CGRect(x: 0.4, y: 0.45, width: 0.2, height: 0.1),
+                        confidence: 0.9,
+                        isFace: false
+                    )
+                ],
+                saliencyCenter: nil,
+                faceCount: 0,
+                personCount: 1
+            )
+        ))
+        let upperDisplaySubject = aggregator.makeSnapshot(from: makeInput(
+            capturedAt: capturedAt,
+            vision: makeVisionSample(
+                measuredAt: capturedAt,
+                baseConfidence: 0.9,
+                subjects: [
+                    .init(
+                        boundingBox: CGRect(x: 0.4, y: 0.75, width: 0.2, height: 1.0 / 6.0),
+                        confidence: 0.9,
+                        isFace: false
+                    )
+                ],
+                saliencyCenter: nil,
+                faceCount: 0,
+                personCount: 1
+            )
+        ))
+
+        XCTAssertEqual(lowerDisplaySubject.composition.verticalOffset, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(upperDisplaySubject.composition.verticalOffset, -0.5, accuracy: 0.0001)
+
+        let saliencyOnly = aggregator.makeSnapshot(from: makeInput(
+            capturedAt: capturedAt,
+            vision: makeVisionSample(
+                measuredAt: capturedAt,
+                baseConfidence: 0.48,
+                subjects: [],
+                saliencyCenter: CGPoint(x: 0.5, y: 0.5),
+                faceCount: 0,
+                personCount: 0
+            )
+        ))
+        XCTAssertEqual(saliencyOnly.composition.verticalOffset, 0.5, accuracy: 0.0001)
+    }
+
     func testFreshnessConfidenceMonotonicAndStaleEviction() {
         let aggregator = FeatureSnapshotAggregator()
         let capturedAt = Date(timeIntervalSince1970: 1_776_000_400)
@@ -2626,6 +2718,86 @@ final class FeatureSnapshotAggregatorTests: XCTestCase {
         XCTAssertFalse(staleSnapshot.sources.horizon.available)
         XCTAssertEqual(staleSnapshot.horizon.angleDegrees, 0)
         XCTAssertEqual(staleSnapshot.horizon.confidence, 0)
+    }
+
+    func testEvaluatedFreshnessIncludesFrameAgeWhenSampleWasMeasuredAtCapture() {
+        let aggregator = FeatureSnapshotAggregator()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_450)
+        let evaluatedAt = capturedAt.addingTimeInterval(0.251)
+
+        let snapshot = aggregator.makeSnapshot(from: makeInput(
+            capturedAt: capturedAt,
+            evaluatedAt: evaluatedAt,
+            vision: makeVisionSample(
+                measuredAt: capturedAt,
+                baseConfidence: 0.9,
+                subjects: [],
+                saliencyCenter: nil,
+                faceCount: 0,
+                personCount: 0
+            )
+        ))
+
+        XCTAssertEqual(snapshot.capturedAt, capturedAt)
+        XCTAssertEqual(snapshot.sources.vision.freshnessMs, 251)
+        XCTAssertGreaterThan(
+            snapshot.sources.vision.freshnessMs ?? 0,
+            LiveCoachQualityGate.maxVisionFreshnessMilliseconds
+        )
+    }
+
+    func testPublishedSubjectConfidenceAppliesFreshnessOnceForVisionAndDetr() {
+        let aggregator = FeatureSnapshotAggregator()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_475)
+        let evaluatedAt = capturedAt.addingTimeInterval(0.040)
+
+        let visionSnapshot = aggregator.makeSnapshot(from: makeInput(
+            capturedAt: capturedAt,
+            evaluatedAt: evaluatedAt,
+            vision: makeVisionSample(
+                measuredAt: capturedAt,
+                baseConfidence: 0.90,
+                subjects: [
+                    .init(
+                        boundingBox: CGRect(x: 0.18, y: 0.18, width: 0.30, height: 0.46),
+                        confidence: 0.90,
+                        isFace: true
+                    )
+                ],
+                saliencyCenter: CGPoint(x: 0.33, y: 0.41),
+                faceCount: 1,
+                personCount: 1
+            )
+        ))
+        let visionSemantics = SceneSemanticsAnalyzer().analyze(snapshot: visionSnapshot)
+        let expectedVisionConfidence = 0.90 * (1.0 - (40.0 / (2.0 * 250.0)))
+
+        XCTAssertEqual(visionSnapshot.sources.vision.confidence ?? 0, expectedVisionConfidence, accuracy: 0.0001)
+        XCTAssertEqual(visionSnapshot.subjectSignals.primaryCandidateConfidence ?? 0, expectedVisionConfidence, accuracy: 0.0001)
+        XCTAssertEqual(visionSemantics.primarySubject.confidence, expectedVisionConfidence, accuracy: 0.0001)
+
+        let detrSnapshot = aggregator.makeSnapshot(from: makeInput(
+            capturedAt: capturedAt,
+            evaluatedAt: evaluatedAt,
+            detr: makeDetrSample(
+                measuredAt: capturedAt,
+                baseConfidence: 0.90,
+                detections: [
+                    .init(
+                        boundingBox: CGRect(x: 0.42, y: 0.22, width: 0.20, height: 0.22),
+                        label: "cup",
+                        confidence: 0.90
+                    )
+                ]
+            )
+        ))
+        let detrSemantics = SceneSemanticsAnalyzer().analyze(snapshot: detrSnapshot)
+        let expectedDetrConfidence = 0.90 * (1.0 - (40.0 / (2.0 * 1200.0)))
+
+        XCTAssertEqual(detrSnapshot.sources.detr.confidence ?? 0, expectedDetrConfidence, accuracy: 0.0001)
+        XCTAssertEqual(detrSnapshot.subjectSignals.topObjectConfidence ?? 0, expectedDetrConfidence, accuracy: 0.0001)
+        XCTAssertEqual(detrSnapshot.subjectSignals.primaryCandidateConfidence ?? 0, expectedDetrConfidence, accuracy: 0.0001)
+        XCTAssertEqual(detrSemantics.primarySubject.confidence, expectedDetrConfidence, accuracy: 0.0001)
     }
 
     func testNormalizationAndVisionPersonCountOwnership() {
@@ -2879,7 +3051,10 @@ final class SceneSemanticsAnalyzerTests: XCTestCase {
 
         let report = analyzer.analyze(snapshot: snapshot)
         XCTAssertEqual(report.sceneType, .singleCharacterMedium)
-        XCTAssertEqual(report.readability.lookSpaceAdequate, true)
+        XCTAssertNil(report.readability.lookSpaceAdequate)
+
+        let critique = FrameCritiqueEngine().analyze(snapshot: snapshot, semantics: report)
+        XCTAssertFalse(critique.issues.contains { $0.type == .insufficientLookSpace })
     }
 
     func testTwoCharacterFrameAndAmbiguityGoldenCase() {
@@ -3303,6 +3478,7 @@ private extension SceneSemanticsAnalyzerTests {
 
 private extension FeatureSnapshotAggregatorTests {
     func makeInput(capturedAt: Date,
+                   evaluatedAt: Date? = nil,
                    motionState: CameraAnalysisMotionState = .still,
                    shakeLevel: Double = 0,
                    vision: FeatureSample<FeatureSnapshotVisionPayload>? = nil,
@@ -3314,6 +3490,7 @@ private extension FeatureSnapshotAggregatorTests {
             frameId: "frame-test",
             mode: .live,
             capturedAt: capturedAt,
+            evaluatedAt: evaluatedAt,
             motionState: motionState,
             shakeLevel: shakeLevel,
             vision: vision,

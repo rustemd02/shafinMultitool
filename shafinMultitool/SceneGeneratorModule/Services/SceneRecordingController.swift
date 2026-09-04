@@ -1,0 +1,449 @@
+import CoreVideo
+import Foundation
+
+/// Owns one raw-camera take and the small capture-side gate around the shared
+/// serialized recorder. State snapshots are synchronous and queue-scoped;
+/// video enqueue remains nonblocking for the AR session delegate.
+final class SceneRecordingController: @unchecked Sendable {
+    typealias RecorderFactory = @Sendable (
+        _ configuration: RecordingConfiguration
+    ) throws -> any MediaRecording
+
+    private enum Lifecycle: Equatable {
+        case idle
+        case starting
+        case recording
+        case stopping
+        case released
+
+        /// M1-010: canonical lifecycle projection. The controller keeps its
+        /// coarser vocabulary; observers and tests read the shared machine.
+        var canonical: RecordingLifecycleState {
+            switch self {
+            case .idle: .idle
+            case .starting: .starting
+            case .recording: .recording
+            case .stopping: .stopping
+            case .released: .released
+            }
+        }
+    }
+
+    private enum StartDecision {
+        case alreadyRecording
+        case wait(Task<Void, Error>)
+        case failure(RecorderFailure)
+    }
+
+    private enum StopDecision {
+        case result(RecordingStopResult?)
+        case waitForStart(Task<Void, Error>)
+        case waitForStop(Task<RecordingStopResult, Never>)
+    }
+
+    private enum ReleaseDecision {
+        case result(RecordingStopResult?)
+        case stop
+        case waitForStart(Task<Void, Error>)
+        case waitForStop(Task<RecordingStopResult, Never>)
+        case release(recorder: (any MediaRecording)?, result: RecordingStopResult?)
+    }
+
+    private let stateQueue = DispatchQueue(
+        label: "com.shafinMultitool.sceneRecordingController",
+        qos: .userInitiated
+    )
+    private let artifactStore: RecordingArtifactStore
+    private let makeRecorder: RecorderFactory
+
+    // Every property below is accessed through `withState`; no await occurs
+    // inside that synchronous critical section.
+    private var lifecycle: Lifecycle = .idle
+    private var recorder: (any MediaRecording)?
+    private var acceptingFrameFence: RecordingFrameFence?
+    private var lastAcceptedTimestamp: TimeInterval?
+    private var latestVideoPayload: AppleRecordingVideoFramePayload?
+    private var latestTimestamp: TimeInterval?
+    private var lastStopResult: RecordingStopResult?
+    private var startTask: Task<Void, Error>?
+    private var stopTask: Task<RecordingStopResult, Never>?
+    private var releaseTask: Task<RecordingStopResult?, Never>?
+
+    init(artifactStore: RecordingArtifactStore,
+         makeRecorder: @escaping RecorderFactory) {
+        self.artifactStore = artifactStore
+        self.makeRecorder = makeRecorder
+    }
+
+    /// Production wiring for a fresh AVAssetWriter + optional capture-audio
+    /// driver. Permission is intentionally owned by the ViewModel before this
+    /// initializer is used for a required-audio take.
+    convenience init(artifactStore: RecordingArtifactStore) {
+        self.init(artifactStore: artifactStore) { configuration in
+            SerializedMediaRecorder(
+                writerFactory: AVAssetWriterRecordingWriterFactory(),
+                audioDriverFactory: configuration.audioMode == .required
+                    ? AVCaptureAudioRecordingDriverFactory()
+                    : nil
+            )
+        }
+    }
+
+    /// Project persistence owns the reference; the controller only forwards
+    /// artifact-store operations so UI code never handles filesystem paths.
+    func promoteFinalizedArtifact(
+        _ artifact: RecordingArtifact,
+        projectID: UUID
+    ) throws -> SceneRecordingReference {
+        try artifactStore.promoteFinalizedArtifact(artifact, projectID: projectID)
+    }
+
+    func resolve(_ reference: SceneRecordingReference) -> RecordingArtifact? {
+        artifactStore.resolveArtifact(reference)
+    }
+
+    /// Synchronous state access keeps queue/lock ownership out of async
+    /// contexts and makes it impossible to hold state ownership across await.
+    /// M1-010: lifecycle mutations are validated against the canonical
+    /// transition table (assert is stripped from release builds).
+    @inline(__always)
+    private func withState<T>(_ body: () -> T) -> T {
+        stateQueue.sync {
+            let previousLifecycle = lifecycle
+            let result = body()
+            if lifecycle != previousLifecycle {
+                assert(
+                    RecordingLifecycleState.isLegalTransition(
+                        from: previousLifecycle.canonical,
+                        to: lifecycle.canonical
+                    ),
+                    "SceneRecordingController illegal lifecycle transition \(previousLifecycle) -> \(lifecycle)"
+                )
+            }
+            return result
+        }
+    }
+
+    /// M1-010 canonical lifecycle projection of the current controller state.
+    var canonicalLifecycleState: RecordingLifecycleState {
+        withState { lifecycle.canonical }
+    }
+
+    var frameFence: RecordingFrameFence? {
+        withState { acceptingFrameFence }
+    }
+
+    var isAcceptingFrames: Bool {
+        withState { acceptingFrameFence != nil }
+    }
+
+    /// Dimensions of the latest raw AR buffer. This is a source fact used by
+    /// the capture-setting projection; it never describes a requested scaler
+    /// preset.
+    var currentVideoDimensions: (width: Int, height: Int)? {
+        withState {
+            guard let latestVideoPayload else { return nil }
+            return (
+                width: CVPixelBufferGetWidth(latestVideoPayload.pixelBuffer),
+                height: CVPixelBufferGetHeight(latestVideoPayload.pixelBuffer)
+            )
+        }
+    }
+
+    /// Caches the latest raw camera image even while idle, so an explicit REC
+    /// tap can prepare a writer from the current AR frame without dispatching a
+    /// MainActor task for every frame.
+    func enqueueVideo(_ pixelBuffer: CVPixelBuffer, at timestamp: TimeInterval) {
+        guard timestamp.isFinite else { return }
+        let payload = AppleRecordingVideoFramePayload(pixelBuffer: pixelBuffer)
+        let submission: (any MediaRecording, RecordingVideoFrame)? = withState {
+            latestVideoPayload = payload
+            latestTimestamp = timestamp
+
+            guard let fence = acceptingFrameFence,
+                  let recorder,
+                  lifecycle == .recording,
+                  shouldAccept(timestamp: timestamp) else {
+                return nil
+            }
+
+            lastAcceptedTimestamp = timestamp
+            return (
+                recorder,
+                RecordingVideoFrame(
+                    fence: fence,
+                    timestamp: timestamp,
+                    payload: payload
+                )
+            )
+        }
+
+        // SerializedMediaRecorder owns the append queue; this call only
+        // submits work and never waits for writer availability.
+        if let submission {
+            submission.0.enqueueVideo(submission.1)
+        }
+    }
+
+    /// Starts a fresh take. When no explicit buffer is supplied, the most
+    /// recent buffer observed by `enqueueVideo` is used. Dimensions always
+    /// come from that actual CVPixelBuffer.
+    func start(firstPixelBuffer: CVPixelBuffer? = nil,
+               requestedFPS: Int,
+               audioMode: RecordingAudioMode,
+               timestamp: TimeInterval? = nil) async throws {
+        let explicitPayload = firstPixelBuffer.map(AppleRecordingVideoFramePayload.init(pixelBuffer:))
+        let decision: StartDecision = withState {
+            switch lifecycle {
+            case .recording:
+                return .alreadyRecording
+            case .starting:
+                guard let startTask else {
+                    return .failure(.invalidTransition)
+                }
+                return .wait(startTask)
+            case .stopping, .released:
+                return .failure(.invalidTransition)
+            case .idle:
+                guard let initialPayload = explicitPayload ?? latestVideoPayload else {
+                    return .failure(.noVideoFrames)
+                }
+
+                let initialTimestamp = timestamp ?? latestTimestamp ?? 0
+                guard initialTimestamp.isFinite else {
+                    return .failure(.writerInputRejected)
+                }
+
+                lifecycle = .starting
+                let task: Task<Void, Error> = Task { [self] in
+                    try await performStart(
+                        initialPayload: initialPayload,
+                        initialTimestamp: initialTimestamp,
+                        requestedFPS: requestedFPS,
+                        audioMode: audioMode
+                    )
+                }
+                startTask = task
+                return .wait(task)
+            }
+        }
+
+        switch decision {
+        case .alreadyRecording:
+            return
+        case .failure(let failure):
+            throw failure
+        case .wait(let task):
+            try await task.value
+        }
+    }
+
+    /// Stops the current take and returns the writer's exact result. The
+    /// accepting fence is cleared before awaiting finalization, so already
+    /// queued frames are rejected by the recorder's stale-generation check.
+    func stop(reason: RecordingStopReason) async -> RecordingStopResult? {
+        let decision: StopDecision = withState {
+            switch lifecycle {
+            case .idle, .released:
+                return .result(lastStopResult)
+            case .starting:
+                guard let startTask else {
+                    return .result(lastStopResult)
+                }
+                return .waitForStart(startTask)
+            case .stopping:
+                guard let stopTask else {
+                    return .result(lastStopResult)
+                }
+                return .waitForStop(stopTask)
+            case .recording:
+                guard let recorder else {
+                    acceptingFrameFence = nil
+                    lifecycle = .idle
+                    return .result(nil)
+                }
+
+                acceptingFrameFence = nil
+                lastAcceptedTimestamp = nil
+                lifecycle = .stopping
+                let task: Task<RecordingStopResult, Never> = Task { [self] in
+                    let result = await recorder.stop(reason: reason)
+                    _ = await recorder.releaseAndWait()
+
+                    withState {
+                        self.recorder = nil
+                        self.lifecycle = .idle
+                        self.stopTask = nil
+                        self.lastStopResult = result
+                    }
+                    return result
+                }
+                stopTask = task
+                return .waitForStop(task)
+            }
+        }
+
+        switch decision {
+        case .result(let result):
+            return result
+        case .waitForStart(let task):
+            _ = try? await task.value
+            return await stop(reason: reason)
+        case .waitForStop(let task):
+            return await task.value
+        }
+    }
+
+    /// Joins an in-flight start/stop and releases the underlying recorder.
+    /// Repeated callers share one task and receive the same cached result.
+    func releaseAndWait() async -> RecordingStopResult? {
+        let task: Task<RecordingStopResult?, Never> = withState {
+            if let releaseTask {
+                return releaseTask
+            }
+
+            let task: Task<RecordingStopResult?, Never> = Task { [self] in
+                await performRelease()
+            }
+            releaseTask = task
+            return task
+        }
+        return await task.value
+    }
+
+    private func performStart(initialPayload: AppleRecordingVideoFramePayload,
+                              initialTimestamp: TimeInterval,
+                              requestedFPS: Int,
+                              audioMode: RecordingAudioMode) async throws {
+        do {
+            let width = CVPixelBufferGetWidth(initialPayload.pixelBuffer)
+            let height = CVPixelBufferGetHeight(initialPayload.pixelBuffer)
+            guard width > 0, height > 0 else {
+                throw RecorderFailure.writerInputRejected
+            }
+
+            let outputURL = try artifactStore.makePendingURL()
+            let configuration = RecordingConfiguration(
+                id: RecordingID(rawValue: UUID()),
+                outputURL: outputURL,
+                width: width,
+                height: height,
+                fps: max(1, requestedFPS),
+                audioMode: audioMode
+            )
+            var newRecorder: (any MediaRecording)?
+            do {
+                let preparedRecorder = try makeRecorder(configuration)
+                newRecorder = preparedRecorder
+                try await preparedRecorder.prepare(configuration)
+                try await preparedRecorder.start()
+            } catch let failure as RecorderFailure {
+                if let newRecorder {
+                    _ = await newRecorder.releaseAndWait()
+                }
+                throw failure
+            } catch {
+                if let newRecorder {
+                    _ = await newRecorder.releaseAndWait()
+                }
+                throw RecorderFailure.writerCreationFailed
+            }
+
+            guard let newRecorder else {
+                throw RecorderFailure.writerCreationFailed
+            }
+            let snapshot = await newRecorder.stateSnapshot()
+            guard snapshot.state == .recording else {
+                _ = await newRecorder.releaseAndWait()
+                throw RecorderFailure.invalidTransition
+            }
+            let fence = RecordingFrameFence(
+                recordingID: configuration.id,
+                generation: snapshot.generation
+            )
+
+            // Submit the source frame while the lifecycle is still `.starting`.
+            // Stop/release callers therefore join this start task instead of
+            // finalizing a take before its first frame reaches the recorder.
+            newRecorder.enqueueVideo(RecordingVideoFrame(
+                fence: fence,
+                timestamp: initialTimestamp,
+                payload: initialPayload
+            ))
+
+            let committed = withState { () -> Bool in
+                guard lifecycle == .starting else { return false }
+                recorder = newRecorder
+                acceptingFrameFence = fence
+                lastAcceptedTimestamp = initialTimestamp
+                lastStopResult = nil
+                lifecycle = .recording
+                startTask = nil
+                return true
+            }
+            guard committed else {
+                _ = await newRecorder.releaseAndWait()
+                throw RecorderFailure.invalidTransition
+            }
+        } catch {
+            withState {
+                if lifecycle == .starting {
+                    lifecycle = .idle
+                    startTask = nil
+                }
+            }
+            throw (error as? RecorderFailure) ?? .writerCreationFailed
+        }
+    }
+
+    private func performRelease() async -> RecordingStopResult? {
+        while true {
+            let decision: ReleaseDecision = withState {
+                switch lifecycle {
+                case .released:
+                    return .result(lastStopResult)
+                case .starting:
+                    guard let startTask else {
+                        return .result(lastStopResult)
+                    }
+                    return .waitForStart(startTask)
+                case .recording:
+                    return .stop
+                case .stopping:
+                    guard let stopTask else {
+                        return .result(lastStopResult)
+                    }
+                    return .waitForStop(stopTask)
+                case .idle:
+                    let recorder = self.recorder
+                    let result = lastStopResult
+                    self.recorder = nil
+                    acceptingFrameFence = nil
+                    lifecycle = .released
+                    return .release(recorder: recorder, result: result)
+                }
+            }
+
+            switch decision {
+            case .result(let result):
+                return result
+            case .stop:
+                _ = await stop(reason: .routeExit)
+            case .waitForStart(let task):
+                _ = try? await task.value
+            case .waitForStop(let task):
+                _ = await task.value
+            case .release(let recorder, let result):
+                if let recorder {
+                    _ = await recorder.releaseAndWait()
+                }
+                return result
+            }
+        }
+    }
+
+    private func shouldAccept(timestamp: TimeInterval) -> Bool {
+        guard let lastAcceptedTimestamp else { return true }
+        return timestamp > lastAcceptedTimestamp
+    }
+}

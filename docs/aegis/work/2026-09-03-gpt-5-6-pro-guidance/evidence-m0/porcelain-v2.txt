@@ -1,0 +1,108 @@
+# branch.oid c61e988886499c84c9ff9ec760f9ace5759db001
+# branch.head store
+# branch.upstream origin/store
+# branch.ab +0 -0
+1 .M N... 100644 100644 100644 883e0e3ad8a3dc592692e4cd852ee8195c88973d 883e0e3ad8a3dc592692e4cd852ee8195c88973d docs/aegis/work/2026-08-15-camera-coach-release/20-checkpoint.md
+1 .M N... 100644 100644 100644 8988c884f922d24dbbf6f828d972688cbecac3cb 8988c884f922d24dbbf6f828d972688cbecac3cb docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md
+1 .M N... 100644 100644 100644 fdde5bac37cdbe8bd2c6931b7e61594ebc36c6b6 fdde5bac37cdbe8bd2c6931b7e61594ebc36c6b6 docs/cameraanalysis/05-feature-snapshot-aggregator.md
+1 .M N... 100644 100644 100644 c9cb99fa00719a6f6a73a9aeb31e3497f3a88ed0 c9cb99fa00719a6f6a73a9aeb31e3497f3a88ed0 docs/cameraanalysis/06-scene-semantics-layer.md
+1 .M N... 100644 100644 100644 bb078e36ffbc6df4ba27d329c572289229f582a6 bb078e36ffbc6df4ba27d329c572289229f582a6 docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md
+1 .M N... 100755 100755 100755 ab55addceff576fa7a18893a31f16853ee27b35b ab55addceff576fa7a18893a31f16853ee27b35b scripts/copy_debug_device_benchmark_resources.sh
+1 .M N... 100755 100755 100755 311127ad5e2adcb95dd1c905fa225b89dafb9ced 311127ad5e2adcb95dd1c905fa225b89dafb9ced scripts/tests/test_release_bundle_gate.sh
+1 .M N... 100755 100755 100755 407648417fcd5caa6225a56c5ed441baf0d0ca68 407648417fcd5caa6225a56c5ed441baf0d0ca68 scripts/validate_privacy_manifest.sh
+1 .M N... 100755 100755 100755 b5746d5e5dea0cd09bdf4174cf1d1c08b84aa891 b5746d5e5dea0cd09bdf4174cf1d1c08b84aa891 scripts/validate_release_bundle.sh
+1 .M N... 100644 100644 100644 a51e87e8f34f5fd5f19ee570ab0c4000db10873d a51e87e8f34f5fd5f19ee570ab0c4000db10873d shafinMultitool.xcodeproj/project.pbxproj
+1 .M N... 100644 100644 100644 889dc85294ff22d6294048be799325b9277984d8 889dc85294ff22d6294048be799325b9277984d8 shafinMultitool/CommercialShell/CommercialShellModeControl.swift
+1 .M N... 100644 100644 100644 69c6e99657e9e389dec3a6a56d507083bf22c836 69c6e99657e9e389dec3a6a56d507083bf22c836 shafinMultitool/CommercialShell/CommercialShellRouteComposition.swift
+1 .M N... 100644 100644 100644 4d15e357ce1ea3d0086b23af2c07d85ec6704dec 4d15e357ce1ea3d0086b23af2c07d85ec6704dec shafinMultitool/CommercialShell/CommercialShellViewController.swift
+1 .M N... 100644 100644 100644 a93a5bf0f772babec9bef7993fa428764b92c4ae a93a5bf0f772babec9bef7993fa428764b92c4ae shafinMultitool/Entity/SceneData.swift
+1 .M N... 100644 100644 100644 f5f1deec56d09020d96c7a7213bef6111478ea74 f5f1deec56d09020d96c7a7213bef6111478ea74 shafinMultitool/Info.plist
+1 .M N... 100644 100644 100644 1710367baec07e1adfd808f8086b72dddfe60a47 1710367baec07e1adfd808f8086b72dddfe60a47 shafinMultitool/Multitool2Module/ContentView.swift
+1 .M N... 100644 100644 100644 54c07644433b3fcdadc1c37a2fdc7a89ad8cd098 54c07644433b3fcdadc1c37a2fdc7a89ad8cd098 shafinMultitool/Multitool2Module/EntryFlow/CameraCoachEntryFlowModel.swift
+1 .M N... 100644 100644 100644 30fa5ead629b81529d5d37dc20ea2ad84fdc9809 30fa5ead629b81529d5d37dc20ea2ad84fdc9809 shafinMultitool/Multitool2Module/EntryFlow/CameraCoachEntryView.swift
+1 .M N... 100644 100644 100644 be3cb08d3e053beb31837927b68fb87fd6b881af be3cb08d3e053beb31837927b68fb87fd6b881af shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift
+1 .M N... 100644 100644 100644 040df59f72deeb325e7cf6710a091a4901447d49 040df59f72deeb325e7cf6710a091a4901447d49 shafinMultitool/Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift
+1 .M N... 100644 100644 100644 384db397f7d8aa63fca66044a08d1f85fe8bf087 384db397f7d8aa63fca66044a08d1f85fe8bf087 shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift
+1 .M N... 100644 100644 100644 62028728e18d8056fa08628000d81659cec429e3 62028728e18d8056fa08628000d81659cec429e3 shafinMultitool/Multitool2Module/Models/Vision/VisionTracking.swift
+1 .M N... 100644 100644 100644 c5bb6c0c95f10d2053e17706de9465e482581902 c5bb6c0c95f10d2053e17706de9465e482581902 shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift
+1 .M N... 100644 100644 100644 fd4bd36e02f6195cfd5301d458659d3f02278cf3 fd4bd36e02f6195cfd5301d458659d3f02278cf3 shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift
+1 .M N... 100644 100644 100644 eca247a871865a4e0844a840075066e38fcc2628 eca247a871865a4e0844a840075066e38fcc2628 shafinMultitool/Multitool2Module/Services/Pipeline/LatestFrameEvidenceStore.swift
+1 .M N... 100644 100644 100644 12dfc11c6374b5b9d0b837ef734ba93079655380 12dfc11c6374b5b9d0b837ef734ba93079655380 shafinMultitool/Multitool2Module/Services/Pipeline/RealtimeScheduler.swift
+1 .M N... 100644 100644 100644 38ac5133846bea94b83118f38c807508a3e7ea8b 38ac5133846bea94b83118f38c807508a3e7ea8b shafinMultitool/Multitool2Module/Services/Recommendation/SemanticTipPlanner.swift
+1 .M N... 100644 100644 100644 4ffe919f82af439fac1eebbf3fc5cd1997643261 4ffe919f82af439fac1eebbf3fc5cd1997643261 shafinMultitool/Multitool2Module/Services/Telemetry/Telemetry.swift
+1 .M N... 100644 100644 100644 30042833966747af46af37b1fb08a6cee9054b6f 30042833966747af46af37b1fb08a6cee9054b6f shafinMultitool/Multitool2Module/UI/Overlay/CameraOverlayUXPresentation.swift
+1 .M N... 100644 100644 100644 234208c22b70a0c4f0a5e46db4513ee4aa485e6a 234208c22b70a0c4f0a5e46db4513ee4aa485e6a shafinMultitool/Multitool2Module/UI/Overlay/DecisionTracePresentation.swift
+1 .M N... 100644 100644 100644 b9cf0599300052bae0f2a0293992dde8f9714122 b9cf0599300052bae0f2a0293992dde8f9714122 shafinMultitool/Multitool2Module/UI/Overlay/DecisionTraceView.swift
+1 .M N... 100644 100644 100644 75db24d6ada9b1e6faeb2aa39c2d89a25ba0cf8c 75db24d6ada9b1e6faeb2aa39c2d89a25ba0cf8c shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift
+1 .M N... 100644 100644 100644 d47e6274696a56385115c5f40985a6471c378ac7 d47e6274696a56385115c5f40985a6471c378ac7 shafinMultitool/Multitool2Module/UI/Overlay/SuggestionChip.swift
+1 .M N... 100644 100644 100644 4bd769e00172ca29728f86c0ac111e870aac9f94 4bd769e00172ca29728f86c0ac111e870aac9f94 shafinMultitool/Multitool2Module/UI/Overlay/ZoomControlView.swift
+1 .M N... 100644 100644 100644 01e587bb2fa62cfd63a00aa7d90c5efc3a03d3e9 01e587bb2fa62cfd63a00aa7d90c5efc3a03d3e9 shafinMultitool/Multitool2Module/ViewModels/CameraViewModel.swift
+1 .M N... 100644 100644 100644 5704beda8f6061dddefc74c325dba37bc5fdce4f 5704beda8f6061dddefc74c325dba37bc5fdce4f shafinMultitool/PrivacyInfo.xcprivacy
+1 .M N... 100644 100644 100644 15ed6a3acc31993db237b3b433c2d26bae19c3da 15ed6a3acc31993db237b3b433c2d26bae19c3da shafinMultitool/Resources/SceneDelegate.swift
+1 .M N... 100644 100644 100644 f8dcef72762da304d5fb2317800e90dc77f6fb31 f8dcef72762da304d5fb2317800e90dc77f6fb31 shafinMultitool/SceneGeneratorModule/SceneWorkspaceTeardown.swift
+1 .M N... 100644 100644 100644 8ef56d00ccb39923c63951a5895c7d0105317429 8ef56d00ccb39923c63951a5895c7d0105317429 shafinMultitool/SceneGeneratorModule/Services/SceneGeneratorDiagnosticsLogger.swift
+1 .M N... 100644 100644 100644 80f55b8b79a8ea48738ed6bad656d9691e42db10 80f55b8b79a8ea48738ed6bad656d9691e42db10 shafinMultitool/SceneGeneratorModule/ViewModels/SceneGeneratorViewModel.swift
+1 .M N... 100644 100644 100644 0ae576a5ff6284a390f1039bcc576a43bb43d2d2 0ae576a5ff6284a390f1039bcc576a43bb43d2d2 shafinMultitool/SceneGeneratorModule/Views/ARSceneContainer.swift
+1 .M N... 100644 100644 100644 121be6e16519d98f1536ecccb7d0e1032cdb1cb0 121be6e16519d98f1536ecccb7d0e1032cdb1cb0 shafinMultitool/SceneGeneratorModule/Views/LegacySceneGeneratorCameraShell.swift
+1 .M N... 100644 100644 100644 47b5d4e7c5deb85f9431889c8364a41d52910120 47b5d4e7c5deb85f9431889c8364a41d52910120 shafinMultitool/SceneGeneratorModule/Views/SceneGeneratorView.swift
+1 .M N... 100644 100644 100644 bc57b9e945e12c3c6d0f7ba83ed40b3897f880a3 bc57b9e945e12c3c6d0f7ba83ed40b3897f880a3 shafinMultitool/SceneGeneratorModule/Views/SceneInputSheet.swift
+1 .M N... 100644 100644 100644 99548b36dfc066b3afbe1e6d213a1ff96086a2f0 99548b36dfc066b3afbe1e6d213a1ff96086a2f0 shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift
+1 .M N... 100644 100644 100644 b2f019fd530d91156f90f52173b3f7002a733f3d b2f019fd530d91156f90f52173b3f7002a733f3d shafinMultitool/SceneModules/CameraScreenModule/Presenter/CameraScreenPresenter.swift
+1 .M N... 100644 100644 100644 77e7cbc382239bc1d1fa1a002cca15aaa7a0f279 77e7cbc382239bc1d1fa1a002cca15aaa7a0f279 shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift
+1 .M N... 100644 100644 100644 06b786bee611a44edadadeca4ec3ed596ddd03ea 06b786bee611a44edadadeca4ec3ed596ddd03ea shafinMultitool/ScenesOverviewModule/SOInteractor.swift
+1 .M N... 100644 100644 100644 10da7c263b6caf0ec208ae670cb0ed363fae7255 10da7c263b6caf0ec208ae670cb0ed363fae7255 shafinMultitool/ScenesOverviewModule/SOPresenter.swift
+1 .M N... 100644 100644 100644 801f0dcd74dd4d69b5bf8b005d45f937e4d3f824 801f0dcd74dd4d69b5bf8b005d45f937e4d3f824 shafinMultitool/ScenesOverviewModule/SORouter.swift
+1 .M N... 100644 100644 100644 d7a98b09b37b724d771b490605cac39d9075f903 d7a98b09b37b724d771b490605cac39d9075f903 shafinMultitool/ScenesOverviewModule/SOViewController.swift
+1 .M N... 100644 100644 100644 701f917d99dc3fa893272142f74f7f115837950c 701f917d99dc3fa893272142f74f7f115837950c shafinMultitool/Services/CameraService.swift
+1 .M N... 100644 100644 100644 370b64034dfc2df2b27ca2f019a38fb618faf277 370b64034dfc2df2b27ca2f019a38fb618faf277 shafinMultitool/Services/DBService.swift
+1 .M N... 100644 100644 100644 2fc2271597711cd62ac55cb489c105312268466a 2fc2271597711cd62ac55cb489c105312268466a shafinMultitool/Services/Recording/RecorderContracts.swift
+1 .M N... 100644 100644 100644 29ba8318fb8d83edd3495dc03d367df4a23b3edf 29ba8318fb8d83edd3495dc03d367df4a23b3edf shafinMultitool/Services/Recording/SerializedMediaRecorder.swift
+1 .M N... 100644 100644 100644 20ffa3271ec4f0f9b83cfb8eb2d688552b54deb9 20ffa3271ec4f0f9b83cfb8eb2d688552b54deb9 shafinMultitoolTests/AnalysisPipelinePresentationTests.swift
+1 .M N... 100644 100644 100644 405d535976dbfb9c991acb91d3b24c0eb68ec360 405d535976dbfb9c991acb91d3b24c0eb68ec360 shafinMultitoolTests/AnalysisPipelineReleaseTests.swift
+1 .M N... 100644 100644 100644 5e2e4341111f22855114d63b551974ba5c17ac21 5e2e4341111f22855114d63b551974ba5c17ac21 shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift
+1 .M N... 100644 100644 100644 de68322d6d2960b13a9c0f0b1b98c715e7f52b50 de68322d6d2960b13a9c0f0b1b98c715e7f52b50 shafinMultitoolTests/CameraCoachEntryFlowModelTests.swift
+1 .M N... 100644 100644 100644 39b16d7a9db1a5ad80f2e5c2ed1f96aed08fa335 39b16d7a9db1a5ad80f2e5c2ed1f96aed08fa335 shafinMultitoolTests/CameraCoachEntryPresentationTests.swift
+1 .M N... 100644 100644 100644 1d6802b7728cf27d81bb866a4fd134813da9c221 1d6802b7728cf27d81bb866a4fd134813da9c221 shafinMultitoolTests/CameraManagerLifecycleTests.swift
+1 .M N... 100644 100644 100644 5f1be6247de3ea34b59d2f8dfa5de393a644c7c6 5f1be6247de3ea34b59d2f8dfa5de393a644c7c6 shafinMultitoolTests/CameraOverlayUXPresentationTests.swift
+1 .M N... 100644 100644 100644 e4d25c7e99bf875c6fb0b013a49d05eb4a6d7baf e4d25c7e99bf875c6fb0b013a49d05eb4a6d7baf shafinMultitoolTests/CameraViewModelLensSwitchTests.swift
+1 .M N... 100644 100644 100644 98bcdd5a0b74a901cb28defee55e9dede75916a6 98bcdd5a0b74a901cb28defee55e9dede75916a6 shafinMultitoolTests/CameraViewModelLifecycleTests.swift
+1 .M N... 100644 100644 100644 84b62cbc217b441bcc11e846943241d288553333 84b62cbc217b441bcc11e846943241d288553333 shafinMultitoolTests/CommercialShellLaunchCompositionTests.swift
+1 .M N... 100644 100644 100644 5a78ca95f1244ee6ef240eae9d76ca28e8c462a1 5a78ca95f1244ee6ef240eae9d76ca28e8c462a1 shafinMultitoolTests/CommercialShellModeControlTests.swift
+1 .M N... 100644 100644 100644 be44b82d222f007a361485962c9df24889be910c be44b82d222f007a361485962c9df24889be910c shafinMultitoolTests/CommercialShellRoutingTests.swift
+1 .M N... 100644 100644 100644 c653bfeb778bbbe03feff96e8e423282fdbac988 c653bfeb778bbbe03feff96e8e423282fdbac988 shafinMultitoolTests/LatestFrameEvidenceStoreTests.swift
+1 .M N... 100644 100644 100644 f838854e0a42ebf75c60040ec9f3dcdcf68c16dc f838854e0a42ebf75c60040ec9f3dcdcf68c16dc shafinMultitoolTests/SceneBundlePipelineTests.swift
+1 .M N... 100644 100644 100644 0dd28fec0476c5b5e5e79ee39b9d4bb4189fe597 0dd28fec0476c5b5e5e79ee39b9d4bb4189fe597 shafinMultitoolTests/SceneSaveLoadTests.swift
+1 .M N... 100644 100644 100644 96f707fe11fde0c9f09128530b72c739552c6645 96f707fe11fde0c9f09128530b72c739552c6645 shafinMultitoolTests/SceneWorkspaceTeardownTests.swift
+1 .M N... 100644 100644 100644 3f1d270a59c44ded43f7e056258d724b22781b3c 3f1d270a59c44ded43f7e056258d724b22781b3c shafinMultitoolTests/SemanticTipPlannerTests.swift
+1 .M N... 100644 100644 100644 87f86d23713922a63ef4b080c67e56e2d7345ec4 87f86d23713922a63ef4b080c67e56e2d7345ec4 shafinMultitoolTests/SerializedMediaRecorderTests.swift
+1 .M N... 100644 100644 100644 b5389aae0370c044c2661e4f9b863da5a71e0bab b5389aae0370c044c2661e4f9b863da5a71e0bab shafinMultitoolUITests/CameraCoachEntryFlowUITests.swift
+1 .M N... 100644 100644 100644 407b1cd2b27bdf440441d62706e7866efc89e19b 407b1cd2b27bdf440441d62706e7866efc89e19b shafinMultitoolUITests/UITests.swift
+? docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md
+? docs/aegis/work/2026-08-17-set-os-redesign/
+? docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/
+? docs/implementation/ux/set-os-policy-critique.md
+? docs/implementation/ux/set-os-visual-policy.md
+? motion/
+? screenshots/
+? shafinMultitool/Multitool2Module/UI/DesignSystem/
+? shafinMultitool/Multitool2Module/UI/Overlay/SETCameraCoachProductionView.swift
+? shafinMultitool/Resources/Fixtures/
+? shafinMultitool/Resources/Fonts/
+? shafinMultitool/Resources/InfoPlist.xcstrings
+? shafinMultitool/Resources/Localizable.xcstrings
+? shafinMultitool/Resources/Textures/
+? shafinMultitool/SceneGeneratorModule/Services/SceneRecordingController.swift
+? shafinMultitool/ScenesOverviewModule/SETLibraryProductionView.swift
+? shafinMultitool/Services/Recording/AppleRecordingAdapters.swift
+? shafinMultitool/Services/Recording/RecordingArtifactStore.swift
+? shafinMultitoolTests/AppleRecordingAdaptersTests.swift
+? shafinMultitoolTests/DETRDetectorTests.swift
+? shafinMultitoolTests/SETDesignSystemTokenTests.swift
+? shafinMultitoolTests/SETFixtureCatalogTests.swift
+? shafinMultitoolTests/SETFontGlyphCoverageTests.swift
+? shafinMultitoolTests/SETLibraryModelTests.swift
+? shafinMultitoolTests/SceneRecordingControllerTests.swift
+? shafinMultitoolUITests/CameraCoachProductionUITests.swift
+? shafinMultitoolUITests/SETDesignSystemGalleryUITests.swift
+? shafinMultitoolUITests/SETGeneratorProductionUITests.swift
+? shafinMultitoolUITests/SETLibraryProductionUITests.swift

@@ -1,0 +1,38 @@
+[
+ {
+  "suite": "shafinMultitoolTests (50 files, 811 methods)",
+  "scope": "unit/integration",
+  "last_saved_result": "build/Logs/Test/*.xcresult 2026-08-25 (stale; current checkout differs)",
+  "status": "stale"
+ },
+ {
+  "suite": "shafinMultitoolUITests (6 files, 39 methods)",
+  "scope": "UI/simulator",
+  "last_saved_result": "same xcresults; /private/tmp CC-007B/C artifacts missing from repo",
+  "status": "partial"
+ },
+ {
+  "suite": "scripts/tests/test_release_bundle_gate.sh + test_release_provenance_gate.sh",
+  "scope": "release",
+  "last_saved_result": "no fresh run in this checkout",
+  "status": "missing"
+ },
+ {
+  "suite": "scripts/tests/test_run_device_benchmark.py + provenance validators",
+  "scope": "research/device",
+  "last_saved_result": "historical benchmark claims only",
+  "status": "stale"
+ },
+ {
+  "suite": "docs/aegis 90-evidence.md (CC-007B 30/30, 6/6; CC-007C blocked_by_host_capture)",
+  "scope": "historical focused",
+  "last_saved_result": "preserved as historical functional evidence only; landscape captures invalidated",
+  "status": "stale"
+ },
+ {
+  "suite": "signed distribution / ASC / TestFlight",
+  "scope": "distribution",
+  "last_saved_result": "none",
+  "status": "missing"
+ }
+]

@@ -1,0 +1,5 @@
+Executed 7 tests, 0 failures (CameraDisplayTransformTests, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m2-003.xcresult, TEST SUCCEEDED).
+
+Scope: NEW CameraDisplayTransform.swift (single orientation/mirroring adapter; 2x3 affine; documented convention portrait=+90CCW etc.; mirrored tx = 1 - rtx); golden artifact docs/implementation/transform-matrix.json (8 matrices = 4 orientations x 2 mirroring) pinned lockstep by test; inverse always exists (det +-1) and round-trips; subject-target/preview/canvas share ONE matrix.
+
+Attempts: 1) mirrored tx sign wrong (1+rtx vs 1-rtx; portrait matched by accident) -> fixed adapter; 2) artifact regenerated with corrected formula -> 7/7 PASS.

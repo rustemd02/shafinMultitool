@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 enum CameraOverlayAccessibilityID {
     static let surface = "camera_coach_live_surface"
@@ -18,28 +17,22 @@ struct SuggestionChipView: View {
     let boundingBox: CGRect?
     let canvasSize: CGSize
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     var body: some View {
         if let suggestion {
             Text(suggestion.text)
                 .font(.headline.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(width: CameraOverlayUXPresentation.surfaceWidth(for: canvasSize), alignment: .leading)
-                .padding(16)
-                .foregroundStyle(.primary)
-                .background(surfaceBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(SETSpacing.x4)
+                .foregroundStyle(.setTextPrimary)
+                .background(.setSurfaceSolid)
+                .overlay { Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline) }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
                 .accessibilityLabel(suggestion.text)
         }
     }
 
-    private var surfaceBackground: AnyShapeStyle {
-        reduceTransparency
-            ? AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
-            : AnyShapeStyle(.regularMaterial)
-    }
 }
 
 struct LiveHintChipView: View {
@@ -49,7 +42,6 @@ struct LiveHintChipView: View {
     let canvasSize: CGSize
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AccessibilityFocusState private var whyFocused: Bool
     @AccessibilityFocusState private var explanationFocused: Bool
     @State private var isExpanded = false
@@ -67,7 +59,7 @@ struct LiveHintChipView: View {
     var body: some View {
         let currentPresentation = presentation
 
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
             Text(currentPresentation.observation)
                 .font(.headline.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
@@ -78,7 +70,7 @@ struct LiveHintChipView: View {
                currentPresentation.baseState == .keepAsIs {
                 Text(supportingObservation)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.setTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("\(CameraOverlayAccessibilityID.observation)_basis")
             }
@@ -93,7 +85,7 @@ struct LiveHintChipView: View {
 
             if currentPresentation.showsWhy {
                 Button(action: toggleExplanation) {
-                    Text(isExpanded ? "Скрыть объяснение" : "Почему?")
+                    Text((isExpanded ? SETCopyKey.cameraHideWhy : SETCopyKey.cameraWhy).localizedTextKey)
                         .font(.subheadline.weight(.semibold))
                         .frame(minWidth: CameraOverlayUXPresentation.minimumControlDimension,
                                minHeight: CameraOverlayUXPresentation.minimumControlDimension,
@@ -101,13 +93,11 @@ struct LiveHintChipView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                .foregroundStyle(.setOrange)
                 .accessibilityIdentifier(CameraOverlayAccessibilityID.why)
-                .accessibilityLabel(isExpanded ? "Скрыть объяснение" : "Почему?")
-                .accessibilityValue(isExpanded ? "Объяснение открыто" : "Объяснение скрыто")
-                .accessibilityHint(isExpanded
-                    ? "Свернуть объяснение совета."
-                    : "Открыть краткое объяснение совета.")
+                .accessibilityLabel((isExpanded ? SETCopyKey.cameraHideWhy : SETCopyKey.cameraWhy).localizedTextKey)
+                .accessibilityValue((isExpanded ? SETCopyKey.cameraWhyValueOpen : SETCopyKey.cameraWhyValueClosed).localizedTextKey)
+                .accessibilityHint((isExpanded ? SETCopyKey.cameraHideWhy : SETCopyKey.accessibilityExplainHint).localizedTextKey)
                 .accessibilityFocused($whyFocused)
             }
 
@@ -115,12 +105,12 @@ struct LiveHintChipView: View {
                currentPresentation.state == .explanation,
                let explanation = currentPresentation.explanation {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Почему это помогает")
+                    Text(SETCopyKey.cameraWhyHeader.localizedTextKey)
                         .font(.subheadline.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                     Text(explanation)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.setTextSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .accessibilityIdentifier(CameraOverlayAccessibilityID.explanation)
@@ -128,13 +118,13 @@ struct LiveHintChipView: View {
                 .accessibilityFocused($explanationFocused)
             }
         }
-        .padding(16)
+        .padding(SETSpacing.x4)
         .frame(width: CameraOverlayUXPresentation.surfaceWidth(for: canvasSize), alignment: .leading)
-        .foregroundStyle(.primary)
-        .background(surfaceBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .foregroundStyle(.setTextPrimary)
+        .background(.setHUDScrim)
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(uiColor: .separator).opacity(reduceTransparency ? 0.75 : 0.45), lineWidth: 0.7)
+            Rectangle()
+                .strokeBorder(.setHairline, lineWidth: SETStroke.hairline)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
@@ -145,12 +135,6 @@ struct LiveHintChipView: View {
             whyFocused = false
             explanationFocused = false
         }
-    }
-
-    private var surfaceBackground: AnyShapeStyle {
-        reduceTransparency
-            ? AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
-            : AnyShapeStyle(.regularMaterial)
     }
 
     private func toggleExplanation() {

@@ -1,0 +1,6 @@
+Executed 49 tests, 0 failures (DBServiceConcurrencyTests 5 + SceneSaveLoadTests + SceneWorkspaceTeardownTests 16, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-015.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests -only-testing:shafinMultitoolTests/SceneSaveLoadTests -only-testing:shafinMultitoolTests/SceneWorkspaceTeardownTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-015.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+Attempts: 1) compile fail DBService create-path signature (saveUnifiedSceneProjectOnQueue(encoded:project:expectedUpdatedAt:)) -> encode envelope in createUnifiedSceneProjectOnQueue. 2) test compile fails (missing closure index param, implicit self in @escaping closures) -> fixed. Attempt 3: 49/49 PASS.

@@ -1,0 +1,17 @@
+{
+  "project" : {
+    "configurations" : [
+      "Debug",
+      "Release"
+    ],
+    "name" : "shafinMultitool",
+    "schemes" : [
+      "shafinMultitool"
+    ],
+    "targets" : [
+      "shafinMultitool",
+      "shafinMultitoolTests",
+      "shafinMultitoolUITests"
+    ]
+  }
+}

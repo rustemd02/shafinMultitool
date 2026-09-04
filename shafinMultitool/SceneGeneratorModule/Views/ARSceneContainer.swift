@@ -15,8 +15,15 @@ import UIKit
 struct ARSceneContainer: UIViewRepresentable {
     
     @ObservedObject var viewModel: SceneGeneratorViewModel
+    let presentationLocale: Locale
+
+    init(viewModel: SceneGeneratorViewModel, presentationLocale: Locale = .current) {
+        self.viewModel = viewModel
+        self.presentationLocale = presentationLocale
+    }
     
     func makeUIView(context: Context) -> ARView {
+        viewModel.setPresentationLocale(presentationLocale)
         let arView = ARView(frame: .zero)
 
         // Избегаем двойной автоконфигурации ARView (она может увеличивать нагрузку)
@@ -30,6 +37,8 @@ struct ARSceneContainer: UIViewRepresentable {
             shouldForwardCapturedImage: viewModel.isRecording || viewModel.isHintsEnabled,
             isSceneGenerated: viewModel.plannedScene != nil,
             isARSessionReady: viewModel.isARSessionReady,
+            isARSessionInterrupted: viewModel.isARSessionInterrupted,
+            isARSessionRecovering: viewModel.isARSessionRecovering,
             force: true
         )
         
@@ -80,8 +89,10 @@ struct ARSceneContainer: UIViewRepresentable {
             guard !viewModel.isWorkspaceReleased else {
                 uiView.session.pause()
                 uiView.session.delegate = nil
+                context.coordinator.releaseRecordingSource()
                 return
             }
+            viewModel.setPresentationLocale(presentationLocale)
             context.coordinator.updateSessionState(
                 for: uiView,
                 configuration: viewModel.makeSessionConfiguration(depthEnabled: viewModel.isDepthMarkingEnabled),
@@ -89,7 +100,9 @@ struct ARSceneContainer: UIViewRepresentable {
                 isGenerating: viewModel.isGenerating,
                 shouldForwardCapturedImage: viewModel.isRecording || viewModel.isHintsEnabled,
                 isSceneGenerated: viewModel.plannedScene != nil,
-                isARSessionReady: viewModel.isARSessionReady
+                isARSessionReady: viewModel.isARSessionReady,
+                isARSessionInterrupted: viewModel.isARSessionInterrupted,
+                isARSessionRecovering: viewModel.isARSessionRecovering
             )
         }
     }
@@ -97,6 +110,10 @@ struct ARSceneContainer: UIViewRepresentable {
     static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {
         uiView.session.pause()
         uiView.session.delegate = nil
+        MainActor.assumeIsolated {
+            coordinator.releaseRecordingSource()
+        }
+        coordinator.recordingController = nil
     }
     
     func makeCoordinator() -> Coordinator {
@@ -108,6 +125,8 @@ struct ARSceneContainer: UIViewRepresentable {
     class Coordinator: NSObject, ARSessionDelegate {
         
         let viewModel: SceneGeneratorViewModel
+        private let recordingSourceOwnerID = UUID()
+        private var hasClaimedRecordingSource = false
         weak var coachingOverlay: ARCoachingOverlayView?
         private var isDepthEnabled = false
         private var isGenerationActive = false
@@ -115,8 +134,26 @@ struct ARSceneContainer: UIViewRepresentable {
         private var isSessionPausedForGeneration = false
         private var lastProcessedFrameTimestamp: TimeInterval = 0
         private var shouldForwardCapturedImage = false
+        /// Cached on the MainActor during representable updates, then used
+        /// directly from ARSessionDelegate without a per-frame hop.
+        private let recordingControllerLock = NSLock()
+        private var recordingControllerStorage: SceneRecordingController?
+        fileprivate var recordingController: SceneRecordingController? {
+            get {
+                recordingControllerLock.lock()
+                defer { recordingControllerLock.unlock() }
+                return recordingControllerStorage
+            }
+            set {
+                recordingControllerLock.lock()
+                recordingControllerStorage = newValue
+                recordingControllerLock.unlock()
+            }
+        }
         private let frameTaskLock = NSLock()
         private var frameTaskInFlight = false
+        private let frameGenerationLock = NSLock()
+        private var frameGeneration = 0
         private var skippedFramesSinceLog = 0
         private var processedFramesSinceLog = 0
         private var lastFrameMetricsLogTimestamp: TimeInterval = 0
@@ -163,6 +200,7 @@ struct ARSceneContainer: UIViewRepresentable {
             }
         }
 
+        @MainActor
         func updateSessionState(for arView: ARView,
                                 configuration: ARWorldTrackingConfiguration,
                                 depthEnabled: Bool,
@@ -170,12 +208,19 @@ struct ARSceneContainer: UIViewRepresentable {
                                 shouldForwardCapturedImage: Bool,
                                 isSceneGenerated: Bool,
                                 isARSessionReady: Bool,
+                                isARSessionInterrupted: Bool,
+                                isARSessionRecovering: Bool,
                                 force: Bool = false) {
             self.arView = arView
+            self.recordingController = viewModel.sceneRecordingController
             refreshOrientation(for: arView)
             self.shouldForwardCapturedImage = shouldForwardCapturedImage && !isGenerating
             self.isSceneGenerated = isSceneGenerated
-            updateCoachingOverlay(isSceneGenerated: isSceneGenerated, isARSessionReady: isARSessionReady)
+            updateCoachingOverlay(
+                isARSessionReady: isARSessionReady,
+                isARSessionInterrupted: isARSessionInterrupted,
+                isARSessionRecovering: isARSessionRecovering
+            )
             if isGenerating {
                 pauseSessionIfNeeded(for: arView)
                 return
@@ -208,6 +253,7 @@ struct ARSceneContainer: UIViewRepresentable {
             }
         }
 
+        @MainActor
         func configureSessionIfNeeded(for arView: ARView,
                                       configuration: ARWorldTrackingConfiguration,
                                       depthEnabled: Bool,
@@ -217,6 +263,7 @@ struct ARSceneContainer: UIViewRepresentable {
             }
 
             arView.session.run(configuration)
+            publishRecordingSourceFPS(for: arView.session)
             isDepthEnabled = depthEnabled
         }
 
@@ -229,12 +276,14 @@ struct ARSceneContainer: UIViewRepresentable {
             SceneGeneratorDiagnosticsLogger.shared.log("[AR] session paused for generation")
         }
 
+        @MainActor
         private func resumeSessionIfNeeded(for arView: ARView,
                                            configuration: ARWorldTrackingConfiguration,
                                            depthEnabled: Bool) {
             guard isSessionPausedForGeneration else { return }
             isGenerationActive = false
             arView.session.run(configuration)
+            publishRecordingSourceFPS(for: arView.session)
             isDepthEnabled = depthEnabled
             isSessionPausedForGeneration = false
             lastProcessedFrameTimestamp = 0
@@ -249,9 +298,16 @@ struct ARSceneContainer: UIViewRepresentable {
             logTrackingStateIfNeeded(frame.camera.trackingState)
 
             let timestamp = frame.timestamp
+            let capturedImage = frame.capturedImage
+            recordingController?.enqueueVideo(capturedImage, at: timestamp)
             let cameraTransform = frame.camera.transform
-            Task { @MainActor [weak viewModel, cameraTransform, timestamp] in
-                viewModel?.updateARPresentationFrame(cameraTransform: cameraTransform, timestamp: timestamp)
+            let generation = currentFrameGeneration()
+            Task { @MainActor [weak viewModel, cameraTransform, timestamp, generation] in
+                viewModel?.updateARPresentationFrame(
+                    cameraTransform: cameraTransform,
+                    timestamp: timestamp,
+                    generation: generation
+                )
             }
 
             // processARFrame не требует 60 вызовов/сек: в storyboard-only режиме держим AR легче.
@@ -260,7 +316,7 @@ struct ARSceneContainer: UIViewRepresentable {
             guard beginFrameTaskIfPossible(timestamp: timestamp) else { return }
 
             let planeSnapshots = frame.anchors.compactMap { ($0 as? ARPlaneAnchor).map(ScenePlaneSnapshot.init(anchor:)) }
-            let capturedImage: CVPixelBuffer? = shouldForwardCapturedImage ? frame.capturedImage : nil
+            let analysisImage: CVPixelBuffer? = shouldForwardCapturedImage ? capturedImage : nil
             let displayTransform = frame.displayTransform(
                 for: interfaceOrientation,
                 viewportSize: viewportSize == .zero ? CGSize(width: 1, height: 1) : viewportSize
@@ -269,19 +325,20 @@ struct ARSceneContainer: UIViewRepresentable {
             logCameraAnalysisGeometryIfNeeded(
                 frame: frame,
                 timestamp: timestamp,
-                capturedImage: capturedImage,
+                capturedImage: analysisImage,
                 displayTransform: displayTransform
             )
 
-            Task { @MainActor [weak self, cameraTransform, planeSnapshots, timestamp, capturedImage, currentInterfaceOrientation, displayTransform] in
+            Task { @MainActor [weak self, cameraTransform, planeSnapshots, timestamp, analysisImage, currentInterfaceOrientation, displayTransform, generation] in
                 guard let self else { return }
                 viewModel.processARFrameSnapshot(
                     cameraTransform: cameraTransform,
                     planeSnapshots: planeSnapshots,
                     timestamp: timestamp,
-                    capturedImage: capturedImage,
+                    capturedImage: analysisImage,
                     interfaceOrientation: currentInterfaceOrientation,
-                    displayTransform: displayTransform
+                    displayTransform: displayTransform,
+                    generation: generation
                 )
                 self.completeFrameTask(timestamp: timestamp)
             }
@@ -293,21 +350,66 @@ struct ARSceneContainer: UIViewRepresentable {
         
         func session(_ session: ARSession, didFailWithError error: Error) {
             SceneGeneratorDiagnosticsLogger.shared.log("[AR] session failed: \(error.localizedDescription)")
-            Task { @MainActor in
-                viewModel.errorMessage = "Ошибка AR: \(error.localizedDescription)"
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.releaseRecordingSource()
+                let prefix = self.viewModel.localizedCopy(.arErrorPrefix)
+                self.viewModel.errorMessage = "\(prefix): \(error.localizedDescription)"
             }
+        }
+
+        @MainActor
+        private func publishRecordingSourceFPS(for session: ARSession) {
+            let fps = session.configuration?.videoFormat.framesPerSecond
+            if hasClaimedRecordingSource {
+                viewModel.updateRecordingSourceFPS(fps, ownerID: recordingSourceOwnerID)
+            } else if viewModel.claimRecordingSource(ownerID: recordingSourceOwnerID, fps: fps) {
+                hasClaimedRecordingSource = true
+            }
+        }
+
+        @MainActor
+        func releaseRecordingSource() {
+            viewModel.releaseRecordingSource(ownerID: recordingSourceOwnerID)
+            hasClaimedRecordingSource = false
         }
         
         func sessionWasInterrupted(_ session: ARSession) {
+            let generation = advanceFrameGeneration()
             SceneGeneratorDiagnosticsLogger.shared.log("[AR] session interrupted")
+            Task { @MainActor [weak self] in
+                self?.viewModel.handleARSessionInterruption(generation: generation)
+            }
         }
         
         func sessionInterruptionEnded(_ session: ARSession) {
+            let generation = advanceFrameGeneration()
             SceneGeneratorDiagnosticsLogger.shared.log("[AR] session interruption ended")
+            Task { @MainActor [weak self] in
+                self?.viewModel.handleARSessionInterruptionEnded(generation: generation)
+            }
         }
 
-        private func updateCoachingOverlay(isSceneGenerated: Bool, isARSessionReady: Bool) {
-            let shouldHide = isSceneGenerated || isARSessionReady
+        private func currentFrameGeneration() -> Int {
+            frameGenerationLock.lock()
+            defer { frameGenerationLock.unlock() }
+            return frameGeneration
+        }
+
+        private func advanceFrameGeneration() -> Int {
+            frameGenerationLock.lock()
+            frameGeneration += 1
+            let generation = frameGeneration
+            frameGenerationLock.unlock()
+            return generation
+        }
+
+        private func updateCoachingOverlay(isARSessionReady: Bool,
+                                           isARSessionInterrupted: Bool,
+                                           isARSessionRecovering: Bool) {
+            let shouldHide = !isARSessionInterrupted
+                && !isARSessionRecovering
+                && isARSessionReady
             coachingOverlay?.activatesAutomatically = !shouldHide
             coachingOverlay?.isHidden = shouldHide
             if shouldHide, coachingOverlay?.isActive == true {

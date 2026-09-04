@@ -1,0 +1,2 @@
+c6b150970384f40cec6c0bca1b20bc48a360b0180244d9c947a5d3060bf9f667  docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/current-state-receipt.json
+2dc8c226f608acb86cd2c864ff62722943982f30e3f5c56bc9f69eaaf9c92a90  docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/porcelain-v2.txt

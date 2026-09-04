@@ -49,27 +49,37 @@ final class CameraCoachLaunchUITests: XCTestCase {
         XCTAssertTrue(openScenesControl.isHittable)
         openScenesControl.tap()
 
-        let sceneLibraryTitle = app.staticTexts["Выберите сцену:"]
+        let libraryRoot = element(withIdentifier: "library_root")
         XCTAssertTrue(
-            sceneLibraryTitle.waitForExistence(timeout: launchTimeout),
-            "Scenes must open the existing Scene library root."
+            libraryRoot.waitForExistence(timeout: launchTimeout),
+            "Scenes must open the SET OS library root."
         )
         XCTAssertTrue(
-            app.collectionViews.firstMatch.waitForExistence(timeout: launchTimeout),
-            "The existing Scene library collection must be reachable."
+            element(withIdentifier: "library_title").waitForExistence(timeout: launchTimeout),
+            "The library contact-sheet title must be reachable."
+        )
+        let libraryContentExists = element(withIdentifier: "library_list").waitForExistence(timeout: launchTimeout)
+            || element(withIdentifier: "library_empty_state").waitForExistence(timeout: launchTimeout)
+        XCTAssertTrue(
+            libraryContentExists,
+            "The library must show either the contact sheet or the honest empty state."
         )
 
         let returnCameraControl = element(withIdentifier: "commercial-shell-return-camera")
         XCTAssertTrue(returnCameraControl.waitForExistence(timeout: launchTimeout))
         XCTAssertEqual(returnCameraControl.label, "Камера")
         XCTAssertTrue(returnCameraControl.isHittable)
-        XCTAssertFalse(element(withIdentifier: "commercial-shell-open-scenes").exists)
+        XCTAssertTrue(openScenesControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertEqual(openScenesControl.label, "Сцены")
+        XCTAssertTrue(openScenesControl.isHittable)
         captureScreenshot(named: "CC-007C Scene library landscape", expectedShape: .landscape)
 
         returnCameraControl.tap()
         XCTAssertTrue(element(withIdentifier: "camera_coach_pause").waitForExistence(timeout: launchTimeout))
         XCTAssertTrue(element(withIdentifier: "commercial-shell-open-scenes").waitForExistence(timeout: launchTimeout))
-        XCTAssertFalse(element(withIdentifier: "commercial-shell-return-camera").exists)
+        XCTAssertTrue(returnCameraControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertEqual(returnCameraControl.label, "Камера")
+        XCTAssertTrue(returnCameraControl.isHittable)
     }
 
     func testCameraCoachSurfaceSurvivesPortraitLandscapeRotation() {
@@ -118,6 +128,17 @@ final class CameraCoachLaunchUITests: XCTestCase {
     private func assertCameraCoachRoot() {
         XCTAssertTrue(element(withIdentifier: "commercial-shell").waitForExistence(timeout: launchTimeout))
 
+        let modeControl = element(withIdentifier: "commercial-shell-mode-control")
+        XCTAssertTrue(modeControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertGreaterThanOrEqual(
+            modeControl.frame.height,
+            60,
+            "The published A/B ROLL control must expose its complete title and two-segment capsule."
+        )
+        let capsule = element(withIdentifier: "commercial-shell-mode-capsule")
+        XCTAssertTrue(capsule.waitForExistence(timeout: launchTimeout))
+        XCTAssertGreaterThanOrEqual(capsule.frame.height, 44)
+
         let openScenesControl = element(withIdentifier: "commercial-shell-open-scenes")
         XCTAssertTrue(openScenesControl.waitForExistence(timeout: launchTimeout))
         XCTAssertEqual(openScenesControl.label, "Сцены")
@@ -125,11 +146,14 @@ final class CameraCoachLaunchUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(openScenesControl.frame.width, 44)
         XCTAssertGreaterThanOrEqual(openScenesControl.frame.height, 44)
         XCTAssertLessThan(
-            abs(openScenesControl.frame.midX - app.frame.midX),
+            abs(modeControl.frame.midX - app.frame.midX),
             24,
-            "The Camera mode control must remain top-centred."
+            "The whole A/B ROLL mode control must remain top-centred."
         )
-        XCTAssertFalse(element(withIdentifier: "commercial-shell-return-camera").exists)
+        let returnCameraControl = element(withIdentifier: "commercial-shell-return-camera")
+        XCTAssertTrue(returnCameraControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertEqual(returnCameraControl.label, "Камера")
+        XCTAssertTrue(returnCameraControl.isHittable)
         XCTAssertFalse(app.buttons["История"].exists)
 
         let pauseControl = element(withIdentifier: "camera_coach_pause")

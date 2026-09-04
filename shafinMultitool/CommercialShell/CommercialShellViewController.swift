@@ -42,6 +42,7 @@ public final class CommercialShellViewController: UIViewController {
     private var requestedSectionBeforeLoad: CommercialSection?
     private var lastTransitionResult: CommercialRouteDeactivationResult?
     private let selectionFeedbackGenerator = UISelectionFeedbackGenerator()
+    private var cameraCoachChromeVisible = true
 
     private(set) var isTearingDown = false
     public private(set) var selectedSection: CommercialSection = .camera
@@ -58,6 +59,26 @@ public final class CommercialShellViewController: UIViewController {
     /// The single child currently contained by the shell.
     public var activeViewController: UIViewController? {
         activeChildStorage
+    }
+
+    func handleAppDidBecomeActive() {
+        guard selectedSection == .camera else { return }
+        (activeRouteStorage as? CommercialCameraCoachRoute)?.handleAppDidBecomeActive()
+    }
+
+    /// M1-004 LifecycleCoordinatorOwner adapter: exactly one forwarding per app
+    /// lifecycle event, reaching only the active route owner. SceneDelegate is
+    /// the single UIKit entry point; SwiftUI scenePhase effects converge on the
+    /// same idempotent owners (reportSceneInactive guard, single-flight
+    /// workspace teardown) rather than owning the event.
+    func handleSceneDidEnterBackground() {
+        if let cameraRoute = activeRouteStorage as? CommercialCameraCoachRoute {
+            cameraRoute.handleSceneDidEnterBackground()
+        } else if let scenesRoute = activeRouteStorage as? CommercialSceneLibraryRoute {
+            Task { @MainActor in
+                _ = await scenesRoute.handleDidEnterBackground()
+            }
+        }
     }
 
     /// UIKit asks the container for the orientations supported by the currently
@@ -207,9 +228,9 @@ public final class CommercialShellViewController: UIViewController {
         view.addSubview(modeControl)
         NSLayoutConstraint.activate([
             modeControl.centerXAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerXAnchor),
-            modeControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            modeControl.widthAnchor.constraint(equalToConstant: 44),
-            modeControl.heightAnchor.constraint(equalToConstant: 44)
+            modeControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: SETSpacing.x4),
+            modeControl.widthAnchor.constraint(equalToConstant: SETABRollCapsuleContract.minimumControlSize.width),
+            modeControl.heightAnchor.constraint(equalToConstant: SETABRollCapsuleContract.minimumControlSize.height)
         ])
     }
 
@@ -290,9 +311,13 @@ public final class CommercialShellViewController: UIViewController {
     }
 
     private func renderSectionChrome() {
+        let modeControlVisible = selectedSection != .camera || cameraCoachChromeVisible
+        modeControl.isHidden = !modeControlVisible
+        modeControl.isUserInteractionEnabled = modeControlVisible
+        modeControl.accessibilityElementsHidden = !modeControlVisible
         modeControl.render(
             selectedSection: selectedSection,
-            isInteractionLocked: isTearingDown || isTransitioning
+            isInteractionLocked: isTearingDown || isTransitioning || !modeControlVisible
         )
     }
 
@@ -308,6 +333,15 @@ public final class CommercialShellViewController: UIViewController {
 
         let route = routeFactory(section)
         let child = route.viewController
+
+        if let cameraRoute = route as? CommercialCameraCoachRoute {
+            cameraRoute.setChromeVisibilityHandler { [weak self] isVisible in
+                self?.cameraCoachChromeVisible = isVisible
+                self?.renderSectionChrome()
+            }
+        } else {
+            cameraCoachChromeVisible = true
+        }
 
         addChild(child)
         child.view.translatesAutoresizingMaskIntoConstraints = false

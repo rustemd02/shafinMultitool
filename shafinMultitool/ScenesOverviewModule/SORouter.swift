@@ -28,14 +28,56 @@ class SORouter: SORouterProtocol {
             }
         }
 
+        #if DEBUG
+        let launchArguments = ProcessInfo.processInfo.arguments
+        let launchConfiguration = SETGalleryLaunchConfiguration(arguments: launchArguments)
+        let localeOverride: Locale? = launchArguments.contains(SETGalleryLaunchConfiguration.localeArgument)
+            ? launchConfiguration.locale.locale
+            : nil
+        let reduceMotionOverride: Bool? = launchArguments.contains(SETGalleryLaunchConfiguration.reduceMotionArgument)
+            ? launchConfiguration.reduceMotion
+            : nil
+        let reduceTransparencyOverride: Bool? = launchArguments.contains(SETGalleryLaunchConfiguration.reduceTransparencyArgument)
+            ? launchConfiguration.reduceTransparency
+            : nil
+        let dynamicTypeOverride: DynamicTypeSize? = launchArguments.contains(SETGalleryLaunchConfiguration.dynamicTypeArgument)
+            ? launchConfiguration.dynamicTypeSize
+            : nil
+        #else
+        let localeOverride: Locale? = nil
+        let reduceMotionOverride: Bool? = nil
+        let reduceTransparencyOverride: Bool? = nil
+        let dynamicTypeOverride: DynamicTypeSize? = nil
+        #endif
+
         let viewModel = MainActor.assumeIsolated {
-            SceneGeneratorViewModel(projectName: title, isNewProject: false)
+            SceneGeneratorViewModel(
+                projectName: title,
+                isNewProject: false,
+                presentationLocale: localeOverride
+            )
         }
-        let vc = LandscapeHostingController(
-            rootView: SceneGeneratorView(viewModel: viewModel)
-        )
+        var rootView = AnyView(SceneGeneratorView(viewModel: viewModel))
+        if let localeOverride {
+            rootView = AnyView(rootView.environment(\.locale, localeOverride))
+        }
+        if let reduceMotionOverride {
+            rootView = AnyView(rootView.environment(\.setReduceMotionOverride, reduceMotionOverride))
+        }
+        if let reduceTransparencyOverride {
+            rootView = AnyView(rootView.environment(\.setReduceTransparencyOverride, reduceTransparencyOverride))
+        }
+        if let dynamicTypeOverride {
+            rootView = AnyView(rootView.environment(\.dynamicTypeSize, dynamicTypeOverride))
+        }
+        let vc = LandscapeHostingController(rootView: rootView)
         vc.sceneWorkspaceTeardownProvider = viewModel
         vc.disablesInteractivePopGesture = true
-        view?.navigationController?.pushViewController(vc, animated: true)
+        #if DEBUG
+        let shouldAnimate = !(reduceMotionOverride ?? UIAccessibility.isReduceMotionEnabled)
+        #else
+        let shouldAnimate = !UIAccessibility.isReduceMotionEnabled
+        #endif
+        view?.navigationController?.pushViewController(vc, animated: shouldAnimate)
     }
 }

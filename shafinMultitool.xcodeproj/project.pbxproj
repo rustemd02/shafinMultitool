@@ -66,7 +66,9 @@
 				Info.plist,
 				Resources/Circle.rcproject,
 				Resources/DeviceBenchmark,
+				Resources/Fixtures,
 				Resources/Models,
+				Resources/Textures,
 			);
 			target = CFF7B20329CC876400C3B73E /* shafinMultitool */;
 		};
@@ -92,7 +94,9 @@
 			explicitFolders = (
 				Resources/Circle.rcproject,
 				Resources/DeviceBenchmark,
+				Resources/Fixtures,
 				Resources/Models,
+				Resources/Textures,
 			);
 			path = shafinMultitool;
 			sourceTree = "<group>";
@@ -279,6 +283,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ru,
 				Base,
 			);
 			mainGroup = CFF7B1FB29CC876400C3B73E;
@@ -328,12 +333,14 @@
 			);
 			inputPaths = (
 				"${SRCROOT}/shafinMultitool/Resources/DeviceBenchmark",
+				"${SRCROOT}/shafinMultitool/Resources/Fixtures/SETCameraFrame.png",
 			);
 			name = "Copy Debug DeviceBenchmark Resources";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/DeviceBenchmark/.debug-resource-copy-marker",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SETCameraFrame.png",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -640,9 +647,9 @@
 				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = shafinMultitool/Info.plist;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на сохранение файлов в галерею";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мультитул\" необходимы права на использование камеры";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мультитул\" необходимы права на запись звука с микрофона";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мультитул\" необходимы права на сохранение файлов в галерею";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Для распознавания речи сценария \"Шафин Мультитул\" необходимы права на отправку звука на сервера Apple";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
@@ -674,9 +681,9 @@
 				DEVELOPMENT_TEAM = 5NAKQ28539;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = shafinMultitool/Info.plist;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на использование камеры";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на запись звука с микрофона";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мульитул\" необходимы права на сохранение файлов в галерею";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Для съёмки видео \"Шафин Мультитул\" необходимы права на использование камеры";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Для съёмки видео \"Шафин Мультитул\" необходимы права на запись звука с микрофона";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Для съёмки видео \"Шафин Мультитул\" необходимы права на сохранение файлов в галерею";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Для распознавания речи сценария \"Шафин Мультитул\" необходимы права на отправку звука на сервера Apple";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;

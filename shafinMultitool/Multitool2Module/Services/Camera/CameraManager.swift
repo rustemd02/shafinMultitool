@@ -6,31 +6,81 @@
 //
 
 import AVFoundation
+import Combine
 import CoreMotion
 import ImageIO
 import UIKit
 
-enum CameraLens: CGFloat, CaseIterable, Equatable, Sendable {
-    case ultraWide = 0.5
-    case wide = 1.0
-    case telephoto2x = 2.0
-    case telephoto3x = 3.0
+/// Physical camera inventory, not a guessed focal-length catalogue. A device
+/// exposes at most one telephoto entry even when product marketing labels that
+/// same module differently across models.
+enum CameraLens: String, CaseIterable, Equatable, Sendable {
+    case ultraWide = "ultra_wide"
+    case wide = "wide"
+    case telephoto = "tele"
     
     var deviceType: AVCaptureDevice.DeviceType {
         switch self {
         case .ultraWide: return .builtInUltraWideCamera
         case .wide: return .builtInWideAngleCamera
-        case .telephoto2x, .telephoto3x: return .builtInTelephotoCamera
+        case .telephoto: return .builtInTelephotoCamera
         }
     }
     
     var displayName: String {
         switch self {
-        case .ultraWide: return "0.5×"
-        case .wide: return "1×"
-        case .telephoto2x: return "2×"
-        case .telephoto3x: return "3×"
+        case .ultraWide: return "ULTRA"
+        case .wide: return "WIDE"
+        case .telephoto: return "TELE"
         }
+    }
+
+    var descriptor: CameraLensDescriptor {
+        CameraLensDescriptor(
+            lens: self,
+            identifier: rawValue,
+            displayName: displayName,
+            physicalDeviceType: String(describing: deviceType),
+            displayMetadata: nil
+        )
+    }
+}
+
+enum CameraLensDisplayMetadata: Equatable, Sendable {
+    case measuredEquivalentFocalLengthMillimeters(Double)
+    case truthfulMagnification(Double)
+}
+
+struct CameraLensDescriptor: Equatable, Sendable {
+    let lens: CameraLens
+    let identifier: String
+    let displayName: String
+    let physicalDeviceType: String
+    /// Hardware metadata is optional because this manager does not fabricate
+    /// equivalent focal-length values. A device integration may provide a measured
+    /// equivalent focal length or a truthful optical magnification instead.
+    let displayMetadata: CameraLensDisplayMetadata?
+
+    var displayLabel: String {
+        guard let displayMetadata else { return displayName }
+        switch displayMetadata {
+        case .measuredEquivalentFocalLengthMillimeters(let millimeters):
+            return String(format: "%.0f MM", millimeters)
+        case .truthfulMagnification(let magnification):
+            return String(format: "%.1f×", magnification)
+        }
+    }
+
+    init(lens: CameraLens,
+         identifier: String,
+         displayName: String,
+         physicalDeviceType: String,
+         displayMetadata: CameraLensDisplayMetadata? = nil) {
+        self.lens = lens
+        self.identifier = identifier
+        self.displayName = displayName
+        self.physicalDeviceType = physicalDeviceType
+        self.displayMetadata = displayMetadata
     }
 }
 
@@ -56,6 +106,8 @@ enum CameraManagerError: Error, Equatable, Sendable, CustomStringConvertible {
     case inputAddFailed
     case outputAddFailed
     case startFailed
+    case sessionInterrupted
+    case runtimeError
 
     var description: String {
         switch self {
@@ -69,6 +121,10 @@ enum CameraManagerError: Error, Equatable, Sendable, CustomStringConvertible {
             return "The video output could not be added to the session."
         case .startFailed:
             return "The capture session did not start running."
+        case .sessionInterrupted:
+            return "The capture session was interrupted."
+        case .runtimeError:
+            return "The capture session reported a runtime error."
         }
     }
 }
@@ -154,6 +210,55 @@ enum CameraCoachOrientation: CaseIterable, Equatable, Sendable {
     }
 }
 
+/// The data-output connection is configured through a tiny seam so the
+/// native-buffer contract can be verified without constructing a capture
+/// graph. Preview-layer orientation remains a separate owner.
+protocol CameraDataOutputMirroringConnectionConfiguring: AnyObject {
+    var automaticallyAdjustsVideoMirroring: Bool { get set }
+    var isVideoMirroringSupported: Bool { get }
+    var isVideoMirrored: Bool { get set }
+}
+
+@available(iOS 17.0, *)
+protocol CameraDataOutputRotationConnectionConfiguring: CameraDataOutputMirroringConnectionConfiguring {
+    func isVideoRotationAngleSupported(_ videoRotationAngle: CGFloat) -> Bool
+    var videoRotationAngle: CGFloat { get set }
+}
+
+extension AVCaptureConnection: CameraDataOutputMirroringConnectionConfiguring {}
+
+@available(iOS 17.0, *)
+extension AVCaptureConnection: CameraDataOutputRotationConnectionConfiguring {}
+
+enum CameraDataOutputConnectionConfigurator {
+    static func applyMirroring(to connection: CameraDataOutputMirroringConnectionConfiguring) {
+        // Disable automatic changes before setting videoMirrored; AVFoundation
+        // rejects a manual mirror assignment while automatic adjustment is on.
+        connection.automaticallyAdjustsVideoMirroring = false
+        if connection.isVideoMirroringSupported {
+            connection.isVideoMirrored = false
+        }
+    }
+
+    @available(iOS 17.0, *)
+    static func applyNativeGeometry(to connection: CameraDataOutputRotationConnectionConfiguring) {
+        let nativeRotationAngle: CGFloat = 0
+        if connection.isVideoRotationAngleSupported(nativeRotationAngle) {
+            connection.videoRotationAngle = nativeRotationAngle
+        }
+        applyMirroring(to: connection)
+    }
+}
+
+/// Interface rotation is carried as metadata for Vision/Core Image while the
+/// preview layer owns its own display orientation.
+enum CameraFrameDeliveryOrientationContract {
+
+    static func imageOrientation(for requestedOrientation: AVCaptureVideoOrientation) -> CGImagePropertyOrientation {
+        CameraCoachOrientation(captureOrientation: requestedOrientation).imageOrientation
+    }
+}
+
 enum CameraLifecycleState: Equatable, Sendable {
     case idle
     case starting
@@ -210,25 +315,57 @@ final class CameraManager: NSObject, @unchecked Sendable {
     private let motionGate: MotionGate
     private let sessionRunner: CameraSessionRunner
     private let testConfiguration: CameraManagerTestConfiguration?
+    private let notificationCenter: NotificationCenter
+    private var notificationTokens: [NSObjectProtocol] = []
+    private let failureSubject = PassthroughSubject<CameraManagerError, Never>()
 
     private var isConfigured = false
     private var currentInput: AVCaptureDeviceInput?
     private var currentLens: CameraLens?
+    private let desiredVideoOrientationLock = NSLock()
     private var desiredVideoOrientation: AVCaptureVideoOrientation = .landscapeLeft
 
     private let stateLock = NSLock()
+    /// Serializes re-enabling frame delivery against stop/release/failure.
+    /// Never hold this lock while draining `videoOutputQueue`.
+    private let captureBoundaryLock = NSLock()
     private var storedLifecycleState: CameraLifecycleState = .idle
     private var storedConfigurationState: CameraConfigurationState = .unconfigured
     private var storedLifecycleError: CameraManagerError?
     private var configurationCount = 0
+    /// M1-003: session generation fences start against stop/release.
+    /// stop/release bump it synchronously at call time; a start block
+    /// dropped behind a newer generation resumes cancelled instead of
+    /// reviving capture after teardown. The serial sessionQueue already
+    /// orders execution; this token makes staleness explicit and testable,
+    /// and is the shared mechanism for lens/orientation fencing (M1-006).
+    private var storedSessionGeneration: UInt64 = 0
+    /// Capture-side epoch for the input/lens that produced a frame. This is
+    /// intentionally distinct from `storedSessionGeneration` (lifecycle
+    /// fencing) and from AnalysisPipeline's lifecycle generation.
+    private var storedCaptureGeneration: UInt64 = 0
 
     private let availableLensesLock = NSLock()
     private var storedAvailableLenses: [CameraLens] = []
 
+    private let activeLensLock = NSLock()
+    private var storedActiveLens: CameraLens?
+
+    private let lensDescriptorsLock = NSLock()
+    private var storedLensDescriptors: [CameraLens: CameraLensDescriptor] = [:]
+
     private let frameDeliveryLock = NSLock()
     private var frameDeliveryEnabled = false
+#if DEBUG
+    /// Deterministic race seam used only by lifecycle tests.
+    var beforeFrameDeliveryEnableForTesting: (() -> Void)?
+#endif
 
     var captureSession: AVCaptureSession { session }
+
+    var failurePublisher: AnyPublisher<CameraManagerError, Never> {
+        failureSubject.eraseToAnyPublisher()
+    }
 
     var lifecycleState: CameraLifecycleState {
         stateLock.lock()
@@ -254,9 +391,36 @@ final class CameraManager: NSObject, @unchecked Sendable {
         return storedAvailableLenses
     }
 
+    /// Manager-owned physical descriptors stay deduplicated with the lens
+    /// inventory. Optional display metadata is only populated when measured
+    /// by a device integration; the default physical labels remain WIDE,
+    /// ULTRA, and TELE.
+    var availableLensDescriptors: [CameraLensDescriptor] {
+        let lenses = availableLenses
+        lensDescriptorsLock.lock()
+        defer { lensDescriptorsLock.unlock() }
+        return lenses.compactMap { storedLensDescriptors[$0] ?? $0.descriptor }
+    }
+
+    /// Thread-safe projection of the actual input selected on the session
+    /// queue. ViewModels read this only after start/resume completes.
+    var activeLens: CameraLens? {
+        activeLensLock.lock()
+        defer { activeLensLock.unlock() }
+        return storedActiveLens
+    }
+
+    var activeLensDescriptor: CameraLensDescriptor? {
+        guard let activeLens else { return nil }
+        lensDescriptorsLock.lock()
+        defer { lensDescriptorsLock.unlock() }
+        return storedLensDescriptors[activeLens] ?? activeLens.descriptor
+    }
+
     init(scheduler: RealtimeScheduler,
          thermalGovernor: ThermalGovernor,
-         motionGate: MotionGate) {
+         motionGate: MotionGate,
+         notificationCenter: NotificationCenter = .default) {
         let session = AVCaptureSession()
         self.session = session
         self.videoOutput = AVCaptureVideoDataOutput()
@@ -265,8 +429,10 @@ final class CameraManager: NSObject, @unchecked Sendable {
         self.motionGate = motionGate
         self.sessionRunner = AVCaptureSessionRunner(session: session)
         self.testConfiguration = nil
+        self.notificationCenter = notificationCenter
         super.init()
         videoOutputQueue.setSpecific(key: videoOutputQueueKey, value: ())
+        installSessionObservers()
     }
 
     init(scheduler: RealtimeScheduler,
@@ -274,7 +440,8 @@ final class CameraManager: NSObject, @unchecked Sendable {
          motionGate: MotionGate,
          sessionRunner: CameraSessionRunner,
          configuration: CameraManagerTestConfiguration,
-         session: AVCaptureSession = AVCaptureSession()) {
+         session: AVCaptureSession = AVCaptureSession(),
+         notificationCenter: NotificationCenter = .default) {
         self.session = session
         self.videoOutput = AVCaptureVideoDataOutput()
         self.scheduler = scheduler
@@ -282,20 +449,31 @@ final class CameraManager: NSObject, @unchecked Sendable {
         self.motionGate = motionGate
         self.sessionRunner = sessionRunner
         self.testConfiguration = configuration
+        self.notificationCenter = notificationCenter
         super.init()
         videoOutputQueue.setSpecific(key: videoOutputQueueKey, value: ())
+        installSessionObservers()
+    }
+
+    deinit {
+        notificationTokens.forEach(notificationCenter.removeObserver)
     }
 
     func startAndWait() async throws {
+        let generation = currentSessionGeneration()
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             sessionQueue.async { [weak self] in
                 guard let self else {
                     continuation.resume(throwing: CameraManagerError.startFailed)
                     return
                 }
+                guard self.isSessionGenerationCurrent(generation) else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
 
                 do {
-                    try self.startOnSessionQueue()
+                    try self.startOnSessionQueue(generation: generation)
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
@@ -305,6 +483,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
     }
 
     func stopAndWait() async {
+        closeFrameDeliveryBoundary(advanceSessionGeneration: true)
         await withCheckedContinuation { continuation in
             sessionQueue.async { [weak self] in
                 self?.stopOnSessionQueue()
@@ -316,12 +495,68 @@ final class CameraManager: NSObject, @unchecked Sendable {
     /// Releases the current configuration. A later start reuses this session object and
     /// reconfigures its input/output exactly once before starting it again.
     func releaseAndWait() async {
+        closeFrameDeliveryBoundary(advanceSessionGeneration: true)
         await withCheckedContinuation { continuation in
             sessionQueue.async { [weak self] in
                 self?.releaseOnSessionQueue()
                 continuation.resume()
             }
         }
+    }
+
+    /// M1-003 generation fence accessors. Lock-guarded; safe from any thread.
+    /// `sessionGenerationForTesting` is the only read path outside the manager.
+    var sessionGenerationForTesting: UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return storedSessionGeneration
+    }
+
+    private func currentSessionGeneration() -> UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return storedSessionGeneration
+    }
+
+    private func bumpSessionGeneration() {
+        stateLock.lock()
+        storedSessionGeneration &+= 1
+        stateLock.unlock()
+    }
+
+    /// M2-023: the camera epoch changes whenever capture ownership changes.
+    /// Never allow wraparound to turn a known generation into the unknown
+    /// sentinel (zero).
+    private func advanceCaptureGeneration() {
+        stateLock.lock()
+        storedCaptureGeneration = storedCaptureGeneration == .max
+            ? 1
+            : storedCaptureGeneration &+ 1
+        stateLock.unlock()
+    }
+
+    private func currentCaptureGeneration() -> UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return storedCaptureGeneration
+    }
+
+    /// M2-023 test visibility for the camera-owned provenance epoch.
+    var captureGenerationForTesting: UInt64 {
+        currentCaptureGeneration()
+    }
+
+    private func isSessionGenerationCurrent(_ generation: UInt64) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return storedSessionGeneration == generation
+    }
+
+    /// Backgrounding can happen without AVFoundation posting an interruption
+    /// notification (notably in simulator-driven lifecycle tests). Keep it on
+    /// the same synchronous frame-gate/failure boundary as native callbacks.
+    func reportSessionInterrupted() {
+        handleSessionFailure(.sessionInterrupted)
     }
 
     @discardableResult
@@ -343,13 +578,19 @@ final class CameraManager: NSObject, @unchecked Sendable {
         await scheduler.drainAndWait()
     }
 
-    private func startOnSessionQueue() throws {
+    private func startOnSessionQueue(generation: UInt64) throws {
+        if case let .failed(error) = lifecycleState,
+           error == .sessionInterrupted || error == .runtimeError {
+            throw error
+        }
+
         if sessionRunner.isRunning, isConfigured {
             if !isFrameDeliveryEnabled() {
-                attachVideoDelegateAndEnableDelivery()
+                guard attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: generation) else { return }
             }
-            setLifecycleState(.running,
-                              configuration: isConfigured ? .configured : .unconfigured)
+            if let failure = finishStartTransitionOnSessionQueue() {
+                try stopAndThrowStartFailure(failure)
+            }
             return
         }
 
@@ -375,7 +616,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
             }
         }
 
-        attachVideoDelegateAndEnableDelivery()
+        guard attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: generation) else { return }
         sessionRunner.startRunning()
 
         guard sessionRunner.isRunning else {
@@ -387,8 +628,16 @@ final class CameraManager: NSObject, @unchecked Sendable {
                               error: error)
             throw error
         }
+        guard isSessionGenerationCurrent(generation) else {
+            disableDeliveryAndDetachDelegate()
+            sessionRunner.stopRunning()
+            drainVideoOutputQueue()
+            return
+        }
 
-        setLifecycleState(.running, configuration: .configured)
+        if let failure = finishStartTransitionOnSessionQueue() {
+            try stopAndThrowStartFailure(failure)
+        }
     }
 
     private func stopOnSessionQueue() {
@@ -452,10 +701,90 @@ final class CameraManager: NSObject, @unchecked Sendable {
         session.commitConfiguration()
 
         currentInput = nil
-        currentLens = nil
+        setCurrentLens(nil)
         isConfigured = false
         setAvailableLenses([])
+        setLensDescriptors([:])
         setLifecycleState(.idle, configuration: .unconfigured)
+    }
+
+    private func installSessionObservers() {
+        let notifications: [(Notification.Name, CameraManagerError)] = [
+            (AVCaptureSession.wasInterruptedNotification, .sessionInterrupted),
+            (AVCaptureSession.runtimeErrorNotification, .runtimeError)
+        ]
+        notificationTokens = notifications.map { name, error in
+            notificationCenter.addObserver(
+                forName: name,
+                object: session,
+                queue: nil
+            ) { [weak self] notification in
+                guard let self,
+                      notification.object as AnyObject? === self.session else { return }
+                self.handleSessionFailure(error)
+            }
+        }
+    }
+
+    private func handleSessionFailure(_ error: CameraManagerError) {
+        guard let claimedError = claimSessionFailure(error) else { return }
+
+        // Close the lock-backed gate before publishing so a callback already
+        // queued on the output queue cannot dispatch more analysis after this
+        // boundary.
+        closeFrameDeliveryBoundary(advanceSessionGeneration: false)
+        drainVideoOutputQueue()
+        failureSubject.send(claimedError)
+    }
+
+    private func closeFrameDeliveryBoundary(advanceSessionGeneration: Bool) {
+        captureBoundaryLock.lock()
+        disableDeliveryAndDetachDelegate()
+        if advanceSessionGeneration {
+            bumpSessionGeneration()
+        }
+        advanceCaptureGeneration()
+        captureBoundaryLock.unlock()
+    }
+
+    private func claimSessionFailure(_ error: CameraManagerError) -> CameraManagerError? {
+        stateLock.lock()
+        switch storedLifecycleState {
+        case .starting, .running:
+            storedLifecycleState = .failed(error)
+            storedLifecycleError = error
+            stateLock.unlock()
+            return error
+        case .idle, .stopping, .failed:
+            stateLock.unlock()
+            return nil
+        }
+    }
+
+    private func finishStartTransitionOnSessionQueue() -> CameraManagerError? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        switch storedLifecycleState {
+        case .starting, .running:
+            storedLifecycleState = .running
+            storedConfigurationState = .configured
+            storedLifecycleError = nil
+            return nil
+        case .failed(let error):
+            return storedLifecycleError ?? error
+        case .idle, .stopping:
+            return storedLifecycleError ?? .startFailed
+        }
+    }
+
+    private func stopAndThrowStartFailure(_ error: CameraManagerError) throws -> Never {
+        disableDeliveryAndDetachDelegate()
+        if sessionRunner.isRunning {
+            sessionRunner.stopRunning()
+        }
+        drainVideoOutputQueue()
+        throw error
     }
 
     private func configureSession() throws {
@@ -505,7 +834,8 @@ final class CameraManager: NSObject, @unchecked Sendable {
 
             configureVideoConnection()
             currentInput = input
-            currentLens = .wide
+            setCurrentLens(.wide)
+            advanceCaptureGeneration()
             isConfigured = true
             markConfigured()
         } catch {
@@ -513,8 +843,9 @@ final class CameraManager: NSObject, @unchecked Sendable {
                 session.removeInput(input)
             }
             currentInput = nil
-            currentLens = nil
+            setCurrentLens(nil)
             setAvailableLenses([])
+            setLensDescriptors([:])
             isConfigured = false
             markUnconfigured()
             throw error
@@ -528,8 +859,12 @@ final class CameraManager: NSObject, @unchecked Sendable {
             session.addOutput(videoOutput)
         }
         currentInput = nil
-        currentLens = nil
+        setCurrentLens(nil)
         setAvailableLenses([.wide])
+        setLensDescriptors([.wide: CameraLens.wide.descriptor])
+        // Mirror production configuration: the ready fixture represents one
+        // installed capture input, so its first delivered frames own epoch 1.
+        advanceCaptureGeneration()
         isConfigured = true
         markConfigured()
         session.commitConfiguration()
@@ -543,15 +878,31 @@ final class CameraManager: NSObject, @unchecked Sendable {
     private func configureVideoConnection() {
         if let connection = videoOutput.connection(with: .video) {
             connection.preferredVideoStabilizationMode = .cinematicExtended
-            if connection.isVideoOrientationSupported {
-                connection.videoOrientation = desiredVideoOrientation
+            if #available(iOS 17.0, *) {
+                CameraDataOutputConnectionConfigurator.applyNativeGeometry(to: connection)
+            } else {
+                CameraDataOutputConnectionConfigurator.applyMirroring(to: connection)
             }
         }
     }
 
-    private func attachVideoDelegateAndEnableDelivery() {
+    @discardableResult
+    private func attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: UInt64) -> Bool {
+#if DEBUG
+        beforeFrameDeliveryEnableForTesting?()
+#endif
+        captureBoundaryLock.lock()
+        defer { captureBoundaryLock.unlock() }
+        guard isSessionGenerationCurrent(expectedSessionGeneration) else { return false }
+        switch lifecycleState {
+        case .starting, .running:
+            break
+        case .idle, .stopping, .failed:
+            return false
+        }
         videoOutput.setSampleBufferDelegate(self, queue: videoOutputQueue)
         setFrameDeliveryEnabled(true)
+        return true
     }
 
     private func disableDeliveryAndDetachDelegate() {
@@ -606,11 +957,64 @@ final class CameraManager: NSObject, @unchecked Sendable {
         storedAvailableLenses = lenses
         availableLensesLock.unlock()
     }
+
+    private func setLensDescriptors(_ descriptors: [CameraLens: CameraLensDescriptor]) {
+        lensDescriptorsLock.lock()
+        storedLensDescriptors = descriptors
+        lensDescriptorsLock.unlock()
+    }
+
+    private func setCurrentLens(_ lens: CameraLens?) {
+        currentLens = lens
+        activeLensLock.lock()
+        storedActiveLens = lens
+        activeLensLock.unlock()
+    }
     
     private func discoverAvailableLenses() {
-        setAvailableLenses(CameraLens.allCases.filter { lens in
-            findCamera(for: lens) != nil
-        })
+        var discovered: [CameraLens] = []
+        var descriptors: [CameraLens: CameraLensDescriptor] = [:]
+        let wideFieldOfView = findCamera(for: .wide)?.activeFormat.videoFieldOfView
+        for lens in CameraLens.allCases where findCamera(for: lens) != nil {
+            if !discovered.contains(lens) {
+                discovered.append(lens)
+                if let device = findCamera(for: lens) {
+                    let metadata = truthfulMagnification(
+                        for: device,
+                        relativeToFieldOfView: wideFieldOfView
+                    )
+                    descriptors[lens] = CameraLensDescriptor(
+                        lens: lens,
+                        identifier: lens.rawValue,
+                        displayName: lens.displayName,
+                        physicalDeviceType: String(describing: lens.deviceType),
+                        displayMetadata: metadata
+                    )
+                }
+            }
+        }
+        setAvailableLenses(discovered)
+        setLensDescriptors(descriptors)
+    }
+
+    private func truthfulMagnification(
+        for device: AVCaptureDevice,
+        relativeToFieldOfView referenceFieldOfView: Float?
+    ) -> CameraLensDisplayMetadata? {
+        guard let referenceFieldOfView,
+              referenceFieldOfView > 0,
+              device.activeFormat.videoFieldOfView > 0 else { return nil }
+        let referenceAngle = Double(referenceFieldOfView) * .pi / 360.0
+        let deviceAngle = Double(device.activeFormat.videoFieldOfView) * .pi / 360.0
+        let referenceTangent = tan(referenceAngle)
+        let deviceTangent = tan(deviceAngle)
+        guard referenceTangent > 0,
+              deviceTangent > 0,
+              referenceTangent.isFinite,
+              deviceTangent.isFinite else { return nil }
+        let magnification = referenceTangent / deviceTangent
+        guard magnification.isFinite, magnification > 0 else { return nil }
+        return .truthfulMagnification(magnification)
     }
     
     private func findCamera(for lens: CameraLens) -> AVCaptureDevice? {
@@ -637,6 +1041,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
     }
 
     private func switchLensOnSessionQueue(to lens: CameraLens) -> CameraLensSwitchResult {
+        let operationGeneration = currentSessionGeneration()
         guard isConfigured,
               let oldInput = currentInput,
               let oldLens = currentLens else {
@@ -665,20 +1070,41 @@ final class CameraManager: NSObject, @unchecked Sendable {
                             reason: .inputConstructionFailed)
         }
 
+        // Quiesce the old delegate queue before changing the input epoch. A
+        // callback that starts after the switch must never inherit the new
+        // generation for pixels produced by the old input.
+        let wasDeliveringFrames = isFrameDeliveryEnabled()
+        if wasDeliveringFrames {
+            disableDeliveryAndDetachDelegate()
+            drainVideoOutputQueue()
+        }
+        guard isSessionGenerationCurrent(operationGeneration) else {
+            return .failure(requestedLens: lens,
+                            lastKnownActiveLens: oldLens,
+                            reason: .notConfigured)
+        }
+
         let outcome = replaceInputOnSessionQueue(oldInput: oldInput, newInput: newInput)
         switch outcome {
         case .replaced:
             currentInput = newInput
-            currentLens = lens
+            setCurrentLens(lens)
             configureVideoConnection()
+            advanceCaptureGeneration()
+            if wasDeliveringFrames {
+                _ = attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: operationGeneration)
+            }
             return .success(activeLens: lens)
         case .restored:
+            if wasDeliveringFrames {
+                _ = attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: operationGeneration)
+            }
             return .failure(requestedLens: lens,
                             lastKnownActiveLens: oldLens,
                             reason: .replacementRejected)
         case .rollbackFailed:
             currentInput = nil
-            currentLens = nil
+            setCurrentLens(nil)
             releaseOnSessionQueue()
             return .failure(requestedLens: lens,
                             lastKnownActiveLens: nil,
@@ -731,17 +1157,32 @@ final class CameraManager: NSObject, @unchecked Sendable {
     func videoOrientationAndWait() async -> AVCaptureVideoOrientation {
         await withCheckedContinuation { continuation in
             sessionQueue.async { [weak self] in
-                continuation.resume(returning: self?.desiredVideoOrientation ?? .landscapeLeft)
+                continuation.resume(returning: self?.desiredVideoOrientationSnapshot() ?? .landscapeLeft)
             }
         }
     }
 
     private func setVideoOrientationOnSessionQueue(_ orientation: AVCaptureVideoOrientation) {
+        guard orientation != desiredVideoOrientationSnapshot() else { return }
+        let operationGeneration = currentSessionGeneration()
+        let wasDeliveringFrames = isFrameDeliveryEnabled()
+        if wasDeliveringFrames {
+            disableDeliveryAndDetachDelegate()
+            drainVideoOutputQueue()
+        }
+        guard isSessionGenerationCurrent(operationGeneration) else { return }
+        desiredVideoOrientationLock.lock()
         desiredVideoOrientation = orientation
-        guard isConfigured,
-              let connection = videoOutput.connection(with: .video),
-              connection.isVideoOrientationSupported else { return }
-        connection.videoOrientation = orientation
+        desiredVideoOrientationLock.unlock()
+        if wasDeliveringFrames {
+            _ = attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: operationGeneration)
+        }
+    }
+
+    private func desiredVideoOrientationSnapshot() -> AVCaptureVideoOrientation {
+        desiredVideoOrientationLock.lock()
+        defer { desiredVideoOrientationLock.unlock() }
+        return desiredVideoOrientation
     }
 }
 
@@ -749,22 +1190,29 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        let capturedAt = Date()
         guard isFrameDeliveryEnabled() else { return }
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let orientation = CameraCoachOrientation(captureOrientation: connection.videoOrientation).imageOrientation
+        let orientation = CameraFrameDeliveryOrientationContract.imageOrientation(
+            for: desiredVideoOrientationSnapshot()
+        )
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let captureGeneration = currentCaptureGeneration()
         let motionSnapshot = motionGate.snapshot()
         let context = FrameContext(pixelBuffer: pixelBuffer,
                                    timestamp: timestamp,
                                    orientation: orientation,
                                    isStable: motionSnapshot.isStable,
                                    shakeLevel: motionSnapshot.shakeLevel,
-                                   motionState: motionSnapshot.motionState)
+                                   motionState: motionSnapshot.motionState,
+                                   capturedAt: capturedAt,
+                                   captureGeneration: captureGeneration)
 
         let budget = thermalGovernor.nextBudget()
 
         frameDeliveryLock.lock()
-        guard frameDeliveryEnabled else {
+        guard frameDeliveryEnabled,
+              captureGeneration == currentCaptureGeneration() else {
             frameDeliveryLock.unlock()
             return
         }

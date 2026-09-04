@@ -126,7 +126,7 @@ final class VisionTracking {
                 os_log("🎯 Saliency: No salient objects found", log: log, type: .debug)
             }
         } catch {
-            os_log("❌ Vision error: %{public}@", log: log, type: .error, error.localizedDescription)
+            os_log("❌ Vision error: %{private}@", log: log, type: .error, error.localizedDescription)
             return VisionTrackingResult(subjects: results, saliencyCenter: nil, saliencyRegion: nil, faceCount: 0, personCount: 0)
         }
 

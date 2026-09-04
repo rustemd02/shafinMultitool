@@ -1,0 +1,36 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Shafin Multitool" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Shafin Multitool" } }
+      }
+    },
+    "NSCameraUsageDescription" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Shafin Multitool uses the camera to show your frame and provide on-device coaching." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Shafin Multitool использует камеру, чтобы показать кадр и дать локальные подсказки." } }
+      }
+    },
+    "NSMicrophoneUsageDescription" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Microphone access is needed only when you choose to record video with sound." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Доступ к микрофону нужен только при записи видео со звуком." } }
+      }
+    },
+    "NSPhotoLibraryAddUsageDescription" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Photo access lets you save a finished video to your library." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Доступ к Фото позволяет сохранить готовое видео в медиатеку." } }
+      }
+    },
+    "NSSpeechRecognitionUsageDescription" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Speech recognition can turn a spoken scene description into script text." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Распознавание речи может превратить устное описание сцены в текст сценария." } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

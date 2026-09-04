@@ -1,0 +1,44 @@
+[
+ {
+  "input": "CAMERA_VLM_VISUAL_EVIDENCE_API_KEY",
+  "kind": "runtime secret (env, optional)",
+  "consumer": "RemoteVLMVisualEvidenceProvider (Bearer header)",
+  "classification": "runtime secret; forbidden-in-client bundle (env-only, never hardcoded)",
+  "evidence": "VisualSemanticEvidenceCoordinator.swift:237-249"
+ },
+ {
+  "input": "CAMERA_VLM_VISUAL_EVIDENCE_ENDPOINT",
+  "kind": "endpoint URL (env)",
+  "consumer": "same provider factory",
+  "classification": "local-development; production path unreachable without env (REPLACE scope)",
+  "evidence": "same:231-233"
+ },
+ {
+  "input": "CAMERA_VLM_VISUAL_EVIDENCE_PROVIDER / PRIVACY_TIER / CAMERA_REASONING_PROVIDER",
+  "kind": "provider selector flags (env)",
+  "consumer": "AnalysisPipeline/PauseReasoningCoordinator",
+  "classification": "local-development",
+  "evidence": "AnalysisPipeline.swift:9678-9721"
+ },
+ {
+  "input": "SG_LIVE_MODEL_PATH",
+  "kind": "local model path override (env)",
+  "consumer": "scene generator live model",
+  "classification": "local-development",
+  "evidence": "grep SG_LIVE_MODEL_PATH"
+ },
+ {
+  "input": "DEVICE_BENCHMARK_CONFIG_BASE64",
+  "kind": "benchmark config (env, DEBUG only)",
+  "consumer": "DeviceBenchmarkCoordinator",
+  "classification": "local-development",
+  "evidence": "SceneDelegate.swift:157-162"
+ },
+ {
+  "input": "SHAFIN_* launch args/env (gallery, fixtures, UI testing)",
+  "kind": "test harness selectors (DEBUG only)",
+  "consumer": "SceneDelegate",
+  "classification": "local-development",
+  "evidence": "SceneDelegate.swift:28-74,140-168"
+ }
+]

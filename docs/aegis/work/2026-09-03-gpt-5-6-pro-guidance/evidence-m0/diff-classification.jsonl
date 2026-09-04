@@ -1,0 +1,418 @@
+[
+ {
+  "path": "docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md",
+  "classification": "release-required"
+ },
+ {
+  "path": "docs/aegis/work/2026-08-15-camera-coach-release/20-checkpoint.md",
+  "classification": "research-only"
+ },
+ {
+  "path": "docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md",
+  "classification": "research-only"
+ },
+ {
+  "path": "docs/aegis/work/2026-08-17-set-os-redesign/",
+  "classification": "release-required"
+ },
+ {
+  "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/",
+  "classification": "research-only"
+ },
+ {
+  "path": "docs/cameraanalysis/05-feature-snapshot-aggregator.md",
+  "classification": "research-only"
+ },
+ {
+  "path": "docs/cameraanalysis/06-scene-semantics-layer.md",
+  "classification": "research-only"
+ },
+ {
+  "path": "docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md",
+  "classification": "research-only"
+ },
+ {
+  "path": "docs/implementation/ux/set-os-policy-critique.md",
+  "classification": "release-required"
+ },
+ {
+  "path": "docs/implementation/ux/set-os-visual-policy.md",
+  "classification": "release-required"
+ },
+ {
+  "path": "motion/",
+  "classification": "release-required"
+ },
+ {
+  "path": "screenshots/",
+  "classification": "release-required"
+ },
+ {
+  "path": "scripts/copy_debug_device_benchmark_resources.sh",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "scripts/tests/test_release_bundle_gate.sh",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "scripts/validate_privacy_manifest.sh",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "scripts/validate_release_bundle.sh",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool.xcodeproj/project.pbxproj",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/CommercialShell/CommercialShellModeControl.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/CommercialShell/CommercialShellRouteComposition.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/CommercialShell/CommercialShellViewController.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Entity/SceneData.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Info.plist",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/ContentView.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/EntryFlow/CameraCoachEntryFlowModel.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/EntryFlow/CameraCoachEntryView.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/Vision/VisionTracking.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/LatestFrameEvidenceStore.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/RealtimeScheduler.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Recommendation/SemanticTipPlanner.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Telemetry/Telemetry.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/CameraOverlayUXPresentation.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/DecisionTracePresentation.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/DecisionTraceView.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/SETCameraCoachProductionView.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/SuggestionChip.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/ZoomControlView.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/ViewModels/CameraViewModel.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/PrivacyInfo.xcprivacy",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fixtures/",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Resources/InfoPlist.xcstrings",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Resources/Localizable.xcstrings",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Resources/SceneDelegate.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Resources/Textures/",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/SceneWorkspaceTeardown.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneGeneratorDiagnosticsLogger.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneRecordingController.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/ViewModels/SceneGeneratorViewModel.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/ARSceneContainer.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/LegacySceneGeneratorCameraShell.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/SceneGeneratorView.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/SceneInputSheet.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneModules/CameraScreenModule/Interactor/CameraScreenInteractor.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneModules/CameraScreenModule/Presenter/CameraScreenPresenter.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/SceneModules/CameraScreenModule/View/CameraScreenViewController.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SETLibraryProductionView.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SOInteractor.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SOPresenter.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SORouter.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SOViewController.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Services/CameraService.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Services/DBService.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/AppleRecordingAdapters.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/RecorderContracts.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/RecordingArtifactStore.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/SerializedMediaRecorder.swift",
+  "classification": "owner-intended"
+ },
+ {
+  "path": "shafinMultitoolTests/AnalysisPipelinePresentationTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/AnalysisPipelineReleaseTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/AppleRecordingAdaptersTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraCoachEntryFlowModelTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraCoachEntryPresentationTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraManagerLifecycleTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraOverlayUXPresentationTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraViewModelLensSwitchTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraViewModelLifecycleTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CommercialShellLaunchCompositionTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CommercialShellModeControlTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/CommercialShellRoutingTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/DETRDetectorTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/LatestFrameEvidenceStoreTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SETDesignSystemTokenTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SETFixtureCatalogTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SETFontGlyphCoverageTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SETLibraryModelTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneBundlePipelineTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneRecordingControllerTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneSaveLoadTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneWorkspaceTeardownTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SemanticTipPlannerTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolTests/SerializedMediaRecorderTests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolUITests/CameraCoachEntryFlowUITests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolUITests/CameraCoachProductionUITests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolUITests/SETDesignSystemGalleryUITests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolUITests/SETGeneratorProductionUITests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolUITests/SETLibraryProductionUITests.swift",
+  "classification": "release-required"
+ },
+ {
+  "path": "shafinMultitoolUITests/UITests.swift",
+  "classification": "release-required"
+ }
+]

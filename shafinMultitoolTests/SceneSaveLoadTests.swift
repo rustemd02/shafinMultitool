@@ -46,6 +46,23 @@ final class SceneSaveLoadTests: XCTestCase {
             dbService.deleteUnifiedSceneProject(named: projectName) { _ in }
         }
     }
+
+    private func unifiedProjectsDirectoryURL() throws -> URL {
+        try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ).appendingPathComponent("UnifiedSceneProjects")
+    }
+
+    private func unifiedProjectFileURL(for id: UUID) throws -> URL {
+        try unifiedProjectsDirectoryURL().appendingPathComponent("\(id.uuidString)_project.json")
+    }
+
+    private func unifiedWorldMapFileURL(for id: UUID) throws -> URL {
+        try unifiedProjectsDirectoryURL().appendingPathComponent("\(id.uuidString)_worldmap")
+    }
     
     // MARK: - Тест 1: Сохранение AR World Map с корректными данными
     
@@ -443,6 +460,54 @@ final class SceneSaveLoadTests: XCTestCase {
                      "После удаления unified project не должен загружаться")
     }
 
+    func testDeleteUnifiedSceneProjectRemovesAuthoritativeRecordingArtifacts() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-db-recordings-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+        let store = try RecordingArtifactStore(
+            applicationSupportDirectoryURL: applicationSupportURL
+        )
+        let service = DBService(recordingArtifactStore: store)
+        let name = "UnifiedSceneRecording_\(UUID().uuidString)"
+        let project = try service.createUnifiedSceneProject(named: name)
+        let projectURL = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+        let artifactURL = projectURL.appendingPathComponent("\(UUID().uuidString).mov")
+        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: Data("recording".utf8)))
+
+        var deleted: Bool?
+        service.deleteUnifiedSceneProject(named: name) { deleted = $0 }
+
+        XCTAssertEqual(deleted, true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: artifactURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: projectURL.path))
+    }
+
+    func testArtifactCleanupFailureDoesNotChangeSuccessfulMetadataDeletion() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-db-recordings-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+        let store = try RecordingArtifactStore(
+            applicationSupportDirectoryURL: applicationSupportURL
+        )
+        let service = DBService(recordingArtifactStore: store)
+        let name = "UnifiedSceneRecording_\(UUID().uuidString)"
+        let project = try service.createUnifiedSceneProject(named: name)
+        let projectURL = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+        let unexpectedURL = projectURL.appendingPathComponent("unexpected.txt")
+        XCTAssertTrue(FileManager.default.createFile(atPath: unexpectedURL.path, contents: Data()))
+
+        var deleted: Bool?
+        service.deleteUnifiedSceneProject(named: name) { deleted = $0 }
+
+        XCTAssertEqual(deleted, true)
+        XCTAssertNil(service.loadUnifiedSceneProject(named: name))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unexpectedURL.path))
+    }
+
     func testSaveAndReloadUnifiedSceneProjectState() throws {
         let created = try dbService.createUnifiedSceneProject(named: testUnifiedProjectName)
         let marker = MarkedObject(name: "стойка", position: Position3D(x: 1.2, y: 0.0, z: -0.8))
@@ -460,6 +525,13 @@ final class SceneSaveLoadTests: XCTestCase {
         updated.sceneDescription = "Актёр подходит к стойке и останавливается рядом со столом."
         updated.markedObjects = [marker]
         updated.plannedScene = PlannedScene(placedActors: [], placedObjects: [placedObject])
+        let recordingReference = SceneRecordingReference(
+            recordingID: try XCTUnwrap(UUID(uuidString: "11111111-1111-1111-1111-111111111111")),
+            relativePath: "Recordings/Projects/22222222-2222-2222-2222-222222222222/11111111-1111-1111-1111-111111111111.mov",
+            duration: 12.5,
+            hasAudio: true
+        )
+        updated.recordingReferences = [recordingReference]
 
         try dbService.saveUnifiedSceneProject(updated, worldMap: nil)
 
@@ -467,5 +539,205 @@ final class SceneSaveLoadTests: XCTestCase {
         XCTAssertEqual(loaded?.0.sceneDescription, updated.sceneDescription, "Описание сцены должно восстанавливаться")
         XCTAssertEqual(loaded?.0.markedObjects, [marker], "Маркеры должны восстанавливаться")
         XCTAssertEqual(loaded?.0.plannedScene, updated.plannedScene, "Planned scene должна восстанавливаться")
+        XCTAssertEqual(loaded?.0.recordingReferences, [recordingReference], "Ссылки на записи должны восстанавливаться")
+    }
+
+    func testUnifiedSceneProjectWithoutRecordingReferencesDecodesEmpty() throws {
+        let project = UnifiedSceneProject(name: testUnifiedProjectName)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(project), options: []) as? [String: Any]
+        )
+        object.removeValue(forKey: "recordingReferences")
+        let legacyData = try JSONSerialization.data(withJSONObject: object, options: [])
+
+        let decoded = try JSONDecoder().decode(UnifiedSceneProject.self, from: legacyData)
+        XCTAssertEqual(decoded.recordingReferences, [])
+    }
+
+    func testLegacyRawUnifiedSceneProjectLoadsAndMigratesOnSave() throws {
+        let legacyProject = UnifiedSceneProject(name: testUnifiedProjectName)
+        let projectURL = try unifiedProjectFileURL(for: legacyProject.id)
+        try FileManager.default.createDirectory(
+            at: projectURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try JSONEncoder().encode(legacyProject).write(to: projectURL, options: [.atomic])
+
+        XCTAssertTrue(dbService.listUnifiedSceneProjects().contains { $0.id == legacyProject.id })
+        XCTAssertEqual(dbService.loadUnifiedSceneProject(named: testUnifiedProjectName)?.0, legacyProject)
+
+        var updatedProject = legacyProject
+        updatedProject.sceneDescription = "Migrated"
+        try dbService.saveUnifiedSceneProject(updatedProject, worldMap: nil)
+
+        let savedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: projectURL)) as? [String: Any]
+        )
+        XCTAssertNotNil(savedObject["project"] as? [String: Any])
+        XCTAssertNil(savedObject["id"])
+        XCTAssertEqual(
+            dbService.loadUnifiedSceneProject(named: testUnifiedProjectName)?.0.sceneDescription,
+            "Migrated"
+        )
+    }
+
+    func testNilMapEnvelopeIgnoresStaleLegacyWorldMapSidecar() throws {
+        let created = try dbService.createUnifiedSceneProject(named: testUnifiedProjectName)
+        let mapURL = try unifiedWorldMapFileURL(for: created.id)
+        try Data([0xde, 0xad, 0xbe, 0xef]).write(to: mapURL, options: [.atomic])
+
+        let loaded = dbService.loadUnifiedSceneProject(named: testUnifiedProjectName)
+        XCTAssertEqual(loaded?.0.id, created.id)
+        XCTAssertNil(loaded?.1)
+    }
+
+    func testUnifiedProjectRejectsFilenameUUIDMismatchWithoutTouchingSidecar() throws {
+        let filenameID = UUID()
+        let embeddedID = UUID()
+        let projectURL = try unifiedProjectFileURL(for: filenameID)
+        let sidecarURL = try unifiedWorldMapFileURL(for: embeddedID)
+        let sidecarData = Data([0xde, 0xad, 0xbe, 0xef])
+        defer {
+            try? FileManager.default.removeItem(at: projectURL)
+            try? FileManager.default.removeItem(at: sidecarURL)
+        }
+
+        try FileManager.default.createDirectory(
+            at: projectURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try JSONEncoder().encode(
+            UnifiedSceneProject(id: embeddedID, name: testUnifiedProjectName)
+        ).write(to: projectURL, options: [.atomic])
+        try sidecarData.write(to: sidecarURL, options: [.atomic])
+
+        XCTAssertNil(dbService.loadUnifiedSceneProject(named: testUnifiedProjectName))
+        XCTAssertEqual(try Data(contentsOf: sidecarURL), sidecarData)
+
+        var deleted: Bool?
+        dbService.deleteUnifiedSceneProject(named: testUnifiedProjectName) { deleted = $0 }
+        XCTAssertEqual(deleted, false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: projectURL.path))
+        XCTAssertEqual(try Data(contentsOf: sidecarURL), sidecarData)
+    }
+
+    func testMismatchedUnifiedProjectMetadataPreservesRecordingArtifacts() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-db-recordings-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+        let store = try RecordingArtifactStore(
+            applicationSupportDirectoryURL: applicationSupportURL
+        )
+        let service = DBService(recordingArtifactStore: store)
+        let filenameID = UUID()
+        let embeddedID = UUID()
+        let name = "UnifiedSceneMismatch_\(UUID().uuidString)"
+        let projectURL = try unifiedProjectFileURL(for: filenameID)
+        defer { try? FileManager.default.removeItem(at: projectURL) }
+        try FileManager.default.createDirectory(
+            at: projectURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try JSONEncoder().encode(UnifiedSceneProject(id: embeddedID, name: name)).write(
+            to: projectURL,
+            options: [.atomic]
+        )
+
+        let projectDirectory = store.projectsDirectoryURL
+            .appendingPathComponent(embeddedID.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDirectory, withIntermediateDirectories: true)
+        let artifactURL = projectDirectory.appendingPathComponent("\(UUID().uuidString).mov")
+        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: Data()))
+
+        var deleted: Bool?
+        service.deleteUnifiedSceneProject(named: name) { deleted = $0 }
+
+        XCTAssertEqual(deleted, false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: projectURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: artifactURL.path))
+    }
+
+    func testMalformedEnvelopeWithProjectKeyDoesNotFallbackToLegacy() throws {
+        let project = UnifiedSceneProject(name: testUnifiedProjectName)
+        let projectURL = try unifiedProjectFileURL(for: project.id)
+        defer { try? FileManager.default.removeItem(at: projectURL) }
+
+        try FileManager.default.createDirectory(
+            at: projectURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        var legacyObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(project), options: []) as? [String: Any]
+        )
+        legacyObject["project"] = ["malformed": true]
+        try JSONSerialization.data(withJSONObject: legacyObject, options: []).write(
+            to: projectURL,
+            options: [.atomic]
+        )
+
+        XCTAssertNil(dbService.loadUnifiedSceneProject(named: testUnifiedProjectName))
+        var deleted: Bool?
+        dbService.deleteUnifiedSceneProject(named: testUnifiedProjectName) { deleted = $0 }
+        XCTAssertEqual(deleted, false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: projectURL.path))
+    }
+
+    func testCorruptUnifiedProjectDoesNotHideHealthyProjectFromList() throws {
+        let corruptID = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let corruptURL = try unifiedProjectFileURL(for: corruptID)
+        defer { try? FileManager.default.removeItem(at: corruptURL) }
+
+        try FileManager.default.createDirectory(
+            at: corruptURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data([0x7b, 0x6e, 0x6f, 0x74, 0x2d, 0x6a, 0x73, 0x6f, 0x6e, 0x7d]).write(
+            to: corruptURL,
+            options: [.atomic]
+        )
+
+        let healthy = try dbService.createUnifiedSceneProject(named: testUnifiedProjectName)
+
+        XCTAssertTrue(
+            dbService.listUnifiedSceneProjects().contains { $0.id == healthy.id },
+            "Читаемый проект должен оставаться в списке рядом с поврежденным файлом"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: corruptURL.path))
+    }
+
+    func testCorruptUnifiedProjectDoesNotBlockHealthyLookupOrDeletion() throws {
+        let corruptID = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000002"))
+        let healthyID = try XCTUnwrap(UUID(uuidString: "ffffffff-ffff-ffff-ffff-ffffffffffff"))
+        let corruptURL = try unifiedProjectFileURL(for: corruptID)
+        let healthyURL = try unifiedProjectFileURL(for: healthyID)
+        defer {
+            try? FileManager.default.removeItem(at: corruptURL)
+            try? FileManager.default.removeItem(at: healthyURL)
+        }
+
+        try FileManager.default.createDirectory(
+            at: corruptURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data([0x7b, 0x62, 0x72, 0x6f, 0x6b, 0x65, 0x6e, 0x7d]).write(
+            to: corruptURL,
+            options: [.atomic]
+        )
+        let healthy = UnifiedSceneProject(id: healthyID, name: testUnifiedProjectName)
+        try dbService.saveUnifiedSceneProject(healthy, worldMap: nil)
+
+        XCTAssertLessThan(corruptURL.lastPathComponent, healthyURL.lastPathComponent)
+        XCTAssertEqual(
+            dbService.loadUnifiedSceneProject(named: testUnifiedProjectName)?.0.id,
+            healthyID,
+            "Поврежденный файл не должен блокировать поиск читаемого проекта"
+        )
+
+        var deleted: Bool?
+        dbService.deleteUnifiedSceneProject(named: testUnifiedProjectName) { deleted = $0 }
+
+        XCTAssertEqual(deleted, true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: healthyURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: corruptURL.path))
     }
 }

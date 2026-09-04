@@ -22,10 +22,11 @@ final class DETRDetector {
     private let model: VNCoreMLModel
     private let queue = DispatchQueue(label: "DETRDetector")
     private let log = OSLog(subsystem: "com.multitool2.detr", category: "DETRDetector")
+    private static let extractionLog = OSLog(subsystem: "com.multitool2.detr", category: "DETRDetector")
     private var detectionCount = 0
 
     // COCO labels для DETR модели
-    private let labels: [String] = [
+    private static let labels: [String] = [
         "--", "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
         "traffic light", "fire hydrant", "--", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse",
         "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "--", "backpack", "umbrella", "--",
@@ -90,13 +91,14 @@ final class DETRDetector {
                 let elapsed = CACurrentMediaTime() - startTime
 
                 if let error = error {
-                    os_log("❌ DETR: Detection error: %{public}@", log: self.log, type: .error, error.localizedDescription)
+                    os_log("❌ DETR: Detection error: %{private}@", log: self.log, type: .error, error.localizedDescription)
                     completion([])
                     return
                 }
 
-                guard let results = request.results,
-                      let observation = results.first as? VNCoreMLFeatureValueObservation,
+                guard let observation = request.results?
+                        .compactMap({ $0 as? VNCoreMLFeatureValueObservation })
+                        .first(where: { $0.featureName == "semanticPredictions" }),
                       let multiArray = observation.featureValue.multiArrayValue else {
                     if CameraLog.detr {
                         os_log("⚠️ DETR: No semantic predictions in results (%.0fms)",
@@ -112,7 +114,7 @@ final class DETRDetector {
                 }
 
                 // Обработка semantic segmentation map и извлечение bounding boxes
-                let detections = self.extractDetections(from: multiArray)
+                let detections = Self.extractDetections(from: multiArray)
 
                 if CameraLog.detr {
                     os_log("✅ DETR: Returning %d detections", log: self.log, type: .debug, detections.count)
@@ -127,37 +129,55 @@ final class DETRDetector {
             do {
                 try handler.perform([request])
             } catch {
-                os_log("❌ DETR: Handler error: %{public}@", log: self.log, type: .error, error.localizedDescription)
+                os_log("❌ DETR: Handler error: %{private}@", log: self.log, type: .error, error.localizedDescription)
                 completion([])
             }
         }
     }
 
-    private func extractDetections(from multiArray: MLMultiArray) -> [DETRDetection] {
+    static func extractDetections(from multiArray: MLMultiArray) -> [DETRDetection] {
         let shape = multiArray.shape.map { $0.intValue }
-        guard shape.count >= 2 else {
-            os_log("⚠️ DETR: Unexpected array shape", log: self.log, type: .error)
+        guard shape.count == 2,
+              shape.allSatisfy({ $0 > 0 }),
+              multiArray.dataType == .int32 else {
+            os_log("⚠️ DETR: Unexpected semantic predictions array", log: extractionLog, type: .error)
             return []
         }
 
         let height = shape[0]
         let width = shape[1]
+        let strides = multiArray.strides.map { $0.intValue }
 
-        if CameraLog.detr {
-            os_log("📊 DETR: Segmentation map size: %dx%d", log: self.log, type: .debug, width, height)
+        guard strides.count == 2,
+              strides.allSatisfy({ $0 > 0 }),
+              width <= Int.max / height else {
+            os_log("⚠️ DETR: Unexpected semantic predictions strides", log: extractionLog, type: .error)
+            return []
         }
 
-        // Подсчет пикселей для каждого класса
-        var classCounts: [Int: Int] = [:]
-        var classMinMax: [Int: (minX: Int, minY: Int, maxX: Int, maxY: Int)] = [:]
+        let rowStride = strides[0]
+        let columnStride = strides[1]
+        let (lastRowOffset, rowOverflow) = (height - 1).multipliedReportingOverflow(by: rowStride)
+        let (lastColumnOffset, columnOverflow) = (width - 1).multipliedReportingOverflow(by: columnStride)
+        guard !rowOverflow,
+              !columnOverflow,
+              lastRowOffset <= Int.max - lastColumnOffset else {
+            os_log("⚠️ DETR: Semantic predictions strides overflow", log: extractionLog, type: .error)
+            return []
+        }
 
-        // Читаем данные из multiArray
+        if CameraLog.detr {
+            os_log("📊 DETR: Segmentation map size: %dx%d", log: extractionLog, type: .debug, width, height)
+        }
+
+        let totalPixels = width * height
+        let minPixelThreshold = max(1, totalPixels / 500)
         let pointer = multiArray.dataPointer.assumingMemoryBound(to: Int32.self)
+        var classIDs = Array(repeating: -1, count: totalPixels)
 
         for y in 0..<height {
             for x in 0..<width {
-                let index = y * width + x
-                let classId = Int(pointer[index])
+                let classId = Int(pointer[y * rowStride + x * columnStride])
 
                 // Игнорируем фоновые классы (0 = "--") и неизвестные классы
                 guard classId > 0 && classId < labels.count && labels[classId] != "--" else {
@@ -169,42 +189,80 @@ final class DETRDetector {
                     continue
                 }
 
-                // Подсчитываем пиксели
-                classCounts[classId, default: 0] += 1
-
-                // Обновляем bounding box
-                if let existing = classMinMax[classId] {
-                    classMinMax[classId] = (
-                        minX: min(existing.minX, x),
-                        minY: min(existing.minY, y),
-                        maxX: max(existing.maxX, x),
-                        maxY: max(existing.maxY, y)
-                    )
-                } else {
-                    classMinMax[classId] = (minX: x, minY: y, maxX: x, maxY: y)
-                }
+                classIDs[y * width + x] = classId
             }
         }
 
-        // Конвертируем в детекции
-        var detections: [DETRDetection] = []
-        let totalPixels = width * height
-        let minPixelThreshold = totalPixels / 500 // Минимум 0.2% от изображения
+        var components: [(classId: Int, count: Int, minX: Int, minY: Int, maxX: Int, maxY: Int)] = []
+        for y in 0..<height {
+            for x in 0..<width {
+                let startIndex = y * width + x
+                let classId = classIDs[startIndex]
+                guard classId > 0 else { continue }
 
-        for (classId, count) in classCounts {
-            // Фильтруем слишком маленькие объекты
-            guard count >= minPixelThreshold else { continue }
+                classIDs[startIndex] = -1
+                var queue = [startIndex]
+                var queueIndex = 0
+                var count = 0
+                var minX = x
+                var minY = y
+                var maxX = x
+                var maxY = y
 
-            guard let bounds = classMinMax[classId] else { continue }
+                while queueIndex < queue.count {
+                    let index = queue[queueIndex]
+                    queueIndex += 1
+                    let currentY = index / width
+                    let currentX = index - currentY * width
+                    count += 1
+                    minX = min(minX, currentX)
+                    minY = min(minY, currentY)
+                    maxX = max(maxX, currentX)
+                    maxY = max(maxY, currentY)
+
+                    for neighborY in max(0, currentY - 1)...min(height - 1, currentY + 1) {
+                        for neighborX in max(0, currentX - 1)...min(width - 1, currentX + 1) {
+                            if neighborX == currentX && neighborY == currentY {
+                                continue
+                            }
+
+                            let neighborIndex = neighborY * width + neighborX
+                            guard classIDs[neighborIndex] == classId else { continue }
+                            classIDs[neighborIndex] = -1
+                            queue.append(neighborIndex)
+                        }
+                    }
+                }
+
+                guard count >= minPixelThreshold else { continue }
+                components.append((classId, count, minX, minY, maxX, maxY))
+            }
+        }
+
+        components.sort {
+            if $0.count != $1.count { return $0.count > $1.count }
+
+            let lhsLabel = labels[$0.classId]
+            let rhsLabel = labels[$1.classId]
+            if lhsLabel != rhsLabel { return lhsLabel < rhsLabel }
+            if $0.minX != $1.minX { return $0.minX < $1.minX }
+            if $0.minY != $1.minY { return $0.minY < $1.minY }
+            if $0.maxX != $1.maxX { return $0.maxX < $1.maxX }
+            if $0.maxY != $1.maxY { return $0.maxY < $1.maxY }
+            return $0.classId < $1.classId
+        }
+
+        return components.map { component in
+            let classId = component.classId
 
             // Конвертируем в нормализованные координаты (0...1)
-            let x = CGFloat(bounds.minX) / CGFloat(width)
-            let y = CGFloat(bounds.minY) / CGFloat(height)
-            let w = CGFloat(bounds.maxX - bounds.minX + 1) / CGFloat(width)
-            let h = CGFloat(bounds.maxY - bounds.minY + 1) / CGFloat(height)
+            let x = CGFloat(component.minX) / CGFloat(width)
+            let y = 1 - CGFloat(component.maxY + 1) / CGFloat(height)
+            let w = CGFloat(component.maxX - component.minX + 1) / CGFloat(width)
+            let h = CGFloat(component.maxY - component.minY + 1) / CGFloat(height)
 
-            // Confidence на основе количества пикселей
-            let confidence = min(1.0, Float(count) / Float(totalPixels) * 20.0)
+            // Hard-label segmentation exposes no probability/logits; this geometric support is not calibrated model confidence.
+            let confidence = min(1.0, Float(component.count) / Float(totalPixels) * 20.0)
 
             let detection = DETRDetection(
                 boundingBox: CGRect(x: x, y: y, width: w, height: h),
@@ -212,16 +270,15 @@ final class DETRDetector {
                 confidence: confidence
             )
 
-            detections.append(detection)
-
+            #if DEBUG
             if CameraLog.detr {
                 os_log("  ✓ %{public}@ pixels=%d conf=%.2f bbox=(%.2f,%.2f,%.2f,%.2f)",
-                       log: self.log, type: .debug,
-                       labels[classId], count, confidence, x, y, w, h)
+                       log: extractionLog, type: .debug,
+                       labels[classId], component.count, confidence, x, y, w, h)
             }
-        }
+            #endif
 
-        // Сортируем по confidence
-        return detections.sorted { $0.confidence > $1.confidence }
+            return detection
+        }
     }
 }

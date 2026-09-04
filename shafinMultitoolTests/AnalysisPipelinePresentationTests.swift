@@ -1,4 +1,5 @@
 import XCTest
+import CoreMedia
 import CoreGraphics
 import CoreVideo
 import ImageIO
@@ -3832,6 +3833,594 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         }
     }
 
+    func testSpatialLiveHintsRequireThreeFramesForProductionAndDemo() async {
+        let region = NormalizedRect(x: 0.22, y: 0.18, width: 0.30, height: 0.48)
+        let base = Date(timeIntervalSince1970: 1_768_500_600)
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+
+        for index in 0..<3 {
+            let frameId = "temporal-production-\(index + 1)"
+            let capturedAt = base.addingTimeInterval(Double(index) * 0.10)
+            await publishTemporalFrame(
+                pipeline: pipeline,
+                frameId: frameId,
+                capturedAt: capturedAt,
+                snapshot: makeDemoLiveSnapshot(
+                    frameId: frameId,
+                    capturedAt: capturedAt,
+                    subjectSignals: .init(
+                        faceDetected: true,
+                        personDetected: true,
+                        personCount: 1,
+                        faceRegion: region,
+                        primaryCandidateRegion: region,
+                        primaryCandidateConfidence: 0.90
+                    ),
+                    objects: .init(totalCount: 1, topKLabels: ["person"])
+                ),
+                semantics: makeDemoSemantics(
+                    frameId: frameId,
+                    primarySubject: .init(kind: .face, region: region, confidence: 0.90),
+                    sceneType: .singleCharacterMedium
+                ),
+                actionType: .moveFrameRight
+            )
+            await MainActor.run {
+                if index < 2 {
+                    XCTAssertNil(pipeline.currentLiveHint)
+                } else {
+                    XCTAssertEqual(pipeline.currentLiveHint?.actionType, .moveFrameRight)
+                }
+            }
+        }
+
+        let demoPipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        await MainActor.run { demoPipeline.setCameraDemoSceneMode(.object) }
+        let objectRegion = NormalizedRect(x: 0.01, y: 0.20, width: 0.20, height: 0.40)
+        for index in 0..<3 {
+            let frameId = "temporal-demo-\(index + 1)"
+            let capturedAt = base.addingTimeInterval(1 + Double(index) * 0.10)
+            await publishTemporalFrame(
+                pipeline: demoPipeline,
+                frameId: frameId,
+                capturedAt: capturedAt,
+                snapshot: makeDemoLiveSnapshot(
+                    frameId: frameId,
+                    capturedAt: capturedAt,
+                    subjectSignals: .init(
+                        faceDetected: false,
+                        personDetected: false,
+                        personCount: 0,
+                        topObjectLabel: "cup",
+                        topObjectConfidence: 0.90,
+                        topObjectRegion: objectRegion,
+                        primaryCandidateRegion: objectRegion,
+                        primaryCandidateConfidence: 0.90
+                    ),
+                    objects: .init(totalCount: 1, topKLabels: ["cup"])
+                ),
+                semantics: makeDemoSemantics(
+                    frameId: frameId,
+                    primarySubject: .init(kind: .object, label: "cup", region: objectRegion, confidence: 0.90),
+                    sceneType: .objectInsert
+                ),
+                actionType: .moveFrameRight
+            )
+            await MainActor.run {
+                if index < 2 {
+                    XCTAssertNil(demoPipeline.currentLiveHint)
+                } else {
+                    XCTAssertEqual(demoPipeline.currentLiveHint?.actionType, .moveFrameRight)
+                }
+            }
+        }
+    }
+
+    func testSpatialConfirmationResetsOnDuplicateDecreasingTimestampAndLargeGap() async {
+        let region = NormalizedRect(x: 0.22, y: 0.18, width: 0.30, height: 0.48)
+        let base = Date(timeIntervalSince1970: 1_768_500_610)
+
+        let duplicatePipeline = AnalysisPipeline(reasoningProvider: nil)
+        await publishTemporalSpatialFrame(pipeline: duplicatePipeline, frameId: "duplicate-1", capturedAt: base, region: region)
+        await publishTemporalSpatialFrame(pipeline: duplicatePipeline, frameId: "duplicate-2", capturedAt: base, region: region)
+        await publishTemporalSpatialFrame(pipeline: duplicatePipeline, frameId: "duplicate-3", capturedAt: base.addingTimeInterval(0.10), region: region)
+        await MainActor.run { XCTAssertNil(duplicatePipeline.currentLiveHint) }
+        await publishTemporalSpatialFrame(pipeline: duplicatePipeline, frameId: "duplicate-4", capturedAt: base.addingTimeInterval(0.20), region: region)
+        await MainActor.run { XCTAssertEqual(duplicatePipeline.currentLiveHint?.actionType, .moveFrameRight) }
+
+        let decreasingPipeline = AnalysisPipeline(reasoningProvider: nil)
+        await publishTemporalSpatialFrame(pipeline: decreasingPipeline, frameId: "decreasing-1", capturedAt: base, region: region)
+        await publishTemporalSpatialFrame(pipeline: decreasingPipeline, frameId: "decreasing-2", capturedAt: base.addingTimeInterval(0.10), region: region)
+        await publishTemporalSpatialFrame(pipeline: decreasingPipeline, frameId: "decreasing-3", capturedAt: base.addingTimeInterval(0.05), region: region)
+        await publishTemporalSpatialFrame(pipeline: decreasingPipeline, frameId: "decreasing-4", capturedAt: base.addingTimeInterval(0.15), region: region)
+        await MainActor.run { XCTAssertNil(decreasingPipeline.currentLiveHint) }
+        await publishTemporalSpatialFrame(pipeline: decreasingPipeline, frameId: "decreasing-5", capturedAt: base.addingTimeInterval(0.25), region: region)
+        await MainActor.run { XCTAssertEqual(decreasingPipeline.currentLiveHint?.actionType, .moveFrameRight) }
+
+        let gapPipeline = AnalysisPipeline(reasoningProvider: nil)
+        await publishTemporalSpatialFrame(pipeline: gapPipeline, frameId: "gap-1", capturedAt: base, region: region)
+        await publishTemporalSpatialFrame(pipeline: gapPipeline, frameId: "gap-2", capturedAt: base.addingTimeInterval(0.30), region: region)
+        await publishTemporalSpatialFrame(pipeline: gapPipeline, frameId: "gap-3", capturedAt: base.addingTimeInterval(0.40), region: region)
+        await MainActor.run { XCTAssertNil(gapPipeline.currentLiveHint) }
+        await publishTemporalSpatialFrame(pipeline: gapPipeline, frameId: "gap-4", capturedAt: base.addingTimeInterval(0.50), region: region)
+        await MainActor.run { XCTAssertEqual(gapPipeline.currentLiveHint?.actionType, .moveFrameRight) }
+    }
+
+    func testSpatialConfirmationResetsAcrossLifecycleGeneration() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let region = NormalizedRect(x: 0.22, y: 0.18, width: 0.30, height: 0.48)
+        let base = Date(timeIntervalSince1970: 1_768_500_620)
+        await publishTemporalSpatialFrame(pipeline: pipeline, frameId: "lifecycle-1", capturedAt: base, region: region)
+        await publishTemporalSpatialFrame(pipeline: pipeline, frameId: "lifecycle-2", capturedAt: base.addingTimeInterval(0.10), region: region)
+
+        await pipeline.releaseAndWait()
+
+        await publishTemporalSpatialFrame(pipeline: pipeline, frameId: "lifecycle-3", capturedAt: base.addingTimeInterval(0.20), region: region)
+        await publishTemporalSpatialFrame(pipeline: pipeline, frameId: "lifecycle-4", capturedAt: base.addingTimeInterval(0.30), region: region)
+        await MainActor.run { XCTAssertNil(pipeline.currentLiveHint) }
+        await publishTemporalSpatialFrame(pipeline: pipeline, frameId: "lifecycle-5", capturedAt: base.addingTimeInterval(0.40), region: region)
+        await MainActor.run { XCTAssertEqual(pipeline.currentLiveHint?.actionType, .moveFrameRight) }
+    }
+
+    func testTwoUnconfirmedSpatialEvaluationsPreserveExistingNonspatialHint() async {
+        let region = NormalizedRect(x: 0.22, y: 0.18, width: 0.30, height: 0.48)
+        let base = Date(timeIntervalSince1970: 1_768_500_630)
+        let frameId = "temporal-nonspatial"
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            capturedAt: base,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: region,
+                primaryCandidateRegion: region,
+                primaryCandidateConfidence: 0.90
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"])
+        )
+        let semantics = makeDemoSemantics(
+            frameId: frameId,
+            primarySubject: .init(kind: .face, region: region, confidence: 0.90),
+            sceneType: .singleCharacterMedium
+        )
+        await MainActor.run {
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: makeCritique(frameId: frameId, verdict: .mixed),
+                plan: makeDemoNoChangePlan(frameId: frameId),
+                semantics: semantics,
+                legacySuggestion: Suggestion(
+                    text: "Добавь мягкий свет спереди.",
+                    priority: .important,
+                    type: .lighting,
+                    ttl: 4,
+                    createdAt: base
+                ),
+                structuredAvailable: false,
+                now: base
+            )
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .improveFrontLight)
+        }
+
+        await publishTemporalSpatialFrame(pipeline: pipeline, frameId: "temporal-spatial-1", capturedAt: base.addingTimeInterval(0.10), region: region)
+        await publishTemporalSpatialFrame(pipeline: pipeline, frameId: "temporal-spatial-2", capturedAt: base.addingTimeInterval(0.20), region: region)
+        await MainActor.run { XCTAssertEqual(pipeline.currentLiveHint?.actionType, .improveFrontLight) }
+    }
+
+    func testTechnicalLiveHintsRequireThreeQualifiedStillFramesAndResetOnIssueOrActionChange() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let base = Date(timeIntervalSince1970: 1_768_500_640)
+
+        for index in 0..<2 {
+            let frameId = "technical-confirmation-\(index + 1)"
+            let capturedAt = base.addingTimeInterval(Double(index) * 0.10)
+            await applyTechnicalHint(
+                pipeline: pipeline,
+                frameId: frameId,
+                capturedAt: capturedAt,
+                issue: "overexposure",
+                actionId: "reduce_exposure"
+            )
+            await MainActor.run { XCTAssertNil(pipeline.currentLiveHint) }
+        }
+
+        await applyTechnicalHint(
+            pipeline: pipeline,
+            frameId: "technical-action-change",
+            capturedAt: base.addingTimeInterval(0.20),
+            issue: "overexposure",
+            actionId: "increase_exposure"
+        )
+        await MainActor.run { XCTAssertNil(pipeline.currentLiveHint) }
+
+        await applyTechnicalHint(
+            pipeline: pipeline,
+            frameId: "technical-action-2",
+            capturedAt: base.addingTimeInterval(0.30),
+            issue: "overexposure",
+            actionId: "increase_exposure"
+        )
+        await MainActor.run { XCTAssertNil(pipeline.currentLiveHint) }
+
+        await applyTechnicalHint(
+            pipeline: pipeline,
+            frameId: "technical-action-3",
+            capturedAt: base.addingTimeInterval(0.40),
+            issue: "overexposure",
+            actionId: "increase_exposure"
+        )
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.id, "lh_live_technical_overexposure")
+        }
+
+        let issuePipeline = AnalysisPipeline(reasoningProvider: nil)
+        for index in 0..<2 {
+            await applyTechnicalHint(
+                pipeline: issuePipeline,
+                frameId: "technical-issue-seed-\(index + 1)",
+                capturedAt: base.addingTimeInterval(Double(index) * 0.10),
+                issue: "overexposure"
+            )
+        }
+        for index in 0..<3 {
+            await applyTechnicalHint(
+                pipeline: issuePipeline,
+                frameId: "technical-issue-change-\(index + 1)",
+                capturedAt: base.addingTimeInterval(0.20 + Double(index) * 0.10),
+                issue: "underexposure"
+            )
+            await MainActor.run {
+                if index < 2 {
+                    XCTAssertNil(issuePipeline.currentLiveHint)
+                } else {
+                    XCTAssertEqual(issuePipeline.currentLiveHint?.id, "lh_live_technical_underexposure")
+                }
+            }
+        }
+    }
+
+    func testTechnicalLiveHintsSuppressMovingStaleAndUnqualifiedFrames() async {
+        let base = Date(timeIntervalSince1970: 1_768_500_650)
+        let movingPipeline = AnalysisPipeline(reasoningProvider: nil)
+
+        await applyTechnicalHint(
+            pipeline: movingPipeline,
+            frameId: "technical-moving-seed",
+            capturedAt: base,
+            issue: "lens_smudge"
+        )
+        await applyTechnicalHint(
+            pipeline: movingPipeline,
+            frameId: "technical-moving",
+            capturedAt: base.addingTimeInterval(0.10),
+            issue: "lens_smudge",
+            motionState: .moving
+        )
+        for index in 2...3 {
+            await applyTechnicalHint(
+                pipeline: movingPipeline,
+                frameId: "technical-after-moving-\(index)",
+                capturedAt: base.addingTimeInterval(Double(index) * 0.10),
+                issue: "lens_smudge"
+            )
+            await MainActor.run { XCTAssertNil(movingPipeline.currentLiveHint) }
+        }
+        await applyTechnicalHint(
+            pipeline: movingPipeline,
+            frameId: "technical-after-moving-4",
+            capturedAt: base.addingTimeInterval(0.40),
+            issue: "lens_smudge"
+        )
+        await MainActor.run { XCTAssertNotNil(movingPipeline.currentLiveHint) }
+
+        let stalePipeline = AnalysisPipeline(reasoningProvider: nil)
+        await applyTechnicalHint(
+            pipeline: stalePipeline,
+            frameId: "technical-stale",
+            capturedAt: base,
+            issue: "defocus",
+            visionAvailable: false
+        )
+        await MainActor.run { XCTAssertNil(stalePipeline.currentLiveHint) }
+        for index in 1...3 {
+            await applyTechnicalHint(
+                pipeline: stalePipeline,
+                frameId: "technical-fresh-\(index)",
+                capturedAt: base.addingTimeInterval(0.30 + Double(index) * 0.10),
+                issue: "defocus",
+                visionAvailable: false
+            )
+            await MainActor.run {
+                if index < 3 {
+                    XCTAssertNil(stalePipeline.currentLiveHint)
+                } else {
+                    XCTAssertNotNil(stalePipeline.currentLiveHint)
+                }
+            }
+        }
+    }
+
+    func testTechnicalLiveHintsResetWhenProductionMotionStarts() async {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil,
+            liveHybridFusionEnabled: false
+        )
+        let base = Date(timeIntervalSince1970: 1_768_500_660)
+
+        // Warm the real high-frame path before sending the moving frame so the
+        // evidence freshness guard does not include first-use model startup.
+        pipeline.ingestHigh(
+            context: makeProductionFrameContext(
+                timestamp: 1,
+                motionState: .still,
+                capturedAt: Date()
+            )
+        )
+        await pipeline.testingDrainHighQueue()
+        await MainActor.run { }
+
+        for index in 0..<2 {
+            await applyTechnicalHint(
+                pipeline: pipeline,
+                frameId: "production-motion-seed-\(index + 1)",
+                capturedAt: base.addingTimeInterval(Double(index) * 0.10),
+                issue: "defocus"
+            )
+        }
+
+        pipeline.ingestHigh(
+            context: makeProductionFrameContext(
+                timestamp: 2,
+                motionState: .moving,
+                isStable: false,
+                shakeLevel: 0.90,
+                capturedAt: Date()
+            )
+        )
+        await pipeline.testingDrainHighQueue()
+        await MainActor.run { }
+
+        await applyTechnicalHint(
+            pipeline: pipeline,
+            frameId: "production-motion-after-1",
+            capturedAt: base.addingTimeInterval(0.20),
+            issue: "defocus"
+        )
+        await MainActor.run { XCTAssertNil(pipeline.currentLiveHint) }
+        await applyTechnicalHint(
+            pipeline: pipeline,
+            frameId: "production-motion-after-2",
+            capturedAt: base.addingTimeInterval(0.30),
+            issue: "defocus"
+        )
+        await MainActor.run { XCTAssertNil(pipeline.currentLiveHint) }
+        await applyTechnicalHint(
+            pipeline: pipeline,
+            frameId: "production-motion-after-3",
+            capturedAt: base.addingTimeInterval(0.40),
+            issue: "defocus"
+        )
+        await MainActor.run {
+            XCTAssertEqual(pipeline.currentLiveHint?.id, "lh_live_technical_defocus")
+        }
+    }
+
+    func testTechnicalLiveHintsResetWhenLivePresentationClears() async {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let base = Date(timeIntervalSince1970: 1_768_500_670)
+
+        for index in 0..<2 {
+            await applyTechnicalHint(
+                pipeline: pipeline,
+                frameId: "clear-seed-\(index + 1)",
+                capturedAt: base.addingTimeInterval(Double(index) * 0.10),
+                issue: "lens_smudge"
+            )
+        }
+
+        await MainActor.run {
+            pipeline.clearLivePresentationState()
+        }
+
+        for index in 0..<3 {
+            await applyTechnicalHint(
+                pipeline: pipeline,
+                frameId: "clear-after-\(index + 1)",
+                capturedAt: base.addingTimeInterval(0.20 + Double(index) * 0.10),
+                issue: "lens_smudge"
+            )
+            await MainActor.run {
+                if index < 2 {
+                    XCTAssertNil(pipeline.currentLiveHint)
+                } else {
+                    XCTAssertEqual(pipeline.currentLiveHint?.id, "lh_live_technical_lens_smudge")
+                }
+            }
+        }
+    }
+
+    private func publishTemporalSpatialFrame(pipeline: AnalysisPipeline,
+                                             frameId: String,
+                                             capturedAt: Date,
+                                             region: NormalizedRect) async {
+        await publishTemporalFrame(
+            pipeline: pipeline,
+            frameId: frameId,
+            capturedAt: capturedAt,
+            snapshot: makeDemoLiveSnapshot(
+                frameId: frameId,
+                capturedAt: capturedAt,
+                subjectSignals: .init(
+                    faceDetected: true,
+                    personDetected: true,
+                    personCount: 1,
+                    faceRegion: region,
+                    primaryCandidateRegion: region,
+                    primaryCandidateConfidence: 0.90
+                ),
+                objects: .init(totalCount: 1, topKLabels: ["person"])
+            ),
+            semantics: makeDemoSemantics(
+                frameId: frameId,
+                primarySubject: .init(kind: .face, region: region, confidence: 0.90),
+                sceneType: .singleCharacterMedium
+            ),
+            actionType: .moveFrameRight
+        )
+    }
+
+    private func publishTemporalFrame(pipeline: AnalysisPipeline,
+                                      frameId: String,
+                                      capturedAt: Date,
+                                      snapshot: FrameFeatureSnapshot,
+                                      semantics: SceneSemanticsReport,
+                                      actionType: ActionTypeV1) async {
+        let (critique, plan) = makeTemporalCritiqueAndPlan(frameId: frameId, actionType: actionType, region: semantics.primarySubject.region)
+        await MainActor.run {
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: critique,
+                plan: plan,
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: capturedAt
+            )
+        }
+    }
+
+    private func applyTechnicalHint(pipeline: AnalysisPipeline,
+                                    frameId: String,
+                                    capturedAt: Date,
+                                    issue: String,
+                                    actionId: String? = nil,
+                                    motionState: CameraAnalysisMotionState = .still,
+                                    visionAvailable: Bool = true) async {
+        let region = NormalizedRect(x: 0.24, y: 0.18, width: 0.28, height: 0.46)
+        let snapshot = makeDemoLiveSnapshot(
+            frameId: frameId,
+            capturedAt: capturedAt,
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: region,
+                primaryCandidateRegion: region,
+                primaryCandidateConfidence: 0.90
+            ),
+            objects: .init(totalCount: 1, topKLabels: ["person"]),
+            motionState: motionState,
+            visionAvailable: visionAvailable
+        )
+        let semantics = makeDemoSemantics(
+            frameId: frameId,
+            primarySubject: .init(kind: .face, region: region, confidence: 0.90),
+            sceneType: .singleCharacterMedium
+        )
+        let candidate = LiveHintPresentation(
+            id: "lh_live_technical_\(issue)",
+            frameId: frameId,
+            text: "Техническая подсказка.",
+            confidence: 0.90,
+            actionType: nil,
+            actionId: actionId,
+            linkedIssueIds: [],
+            summaryId: "technical_quality_\(issue)",
+            traceRootIds: ["technical_quality_\(issue)"],
+            targetRegion: nil,
+            overlayHint: nil,
+            isFallback: false,
+            expandedVerdict: nil
+        )
+        await MainActor.run {
+            pipeline.testingApplyLiveHintCandidate(
+                candidate,
+                snapshot: snapshot,
+                semantics: semantics,
+                now: capturedAt
+            )
+        }
+    }
+
+    private func makeProductionFrameContext(timestamp: Double,
+                                            motionState: MotionState,
+                                            isStable: Bool = true,
+                                            shakeLevel: Double = 0.05,
+                                            capturedAt: Date) -> FrameContext {
+        let pixelBuffer = makeFilledPixelBuffer(width: 96, height: 96) { x, y in
+            let value = UInt8((x * 31 + y * 17) % 251)
+            return (value, value, value)
+        }
+        return FrameContext(
+            pixelBuffer: pixelBuffer,
+            timestamp: CMTimeMakeWithSeconds(timestamp, preferredTimescale: 600),
+            orientation: .up,
+            isStable: isStable,
+            shakeLevel: shakeLevel,
+            motionState: motionState,
+            capturedAt: capturedAt
+        )
+    }
+
+    private func makeTemporalCritiqueAndPlan(frameId: String,
+                                             actionType: ActionTypeV1,
+                                             region: NormalizedRect?) -> (CritiqueReport, RecommendationPlan) {
+        let issueId = "temporal_issue_\(frameId)"
+        let issue = FrameIssue(
+            id: issueId,
+            type: .insufficientLookSpace,
+            severity: 0.96,
+            confidence: 0.96,
+            rationale: "Временная проверка композиционной рекомендации.",
+            evidence: [EvidenceRef(source: .semantics, key: "temporal", value: "eligible", confidence: 0.96)],
+            affectedRegion: region,
+            suggestedFixTypes: [.reframing]
+        )
+        let critique = CritiqueReport(
+            frameId: frameId,
+            mode: .live,
+            verdict: .needsFix,
+            verdictConfidence: 0.96,
+            strengths: [],
+            issues: [issue],
+            summary: .init(
+                id: "temporal_summary_\(frameId)",
+                shortVerdict: "Кадр требует проверки.",
+                whyGood: nil,
+                whyProblematic: issue.rationale
+            ),
+            traceRefs: ["temporal_trace_\(frameId)"],
+            fallbackUsed: false
+        )
+        let action = RecommendationAction(
+            id: "temporal_action_\(frameId)",
+            actionType: actionType,
+            priority: 1,
+            targetRegion: region,
+            linkedIssueIds: [issueId],
+            expectedOutcome: "Временная проверка.",
+            guardrail: .init(requiresStillCamera: true, minConfidence: 0.90, suppressWhenMoving: true),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: frameId,
+            mode: .live,
+            inputVerdict: .needsFix,
+            primaryAction: action,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.96
+        )
+        return (critique, plan)
+    }
+
     private func publishDemoFrame(pipeline: AnalysisPipeline,
                                   frameId: String,
                                   snapshot: FrameFeatureSnapshot,
@@ -3852,19 +4441,22 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     }
 
     private func makeDemoLiveSnapshot(frameId: String,
+                                      capturedAt: Date = Date(timeIntervalSince1970: 1_768_500_000),
                                       subjectSignals: FrameFeatureSnapshot.SubjectSignals,
                                       lighting: FrameFeatureSnapshot.LightingFeatures = .init(
                                           exposureBiasHint: -0.05,
                                           backlightIndex: 0.05,
                                           keyToFillRatio: nil
                                       ),
-                                      objects: FrameFeatureSnapshot.ObjectDetectionsSummary) -> FrameFeatureSnapshot {
+                                      objects: FrameFeatureSnapshot.ObjectDetectionsSummary,
+                                      motionState: CameraAnalysisMotionState = .still,
+                                      visionAvailable: Bool = true) -> FrameFeatureSnapshot {
         FrameFeatureSnapshot(
             frameId: frameId,
             mode: .live,
-            capturedAt: Date(timeIntervalSince1970: 1_768_500_000),
+            capturedAt: capturedAt,
             sources: .init(
-                vision: .init(available: true, freshnessMs: 40, confidence: 0.86),
+                vision: .init(available: visionAvailable, freshnessMs: visionAvailable ? 40 : nil, confidence: visionAvailable ? 0.86 : nil),
                 horizon: .init(available: true, freshnessMs: 45, confidence: 0.76),
                 lighting: .init(available: true, freshnessMs: 48, confidence: 0.78),
                 detr: .init(available: true, freshnessMs: 280, confidence: 0.80),
@@ -3880,7 +4472,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             subjectSignals: subjectSignals,
             horizon: .init(angleDegrees: 0.4, confidence: 0.74),
             lighting: lighting,
-            motion: .init(state: .still, shakeLevel: 0.03),
+            motion: .init(state: motionState, shakeLevel: motionState == .still ? 0.03 : 0.90),
             aesthetics: .init(score: 0.78, scoreConfidence: 0.70),
             objects: objects,
             technicalFlags: []

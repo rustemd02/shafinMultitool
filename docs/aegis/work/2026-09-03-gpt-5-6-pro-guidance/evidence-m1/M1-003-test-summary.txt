@@ -1,0 +1,19 @@
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testConcurrentSessionFailuresPublishOnlyOneClaim]' passed (0.017 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testConcurrentStartsInvokeRunnerOnceAndFinishRunning]' passed (0.003 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testConcurrentStopsInvokeRunnerOnceAndFinishIdleConfigured]' passed (0.002 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testConfigurationFailureNeverStartsRunnerAndPublishesTypedError]' passed (0.009 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testExactSessionInterruptionAndRuntimeNotificationsFailOnceAndCloseFrameGate]' passed (0.006 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testFrameDeliveryGateOnlyEnablesAfterStartAndFencesStopAndRelease]' passed (0.003 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testNotificationWinsFinalStartTransition]' passed (0.003 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testOrientationChangesInPlaceWithoutLifecycleReset]' passed (0.002 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testOrientationMappingKeepsInterfaceCaptureAndImageSemanticsTogether]' passed (0.001 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testOrientationSetBeforeStartIsAppliedWhenConfigurationIsCreated]' passed (0.003 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testPhysicalLensInventoryHasOneTruthfulTelephotoDescriptor]' passed (0.001 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testReleaseIsIdempotentAndStartAfterReleaseReconfiguresOnce]' passed (0.003 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testSequentialDoubleStopStopsRunnerOnceAndStaysIdle]' passed (0.002 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testSessionGenerationBumpsOnStopAndReleaseOnly]' passed (0.002 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testStaleStartCompletionCannotOverwriteNewerStopStateOrError]' passed (0.065 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testStartStopStartUsesOneConfigurationAndTwoStarts]' passed (0.003 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testStopDuringGatedStartFinishesIdleWithoutRevival]' passed (0.003 seconds).
+Test Case '-[shafinMultitoolTests.CameraManagerLifecycleTests testVideoDataConnectionConfiguratorRequestsNativeRotationAndNoMirroring]' passed (0.001 seconds).
+Executed 18 tests, 0 failures (CameraManagerLifecycleTests, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-003.xcresult)

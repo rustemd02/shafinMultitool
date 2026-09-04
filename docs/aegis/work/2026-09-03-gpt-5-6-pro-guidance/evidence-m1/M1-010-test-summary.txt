@@ -1,0 +1,11 @@
+Executed 53 tests, 0 failures (RecordingLifecycleTransitionTests 6 + SerializedMediaRecorderTests 23 + SceneRecordingControllerTests 24, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-010.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/RecordingLifecycleTransitionTests -only-testing:shafinMultitoolTests/SerializedMediaRecorderTests -only-testing:shafinMultitoolTests/SceneRecordingControllerTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-010.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+Attempts:
+1. Compile FAIL: await inside XCTAssert autoclosure -> hoisted reads into snapshot locals.
+2. Runner crash/timeout on all SerializedMediaRecorder tests: DEBUG table assert caught missing canonical edge ready->recording (recorder start). Spec + table were consistently wrong together; matrix test passed while hiding the gap. Fixed table + test adjacency + contract doc. DEBUG assert did its M1-010 job: deterministic rejection of an illegal-table transition.
+3. Interim: sim found Shutdown between runs (launch-failure cascade on clones); rebooted, merged into attempt-2 fix.
+
+Result: table fix -> TEST SUCCEEDED 53/53.

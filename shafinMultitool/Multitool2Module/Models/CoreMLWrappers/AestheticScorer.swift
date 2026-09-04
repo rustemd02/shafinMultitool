@@ -33,29 +33,40 @@ final class AestheticScorer {
         }
 
         queue.async {
-            let request = VNCoreMLRequest(model: model) { request, _ in
-                if let distribution = (request.results as? [VNCoreMLFeatureValueObservation])?.first?.featureValue.multiArrayValue {
-                    let expected = self.expectedScore(from: distribution)
-                    completion(expected)
-                } else if let scores = request.results as? [VNClassificationObservation],
-                          let best = scores.first {
-                    completion(Double(best.confidence) * 10.0)
-                } else {
-                    completion(nil)
+            var didFinish = false
+            let finish: (Double?) -> Void = { score in
+                guard !didFinish else { return }
+                didFinish = true
+                completion(score)
+            }
+
+            let request = VNCoreMLRequest(model: model) { request, error in
+                guard error == nil else {
+                    finish(nil)
+                    return
                 }
+                guard let distribution = (request.results as? [VNCoreMLFeatureValueObservation])?.first?.featureValue.multiArrayValue else {
+                    finish(nil)
+                    return
+                }
+                finish(self.expectedScore(from: distribution))
             }
             request.imageCropAndScaleOption = .scaleFill
 
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
                                                 orientation: orientation,
                                                 options: [:])
-            try? handler.perform([request])
+            do {
+                try handler.perform([request])
+            } catch {
+                finish(nil)
+            }
         }
     }
 
-    private func expectedScore(from distribution: MLMultiArray) -> Double {
+    private func expectedScore(from distribution: MLMultiArray) -> Double? {
         let count = distribution.count
-        guard count == 10 else { return 0 }
+        guard count == 10 else { return nil }
 
         var expected: Double = 0
         switch distribution.dataType {
@@ -79,5 +90,3 @@ final class AestheticScorer {
         return expected
     }
 }
-
-

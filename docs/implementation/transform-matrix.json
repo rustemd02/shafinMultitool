@@ -1,0 +1,106 @@
+{
+  "contractVersion": 1,
+  "authority": {
+    "spec": "docs/implementation/ux/camera-coach-state-spec.md (CC-008)",
+    "task": "M2-003 CameraGeometryOwner",
+    "convention": "sensor normalized (landscape-native, top-left, y-down) -> display normalized (top-left, y-down); mirroring flips display x after rotation (tx_mirrored = 1 - tx); aspect-fill composes via M2-002 AspectFillTransform"
+  },
+  "transforms": [
+    {
+      "orientation": "portrait",
+      "isMirrored": false,
+      "matrix": {
+        "a": 0,
+        "b": 1,
+        "tx": 0,
+        "c": -1,
+        "d": 0,
+        "ty": 1
+      }
+    },
+    {
+      "orientation": "portrait",
+      "isMirrored": true,
+      "matrix": {
+        "a": 0,
+        "b": -1,
+        "tx": 1,
+        "c": -1,
+        "d": 0,
+        "ty": 1
+      }
+    },
+    {
+      "orientation": "portraitUpsideDown",
+      "isMirrored": false,
+      "matrix": {
+        "a": 0,
+        "b": -1,
+        "tx": 1,
+        "c": 1,
+        "d": 0,
+        "ty": 0
+      }
+    },
+    {
+      "orientation": "portraitUpsideDown",
+      "isMirrored": true,
+      "matrix": {
+        "a": 0,
+        "b": 1,
+        "tx": 0,
+        "c": 1,
+        "d": 0,
+        "ty": 0
+      }
+    },
+    {
+      "orientation": "landscapeLeft",
+      "isMirrored": false,
+      "matrix": {
+        "a": -1,
+        "b": 0,
+        "tx": 1,
+        "c": 0,
+        "d": -1,
+        "ty": 1
+      }
+    },
+    {
+      "orientation": "landscapeLeft",
+      "isMirrored": true,
+      "matrix": {
+        "a": 1,
+        "b": 0,
+        "tx": 0,
+        "c": 0,
+        "d": -1,
+        "ty": 1
+      }
+    },
+    {
+      "orientation": "landscapeRight",
+      "isMirrored": false,
+      "matrix": {
+        "a": 1,
+        "b": 0,
+        "tx": 0,
+        "c": 0,
+        "d": 1,
+        "ty": 0
+      }
+    },
+    {
+      "orientation": "landscapeRight",
+      "isMirrored": true,
+      "matrix": {
+        "a": -1,
+        "b": 0,
+        "tx": 1,
+        "c": 0,
+        "d": 1,
+        "ty": 0
+      }
+    }
+  ]
+}

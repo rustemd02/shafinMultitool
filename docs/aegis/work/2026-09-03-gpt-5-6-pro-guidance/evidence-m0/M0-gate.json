@@ -1,0 +1,29 @@
+{
+  "gate": "M0-GATE",
+  "verdict": "PASS",
+  "utc": "2026-09-03",
+  "tasks": {
+    "M0-001": "PASS",
+    "M0-002": "PASS",
+    "M0-003": "PASS",
+    "M0-004": "PASS",
+    "M0-005": "PASS",
+    "M0-006": "PASS",
+    "M0-007": "PASS",
+    "M0-008": "PASS",
+    "M0-009": "PASS",
+    "M0-010": "PASS",
+    "M0-011": "PASS",
+    "M0-012": "PASS",
+    "M0-013": "PASS",
+    "M0-014": "PASS"
+  },
+  "unknown_paths": 0,
+  "deviations": [
+    "D1 evidence-m0 path",
+    "D2 bundle markers as index",
+    "D3 read-only, defects recorded not fixed"
+  ],
+  "porcelain_v2_sha256": "2dc8c226f608acb86cd2c864ff62722943982f30e3f5c56bc9f69eaaf9c92a90",
+  "notes": "No production source edited. No build/test/release claim relies solely on handoff. M1 dependency-ready."
+}

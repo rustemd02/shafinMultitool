@@ -3,29 +3,85 @@ import XCTest
 @testable import shafinMultitool
 
 @MainActor
+private final class LensHapticRecorder: SETHapticPerforming {
+    private(set) var events: [SETHapticEvent] = []
+
+    func perform(_ event: SETHapticEvent) {
+        events.append(event)
+    }
+}
+
+@MainActor
 final class CameraViewModelLensSwitchTests: XCTestCase {
+
+    func testLensSelectionHapticOnlyFiresAfterSuccessfulPhysicalChange() async {
+        let gate = LensSwitchTestGate()
+        let haptic = LensHapticRecorder()
+        let fixture = makeFixture(
+            lensSwitchOperation: { lens in await gate.wait(for: lens) },
+            lensSelectionHaptic: haptic
+        )
+        fixture.viewModel.availableLenses = [.wide, .telephoto]
+
+        fixture.viewModel.switchLens(to: .telephoto)
+        guard let successRequest = await request(from: gate, count: 1) else {
+            await fixture.viewModel.releaseAndWait()
+            return
+        }
+        await gate.resolve(successRequest.id, with: .success(activeLens: .telephoto))
+        let successCompleted = await completed(successRequest, on: gate)
+        XCTAssertTrue(successCompleted)
+        XCTAssertEqual(haptic.events, [.selection])
+
+        fixture.viewModel.switchLens(to: .telephoto)
+        guard let noOpRequest = await request(from: gate, count: 2) else {
+            await fixture.viewModel.releaseAndWait()
+            return
+        }
+        await gate.resolve(noOpRequest.id, with: .noOp(activeLens: .telephoto))
+        let noOpCompleted = await completed(noOpRequest, on: gate)
+        XCTAssertTrue(noOpCompleted)
+        XCTAssertEqual(haptic.events, [.selection])
+
+        fixture.viewModel.switchLens(to: .wide)
+        guard let failureRequest = await request(from: gate, count: 3) else {
+            await fixture.viewModel.releaseAndWait()
+            return
+        }
+        await gate.resolve(
+            failureRequest.id,
+            with: .failure(requestedLens: .wide,
+                           lastKnownActiveLens: .telephoto,
+                           reason: .replacementRejected)
+        )
+        let failureCompleted = await completed(failureRequest, on: gate)
+        XCTAssertTrue(failureCompleted)
+        XCTAssertEqual(haptic.events, [.selection])
+
+        await fixture.viewModel.releaseAndWait()
+    }
 
     func testRequestedLensWaitsForConfirmedSuccess() async {
         let gate = LensSwitchTestGate()
         let fixture = makeFixture { lens in
             await gate.wait(for: lens)
         }
-        fixture.viewModel.availableLenses = [.wide, .telephoto2x]
+        fixture.viewModel.availableLenses = [.wide, .telephoto]
 
-        fixture.viewModel.switchLens(to: .telephoto2x)
+        fixture.viewModel.switchLens(to: .telephoto)
         XCTAssertEqual(fixture.viewModel.currentLens, .wide)
 
         guard let request = await request(from: gate, count: 1) else {
             await fixture.viewModel.releaseAndWait()
             return
         }
-        XCTAssertEqual(request.lens, .telephoto2x)
+        XCTAssertEqual(request.lens, .telephoto)
         XCTAssertEqual(fixture.viewModel.currentLens, .wide)
 
-        await gate.resolve(request.id, with: .success(activeLens: .telephoto2x))
+        await gate.resolve(request.id, with: .success(activeLens: .telephoto))
         let didComplete = await completed(request, on: gate)
         XCTAssertTrue(didComplete)
-        let didPublish = await waitUntil { fixture.viewModel.currentLens == .telephoto2x }
+        let didPublish = await waitUntil { fixture.viewModel.currentLens == .telephoto }
         XCTAssertTrue(didPublish)
 
         await fixture.viewModel.releaseAndWait()
@@ -36,16 +92,16 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         let fixture = makeFixture { lens in
             await gate.wait(for: lens)
         }
-        fixture.viewModel.availableLenses = [.wide, .telephoto2x]
+        fixture.viewModel.availableLenses = [.wide, .telephoto]
 
-        fixture.viewModel.switchLens(to: .telephoto2x)
+        fixture.viewModel.switchLens(to: .telephoto)
         guard let unavailableRequest = await request(from: gate, count: 1) else {
             await fixture.viewModel.releaseAndWait()
             return
         }
         await gate.resolve(
             unavailableRequest.id,
-            with: .failure(requestedLens: .telephoto2x,
+            with: .failure(requestedLens: .telephoto,
                            lastKnownActiveLens: .wide,
                            reason: .unavailable)
         )
@@ -54,14 +110,14 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         let unavailablePublished = await waitUntil { fixture.viewModel.currentLens == .wide }
         XCTAssertTrue(unavailablePublished)
 
-        fixture.viewModel.switchLens(to: .telephoto2x)
+        fixture.viewModel.switchLens(to: .telephoto)
         guard let rejectedRequest = await request(from: gate, count: 2) else {
             await fixture.viewModel.releaseAndWait()
             return
         }
         await gate.resolve(
             rejectedRequest.id,
-            with: .failure(requestedLens: .telephoto2x,
+            with: .failure(requestedLens: .telephoto,
                            lastKnownActiveLens: .wide,
                            reason: .replacementRejected)
         )
@@ -69,7 +125,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         XCTAssertTrue(rejectedCompleted)
         let rejectedPublished = await waitUntil { fixture.viewModel.currentLens == .wide }
         XCTAssertTrue(rejectedPublished)
-        XCTAssertNotEqual(fixture.viewModel.currentLens, .telephoto2x)
+        XCTAssertNotEqual(fixture.viewModel.currentLens, .telephoto)
 
         await fixture.viewModel.releaseAndWait()
     }
@@ -79,9 +135,9 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         let fixture = makeFixture { lens in
             await gate.wait(for: lens)
         }
-        fixture.viewModel.availableLenses = [.wide, .ultraWide, .telephoto2x]
+        fixture.viewModel.availableLenses = [.wide, .ultraWide, .telephoto]
 
-        fixture.viewModel.switchLens(to: .telephoto2x)
+        fixture.viewModel.switchLens(to: .telephoto)
         guard let olderRequest = await request(from: gate, count: 1) else {
             await fixture.viewModel.releaseAndWait()
             return
@@ -95,7 +151,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
             await fixture.viewModel.releaseAndWait()
             return
         }
-        XCTAssertEqual(olderRequest.lens, .telephoto2x)
+        XCTAssertEqual(olderRequest.lens, .telephoto)
         XCTAssertEqual(newerRequest.lens, .ultraWide)
 
         await gate.resolve(newerRequest.id, with: .success(activeLens: .ultraWide))
@@ -104,7 +160,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         let newerPublished = await waitUntil { fixture.viewModel.currentLens == .ultraWide }
         XCTAssertTrue(newerPublished)
 
-        await gate.resolve(olderRequest.id, with: .success(activeLens: .telephoto2x))
+        await gate.resolve(olderRequest.id, with: .success(activeLens: .telephoto))
         let olderCompleted = await completed(olderRequest, on: gate)
         XCTAssertTrue(olderCompleted)
         let staleIgnored = await waitUntil { fixture.viewModel.currentLens == .ultraWide }
@@ -123,7 +179,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         XCTAssertEqual(fixture.viewModel.currentLens, .wide)
         XCTAssertEqual(fixture.viewModel.availableLenses, [.wide])
 
-        fixture.viewModel.switchLens(to: .telephoto2x)
+        fixture.viewModel.switchLens(to: .telephoto)
         guard let request = await request(from: gate, count: 1) else {
             await fixture.viewModel.releaseAndWait()
             return
@@ -134,7 +190,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         XCTAssertTrue(fixture.viewModel.availableLenses.isEmpty)
         XCTAssertEqual(fixture.viewModel.lifecycleState, .idle)
 
-        await gate.resolve(request.id, with: .success(activeLens: .telephoto2x))
+        await gate.resolve(request.id, with: .success(activeLens: .telephoto))
         let didComplete = await completed(request, on: gate)
         XCTAssertTrue(didComplete)
         let lateResultIgnored = await waitUntil {
@@ -143,7 +199,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
                 && fixture.viewModel.lifecycleState == .idle
         }
         XCTAssertTrue(lateResultIgnored)
-        XCTAssertNotEqual(fixture.viewModel.currentLens, .telephoto2x)
+        XCTAssertNotEqual(fixture.viewModel.currentLens, .telephoto)
     }
 
     func testNoOpPublishesReportedActiveLens() async {
@@ -151,8 +207,8 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         let fixture = makeFixture { lens in
             await gate.wait(for: lens)
         }
-        fixture.viewModel.currentLens = .telephoto2x
-        fixture.viewModel.availableLenses = [.wide, .telephoto2x]
+        fixture.viewModel.currentLens = .telephoto
+        fixture.viewModel.availableLenses = [.wide, .telephoto]
 
         fixture.viewModel.switchLens(to: .wide)
         guard let request = await request(from: gate, count: 1) else {
@@ -160,10 +216,10 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
             return
         }
 
-        await gate.resolve(request.id, with: .noOp(activeLens: .telephoto2x))
+        await gate.resolve(request.id, with: .noOp(activeLens: .telephoto))
         let didComplete = await completed(request, on: gate)
         XCTAssertTrue(didComplete)
-        let didPublish = await waitUntil { fixture.viewModel.currentLens == .telephoto2x }
+        let didPublish = await waitUntil { fixture.viewModel.currentLens == .telephoto }
         XCTAssertTrue(didPublish)
 
         await fixture.viewModel.releaseAndWait()
@@ -177,8 +233,8 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
                             lastKnownActiveLens: nil,
                             reason: .rollbackFailed)
         }
-        fixture.viewModel.currentLens = .telephoto2x
-        fixture.viewModel.availableLenses = [.wide, .telephoto2x]
+        fixture.viewModel.currentLens = .telephoto
+        fixture.viewModel.availableLenses = [.wide, .telephoto]
 
         fixture.viewModel.switchLens(to: .wide)
         let mapped = await waitUntil {
@@ -199,14 +255,20 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
     }
 
     private func makeFixture(
-        lensSwitchOperation: @escaping @Sendable (CameraLens) async -> CameraLensSwitchResult
+        lensSwitchOperation: @escaping @Sendable (CameraLens) async -> CameraLensSwitchResult,
+        lensSelectionHaptic: SETHapticPerforming? = nil
     ) -> CameraViewModelLensSwitchFixture {
-        makeFixture(manager: Self.makeManager(), lensSwitchOperation: lensSwitchOperation)
+        makeFixture(
+            manager: Self.makeManager(),
+            lensSwitchOperation: lensSwitchOperation,
+            lensSelectionHaptic: lensSelectionHaptic
+        )
     }
 
     private func makeFixture(
         manager: CameraManager,
-        lensSwitchOperation: @escaping @Sendable (CameraLens) async -> CameraLensSwitchResult
+        lensSwitchOperation: @escaping @Sendable (CameraLens) async -> CameraLensSwitchResult,
+        lensSelectionHaptic: SETHapticPerforming? = nil
     ) -> CameraViewModelLensSwitchFixture {
         let thermalGovernor = ThermalGovernor(thermalStateProvider: { .nominal },
                                                batteryLevelProvider: { 1.0 })
@@ -221,7 +283,8 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         )
         let viewModel = CameraViewModel(cameraManager: manager,
                                         analysisPipeline: pipeline,
-                                        lensSwitchOperation: lensSwitchOperation)
+                                        lensSwitchOperation: lensSwitchOperation,
+                                        lensSelectionHaptic: lensSelectionHaptic)
         return CameraViewModelLensSwitchFixture(manager: manager,
                                                  pipeline: pipeline,
                                                  viewModel: viewModel)

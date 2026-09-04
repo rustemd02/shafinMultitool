@@ -188,3 +188,570 @@
   backend, analytics, Scene Mode and payment remain untouched.
 
 These records support continued execution. They do not prove App Store readiness, legal redistribution rights, physical-device behavior, external beta quality or completion of the full active goal.
+
+## 2026-08-26 camera interruption/retry evidence
+
+- Target: dedicated iPhone 17e Simulator
+  `1F680A42-CEB3-43E8-9CED-52F874962A62`; iPhone 17 Pro and physical devices
+  were not used.
+- Focused command: `xcodebuild -quiet -workspace shafinMultitool.xcworkspace
+  -scheme shafinMultitool -destination
+  'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62'
+  -derivedDataPath /tmp/shafinMultitool-camera-interruption-races test
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests
+  -only-testing:shafinMultitoolTests/CameraViewModelLifecycleTests
+  CODE_SIGNING_ALLOWED=NO`.
+- Result: exit 0; 27/27 listed tests passed. The run directly includes
+  concurrent failure single-claim, notification-wins-start, stale release
+  waiter identity and superseded-stop/retry cases.
+- Release command: `xcodebuild -quiet -workspace shafinMultitool.xcworkspace
+  -scheme shafinMultitool -configuration Release -destination
+  'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62'
+  -derivedDataPath /tmp/shafinMultitool-camera-interruption-races-release
+  CODE_SIGNING_ALLOWED=NO build`; result exit 0.
+- Fresh Sol / High audit verdict: `ship`; findings none. Residual risk:
+  simulator execution cannot prove physical-device AVFoundation interruption
+  timing.
+
+## 2026-08-26 native REC foundation evidence
+
+- Owned source: `Services/Recording/RecorderContracts.swift`,
+  `SerializedMediaRecorder.swift`, `AppleRecordingAdapters.swift` and
+  `RecordingArtifactStore.swift`; focused owners:
+  `SerializedMediaRecorderTests.swift` and `AppleRecordingAdaptersTests.swift`.
+- Parent focused command: `xcodebuild -quiet -workspace
+  shafinMultitool.xcworkspace -scheme shafinMultitool -destination
+  'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62'
+  -derivedDataPath /tmp/shafin-native-recorder-parent-clock test
+  -only-testing:shafinMultitoolTests/SerializedMediaRecorderTests
+  -only-testing:shafinMultitoolTests/AppleRecordingAdaptersTests
+  CODE_SIGNING_ALLOWED=NO`.
+- Result: exit 0; 40/40 listed tests passed. Coverage includes a real
+  `AVAssetWriter` movie/audio artifact, dropped-versus-failed backpressure,
+  host-clock retiming of every sample timing entry, reentrant capture-queue
+  stop, generation fences, concurrent stop/release and partial-file cleanup.
+- Parent Release command: `xcodebuild -quiet -workspace
+  shafinMultitool.xcworkspace -scheme shafinMultitool -configuration Release
+  -destination
+  'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62'
+  -derivedDataPath /tmp/shafin-native-recorder-parent-clock-release
+  CODE_SIGNING_ALLOWED=NO build`; result exit 0.
+- `git diff --check` passed. Fresh Sol / High audit verdict: `ship`; findings
+  none. SHA-256 hashes of all six reviewed files were identical before and
+  after the review. No Photos request/export was introduced.
+- Boundary: simulator evidence cannot establish physical microphone capture,
+  AR/microphone clock alignment, interruption timing, orientation metadata,
+  thermal behavior or App Store signing. These remain unclaimed.
+
+## 2026-08-26 reachable Scene/AR REC integration evidence
+
+- Parent focused command used exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, a fresh
+  derived-data root `/tmp/shafin-scene-recording-parent-fix2`, and only
+  `SceneRecordingControllerTests`, `SceneWorkspaceTeardownTests`, plus
+  `SceneBundlePipelineTests/testSceneGeneratorARInterruptionRecoveryRequiresPostInterruptionGenerationAndPlane`.
+- XCResult:
+  `/tmp/shafin-scene-recording-parent-fix2/Logs/Test/Test-shafinMultitool-2026.08.26_03-14-56-+0300.xcresult`.
+  Result: 16 passed, 0 failed, 0 skipped on iPhone 17e / iOS Simulator 26.5.
+- Fresh no-sign Release build used the same exact destination and
+  `/tmp/shafin-scene-recording-parent-fix2-release`; result exit 0.
+  `git diff --check` also exited 0. No package-specific Swift Concurrency
+  warnings were introduced; unrelated existing deprecation/resource warnings
+  remain.
+- Final fresh Sol / High verdict: `ship`; findings none. SHA-256 after review:
+  controller `ee95a0d0…`, view model `ed6845d3…`, AR container `d0e6c087…`,
+  legacy shell `7e89e482…`, teardown owner `f916420f…`, controller tests
+  `c7542f8e…`, teardown tests `1a720f41…`, interruption tests `ccfa2787…`,
+  Visual Policy `2e873751…`.
+- Covered: explicit permission denial, honest pixel-buffer dimensions and
+  default FPS, initial-frame ordering, concurrent stop/release, reusable user
+  stop, terminal route release, teardown ordering and post-interruption
+  readiness fencing. Uncovered: physical camera/microphone, A/V sync,
+  orientation metadata, thermal behavior, actual interruption timing, Photos
+  export and composited HUD recording.
+
+## 2026-08-26 truthful Camera Coach live-copy evidence
+
+- Parent focused command used exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, fresh
+  derived data `/tmp/shafin-camera-truthful-parent-fix3`, and only
+  `CameraOverlayUXPresentationTests`.
+- XCResult:
+  `/tmp/shafin-camera-truthful-parent-fix3/Logs/Test/Test-shafinMultitool-2026.08.26_03-53-55-+0300.xcresult`.
+  Result: 13 passed, 0 failed, 0 skipped. Direct coverage includes exact
+  object-vs-camera wording, technical nil-action tips, explanation/no-
+  explanation states, keep, malformed identifiers/confidence/copy, unsafe
+  expanded strings and geometry suppression.
+- Fresh no-sign Release build on the same exact destination used
+  `/tmp/shafin-camera-truthful-parent-fix3-release`; result exit 0.
+  `git diff --check` exited 0.
+- Final fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  presentation mapper `0875d378…`, production SET view `46a6ccd8…`, tests
+  `0b21e634…`.
+- Covered: validated producer instruction survives to the rendered live band,
+  fallback/seeking cannot consult raw action type, unsafe non-nil expanded copy
+  fails closed, and valid absent optional explanation remains actionable.
+  Uncovered: producer semantic copy is Russian under English locale; this is a
+  separate upstream localization blocker, not permission to restore an
+  incorrect localized enum instruction.
+
+## 2026-08-26 retryable workspace teardown evidence
+
+- Parent focused command used `shafinMultitool.xcworkspace`, exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, fresh
+  derived data `/tmp/shafin-retryable-teardown-parent-ws`, and only
+  `SceneWorkspaceTeardownTests`.
+- XCResult:
+  `/tmp/shafin-retryable-teardown-parent-ws/Logs/Test/Test-shafinMultitool-2026.08.26_04-07-16-+0300.xcresult`.
+  Result: 11 passed, 0 failed, 0 skipped on iPhone 17e / iOS Simulator 26.5.
+- A no-sign Release simulator build produced
+  `/tmp/shafin-retryable-teardown-parent-release/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  `git diff --check` exited 0.
+- Fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  coordinator `d88196e1…`, ViewModel `2db8e408…`, tests `49f02c50…`.
+- Covered: one in-flight teardown identity, retry after persistence failure,
+  success caching, detach exactly once and restoration of automatic
+  persistence after a block. Uncovered: the retained workspace's recorder is
+  terminal after a failed route teardown and cannot start a new recording
+  without reinitialization.
+
+## 2026-08-26 atomic scene persistence evidence
+
+- Parent focused command used `shafinMultitool.xcworkspace`, exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, fresh
+  derived data `/tmp/shafin-atomic-persistence-parent-fix`, and six named
+  `SceneSaveLoadTests` covering normal save/load, legacy migration, stale
+  sidecar isolation, filename-ID mismatch and malformed envelope rejection.
+- XCResult:
+  `/tmp/shafin-atomic-persistence-parent-fix/Logs/Test/Test-shafinMultitool-2026.08.26_04-32-28-+0300.xcresult`.
+  Result: 6 passed, 0 failed, 0 skipped on iPhone 17e / iOS Simulator 26.5.
+- A no-sign Release simulator build produced
+  `/tmp/shafin-atomic-persistence-parent-fix-release/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  `git diff --check` exited 0.
+- Final fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  `DBService.swift` `8d9ea12a…`, focused tests `09820d1f…`.
+- Covered: one-write envelope, legacy read compatibility, no stale-sidecar
+  fallback for a new nil map, explicit format discrimination and UUID/file
+  identity fencing. Uncovered: non-nil `ARWorldMap` round-trip on physical
+  hardware; one corrupt file still makes list/find fail wholesale by design.
+
+## 2026-08-26 Release print privacy evidence
+
+- Parent Debug build on exact iPhone 17e used
+  `/tmp/shafin-print-privacy-parent-debug`; parent generic no-sign Release build
+  used `/tmp/shafin-print-privacy-parent-release`. Both exited 0.
+- On the Release executable, `nm -u` produced no `$ss5print_` match; source
+  search produced no explicit `Swift.print(` bypass. `git diff --check` exited
+  0.
+- `scripts/validate_release_bundle.sh` passed all structural/privacy stages and
+  stopped only at `KNOWN_BLOCKER_COUNT=5`. The existing release-bundle fixture
+  self-test passed its known-blocked clean copy and all six contamination
+  fixtures.
+- Fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  `SceneGeneratorDiagnosticsLogger.swift` `6c57408e…`.
+- Covered: all 264 current unqualified `print` call shapes across the single app
+  module and Debug-native behavior. Uncovered by design: `os_log`, `NSLog` and
+  eager argument evaluation at direct print call sites.
+
+## 2026-08-26 Release unified-log privacy evidence
+
+- Parent no-sign Release workspace build used exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62` and fresh
+  derived data `/tmp/shafin-oslog-privacy-parent-fix`; result exit 0.
+- Exact Release-executable format scans returned zero for suggestion text,
+  feature values, DETR priority, live-hint decision, Vision face/person,
+  saliency and motion logs. Broad `Vision:` was intentionally excluded because
+  it is also a non-sensitive aggregate performance label in `DiagnosticsLogger`.
+- `scripts/validate_release_bundle.sh` stopped only at
+  `KNOWN_BLOCKER_COUNT=5`; the release-bundle fixture self-test passed its clean
+  known-blocked copy and all six negative fixtures. `git diff --check` passed.
+- Fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  Telemetry `636af89e…`, AnalysisPipeline `ac13ce1c…`, VisionTracking
+  `a0e16525…`, DETRDetector `0ccf08fb…`.
+- Covered: Release compilation flags, public/private unified-log boundaries and
+  binary absence of known sensitive formats. Uncovered by design: the static
+  AppDelegate lifecycle event and bounded operational event codes.
+
+## 2026-08-26 truthful DETR component evidence
+
+- Parent focused command used `shafinMultitool.xcworkspace`, exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, fresh
+  derived data `/tmp/detr-truth-fix-parent-tests`, and only
+  `DETRDetectorTests`.
+- XCResult:
+  `/tmp/detr-truth-fix-parent-tests/Logs/Test/Test-shafinMultitool-2026.08.26_05-30-04-+0300.xcresult`.
+  Result: 6 passed, 0 failed, 0 skipped on iPhone 17e / iOS Simulator 26.5.
+  Direct coverage includes disconnected same-class boxes, Vision Y conversion,
+  per-component noise, malformed input, non-unit row and column strides, and
+  fixture 019 producing two positive-area, separated, non-overlapping chairs.
+- A no-sign Release simulator build produced
+  `/tmp/detr-truth-fix-parent-release/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  `git diff --check` exited 0.
+- Final fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  `DETRDetector.swift` `254eeff6…`, `DETRDetectorTests.swift` `ae3d0f595…`.
+- Covered: named output selection, defensive shape/stride handling,
+  component extraction, deterministic ordering, coordinate convention and
+  Release diagnostic privacy. Uncovered: touching same-class instances remain
+  one component; the legacy `confidence` property is geometric support and not
+  calibrated probability.
+
+## 2026-08-26 physical Camera Coach action evidence
+
+- Parent broad command used exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, fresh
+  derived data `/tmp/shafin-coach-direction-parent-tests`, and only
+  `CameraAnalysisDomainContractsTests`, `FrameCritiqueEngineTests` and
+  `SemanticTipPlannerTests`.
+- XCResult: `/tmp/shafin-coach-direction-parent-tests/CameraCoachDirection.xcresult`.
+  Result: 67 passed, 0 failed, 0 skipped.
+- After the first Sol fix-first verdict, the focused parent rerun used
+  `/tmp/shafin-coach-direction-fix-parent-tests` for
+  `SemanticTipPlannerTests` and
+  `FeatureSnapshotAggregatorTests/testVisionVerticalOffsetUsesDisplayCoordinates`.
+  XCResult:
+  `/tmp/shafin-coach-direction-fix-parent-tests/Logs/Test/Test-shafinMultitool-2026.08.26_06-12-19-+0300.xcresult`;
+  result 20 passed, 0 failed, 0 skipped.
+- A no-sign Release simulator build produced
+  `/tmp/shafin-coach-direction-fix-parent-release/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  `git diff --check` exited 0.
+- Final fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  AnalysisPipeline `2c8531b8…`, SemanticTipPlanner `cc181704…`, domain tests
+  `6517b895…`, semantic tests `5685f876…`.
+- Covered: structured and fallback horizontal signs, all active vertical
+  producers, physical-vs-object semantic ownership, both edge directions,
+  nil look-space evidence and critique suppression. Uncovered: physical mirrored
+  front-camera behavior is outside the current rear-camera production contract.
+
+## 2026-08-26 exact-once aesthetic scorer evidence
+
+- Parent no-sign Release simulator build produced
+  `/tmp/shafin-aesthetic-parent-release/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  `git diff --check` exited 0.
+- Parent targeted replay used exact iPhone 17e destination and produced
+  `/tmp/shafin-aesthetic-parent-tests/Logs/Test/Test-shafinMultitool-2026.08.26_06-25-16-+0300.xcresult`.
+  The test process executed, but Vision returned `Failed to create espresso
+  context`; 1 test then failed 4 existing assertions because inference evidence
+  was unavailable. This is recorded as an environment blocker, not passing
+  evidence and not permission to weaken the fixture.
+- Fresh Sol / High verdict: `ship`; findings none. Post-review SHA-256:
+  `AestheticScorer.swift` `54f9105f…`.
+- Covered by source-contract audit: error-first request handling, thrown-handler
+  completion, missing/malformed output, ten-bin validation, removal of score
+  fabrication, serial queue ownership and exact-once completion. Uncovered:
+  successful NIMA runtime inference on the current simulator and physical
+  Neural Engine behavior.
+
+## 2026-08-26 confidence and person-edge truth evidence
+
+- Parent focused command used `shafinMultitool.xcworkspace`, exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, fresh
+  derived data `/tmp/shafin-confidence-direction-parent.Bsbizk`, and only
+  `CameraAnalysisDomainContractsTests` plus `SemanticTipPlannerTests`.
+- XCResult:
+  `/tmp/shafin-confidence-direction-parent.Bsbizk/tests.xcresult`.
+  Result: 36 passed, 0 failed, 0 skipped. The positive chain covers
+  aggregator → semantics → critique → plan → three-frame live presentation;
+  focused negatives cover stale/unavailable sources, ambiguity, region mismatch
+  and contextual spatial actions.
+- Parent generic no-sign Release build produced
+  `/tmp/shafin-confidence-direction-parent-release.Ffbw99/DerivedData/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  `git diff --check` exited 0.
+- Final fresh Sol / High verdict: `ship`. The initial look-space finding was
+  withdrawn after reachability review proved `lookSpaceAdequate=nil` and zero
+  critique score without gaze evidence. Post-review SHA-256: AnalysisPipeline
+  `ad7eaad5…`, domain contracts `00363dfd…`, domain tests `00dca076…`, semantic
+  tests `5a02cd36…`, aggregator spec `c0279235…`, semantics spec `bbf3a5f6…`,
+  taxonomy `745eb2ef…`.
+- Covered: single freshness ownership for Vision and DETR, ranking/publication
+  separation, unchanged live thresholds, honest source confidence, physical
+  person-edge direction, object-motion separation and deterministic live
+  stability. Uncovered: future gaze/head-pose look-space direction; the current
+  region-only default fallback must remain unreachable until that evidence has
+  an explicit contract.
+
+## 2026-08-26 immutable AR hint-pause evidence
+
+- Parent focused command used `shafinMultitool.xcworkspace`, exact destination
+  `platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62`, fresh
+  derived data `/tmp/shafin-ar-pause-parent.3EY9lp/DerivedData`, and only the
+  two Scene Generator hint-pause lifecycle/exact-frame tests.
+- XCResult: `/tmp/shafin-ar-pause-parent.3EY9lp/tests.xcresult`. Result: 2
+  passed, 0 failed, 0 skipped. The exact-frame test asserts one snapshot ID and
+  source frame across synchronous acceptance, display rendering and terminal
+  analysis state.
+- Generic Release simulator build produced
+  `/tmp/shafin-ar-pause-parent.3EY9lp/DerivedDataRelease/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  `git diff --check` exited 0.
+- Final fresh Sol / High verdict: `ship`, findings none. Post-review SHA-256:
+  SceneGeneratorViewModel `5d95b2fa…`, LegacySceneGeneratorCameraShell
+  `dbb4df0d…`, SETCameraCoachProductionView `ff405ee8…`, SceneBundlePipelineTests
+  `2b214a76…`.
+- Covered: immutable accepted/display/analyzed frame identity, owner-side late
+  callback fencing, visible no-evidence failure, resume cleanup and stable
+  overlay suppression. Uncovered: real ARKit buffer/display mapping and camera
+  timing on physical hardware.
+
+## 2026-08-26 semantic pause review evidence
+
+- Parent-read XCResult
+  `/tmp/ar-pause-luna-flat-band-fresh-pass.xcresult` records the exact allowed
+  iPhone 17e Simulator `1F680A42-CEB3-43E8-9CED-52F874962A62`: 4 passed, 0
+  failed, 0 skipped. It covers grounded `expectedOutcome` precedence, blank
+  fallback, AR pause lifecycle and accepted display/analysis frame identity.
+- Generic no-sign Release device build produced
+  `/tmp/ar-pause-luna-release-derived.7EQZS8/Build/Products/Release-iphoneos/shafinMultitool.app`;
+  parent `git diff --check` exited 0.
+- Fresh Sol / High verdict: `ship`, findings none. Parent-confirmed SHA-256:
+  SETComponents `5c9dcf92…`, SETCameraCoachProductionView `190736d4…`,
+  LegacySceneGeneratorCameraShell `97413356…`, SETDesignSystemTokenTests
+  `d1061332…`.
+- Covered: shared flat SET review band, semantic beginner copy precedence,
+  Camera Coach accessibility-ID preservation, AR ID separation, existing
+  event-ledger/Reduce Motion loading contract and unchanged pause lifecycle.
+  Uncovered: physical display legibility and ARKit timing on hardware.
+
+## 2026-08-26 bounded AR world-map persistence evidence
+
+- Parent focused command targeted only the four new teardown/world-map tests on
+  exact iPhone 17e Simulator `1F680A42-CEB3-43E8-9CED-52F874962A62`.
+  XCResult `/tmp/shafin-world-map-parent.xcresult`: 4 passed, 0 failed, 0
+  skipped.
+- Parent generic no-sign Release device build produced
+  `/tmp/shafin-world-map-parent-release/Build/Products/Release-iphoneos/shafinMultitool.app`.
+- After the first Sol `fix-first` finding, Luna cleared the in-memory map only
+  after durable nil persistence. Focused post-fix XCResult
+  `/tmp/shafin-world-map-timeout-luna/Logs/Test/Test-shafinMultitool-2026.08.26_08-21-32-+0300.xcresult`:
+  1 passed, 0 failed, 0 skipped. Final fresh Sol verdict: `ship`.
+- Post-review SHA-256: SceneGeneratorViewModel `914ad670…`,
+  SceneWorkspaceTeardownTests `645a5c12…`; `git diff --check` exited 0.
+- Covered: timeout/cancellation/callback exact-once resolution, late-callback
+  fencing, concurrent operation coalescing, post-capture project assembly,
+  retry and nil-map retirement code path. Uncovered: a real non-nil ARWorldMap
+  cannot be created on Simulator, so physical payload retirement/timing remains
+  code-inspected and requires hardware evidence.
+
+## 2026-08-26 technical live-alert confirmation evidence
+
+- Final focused XCResult
+  `/tmp/set-os-technical-lifecycle-tests-20260826-0845.xcresult` records exact
+  iPhone 17e Simulator `1F680A42-CEB3-43E8-9CED-52F874962A62`: 4 passed, 0
+  failed, 0 skipped.
+- Covered tests: three-frame technical confirmation; issue/action/gap and
+  no-Vision behavior; real `ingestHigh` moving-frame reset; live presentation
+  lifecycle reset. Earlier direct-injection-only evidence was rejected by the
+  first Sol audit and is not the final acceptance basis.
+- Final fresh Sol / High verdict: `ship`, findings none. SHA-256:
+  AnalysisPipeline `69d95e7e…`, AnalysisPipelinePresentationTests `a50f86cf…`;
+  parent `git diff --check` exited 0.
+- Covered: temporal publication safety and production reset ownership.
+  Uncovered: sensor-specific thresholds, calibration, thermal timing and field
+  false-positive/false-negative rate on physical cameras.
+
+## 2026-08-26 App Store bundle metadata evidence
+
+- Parent fresh no-sign Release device artifact was retained after DerivedData
+  cleanup at `/tmp/shafin-metadata-evidence.app`.
+  Xcode build and shallow store validation succeeded.
+- Parent inspection of built Info.plist returned `Shafin Multitool` and
+  `UIWindowScene`; EN/RU bundles each contain InfoPlist.strings and
+  Localizable.strings.
+- `scripts/tests/test_release_bundle_gate.sh` exited 0: the clean copy reached
+  the exact five known provenance blockers and all 11 independent metadata/
+  contamination fixtures produced their expected stable failure token.
+- `bash -n`, source plist lint, catalog JSON validation and `git diff --check`
+  passed. Fresh Sol / High verdict: `ship`, findings none.
+- SHA-256: Info.plist `a1dd8e10…`, InfoPlist.xcstrings `988ebbc3…`, project
+  `d1f88ab3…`, validator `4d39b138…`, self-test `37157d28…`.
+- Covered: bundle metadata/resource structure and deterministic negative gate.
+  Uncovered: signed archive/export, App Store Connect server validation and the
+  five intentionally red provenance records.
+
+## 2026-08-26 Camera Coach RU/EN projection evidence
+
+- Final focused XCResult `/tmp/set-camera-locale-focused2.Fz56o4/tests.xcresult`
+  records exact iPhone 17e Simulator
+  `1F680A42-CEB3-43E8-9CED-52F874962A62`: 32 passed, 0 failed, 0 skipped.
+- Covered: requested-locale seeking/keep/fallback; every coarse and semantic
+  action; all seven technical issue projections; EN Cyrillic rejection;
+  invalid-payload fallback; pause semantic catalog precedence; unchanged design
+  tokens and accessibility contracts.
+- Catalog JSON validation reports exactly seven `set.camera.technical.*` keys;
+  parent `git diff --check` exited 0. Fresh Sol / High verdict: `ship`, findings
+  none.
+- SHA-256: AnalysisPipeline `8531cb4c…`, CameraOverlayUXPresentation
+  `76e5c46b…`, SETCameraCoachProductionView `49db1eeb…`, SETLocalization
+  `d62cbcd8…`, Localizable.xcstrings `2a9ea179…`, Camera overlay tests
+  `d1b5c6a9…`, design-system tests `0754e9ca…`.
+- Covered: typed provenance and locale-correct UI projection. Uncovered:
+  physical-camera coaching quality, language-tagged external VLM copy and field
+  comprehension testing.
+
+## 2026-08-26 Generator microphone recovery evidence
+
+- Final focused XCResult
+  `/tmp/set-os-mic-tests-p1-20260826/Logs/Test/Test-shafinMultitool-2026.08.26_09-33-33-+0300.xcresult`
+  records exact iPhone 17e Simulator
+  `1F680A42-CEB3-43E8-9CED-52F874962A62`: 9 passed, 0 failed, 0 skipped.
+- Covered: denied Settings recovery, restricted recheck, unavailable/unknown
+  generic fallback, authorized retry/start, recorder failure, and stale recovery
+  retirement when a later non-recording generator error replaces the message.
+- Existing `generator_error_close` remains unchanged; new recovery IDs are
+  `generator_microphone_open_settings` and `generator_microphone_recheck`.
+  RU/EN copy is sourced from the existing SET String Catalog.
+- Parent inspection and `git diff --check` passed. The initial Sol / High audit
+  returned `fix-first` for cross-flow stale recovery; the property-owner fix was
+  rerun and the fresh final Sol / High verdict is `ship`.
+- Uncovered: real microphone authorization UI, audio-route interruption,
+  capture quality and A/V synchronization require physical-device evidence.
+
+## 2026-08-26 retry-safe workspace teardown evidence
+
+- Focused XCResult
+  `/private/tmp/set-os-p1-teardown-ws/Logs/Test/Test-shafinMultitool-2026.08.26_09-39-03-+0300.xcresult`
+  records exact iPhone 17e Simulator
+  `1F680A42-CEB3-43E8-9CED-52F874962A62`, iOS 26.5: 15 passed, 0 failed,
+  0 skipped.
+- Covered: awaited stop/playback/persist/release/detach order; persistence
+  failure retaining the live workspace and reusable controller; successful
+  retry; concurrent-call coalescing; exactly-once terminal release and detach.
+- Fresh Sol / High independently inspected `SceneRecordingController.stop` and
+  confirmed it finalizes only the current media take and returns lifecycle to
+  idle; only the post-persist `releaseAndWait` makes the owner terminal. Verdict
+  `ship`; reviewed-file `git diff --check` passed.
+- Uncovered: OS background execution allowance, real recorder finalization,
+  ARSession timing and route changes still require physical-device evidence.
+
+## 2026-08-26 Scene Library corrupt-file isolation evidence
+
+- Final focused XCResult `/tmp/set-os-library-corrupt-tests-20260826-final.xcresult`
+  records exact iPhone 17e Simulator
+  `1F680A42-CEB3-43E8-9CED-52F874962A62`: 24 passed, 0 failed, 0 skipped.
+- Covered: healthy listing beside corrupt JSON; name lookup and valid deletion
+  when a corrupt file is encountered first; preservation of corrupt data;
+  filename/project UUID mismatch fencing and unchanged sidecar safety.
+- Parent inspection and targeted `git diff --check` passed. Fresh Sol / High
+  independently inspected ordering, schema, atomic-save and public-API
+  boundaries; verdict `ship`, findings none.
+- Uncovered: two independently created healthy projects with the same display
+  name retain the pre-existing filesystem-order ambiguity; public creation
+  currently prevents that state.
+
+## 2026-08-26 finalized REC ownership evidence
+
+- Production ownership now spans the existing `SceneRecordingController`,
+  `RecordingArtifactStore`, `SceneGeneratorViewModel` and reachable Generator
+  workspace only. A recorder-attested `.finalized` artifact is promoted from
+  Pending into `Application Support/Recordings/Projects/<project UUID>/` and
+  persisted as recording ID, relative path, duration and audio flag. Legacy
+  project JSON decodes an empty recording ledger.
+- Promotion uses descriptor-bound no-follow directory handles, exclusive
+  no-overwrite rename and post-rename device/inode validation. Failed
+  promotions remain unpublished and drain in strict FIFO order before project
+  persistence; route/background teardown therefore persists references before
+  detach and never presents playback UI after detachment.
+- Reachable controls are `generator_recording_review_band`,
+  `generator_recording_playback_button` and
+  `generator_recording_share_button`. Native `AVPlayerViewController` and
+  `UIActivityViewController` are enabled only for a resolvable regular file;
+  player cleanup covers interactive, programmatic and route dismissal. RU+EN,
+  Dynamic Type and ≥44pt targets use the existing SET system.
+- Luna/Max implementation passed an exact iPhone 17e simulator build. Final
+  focused XCResult
+  `/private/tmp/set-os-finalized-rec-20260826.xcresult`
+  records 4 passed, 0 failed, 0 skipped: exclusive/idempotent promotion,
+  symlink/traversal rejection, positive recording-reference save/load and
+  legacy JSON fallback. `git diff --check` and String Catalog JSON parsing
+  passed.
+- The first Sol/High audit returned `FIX-FIRST` for a pathname TOCTOU window,
+  incomplete player cleanup and a non-retried pending ledger. A second fresh
+  audit found cross-take order inversion. Luna/Max fixed both rounds; the final
+  fresh Sol/High audit returned `SHIP` with no findings. The unrelated existing
+  yield-based microphone retry test is non-causal and excluded from this
+  focused acceptance.
+- Uncovered: physical camera/microphone media, audible playback, A/V sync,
+  system share destinations, thermal timing and an OS kill after repeated
+  permanent promotion failure. Such a failure can leave an unpublished
+  Pending orphan; retention/orphan cleanup is the next bounded P1.
+
+## 2026-08-26 project recording-retention evidence
+
+- `RecordingArtifactStore.removeProjectArtifacts(projectID:)` is the sole
+  finalized-media deletion owner. It opens the configured Application Support
+  root, `Recordings`, `Projects` and the authoritative UUID directory with
+  `O_NOFOLLOW`/`openat`, validates canonical UUID `.mov` regular entries, checks
+  device/inode before `unlinkat`, and removes only the opened project directory.
+- `DBService` removes a legacy sidecar before authoritative JSON and invokes
+  media cleanup only after metadata deletion succeeds. Its existing Bool still
+  reports metadata deletion; media cleanup and store-initialization failures
+  are diagnostic so the Library cannot offer a retry for an already-absent
+  project.
+- The exact iPhone 17e simulator result
+  `/private/tmp/set-os-retention-20260826.xcresult` records 6 passed, 0 failed,
+  0 skipped: selected-project/sibling isolation and idempotency, unexpected
+  entry failure, configured-root and project-directory symlink fencing with
+  external-target survival, DBService cleanup integration, cleanup-failure
+  Bool semantics and mismatched UUID preservation. Build-for-testing and
+  `git diff --check` passed; no iPhone 17 Pro or physical device was used.
+- The first fresh Sol/High audit returned `FIX-FIRST` for absolute-root symlink
+  traversal, unrecoverable JSON-before-sidecar ordering and silent store-init
+  failure. Luna/Max corrected all three; the fresh re-audit returned `SHIP`
+  with no findings.
+- Uncovered by design: arbitrary Pending cleanup. Current Pending artifacts
+  have no persisted owner/lease, so age-only deletion is unsafe. Concurrent
+  hostile writers can cause partial fail-closed cleanup but cannot redirect
+  traversal outside the sandbox-private opened directory chain.
+
+## 2026-08-26 generation/teardown data-safety evidence
+
+- Regeneration is now transactional at the ViewModel boundary: the previous
+  parsed script, planned scene and storyboard stay committed while parsing and
+  planning await. Concurrent Generate callers share one owner task; epoch and
+  cancellation checks precede the single non-suspending MainActor model + AR
+  replacement.
+- The complete ViewModel teardown has its own task identity assigned before
+  any await. It cancels and joins generation before snapshot persistence and
+  rejects another generation while world-map capture is suspended. Released
+  completion remains cached; blocked completion clears only its matching task
+  identity so a later retry cannot be erased by a stale waiter.
+- Final exact iPhone 17e simulator evidence
+  `/private/tmp/set-os-generation-teardown-final-20260826.xcresult` records 16
+  passed, 0 failed, 0 skipped for the complete teardown class. The focused
+  regression explicitly starts two generation callers, gates teardown inside
+  world-map capture, attempts a third generation in that window, and proves one
+  generation owner, one persisted snapshot, unchanged prior planned/storyboard
+  and persisted parsed state, and no post-release mutation. `git diff --check`
+  passed; no iPhone 17 Pro or physical device was used.
+- The first fresh Sol/High audit returned `FIX-FIRST` because generation could
+  reopen after the initial cancellation while teardown awaited persistence.
+  Luna/Max added complete ViewModel teardown ownership and the gated test; the
+  fresh re-audit returned `SHIP` with no findings.
+- Simulator evidence does not prove physical AR placement timing or actual OS
+  background execution allowance. It proves the in-process ownership,
+  cancellation, persistence and stale-mutation contract.
+
+## 2026-08-26 final Release-simulator and bundle-gate evidence
+
+- Command: Release arm64 build through `shafinMultitool.xcworkspace`, scheme
+  `shafinMultitool`, exact iPhone 17e destination
+  `1F680A42-CEB3-43E8-9CED-52F874962A62`, `CODE_SIGNING_ALLOWED=NO`,
+  `ONLY_ACTIVE_ARCH=YES`; result `** BUILD SUCCEEDED **`.
+- Artifact:
+  `/private/tmp/set-os-final-release-arm64/Build/Products/Release-iphonesimulator/shafinMultitool.app`;
+  build log `/private/tmp/set-os-final-release-arm64.log`. App size is 80 MiB;
+  executable SHA-256 is
+  `ab5885c17cf947490fae610f460cd2963aa5bc0203e32685dcbf37fc0253606c`.
+- Validation passed privacy (2 manifests), allowlisted frameworks, required
+  resources, bundle metadata, five declared fonts, RU/EN localization, AppIcon,
+  forbidden-payload scan and SnapKit acknowledgements. Final expected failure:
+  `release blocked by 5 known provenance blocker(s)` for llama, DETR, NIMA,
+  Circle.usdz and Person.usdz, each still `license_approved=false`.
+- Parent final verification re-read the 9/9, 15/15 and 24/24 XCResults, parsed
+  `Localizable.xcstrings` and passed full-tree `git diff --check` at 09:52 MSK.
+- The Release compile and structural validation do not establish signed App
+  Store archive/export, legal rights or physical-device behavior.
+- The subsequent negative-fixture run is excluded from acceptance counts: its
+  final copy hit ENOSPC and revealed that the helper returned the later printed
+  path despite `cp -R` failure. `copy_fixture` now calls the existing fatal gate
+  on copy failure before printing a path. Parent `bash -n`/diff inspection and
+  fresh Sol / High review passed (`ship`); a clean-disk rerun remains required
+  before citing a new 11/11 result for this exact Release artifact.

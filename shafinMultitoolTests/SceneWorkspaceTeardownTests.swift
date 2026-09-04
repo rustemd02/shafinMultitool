@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ARKit
 import XCTest
 @testable import shafinMultitool
 
@@ -17,7 +18,10 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
         let result = await workspace.teardownAndWait()
 
         XCTAssertEqual(result, .released)
-        XCTAssertEqual(recorder.events, ["persist", "pause-and-detach"])
+        XCTAssertEqual(
+            recorder.events,
+            ["persist", "release-recording", "pause-and-detach"]
+        )
     }
 
     func testTeardownStopsRecordingAndPlaybackBeforePersistence() async {
@@ -33,7 +37,98 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
         XCTAssertEqual(result, .released)
         XCTAssertEqual(
             recorder.events,
-            ["stop-recording", "stop-playback", "persist", "pause-and-detach"]
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
+        )
+    }
+
+    func testTeardownAwaitsRecordingFinalizationBeforePlaybackAndPersistence() async {
+        let recordingStopStarted = AsyncGate()
+        let recordingStopCompleted = AsyncGate()
+        let recorder = EventRecorder()
+        let workspace = TestSceneWorkspace(
+            isRecording: true,
+            isPlaying: true,
+            recorder: recorder,
+            stopRecording: {
+                recordingStopStarted.open()
+                await recordingStopCompleted.wait()
+            }
+        )
+
+        let teardown = Task { @MainActor in
+            await workspace.teardownAndWait()
+        }
+        await recordingStopStarted.wait()
+
+        XCTAssertEqual(recorder.events, ["stop-recording"])
+        recordingStopCompleted.open()
+
+        let result = await teardown.value
+        XCTAssertEqual(result, .released)
+        XCTAssertEqual(
+            recorder.events,
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
+        )
+    }
+
+    func testTeardownAwaitsPersistenceBeforeTerminalRecordingReleaseAndDetach() async {
+        let persistenceStarted = AsyncGate()
+        let persistenceCompleted = AsyncGate()
+        let releaseStarted = AsyncGate()
+        let releaseCompleted = AsyncGate()
+        let recorder = EventRecorder()
+        let workspace = TestSceneWorkspace(
+            isRecording: true,
+            isPlaying: true,
+            recorder: recorder,
+            releaseRecording: {
+                releaseStarted.open()
+                await releaseCompleted.wait()
+            },
+            persist: {
+                persistenceStarted.open()
+                await persistenceCompleted.wait()
+            },
+        )
+
+        let teardown = Task { @MainActor in
+            await workspace.teardownAndWait()
+        }
+        await persistenceStarted.wait()
+
+        XCTAssertEqual(recorder.events, ["stop-recording", "stop-playback", "persist"])
+
+        persistenceCompleted.open()
+        await releaseStarted.wait()
+        XCTAssertEqual(
+            recorder.events,
+            ["stop-recording", "stop-playback", "persist", "release-recording"]
+        )
+
+        releaseCompleted.open()
+        let result = await teardown.value
+        XCTAssertEqual(result, .released)
+        XCTAssertEqual(
+            recorder.events,
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
         )
     }
 
@@ -63,7 +158,10 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(recorder.events, ["stop-recording", "stop-playback", "persist"])
+        XCTAssertEqual(
+            recorder.events,
+            ["stop-recording", "stop-playback", "persist"]
+        )
 
         persistenceCompletion.open()
         let firstResult = await first.value
@@ -74,27 +172,354 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
         XCTAssertEqual(repeatedResult, .released)
         XCTAssertEqual(
             recorder.events,
-            ["stop-recording", "stop-playback", "persist", "pause-and-detach"]
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
         )
     }
 
-    func testPersistenceFailureBlocksWithoutPausingOrClaimingRelease() async {
+    func testWorldMapCaptureTimeoutResumesExactlyOnceAndIgnoresLateCallback() async {
+        var lateCompletion: SETWorldMapCaptureResolver<Int>.Completion?
+
+        let result = await SETWorldMapCaptureResolver<Int>.resolve(
+            timeoutNanoseconds: 1,
+            request: { completion in
+                lateCompletion = completion
+            },
+            sleep: { _ in }
+        )
+
+        XCTAssertEqual(result, .failure(.worldMapSnapshotFailed))
+        lateCompletion?(.success(42))
+    }
+
+    func testWorldMapCaptureCancellationResumesExactlyOnceAndIgnoresLateCallback() async {
+        let timeoutGate = AsyncGate()
+        var lateCompletion: SETWorldMapCaptureResolver<Int>.Completion?
+        let capture = Task { @MainActor in
+            await SETWorldMapCaptureResolver<Int>.resolve(
+                timeoutNanoseconds: 1_000_000,
+                request: { completion in
+                    lateCompletion = completion
+                },
+                sleep: { _ in await timeoutGate.wait() }
+            )
+        }
+
+        for _ in 0..<20 where lateCompletion == nil {
+            await Task.yield()
+        }
+        XCTAssertNotNil(lateCompletion)
+
+        capture.cancel()
+        let result = await capture.value
+        XCTAssertEqual(result, .failure(.worldMapSnapshotFailed))
+
+        lateCompletion?(.success(42))
+        timeoutGate.open()
+    }
+
+    func testWorldMapTimeoutUnblocksTeardownAndLateCallbackCannotOverwriteRetry() async {
+        let projectName = "world-map-timeout-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        var lateCompletion: SETWorldMapCaptureResolver<ARWorldMap?>.Completion?
+        viewModel.testingWorldMapCaptureOverride = {
+            await SETWorldMapCaptureResolver<ARWorldMap?>.resolve(
+                timeoutNanoseconds: 1,
+                request: { completion in
+                    lateCompletion = completion
+                },
+                sleep: { _ in }
+            )
+        }
+        defer {
+            DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in }
+        }
+
+        let firstResult = await viewModel.teardownAndWait()
+        XCTAssertEqual(firstResult, .blocked(.worldMapSnapshotFailed))
+        XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 1)
+        XCTAssertFalse(viewModel.testingInitialWorldMapIsPresent)
+        XCTAssertNil(
+            DBService.shared.loadUnifiedSceneProject(named: projectName)?.1,
+            "A successful nil-map fallback must remove any persisted world map"
+        )
+
+        viewModel.testingWorldMapCaptureOverride = {
+            .success(nil)
+        }
+        let retryResult = await viewModel.teardownAndWait()
+        XCTAssertEqual(retryResult, .released)
+        XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 2)
+        XCTAssertFalse(viewModel.testingInitialWorldMapIsPresent)
+        XCTAssertNil(
+            DBService.shared.loadUnifiedSceneProject(named: projectName)?.1,
+            "A retry without a fresh map must not resurrect stale persisted state"
+        )
+
+        lateCompletion?(.success(nil))
+        XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 2)
+    }
+
+    func testTeardownCancelsGenerationAndPersistsExistingSceneOnce() async throws {
+        let projectName = "generation-teardown-\(UUID().uuidString)"
+        let oldScript = SceneScript(
+            actors: [SceneActor(id: "actor_1", type: .human, name: "Старый актёр")],
+            objects: [],
+            beats: [
+                SceneBeat(
+                    id: "old_beat",
+                    actions: [
+                        SceneAction(
+                            id: "old_action",
+                            actorId: "actor_1",
+                            type: .talk,
+                            dialogue: "Старый текст",
+                            sourceText: "Старый текст"
+                        )
+                    ],
+                    minDuration: 0.5
+                )
+            ],
+            spatialRelations: [],
+            originalDescription: "Старый сценарий"
+        )
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        let oldPlannedScene = SpatialPlannerService.shared.planScene(
+            script: oldScript,
+            cameraTransform: cameraTransform,
+            detectedObjects: [],
+            availablePlanes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)],
+            markedObjects: []
+        )
+        let project = UnifiedSceneProject(
+            name: projectName,
+            sceneDescription: "Старый сценарий",
+            parsedScript: oldScript,
+            plannedScene: oldPlannedScene
+        )
+        try DBService.shared.saveUnifiedSceneProject(project, worldMap: nil)
+        defer {
+            DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in }
+        }
+
+        let viewModel = SceneGeneratorViewModel(projectName: projectName, isNewProject: false)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.sceneDescription = "Новый сценарий"
+        viewModel.testingSetGenerationDelay(60)
+        let captureStarted = AsyncGate()
+        let captureCompleted = AsyncGate()
+        viewModel.testingWorldMapCaptureOverride = {
+            captureStarted.open()
+            await captureCompleted.wait()
+            return .success(nil)
+        }
+        viewModel.showInput()
+        let oldStoryboardItems = viewModel.storyboardBeatItems
+        XCTAssertFalse(oldStoryboardItems.isEmpty)
+
+        let firstGeneration = Task { @MainActor in
+            await viewModel.generateScene()
+        }
+        for _ in 0..<100 where viewModel.generationStage != .reading {
+            await Task.yield()
+        }
+        XCTAssertEqual(viewModel.generationStage, .reading)
+
+        let secondCallerEntered = AsyncGate()
+        let secondGenerationEvents = EventRecorder()
+        let secondGeneration = Task { @MainActor in
+            secondCallerEntered.open()
+            await viewModel.generateScene()
+            secondGenerationEvents.events.append("finished")
+        }
+        await secondCallerEntered.wait()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(viewModel.testingGenerationOwnerCount, 1)
+        XCTAssertTrue(secondGenerationEvents.events.isEmpty)
+
+        let teardown = Task { @MainActor in
+            await viewModel.teardownAndWait()
+        }
+        await captureStarted.wait()
+        XCTAssertFalse(viewModel.isWorkspaceReleased)
+        XCTAssertFalse(viewModel.canGenerateScene)
+
+        let generationDuringTeardown = Task { @MainActor in
+            await viewModel.generateScene()
+        }
+        await generationDuringTeardown.value
+        XCTAssertEqual(viewModel.testingGenerationOwnerCount, 1)
+        XCTAssertEqual(viewModel.plannedScene, oldPlannedScene)
+        XCTAssertEqual(viewModel.storyboardBeatItems, oldStoryboardItems)
+
+        captureCompleted.open()
+        let teardownResult = await teardown.value
+        XCTAssertEqual(teardownResult, .released)
+        XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 1)
+        XCTAssertFalse(viewModel.isGenerating)
+        XCTAssertTrue(viewModel.isWorkspaceReleased)
+        XCTAssertEqual(viewModel.plannedScene, oldPlannedScene)
+        XCTAssertEqual(viewModel.storyboardBeatItems, oldStoryboardItems)
+        XCTAssertTrue(viewModel.showInputSheet)
+
+        await firstGeneration.value
+        await secondGeneration.value
+
+        XCTAssertEqual(secondGenerationEvents.events, ["finished"])
+        XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 1)
+        XCTAssertEqual(viewModel.plannedScene, oldPlannedScene)
+        XCTAssertEqual(viewModel.storyboardBeatItems, oldStoryboardItems)
+        let persisted = try XCTUnwrap(DBService.shared.loadUnifiedSceneProject(named: projectName)?.0)
+        XCTAssertEqual(persisted.plannedScene, oldPlannedScene)
+        XCTAssertEqual(persisted.parsedScript, oldScript)
+    }
+
+    func testConcurrentProjectSnapshotsShareCaptureAndPersistLatestState() async {
+        let projectName = "world-map-coalesced-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        let captureStarted = AsyncGate()
+        let captureCompleted = AsyncGate()
+        var captureCount = 0
+        viewModel.testingWorldMapCaptureOverride = {
+            captureCount += 1
+            captureStarted.open()
+            await captureCompleted.wait()
+            return .success(nil)
+        }
+        defer {
+            DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in }
+        }
+
+        let first = Task { @MainActor in
+            await viewModel.testingPersistProjectSnapshot()
+        }
+        await captureStarted.wait()
+
+        let latestDescription = "Состояние изменилось во время снимка"
+        viewModel.sceneDescription = latestDescription
+        let second = Task { @MainActor in
+            await viewModel.testingPersistProjectSnapshot()
+        }
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(captureCount, 1)
+        captureCompleted.open()
+
+        let firstResult = await first.value
+        let secondResult = await second.value
+        if case .failure(let failure) = firstResult {
+            XCTFail("first snapshot failed: \(failure)")
+        }
+        if case .failure(let failure) = secondResult {
+            XCTFail("second snapshot failed: \(failure)")
+        }
+        XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 1)
+        XCTAssertEqual(
+            DBService.shared.loadUnifiedSceneProject(named: projectName)?.0.sceneDescription,
+            latestDescription
+        )
+    }
+
+    func testPersistenceFailureCanRetryAndDetachExactlyOnce() async {
         let recorder = EventRecorder()
+        var persistenceAttempt = 0
         let workspace = TestSceneWorkspace(
             isRecording: true,
             isPlaying: true,
             recorder: recorder,
-            persistResult: .failure(.persistenceFailed)
+            persistResultProvider: {
+                persistenceAttempt += 1
+                return persistenceAttempt == 1
+                    ? .failure(.persistenceFailed)
+                    : .success(())
+            }
         )
 
         let result = await workspace.teardownAndWait()
 
         XCTAssertEqual(result, .blocked(.persistenceFailed))
-        XCTAssertEqual(recorder.events, ["stop-recording", "stop-playback", "persist"])
+        XCTAssertEqual(
+            recorder.events,
+            ["stop-recording", "stop-playback", "persist"]
+        )
         XCTAssertNotEqual(result, .released)
-        let repeatedResult = await workspace.teardownAndWait()
-        XCTAssertEqual(repeatedResult, .blocked(.persistenceFailed))
+        let retryResult = await workspace.teardownAndWait()
+        XCTAssertEqual(retryResult, .released)
+        XCTAssertEqual(persistenceAttempt, 2)
+        XCTAssertEqual(
+            recorder.events,
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
+        )
+        XCTAssertEqual(recorder.events.filter { $0 == "release-recording" }.count, 1)
+        XCTAssertEqual(recorder.events.filter { $0 == "pause-and-detach" }.count, 1)
+    }
+
+    func testConcurrentPersistenceFailureCallersShareAttemptAndLaterRetry() async {
+        let persistenceStarted = AsyncGate()
+        let persistenceCompletion = AsyncGate()
+        let recorder = EventRecorder()
+        var persistenceAttempt = 0
+        let workspace = TestSceneWorkspace(
+            isRecording: true,
+            isPlaying: true,
+            recorder: recorder,
+            persist: {
+                persistenceStarted.open()
+                await persistenceCompletion.wait()
+            },
+            persistResultProvider: {
+                persistenceAttempt += 1
+                return persistenceAttempt == 1
+                    ? .failure(.persistenceFailed)
+                    : .success(())
+            }
+        )
+
+        let first = Task { @MainActor in
+            await workspace.teardownAndWait()
+        }
+        await persistenceStarted.wait()
+
+        let second = Task { @MainActor in
+            await workspace.teardownAndWait()
+        }
+        for _ in 0..<10 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(recorder.events.filter { $0 == "persist" }.count, 1)
+        persistenceCompletion.open()
+
+        let firstResult = await first.value
+        let secondResult = await second.value
+        XCTAssertEqual(firstResult, .blocked(.persistenceFailed))
+        XCTAssertEqual(secondResult, .blocked(.persistenceFailed))
         XCTAssertEqual(recorder.events, ["stop-recording", "stop-playback", "persist"])
+        let retryResult = await workspace.teardownAndWait()
+
+        XCTAssertEqual(retryResult, .released)
+        XCTAssertEqual(persistenceAttempt, 2)
+        XCTAssertEqual(recorder.events.filter { $0 == "persist" }.count, 2)
+        XCTAssertEqual(recorder.events.filter { $0 == "release-recording" }.count, 1)
+        XCTAssertEqual(recorder.events.filter { $0 == "pause-and-detach" }.count, 1)
     }
 
     func testRouteBackgroundHookUsesTheSameIdempotentWorkspaceTeardown() async throws {
@@ -111,13 +536,25 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
         XCTAssertEqual(result, .released)
         XCTAssertEqual(
             recorder.events,
-            ["stop-recording", "stop-playback", "persist", "pause-and-detach"]
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
         )
         let repeatedResult = await route.handleDidEnterBackground()
         XCTAssertEqual(repeatedResult, .released)
         XCTAssertEqual(
             recorder.events,
-            ["stop-recording", "stop-playback", "persist", "pause-and-detach"]
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
         )
     }
 
@@ -172,7 +609,13 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
         XCTAssertIdentical(route.navigationController.viewControllers.first, sceneLibrary)
         XCTAssertEqual(
             recorder.events,
-            ["stop-recording", "stop-playback", "persist", "pause-and-detach"]
+            [
+                "stop-recording",
+                "stop-playback",
+                "persist",
+                "release-recording",
+                "pause-and-detach"
+            ]
         )
     }
 
@@ -213,7 +656,10 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
             route.lastSceneWorkspaceTeardownResult,
             .blocked(.persistenceFailed)
         )
-        XCTAssertEqual(recorder.events, ["stop-recording", "stop-playback", "persist"])
+        XCTAssertEqual(
+            recorder.events,
+            ["stop-recording", "stop-playback", "persist"]
+        )
     }
 
     func testPresentedSceneModalBlocksWithoutStartingWorkspaceTeardown() async throws {
@@ -281,16 +727,21 @@ private final class TestSceneWorkspace: SceneWorkspaceTeardownProviding {
         isRecording: Bool,
         isPlaying: Bool,
         recorder: EventRecorder,
+        stopRecording: @escaping @MainActor () async -> Void = {},
+        releaseRecording: @escaping @MainActor () async -> Void = {},
         persist: @escaping @MainActor () async -> Void = {},
-        persistResult: Result<Void, SceneWorkspaceTeardownFailure> = .success(())
+        persistResult: Result<Void, SceneWorkspaceTeardownFailure> = .success(()),
+        persistResultProvider: (@MainActor () -> Result<Void, SceneWorkspaceTeardownFailure>)? = nil
     ) {
         var recordingActive = isRecording
         var playbackActive = isPlaying
         coordinator = SceneWorkspaceTeardownCoordinator(
             stopRecordingIfNeeded: {
-                guard recordingActive else { return }
-                recordingActive = false
-                recorder.events.append("stop-recording")
+                if recordingActive {
+                    recordingActive = false
+                    recorder.events.append("stop-recording")
+                    await stopRecording()
+                }
             },
             stopPlaybackIfNeeded: {
                 guard playbackActive else { return }
@@ -300,10 +751,14 @@ private final class TestSceneWorkspace: SceneWorkspaceTeardownProviding {
             persist: {
                 recorder.events.append("persist")
                 await persist()
-                return persistResult
+                return persistResultProvider?() ?? persistResult
             },
             pauseAndDetach: {
                 recorder.events.append("pause-and-detach")
+            },
+            releaseRecordingIfNeeded: {
+                recorder.events.append("release-recording")
+                await releaseRecording()
             }
         )
     }

@@ -13,9 +13,10 @@ final class CommercialShellRoutingTests: XCTestCase {
         XCTAssertEqual(shell.selectedSection, .camera)
         XCTAssertEqual(shell.children.count, 1)
         XCTAssertEqual(shell.modeControl.renderedSection, .camera)
-        XCTAssertEqual(modeControlButtons(in: shell).map(\.accessibilityIdentifier), [
-            "commercial-shell-open-scenes"
-        ])
+        XCTAssertEqual(
+            Set(modeControlButtons(in: shell).map(\.accessibilityIdentifier)),
+            Set(["commercial-shell-open-scenes", "commercial-shell-return-camera"])
+        )
         XCTAssertIdentical(shell.activeViewController, factory.route(for: .camera)?.viewController)
         XCTAssertNil(factory.route(for: .scenes))
         XCTAssertNil(factory.route(for: .history))
@@ -93,9 +94,12 @@ final class CommercialShellRoutingTests: XCTestCase {
         XCTAssertIdentical(shell.children.first, cameraRoute.viewController)
         XCTAssertEqual(shell.selectedSection, .camera)
         XCTAssertEqual(shell.modeControl.renderedSection, .camera)
-        XCTAssertEqual(modeControlButton(in: shell).accessibilityIdentifier, "commercial-shell-open-scenes")
+        XCTAssertEqual(
+            modeControlButton(in: shell, identifier: "commercial-shell-open-scenes").accessibilityIdentifier,
+            "commercial-shell-open-scenes"
+        )
         XCTAssertFalse(shell.isTransitioning)
-        XCTAssertTrue(modeControlButton(in: shell).isUserInteractionEnabled)
+        XCTAssertTrue(modeControlButton(in: shell, identifier: "commercial-shell-open-scenes").isUserInteractionEnabled)
     }
 
     func testModeControlInteractionIsLockedDuringSwitch() async throws {
@@ -109,17 +113,23 @@ final class CommercialShellRoutingTests: XCTestCase {
         await cameraRoute.deactivationStarted.wait()
 
         XCTAssertTrue(shell.isTransitioning)
-        XCTAssertFalse(modeControlButton(in: shell).isUserInteractionEnabled)
+        XCTAssertFalse(modeControlButton(in: shell, identifier: "commercial-shell-open-scenes").isUserInteractionEnabled)
         XCTAssertEqual(shell.selectedSection, .camera)
         XCTAssertEqual(shell.modeControl.renderedSection, .camera)
-        XCTAssertEqual(modeControlButton(in: shell).accessibilityIdentifier, "commercial-shell-open-scenes")
+        XCTAssertEqual(
+            modeControlButton(in: shell, identifier: "commercial-shell-open-scenes").accessibilityIdentifier,
+            "commercial-shell-open-scenes"
+        )
 
         deactivationGate.open()
         await shell.waitForTransition()
         XCTAssertEqual(shell.selectedSection, .scenes)
         XCTAssertEqual(shell.modeControl.renderedSection, .scenes)
-        XCTAssertEqual(modeControlButton(in: shell).accessibilityIdentifier, "commercial-shell-return-camera")
-        XCTAssertTrue(modeControlButton(in: shell).isUserInteractionEnabled)
+        XCTAssertEqual(
+            modeControlButton(in: shell, identifier: "commercial-shell-return-camera").accessibilityIdentifier,
+            "commercial-shell-return-camera"
+        )
+        XCTAssertTrue(modeControlButton(in: shell, identifier: "commercial-shell-return-camera").isUserInteractionEnabled)
     }
 
     func testRapidSelectionsCoalesceToLastRequestedSection() async throws {
@@ -255,10 +265,11 @@ final class CommercialShellRoutingTests: XCTestCase {
 
     private func modeControlButton(
         in shell: CommercialShellViewController,
+        identifier: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) -> UIButton {
-        guard let button = modeControlButtons(in: shell).first else {
+        guard let button = modeControlButtons(in: shell).first(where: { identifier == nil || $0.accessibilityIdentifier == identifier }) else {
             XCTFail("Missing shell mode control", file: file, line: line)
             return UIButton(type: .system)
         }

@@ -29,6 +29,13 @@ struct BeatPlaybackTimelineItem: Identifiable, Equatable {
         if hasActionCaption { return "действие" }
         return "движение"
     }
+
+    var kindCopyKey: SETCopyKey {
+        if hasDialogueCaption && hasActionCaption { return .storyboardKindScene }
+        if hasDialogueCaption { return .storyboardKindDialogue }
+        if hasActionCaption { return .storyboardKindAction }
+        return .storyboardKindMovement
+    }
 }
 
 struct BeatPlaybackProgressState: Equatable {
@@ -93,6 +100,15 @@ struct StoryboardBeatPresentationItem: Identifiable, Equatable {
     let hasDialogueCaption: Bool
     let hasActionCaption: Bool
     let actionCount: Int
+
+    var kindCopyKey: SETCopyKey {
+        switch kindTitle {
+        case "сцена": .storyboardKindScene
+        case "диалог": .storyboardKindDialogue
+        case "действие": .storyboardKindAction
+        default: .storyboardKindMovement
+        }
+    }
 }
 
 struct StoryboardActionEditDraft: Identifiable, Equatable {
@@ -114,6 +130,11 @@ struct StoryboardBeatEditDraft: Identifiable, Equatable {
     var targetOptions: [StoryboardEntityOption]
 }
 
+enum StoryboardValidationField: Equatable {
+    case actor(actionID: String)
+    case target(actionID: String)
+}
+
 struct StoryboardBeatInspectorPresentation: Equatable {
     let kindTitle: String
     let summary: String
@@ -122,6 +143,15 @@ struct StoryboardBeatInspectorPresentation: Equatable {
     let targetLabels: [String]
     let warnings: [String]
     let dragHint: String
+
+    var kindCopyKey: SETCopyKey {
+        switch kindTitle {
+        case "сцена": .storyboardKindScene
+        case "диалог": .storyboardKindDialogue
+        case "действие": .storyboardKindAction
+        default: .storyboardKindMovement
+        }
+    }
 }
 
 struct SceneActorRenderStyle: Equatable {
@@ -145,6 +175,110 @@ enum SceneWorkspaceMode: Equatable {
     case shooting
     case recording
     case previewPlayback
+}
+
+enum SceneRecordingPermissionRecovery: Equatable {
+    case openSettings
+    case recheck
+}
+
+enum SceneGenerationStage: Equatable {
+    case reading
+    case planning
+    case placing
+}
+
+/// Bridges callback-only ARKit APIs into one cancellable, bounded result.
+///
+/// ARSession may call its completion on a framework-owned queue, may call it
+/// after a timeout, or may never call it on unsupported configurations. The
+/// resolver is deliberately small: callback, timeout and cancellation all
+/// commit through the same lock and only the first terminal outcome resumes
+/// the waiting task.
+final class SETWorldMapCaptureResolver<Value>: @unchecked Sendable {
+    typealias Outcome = Result<Value, SceneWorkspaceTeardownFailure>
+    typealias Completion = (Outcome) -> Void
+
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Outcome, Never>?
+    private var terminalOutcome: Outcome?
+    private var timeoutTask: Task<Void, Never>?
+
+    static func resolve(
+        timeoutNanoseconds: UInt64,
+        request: @escaping (@escaping Completion) -> Void,
+        sleep: @escaping @Sendable (UInt64) async -> Void = { interval in
+            try? await Task.sleep(nanoseconds: interval)
+        }
+    ) async -> Outcome {
+        let resolver = Self()
+
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Outcome, Never>) in
+                resolver.install(continuation)
+                request { outcome in
+                    resolver.resolve(outcome)
+                }
+                resolver.scheduleTimeout(
+                    nanoseconds: timeoutNanoseconds,
+                    sleep: sleep
+                )
+                if Task.isCancelled {
+                    resolver.resolve(.failure(.worldMapSnapshotFailed))
+                }
+            }
+        }, onCancel: {
+            resolver.resolve(.failure(.worldMapSnapshotFailed))
+        })
+    }
+
+    private func install(_ continuation: CheckedContinuation<Outcome, Never>) {
+        lock.lock()
+        if let terminalOutcome {
+            lock.unlock()
+            continuation.resume(returning: terminalOutcome)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    private func scheduleTimeout(
+        nanoseconds: UInt64,
+        sleep: @escaping @Sendable (UInt64) async -> Void
+    ) {
+        let timeoutTask = Task { [weak self] in
+            await sleep(nanoseconds)
+            guard !Task.isCancelled else { return }
+            self?.resolve(.failure(.worldMapSnapshotFailed))
+        }
+
+        lock.lock()
+        guard terminalOutcome == nil else {
+            lock.unlock()
+            timeoutTask.cancel()
+            return
+        }
+        self.timeoutTask = timeoutTask
+        lock.unlock()
+    }
+
+    private func resolve(_ outcome: Outcome) {
+        lock.lock()
+        guard terminalOutcome == nil else {
+            lock.unlock()
+            return
+        }
+        terminalOutcome = outcome
+        let continuation = self.continuation
+        self.continuation = nil
+        let timeoutTask = self.timeoutTask
+        self.timeoutTask = nil
+        lock.unlock()
+
+        timeoutTask?.cancel()
+        continuation?.resume(returning: outcome)
+    }
 }
 
 /// ViewModel для управления генерацией AR сцены из текстового описания
@@ -178,6 +312,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Статус генерации
     @Published var isGenerating: Bool = false
+
+    /// Этап генерации, независимый от локализованного текста статуса.
+    @Published private(set) var generationStage: SceneGenerationStage?
     
     /// Статус воспроизведения анимации
     @Published var isPlaying: Bool = false
@@ -188,11 +325,39 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Идёт ли запись видео
     @Published var isRecording: Bool = false
 
+    /// REC tap has passed the identity gate and is waiting on microphone
+    /// permission/writer preparation.
+    @Published private(set) var isRecordingStarting: Bool = false
+
+    /// Writer finalization is still in flight after REC is hidden.
+    @Published private(set) var isRecordingFinalizing: Bool = false
+
+    /// Latest dimensions observed from the raw AR buffer. AUTO is the honest
+    /// value until a source frame has established real dimensions.
+    @Published private(set) var recordingResolutionLabel: String = "AUTO"
+
+    /// Actual FPS reported by the active ARSession video format. Recording is
+    /// unavailable until this source fact is published.
+    @Published private(set) var recordingSourceFPS: Int?
+    private(set) var activeRecordingSourceID: UUID?
+
     /// Включены ли live hints
     @Published var isHintsEnabled: Bool = false
 
     /// Длительность текущей записи
     @Published var recordingElapsedTime: TimeInterval = 0
+
+    /// Ordered project-owned takes. Missing files remain in this ledger so a
+    /// persisted reference is never silently discarded.
+    @Published private(set) var recordingReferences: [SceneRecordingReference] = []
+
+    /// Newest persisted take whose file still resolves inside the recording
+    /// store. Failed/recoverable pending artifacts are never published here.
+    @Published private(set) var latestAvailableRecordingArtifact: RecordingArtifact?
+
+    var latestRecordingArtifact: RecordingArtifact? {
+        latestAvailableRecordingArtifact
+    }
 
     /// Состояние live-hints overlay
     @Published var coachingOverlayState: OverlayState = .init(primaryBoundingBox: nil,
@@ -208,6 +373,21 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     /// Запущен ли углубленный разбор последнего кадра.
     @Published var isHintPauseAnalysisActive: Bool = false
+
+    /// The one immutable frame handoff owned by the generator pause review.
+    /// The accepted envelope and its display image are filled by the existing
+    /// AnalysisPipeline owner; no parallel frame store is created here.
+    @Published private(set) var acceptedHintPauseSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot?
+
+    /// Terminal/loading projection for the generator pause review. The shared
+    /// CameraPausePresentationState keeps empty and failure states distinct.
+    @Published private(set) var hintPausePresentationState: CameraPausePresentationState = .idle
+
+    @Published private(set) var hintPauseFailureReason: CameraPauseFailureReason?
+    @Published private(set) var hintPauseTakeNumber: Int = 0
+
+    /// One owner-side ledger for the single pause-resume underline motif.
+    let hintPauseMotionEventLedger = SETMotionEventLedger()
 
     /// Карточка углубленного разбора последнего кадра.
     @Published var hintPauseCritique: PauseCritiquePresentation?
@@ -254,6 +434,17 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Draft текущего такта, открытого в ручном редакторе.
     @Published var activeStoryboardEditDraft: StoryboardBeatEditDraft?
 
+    /// Storyboard selection is domain state so a SwiftUI re-render or rotation
+    /// cannot replay the editor handoff.
+    @Published private(set) var selectedStoryboardBeatID: String?
+    @Published private(set) var pendingStoryboardBeatID: String?
+    private(set) var storyboardSelectionEventID: String?
+    private(set) var storyboardEditorHandoffEventID: String?
+
+    /// The storyboard editor is busy with one owner-side mutation. Views only
+    /// render this state and disable their controls from it.
+    @Published private(set) var isStoryboardMutationInFlight = false
+
     /// Короткая подсказка/ошибка ручного перемещения актёра для открытого такта.
     @Published var storyboardDragFeedback: String?
 
@@ -262,12 +453,62 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var currentPlaybackLogID: String?
     private var lastLoggedPlaybackBeatIndex: Int?
     private var hintPauseRequestToken: UUID?
+    private var acceptedHintPauseRequestToken: UUID?
+    private var hintPauseRequestGeneration: Int?
+    private var hintPauseDisplayRenderTask: Task<Void, Never>?
+    private var pendingHintPauseAnalysis: PendingHintPauseAnalysis?
+
+    private struct PendingHintPauseAnalysis {
+        let result: PauseAnalysisResult
+        let suggestions: [Suggestion]
+        let critique: PauseCritiquePresentation?
+    }
     
     /// Статус AR сессии
     @Published var isARSessionReady: Bool = false
+
+    /// AR interruption/recovery projection owned by the workspace. Readiness
+    /// stays false until a post-interruption frame exposes a real plane.
+    @Published private(set) var isARSessionInterrupted: Bool = false
+    @Published private(set) var isARSessionRecovering: Bool = false
     
     /// Текст ошибки
-    @Published var errorMessage: String?
+    @Published var errorMessage: String? {
+        didSet {
+            // A non-recording error must retire any microphone-specific
+            // recovery affordance before its own flow is rendered.
+            recordingPermissionRecovery = nil
+        }
+    }
+
+    /// Recovery action for a microphone permission failure. The generator
+    /// keeps this separate from the error copy so a view can offer the right
+    /// native action without parsing localized text.
+    @Published private(set) var recordingPermissionRecovery: SceneRecordingPermissionRecovery?
+
+    /// Ошибка, относящаяся только к вводу сценария.
+    @Published private(set) var inputValidationMessage: String?
+
+    /// Storyboard fixtures are domain evidence, not an AR substitute. On a
+    /// simulator ARKit may still report an unsupported configuration; keep
+    /// only that fixture-owned projection out of the error band while leaving
+    /// production and Package 5 AR failure behavior unchanged.
+    var isGeneratorErrorBandVisible: Bool {
+#if DEBUG
+        if debugFixtureID != nil,
+           let errorMessage,
+           errorMessage.hasPrefix(localizedCopy(.arErrorPrefix) + ":") {
+            return false
+        }
+#endif
+        return errorMessage != nil
+    }
+
+    /// Canonical validation copy for the active storyboard editor. This is
+    /// kept separate from the workspace-wide error band so an asynchronous AR
+    /// callback cannot replace the editor's validation result.
+    @Published private(set) var storyboardValidationMessage: String?
+    @Published private(set) var storyboardValidationField: StoryboardValidationField?
     
     /// Показать sheet ввода
     @Published var showInputSheet: Bool = false
@@ -282,14 +523,15 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     @Published var isMarkingMode: Bool = false
     
     /// Статус загрузки
-    @Published var statusMessage: String = "Наведите камеру на поверхность"
+    @Published var statusMessage: String = ""
     
     // MARK: - Services
     
     private let parserService = SceneParserService.shared
     private let plannerService = SpatialPlannerService.shared
-    private let cameraService = CameraService.shared
     private let projectStore: DBService
+    private let permissionClient: any PermissionClient
+    private let recordingController: SceneRecordingController?
     private let hintThermalGovernor = ThermalGovernor()
     private lazy var analysisPipeline = AnalysisPipeline(
         thermalGovernor: hintThermalGovernor,
@@ -313,14 +555,31 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Once released, AR callbacks and SwiftUI updates must not reattach the session.
     private(set) var isWorkspaceReleased = false
 
+#if DEBUG
+    /// Test-only callback seam for exercising ARKit completion races without a
+    /// physical camera or a simulator AR session.
+    var testingWorldMapCaptureOverride: (@MainActor () async -> Result<ARWorldMap?, SceneWorkspaceTeardownFailure>)?
+    private(set) var testingProjectSnapshotSaveCount = 0
+
+    /// Test-only state seam for validating stale-map retirement when a real
+    /// ARWorldMap is supplied by an AR-capable test environment.
+    var testingInitialWorldMapIsPresent: Bool {
+        initialWorldMap != nil
+    }
+
+    func testingSetInitialWorldMap(_ worldMap: ARWorldMap?) {
+        initialWorldMap = worldMap
+    }
+#endif
+
     /// Legacy stopRecording() persists for ordinary user actions. Teardown owns the
     /// one awaited persistence operation and suppresses that fire-and-forget side effect.
     private var suppressAutomaticPersistence = false
 
     private lazy var workspaceTeardownCoordinator = SceneWorkspaceTeardownCoordinator(
         stopRecordingIfNeeded: { [weak self] in
-            guard let self, self.isRecording else { return }
-            self.stopRecording()
+            guard let self else { return }
+            _ = await self.stopRecordingAndWait(reason: .routeExit)
         },
         stopPlaybackIfNeeded: { [weak self] in
             guard let self, self.isPlaying else { return }
@@ -334,6 +593,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         },
         pauseAndDetach: { [weak self] in
             self?.pauseAndDetachARSession()
+        },
+        releaseRecordingIfNeeded: { [weak self] in
+            _ = await self?.recordingController?.releaseAndWait()
         }
     )
 
@@ -360,6 +622,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var activeTargetCueID: UUID?
     private var activeStoryboardActorDrag: StoryboardActorDragState?
     private var lastPresentationFrameTimestamp: TimeInterval = 0
+    private var lastObjectLabelProjectionTimestamp: TimeInterval?
+    private let objectLabelProjectionInterval: TimeInterval = 1.0 / 15.0
+    private var expectedARFrameGeneration = 0
     private let storyboardActorScreenPickRadius: CGFloat = 86
 
     private struct StoryboardActorDragState {
@@ -390,10 +655,22 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var playbackStartDate: Date?
     private var recordingTimer: Timer?
     private var recordingStartDate: Date?
-    private var recorderPrepared = false
+    private var recordingStartTask: Task<Void, Never>?
+    private var recordingStopTask: Task<RecordingStopResult?, Never>?
+    private var promotedRecordingIDs = Set<UUID>()
+    private var pendingRecordingArtifacts: [RecordingArtifact] = []
+    private var projectSnapshotTask: Task<Result<Void, SceneWorkspaceTeardownFailure>, Never>?
+    private var generationTask: Task<Void, Never>?
+    /// M1-016: active workspace deletion lease; non-nil while this VM owns the project.
+    private var projectLeaseToken: UUID?
+    private var generationEpoch: UInt = 0
+    private var teardownTask: Task<SceneWorkspaceTeardownResult, Never>?
+    private var teardownTaskID: UUID?
+    private static let worldMapCaptureTimeoutNanoseconds: UInt64 = 3_000_000_000
     private var hasRestoredPersistedEntities = false
     private var hasAutoPromptedDescription = false
     private var currentProject: UnifiedSceneProject
+    private var presentationLocale: Locale
     private var lastHighHintTimestamp: TimeInterval = 0
     private var lastMediumHintTimestamp: TimeInterval = 0
     private var lastLowHintTimestamp: TimeInterval = 0
@@ -402,6 +679,15 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var lastHintFrameDebugLogTimestamp: TimeInterval = 0
     private let objectDemoDetrHintFrameInterval: TimeInterval = 1.2
     private let lidarDepthMarkingEnabledDefaultsKey = "scene_generator_lidar_marking_enabled"
+    private let storyboardMotionEventLedger = SETMotionEventLedger()
+    private var storyboardSelectionSequence = 0
+    private var storyboardSelectionTask: Task<Void, Never>?
+#if DEBUG
+    private var debugFixtureID: String?
+    private var storyboardDebugMutationDelay: TimeInterval = 0
+    private var generationDebugDelay: TimeInterval = 0
+    private(set) var testingGenerationOwnerCount = 0
+#endif
     
     // MARK: - Cancellables
     
@@ -411,8 +697,23 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     init(projectName: String = "Новая сцена",
          isNewProject: Bool = true,
-         projectStore: DBService = .shared) {
+         projectStore: DBService = .shared,
+         presentationLocale: Locale? = nil,
+         permissionClient: any PermissionClient = PermissionCoordinator(client: SystemPermissionClient()),
+         recordingController: SceneRecordingController? = nil) {
         self.projectStore = projectStore
+        self.permissionClient = permissionClient
+        if let recordingController {
+            self.recordingController = recordingController
+        } else if let artifactStore = try? RecordingArtifactStore() {
+            self.recordingController = SceneRecordingController(artifactStore: artifactStore)
+        } else {
+            self.recordingController = nil
+        }
+        // The route updates this value as soon as its injected locale is
+        // available. RU remains the deterministic standalone/default surface,
+        // preserving existing generator behavior before route composition.
+        self.presentationLocale = presentationLocale ?? Locale(identifier: "ru")
         let loadedProject = isNewProject ? nil : projectStore.loadUnifiedSceneProject(named: projectName)
         if let loadedProject {
             self.currentProject = loadedProject.0
@@ -421,6 +722,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             self.currentProject = UnifiedSceneProject(name: projectName)
             self.initialWorldMap = nil
         }
+        // M1-016 ProjectLifecycleOwner: the workspace holds the deletion lease
+        // for as long as it can mutate this project. A nil token means another
+        // owner already held it; deletion stays blocked by that owner.
+        projectLeaseToken = ProjectLifecycleRegistry.shared.acquire(projectID: currentProject.id)
+        if projectLeaseToken == nil {
+            print("Project lease unavailable for \(currentProject.name); deletion stays blocked by the active owner")
+        }
         self.sceneTitle = currentProject.name
         self.sceneDescription = currentProject.sceneDescription
         self.markedObjects = currentProject.markedObjects
@@ -428,10 +736,34 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         self.plannedScene = currentProject.plannedScene
         self.sceneChunkState = currentProject.sceneChunkState
         self.visualOverlays = currentProject.visualOverlays
+        self.recordingReferences = currentProject.recordingReferences
+        self.promotedRecordingIDs = Set(currentProject.recordingReferences.map(\.recordingID))
+#if DEBUG
+        let launchFixtureID = Self.storyboardFixtureID(from: ProcessInfo.processInfo.arguments)
+        self.debugFixtureID = launchFixtureID
+        if let launchFixtureID {
+            loadDebugStoryboardFixture(launchFixtureID)
+        }
+#endif
         setupBindings()
+#if DEBUG
+        if launchFixtureID == "sheet.decision-trace" {
+            seedDebugDecisionTraceFixture()
+        }
+#endif
         refreshStoryboardBeatItems()
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
+        refreshLatestAvailableRecordingArtifact()
+#if DEBUG
+        if launchFixtureID == "storyboard.validation-failure" {
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self, let draft = self.activeStoryboardEditDraft else { return }
+                _ = await self.applyStoryboardBeatEdit(draft)
+            }
+        }
+#endif
     }
     
     private func setupBindings() {
@@ -445,10 +777,15 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         $sceneDescription
             .dropFirst()
-            .sink { [weak self] _ in
-                self?.sceneChunkState = nil
-                self?.refreshIdleStatusMessage()
-                self?.persistProjectMetadata()
+            .sink { [weak self] description in
+                guard let self else { return }
+                inputValidationMessage = description.isEmpty
+                    || !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nil
+                    : localizedCopy(.generatorInputInvalid)
+                sceneChunkState = nil
+                refreshIdleStatusMessage()
+                persistProjectMetadata()
             }
             .store(in: &cancellables)
 
@@ -462,6 +799,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         analysisPipeline.$currentLiveHint
             .receive(on: DispatchQueue.main)
             .sink { [weak self] hint in
+#if DEBUG
+                // The production-route Decision Trace fixture owns its
+                // deterministic presentation. Ignore the pipeline's initial
+                // nil projection (and later simulator-only clears) so the
+                // real generator button remains reachable without AR frames.
+                guard self?.debugFixtureID != "sheet.decision-trace" else { return }
+#endif
                 self?.liveHint = hint
             }
             .store(in: &cancellables)
@@ -469,6 +813,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         analysisPipeline.$currentOverlayAnnotations
             .receive(on: DispatchQueue.main)
             .sink { [weak self] annotations in
+#if DEBUG
+                guard self?.debugFixtureID != "sheet.decision-trace" else { return }
+#endif
                 self?.coachingOverlayAnnotations = annotations
             }
             .store(in: &cancellables)
@@ -589,15 +936,23 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     /// Обновляет только лёгкий presentation-layer AR: 2D object labels и billboard-подписи.
     /// Этот путь вызывается на каждый AR frame, в отличие от тяжёлого `processARFrameSnapshot`.
-    func updateARPresentationFrame(cameraTransform: simd_float4x4, timestamp: TimeInterval) {
+    func updateARPresentationFrame(cameraTransform: simd_float4x4,
+                                   timestamp: TimeInterval,
+                                   generation: Int? = nil) {
         guard !isWorkspaceReleased else { return }
+        guard generation == nil || generation == expectedARFrameGeneration else { return }
         if timestamp < lastPresentationFrameTimestamp {
             guard lastPresentationFrameTimestamp - timestamp > 2 else { return }
         }
         lastPresentationFrameTimestamp = timestamp
         currentCameraTransform = cameraTransform
         updateBillboardEntities(cameraTransform: cameraTransform)
-        if !isMarkerNameInputActive {
+        let shouldUpdateObjectLabels = lastObjectLabelProjectionTimestamp.map { lastTimestamp in
+            timestamp - lastTimestamp >= objectLabelProjectionInterval
+                || timestamp < lastTimestamp - 2
+        } ?? true
+        if !isMarkerNameInputActive, shouldUpdateObjectLabels {
+            lastObjectLabelProjectionTimestamp = timestamp
             updateObjectLabelOverlays()
         }
     }
@@ -609,14 +964,18 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         timestamp: TimeInterval,
         capturedImage: CVPixelBuffer? = nil,
         interfaceOrientation: UIInterfaceOrientation? = nil,
-        displayTransform: CGAffineTransform? = nil
+        displayTransform: CGAffineTransform? = nil,
+        generation: Int? = nil
     ) {
         guard !isWorkspaceReleased else { return }
+        guard generation == nil || generation == expectedARFrameGeneration else { return }
+        guard !isARSessionInterrupted else { return }
         currentCameraTransform = cameraTransform
         if let interfaceOrientation, interfaceOrientation != .unknown {
             arInterfaceOrientation = interfaceOrientation
         }
-        if let displayTransform {
+        if let displayTransform,
+           hintDisplayTransform != displayTransform {
             hintDisplayTransform = displayTransform
         }
         
@@ -627,30 +986,38 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         
         // Проверяем готовность AR сессии
-        if !isARSessionReady && !detectedPlanes.isEmpty {
+        if !isARSessionInterrupted,
+           !isARSessionReady,
+           !detectedPlanes.isEmpty {
             isARSessionReady = true
+            isARSessionRecovering = false
+            refreshWorkspaceMode()
             refreshIdleStatusMessage()
         }
         
         if let capturedImage {
-            if isRecording {
-                cameraService.appendCapturedPixelBuffer(capturedImage, at: timestamp)
+            if !isARSessionRecovering {
+                processHintFrameIfNeeded(pixelBuffer: capturedImage, timestamp: timestamp)
             }
-            processHintFrameIfNeeded(pixelBuffer: capturedImage, timestamp: timestamp)
         }
 
-        updateARPresentationFrame(cameraTransform: cameraTransform, timestamp: timestamp)
+        updateARPresentationFrame(
+            cameraTransform: cameraTransform,
+            timestamp: timestamp,
+            generation: generation
+        )
         
         // DETR детекция отключена - используем только ручную разметку и LiDAR
     }
 
     /// Backward-compatible обёртка для существующих call-sites.
-    func processARFrame(_ frame: ARFrame) {
+    func processARFrame(_ frame: ARFrame, generation: Int? = nil) {
         processARFrameSnapshot(
             cameraTransform: frame.camera.transform,
             planeSnapshots: frame.anchors.compactMap { ($0 as? ARPlaneAnchor).map(ScenePlaneSnapshot.init(anchor:)) },
             timestamp: frame.timestamp,
-            capturedImage: nil
+            capturedImage: nil,
+            generation: generation
         )
     }
 
@@ -658,17 +1025,160 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         prepareWorkspaceIfNeeded()
     }
 
+    /// Concrete capture sink used directly by ARSceneContainer.Coordinator.
+    /// It is intentionally not a protocol so the reachable path has one
+    /// recording owner.
+    var sceneRecordingController: SceneRecordingController? {
+        recordingController
+    }
+
+    /// A newly created AR coordinator becomes the sole owner of the source
+    /// fact. Teardown/released workspaces cannot be claimed again.
+    @discardableResult
+    func claimRecordingSource(ownerID: UUID, fps: Int?) -> Bool {
+        guard teardownTask == nil, !isWorkspaceReleased else { return false }
+        activeRecordingSourceID = ownerID
+        updateRecordingSourceFPS(fps, ownerID: ownerID)
+        return true
+    }
+
+    /// Publishes only changes from the currently active AR coordinator.
+    func updateRecordingSourceFPS(_ fps: Int?, ownerID: UUID) {
+        guard activeRecordingSourceID == ownerID else { return }
+        let normalizedFPS = fps.flatMap { $0 > 0 ? $0 : nil }
+        guard recordingSourceFPS != normalizedFPS else { return }
+        recordingSourceFPS = normalizedFPS
+    }
+
+    /// Clears the source fact only when the caller still owns it. A stale
+    /// coordinator must not clear a replacement session's actual FPS.
+    func releaseRecordingSource(ownerID: UUID) {
+        guard activeRecordingSourceID == ownerID else { return }
+        updateRecordingSourceFPS(nil, ownerID: ownerID)
+        activeRecordingSourceID = nil
+    }
+
+    /// UIKit-owned callbacks cannot read SwiftUI's locale environment. Keep
+    /// their catalog lookup aligned with the locale injected by the route so
+    /// runtime status/error copy does not fall back to Russian in EN captures.
+    func localizedCopy(_ key: SETCopyKey) -> String {
+        key.localizedString(locale: presentationLocale)
+    }
+
+    func localizedCopy(_ key: SETCopyKey, arguments: [CVarArg]) -> String {
+        key.localizedFormat(locale: presentationLocale, arguments: arguments)
+    }
+
+    func setPresentationLocale(_ locale: Locale) {
+        guard presentationLocale.identifier != locale.identifier else { return }
+        presentationLocale = locale
+        if !isGenerating {
+            refreshIdleStatusMessage()
+        }
+    }
+
+    /// Re-resolves the newest persisted take after a project load or when a
+    /// review surface is reattached. The reference ledger itself is retained
+    /// even when every file is missing.
+    func refreshLatestAvailableRecordingArtifact() {
+        latestAvailableRecordingArtifact = recordingReferences.reversed().compactMap {
+            recordingController?.resolve($0)
+        }.first
+    }
+
+    func clearGeneratorError() {
+        errorMessage = nil
+        recordingPermissionRecovery = nil
+    }
+
+    func retryRecording() {
+        clearGeneratorError()
+        startRecording()
+    }
+
     func persistWorkspaceState() {
         Task { _ = await persistProjectSnapshot() }
     }
 
+#if DEBUG
+    func testingPersistProjectSnapshot() async -> Result<Void, SceneWorkspaceTeardownFailure> {
+        await persistProjectSnapshot()
+    }
+#endif
+
     func teardownAndWait() async -> SceneWorkspaceTeardownResult {
+        if let teardownTask {
+            let taskID = teardownTaskID
+            let result = await teardownTask.value
+            clearBlockedTeardownTask(result, taskID: taskID)
+            return result
+        }
+
+        let taskID = UUID()
+        let task: Task<SceneWorkspaceTeardownResult, Never> = Task { @MainActor [weak self] in
+            guard let self else {
+                return .blocked(.workspaceOwnerUnavailable)
+            }
+            return await self.performTeardown()
+        }
+        teardownTaskID = taskID
+        teardownTask = task
+
+        let result = await task.value
+        clearBlockedTeardownTask(result, taskID: taskID)
+        return result
+    }
+
+    private func performTeardown() async -> SceneWorkspaceTeardownResult {
+        clearHintPresentation()
         suppressAutomaticPersistence = true
+
+        generationEpoch &+= 1
+        generationTask?.cancel()
+        if let generationTask {
+            await generationTask.value
+            self.generationTask = nil
+        }
+        if isGenerating {
+            isGenerating = false
+            generationStage = nil
+            refreshWorkspaceMode()
+            refreshIdleStatusMessage()
+        }
+
         let result = await workspaceTeardownCoordinator.teardownAndWait()
         if result == .released {
             isWorkspaceReleased = true
+            releaseProjectLeaseIfNeeded()
+        } else {
+            suppressAutomaticPersistence = false
         }
         return result
+    }
+
+    private func clearBlockedTeardownTask(
+        _ result: SceneWorkspaceTeardownResult,
+        taskID: UUID?
+    ) {
+        guard case .blocked = result,
+              teardownTaskID == taskID else { return }
+        teardownTask = nil
+        teardownTaskID = nil
+    }
+
+    /// M1-016: drops the deletion lease once the workspace no longer owns
+    /// project state. Safe to call repeatedly; a stale token cannot drop a
+    /// newer lease.
+    private func releaseProjectLeaseIfNeeded() {
+        guard let projectLeaseToken else { return }
+        ProjectLifecycleRegistry.shared.release(projectID: currentProject.id, token: projectLeaseToken)
+        self.projectLeaseToken = nil
+    }
+
+    deinit {
+        if let projectLeaseToken {
+            ProjectLifecycleRegistry.shared.release(projectID: currentProject.id, token: projectLeaseToken)
+        }
     }
 
     private func pauseAndDetachARSession() {
@@ -719,57 +1229,222 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         return configuration
     }
 
+    /// Called by the AR coordinator when the operating system suspends the
+    /// camera session. The interruption is visible in the existing status
+    /// owner; playback, recording, and hint analysis are stopped here so no
+    /// child surface can invent a recovery path.
+    func handleARSessionInterruption(generation: Int? = nil) {
+        guard !isWorkspaceReleased else { return }
+        let nextGeneration = generation ?? (expectedARFrameGeneration + 1)
+        guard nextGeneration >= expectedARFrameGeneration else { return }
+        expectedARFrameGeneration = nextGeneration
+
+        isARSessionInterrupted = true
+        isARSessionRecovering = false
+        isARSessionReady = false
+        detectedPlanes.removeAll()
+        currentCameraTransform = nil
+        lastPlaneUpdateTimestamp = 0
+
+        if isPlaying {
+            stopScene()
+        }
+        if isRecording || isRecordingStarting || isRecordingFinalizing {
+            requestStopRecording(reason: .interruption)
+        }
+        clearHintPresentation()
+        refreshWorkspaceMode()
+        statusMessage = localizedCopy(.cameraInterrupted)
+    }
+
+    /// Ends the visible interruption state but does not claim readiness. A
+    /// subsequent AR frame with a real detected plane completes recovery.
+    func handleARSessionInterruptionEnded(generation: Int? = nil) {
+        guard !isWorkspaceReleased else { return }
+        let nextGeneration = generation ?? (expectedARFrameGeneration + 1)
+        guard nextGeneration >= expectedARFrameGeneration else { return }
+        expectedARFrameGeneration = nextGeneration
+
+        isARSessionInterrupted = false
+        isARSessionRecovering = true
+        isARSessionReady = false
+        detectedPlanes.removeAll()
+        currentCameraTransform = nil
+        lastPlaneUpdateTimestamp = 0
+        clearHintPresentation()
+        refreshWorkspaceMode()
+        statusMessage = localizedCopy(.cameraResuming)
+    }
+
+    /// Record is a real camera action, so every prerequisite is checked here
+    /// as well as in the UIKit rail that exposes the button.
+    private var isSceneMutationBlocked: Bool {
+        isRecording
+            || isRecordingStarting
+            || isRecordingFinalizing
+            || isPlaying
+            || isGenerating
+            || isARSessionInterrupted
+            || isARSessionRecovering
+    }
+
+    var canToggleMarkingMode: Bool {
+        !isSceneMutationBlocked || isMarkingMode
+    }
+
+    var canGenerateScene: Bool {
+        teardownTask == nil
+            && !isWorkspaceReleased
+            && !isSceneMutationBlocked
+            && !isMarkingMode
+    }
+
+    var canToggleHints: Bool {
+        !isPlaying
+            && !isGenerating
+            && !isMarkingMode
+            && !isRecordingFinalizing
+            && !isARSessionInterrupted
+            && !isARSessionRecovering
+    }
+
+    var canStartRecording: Bool {
+        plannedScene != nil
+            && teardownTask == nil
+            && !isWorkspaceReleased
+            && recordingSourceFPS.map { $0 > 0 } == true
+            && isARSessionReady
+            && !isARSessionInterrupted
+            && !isARSessionRecovering
+            && !isGenerating
+            && !isPlaying
+            && !isRecording
+            && !isRecordingStarting
+            && !isRecordingFinalizing
+            && !isMarkingMode
+    }
+
+    var canStartPlayback: Bool {
+        plannedScene != nil
+            && isARSessionReady
+            && !isARSessionInterrupted
+            && !isARSessionRecovering
+            && !isGenerating
+            && !isPlaying
+            && !isRecording
+            && !isRecordingStarting
+            && !isRecordingFinalizing
+            && !isMarkingMode
+    }
+
     /// Генерирует сцену из текстового описания
     func generateScene() async {
-        guard !sceneDescription.isEmpty else {
-            errorMessage = "Введите описание сцены"
+        if let generationTask {
+            await generationTask.value
             return
         }
-        
+
+        guard canGenerateScene else {
+            diagnosticsLog("[GENERATION] ignored while workspace is busy")
+            return
+        }
+
+        let trimmedDescription = sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedDescription.isEmpty else {
+            let message = localizedCopy(.generatorInputInvalid)
+            inputValidationMessage = message
+            errorMessage = message
+            return
+        }
+        let submittedDescription = sceneDescription
+
         guard isARSessionReady else {
-            errorMessage = "AR сессия не готова. Наведите камеру на поверхность."
+            errorMessage = localizedCopy(.generatorErrorARNotReady)
             return
         }
-        
+
         guard let cameraTransform = currentCameraTransform else {
-            errorMessage = "Не удалось получить позицию камеры"
+            errorMessage = localizedCopy(.generatorErrorCameraPosition)
             return
         }
 
         generationLogCounter += 1
         let generationID = "generation_\(generationLogCounter)"
-        
+        generationEpoch &+= 1
+        let generationToken = generationEpoch
+        let submittedMarkedObjects = markedObjects
+        let submittedDetectedObjects = detectedObjects
+        let submittedDetectedPlanes = detectedPlanes
+
         isGenerating = true
+        generationStage = nil
         errorMessage = nil
-        statusMessage = "Анализирую описание..."
-        isPlaying = false
-        activeStoryboardEditDraft = nil
-        storyboardDragFeedback = nil
-        cancelAllAnimations()
-        resetPlaybackUIState(clearTimeline: true)
-        removePlacedSceneEntities(reason: "generation_start \(generationID)")
-        plannedScene = nil
-        beatTimelineItems = []
-        storyboardBeatItems = []
-        
+        statusMessage = localizedCopy(.generatorStatusAnalyzing)
+
+        #if DEBUG
+        testingGenerationOwnerCount += 1
+        #endif
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performGeneration(
+                generationID: generationID,
+                generationToken: generationToken,
+                submittedDescription: submittedDescription,
+                cameraTransform: cameraTransform,
+                markedObjects: submittedMarkedObjects,
+                detectedObjects: submittedDetectedObjects,
+                detectedPlanes: submittedDetectedPlanes
+            )
+        }
+        generationTask = task
+        await task.value
+        if generationEpoch == generationToken {
+            generationTask = nil
+        }
+    }
+
+    private func performGeneration(
+        generationID: String,
+        generationToken: UInt,
+        submittedDescription: String,
+        cameraTransform: simd_float4x4,
+        markedObjects: [MarkedObject],
+        detectedObjects: [DetectedObject],
+        detectedPlanes: [ScenePlaneSnapshot]
+    ) async {
+        guard generationIsCurrent(generationToken) else { return }
+
         // Логирование входных данных
         print("🔍 [VIEWMODEL][\(generationID)] === НАЧАЛО ГЕНЕРАЦИИ СЦЕНЫ ===")
-        SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] start descriptionChars=\(sceneDescription.count), markedObjects=\(markedObjects.count)")
-        print("🔍 [VIEWMODEL] Описание: '\(sceneDescription)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] start descriptionChars=\(submittedDescription.count), markedObjects=\(markedObjects.count)")
+        print("🔍 [VIEWMODEL] Описание: '\(submittedDescription)'")
         print("🔍 [VIEWMODEL] Размеченных объектов: \(markedObjects.count)")
         for (index, marker) in markedObjects.enumerated() {
             print("🔍 [VIEWMODEL]   MarkedObject[\(index)]: name='\(marker.name)', type=\(marker.type.rawValue), id=\(marker.id.uuidString.prefix(8))")
         }
-        
+
         // 1. Парсим описание с учётом markedObjects (async — поддержка LLM fallback)
         print("🔍 [VIEWMODEL] Вызов parserService.parseAsync()...")
-        statusMessage = "Анализирую текст..."
-        let result = await parserService.parseAsync(sceneDescription, markedObjects: markedObjects)
+        generationStage = .reading
+        statusMessage = localizedCopy(.generatorStatusReading)
+        #if DEBUG
+        if generationDebugDelay > 0 {
+            let delay = UInt64(generationDebugDelay * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: delay)
+            guard generationIsCurrent(generationToken) else { return }
+        }
+        #endif
+        await Task.yield()
+        guard generationIsCurrent(generationToken) else { return }
+
+        let result = await parserService.parseAsync(submittedDescription, markedObjects: markedObjects)
+        guard generationIsCurrent(generationToken) else { return }
         parserService.releaseLocalModelResources(reason: "scene_generation_parse_complete")
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] parser finished and LLM resources requested for release")
         let script = result.script
         let runtimeTrace = parserService.lastRuntimeTrace
-        
+
         logParsedScriptDetails(script, diagnostics: result.diagnostics, generationID: generationID)
         print("🔍 [VIEWMODEL] Результат парсинга:")
         print("🔍 [VIEWMODEL]   Actors: \(script.actors.count)")
@@ -789,51 +1464,65 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         print("🔍 [VIEWMODEL]   Confidence: \(result.diagnostics.confidence)")
         print("🔍 [VIEWMODEL]   Matched markedObjects: \(result.diagnostics.matchedMarkedObjects.count)")
-        
-        parsedScript = script
-        parsingResult = result
-        sceneChunkState = parserService.lastChunkState
-        visualOverlays = parserService.lastBundleResult?.visualOverlays ?? []
         if let runtimeTrace {
             print("🔍 [VIEWMODEL]   Runtime route: \(runtimeTrace.route.rawValue)")
-            print("🔍 [VIEWMODEL]   Runtime reasons: \(runtimeTrace.reasons.joined(separator: ","))")
+            print("🔍 [VIEWMODEL]   Runtime reasons: \(runtimeTrace.reasons.joined(separator:","))")
         }
 
         // Отображаем диагностику в статусе
         if runtimeTrace?.route == .needsClarification, let clarification = parserService.clarificationMessage(for: runtimeTrace) {
-            statusMessage = "Нужно уточнение"
+            statusMessage = localizedCopy(.generatorClarification)
             errorMessage = clarification
         } else if runtimeTrace?.route == .offloadRemote {
-            statusMessage = "Нужен более сильный парсер, использую fallback"
+            statusMessage = localizedCopy(.generatorStatusParserFallback)
         } else if result.diagnostics.confidence < 0.6 {
-            statusMessage = "Низкая уверенность парсинга (\(Int(result.diagnostics.confidence * 100))%)"
-            if !result.diagnostics.notes.isEmpty {
-                errorMessage = result.diagnostics.notes.joined(separator: "; ")
-            }
+            statusMessage = localizedCopy(
+                .generatorStatusLowConfidence,
+                arguments: [Int(result.diagnostics.confidence * 100)]
+            )
+            // M1-018 ErrorPresentationOwner: parse notes are internal English
+            // diagnostics ("router=…", "trace:…"); the localized low-confidence
+            // status is the user-facing signal. Notes stay in the diagnostics
+            // log and the debug decision trace, never in production errors.
         } else {
-            statusMessage = "Парсинг выполнен (\(Int(result.diagnostics.confidence * 100))%)"
+            statusMessage = localizedCopy(
+                .generatorStatusParsed,
+                arguments: [Int(result.diagnostics.confidence * 100)]
+            )
         }
-        
+
         if script.isEmpty {
-            errorMessage = "Не удалось распознать описание сцены"
+            let message = localizedCopy(.generatorErrorParseEmpty)
+            if sceneDescription == submittedDescription {
+                inputValidationMessage = message
+            }
+            errorMessage = message
             isGenerating = false
+            generationStage = nil
             SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] failed empty script")
             SceneGeneratorDiagnosticsLogger.shared.flush()
             return
         }
-        
-        statusMessage = "Планирую размещение..."
-        
+
+        generationStage = .planning
+        statusMessage = localizedCopy(.generatorStatusPlanning)
+        await Task.yield()
+        guard generationIsCurrent(generationToken) else { return }
+
         // 2. Сопоставляем объекты с размеченными (приоритет) и детекциями
         // Объекты из markedObjects уже включены в script.objects с detectedPosition
         print("🔍 [VIEWMODEL] Сопоставление объектов с markedObjects и детекциями...")
         print("🔍 [VIEWMODEL]   До сопоставления: objects.count=\(script.objects.count)")
-        let matchedObjects = matchObjectsWithMarkedAndDetected(script.objects)
+        let matchedObjects = matchObjectsWithMarkedAndDetected(
+            script.objects,
+            markedObjects: markedObjects,
+            detectedObjects: detectedObjects
+        )
         print("🔍 [VIEWMODEL]   После сопоставления: objects.count=\(matchedObjects.count)")
         for (index, object) in matchedObjects.enumerated() {
             print("🔍 [VIEWMODEL]     MatchedObject[\(index)]: id='\(object.id)', type=\(object.type.rawValue), detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
         }
-        
+
         let updatedScript = SceneScript(
             sceneHeading: script.sceneHeading,
             locationName: script.locationName,
@@ -845,7 +1534,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             spatialRelations: script.spatialRelations,
             originalDescription: script.originalDescription
         )
-        
+
         // 3. Планируем размещение с учётом размеченных объектов
         print("🔍 [VIEWMODEL] Планирование размещения...")
         print("🔍 [VIEWMODEL]   Script для планирования: actors=\(updatedScript.actors.count), objects=\(updatedScript.objects.count), beats=\(updatedScript.beats.count), actions=\(updatedScript.actions.count)")
@@ -856,7 +1545,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             availablePlanes: detectedPlanes,
             markedObjects: markedObjects
         )
-        
+        guard generationIsCurrent(generationToken) else { return }
+
         print("🔍 [VIEWMODEL] Результат планирования:")
         print("🔍 [VIEWMODEL]   PlacedActors: \(planned.placedActors.count)")
         for (index, actor) in planned.placedActors.enumerated() {
@@ -867,40 +1557,68 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             print("🔍 [VIEWMODEL]     PlacedObject[\(index)]: id='\(object.id)', objectId='\(object.objectId)', type=\(object.type.rawValue), isRealWorld=\(object.isRealWorld), placementSource=\(object.placementSource.rawValue)")
         }
         logPlannedSceneDetails(planned, script: updatedScript, generationID: generationID)
-        
-        parsedScript = updatedScript
-        plannedScene = planned
-        refreshStoryboardBeatItems()
-        beatTimelineItems = buildBeatTimelineItems(for: planned, script: updatedScript)
-        
-        statusMessage = "Размещаю объекты..."
-        
-        // 4. Создаём 3D объекты в AR
-        await placeObjectsInAR(planned)
 
+        generationStage = .placing
+        statusMessage = localizedCopy(.generatorStatusPlacing)
+        await Task.yield()
+        guard generationIsCurrent(generationToken) else { return }
+
+        // The model and AR replacement stay in one MainActor commit block.
+        cancelAllAnimations()
+        resetPlaybackUIState(clearTimeline: true)
+        removePlacedSceneEntities(reason: "generation_commit \(generationID)")
+        parsedScript = updatedScript
+        parsingResult = result
+        sceneChunkState = parserService.lastChunkState
+        visualOverlays = parserService.lastBundleResult?.visualOverlays ?? []
+        plannedScene = planned
+        beatTimelineItems = buildBeatTimelineItems(for: planned, script: updatedScript)
+        refreshStoryboardBeatItems()
+        activeStoryboardEditDraft = nil
+        storyboardDragFeedback = nil
+
+        // 4. Создаём 3D объекты в AR
+        placeObjectsInAR(planned)
+
+        inputValidationMessage = nil
         isGenerating = false
+        generationStage = nil
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
+        guard generationIsCurrent(generationToken) else { return }
         persistProjectMetadata()
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] complete actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count)")
         SceneGeneratorDiagnosticsLogger.shared.flush()
+        guard generationIsCurrent(generationToken) else { return }
 
         // Закрываем sheet
         showInputSheet = false
     }
-    
+
+    private func generationIsCurrent(_ generationToken: UInt) -> Bool {
+        !Task.isCancelled && !isWorkspaceReleased && generationEpoch == generationToken
+    }
+
     /// Запускает воспроизведение анимации
     func playScene() {
-        guard let planned = plannedScene else {
-            errorMessage = "Сначала создайте сцену"
+        guard plannedScene != nil else {
+            errorMessage = localizedCopy(.generatorErrorNoScene)
             diagnosticsLog("🎬 [PLAYBACK] playScene rejected: plannedScene=nil")
             return
         }
-        
-        guard !isPlaying else {
-            diagnosticsLog("🎬 [PLAYBACK] playScene ignored: already playing id=\(currentPlaybackLogID ?? "nil")")
+
+        guard !isGenerating, !isPlaying, !isRecording, !isRecordingFinalizing, !isMarkingMode else {
+            diagnosticsLog("🎬 [PLAYBACK] playScene ignored: busy generating=\(isGenerating) playing=\(isPlaying) recording=\(isRecording) finalizing=\(isRecordingFinalizing) marking=\(isMarkingMode)")
             return
         }
+
+        guard isARSessionReady, !isARSessionInterrupted, !isARSessionRecovering else {
+            errorMessage = localizedCopy(.generatorErrorARNotReady)
+            diagnosticsLog("🎬 [PLAYBACK] playScene rejected: AR not ready interrupted=\(isARSessionInterrupted) recovering=\(isARSessionRecovering)")
+            return
+        }
+
+        guard let planned = plannedScene else { return }
 
         playbackLogCounter += 1
         let playbackID = "playback_\(playbackLogCounter)"
@@ -914,6 +1632,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             storyboardDragFeedback = nil
             diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] storyboard editor closed before playback")
         }
+        isHintsEnabled = false
+        clearHintPresentation()
         currentPlaybackLogID = playbackID
         lastLoggedPlaybackBeatIndex = nil
         
@@ -923,7 +1643,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         isPlaying = true
         resetPlaybackUIState(clearTimeline: false)
         refreshWorkspaceMode()
-        statusMessage = "Воспроизведение..."
+        statusMessage = localizedCopy(.generatorStatusPlayback)
         
         // Инициализируем счётчики анимаций
         completedActorAnimations = 0
@@ -931,7 +1651,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         if totalActorAnimations == 0 {
             diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] no animated actors: actors=\(planned.placedActors.count)")
             isPlaying = false
-            statusMessage = "Нет анимируемых действий"
+            statusMessage = localizedCopy(.generatorStatusNoActions)
             setActorsToInitialPositionsInstantly()
             currentPlaybackLogID = nil
             lastLoggedPlaybackBeatIndex = nil
@@ -1125,6 +1845,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Показывает sheet ввода
     func showInput() {
+        inputValidationMessage = nil
         showInputSheet = true
     }
     
@@ -1132,6 +1853,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Включает/выключает режим разметки
     func toggleMarkingMode() {
+        guard canToggleMarkingMode else {
+            diagnosticsLog("[MARKER] mode toggle ignored while workspace is busy")
+            return
+        }
+        if !isMarkingMode {
+            isHintsEnabled = false
+            clearHintPresentation()
+        }
         isMarkingMode.toggle()
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
@@ -1160,7 +1889,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             worldPosition = fallbackPosition
             diagnosticsLog("[MARKER] raycast fallback used position=\(formatPosition(fallbackPosition))")
         } else {
-            statusMessage = "Не удалось отметить объект. Наведите камеру на поверхность и попробуйте ещё раз."
+            statusMessage = localizedCopy(.generatorErrorMarkFailed)
             diagnosticsLog("[MARKER] tap rejected: no raycast or fallback at point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
             return
         }
@@ -1175,7 +1904,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     func createMarker(withName name: String) {
         guard let position = pendingMarkerPosition else { return }
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
-            errorMessage = "Введите название объекта"
+            errorMessage = localizedCopy(.generatorErrorMarkerName)
             return
         }
         
@@ -1335,7 +2064,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     // MARK: - AR Object Placement
     
-    private func placeObjectsInAR(_ planned: PlannedScene) async {
+    private func placeObjectsInAR(_ planned: PlannedScene) {
         guard let arView = arView else { return }
         
         print("🔍 [VIEWMODEL] === РАЗМЕЩЕНИЕ В AR ===")
@@ -1548,7 +2277,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         maxWidth: Float
     ) -> ModelEntity {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let safeText = trimmed.isEmpty ? "Объект" : trimmed
+        let safeText = trimmed.isEmpty ? localizedCopy(.generatorDefaultObject) : trimmed
         let estimatedTextWidth = min(maxWidth, max(0.24, Float(safeText.count) * Float(fontSize) * 0.62))
         let backgroundSize = SIMD3<Float>(estimatedTextWidth + 0.18, 0.15, 0.022)
         let background = ModelEntity(
@@ -1593,7 +2322,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         pathGuideEntities.removeAll()
         actorFocusEntities.removeAll()
         actorRenderStyles.removeAll()
-        objectLabelItems = []
+        if !objectLabelItems.isEmpty {
+            objectLabelItems = []
+        }
         removeActiveTargetCue()
     }
 
@@ -1673,7 +2404,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func updateObjectLabelOverlays() {
         guard let arView else {
-            objectLabelItems = []
+            if !objectLabelItems.isEmpty {
+                objectLabelItems = []
+            }
             return
         }
 
@@ -1706,7 +2439,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             }
         }
 
-        objectLabelItems = Self.layoutObjectLabels(rawLabels, canvasSize: arView.bounds.size)
+        let nextItems = Self.layoutObjectLabels(rawLabels, canvasSize: arView.bounds.size)
+        if objectLabelItems != nextItems {
+            objectLabelItems = nextItems
+        }
     }
 
     private var isMarkerNameInputActive: Bool {
@@ -2321,6 +3057,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     func refreshStoryboardBeatItems() {
         storyboardBeatItems = buildStoryboardBeatPresentationItems(for: parsedScript)
+        if let selectedStoryboardBeatID,
+           storyboardBeatItems.contains(where: { $0.beatID == selectedStoryboardBeatID }) {
+            return
+        }
+        selectedStoryboardBeatID = storyboardBeatItems.first?.beatID
     }
 
     func buildStoryboardBeatInspector(for draft: StoryboardBeatEditDraft) -> StoryboardBeatInspectorPresentation {
@@ -2345,7 +3086,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             actorLabelByID: actorLabelByID
         )
         let duration = storyboardBeatDurationText(for: draft.beatID)
-        let dragHint = storyboardDragFeedback ?? "Удерживайте модель актёра в AR, чтобы переместить её в этом такте"
+        let dragHint = storyboardDragFeedback ?? localizedCopy(.storyboardDragHint)
 
         return StoryboardBeatInspectorPresentation(
             kindTitle: storyboardKindTitle(hasDialogue: hasDialogue, hasAction: hasAction),
@@ -2358,9 +3099,60 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         )
     }
 
+    /// Records one user selection and owns the delayed editor handoff. The
+    /// presentation layer may be recreated while the task is pending; only
+    /// this owner can consume the stable event and open the sheet.
+    func selectStoryboardBeat(beatID: String, reduceMotion: Bool) {
+        guard storyboardBeatItems.contains(where: { $0.beatID == beatID }) else { return }
+
+        storyboardSelectionTask?.cancel()
+        storyboardSelectionSequence += 1
+        let eventID = "storyboard.selection.\(storyboardSelectionSequence).\(beatID)"
+        storyboardSelectionEventID = eventID
+        storyboardEditorHandoffEventID = nil
+        selectedStoryboardBeatID = beatID
+        pendingStoryboardBeatID = beatID
+
+        let delay = reduceMotion
+            ? SETMotion.reducedMotionCrossfadeDuration
+            : SETMotion.reflowGeometryDuration
+        storyboardSelectionTask = Task { @MainActor [weak self] in
+            guard delay > 0 else {
+                self?.completeStoryboardSelection(beatID: beatID, eventID: eventID)
+                return
+            }
+            do {
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.completeStoryboardSelection(beatID: beatID, eventID: eventID)
+        }
+    }
+
+    private func completeStoryboardSelection(beatID: String, eventID: String) {
+        guard pendingStoryboardBeatID == beatID,
+              storyboardSelectionEventID == eventID,
+              storyboardMotionEventLedger.consume(eventID) else { return }
+        pendingStoryboardBeatID = nil
+        storyboardEditorHandoffEventID = eventID
+        storyboardSelectionTask = nil
+        openStoryboardEditor(for: beatID)
+    }
+
+    private func cancelPendingStoryboardSelection() {
+        storyboardSelectionTask?.cancel()
+        storyboardSelectionTask = nil
+        pendingStoryboardBeatID = nil
+    }
+
     func openStoryboardEditor(for beatID: String) {
+        errorMessage = nil
+        storyboardValidationMessage = nil
+        storyboardValidationField = nil
         guard let draft = makeStoryboardEditDraft(for: beatID) else {
-            errorMessage = "Не удалось открыть такт для редактирования"
+            errorMessage = localizedCopy(.storyboardErrorOpen)
             return
         }
         activeStoryboardEditDraft = draft
@@ -2369,16 +3161,35 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     func cancelStoryboardEditor() {
+        cancelPendingStoryboardSelection()
         cancelActiveStoryboardActorDrag()
         activeStoryboardEditDraft = nil
         storyboardDragFeedback = nil
+        errorMessage = nil
+        storyboardValidationMessage = nil
+        storyboardValidationField = nil
     }
 
     func applyStoryboardBeatEdit(_ draft: StoryboardBeatEditDraft) async -> Bool {
+        guard !isStoryboardMutationInFlight else { return false }
+        isStoryboardMutationInFlight = true
+        defer { isStoryboardMutationInFlight = false }
+        errorMessage = nil
+        storyboardValidationMessage = nil
+        storyboardValidationField = nil
+#if DEBUG
+        let debugMutationDelay = max(
+            storyboardDebugMutationDelay,
+            debugFixtureID == "storyboard.saving" ? 3.0 : 0
+        )
+        if debugMutationDelay > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(debugMutationDelay * 1_000_000_000))
+        }
+#endif
         guard let script = parsedScript,
               let beatIndex = script.beats.firstIndex(where: { $0.id == draft.beatID })
         else {
-            errorMessage = "Такт больше не найден"
+            errorMessage = localizedCopy(.storyboardErrorNotFound)
             return false
         }
 
@@ -2404,14 +3215,29 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     func deleteStoryboardBeat(beatID: String) async -> Bool {
+        guard !isStoryboardMutationInFlight else { return false }
+        isStoryboardMutationInFlight = true
+        defer { isStoryboardMutationInFlight = false }
+        errorMessage = nil
+        storyboardValidationMessage = nil
+        storyboardValidationField = nil
+#if DEBUG
+        let debugMutationDelay = max(
+            storyboardDebugMutationDelay,
+            debugFixtureID == "storyboard.saving" ? 1.2 : 0
+        )
+        if debugMutationDelay > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(debugMutationDelay * 1_000_000_000))
+        }
+#endif
         guard let script = parsedScript,
               let index = script.beats.firstIndex(where: { $0.id == beatID })
         else {
-            errorMessage = "Такт больше не найден"
+            errorMessage = localizedCopy(.storyboardErrorNotFound)
             return false
         }
         guard script.beats.count > 1 else {
-            errorMessage = "Нельзя удалить единственный такт"
+            errorMessage = localizedCopy(.storyboardErrorDeleteLast)
             return false
         }
 
@@ -2422,6 +3248,21 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     func moveStoryboardBeat(beatID: String, offset: Int) async -> Bool {
+        guard !isStoryboardMutationInFlight else { return false }
+        isStoryboardMutationInFlight = true
+        defer { isStoryboardMutationInFlight = false }
+        errorMessage = nil
+        storyboardValidationMessage = nil
+        storyboardValidationField = nil
+#if DEBUG
+        let debugMutationDelay = max(
+            storyboardDebugMutationDelay,
+            debugFixtureID == "storyboard.saving" ? 1.2 : 0
+        )
+        if debugMutationDelay > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(debugMutationDelay * 1_000_000_000))
+        }
+#endif
         guard offset != 0,
               let script = parsedScript,
               let index = script.beats.firstIndex(where: { $0.id == beatID })
@@ -2444,7 +3285,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let actorOptions = script.actors.map {
             StoryboardEntityOption(id: $0.id, label: displayName(for: $0.id, in: script), kind: .actor)
         }
-        let targetOptions = [StoryboardEntityOption(id: "none", label: "Нет цели", kind: .none)] +
+        let targetOptions = [StoryboardEntityOption(id: "none", label: localizedCopy(.storyboardNoTarget), kind: .none)] +
             script.actors.map { StoryboardEntityOption(id: $0.id, label: displayName(for: $0.id, in: script), kind: .actor) } +
             script.objects.map { StoryboardEntityOption(id: $0.id, label: displayName(for: $0), kind: .object) }
         let actions = beat.actions.map { action in
@@ -2461,7 +3302,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         return StoryboardBeatEditDraft(
             beatID: beat.id,
-            title: "Такт \(script.beats.firstIndex(where: { $0.id == beat.id }).map { $0 + 1 } ?? 1)",
+            title: localizedCopy(
+                .storyboardBeatTitle,
+                arguments: [script.beats.firstIndex(where: { $0.id == beat.id }).map { $0 + 1 } ?? 1]
+            ),
             actions: actions,
             actorOptions: actorOptions,
             targetOptions: targetOptions
@@ -2481,7 +3325,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         if let action = actions.first {
             return "\(actorLabelByID[action.actorId] ?? action.actorId) · \(action.type.rawValue)"
         }
-        return "Пустой такт"
+        return localizedCopy(.storyboardEmptyBeat)
     }
 
     private func storyboardInspectorWarnings(
@@ -2494,22 +3338,38 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         for action in actions {
             if Self.storyboardTargetActionTypes.contains(action.type),
                normalizedStoryboardTarget(action.target) == nil {
-                warnings.append("\(action.type.storyboardDiagnosticTitle): нет цели")
+                warnings.append(
+                    localizedCopy(
+                        .storyboardWarningNoTarget,
+                        arguments: [action.type.rawValue]
+                    )
+                )
             }
             if (action.type == .talk || action.type == .describedAction),
                action.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                warnings.append("\(actorLabelByID[action.actorId] ?? action.actorId): пустой текст")
+                warnings.append(
+                    localizedCopy(
+                        .storyboardWarningEmptyText,
+                        arguments: [actorLabelByID[action.actorId] ?? action.actorId]
+                    )
+                )
             }
         }
 
         for actorID in Set(actions.map(\.actorId)).sorted()
         where !storyboardActorParticipatesInPlannedBeat(actorID: actorID, beatID: draft.beatID) {
-            warnings.append("\(actorLabelByID[actorID] ?? actorID): нет точки в такте")
+            warnings.append(
+                localizedCopy(
+                    .storyboardWarningNoPoint,
+                    arguments: [actorLabelByID[actorID] ?? actorID]
+                )
+            )
         }
 
         if let storyboardDragFeedback,
            !storyboardDragFeedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           storyboardDragFeedback.hasPrefix("Не") || storyboardDragFeedback.hasPrefix("Нельзя") {
+           storyboardDragFeedback.hasPrefix(localizedCopy(.storyboardDragFailureUnablePrefix))
+                || storyboardDragFeedback.hasPrefix(localizedCopy(.storyboardDragFailureCannotPrefix)) {
             warnings.append(storyboardDragFeedback)
         }
 
@@ -2550,7 +3410,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private func applyManualStoryboardScriptEdit(beats: [SceneBeat], reason: String) async -> Bool {
         guard let script = parsedScript else { return false }
         guard let cameraTransform = currentCameraTransform ?? arView?.session.currentFrame?.camera.transform else {
-            errorMessage = "Не удалось получить текущую AR-позицию для перепланирования"
+            errorMessage = localizedCopy(.generatorErrorCameraPosition)
             return false
         }
 
@@ -2585,10 +3445,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             self.parsingResult = ParsingResult(script: editedScript, diagnostics: parsingResult.diagnostics)
         }
         plannedScene = planned
-        await placeObjectsInAR(planned)
+        placeObjectsInAR(planned)
         beatTimelineItems = buildBeatTimelineItems(for: planned, script: editedScript)
         refreshStoryboardBeatItems()
         activeStoryboardEditDraft = nil
+        storyboardValidationMessage = nil
+        storyboardValidationField = nil
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
         persistProjectMetadata()
@@ -2648,19 +3510,19 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     @discardableResult
     func commitStoryboardActorDrag(actorID: String, beatID: String, to position: Position3D) -> Bool {
         guard activeStoryboardEditDraft?.beatID == beatID else {
-            storyboardDragFeedback = "Нельзя переместить актёра: такт не открыт"
+            storyboardDragFeedback = localizedCopy(.storyboardDragBeatClosed)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: beat not active actor=\(actorID), beat=\(beatID)")
             return false
         }
         guard !isPlaying, !isGenerating, !isRecording else {
-            storyboardDragFeedback = "Нельзя перемещать во время воспроизведения или записи"
+            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: busy actor=\(actorID), beat=\(beatID)")
             return false
         }
         guard let plannedScene,
               let actorIndex = plannedScene.placedActors.firstIndex(where: { $0.actorId == actorID || $0.id == actorID })
         else {
-            storyboardDragFeedback = "Не найден актёр для перемещения"
+            storyboardDragFeedback = localizedCopy(.storyboardDragActorMissing)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: actor missing actor=\(actorID), beat=\(beatID)")
             return false
         }
@@ -2676,7 +3538,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
 
         guard changedPoints > 0 else {
-            storyboardDragFeedback = "\(displayName(for: actor)) не участвует в этом такте"
+            storyboardDragFeedback = localizedCopy(
+                .storyboardDragActorNotInBeat,
+                arguments: [displayName(for: actor)]
+            )
             diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: no beat point actor=\(displayName(for: actor)), beat=\(beatID)")
             return false
         }
@@ -2706,7 +3571,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         refreshStoryboardBeatItems()
         refreshPathGuides(for: updatedScene)
         persistProjectMetadata()
-        storyboardDragFeedback = "\(displayName(for: actor)) перемещён в \(activeStoryboardEditDraft?.title.lowercased() ?? "такте")"
+        storyboardDragFeedback = localizedCopy(
+            .storyboardDragCommittedInBeat,
+            arguments: [
+                displayName(for: actor),
+                activeStoryboardEditDraft?.title.lowercased() ?? localizedCopy(.storyboardBeatTitle, arguments: [""])
+            ]
+        )
         diagnosticsLog("[STORYBOARD_EDIT] actor drag committed actor=\(displayName(for: actor)), beat=\(beatID), points=\(changedPoints), position=\(formatPosition(position))")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         return true
@@ -2715,14 +3586,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     @discardableResult
     func commitStoryboardActorTrackDrag(actorID: String, from originalPosition: SIMD3<Float>, to position: Position3D) -> Bool {
         guard !isPlaying, !isGenerating, !isRecording else {
-            storyboardDragFeedback = "Нельзя перемещать во время воспроизведения или записи"
+            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
             diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: busy actor=\(actorID)")
             return false
         }
         guard let plannedScene,
               let actorIndex = plannedScene.placedActors.firstIndex(where: { $0.actorId == actorID || $0.id == actorID })
         else {
-            storyboardDragFeedback = "Не найден актёр для перемещения"
+            storyboardDragFeedback = localizedCopy(.storyboardDragActorMissing)
             diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: actor missing actor=\(actorID)")
             return false
         }
@@ -2764,7 +3635,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         refreshStoryboardBeatItems()
         refreshPathGuides(for: updatedScene)
         persistProjectMetadata()
-        storyboardDragFeedback = "\(displayName(for: actor)) перемещён"
+        storyboardDragFeedback = localizedCopy(
+            .storyboardDragCommitted,
+            arguments: [displayName(for: actor)]
+        )
         diagnosticsLog("[STORYBOARD_EDIT] actor track drag committed actor=\(displayName(for: actor)), delta=(\(formatFloat(deltaX)), \(formatFloat(deltaZ))), position=\(formatPosition(position))")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         return true
@@ -2773,25 +3647,28 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private func beginStoryboardActorDrag(at screenPoint: CGPoint) {
         diagnosticsLog("[STORYBOARD_EDIT] actor drag begin requested point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
         guard !isPlaying, !isGenerating, !isRecording else {
-            storyboardDragFeedback = "Нельзя перемещать во время воспроизведения или записи"
+            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: busy")
             return
         }
         guard arView != nil else {
-            storyboardDragFeedback = "AR-сцена ещё не готова"
+            storyboardDragFeedback = localizedCopy(.storyboardDragARNotReady)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: no arView")
             return
         }
         let beatID = activeStoryboardEditDraft?.beatID
         guard let actor = storyboardActorHit(at: screenPoint, beatID: beatID)
         else {
-            storyboardDragFeedback = "Удерживайте именно модель актёра"
+            storyboardDragFeedback = localizedCopy(.storyboardDragHoldActor)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: actor hit missing beat=\(beatID ?? "global"), point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
             return
         }
         if let beatID {
             guard actor.pathBeatIDs.contains(beatID) else {
-                storyboardDragFeedback = "\(displayName(for: actor)) не участвует в этом такте"
+                storyboardDragFeedback = localizedCopy(
+                    .storyboardDragActorNotInBeat,
+                    arguments: [displayName(for: actor)]
+                )
                 diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: no beat point actor=\(displayName(for: actor)), beat=\(beatID)")
                 return
             }
@@ -2799,7 +3676,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard let entity = placedEntities[actor.id],
               let position = storyboardActorDragPosition(at: screenPoint, for: actor, beatID: beatID)
         else {
-            storyboardDragFeedback = "Не удалось найти поверхность для перемещения"
+            storyboardDragFeedback = localizedCopy(.storyboardDragSurfaceMissing)
             return
         }
 
@@ -2813,8 +3690,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         actorFocusEntities[actor.id]?.isEnabled = true
         updateStoryboardActorDragPreview(actor: actor, position: position)
         storyboardDragFeedback = beatID == nil
-            ? "Перемещаю \(displayName(for: actor))"
-            : "Перемещаю \(displayName(for: actor)) в \(activeStoryboardEditDraft?.title.lowercased() ?? "такте")"
+            ? localizedCopy(.storyboardDragMoving, arguments: [displayName(for: actor)])
+            : localizedCopy(
+                .storyboardDragMovingToBeat,
+                arguments: [
+                    displayName(for: actor),
+                    activeStoryboardEditDraft?.title.lowercased() ?? localizedCopy(.storyboardBeatTitle, arguments: [""])
+                ]
+            )
         diagnosticsLog("[STORYBOARD_EDIT] actor drag began actor=\(displayName(for: actor)), beat=\(beatID ?? "global"), position=\(formatPosition(position))")
     }
 
@@ -2844,7 +3727,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             if let entity = placedEntities[drag.actorPlacedID] {
                 entity.position = drag.originalPosition
             }
-            storyboardDragFeedback = "Перемещение отменено"
+            storyboardDragFeedback = localizedCopy(.storyboardDragCancelled)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag cancelled actor=\(drag.actorID), beat=\(drag.beatID ?? "global")")
         }
     }
@@ -3012,16 +3895,25 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func validateStoryboardActionDraft(_ draft: StoryboardActionEditDraft) -> Bool {
         guard draft.actorId != "none", !draft.actorId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "У действия должен быть актёр"
+            let message = localizedCopy(.storyboardValidationActor)
+            storyboardValidationMessage = message
+            storyboardValidationField = .actor(actionID: draft.id)
+            errorMessage = message
             return false
         }
         if draft.type == .give {
             guard let target = draft.target, target != "none", !target.isEmpty else {
-                errorMessage = "Для передачи нужна цель"
+                let message = localizedCopy(.storyboardValidationTarget)
+                storyboardValidationMessage = message
+                storyboardValidationField = .target(actionID: draft.id)
+                errorMessage = message
                 return false
             }
             guard target != draft.actorId else {
-                errorMessage = "Нельзя передать объект самому себе"
+                let message = localizedCopy(.storyboardValidationSelfTarget)
+                storyboardValidationMessage = message
+                storyboardValidationField = .target(actionID: draft.id)
+                errorMessage = message
                 return false
             }
         }
@@ -3071,7 +3963,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         if let action = beat.actions.first {
             return "\(displayName(for: action.actorId, in: script)) · \(action.type.rawValue)"
         }
-        return "Пустой такт"
+        return localizedCopy(.storyboardEmptyBeat)
     }
 
     private func storyboardActionText(_ action: SceneAction) -> String {
@@ -3087,7 +3979,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return name
         }
         if let suffix = actorId.split(separator: "_").last, Int(suffix) != nil {
-            return "Актёр \(suffix)"
+            return localizedCopy(.storyboardActorNumber, arguments: [String(suffix)])
         }
         return actorId
     }
@@ -3104,9 +3996,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private func displayName(for objectType: SceneObject.ObjectType) -> String {
         switch objectType {
         case .table:
-            return "Стол"
+            return localizedCopy(.storyboardObjectTable)
         case .phone:
-            return "Телефон"
+            return localizedCopy(.storyboardObjectPhone)
         default:
             return objectType.rawValue
         }
@@ -3268,9 +4160,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return name
         }
         if let suffix = actor.actorId.split(separator: "_").last, Int(suffix) != nil {
-            return "Актёр \(suffix)"
+            return localizedCopy(.storyboardActorNumber, arguments: [String(suffix)])
         }
-        return "Актёр"
+        return localizedCopy(.storyboardActor)
     }
 
     private func formatPosition(_ position: Position3D) -> String {
@@ -3330,8 +4222,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Сопоставляет объекты скрипта с размеченными и обнаруженными объектами
     /// Приоритет: 1) Размеченные объекты, 2) Детекции, 3) Виртуальные
-    private func matchObjectsWithMarkedAndDetected(_ scriptObjects: [SceneObject]) -> [SceneObject] {
-        var unusedMarkers = markedObjects
+    private func matchObjectsWithMarkedAndDetected(
+        _ scriptObjects: [SceneObject],
+        markedObjects: [MarkedObject]? = nil,
+        detectedObjects: [DetectedObject]? = nil
+    ) -> [SceneObject] {
+        var unusedMarkers = markedObjects ?? self.markedObjects
+        let availableDetections = detectedObjects ?? self.detectedObjects
         
         return scriptObjects.map { scriptObject in
             var updatedObject = scriptObject
@@ -3344,7 +4241,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             }
             
             // 2. Затем ищем в детекциях
-            if let detection = detectionBridge?.findObject(ofType: scriptObject.type),
+            if let detection = availableDetections.first(where: { $0.objectType == scriptObject.type })
+                ?? detectionBridge?.findObject(ofType: scriptObject.type),
                let worldPosition = detection.worldPosition {
                 updatedObject.detectedPosition = worldPosition
                 return updatedObject
@@ -3387,6 +4285,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     func toggleHintsEnabled() {
+        guard canToggleHints else {
+            print("[CA_DEBUG][HINT_TOGGLE] ignored while workspace is busy")
+            return
+        }
         isHintsEnabled.toggle()
         print("[CA_DEBUG][HINT_TOGGLE] enabled=\(isHintsEnabled) recording=\(isRecording) pause=\(isHintPauseAnalysisActive)")
         if !isHintsEnabled {
@@ -3398,36 +4300,118 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     func startHintPauseAnalysis() {
         guard isHintsEnabled else { return }
-        guard !isHintPauseAnalysisActive else { return }
+        guard !isHintPauseAnalysisActive, hintPauseDisplayRenderTask == nil else { return }
 
-        isHintPauseAnalysisActive = true
+        // Accept the current evidence synchronously, before any asynchronous
+        // work can advance the live frame owner. The same accepted envelope is
+        // later rendered and passed to the typed pause-analysis entry point.
+        let acceptedSnapshot = analysisPipeline.acceptPauseSnapshot()
         let requestToken = UUID()
+        let requestGeneration = expectedARFrameGeneration
         hintPauseRequestToken = requestToken
+        acceptedHintPauseRequestToken = acceptedSnapshot == nil ? nil : requestToken
+        hintPauseRequestGeneration = requestGeneration
+        acceptedHintPauseSnapshot = acceptedSnapshot
+        pendingHintPauseAnalysis = nil
+        hintPauseFailureReason = nil
+        hintPausePresentationState = .loading(
+            snapshotID: acceptedSnapshot?.snapshotID ?? requestToken.uuidString
+        )
+        isHintPauseAnalysisActive = acceptedSnapshot != nil
+        if acceptedSnapshot != nil {
+            hintPauseTakeNumber += 1
+        }
         hintPreviewSuggestions = []
         hintPauseCritique = nil
-        print("[CA_DEBUG][PAUSE_START] token=\(requestToken.uuidString) liveHint=\(liveHint?.text ?? "nil") overlayBBox=\(formatDebugRect(coachingOverlayState.primaryBoundingBox))")
+        print("[CA_DEBUG][PAUSE_START] token=\(requestToken.uuidString) snapshot=\(acceptedSnapshot?.snapshotID ?? "nil") liveHint=\(liveHint?.text ?? "nil") overlayBBox=\(formatDebugRect(coachingOverlayState.primaryBoundingBox))")
         analysisPipeline.clearLivePresentationState()
 
-        analysisPipeline.runPauseAnalysis { [weak self] suggestions, critique in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard self.isHintPauseAnalysisActive,
-                      self.hintPauseRequestToken == requestToken else { return }
-                self.hintPreviewSuggestions = suggestions
-                self.hintPauseCritique = critique
-                let critiqueText = critique.map {
-                    "verdict=\($0.verdict.rawValue) confidence=\(self.formatDebugDouble($0.verdictConfidence)) short=\($0.shortVerdict)"
-                } ?? "nil"
-                print("[CA_DEBUG][PAUSE_RESULT] token=\(requestToken.uuidString) suggestions=\(suggestions.count) critique=\(critiqueText)")
+        guard let acceptedSnapshot else {
+            // Keep the failure visible so the user gets an honest recovery
+            // action, but never fabricate an active review or a frame image.
+            hintPauseRequestToken = nil
+            hintPauseRequestGeneration = nil
+            isHintPauseAnalysisActive = true
+            hintPauseFailureReason = .noAcceptedEvidence
+            hintPausePresentationState = .failure(snapshotID: requestToken.uuidString)
+            return
+        }
+
+        let pipeline = analysisPipeline
+        hintPauseDisplayRenderTask = Task { [weak self, pipeline] in
+            let renderedSnapshot = await pipeline.renderPauseDisplayImage(for: acceptedSnapshot)
+            guard let self,
+                  !self.isWorkspaceReleased,
+                  self.isHintPauseAnalysisActive,
+                  self.hintPauseRequestToken == requestToken,
+                  self.acceptedHintPauseRequestToken == requestToken,
+                  self.hintPauseRequestGeneration == requestGeneration,
+                  self.expectedARFrameGeneration == requestGeneration,
+                  self.acceptedHintPauseSnapshot?.snapshotID == acceptedSnapshot.snapshotID else {
+                return
+            }
+
+            self.hintPauseDisplayRenderTask = nil
+            guard let renderedSnapshot,
+                  renderedSnapshot.displayImage != nil else {
+                self.acceptedHintPauseSnapshot = nil
+                self.acceptedHintPauseRequestToken = nil
+                self.hintPauseRequestToken = nil
+                self.hintPauseRequestGeneration = nil
+                self.pendingHintPauseAnalysis = nil
+                self.hintPauseFailureReason = .displayRenderFailed
+                self.hintPausePresentationState = .failure(
+                    snapshotID: acceptedSnapshot.snapshotID
+                )
+                return
+            }
+
+            self.acceptedHintPauseSnapshot = renderedSnapshot
+            pipeline.runPauseAnalysisResult(acceptedSnapshot: renderedSnapshot) { [weak self] result, suggestions, critique in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          !self.isWorkspaceReleased,
+                          self.isHintPauseAnalysisActive,
+                          self.hintPauseRequestToken == requestToken,
+                          self.acceptedHintPauseRequestToken == requestToken,
+                          self.hintPauseRequestGeneration == requestGeneration,
+                          self.expectedARFrameGeneration == requestGeneration,
+                          self.acceptedHintPauseSnapshot?.snapshotID == renderedSnapshot.snapshotID else {
+                        return
+                    }
+                    guard result != .cancelled else { return }
+
+                    self.pendingHintPauseAnalysis = PendingHintPauseAnalysis(
+                        result: result,
+                        suggestions: suggestions,
+                        critique: critique
+                    )
+                    self.applyPendingHintPauseAnalysisIfReady()
+
+                    let critiqueText = critique.map {
+                        "verdict=\($0.verdict.rawValue) confidence=\(self.formatDebugDouble($0.verdictConfidence)) short=\($0.shortVerdict)"
+                    } ?? "nil"
+                    print("[CA_DEBUG][PAUSE_RESULT] token=\(requestToken.uuidString) snapshot=\(renderedSnapshot.snapshotID) result=\(result) suggestions=\(suggestions.count) critique=\(critiqueText)")
+                }
             }
         }
     }
 
     func resumeHintLiveAnalysis() {
-        guard isHintPauseAnalysisActive else { return }
+        guard isHintPauseAnalysisActive
+            || acceptedHintPauseSnapshot != nil
+            || hintPausePresentationState != .idle else { return }
 
+        hintPauseDisplayRenderTask?.cancel()
+        hintPauseDisplayRenderTask = nil
         isHintPauseAnalysisActive = false
         hintPauseRequestToken = nil
+        acceptedHintPauseRequestToken = nil
+        hintPauseRequestGeneration = nil
+        acceptedHintPauseSnapshot = nil
+        pendingHintPauseAnalysis = nil
+        hintPauseFailureReason = nil
+        hintPausePresentationState = .idle
         hintPreviewSuggestions = []
         hintPauseCritique = nil
         print("[CA_DEBUG][PAUSE_RESUME_LIVE] liveStateReset=true")
@@ -3448,42 +4432,123 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             pauseCritique: hintPauseCritique,
             isPaused: isHintPauseAnalysisActive,
             overlayAnnotations: coachingOverlayAnnotations,
-            debugSignals: makeHintDecisionDebugSignals()
+            debugSignals: makeHintDecisionDebugSignals(),
+            locale: presentationLocale
         )
     }
 
+    /// UIKit keeps its existing synchronous target; the owner Task below is
+    /// the only start identity and microphone request is reached only here.
     func startRecording() {
+        guard !isRecordingStarting else { return }
+        recordingPermissionRecovery = nil
         guard plannedScene != nil else {
-            errorMessage = "Сначала создайте сцену"
+            errorMessage = localizedCopy(.generatorErrorNoScene)
+            return
+        }
+        guard canStartRecording else {
+            if !isARSessionReady || isARSessionInterrupted || isARSessionRecovering {
+                errorMessage = localizedCopy(.generatorErrorARNotReady)
+            }
             return
         }
 
-        guard !isRecording else { return }
-
-        if !recorderPrepared {
-            cameraService.prepareRecorder()
-            recorderPrepared = cameraService.isRecorderPrepared
+        isRecordingStarting = true
+        recordingStartTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.isRecordingStarting = false
+                self.recordingStartTask = nil
+            }
+            await self.beginRecordingAfterMicrophonePermission()
         }
+    }
 
-        guard recorderPrepared else {
-            errorMessage = "Не удалось подготовить запись"
+    private func beginRecordingAfterMicrophonePermission() async {
+        guard !Task.isCancelled,
+              teardownTask == nil,
+              !isWorkspaceReleased,
+              plannedScene != nil,
+              !isRecording,
+              !isRecordingFinalizing,
+              !isPlaying,
+              !isARSessionInterrupted,
+              !isARSessionRecovering else { return }
+        guard let recordingController else {
+            errorMessage = localizedCopy(.generatorErrorRecorder)
+            recordingPermissionRecovery = nil
             return
         }
 
+        let currentMicrophone = await permissionClient.snapshot(for: .microphone)
+        guard !Task.isCancelled else { return }
+        guard currentMicrophone.availability == .available else {
+            errorMessage = localizedCopy(.generatorErrorRecorder)
+            recordingPermissionRecovery = nil
+            return
+        }
+
+        let microphone = currentMicrophone.authorization == .notDetermined
+            ? await permissionClient.request(.microphone)
+            : currentMicrophone
+        guard !Task.isCancelled else { return }
+        guard microphone.availability == .available else {
+            errorMessage = localizedCopy(.generatorErrorRecorder)
+            recordingPermissionRecovery = nil
+            return
+        }
+        guard microphone.authorization == .authorized else {
+            switch microphone.authorization {
+            case .denied:
+                errorMessage = localizedCopy(.generatorErrorMicrophoneDenied)
+                recordingPermissionRecovery = .openSettings
+            case .restricted:
+                errorMessage = localizedCopy(.generatorErrorMicrophoneRestricted)
+                recordingPermissionRecovery = .recheck
+            default:
+                errorMessage = localizedCopy(.generatorErrorRecorder)
+                recordingPermissionRecovery = nil
+            }
+            return
+        }
+
+        guard !Task.isCancelled,
+              teardownTask == nil,
+              !isWorkspaceReleased,
+              let sourceFPS = recordingSourceFPS,
+              sourceFPS > 0 else { return }
+        do {
+            try await recordingController.start(
+                requestedFPS: sourceFPS,
+                audioMode: .required
+            )
+        } catch {
+            errorMessage = localizedCopy(.generatorErrorRecorder)
+            recordingPermissionRecovery = nil
+            return
+        }
+
+        errorMessage = nil
+        recordingPermissionRecovery = nil
+
+        if let dimensions = recordingController.currentVideoDimensions {
+            recordingResolutionLabel = "\(dimensions.width)×\(dimensions.height)"
+        }
+
+        guard !isWorkspaceReleased else {
+            _ = await recordingController.stop(reason: .routeExit)
+            return
+        }
         prepareWorkspaceIfNeeded()
-        if isPlaying {
-            stopScene()
-        }
-
         isHintsEnabled = true
-        cameraService.startRecording()
         isRecording = true
         recordingElapsedTime = 0
         recordingStartDate = Date()
         recordingTimer?.invalidate()
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                guard let self, let recordingStartDate = self.recordingStartDate else { return }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let recordingStartDate = self.recordingStartDate else { return }
                 self.recordingElapsedTime = Date().timeIntervalSince(recordingStartDate)
             }
         }
@@ -3492,11 +4557,51 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     func stopRecording() {
-        guard isRecording else { return }
+        requestStopRecording(reason: .user)
+    }
 
-        cameraService.stopRecording()
-        recorderPrepared = cameraService.isRecorderPrepared
+    private func requestStopRecording(reason: RecordingStopReason) {
+        guard isRecording || isRecordingStarting || isRecordingFinalizing else { return }
+        guard recordingStopTask == nil else { return }
+        let task: Task<RecordingStopResult?, Never> = Task { @MainActor [weak self] in
+            guard let self else { return nil }
+            return await self.performStopRecording(reason: reason)
+        }
+        recordingStopTask = task
+    }
+
+    /// Teardown and user stop share one awaited finalization identity. User
+    /// stop persists only after the recorder has returned its terminal result;
+    /// route exit leaves persistence to SceneWorkspaceTeardownCoordinator.
+    private func stopRecordingAndWait(reason: RecordingStopReason) async -> RecordingStopResult? {
+        if let recordingStopTask {
+            return await recordingStopTask.value
+        }
+
+        let task: Task<RecordingStopResult?, Never> = Task { @MainActor [weak self] in
+            guard let self else { return nil }
+            return await self.performStopRecording(reason: reason)
+        }
+        recordingStopTask = task
+        return await task.value
+    }
+
+    private func performStopRecording(reason: RecordingStopReason) async -> RecordingStopResult? {
+
+        recordingStartTask?.cancel()
+        if let recordingStartTask {
+            await recordingStartTask.value
+        }
+
+        guard isRecording || isRecordingStarting || isRecordingFinalizing else {
+            let result = await recordingController?.stop(reason: reason)
+            acceptFinalizedRecording(from: result)
+            recordingStopTask = nil
+            return result
+        }
+
         isRecording = false
+        isRecordingFinalizing = true
         if let recordingStartDate {
             recordingElapsedTime = Date().timeIntervalSince(recordingStartDate)
         }
@@ -3505,14 +4610,108 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         recordingTimer = nil
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        if !suppressAutomaticPersistence {
-            Task { _ = await persistProjectSnapshot() }
+
+        let result = await recordingController?.stop(reason: reason)
+        acceptFinalizedRecording(from: result)
+        if case .failed = result {
+            errorMessage = localizedCopy(.generatorErrorRecorder)
+            recordingPermissionRecovery = nil
         }
+        isRecordingFinalizing = false
+        refreshWorkspaceMode()
+        if !isARSessionInterrupted && !isARSessionRecovering {
+            refreshIdleStatusMessage()
+        }
+
+        if reason == .user, !suppressAutomaticPersistence {
+            _ = await persistProjectSnapshot()
+        }
+        recordingStopTask = nil
+        return result
+    }
+
+    /// Consumes only a recorder-attested finalized result. Promotion happens
+    /// before the caller's persistence step, and the ID ledger prevents a
+    /// coalesced/retried stop from publishing the same take twice.
+    private func acceptFinalizedRecording(from result: RecordingStopResult?) {
+        guard case let .finalized(artifact) = result else { return }
+        queuePendingFinalizedRecording(artifact)
+        _ = retryPendingFinalizedRecordings()
+    }
+
+    @discardableResult
+    private func promoteFinalizedRecording(_ artifact: RecordingArtifact) -> Bool {
+        let recordingID = artifact.id.rawValue
+        guard !promotedRecordingIDs.contains(recordingID) else {
+            removePendingFinalizedRecording(recordingID)
+            return true
+        }
+        guard let recordingController else {
+            queuePendingFinalizedRecording(artifact)
+            errorMessage = localizedCopy(.generatorErrorRecorder)
+            recordingPermissionRecovery = nil
+            return false
+        }
+
+        do {
+            let reference = try recordingController.promoteFinalizedArtifact(
+                artifact,
+                projectID: currentProject.id
+            )
+            guard let resolvedArtifact = recordingController.resolve(reference) else {
+                queuePendingFinalizedRecording(artifact)
+                errorMessage = localizedCopy(.generatorErrorRecorder)
+                recordingPermissionRecovery = nil
+                return false
+            }
+            promotedRecordingIDs.insert(recordingID)
+            removePendingFinalizedRecording(recordingID)
+            if !recordingReferences.contains(where: { $0.recordingID == recordingID }) {
+                recordingReferences.append(reference)
+            }
+            latestAvailableRecordingArtifact = resolvedArtifact
+            return true
+        } catch {
+            // Promotion never deletes a pending source on failure; keeping the
+            // artifact here also gives a later recovery path its original URL.
+            queuePendingFinalizedRecording(artifact)
+            errorMessage = localizedCopy(.generatorErrorRecorder)
+            recordingPermissionRecovery = nil
+            return false
+        }
+    }
+
+    private func queuePendingFinalizedRecording(_ artifact: RecordingArtifact) {
+        let recordingID = artifact.id.rawValue
+        if let index = pendingRecordingArtifacts.firstIndex(where: { $0.id.rawValue == recordingID }) {
+            pendingRecordingArtifacts[index] = artifact
+        } else {
+            pendingRecordingArtifacts.append(artifact)
+        }
+    }
+
+    private func removePendingFinalizedRecording(_ recordingID: UUID) {
+        pendingRecordingArtifacts.removeAll { $0.id.rawValue == recordingID }
+    }
+
+    private func retryPendingFinalizedRecordings() -> Bool {
+        while let artifact = pendingRecordingArtifacts.first {
+            guard promoteFinalizedRecording(artifact) else {
+                return false
+            }
+        }
+        return true
     }
 
     private func processHintFrameIfNeeded(pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) {
         guard isHintsEnabled else {
-            if liveHint != nil || hintPauseCritique != nil || !hintPreviewSuggestions.isEmpty || !coachingOverlayAnnotations.isEmpty {
+            if liveHint != nil
+                || hintPauseCritique != nil
+                || !hintPreviewSuggestions.isEmpty
+                || !coachingOverlayAnnotations.isEmpty
+                || isHintPauseAnalysisActive
+                || acceptedHintPauseSnapshot != nil
+                || hintPausePresentationState != .idle {
                 clearHintPresentation()
             }
             return
@@ -3568,6 +4767,43 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         if willRunLow {
             lastLowHintTimestamp = timestamp
             analysisPipeline.ingestLow(context: context)
+        }
+    }
+
+    private func applyPendingHintPauseAnalysisIfReady() {
+        guard isHintPauseAnalysisActive,
+              let acceptedSnapshot = acceptedHintPauseSnapshot,
+              acceptedSnapshot.displayImage != nil,
+              let pendingHintPauseAnalysis else { return }
+
+        self.pendingHintPauseAnalysis = nil
+        hintPreviewSuggestions = pendingHintPauseAnalysis.suggestions
+        hintPauseCritique = pendingHintPauseAnalysis.critique
+
+        switch pendingHintPauseAnalysis.result {
+        case .success:
+            guard let critique = pendingHintPauseAnalysis.critique else {
+                hintPauseFailureReason = nil
+                hintPausePresentationState = .empty(snapshotID: acceptedSnapshot.snapshotID)
+                return
+            }
+            hintPauseFailureReason = nil
+            hintPausePresentationState = .success(
+                snapshotID: acceptedSnapshot.snapshotID,
+                critique: critique
+            )
+        case .empty:
+            hintPauseFailureReason = nil
+            hintPausePresentationState = .empty(snapshotID: acceptedSnapshot.snapshotID)
+        case .failure(let failure):
+            hintPauseFailureReason = switch failure {
+            case .noAcceptedEvidence: .noAcceptedEvidence
+            case .pipelineUnavailable: .pipelineUnavailable
+            case .timeout: .timeout
+            }
+            hintPausePresentationState = .failure(snapshotID: acceptedSnapshot.snapshotID)
+        case .cancelled:
+            break
         }
     }
 
@@ -3692,46 +4928,151 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func clearHintPresentation() {
-        isHintPauseAnalysisActive = false
-        hintPauseRequestToken = nil
-        hintPreviewSuggestions = []
-        hintPauseCritique = nil
+        clearHintPauseProjection()
         analysisPipeline.clearLivePresentationState()
         analysisPipeline.clearPausePresentationState()
         coachingOverlayState = .init(primaryBoundingBox: nil,
                                      horizonAngle: 0,
                                      horizonConfidence: 0,
                                      saliencyBalance: 0)
-        hintDisplayTransform = nil
+        if hintDisplayTransform != nil {
+            hintDisplayTransform = nil
+        }
         liveHint = nil
         coachingOverlayAnnotations = []
     }
 
+    /// Cancels every owner-side pause handoff before the pipeline clears its
+    /// own publication fence. Late render/analysis completions must therefore
+    /// fail both token and generation checks before touching the projection.
+    private func clearHintPauseProjection() {
+        hintPauseDisplayRenderTask?.cancel()
+        hintPauseDisplayRenderTask = nil
+        isHintPauseAnalysisActive = false
+        hintPauseRequestToken = nil
+        acceptedHintPauseRequestToken = nil
+        hintPauseRequestGeneration = nil
+        acceptedHintPauseSnapshot = nil
+        pendingHintPauseAnalysis = nil
+        hintPauseFailureReason = nil
+        hintPausePresentationState = .idle
+        hintPreviewSuggestions = []
+        hintPauseCritique = nil
+    }
+
     private func persistProjectMetadata() {
+#if DEBUG
+        guard debugFixtureID == nil else { return }
+#endif
+        guard !isWorkspaceReleased else { return }
+        // A world-map snapshot owns the next complete write. Metadata changes
+        // made while its AR callback is pending are folded into that write
+        // after capture; an eager metadata save here would reintroduce the
+        // stale-project race this owner is meant to close.
+        guard projectSnapshotTask == nil else { return }
+        // M1-015: the pre-bump updatedAt is the stored version this metadata
+        // write is based on; a conflict means another writer moved the file and
+        // the newer stored write must not be clobbered by this autosave.
+        let expectedUpdatedAt = currentProject.updatedAt
         currentProject = buildCurrentProject()
         do {
-            try projectStore.saveUnifiedSceneProject(currentProject, worldMap: initialWorldMap)
+            try projectStore.saveUnifiedSceneProject(
+                currentProject,
+                worldMap: initialWorldMap,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+        } catch DBServiceError.staleSnapshot(let storedUpdatedAt) {
+            print("Unified scene metadata save conflicted with stored updatedAt \(storedUpdatedAt); kept stored version")
         } catch {
             print("Error saving unified scene metadata: \(error)")
         }
     }
 
     private func persistProjectSnapshot() async -> Result<Void, SceneWorkspaceTeardownFailure> {
-        currentProject = buildCurrentProject()
-        let worldMap: ARWorldMap?
-        switch await captureCurrentWorldMap() {
-        case .success(let capturedWorldMap):
-            worldMap = capturedWorldMap ?? initialWorldMap
-        case .failure(let failure):
-            return .failure(failure)
-        }
-        if let worldMap {
-            initialWorldMap = worldMap
+#if DEBUG
+        guard debugFixtureID == nil else { return .success(()) }
+#endif
+        if let projectSnapshotTask {
+            return await projectSnapshotTask.value
         }
 
+        let task: Task<Result<Void, SceneWorkspaceTeardownFailure>, Never> = Task { @MainActor [weak self] in
+            guard let self else {
+                return .failure(.workspaceOwnerUnavailable)
+            }
+            return await self.performProjectSnapshotPersistence()
+        }
+        projectSnapshotTask = task
+        let result = await task.value
+        projectSnapshotTask = nil
+        return result
+    }
+
+    private func performProjectSnapshotPersistence() async -> Result<Void, SceneWorkspaceTeardownFailure> {
+        guard retryPendingFinalizedRecordings() else {
+            return .failure(.persistenceFailed)
+        }
+
+        switch await captureCurrentWorldMap() {
+        case .success(let capturedWorldMap):
+            // Build only after capture. Scene edits can arrive while ARKit is
+            // waiting, and the persisted envelope must contain those edits.
+            guard retryPendingFinalizedRecordings() else {
+                return .failure(.persistenceFailed)
+            }
+            let worldMap = capturedWorldMap ?? initialWorldMap
+            let expectedUpdatedAt = currentProject.updatedAt
+            currentProject = buildCurrentProject()
+            if let worldMap {
+                initialWorldMap = worldMap
+            }
+            return saveProjectSnapshot(currentProject, worldMap: worldMap, expectedUpdatedAt: expectedUpdatedAt)
+        case .failure(let failure):
+            // A timed-out/cancelled/failed AR snapshot still writes the latest
+            // project metadata with an explicit nil map. The typed failure
+            // keeps teardown blocked for a retry, while preserving user edits
+            // and preventing an unbounded wait.
+            guard retryPendingFinalizedRecordings() else {
+                return .failure(.persistenceFailed)
+            }
+            let expectedUpdatedAt = currentProject.updatedAt
+            currentProject = buildCurrentProject()
+            let saveResult = saveProjectSnapshot(currentProject, worldMap: nil, expectedUpdatedAt: expectedUpdatedAt)
+            switch saveResult {
+            case .success:
+                // The nil-map write is the durable source of truth. Clear the
+                // in-memory fallback only after it succeeds, otherwise a
+                // retry with no fresh map can resurrect the stale map.
+                initialWorldMap = nil
+                return .failure(failure)
+            case .failure(let saveFailure):
+                return .failure(saveFailure)
+            }
+        }
+    }
+
+    private func saveProjectSnapshot(
+        _ project: UnifiedSceneProject,
+        worldMap: ARWorldMap?,
+        expectedUpdatedAt: Date? = nil
+    ) -> Result<Void, SceneWorkspaceTeardownFailure> {
+#if DEBUG
+        testingProjectSnapshotSaveCount += 1
+#endif
+
         do {
-            try projectStore.saveUnifiedSceneProject(currentProject, worldMap: worldMap)
+            try projectStore.saveUnifiedSceneProject(
+                project,
+                worldMap: worldMap,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
             return .success(())
+        } catch DBServiceError.staleSnapshot(let storedUpdatedAt) {
+            // M1-015: a stale teardown snapshot must not overwrite a newer
+            // stored write; persistenceFailed keeps teardown blocked and
+            // recoverable (M1-009 retry semantics).
+            print("Unified scene snapshot conflicted with stored updatedAt \(storedUpdatedAt)")
+            return .failure(.persistenceFailed)
         } catch {
             print("Error saving unified scene snapshot: \(error)")
             return .failure(.persistenceFailed)
@@ -3739,17 +5080,31 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func captureCurrentWorldMap() async -> Result<ARWorldMap?, SceneWorkspaceTeardownFailure> {
-        guard let arView else { return .success(initialWorldMap) }
-        return await withCheckedContinuation { continuation in
-            arView.session.getCurrentWorldMap { worldMap, error in
-                if let error {
-                    print("Error capturing current world map: \(error)")
-                    continuation.resume(returning: .failure(.worldMapSnapshotFailed))
-                    return
-                }
-                continuation.resume(returning: .success(worldMap))
-            }
+#if DEBUG
+        if let testingWorldMapCaptureOverride {
+            return await testingWorldMapCaptureOverride()
         }
+#endif
+        guard let arView else { return .success(initialWorldMap) }
+        // Unsupported AR configurations (notably the simulator) may never
+        // invoke getCurrentWorldMap's completion. Preserve the persisted map
+        // and let the owning teardown route complete without waiting forever.
+        guard ARWorldTrackingConfiguration.isSupported else {
+            return .success(initialWorldMap)
+        }
+        return await SETWorldMapCaptureResolver<ARWorldMap?>.resolve(
+            timeoutNanoseconds: Self.worldMapCaptureTimeoutNanoseconds,
+            request: { completion in
+                arView.session.getCurrentWorldMap { worldMap, error in
+                    if let error {
+                        print("Error capturing current world map: \(error)")
+                        completion(.failure(.worldMapSnapshotFailed))
+                        return
+                    }
+                    completion(.success(worldMap))
+                }
+            }
+        )
     }
 
     private func buildCurrentProject() -> UnifiedSceneProject {
@@ -3762,6 +5117,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         project.plannedScene = plannedScene
         project.sceneChunkState = sceneChunkState
         project.visualOverlays = visualOverlays
+        project.recordingReferences = recordingReferences
         return project
     }
 
@@ -3775,7 +5131,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         if let plannedScene {
             Task {
-                await placeObjectsInAR(plannedScene)
+                placeObjectsInAR(plannedScene)
                 refreshStoryboardBeatItems()
                 refreshWorkspaceMode()
                 refreshIdleStatusMessage()
@@ -3788,6 +5144,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func refreshWorkspaceMode() {
+        if isARSessionInterrupted || isARSessionRecovering {
+            workspaceMode = .editingScene
+            return
+        }
+
         if isPlaying {
             workspaceMode = .previewPlayback
             return
@@ -3816,29 +5177,210 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         switch workspaceMode {
         case .editingScene:
-            if !isARSessionReady {
-                statusMessage = "Наведите камеру на поверхность"
+            if isARSessionInterrupted {
+                statusMessage = localizedCopy(.cameraInterrupted)
+            } else if isARSessionRecovering {
+                statusMessage = localizedCopy(.cameraResuming)
+            } else if !isARSessionReady {
+                statusMessage = localizedCopy(.generatorStatusIdleSurface)
             } else if sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                statusMessage = "Добавьте описание сцены"
+                statusMessage = localizedCopy(.generatorStatusIdleDescription)
             } else {
-                statusMessage = "Можно разметить сцену или запустить генерацию"
+                statusMessage = localizedCopy(.generatorStatusIdleReady)
             }
         case .marking:
-            statusMessage = "Тапните по объекту, который хотите отметить"
+            statusMessage = localizedCopy(.generatorStatusMarking)
         case .generatedReady:
-            statusMessage = "Сцена готова. Можно открыть превью или начать запись"
+            statusMessage = localizedCopy(.generatorStatusGeneratedReady)
         case .shooting:
-            statusMessage = "AR-сцена готова к съёмке, подсказки включены"
+            statusMessage = localizedCopy(.generatorStatusShooting)
         case .recording:
-            statusMessage = "Идёт запись, подсказки включены автоматически"
+            statusMessage = localizedCopy(.generatorStatusRecording)
         case .previewPlayback:
-            statusMessage = "Предпросмотр сцены"
+            statusMessage = localizedCopy(.generatorStatusPreview)
         }
     }
 }
 
 #if DEBUG
 extension SceneGeneratorViewModel {
+    var testingStoryboardFixtureID: String? {
+        debugFixtureID
+    }
+
+    private static func storyboardFixtureID(from arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: SETGalleryLaunchConfiguration.generatorStoryboardFixtureArgument),
+              arguments.indices.contains(index + 1) else {
+            return nil
+        }
+        let fixtureID = arguments[index + 1]
+        return SETFixtureCatalog.generatorStoryboardFixtureIDs.contains(fixtureID) ? fixtureID : nil
+    }
+
+    /// Seeds the existing script/planner owners for simulator evidence. The
+    /// payload is deterministic domain data, not an image or AR substitute,
+    /// and the fixture flag keeps teardown/metadata persistence inert.
+    private func loadDebugStoryboardFixture(_ fixtureID: String) {
+        let isEnglish = presentationLocale.language.languageCode?.identifier == "en"
+        let actorOneName = isEnglish ? "Mara" : "Мара"
+        let actorTwoName = isEnglish ? "Noah" : "Ной"
+        let tableName = isEnglish ? "table" : "стол"
+        let description = isEnglish
+            ? "A deterministic storyboard rehearsal in a quiet room."
+            : "Детерминированная репетиция раскадровки в тихой комнате."
+
+        let actorOne = SceneActor(id: "actor_1", type: .human, name: actorOneName)
+        let actorTwo = SceneActor(id: "actor_2", type: .human, name: actorTwoName)
+        let table = SceneObject(
+            id: "object_table",
+            type: .table,
+            name: tableName,
+            relativePosition: .center
+        )
+        let beats = [
+            SceneBeat(
+                id: "beat_1",
+                actions: [
+                    SceneAction(
+                        id: "action_walk",
+                        actorId: actorOne.id,
+                        type: .walk,
+                        target: table.id,
+                        direction: .toTarget,
+                        resultingPose: .standing,
+                        sourceText: isEnglish ? "Mara steps toward the table." : "Мара подходит к столу."
+                    )
+                ],
+                camera: CameraSetup(shotType: .medium, movement: .static, target: actorOne.id),
+                minDuration: 1.2
+            ),
+            SceneBeat(
+                id: "beat_2",
+                actions: [
+                    SceneAction(
+                        id: "action_talk",
+                        actorId: actorOne.id,
+                        type: .talk,
+                        resultingPose: .standing,
+                        dialogue: isEnglish ? "The room settles." : "Комната затихает."
+                    ),
+                    SceneAction(
+                        id: "action_look",
+                        actorId: actorTwo.id,
+                        type: .lookAt,
+                        target: actorOne.id,
+                        resultingPose: .standing,
+                        sourceText: isEnglish ? "Noah looks toward Mara." : "Ной смотрит на Мару."
+                    )
+                ],
+                camera: CameraSetup(shotType: .twoShot, movement: .static, target: actorOne.id),
+                minDuration: 1.4
+            ),
+            SceneBeat(
+                id: "beat_3",
+                actions: [
+                    SceneAction(
+                        id: "action_give",
+                        actorId: actorOne.id,
+                        type: .give,
+                        target: actorTwo.id,
+                        resultingPose: .standing,
+                        sourceText: isEnglish ? "Mara passes the note to Noah." : "Мара передаёт записку Ною."
+                    )
+                ],
+                camera: CameraSetup(shotType: .closeUp, movement: .dollyIn, target: actorTwo.id),
+                minDuration: 1.7
+            )
+        ]
+        let script = SceneScript(
+            sceneHeading: isEnglish ? "INT. QUIET ROOM - DAY" : "ИНТ. ТИХАЯ КОМНАТА — ДЕНЬ",
+            locationName: isEnglish ? "QUIET ROOM" : "ТИХАЯ КОМНАТА",
+            interiorExterior: "interior",
+            timeOfDay: "day",
+            actors: [actorOne, actorTwo],
+            objects: [table],
+            beats: beats,
+            spatialRelations: [],
+            originalDescription: description
+        )
+
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.6, 0, 1)
+        currentCameraTransform = cameraTransform
+        detectedPlanes = [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        isARSessionReady = true
+        sceneDescription = description
+        parsedScript = script
+        parsingResult = ParsingResult(script: script, diagnostics: .empty)
+        plannedScene = plannerService.planScene(
+            script: script,
+            cameraTransform: cameraTransform,
+            detectedObjects: [],
+            availablePlanes: detectedPlanes,
+            markedObjects: []
+        )
+        beatTimelineItems = buildBeatTimelineItems(for: plannedScene!, script: script)
+        refreshStoryboardBeatItems()
+        statusMessage = localizedCopy(.generatorStatusGeneratedReady)
+
+        switch fixtureID {
+        case "storyboard.inspector", "storyboard.editor-medium", "storyboard.editor-large",
+             "storyboard.saving", "storyboard.validation-failure", "storyboard.delete-confirmation":
+            openStoryboardEditor(for: "beat_1")
+        default:
+            break
+        }
+
+        if fixtureID == "storyboard.validation-failure",
+           var invalidDraft = activeStoryboardEditDraft,
+           let actionIndex = invalidDraft.actions.indices.first {
+            invalidDraft.actions[actionIndex].type = .give
+            invalidDraft.actions[actionIndex].target = invalidDraft.actions[actionIndex].actorId
+            activeStoryboardEditDraft = invalidDraft
+        }
+    }
+
+    private func seedDebugDecisionTraceFixture() {
+        let issueID = "fixture_generator_issue_background"
+        let issueRegion = NormalizedRect(x: 0.56, y: 0.20, width: 0.28, height: 0.48)
+        let observation = localizedCopy(.cameraCorrectiveObservation)
+        let support = localizedCopy(.traceStrengthFocus)
+        let action = localizedCopy(.traceActionSimplifyBackground)
+
+        isHintsEnabled = true
+        liveHint = LiveHintPresentation(
+            id: "generator_fixture_live_hint",
+            frameId: "generator_fixture_frame",
+            text: observation,
+            confidence: 0.82,
+            actionType: .reduceBackgroundDistractions,
+            actionId: "generator_fixture_action_simplify",
+            linkedIssueIds: [issueID],
+            summaryId: "generator_fixture_summary",
+            traceRootIds: ["generator_fixture_trace_root"],
+            targetRegion: issueRegion,
+            overlayHint: nil,
+            isFallback: false,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: observation,
+                supportingText: support,
+                actionText: action,
+                fallbackUsed: false
+            )
+        )
+        coachingOverlayAnnotations = [
+            OverlayAnnotationPresentation(
+                id: "generator_fixture_annotation",
+                kind: .regionHighlight,
+                direction: nil,
+                targetRegion: issueRegion,
+                emphasis: 0.82,
+                tone: .warning,
+                label: localizedCopy(.traceKindIssue)
+            )
+        ]
+    }
+
     var testingARCameraAnalysisOrientation: CGImagePropertyOrientation {
         arCameraAnalysisOrientation
     }
@@ -3852,6 +5394,30 @@ extension SceneGeneratorViewModel {
         detectedPlanes = planes
         isARSessionReady = true
     }
+
+    /// UI-test support only: marks the AR session ready so the generator's
+    /// loading overlay does not block the settings bar on simulators, where
+    /// no ARKit session can start. Never called from production flows.
+    func testingMarkARSessionReady() {
+        isARSessionReady = true
+    }
+
+    /// Drains the existing high-priority frame path for deterministic tests.
+    /// Production callers never use this helper; the accepted pause snapshot
+    /// still comes from the same evidence store as the reachable AR route.
+    func testingDrainHintAnalysis() async {
+        await analysisPipeline.testingDrainHighQueue()
+        await Task.yield()
+    }
+
+    func testingSetStoryboardMutationDelay(_ delay: TimeInterval) {
+        storyboardDebugMutationDelay = max(0, delay)
+    }
+
+    func testingSetGenerationDelay(_ delay: TimeInterval) {
+        generationDebugDelay = max(0, delay)
+    }
+
 }
 #endif
 

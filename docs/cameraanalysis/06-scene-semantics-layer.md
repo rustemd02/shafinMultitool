@@ -109,14 +109,12 @@ Debug enrichment pool (опциональный):
 
 ## Candidate scoring (deterministic)
 
-`subjectScore = clamp01(baseConfidence * sourceReliability * kindWeight * regionWeight)`
+`rankingScore = clamp01(publishedConfidence * kindWeight * regionWeight * optionalRankingPrior)`
 
 Где:
-- `baseConfidence = candidate.confidence`.
-- `sourceReliability`:
-  - vision: `snapshot.sources.vision.confidence ?? 0.55`
-  - detr: `snapshot.sources.detr.confidence ?? 0.50`
-  - snapshot-only fallback candidate: `max(snapshot.subjectSignals.primaryCandidateConfidence ?? 0, 0.25)`
+- `publishedConfidence` уже приходит из `FrameFeatureSnapshot`: это raw Vision/DETR evidence score после единственной freshness discount;
+- source confidence и freshness не умножаются повторно в semantics;
+- `optionalRankingPrior` (например, object label prior) может влиять только на порядок кандидатов;
 - `kindWeight`:
   - `face = 1.00`
   - `person = 0.92`
@@ -130,8 +128,8 @@ Debug enrichment pool (опциональный):
 
 ## Selection and ambiguity rules
 
-1. Отсекаем кандидатов с `subjectScore < 0.20`.
-2. Выбираем max `subjectScore`.
+1. Отсекаем кандидатов с `rankingScore < 0.20`.
+2. Выбираем max `rankingScore`.
 3. Tie-break при `abs(delta) < 0.03`:
 - face > person > group > object > unknown;
 - затем больше area;
@@ -147,11 +145,13 @@ Debug enrichment pool (опциональный):
 
 ## Output mapping
 
-- `primarySubject.confidence = winnerScore`.
+- `primarySubject.confidence = winner.publishedConfidence` (без kind/region/source multiplication).
 - `primarySubject.label`:
   - для object: `topObjectLabel`/label кандидата;
   - для face/person: `nil` (в `v1` не распознаем identity).
-- `primarySubject.competingCandidates`: максимум 2 ближайших по score конкурента из core candidate pool.
+- `primarySubject.competingCandidates`: максимум 2 ближайших по ranking score конкурента из core candidate pool; их `confidence` также остается published evidence confidence.
+
+Граница калибровки: `Vision VNConfidence` и `DETR confidence` не объявляются вероятностями. Они используются как detector evidence/geometric support; freshness discount применяется ровно один раз в aggregator, после чего semantics может применять только ranking priors.
 
 ## 2) SceneTypeClassifier
 

@@ -9,27 +9,40 @@ import SwiftUI
 
 @MainActor
 struct ContentView: View {
+    @MainActor
     struct CameraCoachDependencies {
         let cameraManager: CameraManager
         let viewModel: CameraViewModel
-        let permissionClient: any PermissionClient
-        let introStore: any CameraCoachIntroStore
+        let entryFlowModel: CameraCoachEntryFlowModel
 
         init(
             cameraManager: CameraManager,
             viewModel: CameraViewModel,
-            permissionClient: any PermissionClient = SystemPermissionClient(),
+            permissionClient: any PermissionClient = PermissionCoordinator(client: SystemPermissionClient()),
             introStore: any CameraCoachIntroStore = UserDefaultsCameraCoachIntroStore()
         ) {
             self.cameraManager = cameraManager
             self.viewModel = viewModel
-            self.permissionClient = permissionClient
-            self.introStore = introStore
+            self.entryFlowModel = CameraCoachEntryFlowModel(
+                permissionClient: permissionClient,
+                introStore: introStore
+            )
+        }
+
+        init(
+            cameraManager: CameraManager,
+            viewModel: CameraViewModel,
+            entryFlowModel: CameraCoachEntryFlowModel
+        ) {
+            self.cameraManager = cameraManager
+            self.viewModel = viewModel
+            self.entryFlowModel = entryFlowModel
         }
     }
 
     @StateObject private var viewModel: CameraViewModel
     @StateObject private var entryFlowModel: CameraCoachEntryFlowModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let cameraManager: CameraManager
 
     init() {
@@ -39,10 +52,7 @@ struct ContentView: View {
     init(dependencies: CameraCoachDependencies) {
         _viewModel = StateObject(wrappedValue: dependencies.viewModel)
         _entryFlowModel = StateObject(
-            wrappedValue: CameraCoachEntryFlowModel(
-                permissionClient: dependencies.permissionClient,
-                introStore: dependencies.introStore
-            )
+            wrappedValue: dependencies.entryFlowModel
         )
         self.cameraManager = dependencies.cameraManager
     }
@@ -64,7 +74,7 @@ struct ContentView: View {
             cameraManager: cameraManager,
             viewModel: CameraViewModel(cameraManager: cameraManager,
                                        analysisPipeline: pipeline),
-            permissionClient: SystemPermissionClient(),
+            permissionClient: PermissionCoordinator(client: SystemPermissionClient()),
             introStore: UserDefaultsCameraCoachIntroStore()
         )
     }
@@ -72,7 +82,16 @@ struct ContentView: View {
     var body: some View {
         Group {
             if entryFlowModel.phase == .ready {
-                OverlayView(viewModel: viewModel, cameraManager: cameraManager)
+                ZStack {
+                    OverlayView(viewModel: viewModel, cameraManager: cameraManager)
+
+                    if let leaderPhase = entryFlowModel.leaderPhase {
+                        CameraCoachEntryLeaderOverlay(phase: leaderPhase)
+                    }
+                }
+                .onAppear {
+                    entryFlowModel.acceptCameraEntry(reduceMotion: reduceMotion)
+                }
             } else {
                 CameraCoachEntryView(
                     phase: entryFlowModel.phase,
@@ -90,13 +109,23 @@ struct ContentView: View {
                         Task { @MainActor in
                             await entryFlowModel.recheckCameraAccess()
                         }
-                    }
+                    },
+                    markerEventID: entryFlowModel.markerEventID,
+                    markerDrawProgress: entryFlowModel.markerDrawProgress
                 )
             }
         }
         .preferredColorScheme(.dark)
         .task { @MainActor in
+            entryFlowModel.updateAccessibilityPreferences(reduceMotion: reduceMotion)
             await entryFlowModel.resolveInitialState()
+        }
+        // M1-004: no SwiftUI scenePhase foreground recheck here. Foreground
+        // recovery is owned by the shell adapter (SceneDelegate →
+        // CommercialShellViewController.handleAppDidBecomeActive → route),
+        // which is a superset of the removed blocked-only recheck.
+        .onChange(of: reduceMotion) { _, newValue in
+            entryFlowModel.updateAccessibilityPreferences(reduceMotion: newValue)
         }
     }
 }

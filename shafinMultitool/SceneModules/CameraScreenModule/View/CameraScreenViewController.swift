@@ -626,6 +626,8 @@ class CameraScreenViewController: UIViewController {
     
     @objc
     private func recordButtonPressed() {
+        guard presenter?.startRecording() == true else { return }
+
         self.centerDot.isHidden = true
         
         UIView.animate(withDuration: 0.2, animations: {
@@ -660,7 +662,6 @@ class CameraScreenViewController: UIViewController {
         })
 
         
-        presenter?.startRecording()
     }
     
     @objc

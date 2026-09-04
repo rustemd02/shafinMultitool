@@ -1,0 +1,12 @@
+Executed: RecordingStartTeardownRaceTests 2/2 PASS (barrier tests, fresh) + SceneRecordingControllerTests 16/16 PASS (earlier same-task run, incl. testTeardownInFlightBlocksRecordingUntilPersistenceGateOpens). iPhone 17 sim iOS 26.5. xcresults: /private/tmp/shafin-m1-011c.xcresult (2 race tests, TEST SUCCEEDED), /private/tmp/shafin-m1-011.xcresult (17 tests earlier run).
+
+Verified M1-011 invariants (production code unchanged — guards pre-existed and proved sufficient):
+1. Start task parked in mic-permission await + teardown completes -> resumed start aborts on owner guards (teardownTask cached non-nil / isWorkspaceReleased) without arming a take (VM:4515-4519).
+2. Start request on already-released workspace never reaches the permission client; UI never reports recording (VM:4442+ entry guards).
+3. Late-armed take after start-await race: auto stop(.routeExit) of the just-started recorder (VM:4538-4541).
+4. Stop joins the in-flight start task (performStopRecording cancels + awaits recordingStartTask, VM:4577+).
+5. Controller-level start/stop/release single-flight: SceneRecordingControllerTests 16/16.
+
+Attempts/environment: simulator launch flake (SBMainWorkspace denial tied to harness pty lifecycle) dominated this task window. Working recipe discovered and recorded for future runs:
+  xcodebuild build-for-testing; then fresh 'simctl boot + bootstatus -b'; then run under 'script -q /dev/null xcodebuild test-without-building ... -parallel-testing-enabled NO' fully detached (nohup, stdio to files); one batch per fresh boot.
+  Test-side fixes: fake permission client must resume parked waiters on task cancellation (withTaskCancellationHandler + cancelledWhileParked flag) — production stop path cancels the start task; and recording start requires armed workspace (plannedScene + isARSessionReady + claimRecordingSource(fps:60)) before it reaches the permission request.

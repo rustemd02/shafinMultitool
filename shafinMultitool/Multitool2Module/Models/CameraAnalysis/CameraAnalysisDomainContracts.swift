@@ -339,6 +339,7 @@ struct FrameFeatureSnapshot: Codable, Equatable, Sendable {
         let topObjectRegion: NormalizedRect?
         let primaryCandidateRegion: NormalizedRect?
         let primaryCandidateConfidence: Double?
+        let primaryCandidateSource: FeatureSourceID?
 
         init(faceDetected: Bool,
              personDetected: Bool,
@@ -348,7 +349,8 @@ struct FrameFeatureSnapshot: Codable, Equatable, Sendable {
              topObjectConfidence: Double? = nil,
              topObjectRegion: NormalizedRect? = nil,
              primaryCandidateRegion: NormalizedRect? = nil,
-             primaryCandidateConfidence: Double? = nil) {
+             primaryCandidateConfidence: Double? = nil,
+             primaryCandidateSource: FeatureSourceID? = nil) {
             self.faceDetected = faceDetected
             self.personDetected = personDetected
             self.personCount = max(0, personCount)
@@ -358,6 +360,7 @@ struct FrameFeatureSnapshot: Codable, Equatable, Sendable {
             self.topObjectRegion = topObjectRegion
             self.primaryCandidateRegion = primaryCandidateRegion
             self.primaryCandidateConfidence = primaryCandidateConfidence.map(Self.clamp01)
+            self.primaryCandidateSource = primaryCandidateSource
         }
 
         private static func clamp01(_ value: Double) -> Double {
@@ -2571,8 +2574,8 @@ enum SemanticTipCatalog {
     static let definitions: [SemanticTipDefinition] = [
         .init(tipType: .createLookSpaceLeft, actionType: .shiftFrameLeft, actionFrame: .moveCamera, direction: .left, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [.insufficientLookSpace], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
         .init(tipType: .createLookSpaceRight, actionType: .shiftFrameRight, actionFrame: .moveCamera, direction: .right, targetEntityKind: .frame, targetEntityRole: .wholeFrame, problemTypes: [.insufficientLookSpace], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
-        .init(tipType: .moveSubjectOffLeftEdge, actionType: .shiftFrameRight, actionFrame: .moveCamera, direction: .right, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.subjectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
-        .init(tipType: .moveSubjectOffRightEdge, actionType: .shiftFrameLeft, actionFrame: .moveCamera, direction: .left, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.subjectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .moveSubjectOffLeftEdge, actionType: .shiftFrameLeft, actionFrame: .moveCamera, direction: .left, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.subjectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
+        .init(tipType: .moveSubjectOffRightEdge, actionType: .shiftFrameRight, actionFrame: .moveCamera, direction: .right, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.subjectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
         .init(tipType: .moveObjectOffLeftEdge, actionType: .moveObjectRight, actionFrame: .moveObject, direction: .right, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.objectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericLabel),
         .init(tipType: .moveObjectOffRightEdge, actionType: .moveObjectLeft, actionFrame: .moveObject, direction: .left, targetEntityKind: .object, targetEntityRole: .foregroundObject, problemTypes: [.objectEdgePressure], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .primaryCorrective, fallbackBehavior: .degradeToGenericLabel),
         .init(tipType: .addHeadroom, actionType: .shiftFrameUp, actionFrame: .moveCamera, direction: .up, targetEntityKind: .person, targetEntityRole: .primarySubject, problemTypes: [.tightFraming], strengthTypes: [], supportedModes: [.live, .pause], priorityBand: .secondaryCorrective, fallbackBehavior: .degradeToGenericActionCopy),
@@ -3399,5 +3402,346 @@ private extension VLMEntityKind {
 private extension Array where Element == VLMEvidenceViolation {
     func sortedByRawValue() -> [VLMEvidenceViolation] {
         sorted { $0.rawValue < $1.rawValue }
+    }
+}
+
+// MARK: - M2-001 Camera Coach production contract v2 (CC-008)
+
+/// Fixed production coaching decision space (CameraCoachDomainOwner).
+/// Fail-closed policy: ambiguous or still-acquiring evidence resolves to WAIT,
+/// resolvable subject ambiguity to SELECT_SUBJECT, insufficient evidence to
+/// ABSTAIN. Only confident quality outcomes map to KEEP/CORRECT — the pipeline
+/// never invents advice outside these five decisions.
+enum CameraCoachDecisionV2: String, Codable, CaseIterable, Sendable, Equatable {
+    /// Strong frame: keep as is (spec S10c).
+    case keep = "KEEP"
+    /// One concrete physical action (spec S06).
+    case correct = "CORRECT"
+    /// One tap resolves a real subject ambiguity (spec S05).
+    case selectSubject = "SELECT_SUBJECT"
+    /// Evidence still acquiring or temporarily unstable (spec S04) — the
+    /// fail-closed default while nothing confident is known.
+    case wait = "WAIT"
+    /// Insufficient evidence for an honest recommendation (spec S11).
+    case abstain = "ABSTAIN"
+}
+
+/// One legacy advice semantics entry migrated onto the v2 contract. The
+/// approved semantic action is always a member of the canonical catalog.
+struct CameraCoachActionMigrationV2: Codable, Equatable, Sendable {
+    let legacyActionID: String
+    let decision: CameraCoachDecisionV2
+    let approvedActionID: String
+}
+
+/// The machine-readable v2 contract. `camera-coach-contract-v2.json` is
+/// generated from this shape and kept in lockstep by round-trip tests.
+struct CameraCoachContractV2: Codable, Equatable, Sendable {
+    static let version = 2
+
+    let contractVersion: Int
+    let decisions: [String]
+    let approvedActionIDs: [String]
+    let legacyMigrations: [CameraCoachActionMigrationV2]
+    let failClosedPolicy: FailClosedPolicy
+
+    struct FailClosedPolicy: Codable, Equatable, Sendable {
+        let missingOrUnstableEvidence: CameraCoachDecisionV2
+        let resolvableSubjectAmbiguity: CameraCoachDecisionV2
+        let insufficientEvidence: CameraCoachDecisionV2
+        let unknownLegacyAction: CameraCoachDecisionV2
+    }
+
+    /// The single production contract instance. The legacy migration table is
+    /// an exhaustive `switch` over `ActionTypeV1`: adding a legacy case
+    /// without a mapping is a compile error, so vague advice can never
+    /// silently re-enter production.
+    static let production = CameraCoachContractV2(
+        contractVersion: version,
+        decisions: CameraCoachDecisionV2.allCases.map(\.rawValue),
+        approvedActionIDs: SemanticActionType.allCases.map(\.rawValue),
+        legacyMigrations: ActionTypeV1.allCases.map { legacy in
+            let (decision, approved): (CameraCoachDecisionV2, SemanticActionType)
+            switch legacy {
+            case .moveFrameLeft:
+                (decision, approved) = (.correct, .shiftFrameLeft)
+            case .moveFrameRight:
+                (decision, approved) = (.correct, .shiftFrameRight)
+            case .moveFrameUp:
+                (decision, approved) = (.correct, .shiftFrameUp)
+            case .moveFrameDown:
+                (decision, approved) = (.correct, .shiftFrameDown)
+            case .increaseSubjectSize:
+                (decision, approved) = (.correct, .stepCloser)
+            case .reduceBackgroundDistractions:
+                (decision, approved) = (.correct, .simplifyBackground)
+            case .changeAngle:
+                (decision, approved) = (.correct, .changeCameraAngle)
+            case .improveFrontLight:
+                (decision, approved) = (.correct, .addFrontFillLight)
+            case .levelHorizon:
+                (decision, approved) = (.correct, .levelHorizon)
+            case .leaveFrameAsIs:
+                (decision, approved) = (.keep, .keepCurrentSetup)
+            }
+            return CameraCoachActionMigrationV2(
+                legacyActionID: legacy.rawValue,
+                decision: decision,
+                approvedActionID: approved.rawValue
+            )
+        },
+        failClosedPolicy: FailClosedPolicy(
+            missingOrUnstableEvidence: .wait,
+            resolvableSubjectAmbiguity: .selectSubject,
+            insufficientEvidence: .abstain,
+            unknownLegacyAction: .wait
+        )
+    )
+
+    /// Migrates one legacy action onto the v2 contract. Unknown legacy IDs
+    /// (data from older builds) fail closed to WAIT instead of inventing
+    /// advice.
+    func migration(forLegacyActionID rawValue: String) -> CameraCoachActionMigrationV2? {
+        legacyMigrations.first { $0.legacyActionID == rawValue }
+    }
+
+    func decision(forLegacyActionID rawValue: String) -> CameraCoachDecisionV2 {
+        migration(forLegacyActionID: rawValue)?.decision ?? failClosedPolicy.unknownLegacyAction
+    }
+
+    func isApprovedActionID(_ rawValue: String) -> Bool {
+        approvedActionIDs.contains(rawValue)
+    }
+}
+
+// MARK: - M2-002 Canonical normalized coordinate spaces (CameraGeometryOwner)
+
+/// The six canonical coordinate spaces of the Camera Coach pipeline. Every
+/// normalized coordinate in production code is tagged with one of these; two
+/// values with different tags are never mixed without an explicit conversion.
+///
+/// All normalized values live in the unit square [0,1]×[0,1] of their space.
+/// Conversions document origin, axis direction, crop, rotation, mirroring and
+/// aspect-fill clipping; rotation and mirroring themselves are applied by the
+/// single M2-003 display-transform adapter, not re-derived per call site.
+enum CameraCoordinateSpaceV2: String, Codable, CaseIterable, Sendable {
+    /// Raw sensor buffer. Pixel coordinates, origin TOP-left, axes x-right /
+    /// y-down, landscape-native orientation of the active capture device.
+    case sensor
+    /// Vision/VNRecognizedObjectObservation normalized space. Origin
+    /// BOTTOM-left, axes x-right / y-UP (Apple Vision convention). Rotation
+    /// and mirroring already applied by the Vision request orientation.
+    case vision
+    /// Model input tensor space. Normalized, origin TOP-left, y-down, square
+    /// ASPECT-FILL of the sensor image (center crop; sensor edges outside the
+    /// crop are unreachable). Not invertible without the stored crop offset.
+    case modelInput
+    /// Preview layer space. Normalized, origin TOP-left, y-down, ASPECT-FILL
+    /// of the sensor image inside the visible preview bounds (center crop,
+    /// orientation + mirroring as displayed). Inverse requires the preview
+    /// bounds and display orientation.
+    case preview
+    /// Coaching subject-target space (tap selection, markers, direction
+    /// arrows). Normalized, origin TOP-left, y-down, same framing as
+    /// `preview` but never mirrored relative to the captured scene.
+    case subjectTarget
+    /// SwiftUI canvas space. Normalized, origin TOP-left, y-down, of the
+    /// hosting overlay view bounds. Conversion from `preview` uses the same
+    /// bounds, so it is the identity mapping for normalized values.
+    case swiftUICanvas
+}
+
+/// A unit-square point tagged with its space. Non-finite input fails closed
+/// to the origin of the square.
+struct CameraSpacePointV2: Codable, Equatable, Sendable {
+    let space: CameraCoordinateSpaceV2
+    let x: Double
+    let y: Double
+
+    init(space: CameraCoordinateSpaceV2, x: Double, y: Double) {
+        self.space = space
+        self.x = Self.clamped(x)
+        self.y = Self.clamped(y)
+    }
+
+    /// Vision (y-up, bottom-left origin) ↔ y-down spaces (subject target,
+    /// preview, canvas): the only axis-direction difference between the two
+    /// families. Rotation/mirroring are display concerns (M2-003).
+    var flippedVertically: CameraSpacePointV2 {
+        CameraSpacePointV2(space: space, x: x, y: 1 - y)
+    }
+
+    /// Maps a point from `sensor`-framed normalized coordinates into this
+    /// point's space through an aspect-fill (center crop) window. Clipping is
+    /// implicit: anything outside the crop window clamps to the unit-square
+    /// edge (fail closed, never negative).
+    func applyingAspectFill(
+        sourcePixelSize: CGSize,
+        destinationPixelSize: CGSize
+    ) -> CameraSpacePointV2 {
+        let transform = AspectFillTransform(
+            sourceSize: sourcePixelSize,
+            destinationSize: destinationPixelSize
+        )
+        let mapped = transform.destinationPoint(fromSourceNormalized: x, y: y)
+        return CameraSpacePointV2(space: space, x: mapped.x, y: mapped.y)
+    }
+
+    /// Inverse of `applyingAspectFill` for points inside the crop window.
+    /// Returns nil when the point lies outside the crop window or the sizes
+    /// are degenerate (fail closed instead of inventing coordinates).
+    func removingAspectFill(
+        sourcePixelSize: CGSize,
+        destinationPixelSize: CGSize
+    ) -> CameraSpacePointV2? {
+        let transform = AspectFillTransform(
+            sourceSize: sourcePixelSize,
+            destinationSize: destinationPixelSize
+        )
+        guard let mapped = transform.sourceNormalized(fromDestinationX: x, y: y) else {
+            return nil
+        }
+        return CameraSpacePointV2(space: space, x: mapped.x, y: mapped.y)
+    }
+
+    private static func clamped(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.0 }
+        return min(1.0, max(0.0, value))
+    }
+}
+
+/// Center-crop aspect-fill mapping between two pixel sizes, expressed on
+/// normalized unit-square coordinates. Origin top-left, y-down on both sides;
+/// rotation/mirroring are the M2-003 adapter's responsibility, not this map's.
+struct AspectFillTransform: Equatable, Sendable {
+    let sourcePixelWidth: Double
+    let sourcePixelHeight: Double
+    let destinationPixelWidth: Double
+    let destinationPixelHeight: Double
+    /// Aspect-fill scale: max(destinationWidth/sourceWidth,
+    /// destinationHeight/sourceHeight) so the destination is fully covered and
+    /// the overflow becomes the centered crop.
+    let fillScale: Double
+    let cropOffsetXPixels: Double
+    let cropOffsetYPixels: Double
+
+    /// Degenerate (zero/negative/non-finite) sizes fail closed to the identity
+    /// mapping on the unit square instead of producing invented coordinates.
+    init(sourceSize: CGSize, destinationSize: CGSize) {
+        let w = AspectFillTransform.validated(sourceSize.width)
+        let h = AspectFillTransform.validated(sourceSize.height)
+        let dw = AspectFillTransform.validated(destinationSize.width)
+        let dh = AspectFillTransform.validated(destinationSize.height)
+        self.sourcePixelWidth = w
+        self.sourcePixelHeight = h
+        self.destinationPixelWidth = dw
+        self.destinationPixelHeight = dh
+
+        guard w > 0, h > 0, dw > 0, dh > 0 else {
+            self.fillScale = 1
+            self.cropOffsetXPixels = 0
+            self.cropOffsetYPixels = 0
+            return
+        }
+
+        let fillScale = max(dw / w, dh / h)
+        self.fillScale = fillScale
+        self.cropOffsetXPixels = (w * fillScale - dw) / 2
+        self.cropOffsetYPixels = (h * fillScale - dh) / 2
+    }
+
+    private static func validated(_ value: CGFloat) -> Double {
+        guard value.isFinite, value > 0 else { return 0 }
+        return Double(value)
+    }
+
+    private var isDegenerate: Bool {
+        sourcePixelWidth <= 0 || sourcePixelHeight <= 0
+            || destinationPixelWidth <= 0 || destinationPixelHeight <= 0
+    }
+
+    /// Source-normalized point → destination-normalized point. Values landing
+    /// outside the crop window clamp to the unit-square edge (fail closed).
+    func destinationPoint(fromSourceNormalized x: Double, y: Double) -> (x: Double, y: Double) {
+        guard !isDegenerate else { return (clampedUnit(x), clampedUnit(y)) }
+        let pixelX = clampedUnit(x) * sourcePixelWidth * fillScale - cropOffsetXPixels
+        let pixelY = clampedUnit(y) * sourcePixelHeight * fillScale - cropOffsetYPixels
+        return (clampedUnit(pixelX / destinationPixelWidth),
+                clampedUnit(pixelY / destinationPixelHeight))
+    }
+
+    /// Destination-normalized point → source-normalized point. Nil when the
+    /// point lies outside the centered crop window (not invertible there).
+    func sourceNormalized(fromDestinationX x: Double, y: Double) -> (x: Double, y: Double)? {
+        guard !isDegenerate else { return (clampedUnit(x), clampedUnit(y)) }
+        let pixelX = clampedUnit(x) * destinationPixelWidth + cropOffsetXPixels
+        let pixelY = clampedUnit(y) * destinationPixelHeight + cropOffsetYPixels
+        let sourceX = pixelX / (sourcePixelWidth * fillScale)
+        let sourceY = pixelY / (sourcePixelHeight * fillScale)
+        guard (0...1).contains(sourceX), (0...1).contains(sourceY) else { return nil }
+        return (sourceX, sourceY)
+    }
+
+    private func clampedUnit(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.0 }
+        return min(1.0, max(0.0, value))
+    }
+}
+
+// MARK: - M2-004 Subject-displacement direction contract (AdvicePlannerOwner)
+
+extension SemanticDirection {
+    /// M2-004: directional tips describe where the SUBJECT moves, not where
+    /// the camera moves. In-plane camera motion is optically opposite to
+    /// subject motion (moving the camera left moves the subject right in
+    /// frame), so re-expressing a camera-framed action as subject displacement
+    /// inverts left/right and up/down. Subject-, object- and light-framed
+    /// actions already speak in scene terms and are preserved. Forward/back
+    /// (depth axis) and `.none` are unaffected. The result is defined in scene
+    /// space: device orientation and mirroring are display concerns owned by
+    /// the M2-003 `CameraDisplayTransform`, so this mapping is invariant under
+    /// all eight display states.
+    func subjectDisplacement(actionFrame: SemanticActionFrame) -> SemanticDirection {
+        guard actionFrame == .moveCamera else { return self }
+        switch self {
+        case .left: return .right
+        case .right: return .left
+        case .up: return .down
+        case .down: return .up
+        case .forward, .back, .none: return self
+        }
+    }
+
+    /// The unit-square point a marker/text should aim at: the frame-edge
+    /// midpoint in the displacement direction, measured from the subject
+    /// center, projected onto the ray from the subject center through the
+    /// subject frame edge. Both text and marker use this one computed target,
+    /// so they can never disagree about direction.
+    func subjectTargetPoint(from subjectFrame: NormalizedRect) -> (x: Double, y: Double) {
+        let centerX = subjectFrame.x + subjectFrame.width / 2
+        let centerY = subjectFrame.y + subjectFrame.height / 2
+        switch self {
+        case .left:
+            return (0, centerY)
+        case .right:
+            return (1, centerY)
+        case .up:
+            return (centerX, 0)
+        case .down:
+            return (centerX, 1)
+        case .forward, .back, .none:
+            // Depth/neutral directions have no in-plane target; the subject
+            // center keeps marker anchoring honest.
+            return (centerX, centerY)
+        }
+    }
+}
+
+extension SemanticTipDefinition {
+    /// The published subject-displacement direction of this tip. This is the
+    /// only direction user-facing text and markers may describe; camera-framed
+    /// tips are inverted onto subject motion per M2-004.
+    var subjectDisplacementDirection: SemanticDirection {
+        direction.subjectDisplacement(actionFrame: actionFrame)
     }
 }

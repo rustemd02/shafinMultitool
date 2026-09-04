@@ -23,10 +23,54 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertEqual(shell.children.count, 1)
         XCTAssertEqual(shell.view.accessibilityIdentifier, "commercial-shell")
         XCTAssertTrue(shell.activeRoute is CommercialCameraCoachRoute)
+        XCTAssertFalse(shell.modeControl.isHidden)
         XCTAssertNil(shell.activeRoute as? CommercialSceneLibraryRoute)
         XCTAssertNil(shell.activeRoute as? CommercialHistoryRoute)
         XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.portrait))
         XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.landscape))
+    }
+
+    func testSharedCameraEntryFlowHidesChromeUntilEntryIsReady() async {
+        let denied = shellPermissionSnapshot(authorization: .denied)
+        let authorized = shellPermissionSnapshot(authorization: .authorized)
+        let client = ShellEntryFlowPermissionClient(snapshots: [denied, authorized])
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: ShellEntryFlowIntroStore(seen: true)
+        )
+        let shell = CommercialShellComposition(
+            cameraCoachBuilder: {
+                CommercialCameraCoachRoute(
+                    viewController: UIViewController(),
+                    stopAndWait: {},
+                    entryFlowModel: model
+                )
+            },
+            sceneLibraryBuilder: { UIViewController() },
+            historyBuilder: { UIViewController() }
+        ).makeShell()
+
+        XCTAssertTrue(shell.modeControl.isHidden)
+        XCTAssertFalse(modeControlButton(in: shell).isUserInteractionEnabled)
+
+        await model.resolveInitialState()
+        XCTAssertEqual(model.phase, .blocked(.denied))
+        XCTAssertTrue(shell.modeControl.isHidden)
+
+        await model.recheckCameraAccess()
+        await Task.yield()
+
+        XCTAssertEqual(model.phase, .ready)
+        XCTAssertFalse(shell.modeControl.isHidden)
+        XCTAssertTrue(modeControlButton(in: shell).isUserInteractionEnabled)
+        let snapshotCount = await client.snapshotCount
+        let requestCount = await client.requestCount
+        XCTAssertEqual(snapshotCount, 2)
+        XCTAssertEqual(requestCount, 0)
+
+        shell.view.layoutIfNeeded()
+        let snapshotCountAfterLayout = await client.snapshotCount
+        XCTAssertEqual(snapshotCountAfterLayout, 2)
     }
 
     func testCameraChildFillsShellAndModeControlUsesTopSafeAreaOverlay() throws {
@@ -45,7 +89,16 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
 
         let child = try XCTUnwrap(shell.activeViewController)
         XCTAssertEqual(child.view.frame, shell.view.bounds)
-        XCTAssertEqual(shell.modeControl.bounds.size, CGSize(width: 44, height: 44))
+        // Icon-only size assertions are superseded by SET OS O-1: the published
+        // control is the two-segment A/B ROLL capsule.
+        XCTAssertGreaterThanOrEqual(
+            shell.modeControl.bounds.width,
+            SETABRollCapsuleContract.minimumControlSize.width
+        )
+        XCTAssertGreaterThanOrEqual(
+            shell.modeControl.bounds.height,
+            SETABRollCapsuleContract.minimumControlSize.height
+        )
         XCTAssertEqual(
             shell.modeControl.frame.midX,
             shell.view.safeAreaLayoutGuide.layoutFrame.midX,
@@ -391,6 +444,81 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertIdentical(selectedCommercialRoot, commercialRoot)
         XCTAssertEqual(benchmarkCallCount, 1)
         XCTAssertEqual(commercialCallCount, 1)
+    }
+
+    private func modeControlButton(
+        in shell: CommercialShellViewController,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> UIButton {
+        guard let button = allViews(in: shell.modeControl)
+            .compactMap({ $0 as? UIButton })
+            .first else {
+            XCTFail("Missing shell mode control button", file: file, line: line)
+            return UIButton(type: .system)
+        }
+        return button
+    }
+
+    private func allViews(in root: UIView) -> [UIView] {
+        [root] + root.subviews.flatMap(allViews)
+    }
+
+    private func shellPermissionSnapshot(
+        authorization: PermissionAuthorization,
+        available: Bool = true
+    ) -> PermissionSnapshot {
+        PermissionSnapshot(
+            permission: .camera,
+            authorization: authorization,
+            availability: available ? .available : .unavailable(.cameraHardware)
+        )
+    }
+}
+
+private actor ShellEntryFlowPermissionClient: PermissionClient {
+    private var snapshots: [PermissionSnapshot]
+    private(set) var snapshotCount = 0
+    private(set) var requestCount = 0
+
+    init(snapshots: [PermissionSnapshot]) {
+        self.snapshots = snapshots
+    }
+
+    func snapshot(for permission: AppPermission) async -> PermissionSnapshot {
+        snapshotCount += 1
+        guard permission == .camera else {
+            return PermissionSnapshot(
+                permission: permission,
+                authorization: .unknown,
+                availability: .available
+            )
+        }
+        if snapshots.count > 1 {
+            return snapshots.removeFirst()
+        }
+        return snapshots[0]
+    }
+
+    func request(_ permission: AppPermission) async -> PermissionSnapshot {
+        requestCount += 1
+        return await snapshot(for: permission)
+    }
+}
+
+private final class ShellEntryFlowIntroStore: CameraCoachIntroStore {
+    private var seen: Bool
+
+    init(seen: Bool) {
+        self.seen = seen
+    }
+
+    func hasSeenCameraCoachIntro() -> Bool {
+        seen
+    }
+
+    func markCameraCoachIntroSeen() {
+        seen = true
     }
 }
 

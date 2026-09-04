@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -22,7 +23,8 @@ struct CommercialShellComposition {
             )
             return CommercialCameraCoachRoute(
                 viewController: viewController,
-                cameraViewModel: dependencies.viewModel
+                cameraViewModel: dependencies.viewModel,
+                entryFlowModel: dependencies.entryFlowModel
             )
         },
         sceneLibraryBuilder: @escaping ViewControllerBuilder = {
@@ -86,18 +88,74 @@ class CommercialViewControllerRoute: CommercialRoute {
 @MainActor
 final class CommercialCameraCoachRoute: CommercialViewControllerRoute {
     typealias StopAndWait = @MainActor () async -> Void
+    typealias SceneBackgroundHandler = @MainActor () -> Void
+    typealias ChromeVisibilityHandler = @MainActor (Bool) -> Void
 
     private let stopAndWait: StopAndWait
+    private let sceneBackgroundHandler: SceneBackgroundHandler?
+    private let entryFlowModel: CameraCoachEntryFlowModel?
+    private var chromeVisibilityHandler: ChromeVisibilityHandler?
+    private var entryFlowObservation: AnyCancellable?
     private var deactivationTask: Task<Void, Never>?
 
-    init(viewController: UIViewController, cameraViewModel: CameraViewModel) {
+    init(
+        viewController: UIViewController,
+        cameraViewModel: CameraViewModel,
+        entryFlowModel: CameraCoachEntryFlowModel? = nil
+    ) {
         self.stopAndWait = { await cameraViewModel.stopAndWait() }
+        self.sceneBackgroundHandler = { [weak cameraViewModel] in
+            cameraViewModel?.reportSceneInactive()
+        }
+        self.entryFlowModel = entryFlowModel
         super.init(viewController: viewController)
     }
 
-    init(viewController: UIViewController, stopAndWait: @escaping StopAndWait) {
+    init(
+        viewController: UIViewController,
+        stopAndWait: @escaping StopAndWait,
+        entryFlowModel: CameraCoachEntryFlowModel? = nil,
+        sceneDidEnterBackground: SceneBackgroundHandler? = nil
+    ) {
         self.stopAndWait = stopAndWait
+        self.sceneBackgroundHandler = sceneDidEnterBackground
+        self.entryFlowModel = entryFlowModel
         super.init(viewController: viewController)
+    }
+
+    func setChromeVisibilityHandler(_ handler: @escaping ChromeVisibilityHandler) {
+        chromeVisibilityHandler = handler
+        entryFlowObservation?.cancel()
+
+        guard let entryFlowModel else {
+            handler(true)
+            return
+        }
+
+        handler(entryFlowModel.phase == .ready)
+        entryFlowObservation = entryFlowModel.$phase.sink { [weak self] phase in
+            self?.chromeVisibilityHandler?(phase == .ready)
+        }
+    }
+
+    func handleAppDidBecomeActive() {
+        guard let entryFlowModel,
+              entryFlowModel.phase != .ready else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self,
+                  let entryFlowModel = self.entryFlowModel,
+                  entryFlowModel.phase != .ready else { return }
+            await entryFlowModel.recheckCameraAccess()
+        }
+    }
+
+    /// M1-004 lifecycle-adapter background hook. Forwards to the active capture
+    /// owner; the owner (CameraViewModel.reportSceneInactive) is idempotent and
+    /// early-returns unless capture or pause work is active, so a racing SwiftUI
+    /// scenePhase effect converges on the same single state change.
+    func handleSceneDidEnterBackground() {
+        sceneBackgroundHandler?()
     }
 
     override func deactivateAndWait() async -> CommercialRouteDeactivationResult {

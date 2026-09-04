@@ -1,0 +1,25 @@
+{
+  "workspace": "shafinMultitool.xcworkspace",
+  "project": "shafinMultitool.xcodeproj",
+  "configurations": [
+    "Debug",
+    "Release"
+  ],
+  "targets": [
+    "shafinMultitool",
+    "shafinMultitoolTests",
+    "shafinMultitoolUITests"
+  ],
+  "schemes": [
+    "shafinMultitool"
+  ],
+  "shared_schemes": [
+    "shafinMultitool.xcscheme"
+  ],
+  "test_plans": [],
+  "pods": [
+    "SnapKit 5.7.1"
+  ],
+  "cocoapods": "1.16.2",
+  "pod_platform": "ios 14.0 (Podfile; app target 17.0 \u2014 mismatch noted)"
+}

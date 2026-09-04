@@ -14,24 +14,48 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
     }
 
     func testEverySupportedActionMapsToOnePhysicalInstruction() {
+        let locale = Locale(identifier: "en")
         for actionType in ActionTypeV1.allCases {
+            let liveText = "Точная команда для " + actionType.rawValue + "."
             let presentation = CameraOverlayUXPresentation.make(
-                liveHint: makeLiveHint(actionType: actionType)
+                liveHint: makeLiveHint(text: liveText, actionType: actionType),
+                locale: locale
             )
 
             if actionType == .leaveFrameAsIs {
                 XCTAssertEqual(presentation.state, .keepAsIs)
-                XCTAssertEqual(presentation.actionInstruction, "Снимайте")
+                XCTAssertEqual(
+                    presentation.actionInstruction,
+                    SETCopyKey.actionMain.localizedString(locale: locale)
+                )
                 XCTAssertFalse(presentation.showsWhy)
                 XCTAssertNil(presentation.overlayHint)
             } else {
                 XCTAssertEqual(presentation.state, .stableTip, actionType.rawValue)
                 XCTAssertEqual(presentation.baseState, .stableTip)
-                XCTAssertEqual(presentation.actionInstruction, expectedInstruction(for: actionType), actionType.rawValue)
+                XCTAssertEqual(
+                    presentation.actionInstruction,
+                    SETCameraCopy.actionKey(for: actionType).localizedString(locale: locale),
+                    actionType.rawValue
+                )
                 XCTAssertTrue(presentation.showsWhy, actionType.rawValue)
                 XCTAssertNotNil(presentation.explanation, actionType.rawValue)
+                XCTAssertFalse(containsCyrillic(presentation.visibleCopy.joined(separator: " ")))
             }
         }
+    }
+
+    func testObjectInstructionIsNotRewrittenFromActionEnum() {
+        let liveText = "Сдвиньте предмет левее."
+        let presentation = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(text: liveText, actionType: .moveFrameLeft)
+        )
+
+        XCTAssertEqual(
+            presentation.actionInstruction,
+            SETCopyKey.cameraCorrectiveMoveLeft.localizedString(locale: .current)
+        )
+        XCTAssertFalse(presentation.actionInstruction?.contains("Сдвиньте") ?? false)
     }
 
     func testWhyExpansionAndCollapseRemainTheSameLiveTip() {
@@ -54,15 +78,42 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
     func testIncompleteOrMalformedPayloadUsesOneSafeNontechnicalLine() {
         let malformedHints = [
             makeLiveHint(text: "   ", actionType: .moveFrameLeft),
-            makeLiveHint(actionType: nil),
+            makeLiveHint(actionType: nil, expandedVerdict: nil),
+            makeLiveHint(
+                actionType: nil,
+                expandedVerdict: LiveExpandedVerdictPresentation(
+                    shortVerdict: "   ",
+                    supportingText: "Есть объяснение.",
+                    actionText: nil,
+                    fallbackUsed: false
+                )
+            ),
             makeLiveHint(id: "   ", actionType: .moveFrameLeft),
             makeLiveHint(confidence: .infinity, actionType: .moveFrameLeft),
             makeLiveHint(
                 actionType: .moveFrameLeft,
                 expandedVerdict: LiveExpandedVerdictPresentation(
                     shortVerdict: "Главный объект у края.",
+                    supportingText: "trace: внутренние данные",
+                    actionText: "После смещения объект будет читаться спокойнее.",
+                    fallbackUsed: false
+                )
+            ),
+            makeLiveHint(
+                actionType: nil,
+                expandedVerdict: LiveExpandedVerdictPresentation(
+                    shortVerdict: "Главный объект у края.",
                     supportingText: nil,
-                    actionText: nil,
+                    actionText: "semantic reserve output",
+                    fallbackUsed: false
+                )
+            ),
+            makeLiveHint(
+                actionType: .leaveFrameAsIs,
+                expandedVerdict: LiveExpandedVerdictPresentation(
+                    shortVerdict: "Кадр уже сбалансирован.",
+                    supportingText: "Всё выглядит спокойно.",
+                    actionText: "confidence: 0.9",
                     fallbackUsed: false
                 )
             )
@@ -80,12 +131,105 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         }
     }
 
+    func testActionableHintWithoutExplanationRemainsStableWithWhyHidden() {
+        let liveText = "Сдвиньте предмет левее."
+        let hint = makeLiveHint(
+            text: liveText,
+            actionType: .moveFrameLeft,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: "Главный объект у края.",
+                supportingText: nil,
+                actionText: nil,
+                fallbackUsed: false
+            )
+        )
+
+        let presentation = CameraOverlayUXPresentation.make(
+            liveHint: hint,
+            isExpanded: true,
+            locale: Locale(identifier: "en")
+        )
+        XCTAssertEqual(presentation.state, .stableTip)
+        XCTAssertEqual(
+            presentation.observation,
+            SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "en"))
+        )
+        XCTAssertEqual(
+            presentation.actionInstruction,
+            SETCopyKey.cameraCorrectiveMoveLeft.localizedString(locale: Locale(identifier: "en"))
+        )
+        XCTAssertNil(presentation.explanation)
+        XCTAssertFalse(presentation.showsWhy)
+    }
+
+    func testTechnicalHintUsesLiveTextAndExpandsWhenExplanationExists() {
+        let liveText = "Проверьте фокус на объекте."
+        let hint = makeLiveHint(
+            text: liveText,
+            actionType: nil,
+            overlayHint: OverlayHint(
+                id: "technical-geometry-must-not-render",
+                kind: .arrow,
+                targetRegion: NormalizedRect(x: 0.62, y: 0.2, width: 0.24, height: 0.44),
+                direction: .left
+            ),
+            technicalIssueType: .defocus
+        )
+
+        let collapsed = CameraOverlayUXPresentation.make(liveHint: hint, locale: Locale(identifier: "en"))
+        XCTAssertEqual(collapsed.state, .stableTip)
+        XCTAssertEqual(collapsed.observation, SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "en")))
+        XCTAssertEqual(collapsed.actionInstruction, SETCopyKey.cameraTechnicalRefocusSubject.localizedString(locale: Locale(identifier: "en")))
+        XCTAssertEqual(collapsed.explanation, SETCopyKey.cameraExplanation.localizedString(locale: Locale(identifier: "en")))
+        XCTAssertTrue(collapsed.showsWhy)
+        XCTAssertFalse(containsCyrillic(collapsed.visibleCopy.joined(separator: " ")))
+        XCTAssertNil(collapsed.overlayHint)
+        XCTAssertNil(collapsed.targetRegion)
+
+        let expanded = CameraOverlayUXPresentation.make(
+            liveHint: hint,
+            isExpanded: true,
+            locale: Locale(identifier: "en")
+        )
+        XCTAssertEqual(expanded.state, .explanation)
+        XCTAssertEqual(
+            expanded.actionInstruction,
+            SETCopyKey.cameraTechnicalRefocusSubject.localizedString(locale: Locale(identifier: "en"))
+        )
+        XCTAssertEqual(expanded.explanation, collapsed.explanation)
+        XCTAssertNil(expanded.overlayHint)
+    }
+
+    func testTechnicalHintWithoutExplanationRemainsStableWithWhyHidden() {
+        let liveText = "Оценка качества кадра завершена."
+        let hint = makeLiveHint(
+            text: liveText,
+            actionType: nil,
+            technicalIssueType: .defocus,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: "Кадр можно оценить без дополнительных пояснений.",
+                supportingText: nil,
+                actionText: nil,
+                fallbackUsed: false
+            )
+        )
+
+        let presentation = CameraOverlayUXPresentation.make(liveHint: hint, isExpanded: true, locale: Locale(identifier: "en"))
+        XCTAssertEqual(presentation.state, .stableTip)
+        XCTAssertEqual(presentation.observation, SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "en")))
+        XCTAssertEqual(presentation.actionInstruction, SETCopyKey.cameraTechnicalRefocusSubject.localizedString(locale: Locale(identifier: "en")))
+        XCTAssertNil(presentation.explanation)
+        XCTAssertFalse(presentation.showsWhy)
+        XCTAssertNil(presentation.overlayHint)
+    }
+
     func testCorrectiveGuideIsKeptOnlyForTheActiveAction() {
         let corrective = makeLiveHint(
             actionType: .moveFrameLeft,
             overlayHint: OverlayHint(
                 id: "guide-left",
                 kind: .arrow,
+                targetRegion: NormalizedRect(x: 0.62, y: 0.2, width: 0.24, height: 0.44),
                 direction: .left
             )
         )
@@ -101,6 +245,17 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
 
         XCTAssertNotNil(CameraOverlayUXPresentation.make(liveHint: corrective).overlayHint)
         XCTAssertNil(CameraOverlayUXPresentation.make(liveHint: keepAsIs).overlayHint)
+    }
+
+    func testRegionlessCorrectiveAdviceRemainsTextOnly() {
+        let regionless = makeLiveHint(
+            actionType: .moveFrameLeft,
+            overlayHint: OverlayHint(id: "guide-without-region", kind: .arrow, direction: .left)
+        )
+        let presentation = CameraOverlayUXPresentation.make(liveHint: regionless)
+        XCTAssertNil(presentation.overlayHint)
+        XCTAssertNil(presentation.targetRegion)
+        XCTAssertEqual(presentation.state, .stableTip)
     }
 
     func testForbiddenCopyNeverReachesTheSurface() {
@@ -166,6 +321,96 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         add(attachment)
     }
 
+    func testSeekingKeepAndFallbackFollowRequestedLocale() {
+        let english = Locale(identifier: "en")
+        let russian = Locale(identifier: "ru")
+
+        XCTAssertEqual(
+            CameraOverlayUXPresentation.make(liveHint: nil, locale: english).observation,
+            SETCopyKey.cameraSeeking.localizedString(locale: english)
+        )
+        XCTAssertEqual(
+            CameraOverlayUXPresentation.make(liveHint: nil, locale: russian).observation,
+            SETCopyKey.cameraSeeking.localizedString(locale: russian)
+        )
+
+        let keep = makeLiveHint(actionType: .leaveFrameAsIs)
+        let englishKeep = CameraOverlayUXPresentation.make(liveHint: keep, locale: english)
+        let russianKeep = CameraOverlayUXPresentation.make(liveHint: keep, locale: russian)
+        XCTAssertEqual(englishKeep.observation, SETCopyKey.cameraKeep.localizedString(locale: english))
+        XCTAssertEqual(englishKeep.actionInstruction, SETCopyKey.actionMain.localizedString(locale: english))
+        XCTAssertEqual(russianKeep.observation, SETCopyKey.cameraKeep.localizedString(locale: russian))
+        XCTAssertEqual(russianKeep.actionInstruction, SETCopyKey.actionMain.localizedString(locale: russian))
+
+        let fallback = makeLiveHint(text: "Наблюдение", actionType: .moveFrameLeft)
+        let englishFallback = CameraOverlayUXPresentation.make(
+            liveHint: LiveHintPresentation(
+                id: "fallback",
+                frameId: "frame-fallback",
+                text: "   ",
+                confidence: 0.7,
+                actionType: .moveFrameLeft,
+                actionId: nil,
+                linkedIssueIds: [],
+                summaryId: nil,
+                traceRootIds: [],
+                targetRegion: nil,
+                overlayHint: nil,
+                isFallback: true,
+                expandedVerdict: nil
+            ),
+            locale: english
+        )
+        XCTAssertEqual(englishFallback.observation, SETCopyKey.cameraFallback.localizedString(locale: english))
+        XCTAssertNil(englishFallback.targetRegion)
+    }
+
+    func testEverySemanticActionProjectsToCatalogCopyInEnglish() {
+        let locale = Locale(identifier: "en")
+        for semanticActionType in SemanticActionType.allCases {
+            let presentation = CameraOverlayUXPresentation.make(
+                liveHint: makeLiveHint(
+                    text: "Русская команда из ядра",
+                    actionType: .changeAngle,
+                    semanticActionType: semanticActionType
+                ),
+                locale: locale
+            )
+
+            XCTAssertEqual(
+                presentation.actionInstruction,
+                SETCameraCopy.actionKey(for: semanticActionType).localizedString(locale: locale),
+                semanticActionType.rawValue
+            )
+            XCTAssertFalse(containsCyrillic(presentation.visibleCopy.joined(separator: " ")))
+        }
+    }
+
+    func testEveryTechnicalIssueProjectsToCatalogCopyInEnglish() {
+        let locale = Locale(identifier: "en")
+        let issueTypes: [TechnicalQualityIssueType] = [
+            .motionBlur, .defocus, .overexposure, .underexposure, .noise, .occlusion, .lensSmudge
+        ]
+
+        for issueType in issueTypes {
+            let presentation = CameraOverlayUXPresentation.make(
+                liveHint: makeLiveHint(
+                    text: "Русская техническая команда из ядра",
+                    actionType: nil,
+                    technicalIssueType: issueType
+                ),
+                locale: locale
+            )
+
+            XCTAssertEqual(
+                presentation.actionInstruction,
+                SETCameraCopy.technicalActionKey(for: issueType).localizedString(locale: locale),
+                issueType.rawValue
+            )
+            XCTAssertFalse(containsCyrillic(presentation.visibleCopy.joined(separator: " ")))
+        }
+    }
+
     private func makeLiveHint(
         id: String = "hint-1",
         frameId: String = "frame-1",
@@ -173,6 +418,8 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         confidence: Double = 0.86,
         actionType: ActionTypeV1? = .moveFrameLeft,
         overlayHint: OverlayHint? = nil,
+        semanticActionType: SemanticActionType? = nil,
+        technicalIssueType: TechnicalQualityIssueType? = nil,
         expandedVerdict: LiveExpandedVerdictPresentation? = LiveExpandedVerdictPresentation(
             shortVerdict: "Главный объект теряется у края.",
             supportingText: "Слева осталось мало свободного пространства.",
@@ -193,32 +440,16 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             targetRegion: NormalizedRect(x: 0.62, y: 0.2, width: 0.24, height: 0.44),
             overlayHint: overlayHint,
             isFallback: false,
-            expandedVerdict: expandedVerdict
+            expandedVerdict: expandedVerdict,
+            semanticActionType: semanticActionType,
+            technicalIssueType: technicalIssueType
         )
     }
 
-    private func expectedInstruction(for actionType: ActionTypeV1) -> String {
-        switch actionType {
-        case .moveFrameLeft:
-            return "Сместите камеру немного влево."
-        case .moveFrameRight:
-            return "Сместите камеру немного вправо."
-        case .moveFrameUp:
-            return "Поднимите камеру немного выше."
-        case .moveFrameDown:
-            return "Опустите камеру немного ниже."
-        case .increaseSubjectSize:
-            return "Подойдите ближе к главному объекту."
-        case .reduceBackgroundDistractions:
-            return "Упростите фон вокруг главного объекта."
-        case .changeAngle:
-            return "Измените угол съёмки."
-        case .improveFrontLight:
-            return "Добавьте мягкий свет спереди."
-        case .levelHorizon:
-            return "Выровняйте камеру."
-        case .leaveFrameAsIs:
-            return "Снимайте"
+    private func containsCyrillic(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            (0x0400...0x04FF).contains(scalar.value)
         }
     }
+
 }

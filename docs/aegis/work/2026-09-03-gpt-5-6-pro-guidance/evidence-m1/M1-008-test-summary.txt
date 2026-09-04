@@ -1,0 +1,13 @@
+Executed 99 tests (+2 skipped): 96 passed, 3 failed. Failures are pre-existing deterministic failures in committed code, unrelated to M1-008 fence (component analysis: SceneMetadataExtractor string normalization x2, DiagnosticsCalculator confidence boundary x1); reproduced identically on retry (shafin-m1-008-retry.xcresult). Registered separately in EXECUTION_STATE known-failures.
+M1-008 scope: SceneParseRequestFenceTests 7/7 PASS.
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/SceneParseRequestFenceTests -only-testing:shafinMultitoolTests/SceneParserServiceTests -only-testing:shafinMultitoolTests/SceneBundlePipelineTests -only-testing:shafinMultitoolTests/SceneV8PipelineTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-008.xcresult
+xcodebuild exit: 65 (failed suite due to 3 pre-existing failures); retry exit: 65 (same 3).
+
+Test case 'SceneParseRequestFenceTests.testConcurrentBeginsIssueUniqueTokensAndOnlyLastIsCurrent()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (78640)' (0.003 seconds)
+Test case 'SceneParseRequestFenceTests.testCurrentRequestStillPublishesParseContext()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (78640)' (1.399 seconds)
+Test case 'SceneParseRequestFenceTests.testDelayedStaleCompletionLosesToNewerRequest()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (78640)' (0.022 seconds)
+Test case 'SceneParseRequestFenceTests.testResetInvalidatesEveryInFlightToken()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (78640)' (0.000 seconds)
+Test case 'SceneParseRequestFenceTests.testResetRuntimeContextClearsContextAndInvalidatesInFlightWrites()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (78640)' (0.663 seconds)
+Test case 'SceneParseRequestFenceTests.testSupersededRequestIsNotCurrentWhileLatestIs()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (78640)' (0.001 seconds)
+Test case 'SceneParseRequestFenceTests.testUnsupersededRequestStaysCurrent()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (78640)' (0.000 seconds)

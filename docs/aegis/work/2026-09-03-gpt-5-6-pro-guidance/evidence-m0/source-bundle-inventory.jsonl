@@ -1,0 +1,1137 @@
+[
+ {
+  "path": "Frameworks/llama.xcframework/Info.plist",
+  "bytes": 1172,
+  "sha256": "d627efae4a23e59d7c007e3de77109b1a616512a17087715e8c2caeca2c43a7d"
+ },
+ {
+  "path": "Frameworks/llama.xcframework/ios-arm64/llama.framework/Info.plist",
+  "bytes": 532,
+  "sha256": "37905f3a249c754041bab4c4c84c7089566e8feecbc8e70a4e4dec0246147af1"
+ },
+ {
+  "path": "Frameworks/llama.xcframework/ios-arm64_x86_64-simulator/llama.framework/Info.plist",
+  "bytes": 532,
+  "sha256": "37905f3a249c754041bab4c4c84c7089566e8feecbc8e70a4e4dec0246147af1"
+ },
+ {
+  "path": "shafinMultitool/Benchmark/DeviceBenchmarkCoordinator.swift",
+  "bytes": 73826,
+  "sha256": "b79010024c7f0e057b9508ba2fef6502e5f4cb9eced23561b263f7b2c7da3757"
+ },
+ {
+  "path": "shafinMultitool/Benchmark/DeviceBenchmarkSupport.swift",
+  "bytes": 27257,
+  "sha256": "583e8dada6e44e56817798e628abcf602b91e42d83606525baeac3548b7103d6"
+ },
+ {
+  "path": "shafinMultitool/Info.plist",
+  "bytes": 1003,
+  "sha256": "a1dd8e100438f022041e1565e93077d1b73b2d4264be499fd2a7734fb87702f2"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Assets.xcassets/AccentColor.colorset/Contents.json",
+  "bytes": 123,
+  "sha256": "9af65086fa30b49252fae1a1225731691de794f7775af74d71befeb507d12b7c"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Assets.xcassets/AppIcon.appiconset/Contents.json",
+  "bytes": 1429,
+  "sha256": "040294b5970a6d1d5b5a811e22086092954f6a1f503b38d0fae128bb02b4356a"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Assets.xcassets/Contents.json",
+  "bytes": 63,
+  "sha256": "0fd49ba3c3585c709678e0046a821c3c60685ec7063720d30d3a3448be3a208b"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+  "bytes": 337183,
+  "sha256": "3d3666837fe990d3948308e417949864b5c2ab0dd9f21091c755c8effa005c40"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage/Manifest.json",
+  "bytes": 617,
+  "sha256": "e7154240ddfd55b776642ae4f6b47d42bf8ad1b9425d97151d4d7b7875d0bf95"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreML/aesthetic_nima_mobilenet_fp16.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+  "bytes": 82747,
+  "sha256": "e5d44425c132e7ed2be99310226b573ae1765c37a909c1a0fd08aff311fb9cfc"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreML/aesthetic_nima_mobilenet_fp16.mlpackage/Manifest.json",
+  "bytes": 617,
+  "sha256": "552c2bf2bbcd6e91f8f87b5a724dcdaa765895dbc179a9e28e0b4181d05eeaae"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETFixtureCatalog.swift",
+  "bytes": 6710,
+  "sha256": "68066ab45ebb79ec7787a75717f2761879dcde5b9b8ea867e347fd6aeeb6280f"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETLiveMonitorFixtures.swift",
+  "bytes": 9613,
+  "sha256": "43f5220d76bebd34d188b7cb49c6a8b0d58aef86475f1d79b30fb2be8ad86759"
+ },
+ {
+  "path": "shafinMultitool/PrivacyInfo.xcprivacy",
+  "bytes": 816,
+  "sha256": "f953ba99994eddf8fe1c7d1723ca44a2da3df5ac96b05f09f375fa3d76f465cc"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
+  "bytes": 123,
+  "sha256": "9af65086fa30b49252fae1a1225731691de794f7775af74d71befeb507d12b7c"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json",
+  "bytes": 223,
+  "sha256": "bebb731b4dcd466a46ea35d79d5b73e4b457e41141201b0b58ff34239e2c3137"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/AppIcon.appiconset/лого-кругл.png",
+  "bytes": 596865,
+  "sha256": "640059d36001808139ba57d285b9d23ee445cbb8598a9a3dbcc96ef3c15c3984"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/Contents.json",
+  "bytes": 63,
+  "sha256": "0fd49ba3c3585c709678e0046a821c3c60685ec7063720d30d3a3448be3a208b"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/background.imageset/Contents.json",
+  "bytes": 308,
+  "sha256": "8acdea4656c6df21249f0a3532e3f2a4de6ad3686caa0a1861c87b0727a09593"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/background.imageset/background.png",
+  "bytes": 1908458,
+  "sha256": "45d6d015721e3a4d36522dbf160e476f64dc047a4448524e1767268f241e0fb9"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/blur.imageset/Contents.json",
+  "bytes": 302,
+  "sha256": "ce3d441da0c0c1e3a3a8181ae0043f8f005662d4f6f3b494d6f954ae2d19d89c"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/blur.imageset/blur.png",
+  "bytes": 5362,
+  "sha256": "caa88f0cbf495454104ea4875826706bee3a4608f27315b15e40f728212d0081"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/logo_menu.imageset/Contents.json",
+  "bytes": 307,
+  "sha256": "292f0e24d717e9bb5b90492e049c423826ac06bf06f8cd14c835f24808cd41d5"
+ },
+ {
+  "path": "shafinMultitool/Resources/Assets.xcassets/logo_menu.imageset/logo_menu.png",
+  "bytes": 23322,
+  "sha256": "8f2350d110094ba3ecdf288df4652b8a902b6ac1e5f28d2bd7196bb0f3c94f9f"
+ },
+ {
+  "path": "shafinMultitool/Resources/Circle.rcproject/Library/ProjectLibrary/Contents.json",
+  "bytes": 4,
+  "sha256": "ace810d7e2cbb4f8c40ce09dc8e191ae466adb4e1a7d49c59f2215b411d38b05"
+ },
+ {
+  "path": "shafinMultitool/Resources/Circle.rcproject/Library/ProjectLibrary/Version.json",
+  "bytes": 79,
+  "sha256": "875afbac1f90283660316c2bd0f6f5c65751f6ee1bf49420308697e937add1d6"
+ },
+ {
+  "path": "shafinMultitool/Resources/Circle.usdz",
+  "bytes": 60847,
+  "sha256": "8099ec655334ebeb2a1bd078df6fbb725386cdd870d6c00cd56671f49ea8aa30"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_device_benchmark_manifest.json",
+  "bytes": 283,
+  "sha256": "116ff030e6ddac44ae276487945b0b249acc8bc71621db0afd602dfaa2470b1a"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_full_labels.jsonl",
+  "bytes": 223040,
+  "sha256": "c1dba72a21551b70cc8edc4bbe9f3484c95776b24b84e8fe5d659f3a4cb0eefc"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_quick_labels.jsonl",
+  "bytes": 32303,
+  "sha256": "1849907741f0837d08d4fca8473b13568ee0e1ee438d97adb7c6ceea86661a10"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/guided_live_scenarios.json",
+  "bytes": 1910,
+  "sha256": "862afbafbc4731b676b2a679a560c5ccbb32ccb8ee0469d12c9a1fe8ea496641"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/001.jpg",
+  "bytes": 63266,
+  "sha256": "ac3419018b4257fd7da773abd43057ce7de3ce6cf49e0761cbbb8b54f190a973"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/002.jpg",
+  "bytes": 71728,
+  "sha256": "c912ac02f1a331ee8497c2e95a18a1b65c097a79be7abc2bf7eacb933ce3467e"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/003.jpg",
+  "bytes": 62412,
+  "sha256": "78054ec118e6c5deec185c587960c197e90ebd93be4d7d143acc1fa10424ef46"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/004.jpg",
+  "bytes": 61396,
+  "sha256": "de74471d319b6b49db0615358c18294b49b985c642e3dd9731467d1d7e4b0a32"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/005.jpg",
+  "bytes": 73786,
+  "sha256": "0a381eaf912d8dadc7686029d9100c7533f5fbb50b6bca00a4105acc4dc23509"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/006.jpg",
+  "bytes": 48921,
+  "sha256": "8b632b7cfb1e98e9e651a936b93d33c3dd2f0d10f64ccdaf379fd5b2c9ea3db2"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/007.jpg",
+  "bytes": 60230,
+  "sha256": "043b08e4a5956a44d3c35431daf10b1b78966d0e48e72f56d9a7d77098638c2e"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/008.jpg",
+  "bytes": 98007,
+  "sha256": "163c5d9fb64884b254e1a2fb49693fb2bfcbc4e600558d1cf96800d76a6cb4d8"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/009.jpg",
+  "bytes": 50297,
+  "sha256": "89b2aeafc32e7a358de775bd2b253073806fa98e4de0ace4b1539bd6e230d616"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/010.jpg",
+  "bytes": 72143,
+  "sha256": "c61493fe570004e08e7804fed2b41f73da6702934a97ee73f757075d17834b4b"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/011.jpeg",
+  "bytes": 64072,
+  "sha256": "9e2b2d999ab1d3a3a91845d4533ed0d1bf15641b2e9a6aa51ee1c0bc2f78b86c"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/012.jpeg",
+  "bytes": 54742,
+  "sha256": "b3cf9571828035b0c31d4385dea318de5f4bc03d1a05317fa50ed7a32b1a09c2"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/013.jpeg",
+  "bytes": 67056,
+  "sha256": "ecbd839fb04b8baae6110ce23df862bff31d13ef9b7210ff2ef4bbd8fbdff1ae"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/014.jpeg",
+  "bytes": 78159,
+  "sha256": "f37e06d77eae55bf5701bd026f073b97b20c81eb1b3ef66fd7a4886b58ea96b1"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/015.jpeg",
+  "bytes": 80337,
+  "sha256": "655f1cf9b8d4fa02d44c7a93473d63fb385dd9d88a6cd221bb398bb1403795f6"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/016.jpeg",
+  "bytes": 64346,
+  "sha256": "8a769279a38742f8819e5ac34c24ce8aa7a378054369e5bad6b269a5f9659e40"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/017.jpeg",
+  "bytes": 66344,
+  "sha256": "eb63186660ba0b2298ce854f05247000a5629cc9337bdae2d6a6ade871d5450e"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/018.jpeg",
+  "bytes": 44447,
+  "sha256": "cda59574fa35bb9fee77b7db9d35e846b11e2d94955d4fa8ec044a184366a4e5"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/019.jpg",
+  "bytes": 90206,
+  "sha256": "0a271267b7481fe1d03fa811571261b23901205fe5047b4984a284a3911b2424"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/020.jpg",
+  "bytes": 103045,
+  "sha256": "c839892e8ce7e8596d79c9eb33efda950732ea7709df1ea0dca3e6a92ea87602"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/021.jpg",
+  "bytes": 96842,
+  "sha256": "b06c7439b60db6e6e4519e144c3fb862779c41fb1425318b1659274cbedd45b9"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/022.jpg",
+  "bytes": 165388,
+  "sha256": "cecb1e6cd20cca3e1b84307ed8ff437e579508f16028fc2b42a8a9fdb89a1f96"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/023.jpg",
+  "bytes": 112401,
+  "sha256": "a3b293336208ece3ca239d2290d73cd958a5f3b980578e633e9015d9f4d5fcce"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/024.jpg",
+  "bytes": 67764,
+  "sha256": "e068b44cadea11d6a3bfe888d6ec9551f20a92625301c3e87df6a0633ecdb5eb"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/025.jpg",
+  "bytes": 56251,
+  "sha256": "dfefb0a68dec266abd72228eefddbe4ea7016e215a83b81a67cb7f3ef7880609"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/026.jpg",
+  "bytes": 126478,
+  "sha256": "6b6b432e2e3e24ba721f3d22cf6e16c92968d9e0298b8467cc96c0e253eecd83"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/027.jpg",
+  "bytes": 78555,
+  "sha256": "991895e15ac5e883e856c894b19315d0acacd4d870bbb8d9684e17db5c1dd674"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/028.jpg",
+  "bytes": 157160,
+  "sha256": "2863dff4e728f526a7e833ef095b597000893cbd20714bba289ef964516a79f1"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/029.jpg",
+  "bytes": 80537,
+  "sha256": "f4e0e2308678966f541a35ba4af2ab226032227785dc145ed3e3bd3b5daa2190"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/030.jpg",
+  "bytes": 106112,
+  "sha256": "572d68baec81266b51e52bdf6b3fc33c78b89e573fe8fd66879b4c7aa3dbc362"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/031.jpg",
+  "bytes": 183618,
+  "sha256": "0092b45bda3bf35031015162375d26f20fdd64f12306be347d046374ffe20c3c"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/032.jpg",
+  "bytes": 78919,
+  "sha256": "be6446a8d9ed12c9a7738973d945931b2d15a609586b3c089c08036174a1bfa6"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/033.jpg",
+  "bytes": 195287,
+  "sha256": "aa715056c198373d59b8d8db3a66b71d0a78dd23734ef64de8f591b45532fc36"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/034.jpg",
+  "bytes": 57558,
+  "sha256": "d5003d9d1e7db32620c7ebee5d6b6c9fceb803e0381643901a0e59f0b2ba41dd"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/035.jpg",
+  "bytes": 48864,
+  "sha256": "9ceecd8bf91bef7eefbc70aa632d8165ef9bf1ff0ce0e170edea5a65edba778e"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/036.jpg",
+  "bytes": 73098,
+  "sha256": "d2fad1ad1ecc1d8db33c65012bfb8d8878d09b495efa1bac293042688bda480d"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/037.jpg",
+  "bytes": 136051,
+  "sha256": "18e1d24b11de4392116538e385ff2db73767a504f08461079dc54eb0c17fbb52"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/038.jpg",
+  "bytes": 62345,
+  "sha256": "77bbd0f9d0fb9e5c23d9498dbd48c1fa72d9e9f19e41fa53bc0a5118ec9ccd7f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/039.jpg",
+  "bytes": 88453,
+  "sha256": "21a2a2460d2004a8b28cd61b53f5997a6858a6bf841ff0a5961ab3948854fdcb"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/040.jpg",
+  "bytes": 96045,
+  "sha256": "7d4552045ef4033722d43a157391073e4cea4813f4f4773f00f5759423421ba7"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/041.jpg",
+  "bytes": 127326,
+  "sha256": "acea88c2139522e893e792663a457f9af2ba386e85198ca5a144a19de624adfb"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/042.jpg",
+  "bytes": 119192,
+  "sha256": "36618de765ce913edde56a13996b605af63cc4f9f142f3e53a8bb55aa449b721"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/043.jpg",
+  "bytes": 262046,
+  "sha256": "5b0867ac1fabc9b47379dfd2f44fc7823e8f901e4b6a9bf3826488b372fbd5c3"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/044.jpg",
+  "bytes": 180131,
+  "sha256": "fc0c4e75551b06cf3eaf2951bc57ebbaa21bf669e52b50e16aa9f837a2d79741"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/045.jpg",
+  "bytes": 113838,
+  "sha256": "984ab50d6f1328675cf35eaf89b7020ae0a563898f18e1b4fbe8f12b86c5d420"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/046.jpg",
+  "bytes": 160321,
+  "sha256": "a732d7a616f5521ac96ad2671bf009a0a1b110de5485a014d35caf9130a4035b"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/047.jpg",
+  "bytes": 167020,
+  "sha256": "93ce0d013be49fea276ac5337a3cd148a71c7ced99eb993416d896311cc63319"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/048.jpg",
+  "bytes": 112261,
+  "sha256": "043fb89612532909c80f86b78eca51c1aa7a01a24233b8b4fe5e86ad98a6d1e9"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/049.jpg",
+  "bytes": 111647,
+  "sha256": "800947ad443fb90daf3ef7f60a59ffbb92b12a2c3d52125068f07ab168a4257a"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/050.jpg",
+  "bytes": 118052,
+  "sha256": "0a9e0b6d3e59ce82f2a60fab7a4a45b4aace80d9442f8f0df871b363c5ae3235"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/051.jpg",
+  "bytes": 126353,
+  "sha256": "8f46e10b95b35e243d3b0c2344d937c56c8a487e39f2c46c4bb5b011a7499e5f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/052.jpg",
+  "bytes": 187398,
+  "sha256": "750dd73a9afac56cd4a5ab38e42da392297f96636e0972cd0f7ae383b9fd0bc0"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/053.jpg",
+  "bytes": 213077,
+  "sha256": "2512a540ffebe0f3e3e7ef12159f139f45cd57fb83b1c4d7bbd26451c14ba007"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/054.jpg",
+  "bytes": 132773,
+  "sha256": "efc236deab2b548d793bae966433d4b6e40e62cb79f143bfe5f53c0b33bf1ecb"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/055.jpg",
+  "bytes": 136657,
+  "sha256": "42bb1637aa090d80e746ed369843ba78462de7176ce061d3f32b0f6926eb9cdd"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/056.jpg",
+  "bytes": 256162,
+  "sha256": "c8d3a5d33be6deb97bdff92d022a9ded06be468a3c7b3a1b8c13db8d6a9be551"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/057.jpg",
+  "bytes": 126704,
+  "sha256": "2e806e23b6e42bc8601ac81fcd5a4722dccbc6613a6e2904f31828cb6d48fef5"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/058.jpg",
+  "bytes": 29058,
+  "sha256": "a42d7d7ba1be46b450a3faa5e4c5116dc9261d52de5792687f94948989bb397f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/059.bmp",
+  "bytes": 750054,
+  "sha256": "aa98246db5585ae8563b65ebe1ceee8c67565e34f3dbb0b4e1ce6e29c6674190"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/060.jpg",
+  "bytes": 14453,
+  "sha256": "46c8e533032184eea8456832bf898d342ab4835ce3c97652bc242f38f86674bc"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/061.jpg",
+  "bytes": 11440,
+  "sha256": "8debe81f18454d08d0a54ec4561f4237fb85744aff71fa89a95d379ddf0992c1"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/062.jpg",
+  "bytes": 15129,
+  "sha256": "e702c171a65fd162bfa78fd61f781fcd2092a997cab8bb439d15a303c0fbab75"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/063.jpg",
+  "bytes": 30208,
+  "sha256": "c3794c0253fefe71167279e21a2c2aac5a54a844a1f05921952f81d041cc5684"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/064.jpg",
+  "bytes": 30574,
+  "sha256": "f5ff8f1e50e38fe28b763fcc9fbf15b2415f684cd1839cfa5822abdc5c1f8b3b"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/065.bmp",
+  "bytes": 750054,
+  "sha256": "ab09276e5af54919f56370483e1569b046a58180b477cd8e7abe0b1d800dc2ff"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/066.jpg",
+  "bytes": 12877,
+  "sha256": "e4243fbabed2147360713f468a294ab552c46e58902226cb37cee1cda834ad24"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/067.jpg",
+  "bytes": 44095,
+  "sha256": "c780d13760258c821a09eb41bf5934fe3f63c334c9ea2a3f72dfef18668b4ef8"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/068.bmp",
+  "bytes": 750054,
+  "sha256": "f82ef6fd952e0ab97c045d179db49c36266df4eb39addd68b986c7b8bbfaff99"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/069.jpg",
+  "bytes": 27805,
+  "sha256": "700c02e1f25ce0228c3a9950c8ebce202753d9c51434267309a19ca5391477db"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/070.bmp",
+  "bytes": 750054,
+  "sha256": "9dc378cff4b4998a8d04e1de3c98d9d36a0f637099e43d2795c7046e61af4143"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/071.jpg",
+  "bytes": 25635,
+  "sha256": "7237cd5b9559a82536acc015d64bc528c162c67c7f245adea79422d956821ad2"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/072.jpg",
+  "bytes": 20552,
+  "sha256": "8061f09426903b6cd1b06f5563f62163bef0ef2d3e7edad181057c5ee9928f1d"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/073.jpg",
+  "bytes": 32324,
+  "sha256": "ea2369b460605fbfeb61914ec44469e21d7546784c0667667521a13889d3082b"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/074.bmp",
+  "bytes": 750054,
+  "sha256": "d7a54a0ebee49e7ae267fd7f413da6fda1fd1913efb126e1aaf263d0b7bd8760"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/075.bmp",
+  "bytes": 750054,
+  "sha256": "aeef4daf38b42603d8426eb63c8c22713b698b45e57362c80b791ec93c63c437"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/076.bmp",
+  "bytes": 750054,
+  "sha256": "8f4b2603d633946081a28c265c6d3174741a817a9846c1f81f3e84197345d09c"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/077.jpg",
+  "bytes": 26526,
+  "sha256": "1335995969f468121e0e267d7ead55cf72015e2ed18ebd7366509e9c5c8d9925"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/078.bmp",
+  "bytes": 750054,
+  "sha256": "8a4105c46361f877bffd5aeef9b5e37cdaa12b4ff288a3f42750d3a81cbe9b94"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/079.jpg",
+  "bytes": 22920,
+  "sha256": "f9bbdef7693955d06e45819502c8f74e34347e718b97a596adfa455a81bc4354"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/080.jpg",
+  "bytes": 34299,
+  "sha256": "88fa3e1a7f3077616029ffe79b67debbfb7448c72d0a7099d558e70f98b18819"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/081.jpg",
+  "bytes": 11356,
+  "sha256": "9d4af9cbe161cd55a367d1af240216b4197d7f26a0eb1af3ae3bc8b56c226ba0"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/082.bmp",
+  "bytes": 750054,
+  "sha256": "f8117e3865d6392d632a32730de257e31e767021d23344dfb27afa26923299b7"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/083.bmp",
+  "bytes": 750054,
+  "sha256": "8263549f7aea98259cf3934336fac42cdbace40fb46dff189d969f08ebac25c2"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/084.jpg",
+  "bytes": 34041,
+  "sha256": "e27c80cf6fd13d229b78dcd41079f0479a9ceb2ecf57d8679fa86cf2c7106dbc"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/085.bmp",
+  "bytes": 750054,
+  "sha256": "4b4fc10db08877fbc06b69647d8045b20e29fa953b69a20e9bda61154ded1eb0"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/086.jpg",
+  "bytes": 14950,
+  "sha256": "b78a0b930ee1bc43e2e519805aa7e7578113b763791f6a03d4ae737319c7b2b3"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/087.jpg",
+  "bytes": 32010,
+  "sha256": "29a46295ce3e72384bb87f3e8b3e873713f1bc303acbe56118c9d4cfc92ac917"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/088.jpg",
+  "bytes": 31273,
+  "sha256": "51b4906805ef2534f1871645297a14bf6eede560f50438115460e4bedca3e886"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/089.jpg",
+  "bytes": 32521,
+  "sha256": "9e19842d4b575fc5ecebf62b986fed3472e5dda536a3a80f55ef46fd5b858ad4"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/090.jpg",
+  "bytes": 20436,
+  "sha256": "098d95cf9c3d4f348414840e5bb3d05de2aeddeb105cbdc9ce090674be21fec5"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/091.jpg",
+  "bytes": 29136,
+  "sha256": "c3656ff9d5838d04b7eec78375cf334c52a7f6461792af386a5db79932013c58"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/092.bmp",
+  "bytes": 750054,
+  "sha256": "4109fb8f842e33c2d0cd916cc5548a1d8af4b3352263db2a40f464185caeacc2"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/093.bmp",
+  "bytes": 750054,
+  "sha256": "f9af9d3d6bc58cb9e562073014be239e31bed4ce04a46e0f252ae26841be4975"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/094.jpg",
+  "bytes": 30324,
+  "sha256": "13bb7cb8d52244866b57c4df6d99673b0ce0ba74d39da7f6890287ba7caaa9f8"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/095.bmp",
+  "bytes": 750054,
+  "sha256": "87ef313971de1ec40a1c6fb9e20e53b53591bf5e777cc73bf6772bdf5dc77072"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/096.bmp",
+  "bytes": 750054,
+  "sha256": "bfb0181a7271effe3863f1adbb17771aed96f1b4099481ef6f6782a289250acc"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/097.bmp",
+  "bytes": 750054,
+  "sha256": "9785cf1b272cc7e6071ed3b4460560b7e8ef8be759c78363389daec3878bfbca"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/098.bmp",
+  "bytes": 750054,
+  "sha256": "e1d0c839202d7a083f038ad54f65b1afe8214b9576fa57c07fe5ded7ef4c74dc"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/099.jpg",
+  "bytes": 38497,
+  "sha256": "7a9ac33fb16ec6a5c905310c069d5d9bda428b998b62a85cea3e1ef6ef023dd5"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/100.jpg",
+  "bytes": 20646,
+  "sha256": "31272276d2a61b8517595fbf508a5595f0f53fb8509e64f0f72158629a9271aa"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/101.jpg",
+  "bytes": 14420,
+  "sha256": "27f9bd53118a014c280baa58629e3a371579262554720cd3a7be41f8a462472f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/102.jpg",
+  "bytes": 35880,
+  "sha256": "cb014649d18e0c0e1ac8491f6e294a281b5a6e84c3411c71426e671efe87b454"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/103.bmp",
+  "bytes": 750054,
+  "sha256": "87255646edbe659197d0d26ce3ab4370ccbbb8b5e9a6912e45368ce9bf02f412"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/104.jpg",
+  "bytes": 26304,
+  "sha256": "d25dd2995ffa619f9cd882b5bba1f13c3cc72353c725e3bc7a7528d6d1a6125f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/105.bmp",
+  "bytes": 750054,
+  "sha256": "59d13fdfdc341fce6dc83acb23e04fb3231a5608b8f736f16b955ab3306df90c"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/106.bmp",
+  "bytes": 750054,
+  "sha256": "d2d317a7d4f01fe3e9b8b107781a066a30d777dd5178acfb8f8663c46d24f678"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/107.jpg",
+  "bytes": 27319,
+  "sha256": "811689da49a2c6abdbc02b8994e60a18c47d51330077bbdc48fe54837f0e80c1"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/108.jpg",
+  "bytes": 308802,
+  "sha256": "4acd9e0790f8a78a0cfef1029cfbd1cdefbf6adaa68f88824c88d9def30f6274"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/109.jpg",
+  "bytes": 301554,
+  "sha256": "644e6db1b9444615554000e14dcb90e403a374a0333dc58627f052dd5d967b5b"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/111.jpg",
+  "bytes": 364434,
+  "sha256": "7d4310a7e291fe012ab512e26a5488a0883a615215a6fd9c9a4e9dffe70a49d8"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/112.jpg",
+  "bytes": 281588,
+  "sha256": "d6f1504650cc2d0944485bdf9d4d665c301140cea51d3f1dcd2bcb22c3cb9899"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/116.jpg",
+  "bytes": 321711,
+  "sha256": "e5188dec549494ff6da4d349456c573f18eae070a59272db92c8ccc1992e6d06"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/117.jpg",
+  "bytes": 399805,
+  "sha256": "6f44befd339e084e0ecc4d1d8fd864780f178749657828d71ccde77cf275d5d8"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/119.jpg",
+  "bytes": 267333,
+  "sha256": "bee5832a00e8aba6d55fc0905ffe8177ba76e6ff2f48dc8c2d85f86c4120e920"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/121.jpg",
+  "bytes": 480865,
+  "sha256": "24824e0ec1b4931e3cc82b3f58008c3e1b4b9784b42277a72c37e8e3d1acace1"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/122.jpg",
+  "bytes": 307825,
+  "sha256": "f07f8b9ca7e935db837fa40c73d5ef8449021090f3bd5b2c031579fd2165ad3a"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/123.jpg",
+  "bytes": 202560,
+  "sha256": "03529dc01343d7ae74f717e6b9de9af3cdea6219e9e3238692f8da8f4579d380"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/125.jpg",
+  "bytes": 386073,
+  "sha256": "ac9aeadb6aeeced07a6f62e607ef3381ec419deb22d1ce6e2a65511f6af9bbf6"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/127.jpg",
+  "bytes": 398555,
+  "sha256": "7744a689b6a3ac1b7dcd741e79948a6516b8da6cbbace058ff9d4db17330827a"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/128.jpg",
+  "bytes": 292068,
+  "sha256": "5411033a774cadb8d53db71ec62b20b5ccb6225c4b816dabb8c95e7b3df7154f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/130.jpg",
+  "bytes": 536036,
+  "sha256": "f96448cc6112c30b152a06132990612ebd00b256b6638b9119fbd3346ef2d0ab"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/131.jpg",
+  "bytes": 348217,
+  "sha256": "626a37cd9e753d6e5b78ec66c0ab5a1692a12175c4fa2502b4d54067e1a60130"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/132.jpg",
+  "bytes": 565760,
+  "sha256": "9511783bd32747f5b267a65dfcf266777adf04ed1d5cfcf901f2c2e9a720ca26"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/133.jpg",
+  "bytes": 400074,
+  "sha256": "826bfc7f3fca98e31181eb82fc8d3ecbbabdd230a076e450e6f2a01ee48dddda"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/134.jpg",
+  "bytes": 410114,
+  "sha256": "507c40443a262ff7c2bba95eb4fc08d874c1c28d2d40080df5db5694622bd322"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/135.jpg",
+  "bytes": 416180,
+  "sha256": "67990fef3d8df2a2696aa9f44975158919db9b0b7b71d36c10e5b67b82413d54"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/136.jpg",
+  "bytes": 431575,
+  "sha256": "5e3fa61204cf2d1a0aa807675a4224a41dd14d794d02277dc5b56d7ca1423579"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/137.jpg",
+  "bytes": 418458,
+  "sha256": "56b348ebfd0c2fed94378d808376ea137addbb0649e793bb90ece6990e37b109"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/138.jpg",
+  "bytes": 394584,
+  "sha256": "525eac0110d8c62cc4057ef0f575e00e7374cc3dc011306bd83f244701b195f2"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/141.jpg",
+  "bytes": 354269,
+  "sha256": "fdf11cedefb054641d1cb0db26558523cf1f10c1839c7339e6d01e3bed3db297"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/142.jpg",
+  "bytes": 345642,
+  "sha256": "dc739a2934f27768fb35d1d30a6829dfdb56c024cf6b3393aad5d600c66ba76c"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/143.jpg",
+  "bytes": 132242,
+  "sha256": "d3b6e54f1df604ac4b556d495245a8c7b5175c9257fb03948f59619b0c53b29f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/144.jpg",
+  "bytes": 178784,
+  "sha256": "3c290014a893e814da6e3c765d9cce5fe572e1907320fefa694bf93715218b1f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/145.jpg",
+  "bytes": 853407,
+  "sha256": "5f030acda4fa30f5e357c22cbf6b964e4cecdb7bfd4ba2fb76489358ce49f733"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/146.jpg",
+  "bytes": 393848,
+  "sha256": "0daf439c10b4aa8c6d9bb7dc0d916b154f23fb1f34fce3872bbd6d4bda319935"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/147.jpg",
+  "bytes": 244328,
+  "sha256": "8d22bea575d5099d938d8607f4184fce321b570b5d81f82c2499446e8619084f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/148.jpg",
+  "bytes": 193519,
+  "sha256": "86da28f36f598c02aac9731968d76fa3c2165cecbb06886553529511d98f8e6f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/150.jpg",
+  "bytes": 234262,
+  "sha256": "40180bd9531008700dce28221c8ab1f2abf91cf98b6569b2142fc15bd0582a63"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/151.jpg",
+  "bytes": 252073,
+  "sha256": "f3311f1e10ed4f27d66094329fa4e6ee0a2c0b6323af14a9f7e54ba61c73624d"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/154.jpg",
+  "bytes": 186875,
+  "sha256": "923c35b82b189b8c40a16cce4437bd3acd30b84604344c26eeec9c53f3c36f86"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/155.jpg",
+  "bytes": 223259,
+  "sha256": "eefb9052906500b471e2a242dd4bb68f9e85780579a046ca51257231504dab89"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/156.jpg",
+  "bytes": 409083,
+  "sha256": "02fc5d29b12c0f63cd5f87c9cd5116505c700d9cde69aca279850ed0f44ce90a"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/208.jpg",
+  "bytes": 114307,
+  "sha256": "e27faa145f7442ae23869e564a22a2dc3cc55d9ccb54530e3671bf6f718a3748"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/209.jpg",
+  "bytes": 95625,
+  "sha256": "0755d2ee347f763964060bde136da4c7378db8933bd9326ef43ba4ce581c8b15"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/210.jpg",
+  "bytes": 84200,
+  "sha256": "70d1997e17e944690cda01f58c6f15897b3ff45d62bec0e9f16405323560fba3"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/211.jpg",
+  "bytes": 38295,
+  "sha256": "1c55cb6b60e7a43ad41cb4586703531b12c80f00c0dd786f1aa554dca6601f15"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/212.jpg",
+  "bytes": 67253,
+  "sha256": "56656dc99bc07164cdbe131c6eb40f34c4d17a1245f665f50e552adfb5e4ed53"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/213.jpg",
+  "bytes": 83797,
+  "sha256": "e01eefefd65e91bc58b01f8690095e30944a70dcab925eb26ddcf60a39d80516"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/214.jpg",
+  "bytes": 122200,
+  "sha256": "e242c2ad53aa7404bd1a86c11f4fe610f06ca33acfd404438618df0ef675ecf5"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/215.jpg",
+  "bytes": 97753,
+  "sha256": "25accb93cb5444b4a220e3100096620adf538200b0b6aa48760aee09006ffcdd"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/216.jpg",
+  "bytes": 104299,
+  "sha256": "80b2801ee8c8520d93c63a4d9cad26f7fd8ed465039d41094534928dc0f2fc7a"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/217.jpg",
+  "bytes": 57684,
+  "sha256": "a3cc3d67885c72cd177d2f0d458bce159d7b8997b04a58c721034ea36c8836f2"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/218.jpg",
+  "bytes": 34269,
+  "sha256": "87f35711eb860b85fb4f326f76ae53ad13aaae5d3726e7bad6e190600c958426"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/219.jpg",
+  "bytes": 97028,
+  "sha256": "e8cad21f5ab109912b827d1c682c7522375a466351cea7c5fff63396c40b1275"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/220.jpg",
+  "bytes": 58465,
+  "sha256": "96d570dac200086192b925185f1183613d16336e57e952144d52aab3bc40d5dc"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/221.jpg",
+  "bytes": 102182,
+  "sha256": "cddd139471a96b151e3101200cff234666d167ce0b0e03137e7d6f7dc97cc999"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/222.jpg",
+  "bytes": 94952,
+  "sha256": "24acd424fc1a1352a1215da4f43eb7e6d7d453cdb629e8f520f6ccb3d1b026e6"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/223.jpg",
+  "bytes": 76365,
+  "sha256": "950fcc294898727c865cd5c81da21b75d5b6ff61cffa3fd68cbf9d8d07b83a84"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/224.jpg",
+  "bytes": 54363,
+  "sha256": "0feeba55d34f1ac88164aa3bbed71d04ba0606eb6ecaef04b0fcbbef5767bf8f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/225.jpg",
+  "bytes": 169965,
+  "sha256": "efda21463ba3faab14bbd3c98bd56abcaf436862a60dc24533f10b6ae07acdaa"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/226.jpg",
+  "bytes": 149406,
+  "sha256": "8dadb7f3b226f64f650595d9b4414254cc6ae1d5865490f4e8d4a45c02e30858"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/227.jpg",
+  "bytes": 129215,
+  "sha256": "ee5b6c0d1b42e4b08d61fcda0bcaecf378b0d2dcc8570f85f6d832b1781febc8"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/228.jpg",
+  "bytes": 53092,
+  "sha256": "cc045c8b43ef586ed90ac81d01d8e96e8e911813a9f59766613d553fee2ada5f"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/229.jpg",
+  "bytes": 44758,
+  "sha256": "ef92060c4d0ac4ee80ae79fd070781a11d680c3b6df25add8d9da859fb1d3b6e"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/230.jpg",
+  "bytes": 159956,
+  "sha256": "fbe7b2a3a06936333d2b77c2ad3fb8c8eb4aa8238915596c55169083a8ae4cb3"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/231.jpg",
+  "bytes": 126364,
+  "sha256": "ced390c5e7df157bc2cd71e6d68472594f901d5e8d81911b59aa54fd6cef2e48"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/232.jpg",
+  "bytes": 108763,
+  "sha256": "4f2b1098cb53021f64b39d3972794a416e3e707bce049de9b4926214bec6dc38"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/233.jpg",
+  "bytes": 59500,
+  "sha256": "961c94440ad4128e0d6d9fb8336ebf7ff925683ac495b78602a1970ab4587071"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/234.jpg",
+  "bytes": 98178,
+  "sha256": "a25b6e5d2204f4bc30a7c823f775459237f1ecab60151dc78ac4ea3f1b0b06b9"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/235.jpg",
+  "bytes": 147874,
+  "sha256": "b1b511079ec37303a2661078e5180d7aab1a5b21998c49489c0b808415071175"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/236.jpg",
+  "bytes": 53740,
+  "sha256": "4d98a3e215b556e7f9276ced4318cc1d3054b28add0f344e82c56183d6cba52e"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/237.jpg",
+  "bytes": 73340,
+  "sha256": "cf3235119ec659199da1f746df7f9776f809e63ddbae6da4370c546b1857d4b3"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/238.jpg",
+  "bytes": 39653,
+  "sha256": "d758655e25fc7c5ee59198b0ec027e6217572d198d3546aec70d396de00f5827"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/239.jpg",
+  "bytes": 84469,
+  "sha256": "643553f68fd8ddc7ee8ecea0d4b1c87e62653590993c60cb00d3247a29ad46f7"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/live_sequences.json",
+  "bytes": 3310,
+  "sha256": "14ffd976652af16437e1ccf450e32d35d37094e29be1bfd585f17daf13f51618"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/scene_generator_device_pack_v1/core_accepted_source.jsonl",
+  "bytes": 7444419,
+  "sha256": "b15851d8a33fbedcf80b52d85b02d94daabac4448021dc9929be0deaf6bc6d51"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/scene_generator_device_pack_v1/hard_accepted_source.jsonl",
+  "bytes": 8224972,
+  "sha256": "948434e4586766b2f4d178d8f9154d0583e789489a5cbecc157d75f4ea715e16"
+ },
+ {
+  "path": "shafinMultitool/Resources/DeviceBenchmark/scene_generator_device_pack_v1/scene_generator_device_benchmark_manifest.json",
+  "bytes": 267,
+  "sha256": "d1c8e90151052f7061828f5995b879fb375d681dd98175251fda745d11fff714"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fixtures/SETCameraFrame.png",
+  "bytes": 1688701,
+  "sha256": "274a17425b09d719004ddd554f9e76ddaf3ba4b83a750d8be26d63aad54ab830"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/BebasNeue-Regular.ttf",
+  "bytes": 61400,
+  "sha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/Caveat-Variable.ttf",
+  "bytes": 403648,
+  "sha256": "0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/JetBrainsMono-Variable.ttf",
+  "bytes": 187208,
+  "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/OFL-BebasNeue.txt",
+  "bytes": 4337,
+  "sha256": "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/OFL-Caveat.txt",
+  "bytes": 4385,
+  "sha256": "1f9d81d094273d82f3898a1ee8b598a717d050ecbf5ff7bede105b704880157b"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/OFL-JetBrainsMono.txt",
+  "bytes": 4399,
+  "sha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/OFL-Oswald.txt",
+  "bytes": 4483,
+  "sha256": "0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/OFL-PTMono.txt",
+  "bytes": 4448,
+  "sha256": "511125dc85198375795fdbc109d088654d3b7f9dbd3ccb7bf93d844aef0b153c"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/Oswald-Variable.ttf",
+  "bytes": 172088,
+  "sha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817"
+ },
+ {
+  "path": "shafinMultitool/Resources/Fonts/PTM55FT.ttf",
+  "bytes": 185912,
+  "sha256": "cbe732b3b8fd211fd986ebdfc9b870ddeca4faab0bb5425fc509b37f9b4ac804"
+ },
+ {
+  "path": "shafinMultitool/Resources/InfoPlist.xcstrings",
+  "bytes": 2046,
+  "sha256": "988ebbc39b369d497a7f89ae4da7704ef4ffedb2f4020569bb8bec01585ebb5b"
+ },
+ {
+  "path": "shafinMultitool/Resources/Localizable.xcstrings",
+  "bytes": 160245,
+  "sha256": "7904d90fc0f59e23baff425354a2494db8e7087a99e450c969f4e8c90579e069"
+ },
+ {
+  "path": "shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf",
+  "bytes": 1107408576,
+  "sha256": "LARGE-SKIPPED"
+ },
+ {
+  "path": "shafinMultitool/Resources/Person.usdz",
+  "bytes": 412930,
+  "sha256": "a4af24cd3b5dad3ff19d8bf64b4ae10a92618ff3bd6ce0e70a7a15bb36814010"
+ },
+ {
+  "path": "shafinMultitool/Resources/Textures/SETGrain.png",
+  "bytes": 87443,
+  "sha256": "b69b9315aeeb547776684e54b4fb1d8f6f01865751869239fc22dd023389d024"
+ }
+]

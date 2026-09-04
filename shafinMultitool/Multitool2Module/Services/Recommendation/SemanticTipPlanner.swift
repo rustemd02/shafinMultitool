@@ -34,6 +34,82 @@ struct SemanticTipPlannerOutput: Sendable {
     let fallbackUsed: Bool
 }
 
+struct LiveCoachQualityGate: Sendable {
+    static let maxVisionFreshnessMilliseconds = 250
+    static let strongConfidenceFloor = 0.75
+    static let minimumPrimaryRegionIoU = 0.5
+
+    static func allows(action: ActionTypeV1?,
+                       semanticActionTypes: [SemanticActionType] = [],
+                       mode: AnalysisMode,
+                       snapshot: FrameFeatureSnapshot?,
+                       semantics: SceneSemanticsReport?) -> Bool {
+        let requiresSpatialEvidence = action.map(isSpatial) == true
+            || semanticActionTypes.contains(where: isSpatial)
+        guard requiresSpatialEvidence else { return true }
+        guard mode == .live,
+              let snapshot,
+              let semantics,
+              snapshot.mode == .live,
+              semantics.mode == .live else {
+            return false
+        }
+
+        let vision = snapshot.sources.vision
+        guard vision.available,
+              let freshnessMs = vision.freshnessMs,
+              (0...maxVisionFreshnessMilliseconds).contains(freshnessMs),
+              let visionConfidence = vision.confidence,
+              visionConfidence.isFinite,
+              visionConfidence >= strongConfidenceFloor else {
+            return false
+        }
+
+        let primarySubject = semantics.primarySubject
+        guard primarySubject.kind != .unknown,
+              let semanticRegion = primarySubject.region,
+              !semanticRegion.isDegenerate,
+              primarySubject.confidence.isFinite,
+              primarySubject.confidence >= strongConfidenceFloor,
+              let snapshotRegion = snapshot.subjectSignals.primaryCandidateRegion,
+              !snapshotRegion.isDegenerate,
+              regionIoU(semanticRegion, snapshotRegion) >= minimumPrimaryRegionIoU,
+              let snapshotConfidence = snapshot.subjectSignals.primaryCandidateConfidence,
+              snapshotConfidence.isFinite,
+              snapshotConfidence >= strongConfidenceFloor else {
+            return false
+        }
+
+        return semantics.ambiguities.isEmpty
+    }
+
+    private static func isSpatial(_ action: ActionTypeV1) -> Bool {
+        switch action {
+        case .moveFrameLeft, .moveFrameRight, .moveFrameUp, .moveFrameDown, .increaseSubjectSize:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isSpatial(_ action: SemanticActionType) -> Bool {
+        switch action {
+        case .shiftFrameLeft, .shiftFrameRight, .shiftFrameUp, .shiftFrameDown, .stepCloser, .stepBack:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func regionIoU(_ lhs: NormalizedRect, _ rhs: NormalizedRect) -> Double {
+        let intersectionWidth = max(0, min(lhs.x + lhs.width, rhs.x + rhs.width) - max(lhs.x, rhs.x))
+        let intersectionHeight = max(0, min(lhs.y + lhs.height, rhs.y + rhs.height) - max(lhs.y, rhs.y))
+        let intersectionArea = intersectionWidth * intersectionHeight
+        let unionArea = (lhs.width * lhs.height) + (rhs.width * rhs.height) - intersectionArea
+        return unionArea > 0 ? intersectionArea / unionArea : 0
+    }
+}
+
 struct SemanticTipPlanner {
     func plan(input: SemanticTipPlannerInput) -> SemanticTipPlannerOutput {
         guard input.frameId == input.critique.frameId,
@@ -728,9 +804,9 @@ struct SemanticTipPlanner {
                                 semantics: SceneSemanticsReport) -> SemanticTipType {
         switch action.actionType {
         case .moveFrameLeft:
-            return .moveSubjectOffRightEdge
-        case .moveFrameRight:
             return .moveSubjectOffLeftEdge
+        case .moveFrameRight:
+            return .moveSubjectOffRightEdge
         default:
             return semantics.primarySubject.region.map { $0.x > 0.5 ? .moveSubjectOffRightEdge : .moveSubjectOffLeftEdge } ?? .moveSubjectOffRightEdge
         }
@@ -740,9 +816,9 @@ struct SemanticTipPlanner {
                                semantics: SceneSemanticsReport) -> SemanticTipType {
         switch action.actionType {
         case .moveFrameLeft:
-            return .moveObjectOffRightEdge
-        case .moveFrameRight:
             return .moveObjectOffLeftEdge
+        case .moveFrameRight:
+            return .moveObjectOffRightEdge
         default:
             return semantics.primarySubject.region.map { $0.x > 0.5 ? .moveObjectOffRightEdge : .moveObjectOffLeftEdge } ?? .moveObjectOffRightEdge
         }

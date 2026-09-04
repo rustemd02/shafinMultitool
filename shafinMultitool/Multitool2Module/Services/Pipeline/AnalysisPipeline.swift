@@ -43,6 +43,43 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     let overlayHint: OverlayHint?
     let isFallback: Bool
     let expandedVerdict: LiveExpandedVerdictPresentation?
+    /// Typed provenance for the UI projection. Raw pipeline copy remains an
+    /// evidence payload; production surfaces choose catalog copy from these
+    /// fields instead of parsing IDs or displaying domain text.
+    let semanticActionType: SemanticActionType?
+    let technicalIssueType: TechnicalQualityIssueType?
+
+    init(id: String,
+         frameId: String,
+         text: String,
+         confidence: Double,
+         actionType: ActionTypeV1?,
+         actionId: String?,
+         linkedIssueIds: [String],
+         summaryId: String?,
+         traceRootIds: [String],
+         targetRegion: NormalizedRect?,
+         overlayHint: OverlayHint?,
+         isFallback: Bool,
+         expandedVerdict: LiveExpandedVerdictPresentation?,
+         semanticActionType: SemanticActionType? = nil,
+         technicalIssueType: TechnicalQualityIssueType? = nil) {
+        self.id = id
+        self.frameId = frameId
+        self.text = text
+        self.confidence = confidence
+        self.actionType = actionType
+        self.actionId = actionId
+        self.linkedIssueIds = linkedIssueIds
+        self.summaryId = summaryId
+        self.traceRootIds = traceRootIds
+        self.targetRegion = targetRegion
+        self.overlayHint = overlayHint
+        self.isFallback = isFallback
+        self.expandedVerdict = expandedVerdict
+        self.semanticActionType = semanticActionType
+        self.technicalIssueType = technicalIssueType
+    }
 }
 
 struct LiveExpandedVerdictPresentation: Equatable, Sendable {
@@ -1739,8 +1776,8 @@ struct RecommendationPlanner {
         case .subjectNotProminentEnough:
             return .increaseSubjectSize
         case .subjectTooCloseToEdge, .insufficientLookSpace:
-            if composition.horizontalOffset > 0.15 { return .moveFrameLeft }
-            if composition.horizontalOffset < -0.15 { return .moveFrameRight }
+            if composition.horizontalOffset > 0.15 { return .moveFrameRight }
+            if composition.horizontalOffset < -0.15 { return .moveFrameLeft }
             if composition.verticalOffset > 0.15 { return .moveFrameDown }
             if composition.verticalOffset < -0.15 { return .moveFrameUp }
             return .changeAngle
@@ -1838,15 +1875,50 @@ struct RecommendationPlanner {
     }
 }
 
+/// Provenance attached to asynchronous feature samples. A sample without this
+/// identity is legacy/unattributable and must not be selected when a live
+/// frame supplies an expected capture context.
+struct FeatureSampleProvenance: Equatable {
+    let frameID: String
+    let captureGeneration: UInt64
+    let orientation: CGImagePropertyOrientation
+
+    init(frameID: String,
+         captureGeneration: UInt64,
+         orientation: CGImagePropertyOrientation) {
+        self.frameID = frameID.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.captureGeneration = captureGeneration
+        self.orientation = orientation
+    }
+
+    var isKnown: Bool {
+        !frameID.isEmpty && captureGeneration != 0
+    }
+
+    func matches(frameID: String,
+                 captureGeneration: UInt64,
+                 orientation: CGImagePropertyOrientation) -> Bool {
+        isKnown
+            && self.frameID == frameID.trimmingCharacters(in: .whitespacesAndNewlines)
+            && self.captureGeneration == captureGeneration
+            && self.orientation == orientation
+    }
+}
+
 struct FeatureSample<Value> {
     let value: Value
     let measuredAt: Date
     let baseConfidence: Double?
+    let provenance: FeatureSampleProvenance?
 
-    init(value: Value, measuredAt: Date, baseConfidence: Double? = nil) {
+    init(value: Value,
+         measuredAt: Date,
+         baseConfidence: Double? = nil,
+         provenance: FeatureSampleProvenance? = nil) {
         self.value = value
         self.measuredAt = measuredAt
         self.baseConfidence = baseConfidence.map { min(1.0, max(0.0, $0)) }
+        self.provenance = provenance
     }
 }
 
@@ -1932,6 +2004,7 @@ struct FeatureAggregationInput: Equatable {
     let frameId: String
     let mode: AnalysisMode
     let capturedAt: Date
+    let evaluatedAt: Date
     let motionState: CameraAnalysisMotionState
     let shakeLevel: Double
     let vision: FeatureSample<FeatureSnapshotVisionPayload>?
@@ -1939,6 +2012,30 @@ struct FeatureAggregationInput: Equatable {
     let lighting: FeatureSample<FeatureSnapshotLightingPayload>?
     let detr: FeatureSample<FeatureSnapshotDetrPayload>?
     let aesthetic: FeatureSample<FeatureSnapshotAestheticPayload>?
+
+    init(frameId: String,
+         mode: AnalysisMode,
+         capturedAt: Date,
+         evaluatedAt: Date? = nil,
+         motionState: CameraAnalysisMotionState,
+         shakeLevel: Double,
+         vision: FeatureSample<FeatureSnapshotVisionPayload>?,
+         horizon: FeatureSample<FeatureSnapshotHorizonPayload>?,
+         lighting: FeatureSample<FeatureSnapshotLightingPayload>?,
+         detr: FeatureSample<FeatureSnapshotDetrPayload>?,
+         aesthetic: FeatureSample<FeatureSnapshotAestheticPayload>?) {
+        self.frameId = frameId
+        self.mode = mode
+        self.capturedAt = capturedAt
+        self.evaluatedAt = evaluatedAt ?? capturedAt
+        self.motionState = motionState
+        self.shakeLevel = shakeLevel
+        self.vision = vision
+        self.horizon = horizon
+        self.lighting = lighting
+        self.detr = detr
+        self.aesthetic = aesthetic
+    }
 }
 
 struct PipelineFeatureSnapshotAdapterState {
@@ -1954,21 +2051,161 @@ struct PipelineFeatureSnapshotAdapterState {
     let aesthetic: FeatureSample<FeatureSnapshotAestheticPayload>?
 }
 
+extension PipelineFeatureSnapshotAdapterState {
+    /// Removes an asynchronous DETR sample that cannot be attributed to the
+    /// accepted frame. Clearing the legacy debug fallback at the same time is
+    /// important: otherwise the adapter could reconstruct the rejected sample.
+    func sanitizedForFrame(frameID: String,
+                           captureGeneration: UInt64,
+                           orientation: CGImagePropertyOrientation) -> Self {
+        let validDetr: FeatureSample<FeatureSnapshotDetrPayload>? = detr.flatMap { sample in
+            guard let provenance = sample.provenance,
+                  provenance.matches(
+                    frameID: frameID,
+                    captureGeneration: captureGeneration,
+                    orientation: orientation
+                  ) else {
+                return nil
+            }
+            return sample
+        }
+
+        var sanitizedDebugData = debugData
+        if validDetr == nil {
+            sanitizedDebugData.detrDetections = []
+            sanitizedDebugData.detrMeasuredAt = nil
+        }
+
+        return Self(
+            features: features,
+            debugData: sanitizedDebugData,
+            vision: vision,
+            horizonMeasuredAt: horizonMeasuredAt,
+            horizon: horizon,
+            lightingMeasuredAt: lightingMeasuredAt,
+            lighting: lighting,
+            detr: validDetr,
+            aestheticMeasuredAt: aestheticMeasuredAt,
+            aesthetic: aesthetic
+        )
+    }
+}
+
+/// Typed result for the production pause handoff. Legacy callers continue to
+/// receive the existing suggestions/critique callback, while Camera Coach can
+/// distinguish an empty review from an actual failure or a stale cancellation.
+enum PauseAnalysisFailure: Equatable, Sendable {
+    case noAcceptedEvidence
+    case pipelineUnavailable
+    case timeout
+}
+
+enum PauseAnalysisResult: Equatable, Sendable {
+    case success
+    case empty
+    case failure(PauseAnalysisFailure)
+    case cancelled
+}
+
+/// The timeout belongs to the pause-analysis contract rather than to a view.
+/// Tests can inject a shorter value without changing production presentation
+/// timing or turning an unfinished pipeline into a valid empty review.
+enum PauseAnalysisTiming {
+    static let productionTimeoutNanoseconds: UInt64 = 8_000_000_000
+}
+
+private final class PauseAnalysisResultGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didFinish = false
+    private var timeoutTask: Task<Void, Never>?
+
+    func install(timeoutTask: Task<Void, Never>) {
+        lock.lock()
+        if didFinish {
+            lock.unlock()
+            timeoutTask.cancel()
+            return
+        }
+        self.timeoutTask = timeoutTask
+        lock.unlock()
+    }
+
+    @discardableResult
+    func finish() -> Bool {
+        lock.lock()
+        guard !didFinish else {
+            lock.unlock()
+            return false
+        }
+        didFinish = true
+        let timeoutTask = self.timeoutTask
+        self.timeoutTask = nil
+        lock.unlock()
+        timeoutTask?.cancel()
+        return true
+    }
+}
+
+/// A timeout or pause-exit invalidates this fence before the underlying
+/// analysis is allowed to publish any pause critique or overlay. The lock is
+/// held across the small publication mutation, so invalidation cannot race a
+/// late callback between its validity check and the write.
+private final class PauseAnalysisPublicationFence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isValid = true
+
+    func invalidate() {
+        lock.lock()
+        isValid = false
+        lock.unlock()
+    }
+
+    @discardableResult
+    func invalidateForTimeout() -> Bool {
+        lock.lock()
+        guard isValid else {
+            lock.unlock()
+            return false
+        }
+        isValid = false
+        lock.unlock()
+        return true
+    }
+
+    @discardableResult
+    func publishIfValid(_ body: () -> Void) -> Bool {
+        lock.lock()
+        guard isValid else {
+            lock.unlock()
+            return false
+        }
+        body()
+        lock.unlock()
+        return true
+    }
+}
+
 struct PipelineFeatureSnapshotAdapter {
     func makeInput(frameId: String,
                    mode: AnalysisMode,
                    capturedAt: Date,
+                   evaluatedAt: Date? = nil,
+                   expectedDetrProvenance: FeatureSampleProvenance? = nil,
                    state: PipelineFeatureSnapshotAdapterState) -> FeatureAggregationInput {
         let vision = state.vision ?? fallbackVisionSample(from: state.debugData)
         let horizon = state.horizon ?? fallbackHorizonSample(from: state.features, measuredAt: state.horizonMeasuredAt)
         let lighting = state.lighting ?? fallbackLightingSample(from: state.features, measuredAt: state.lightingMeasuredAt)
-        let detr = state.detr ?? fallbackDetrSample(from: state.debugData)
+        let detr = validatedDetrSample(
+            state.detr ?? fallbackDetrSample(from: state.debugData),
+            expectedProvenance: expectedDetrProvenance
+        )
         let aesthetic = state.aesthetic ?? fallbackAestheticSample(from: state.features, measuredAt: state.aestheticMeasuredAt)
 
         return FeatureAggregationInput(
             frameId: frameId,
             mode: mode,
             capturedAt: capturedAt,
+            evaluatedAt: evaluatedAt,
             motionState: state.features.motion.state.cameraAnalysisMotionState,
             shakeLevel: Double(state.features.motion.shakeLevel),
             vision: vision,
@@ -1977,6 +2214,19 @@ struct PipelineFeatureSnapshotAdapter {
             detr: detr,
             aesthetic: aesthetic
         )
+    }
+
+    private func validatedDetrSample(
+        _ sample: FeatureSample<FeatureSnapshotDetrPayload>?,
+        expectedProvenance: FeatureSampleProvenance?
+    ) -> FeatureSample<FeatureSnapshotDetrPayload>? {
+        guard let sample, let expectedProvenance else { return sample }
+        guard let provenance = sample.provenance,
+              provenance == expectedProvenance,
+              provenance.isKnown else {
+            return nil
+        }
+        return sample
     }
 
     private func fallbackVisionSample(from debugData: DebugData) -> FeatureSample<FeatureSnapshotVisionPayload>? {
@@ -2093,12 +2343,20 @@ struct FeatureSnapshotAggregator {
     private enum CandidateSource {
         case vision
         case detr
+
+        var featureSourceID: FeatureSourceID {
+            switch self {
+            case .vision: return .vision
+            case .detr: return .detr
+            }
+        }
     }
 
     private struct Candidate {
         let source: CandidateSource
         let rawConfidence: Double
-        let effectiveConfidence: Double
+        let rankingScore: Double
+        let publishedConfidence: Double
         let region: NormalizedRect
     }
 
@@ -2121,12 +2379,25 @@ struct FeatureSnapshotAggregator {
         let primaryFaceRegion = primaryFaceRegion(from: visionPayload?.subjects ?? [])
         let sortedDetections = sortDetections(detrPayload?.detections ?? [])
         let foregroundDetections = foregroundDetections(from: sortedDetections)
+        let visionFreshnessRatio = sourceFreshnessRatio(
+            sample: input.vision,
+            budgetMs: freshnessBudget.visionMs,
+            frameCapturedAt: input.capturedAt,
+            evaluatedAt: input.evaluatedAt
+        )
+        let detrFreshnessRatio = sourceFreshnessRatio(
+            sample: input.detr,
+            budgetMs: freshnessBudget.detrMs,
+            frameCapturedAt: input.capturedAt,
+            evaluatedAt: input.evaluatedAt
+        )
 
         let primaryCandidate = selectPrimaryCandidate(
             visionSubjects: sortedVisionSubjects,
             saliencyRegion: visionPayload?.saliencyRegion,
             detections: foregroundDetections,
-            sourceStatuses: sourceStatuses
+            visionFreshnessRatio: visionFreshnessRatio,
+            detrFreshnessRatio: detrFreshnessRatio
         )
 
         let composition = makeComposition(
@@ -2140,10 +2411,13 @@ struct FeatureSnapshotAggregator {
             personCount: visionPayload?.personCount ?? 0,
             faceRegion: primaryFaceRegion,
             topObjectLabel: foregroundDetections.first?.label,
-            topObjectConfidence: foregroundDetections.first?.confidence,
+            topObjectConfidence: foregroundDetections.first.map {
+                clamp01($0.confidence * detrFreshnessRatio)
+            },
             topObjectRegion: foregroundDetections.first.flatMap { normalizedRect(from: $0.boundingBox) },
             primaryCandidateRegion: primaryCandidate?.region,
-            primaryCandidateConfidence: primaryCandidate?.effectiveConfidence
+            primaryCandidateConfidence: primaryCandidate?.publishedConfidence,
+            primaryCandidateSource: primaryCandidate?.source.featureSourceID
         )
 
         let horizonFeatures = FrameFeatureSnapshot.HorizonFeatures(
@@ -2177,7 +2451,7 @@ struct FeatureSnapshotAggregator {
             sourceStatuses: sourceStatuses,
             lighting: lightingFeatures,
             motion: motionFeatures,
-            primaryCandidateConfidence: primaryCandidate?.effectiveConfidence
+            primaryCandidateConfidence: primaryCandidate?.publishedConfidence
         )
 
         return FrameFeatureSnapshot(
@@ -2198,22 +2472,25 @@ struct FeatureSnapshotAggregator {
 
     private func makeSourceStatuses(from input: FeatureAggregationInput) -> FeatureSourceStatus {
         FeatureSourceStatus(
-            vision: makeSourceState(sample: input.vision, budgetMs: freshnessBudget.visionMs, capturedAt: input.capturedAt),
-            horizon: makeSourceState(sample: input.horizon, budgetMs: freshnessBudget.horizonMs, capturedAt: input.capturedAt),
-            lighting: makeSourceState(sample: input.lighting, budgetMs: freshnessBudget.lightingMs, capturedAt: input.capturedAt),
-            detr: makeSourceState(sample: input.detr, budgetMs: freshnessBudget.detrMs, capturedAt: input.capturedAt),
-            aesthetic: makeSourceState(sample: input.aesthetic, budgetMs: freshnessBudget.aestheticMs, capturedAt: input.capturedAt)
+            vision: makeSourceState(sample: input.vision, budgetMs: freshnessBudget.visionMs, frameCapturedAt: input.capturedAt, evaluatedAt: input.evaluatedAt),
+            horizon: makeSourceState(sample: input.horizon, budgetMs: freshnessBudget.horizonMs, frameCapturedAt: input.capturedAt, evaluatedAt: input.evaluatedAt),
+            lighting: makeSourceState(sample: input.lighting, budgetMs: freshnessBudget.lightingMs, frameCapturedAt: input.capturedAt, evaluatedAt: input.evaluatedAt),
+            detr: makeSourceState(sample: input.detr, budgetMs: freshnessBudget.detrMs, frameCapturedAt: input.capturedAt, evaluatedAt: input.evaluatedAt),
+            aesthetic: makeSourceState(sample: input.aesthetic, budgetMs: freshnessBudget.aestheticMs, frameCapturedAt: input.capturedAt, evaluatedAt: input.evaluatedAt)
         )
     }
 
     private func makeSourceState<T>(sample: FeatureSample<T>?,
                                     budgetMs: Int,
-                                    capturedAt: Date) -> SourceState {
+                                    frameCapturedAt: Date,
+                                    evaluatedAt: Date) -> SourceState {
         guard let sample else {
             return SourceState(available: false)
         }
 
-        let freshnessMs = normalizedFreshnessMs(capturedAt: capturedAt, measuredAt: sample.measuredAt)
+        let frameAgeMs = normalizedFreshnessMs(evaluatedAt: evaluatedAt, measuredAt: frameCapturedAt)
+        let sampleAgeMs = normalizedFreshnessMs(evaluatedAt: evaluatedAt, measuredAt: sample.measuredAt)
+        let freshnessMs = max(frameAgeMs, sampleAgeMs)
         if freshnessMs > (budgetMs * freshnessBudget.staleMultiplier) {
             return SourceState(available: false, freshnessMs: freshnessMs, confidence: nil)
         }
@@ -2222,25 +2499,41 @@ struct FeatureSnapshotAggregator {
             return SourceState(available: true, freshnessMs: freshnessMs, confidence: nil)
         }
 
-        let freshnessRatio = clamp01(1.0 - (Double(freshnessMs) / Double(2 * budgetMs)))
+        let freshnessRatio = freshnessRatio(freshnessMs: freshnessMs, budgetMs: budgetMs)
         let effectiveConfidence = clamp01(baseConfidence * freshnessRatio)
         return SourceState(available: true, freshnessMs: freshnessMs, confidence: effectiveConfidence)
     }
 
-    private func normalizedFreshnessMs(capturedAt: Date, measuredAt: Date) -> Int {
-        let raw = capturedAt.timeIntervalSince(measuredAt) * 1000.0
+    private func sourceFreshnessRatio<T>(sample: FeatureSample<T>?,
+                                         budgetMs: Int,
+                                         frameCapturedAt: Date,
+                                         evaluatedAt: Date) -> Double {
+        guard let sample else { return 0 }
+        let frameAgeMs = normalizedFreshnessMs(evaluatedAt: evaluatedAt, measuredAt: frameCapturedAt)
+        let sampleAgeMs = normalizedFreshnessMs(evaluatedAt: evaluatedAt, measuredAt: sample.measuredAt)
+        let freshnessMs = max(frameAgeMs, sampleAgeMs)
+        return freshnessRatio(freshnessMs: freshnessMs, budgetMs: budgetMs)
+    }
+
+    private func freshnessRatio(freshnessMs: Int, budgetMs: Int) -> Double {
+        guard budgetMs > 0 else { return 0 }
+        return clamp01(1.0 - (Double(freshnessMs) / Double(2 * budgetMs)))
+    }
+
+    private func normalizedFreshnessMs(evaluatedAt: Date, measuredAt: Date) -> Int {
+        let raw = evaluatedAt.timeIntervalSince(measuredAt) * 1000.0
         return max(0, Int(floor(raw)))
     }
 
     private func makeComposition(primaryRegion: NormalizedRect?,
                                  saliencyCenter: CGPoint?) -> FrameFeatureSnapshot.CompositionFeatures {
-        let defaultCenter = CGPoint(x: 0.5, y: 0.333)
+        let defaultCenter = CGPoint(x: 0.5, y: 2.0 / 3.0)
         let center = primaryRegion.map {
             CGPoint(x: $0.x + ($0.width * 0.5), y: $0.y + ($0.height * 0.5))
         } ?? saliencyCenter ?? defaultCenter
 
         let horizontalOffset = clamp11((Double(center.x) - 0.5) / 0.5)
-        let verticalOffset = clamp11((Double(center.y) - 0.333) / 0.333)
+        let verticalOffset = clamp11((2.0 / 3.0 - Double(center.y)) / (1.0 / 3.0))
         let subjectAreaRatio = primaryRegion.map { $0.width * $0.height } ?? 0
         let saliencyLeftRightBalance = saliencyCenter.map { clamp11((Double($0.x) - 0.5) * 2.0) } ?? horizontalOffset
         let saliencyTopBottomBalance = saliencyCenter.map { clamp11((Double($0.y) - 0.5) * 2.0) } ?? 0
@@ -2455,19 +2748,19 @@ struct FeatureSnapshotAggregator {
     private func selectPrimaryCandidate(visionSubjects: [FeatureSnapshotVisionSubject],
                                         saliencyRegion: CGRect?,
                                         detections: [FeatureSnapshotDetectedObject],
-                                        sourceStatuses: FeatureSourceStatus) -> Candidate? {
+                                        visionFreshnessRatio: Double,
+                                        detrFreshnessRatio: Double) -> Candidate? {
         var candidates: [Candidate] = []
-        let visionSourceConfidence = sourceStatuses.vision.confidence ?? 1.0
-        let detrSourceConfidence = sourceStatuses.detr.confidence ?? 1.0
 
         for subject in visionSubjects {
             guard let region = normalizedRect(from: subject.boundingBox) else { continue }
-            let effective = clamp01(subject.confidence * visionSourceConfidence)
+            let publishedConfidence = clamp01(subject.confidence * visionFreshnessRatio)
             candidates.append(
                 Candidate(
                     source: .vision,
                     rawConfidence: subject.confidence,
-                    effectiveConfidence: effective,
+                    rankingScore: publishedConfidence,
+                    publishedConfidence: publishedConfidence,
                     region: region
                 )
             )
@@ -2478,12 +2771,13 @@ struct FeatureSnapshotAggregator {
            let saliencyRegion,
            isUsableSaliencyFallbackRegion(saliencyRegion),
            let region = normalizedRect(from: saliencyRegion) {
-            let effective = clamp01(0.48 * visionSourceConfidence)
+            let publishedConfidence = clamp01(0.48 * visionFreshnessRatio)
             candidates.append(
                 Candidate(
                     source: .vision,
                     rawConfidence: 0.48,
-                    effectiveConfidence: effective,
+                    rankingScore: publishedConfidence,
+                    publishedConfidence: publishedConfidence,
                     region: region
                 )
             )
@@ -2491,20 +2785,21 @@ struct FeatureSnapshotAggregator {
 
         if let topDetection = detections.first,
            let region = normalizedRect(from: topDetection.boundingBox) {
-            let effective = clamp01(topDetection.confidence * detrSourceConfidence)
+            let publishedConfidence = clamp01(topDetection.confidence * detrFreshnessRatio)
             candidates.append(
                 Candidate(
                     source: .detr,
                     rawConfidence: topDetection.confidence,
-                    effectiveConfidence: effective,
+                    rankingScore: publishedConfidence,
+                    publishedConfidence: publishedConfidence,
                     region: region
                 )
             )
         }
 
-        let eligible = candidates.filter { $0.effectiveConfidence >= 0.20 }
+        let eligible = candidates.filter { $0.rankingScore >= 0.20 }
         return eligible.max { lhs, rhs in
-            let delta = lhs.effectiveConfidence - rhs.effectiveConfidence
+            let delta = lhs.rankingScore - rhs.rankingScore
             if abs(delta) >= 0.01 {
                 return delta < 0
             }
@@ -2738,9 +3033,8 @@ struct PrimarySubjectResolver {
         let kind: SubjectKind
         let label: String?
         let region: NormalizedRect?
-        let baseConfidence: Double
-        let sourceReliability: Double
-        let score: Double
+        let publishedConfidence: Double
+        let rankingScore: Double
     }
 
     struct Result {
@@ -2751,7 +3045,7 @@ struct PrimarySubjectResolver {
     func resolve(snapshot: FrameFeatureSnapshot) -> Result {
         let hadMalformedPrimaryRegion = snapshot.subjectSignals.primaryCandidateRegion.map { !isValidRegion($0) } ?? false
         let coreCandidates = buildCoreCandidates(snapshot: snapshot)
-        let eligible = coreCandidates.filter { $0.score >= 0.20 }
+        let eligible = coreCandidates.filter { $0.rankingScore >= 0.20 }
         guard let winner = selectWinner(eligible) else {
             var ambiguities: [SemanticsAmbiguity] = [
                 .init(type: .weakSignal, note: "Weak subject evidence: no candidate reached minimum score.", candidateIds: [])
@@ -2774,11 +3068,11 @@ struct PrimarySubjectResolver {
         let competitors = eligible
             .filter { $0.id != winner.id }
             .stableSorted { lhs, rhs in
-                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                if lhs.rankingScore != rhs.rankingScore { return lhs.rankingScore > rhs.rankingScore }
                 return lhs.id < rhs.id
             }
         var ambiguities: [SemanticsAmbiguity] = []
-        if let second = competitors.first, abs(winner.score - second.score) < 0.07 {
+        if let second = competitors.first, abs(winner.rankingScore - second.rankingScore) < 0.07 {
             ambiguities.append(
                 .init(
                     type: .multipleSubjectsSimilarConfidence,
@@ -2798,13 +3092,13 @@ struct PrimarySubjectResolver {
         }
 
         let competingCandidates = Array(competitors.prefix(2)).map {
-            SubjectCandidate(id: $0.id, kind: $0.kind, label: $0.label, region: $0.region, confidence: $0.score)
+            SubjectCandidate(id: $0.id, kind: $0.kind, label: $0.label, region: $0.region, confidence: $0.publishedConfidence)
         }
         let primary = SceneSemanticsReport.PrimarySubject(
             kind: winner.kind,
             label: winner.kind == .object ? winner.label : nil,
             region: winner.region,
-            confidence: winner.score,
+            confidence: winner.publishedConfidence,
             competingCandidates: competingCandidates
         )
         return Result(primarySubject: primary, ambiguities: ambiguities)
@@ -2812,25 +3106,6 @@ struct PrimarySubjectResolver {
 
     private func buildCoreCandidates(snapshot: FrameFeatureSnapshot) -> [Candidate] {
         var candidates: [Candidate] = []
-
-        if let region = snapshot.subjectSignals.faceRegion, isValidRegion(region) {
-            let base = clamp01(max(
-                snapshot.subjectSignals.primaryCandidateConfidence ?? 0,
-                snapshot.sources.vision.confidence ?? 0,
-                0.70
-            ))
-            let reliability = max(snapshot.sources.vision.confidence ?? 0.70, 0.82)
-            candidates.append(
-                makeCandidate(
-                    id: "snapshot-face",
-                    kind: .face,
-                    label: nil,
-                    region: region,
-                    baseConfidence: base,
-                    sourceReliability: reliability
-                )
-            )
-        }
 
         if let region = snapshot.subjectSignals.primaryCandidateRegion, isValidRegion(region) {
             let kind: SubjectKind
@@ -2844,15 +3119,13 @@ struct PrimarySubjectResolver {
                 kind = .unknown
             }
             let base = clamp01(snapshot.subjectSignals.primaryCandidateConfidence ?? 0)
-            let reliability = max(base, 0.25)
             candidates.append(
                 makeCandidate(
                     id: "snapshot-primary",
                     kind: kind,
                     label: nil,
                     region: region,
-                    baseConfidence: base,
-                    sourceReliability: reliability
+                    baseConfidence: base
                 )
             )
         }
@@ -2862,17 +3135,16 @@ struct PrimarySubjectResolver {
             let region = snapshot.subjectSignals.topObjectRegion
             let normalizedLabel = normalizeObjectLabel(objectLabel)
             let hasPersonSignal = snapshot.subjectSignals.faceDetected || snapshot.subjectSignals.personDetected
-            let reliabilityMultiplier: Double
+            let rankingMultiplier: Double
             if hasPersonSignal && backgroundContextLabels.contains(normalizedLabel) {
-                reliabilityMultiplier = 0.20
+                rankingMultiplier = 0.20
             } else if demoPriorityObjectLabels.contains(normalizedLabel) {
-                reliabilityMultiplier = 1.08
+                rankingMultiplier = 1.08
             } else if backgroundContextLabels.contains(normalizedLabel) {
-                reliabilityMultiplier = 0.55
+                rankingMultiplier = 0.55
             } else {
-                reliabilityMultiplier = 0.92
+                rankingMultiplier = 0.92
             }
-            let reliability = clamp01((snapshot.sources.detr.confidence ?? 0.50) * reliabilityMultiplier)
             candidates.append(
                 makeCandidate(
                     id: "snapshot-object",
@@ -2880,7 +3152,7 @@ struct PrimarySubjectResolver {
                     label: objectLabel,
                     region: region,
                     baseConfidence: base,
-                    sourceReliability: reliability
+                    rankingMultiplier: rankingMultiplier
                 )
             )
         }
@@ -2888,15 +3160,13 @@ struct PrimarySubjectResolver {
         let hasValidPrimaryRegion = snapshot.subjectSignals.primaryCandidateRegion.map(isValidRegion) ?? false
         if snapshot.subjectSignals.personCount >= 2 && !hasValidPrimaryRegion {
             let base = clamp01(0.35 + (0.15 * Double(min(3, snapshot.subjectSignals.personCount - 1))))
-            let reliability = snapshot.sources.vision.confidence ?? 0.55
             candidates.append(
                 makeCandidate(
                     id: "snapshot-group",
                     kind: .group,
                     label: nil,
                     region: nil,
-                    baseConfidence: base,
-                    sourceReliability: reliability
+                    baseConfidence: base
                 )
             )
         }
@@ -2940,7 +3210,7 @@ struct PrimarySubjectResolver {
                                label: String?,
                                region: NormalizedRect?,
                                baseConfidence: Double,
-                               sourceReliability: Double) -> Candidate {
+                               rankingMultiplier: Double = 1.0) -> Candidate {
         let area = region.map { $0.width * $0.height } ?? 0
         let regionWeight: Double
         if region == nil {
@@ -2965,15 +3235,15 @@ struct PrimarySubjectResolver {
             kindWeight = 0.70
         }
 
-        let score = clamp01(baseConfidence * clamp01(sourceReliability) * kindWeight * regionWeight)
+        let publishedConfidence = clamp01(baseConfidence)
+        let rankingScore = clamp01(publishedConfidence * kindWeight * regionWeight * max(0, rankingMultiplier))
         return Candidate(
             id: id,
             kind: kind,
             label: label,
             region: region,
-            baseConfidence: baseConfidence,
-            sourceReliability: sourceReliability,
-            score: score
+            publishedConfidence: publishedConfidence,
+            rankingScore: rankingScore
         )
     }
 
@@ -3010,7 +3280,7 @@ struct PrimarySubjectResolver {
 
     private func selectWinner(_ candidates: [Candidate]) -> Candidate? {
         candidates.max { lhs, rhs in
-            let delta = lhs.score - rhs.score
+            let delta = lhs.rankingScore - rhs.rankingScore
             if abs(delta) >= 0.03 {
                 return delta < 0
             }
@@ -3193,14 +3463,7 @@ struct SemanticReadabilityAnalyzer {
             (0.20 * (1 - snapshot.lighting.backlightIndex))
         )
 
-        let lookSpaceAdequate: Bool?
-        if sceneType == .objectInsert || sceneType == .establishingLikeFrame {
-            lookSpaceAdequate = nil
-        } else if edgePressureScore >= 0.75 && abs(snapshot.composition.horizontalOffset) >= 0.65 {
-            lookSpaceAdequate = false
-        } else {
-            lookSpaceAdequate = true
-        }
+        let lookSpaceAdequate: Bool? = nil
 
         let baseSubjectReadable =
             primarySubject.kind != .unknown &&
@@ -3245,6 +3508,10 @@ final class AnalysisPipeline: ObservableObject {
                                                             horizonAngle: 0,
                                                             horizonConfidence: 0,
                                                             saliencyBalance: 0)
+    /// Production subject/face regions in Vision's normalized lower-left
+    /// coordinate space. The preview owner is the only code that converts
+    /// these regions to view coordinates.
+    @Published private(set) var subjectRegions: [NormalizedRect] = []
     @Published private(set) var currentSuggestion: Suggestion?
     @Published private(set) var currentLiveHint: LiveHintPresentation?
     @Published private(set) var currentPauseCritique: PauseCritiquePresentation?
@@ -3271,6 +3538,7 @@ final class AnalysisPipeline: ObservableObject {
     private let neuralHeavyModelsEnabledProvider: () -> Bool
     private let liveHybridFusionEnabled: Bool
     private let demoLiveCoachEnabled: Bool
+    private let pauseAnalysisAvailabilityProvider: () -> Bool
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -3294,6 +3562,9 @@ final class AnalysisPipeline: ObservableObject {
     private var latestLightingSample: FeatureSample<FeatureSnapshotLightingPayload>?
     private var latestLightingMeasuredAt: Date?
     private var latestDetrSample: FeatureSample<FeatureSnapshotDetrPayload>?
+    /// Exact accepted high-frame identity used to fence delayed asynchronous
+    /// feature callbacks. Access only on `featureQueue`.
+    private var latestHighFrameProvenance: FeatureSampleProvenance?
     private var latestAestheticSample: FeatureSample<FeatureSnapshotAestheticPayload>?
     private var latestAestheticMeasuredAt: Date?
     private let featureQueue = DispatchQueue(label: "AnalysisPipeline.features")
@@ -3308,8 +3579,22 @@ final class AnalysisPipeline: ObservableObject {
     private var liveHintShownAt: Date = .distantPast
     private var liveHintExpiresAt: Date = .distantPast
     private var lastLiveMotionBecameUnstableAt: Date?
+    private struct LiveSpatialConfirmationState {
+        let commandKey: String
+        let capturedAt: Date
+        let count: Int
+    }
+    private var liveSpatialConfirmation: LiveSpatialConfirmationState?
+    private struct LiveTechnicalConfirmationState {
+        let commandKey: String
+        let capturedAt: Date
+        let count: Int
+    }
+    private var liveTechnicalConfirmation: LiveTechnicalConfirmationState?
     private var lastOverlayPublishAt: Date = .distantPast
     private var pauseAnalysisRevision: Int = 0
+    private let pausePublicationFenceLock = NSLock()
+    private var activePausePublicationFence: PauseAnalysisPublicationFence?
     private var pauseReasoningTask: Task<Void, Never>?
     private var liveNeuralInferenceTask: Task<Void, Never>?
     private var pauseNeuralInferenceTask: Task<Void, Never>?
@@ -3344,7 +3629,8 @@ final class AnalysisPipeline: ObservableObject {
          thermalGovernor: ThermalGovernor = ThermalGovernor(),
          neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true },
          liveHybridFusionEnabled: Bool = true,
-         demoLiveCoachEnabled: Bool = false) {
+         demoLiveCoachEnabled: Bool = false,
+         pauseAnalysisAvailabilityProvider: @escaping () -> Bool = { true }) {
         self.pauseReasoningCoordinator = PauseReasoningCoordinator(provider: reasoningProvider)
         self.visualSemanticEvidenceCoordinator = VisualSemanticEvidenceCoordinator(provider: visualEvidenceProvider)
         self.neuralEvidenceService = neuralEvidenceService
@@ -3352,6 +3638,7 @@ final class AnalysisPipeline: ObservableObject {
         self.neuralHeavyModelsEnabledProvider = neuralHeavyModelsEnabledProvider
         self.liveHybridFusionEnabled = liveHybridFusionEnabled
         self.demoLiveCoachEnabled = demoLiveCoachEnabled
+        self.pauseAnalysisAvailabilityProvider = pauseAnalysisAvailabilityProvider
     }
 
     @MainActor
@@ -3362,6 +3649,8 @@ final class AnalysisPipeline: ObservableObject {
         demoCinematicPortraitStep = .darkenBackground
         demoCinematicPortraitStepEvidence = .empty
         currentDemoOverlayAnnotations = []
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
         print("[CA_DEBUG][DEMO_MODE] mode=\(mode.rawValue)")
     }
     
@@ -3392,12 +3681,14 @@ final class AnalysisPipeline: ObservableObject {
 
     func makeFeatureSnapshot(mode: AnalysisMode = .live,
                              frameId: String = UUID().uuidString,
-                             capturedAt: Date = Date()) -> FrameFeatureSnapshot {
+                             capturedAt: Date = Date(),
+                             evaluatedAt: Date? = nil) -> FrameFeatureSnapshot {
         let adapterState = currentAdapterState()
         return makeFeatureSnapshot(
             mode: mode,
             frameId: frameId,
             capturedAt: capturedAt,
+            evaluatedAt: evaluatedAt,
             adapterState: adapterState
         )
     }
@@ -3405,18 +3696,34 @@ final class AnalysisPipeline: ObservableObject {
     private func makeFeatureSnapshot(mode: AnalysisMode,
                                      frameId: String,
                                      capturedAt: Date,
+                                     evaluatedAt: Date? = nil,
+                                     captureGeneration: UInt64? = nil,
+                                     orientation: CGImagePropertyOrientation? = nil,
                                      adapterState: PipelineFeatureSnapshotAdapterState) -> FrameFeatureSnapshot {
+        let expectedDetrProvenance: FeatureSampleProvenance?
+        if let captureGeneration, let orientation {
+            expectedDetrProvenance = FeatureSampleProvenance(
+                frameID: frameId,
+                captureGeneration: captureGeneration,
+                orientation: orientation
+            )
+        } else {
+            expectedDetrProvenance = nil
+        }
         let input = featureSnapshotAdapter.makeInput(
             frameId: frameId,
             mode: mode,
             capturedAt: capturedAt,
+            evaluatedAt: evaluatedAt,
+            expectedDetrProvenance: expectedDetrProvenance,
             state: adapterState
         )
         return featureSnapshotAggregator.makeSnapshot(from: input)
     }
 
     private func makeDetrFeatureSample(from detections: [DETRDetection],
-                                       measuredAt: Date) -> FeatureSample<FeatureSnapshotDetrPayload> {
+                                       measuredAt: Date,
+                                       provenance: FeatureSampleProvenance? = nil) -> FeatureSample<FeatureSnapshotDetrPayload> {
         let sortedDetections = sortedDetectionsForPriority(detections)
         let payload = FeatureSnapshotDetrPayload(
             detections: sortedDetections.map {
@@ -3430,7 +3737,8 @@ final class AnalysisPipeline: ObservableObject {
         return FeatureSample(
             value: payload,
             measuredAt: measuredAt,
-            baseConfidence: sortedDetections.first.map { Double($0.confidence) } ?? 0
+            baseConfidence: sortedDetections.first.map { Double($0.confidence) } ?? 0,
+            provenance: provenance
         )
     }
 
@@ -3450,6 +3758,10 @@ final class AnalysisPipeline: ObservableObject {
     private var registrations: [UUID] = []
 #if DEBUG
     private var directFrameAcceptanceCountForTesting = 0
+    private let pauseTerminalClaimHookLock = NSLock()
+    private var pauseTerminalClaimHook: (() -> Void)?
+    private let pauseTimeoutTriggerLock = NSLock()
+    private var pauseTimeoutTrigger: (() -> Void)?
 #endif
 
     private struct ReleaseSnapshot {
@@ -3484,6 +3796,8 @@ final class AnalysisPipeline: ObservableObject {
         registrationManager = nil
         acceptsFrameWork = false
         lifecycleGeneration &+= 1
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
         lifecycleLock.unlock()
 
         previousRegistrations.forEach { previousManager?.unregister(id: $0) }
@@ -3499,6 +3813,8 @@ final class AnalysisPipeline: ObservableObject {
         registrationManager = manager
         acceptsFrameWork = true
         lifecycleGeneration &+= 1
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
         lifecycleLock.unlock()
         return true
     }
@@ -3518,12 +3834,18 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         lifecycleGeneration &+= 1
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
         let releaseGeneration = lifecycleGeneration
         let manager = registrationManager
         let ownedRegistrations = registrations
         registrations = []
         registrationManager = nil
         acceptsFrameWork = false
+        invalidatePausePublicationFence()
+#if DEBUG
+        clearPauseAnalysisTimeoutTriggerForTesting()
+#endif
         featureQueue.sync {
             pauseAnalysisRevision += 1
         }
@@ -3579,6 +3901,7 @@ final class AnalysisPipeline: ObservableObject {
             latestLightingSample = nil
             latestLightingMeasuredAt = nil
             latestDetrSample = nil
+            latestHighFrameProvenance = nil
             latestAestheticSample = nil
             latestAestheticMeasuredAt = nil
             latestLiveNeuralOutcome = nil
@@ -3591,6 +3914,8 @@ final class AnalysisPipeline: ObservableObject {
         lastAestheticRequest = .distantPast
         lastDETRRequest = .distantPast
         lowFrameCount = 0
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
         lastRefinedPauseFrameId = nil
         lastLiveHintDecisionLogKey = nil
         lastLiveDecisionDebugLogKey = nil
@@ -3633,6 +3958,15 @@ final class AnalysisPipeline: ObservableObject {
 
         tasks.forEach { $0.cancel() }
         return tasks
+    }
+
+    /// M2-006: evidence package of the last completed pause analysis. Exposes
+    /// per-source ages and temporality to validation and diagnostics.
+    private let pauseEvidencePackageLock = NSLock()
+    private var storedPauseEvidencePackage: PauseEvidencePackage?
+    internal var lastPauseEvidencePackage: PauseEvidencePackage? {
+        get { pauseEvidencePackageLock.withLock { storedPauseEvidencePackage } }
+        set { pauseEvidencePackageLock.withLock { storedPauseEvidencePackage = newValue } }
     }
 
     private func cancelPauseReasoningTask() {
@@ -3790,9 +4124,47 @@ final class AnalysisPipeline: ObservableObject {
         return acceptsFrameWork && lifecycleGeneration == generation
     }
 
+    private func isCurrentLiveEvidence(_ evidence: LatestFrameEvidenceStore.Snapshot,
+                                       generation: UInt64) -> Bool {
+        guard isFrameWorkActive(generation),
+              latestFrameEvidenceStore.snapshot()?.sourceFrameId == evidence.sourceFrameId else {
+            return false
+        }
+        let ageMilliseconds = Date().timeIntervalSince(evidence.capturedAt) * 1000.0
+        return ageMilliseconds >= 0
+            && ageMilliseconds <= Double(LiveCoachQualityGate.maxVisionFreshnessMilliseconds)
+    }
+
+    /// The accepted envelope is the pipeline's only observed camera epoch.
+    /// Unknown legacy contexts may be processed until a known frame exists,
+    /// but they can never replace known capture evidence. A known older epoch
+    /// is delayed work from a prior input/lens and is rejected before any
+    /// feature state is mutated.
+    private func isCaptureGenerationAcceptable(_ captureGeneration: UInt64) -> Bool {
+        guard let latest = latestFrameEvidenceStore.snapshot() else { return true }
+        if captureGeneration == 0 {
+            return latest.lensGeneration == 0
+        }
+        return latest.lensGeneration == 0 || captureGeneration >= latest.lensGeneration
+    }
+
     private func performHigh(context: FrameContext, generation: UInt64) {
-        guard isGenerationCurrent(generation) else { return }
+        guard isGenerationCurrent(generation),
+              isCaptureGenerationAcceptable(context.captureGeneration) else { return }
+        if let latest = latestFrameEvidenceStore.snapshot(),
+           latest.capturedAt > context.capturedAt {
+            return
+        }
         let sourceFrameId = makeSourceFrameId(from: context.timestamp)
+        let captureGeneration = context.captureGeneration
+        let frameProvenance = FeatureSampleProvenance(
+            frameID: sourceFrameId,
+            captureGeneration: captureGeneration,
+            orientation: context.orientation
+        )
+        featureQueue.sync {
+            latestHighFrameProvenance = frameProvenance.isKnown ? frameProvenance : nil
+        }
         let startTime = CACurrentMediaTime()
         
         Telemetry.shared.setActiveModule("Vision", active: true)
@@ -3803,6 +4175,16 @@ final class AnalysisPipeline: ObservableObject {
         Telemetry.shared.setActiveModule("Vision", active: false)
 
         let primarySubject = primaryVisionSubject(from: trackingResult)
+        let normalizedSubjectRegions = trackingResult.subjects.compactMap { subject -> NormalizedRect? in
+            let box = subject.boundingBox
+            guard box.width > 0, box.height > 0 else { return nil }
+            return NormalizedRect(
+                x: Double(box.minX),
+                y: Double(box.minY),
+                width: Double(box.width),
+                height: Double(box.height)
+            )
+        }
         
         let horizonStart = CACurrentMediaTime()
         Telemetry.shared.setActiveModule("Horizon", active: true)
@@ -3825,9 +4207,11 @@ final class AnalysisPipeline: ObservableObject {
         }
         let visionBaseConfidence = visionSubjectsPayload.map(\.confidence).max()
 
+        var frameAdapterState: PipelineFeatureSnapshotAdapterState?
         updateFeatures { features in
-            features.horizon.angle = horizon.angle
-            features.horizon.confidence = horizon.confidence
+            // M2-013: an unavailable horizon contributes no angle claim.
+            features.horizon.angle = horizon.isAvailable ? horizon.angleDegrees : 0
+            features.horizon.confidence = horizon.isAvailable ? horizon.confidence : 0
             features.motion.shakeLevel = CGFloat(context.shakeLevel)
             features.motion.state = context.motionState
             if let subject = primarySubject {
@@ -3867,24 +4251,63 @@ final class AnalysisPipeline: ObservableObject {
                 measuredAt: measurementTime,
                 baseConfidence: visionBaseConfidence ?? (trackingResult.saliencyRegion == nil ? nil : 0.48)
             )
+            // M2-013: an unavailable horizon stores a zeroed payload so no
+            // stale angle reaches downstream feature consumers.
+            let horizonAvailable = horizon.isAvailable
             self.latestHorizonSample = FeatureSample(
                 value: FeatureSnapshotHorizonPayload(
-                    angleDegrees: Double(horizon.angle),
-                    confidence: Double(horizon.confidence)
+                    angleDegrees: horizonAvailable ? Double(horizon.angleDegrees) : 0,
+                    confidence: horizonAvailable ? Double(horizon.confidence) : 0
                 ),
                 measuredAt: measurementTime,
-                baseConfidence: Double(horizon.confidence)
+                baseConfidence: horizonAvailable ? Double(horizon.confidence) : nil
             )
             self.latestHorizonMeasuredAt = measurementTime
+
+            // Capture the adapter state while this frame's Vision/Horizon
+            // values are still on the feature queue. The evidence store binds
+            // this immutable value to the same sourceFrameId and pixel buffer;
+            // pause analysis must never reconstruct it from a later live tick.
+            frameAdapterState = PipelineFeatureSnapshotAdapterState(
+                features: features,
+                debugData: self.debugData,
+                vision: self.latestVisionSample,
+                horizonMeasuredAt: self.latestHorizonMeasuredAt,
+                horizon: self.latestHorizonSample,
+                lightingMeasuredAt: self.latestLightingMeasuredAt,
+                lighting: self.latestLightingSample,
+                detr: self.latestDetrSample,
+                aestheticMeasuredAt: self.latestAestheticMeasuredAt,
+                aesthetic: self.latestAestheticSample
+            )
         }
 
-        _ = latestFrameEvidenceStore.publish(
+        guard let frameEvidence = LatestFrameEvidenceStore.Snapshot(
             pixelBuffer: context.pixelBuffer,
             orientation: context.orientation,
             sourceFrameId: sourceFrameId,
-            capturedAt: measurementTime,
-            isStable: context.isStable
-        )
+            capturedAt: context.capturedAt,
+            isStable: context.isStable,
+            adapterState: frameAdapterState,
+            lensGeneration: captureGeneration
+        ) else { return }
+
+        // High work is serial, but a caller can still enqueue frames from
+        // different callback threads. Never replace newer immutable evidence
+        // with an older frame that finished analysis later.
+        if let latest = latestFrameEvidenceStore.snapshot(),
+           latest.capturedAt > frameEvidence.capturedAt {
+            return
+        }
+        guard latestFrameEvidenceStore.publish(
+            pixelBuffer: frameEvidence.pixelBuffer,
+            orientation: frameEvidence.orientation,
+            sourceFrameId: frameEvidence.sourceFrameId,
+            capturedAt: frameEvidence.capturedAt,
+            isStable: frameEvidence.isStable,
+            adapterState: frameEvidence.adapterState,
+            lensGeneration: captureGeneration
+        ) else { return }
         
         Telemetry.shared.setCameraStable(context.isStable, shakeLevel: context.shakeLevel)
         logHighFrameDebug(
@@ -3899,12 +4322,15 @@ final class AnalysisPipeline: ObservableObject {
         )
 
         Task { @MainActor in
-            guard self.isGenerationCurrent(generation) else { return }
+            guard self.isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
+            if self.subjectRegions != normalizedSubjectRegions {
+                self.subjectRegions = normalizedSubjectRegions
+            }
             self.overlayState = OverlayState(primaryBoundingBox: primarySubject?.boundingBox,
-                                             horizonAngle: horizon.angle,
-                                             horizonConfidence: horizon.confidence,
+                                             horizonAngle: horizon.isAvailable ? horizon.angleDegrees : 0,
+                                             horizonConfidence: horizon.isAvailable ? horizon.confidence : 0,
                                              saliencyBalance: saliencyBalance)
-            await self.emitSuggestion(generation: generation)
+            await self.emitSuggestion(generation: generation, frameEvidence: frameEvidence)
         }
 
         Telemetry.shared.recordFrameProcessed()
@@ -3952,7 +4378,8 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     private func performMedium(context: FrameContext, generation: UInt64) {
-        guard isGenerationCurrent(generation) else { return }
+        guard isGenerationCurrent(generation),
+              isCaptureGenerationAcceptable(context.captureGeneration) else { return }
         guard let bbox = overlayState.primaryBoundingBox else { return }
         
         let startTime = CACurrentMediaTime()
@@ -3997,14 +4424,11 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
-        Task { @MainActor in
-            guard self.isGenerationCurrent(generation) else { return }
-            await self.emitSuggestion(generation: generation)
-        }
     }
 
     private func performLow(context: FrameContext, generation: UInt64) {
-        guard isGenerationCurrent(generation) else { return }
+        guard isGenerationCurrent(generation),
+              isCaptureGenerationAcceptable(context.captureGeneration) else { return }
         lowFrameCount += 1
         let now = Date()
         let budget = thermalGovernor.nextBudget()
@@ -4055,6 +4479,11 @@ final class AnalysisPipeline: ObservableObject {
 
             lastDETRRequest = now
             let detrStart = CACurrentMediaTime()
+            let detrProvenance = FeatureSampleProvenance(
+                frameID: makeSourceFrameId(from: context.timestamp),
+                captureGeneration: context.captureGeneration,
+                orientation: context.orientation
+            )
             Telemetry.shared.setActiveModule("DETR", active: true)
             print(
                 "[CA_DEBUG][DETR_REQUEST] lowFrame=\(lowFrameCount) sinceLast=\(debugDouble(timeSinceLastDETR)) " +
@@ -4086,12 +4515,15 @@ final class AnalysisPipeline: ObservableObject {
                     var didUseDetrSubject = false
 
                     self.updateFeatures { features in
+                        guard detrProvenance.isKnown,
+                              self.latestHighFrameProvenance == detrProvenance else { return }
                         let measurementTime = Date()
                         self.debugData.detrDetections = detections
                         self.debugData.detrMeasuredAt = measurementTime
                         self.latestDetrSample = self.makeDetrFeatureSample(
                             from: detections,
-                            measuredAt: measurementTime
+                            measuredAt: measurementTime,
+                            provenance: detrProvenance
                         )
 
                         guard !self.shouldPreserveVisionSubjectForLiveDetr(features) else { return }
@@ -4111,7 +4543,8 @@ final class AnalysisPipeline: ObservableObject {
                         "top=\(self.debugDetection(top)) overlay=\(self.debugRect(didUseDetrSubjectSnapshot ? top.boundingBox : self.overlayState.primaryBoundingBox))"
                     )
                     Task { @MainActor in
-                        guard self.isGenerationCurrent(generation) else { return }
+                        guard self.isGenerationCurrent(generation),
+                              self.isCurrentHighFrameProvenance(detrProvenance) else { return }
                         if didUseDetrSubjectSnapshot {
                             if CameraLog.detr {
                                 os_log("🎯 DETR PRIORITY: Using %{public}@ (conf=%.2f) for composition",
@@ -4126,7 +4559,6 @@ final class AnalysisPipeline: ObservableObject {
                                        type: .debug, top.label)
                             }
                         }
-                        await self.emitSuggestion(generation: generation)
                     }
                 } else {
                     if CameraLog.detr {
@@ -4136,12 +4568,15 @@ final class AnalysisPipeline: ObservableObject {
                     }
                     var shouldClearDetrOverlay = false
                     self.updateFeatures { features in
+                        guard detrProvenance.isKnown,
+                              self.latestHighFrameProvenance == detrProvenance else { return }
                         let measurementTime = Date()
                         self.debugData.detrDetections = detections
                         self.debugData.detrMeasuredAt = measurementTime
                         self.latestDetrSample = self.makeDetrFeatureSample(
                             from: detections,
-                            measuredAt: measurementTime
+                            measuredAt: measurementTime,
+                            provenance: detrProvenance
                         )
 
                         guard !self.shouldPreserveVisionSubjectForLiveDetr(features) else { return }
@@ -4160,11 +4595,11 @@ final class AnalysisPipeline: ObservableObject {
                         "top=none overlay=\(self.debugRect(shouldClearDetrOverlaySnapshot ? nil : self.overlayState.primaryBoundingBox))"
                     )
                     Task { @MainActor in
-                        guard self.isGenerationCurrent(generation) else { return }
+                        guard self.isGenerationCurrent(generation),
+                              self.isCurrentHighFrameProvenance(detrProvenance) else { return }
                         if shouldClearDetrOverlaySnapshot {
                             self.overlayState.primaryBoundingBox = nil
                         }
-                        await self.emitSuggestion(generation: generation)
                     }
                 }
             }
@@ -4204,13 +4639,16 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     @MainActor
-    private func emitSuggestion(generation: UInt64) async {
-        guard isGenerationCurrent(generation) else { return }
-        guard let frameEvidence = latestFrameEvidenceStore.snapshot() else { return }
+    private func emitSuggestion(generation: UInt64,
+                                frameEvidence: LatestFrameEvidenceStore.Snapshot) async {
+        guard isCurrentLiveEvidence(frameEvidence, generation: generation),
+              let adapterState = frameEvidence.adapterState else { return }
         let now = Date()
-        let localFeatures = featureQueue.sync { features }
+        let localFeatures = adapterState.features
         
         if localFeatures.motion.state != .still {
+            resetLiveSpatialConfirmation()
+            resetLiveTechnicalConfirmation()
             if lastLiveMotionBecameUnstableAt == nil {
                 lastLiveMotionBecameUnstableAt = now
             }
@@ -4238,28 +4676,14 @@ final class AnalysisPipeline: ObservableObject {
         }
         lastLiveMotionBecameUnstableAt = nil
         
-        if currentSuggestion != nil, now <= suggestionExpiry {
-            // Keep the legacy fallback stable while it is alive; liveHint decides whether it is visible.
-        } else if let pick = suggestionEngine.nextSuggestion(from: localFeatures) {
-            if currentSuggestion?.type == pick.type,
-               currentSuggestion?.text == pick.text {
-                suggestionExpiry = now.addingTimeInterval(pick.ttl)
-            } else {
-                currentSuggestion = pick
-                suggestionExpiry = now.addingTimeInterval(pick.ttl)
-                Telemetry.shared.recordSuggestion(pick)
-            }
-        } else {
-            // Нет новой подсказки — удерживаем прежнюю до TTL
-            if now > suggestionExpiry {
-                currentSuggestion = nil
-            }
-        }
-
         let snapshot = makeFeatureSnapshot(
             mode: .live,
             frameId: frameEvidence.sourceFrameId,
-            capturedAt: frameEvidence.capturedAt
+            capturedAt: frameEvidence.capturedAt,
+            evaluatedAt: now,
+            captureGeneration: frameEvidence.lensGeneration,
+            orientation: frameEvidence.orientation,
+            adapterState: adapterState
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
         let deterministicCritique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
@@ -4289,7 +4713,25 @@ final class AnalysisPipeline: ObservableObject {
             )
             liveNeuralOutcome = nil
         }
-        guard isGenerationCurrent(generation) else { return }
+        guard isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
+        let presentationNow = Date()
+        if currentSuggestion != nil, presentationNow <= suggestionExpiry {
+            // Keep the legacy fallback stable while it is alive; liveHint decides whether it is visible.
+        } else if let pick = suggestionEngine.nextSuggestion(from: localFeatures) {
+            if currentSuggestion?.type == pick.type,
+               currentSuggestion?.text == pick.text {
+                suggestionExpiry = presentationNow.addingTimeInterval(pick.ttl)
+            } else {
+                currentSuggestion = pick
+                suggestionExpiry = presentationNow.addingTimeInterval(pick.ttl)
+                Telemetry.shared.recordSuggestion(pick)
+            }
+        } else if presentationNow > suggestionExpiry {
+            // Нет новой подсказки — удерживаем прежнюю до TTL
+            currentSuggestion = nil
+        }
+
+        guard isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
         let semanticTips = semanticTipPlanner.plan(
@@ -4330,7 +4772,7 @@ final class AnalysisPipeline: ObservableObject {
             legacySuggestion: currentSuggestion,
             structuredAvailable: structuredDecision.isAvailable,
             technicalQualitySignal: technicalQualitySignal,
-            now: now
+            now: presentationNow
         )
         let annotations = makeOverlayAnnotations(
             frameId: snapshot.frameId,
@@ -4342,7 +4784,7 @@ final class AnalysisPipeline: ObservableObject {
             forceLegacyOnly: !structuredDecision.isAvailable,
             liveHint: currentLiveHint
         )
-        publishOverlayAnnotations(annotations, now: now)
+        publishOverlayAnnotations(annotations, now: presentationNow)
     }
 
     @MainActor
@@ -4377,7 +4819,16 @@ final class AnalysisPipeline: ObservableObject {
         currentDemoOverlayAnnotations = demoDecision?.annotations ?? []
         let effectiveHintCandidate: LiveHintPresentation?
         if let demoDecision {
-            effectiveHintCandidate = demoDecision.hint ?? (demoDecision.suppressesPipelineHint ? nil : hintCandidate)
+            if let demoHint = demoDecision.hint {
+                effectiveHintCandidate = LiveCoachQualityGate.allows(
+                    action: demoHint.actionType,
+                    mode: snapshot.mode,
+                    snapshot: snapshot,
+                    semantics: semantics
+                ) ? demoHint : hintCandidate
+            } else {
+                effectiveHintCandidate = demoDecision.suppressesPipelineHint ? nil : hintCandidate
+            }
         } else {
             effectiveHintCandidate = hintCandidate
         }
@@ -4401,7 +4852,12 @@ final class AnalysisPipeline: ObservableObject {
             critique: critique,
             plan: plan
         )
-        applyLiveHint(candidate: effectiveHintCandidate, now: now)
+        applyLiveHint(
+            candidate: effectiveHintCandidate,
+            snapshot: snapshot,
+            semantics: semantics,
+            now: now
+        )
     }
 
     @MainActor
@@ -5381,6 +5837,7 @@ final class AnalysisPipeline: ObservableObject {
 
     @MainActor
     private func clearPresentationStateOnMainActor() {
+        subjectRegions = []
         overlayState = OverlayState(primaryBoundingBox: nil,
                                      horizonAngle: 0,
                                      horizonConfidence: 0,
@@ -5397,9 +5854,46 @@ final class AnalysisPipeline: ObservableObject {
         currentLiveFusionTraceBundle = nil
         currentDemoOverlayAnnotations = []
         demoSubjectTrack = nil
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
+    }
+
+    private func installPausePublicationFence(_ fence: PauseAnalysisPublicationFence) {
+        pausePublicationFenceLock.lock()
+        activePausePublicationFence?.invalidate()
+        activePausePublicationFence = fence
+        pausePublicationFenceLock.unlock()
+    }
+
+    private func invalidatePausePublicationFence(_ expected: PauseAnalysisPublicationFence? = nil) {
+        pausePublicationFenceLock.lock()
+        if let expected, activePausePublicationFence !== expected {
+            pausePublicationFenceLock.unlock()
+            return
+        }
+        let fence = activePausePublicationFence
+        activePausePublicationFence = nil
+        pausePublicationFenceLock.unlock()
+        fence?.invalidate()
+    }
+
+    @discardableResult
+    private func withPausePublicationFence(
+        _ fence: PauseAnalysisPublicationFence?,
+        _ body: () -> Void
+    ) -> Bool {
+        guard let fence else {
+            body()
+            return true
+        }
+        return fence.publishIfValid(body)
     }
 
     func clearPausePresentationState() {
+        invalidatePausePublicationFence()
+#if DEBUG
+        clearPauseAnalysisTimeoutTriggerForTesting()
+#endif
         featureQueue.sync {
             pauseAnalysisRevision += 1
         }
@@ -5425,6 +5919,8 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     func clearLivePresentationState() {
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
         let generation = currentGeneration()
         DispatchQueue.main.async {
             guard self.isGenerationCurrent(generation) else { return }
@@ -5439,11 +5935,56 @@ final class AnalysisPipeline: ObservableObject {
         currentLiveFusionTraceBundle = nil
     }
 
-    // Полный прогон heavy‑модулей на последнем кадре; возвращает legacy suggestions + structured pause critique.
-    func runPauseAnalysis(completion: @escaping ([Suggestion], PauseCritiquePresentation?) -> Void) {
+    /// Accepts one frame from the existing evidence store before an async
+    /// camera stop. The returned handoff contains the exact analysis envelope
+    /// and its immutable display copy; CameraViewModel owns it for the pause
+    /// review while this pipeline remains the single evidence producer.
+    func acceptPauseSnapshot() -> LatestFrameEvidenceStore.AcceptedSnapshot? {
+        latestFrameEvidenceStore.acceptCurrentSnapshot()
+    }
+
+    /// Renders an already accepted immutable pause buffer away from the main
+    /// actor. The caller may begin camera stop immediately after acceptance;
+    /// this method only fills the display half of the same handoff.
+    func renderPauseDisplayImage(
+        for acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot
+    ) async -> LatestFrameEvidenceStore.AcceptedSnapshot? {
+        let evidenceStore = latestFrameEvidenceStore
+        return await withTaskGroup(of: LatestFrameEvidenceStore.AcceptedSnapshot?.self) { group in
+            group.addTask(priority: .userInitiated) {
+                guard !Task.isCancelled else { return nil }
+                let rendered = evidenceStore.renderDisplayImage(for: acceptedSnapshot)
+                guard !Task.isCancelled else { return nil }
+                return rendered
+            }
+            return await group.next() ?? nil
+        }
+    }
+
+    // Полный прогон heavy‑модулей на принятом кадре; возвращает legacy suggestions + structured pause critique.
+    // The optional handoff preserves source compatibility for legacy callers,
+    // while the production pause route always supplies its accepted snapshot.
+    func runPauseAnalysis(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot? = nil,
+        completion: @escaping ([Suggestion], PauseCritiquePresentation?) -> Void
+    ) {
+        runPauseAnalysisImpl(
+            acceptedSnapshot: acceptedSnapshot,
+            publicationFence: nil,
+            claimTerminalPublication: nil,
+            completion: completion
+        )
+    }
+
+    private func runPauseAnalysisImpl(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot?,
+        publicationFence: PauseAnalysisPublicationFence?,
+        claimTerminalPublication: (() -> Bool)?,
+        completion: @escaping ([Suggestion], PauseCritiquePresentation?) -> Void
+    ) {
         let generation = currentGeneration()
         guard isFrameWorkActive(generation) else { return }
-        guard let frameEvidence = latestFrameEvidenceStore.snapshot() else {
+        guard let frameEvidence = acceptedSnapshot?.evidence ?? latestFrameEvidenceStore.snapshot() else {
             completion([], nil)
             return
         }
@@ -5456,7 +5997,15 @@ final class AnalysisPipeline: ObservableObject {
         }
         let analysisCapturedAt = frameEvidence.capturedAt
         let pauseSourceFrameId = frameEvidence.sourceFrameId
-        let baseAdapterState = currentAdapterState()
+        let pauseDetrProvenance = FeatureSampleProvenance(
+            frameID: pauseSourceFrameId,
+            captureGeneration: frameEvidence.lensGeneration,
+            orientation: frameEvidence.orientation
+        )
+        // A production pause always supplies the adapter state captured with
+        // the accepted frame. Falling back to current live state is retained
+        // only for legacy preview callers that do not provide a handoff.
+        let baseAdapterState = acceptedSnapshot?.adapterState ?? currentAdapterState()
         lowQueue.async { [weak self] in
             guard let self, self.isGenerationCurrent(generation) else { return }
             let pauseStateQueue = DispatchQueue(label: "AnalysisPipeline.pauseState")
@@ -5530,27 +6079,57 @@ final class AnalysisPipeline: ObservableObject {
                     let pauseAestheticScore = pauseStateQueue.sync { pauseAestheticScoreOverride }
                     let pauseAestheticMeasuredAt = pauseStateQueue.sync { pauseAestheticMeasuredAt }
 
+                    // M2-006: declare the pause evidence temporality explicitly
+                    // and fail closed on stale sources — a base value outside
+                    // its declared freshness window is dropped (nil), so the
+                    // pause output can never combine current DETR/neural
+                    // inference with stale unmarked Vision/horizon/light.
+                    var recomputeTimestamps: [FeatureSourceID: Date] = [:]
+                    if let pauseDetectionsMeasuredAt {
+                        recomputeTimestamps[.detr] = pauseDetectionsMeasuredAt
+                    }
+                    if let pauseAestheticMeasuredAt {
+                        recomputeTimestamps[.aesthetic] = pauseAestheticMeasuredAt
+                    }
+                    let evidencePackage = PauseEvidencePackage(
+                        envelope: frameEvidence.makeEnvelope(),
+                        recomputeTimestamps: recomputeTimestamps,
+                        asOf: Date()
+                    )
+                    self.lastPauseEvidencePackage = evidencePackage
+                    let visionSample = evidencePackage.isSourceUsable(.vision) ? baseAdapterState.vision : nil
+                    let horizonSample = evidencePackage.isSourceUsable(.horizon) ? baseAdapterState.horizon : nil
+                    let horizonMeasuredAt = evidencePackage.isSourceUsable(.horizon) ? baseAdapterState.horizonMeasuredAt : nil
+                    let lightingSample = evidencePackage.isSourceUsable(.lighting) ? baseAdapterState.lighting : nil
+                    let lightingMeasuredAt = evidencePackage.isSourceUsable(.lighting) ? baseAdapterState.lightingMeasuredAt : nil
+
                     let list = self.suggestionEngine.rankedSuggestions(from: pauseFeatures, topN: 6)
                     let pauseAdapterState = PipelineFeatureSnapshotAdapterState(
                         features: pauseFeatures,
                         debugData: pauseDebugData,
-                        vision: baseAdapterState.vision,
-                        horizonMeasuredAt: baseAdapterState.horizonMeasuredAt,
-                        horizon: baseAdapterState.horizon,
-                        lightingMeasuredAt: baseAdapterState.lightingMeasuredAt,
-                        lighting: baseAdapterState.lighting,
+                        vision: visionSample,
+                        horizonMeasuredAt: horizonMeasuredAt,
+                        horizon: horizonSample,
+                        lightingMeasuredAt: lightingMeasuredAt,
+                        lighting: lightingSample,
                         detr: pauseDetections.map {
-                            self.makeDetrFeatureSample(from: $0, measuredAt: pauseDetectionsMeasuredAt ?? analysisCapturedAt)
+                            self.makeDetrFeatureSample(
+                                from: $0,
+                                measuredAt: pauseDetectionsMeasuredAt ?? analysisCapturedAt,
+                                provenance: pauseDetrProvenance
+                            )
                         } ?? baseAdapterState.detr,
-                        aestheticMeasuredAt: pauseAestheticScore.map { _ in pauseAestheticMeasuredAt ?? analysisCapturedAt } ?? baseAdapterState.aestheticMeasuredAt,
+                        aestheticMeasuredAt: pauseAestheticScore.map { _ in pauseAestheticMeasuredAt ?? analysisCapturedAt } ?? (evidencePackage.isSourceUsable(.aesthetic) ? baseAdapterState.aestheticMeasuredAt : nil),
                         aesthetic: pauseAestheticScore.map {
                             self.makeAestheticFeatureSample(score10: $0, measuredAt: pauseAestheticMeasuredAt ?? analysisCapturedAt)
-                        } ?? baseAdapterState.aesthetic
+                        } ?? (evidencePackage.isSourceUsable(.aesthetic) ? baseAdapterState.aesthetic : nil)
                     )
                     let snapshot = self.makeFeatureSnapshot(
                         mode: .pause,
                         frameId: pauseSourceFrameId,
                         capturedAt: analysisCapturedAt,
+                        captureGeneration: frameEvidence.lensGeneration,
+                        orientation: frameEvidence.orientation,
                         adapterState: pauseAdapterState
                     )
                     let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
@@ -5617,11 +6196,23 @@ final class AnalysisPipeline: ObservableObject {
                             signal: technicalQualitySignal,
                             snapshot: snapshot,
                             semantics: semantics
-                       ) {
+                    ) {
                         guard self.isGenerationCurrent(generation) else { return }
-                        self.currentPauseTraceBundle = nil
-                        self.currentPauseCritique = technicalPauseCritique
-                        self.currentOverlayAnnotations = []
+                        #if DEBUG
+                        if claimTerminalPublication != nil {
+                            self.invokePauseTerminalClaimHookForTesting()
+                        }
+                        #endif
+                        guard claimTerminalPublication?() ?? true else { return }
+                        var didPublish = false
+                        let fenceWasValid = self.withPausePublicationFence(publicationFence) {
+                            guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
+                            self.currentPauseTraceBundle = nil
+                            self.currentPauseCritique = technicalPauseCritique
+                            self.currentOverlayAnnotations = []
+                            didPublish = true
+                        }
+                        guard fenceWasValid, didPublish else { return }
                         completion(list, technicalPauseCritique)
                         return
                     }
@@ -5637,9 +6228,21 @@ final class AnalysisPipeline: ObservableObject {
                             forceLegacyOnly: true
                         )
                         guard self.isGenerationCurrent(generation) else { return }
-                        self.currentPauseCritique = nil
-                        self.currentOverlayAnnotations = fallbackAnnotations
-                        self.currentPauseTraceBundle = nil
+                        #if DEBUG
+                        if claimTerminalPublication != nil {
+                            self.invokePauseTerminalClaimHookForTesting()
+                        }
+                        #endif
+                        guard claimTerminalPublication?() ?? true else { return }
+                        var didPublish = false
+                        let fenceWasValid = self.withPausePublicationFence(publicationFence) {
+                            guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
+                            self.currentPauseCritique = nil
+                            self.currentOverlayAnnotations = fallbackAnnotations
+                            self.currentPauseTraceBundle = nil
+                            didPublish = true
+                        }
+                        guard fenceWasValid, didPublish else { return }
                         completion(list, nil)
                         return
                     }
@@ -5668,9 +6271,21 @@ final class AnalysisPipeline: ObservableObject {
                         legacySuggestions: list
                     )
                     guard self.isGenerationCurrent(generation) else { return }
-                    self.currentPauseTraceBundle = pauseTrace
-                    self.currentPauseCritique = pauseCritique
-                    self.currentOverlayAnnotations = pauseAnnotations
+                    #if DEBUG
+                    if claimTerminalPublication != nil {
+                        self.invokePauseTerminalClaimHookForTesting()
+                    }
+                    #endif
+                    guard claimTerminalPublication?() ?? true else { return }
+                    var didPublish = false
+                    let fenceWasValid = self.withPausePublicationFence(publicationFence) {
+                        guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
+                        self.currentPauseTraceBundle = pauseTrace
+                        self.currentPauseCritique = pauseCritique
+                        self.currentOverlayAnnotations = pauseAnnotations
+                        didPublish = true
+                    }
+                    guard fenceWasValid, didPublish else { return }
                     completion(list, pauseCritique)
 
                     let reasoningRequest = self.makePauseReasoningRequest(
@@ -5683,10 +6298,93 @@ final class AnalysisPipeline: ObservableObject {
                     self.schedulePauseReasoningRefinement(
                         request: reasoningRequest,
                         revision: revision,
-                        generation: generation
+                        generation: generation,
+                        publicationFence: publicationFence
                     )
                 }
             }
+        }
+    }
+
+    /// Production-facing pause contract. The accepted snapshot is mandatory
+    /// here so a failure cannot silently fall through to a newer live frame.
+    /// The legacy overload above remains available for existing preview and
+    /// release tests.
+    func runPauseAnalysisResult(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot?,
+        timeoutNanoseconds: UInt64 = PauseAnalysisTiming.productionTimeoutNanoseconds,
+        completion: @escaping (PauseAnalysisResult, [Suggestion], PauseCritiquePresentation?) -> Void
+    ) {
+        let generation = currentGeneration()
+        guard isFrameWorkActive(generation) else {
+            completion(.cancelled, [], nil)
+            return
+        }
+        guard let acceptedSnapshot else {
+            completion(.failure(.noAcceptedEvidence), [], nil)
+            return
+        }
+        guard pauseAnalysisAvailabilityProvider() else {
+            completion(.failure(.pipelineUnavailable), [], nil)
+            return
+        }
+
+        let publicationFence = PauseAnalysisPublicationFence()
+        installPausePublicationFence(publicationFence)
+        let resultGate = PauseAnalysisResultGate()
+        let timeoutAction: () -> Void = { [weak self, resultGate, publicationFence] in
+            #if DEBUG
+            self?.clearPauseAnalysisTimeoutTriggerForTesting()
+            #endif
+            guard resultGate.finish() else { return }
+            guard publicationFence.invalidateForTimeout() else {
+                completion(.cancelled, [], nil)
+                return
+            }
+            if let self {
+                self.invalidatePausePublicationFence(publicationFence)
+                self.featureQueue.sync {
+                    self.pauseAnalysisRevision += 1
+                }
+            }
+            guard let self, self.isGenerationCurrent(generation) else {
+                completion(.cancelled, [], nil)
+                return
+            }
+            completion(.failure(.timeout), [], nil)
+        }
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            } catch {
+                return
+            }
+            timeoutAction()
+        }
+        resultGate.install(timeoutTask: timeoutTask)
+#if DEBUG
+        installPauseAnalysisTimeoutTriggerForTesting(timeoutAction)
+#endif
+
+        runPauseAnalysisImpl(
+            acceptedSnapshot: acceptedSnapshot,
+            publicationFence: publicationFence,
+            claimTerminalPublication: { [weak self] in
+                let didClaim = resultGate.finish()
+                #if DEBUG
+                if didClaim {
+                    self?.clearPauseAnalysisTimeoutTriggerForTesting()
+                }
+                #endif
+                return didClaim
+            }
+        ) { [weak self, publicationFence] list, critique in
+            guard let self, self.isGenerationCurrent(generation) else {
+                self?.invalidatePausePublicationFence(publicationFence)
+                completion(.cancelled, [], nil)
+                return
+            }
+            completion(critique == nil ? .empty : .success, list, critique)
         }
     }
 
@@ -5765,7 +6463,8 @@ final class AnalysisPipeline: ObservableObject {
                     semanticTip: semanticTip,
                     primaryText: semanticTip.liveText,
                     fallbackUsed: fallbackUsed
-                )
+                ),
+                semanticActionType: semanticTip.actionType
             )
         }
 
@@ -5775,7 +6474,11 @@ final class AnalysisPipeline: ObservableObject {
             critique: critique,
             technicalQualitySignal: technicalQualitySignal
         ),
-           isLiveWorthyContextualCorrection(correction) {
+           isLiveWorthyContextualCorrection(
+                correction,
+                snapshot: snapshot,
+                semantics: semantics
+           ) {
             return LiveHintPresentation(
                 id: "lh_live_contextual_\(correction.idSuffix)",
                 frameId: frameId,
@@ -5794,7 +6497,9 @@ final class AnalysisPipeline: ObservableObject {
                     supportingText: correction.whyProblematic,
                     actionText: correction.pauseActionText,
                     fallbackUsed: fallbackUsed
-                )
+                ),
+                semanticActionType: correction.semanticActionTypes.first
+                    ?? correction.liveActionType?.semanticActionType
             )
         }
 
@@ -5919,6 +6624,13 @@ final class AnalysisPipeline: ObservableObject {
                                          semantics: SceneSemanticsReport?,
                                          fallbackUsed: Bool) -> Bool {
         guard isAllowedDemoLiveSemanticAction(semanticTip.actionType) else { return false }
+        guard LiveCoachQualityGate.allows(
+            action: linkedAction.actionType,
+            semanticActionTypes: [semanticTip.actionType],
+            mode: critique.mode,
+            snapshot: snapshot,
+            semantics: semantics
+        ) else { return false }
 
         switch semanticTip.priorityBand {
         case .primaryCorrective:
@@ -5966,6 +6678,15 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
+        guard LiveCoachQualityGate.allows(
+            action: action.actionType,
+            mode: critique.mode,
+            snapshot: snapshot,
+            semantics: semantics
+        ) else {
+            return false
+        }
+
         guard isAllowedDemoLiveSemanticAction(action.actionType.semanticActionType) else {
             return false
         }
@@ -5998,12 +6719,23 @@ final class AnalysisPipeline: ObservableObject {
         actionType == .improveFrontLight || actionType == .levelHorizon || actionType == .leaveFrameAsIs
     }
 
-    private func isLiveWorthyContextualCorrection(_ correction: ContextualSemanticCorrection) -> Bool {
+    private func isLiveWorthyContextualCorrection(_ correction: ContextualSemanticCorrection,
+                                                  snapshot: FrameFeatureSnapshot?,
+                                                  semantics: SceneSemanticsReport?) -> Bool {
         guard correction.semanticActionTypes.allSatisfy(isAllowedDemoLiveSemanticAction) else {
             return false
         }
-        guard let liveActionType = correction.liveActionType else { return true }
-        return isAllowedDemoLiveSemanticAction(liveActionType.semanticActionType)
+        if let liveActionType = correction.liveActionType,
+           !isAllowedDemoLiveSemanticAction(liveActionType.semanticActionType) {
+            return false
+        }
+        return LiveCoachQualityGate.allows(
+            action: correction.liveActionType,
+            semanticActionTypes: correction.semanticActionTypes,
+            mode: .live,
+            snapshot: snapshot,
+            semantics: semantics
+        )
     }
 
     private func isAllowedDemoLiveSemanticAction(_ actionType: SemanticActionType) -> Bool {
@@ -6012,6 +6744,10 @@ final class AnalysisPipeline: ObservableObject {
 
     private static let demoLiveSemanticActionIds: Set<String> = [
         SemanticActionType.keepCurrentSetup.rawValue,
+        SemanticActionType.shiftFrameLeft.rawValue,
+        SemanticActionType.shiftFrameRight.rawValue,
+        SemanticActionType.shiftFrameUp.rawValue,
+        SemanticActionType.shiftFrameDown.rawValue,
         SemanticActionType.simplifyBackground.rawValue,
         SemanticActionType.waitForBackgroundClearance.rawValue,
         SemanticActionType.stepBack.rawValue,
@@ -6153,7 +6889,7 @@ final class AnalysisPipeline: ObservableObject {
                                    sourceFrameId: String,
                                    trackingResult: VisionTrackingResult,
                                    primarySubject: TrackedSubject?,
-                                   horizon: (angle: CGFloat, confidence: CGFloat),
+                                   horizon: HorizonEstimate,
                                    saliencyBalance: CGFloat,
                                    visionLatency: TimeInterval,
                                    horizonLatency: TimeInterval) {
@@ -6178,8 +6914,9 @@ final class AnalysisPipeline: ObservableObject {
             "saliency=\(debugPoint(trackingResult.saliencyCenter))",
             "saliencyRegion=\(debugRect(trackingResult.saliencyRegion))",
             "saliencyBalance=\(debugDouble(saliencyBalance))",
-            "horizon=\(debugDouble(horizon.angle))",
-            "horizonConf=\(debugDouble(horizon.confidence))",
+            "horizon=\(debugDouble(horizon.isAvailable ? horizon.angleDegrees : 0))",
+            "horizonConf=\(debugDouble(horizon.isAvailable ? horizon.confidence : 0))",
+            "horizonAvailable=\(horizon.isAvailable)",
             "visionMs=\(debugDouble(visionLatency * 1000))",
             "horizonMs=\(debugDouble(horizonLatency * 1000))"
         ]
@@ -6566,7 +7303,8 @@ final class AnalysisPipeline: ObservableObject {
                 supportingText: technicalPauseWhyProblematic(for: issue),
                 actionText: technicalPauseActionText(for: issue),
                 fallbackUsed: false
-            )
+            ),
+            technicalIssueType: issue.type
         )
     }
 
@@ -7094,7 +7832,50 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     @MainActor
-    private func applyLiveHint(candidate: LiveHintPresentation?, now: Date) {
+    private func applyLiveHint(candidate: LiveHintPresentation?,
+                               snapshot: FrameFeatureSnapshot? = nil,
+                               semantics: SceneSemanticsReport? = nil,
+                               now: Date) {
+        var candidate = candidate
+        if let technicalCandidate = candidate, isTechnicalLiveHint(technicalCandidate) {
+            liveSpatialConfirmation = nil
+            guard let snapshot, let semantics else {
+                resetLiveTechnicalConfirmation()
+                return
+            }
+            if let confirmedCandidate = confirmTechnicalLiveHint(
+                technicalCandidate,
+                snapshot: snapshot,
+                semantics: semantics
+            ) {
+                candidate = confirmedCandidate
+            } else {
+                // Keep normal expiry/hold semantics while confirmation is pending.
+                // The confirmation helper retains its technical cadence for valid
+                // frames; the next qualified still frame advances the same window.
+                candidate = nil
+            }
+        } else {
+            resetLiveTechnicalConfirmation()
+        }
+
+        if let snapshot, let semantics {
+            if let spatialCandidate = candidate, isSpatialLiveHint(spatialCandidate) {
+                guard let confirmedCandidate = confirmSpatialLiveHint(
+                    spatialCandidate,
+                    snapshot: snapshot,
+                    semantics: semantics
+                ) else {
+                    return
+                }
+                candidate = confirmedCandidate
+            } else {
+                liveSpatialConfirmation = nil
+            }
+        } else if candidate == nil {
+            liveSpatialConfirmation = nil
+        }
+
         guard let candidate else {
             if currentLiveHint != nil,
                now.timeIntervalSince(liveHintShownAt) >= minLiveHintHold,
@@ -7140,7 +7921,9 @@ final class AnalysisPipeline: ObservableObject {
                 targetRegion: candidate.targetRegion,
                 overlayHint: candidate.overlayHint,
                 isFallback: candidate.isFallback,
-                expandedVerdict: candidate.expandedVerdict
+                expandedVerdict: candidate.expandedVerdict,
+                semanticActionType: candidate.semanticActionType,
+                technicalIssueType: candidate.technicalIssueType
             )
             liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
             return
@@ -7166,6 +7949,124 @@ final class AnalysisPipeline: ObservableObject {
             liveHintShownAt = now
             liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
         }
+    }
+
+    private func isSpatialLiveHint(_ candidate: LiveHintPresentation) -> Bool {
+        switch candidate.actionType {
+        case .moveFrameLeft, .moveFrameRight, .moveFrameUp, .moveFrameDown, .increaseSubjectSize:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func isTechnicalLiveHint(_ candidate: LiveHintPresentation) -> Bool {
+        candidate.id.hasPrefix("lh_live_technical_")
+            || candidate.summaryId?.hasPrefix("technical_quality_") == true
+            || candidate.traceRootIds.contains(where: { $0.hasPrefix("technical_quality_") })
+    }
+
+    private func resetLiveSpatialConfirmation() {
+        liveSpatialConfirmation = nil
+    }
+
+    private func resetLiveTechnicalConfirmation() {
+        liveTechnicalConfirmation = nil
+    }
+
+    private func confirmTechnicalLiveHint(_ candidate: LiveHintPresentation,
+                                          snapshot: FrameFeatureSnapshot,
+                                          semantics: SceneSemanticsReport) -> LiveHintPresentation? {
+        let freshnessLimit = LiveCoachQualityGate.maxVisionFreshnessMilliseconds
+        guard snapshot.mode == .live,
+              semantics.mode == .live,
+              candidate.frameId == snapshot.frameId,
+              candidate.frameId == semantics.frameId,
+              snapshot.motion.state == .still else {
+            resetLiveTechnicalConfirmation()
+            return nil
+        }
+
+        let issueKey = candidate.summaryId
+            ?? candidate.traceRootIds.first
+            ?? candidate.id
+        let actionKey = candidate.actionId ?? "none"
+        let commandKey = "\(issueKey)|\(actionKey)"
+        let nextCount: Int
+        if let previous = liveTechnicalConfirmation,
+           previous.commandKey == commandKey {
+            let gap = snapshot.capturedAt.timeIntervalSince(previous.capturedAt)
+            guard gap > 0,
+                  gap <= TimeInterval(freshnessLimit) / 1000.0 else {
+                liveTechnicalConfirmation = LiveTechnicalConfirmationState(
+                    commandKey: commandKey,
+                    capturedAt: snapshot.capturedAt,
+                    count: 1
+                )
+                return nil
+            }
+            nextCount = min(previous.count + 1, 3)
+        } else {
+            nextCount = 1
+        }
+
+        liveTechnicalConfirmation = LiveTechnicalConfirmationState(
+            commandKey: commandKey,
+            capturedAt: snapshot.capturedAt,
+            count: nextCount
+        )
+        return nextCount >= 3 ? candidate : nil
+    }
+
+    private func confirmSpatialLiveHint(_ candidate: LiveHintPresentation,
+                                        snapshot: FrameFeatureSnapshot,
+                                        semantics: SceneSemanticsReport) -> LiveHintPresentation? {
+        guard snapshot.mode == .live,
+              semantics.mode == .live,
+              snapshot.motion.state == .still,
+              LiveCoachQualityGate.allows(
+                  action: candidate.actionType,
+                  mode: snapshot.mode,
+                  snapshot: snapshot,
+                  semantics: semantics
+              ),
+              let actionType = candidate.actionType else {
+            liveSpatialConfirmation = nil
+            return nil
+        }
+
+        if actionType == .increaseSubjectSize {
+            guard semantics.primarySubject.kind == .person || semantics.primarySubject.kind == .face else {
+                liveSpatialConfirmation = nil
+                return nil
+            }
+        }
+
+        let commandKey = actionType.rawValue
+        let nextCount: Int
+        if let previous = liveSpatialConfirmation,
+           previous.commandKey == commandKey {
+            let gap = snapshot.capturedAt.timeIntervalSince(previous.capturedAt)
+            guard gap > 0,
+                  gap <= TimeInterval(LiveCoachQualityGate.maxVisionFreshnessMilliseconds) / 1000.0 else {
+                liveSpatialConfirmation = LiveSpatialConfirmationState(
+                    commandKey: commandKey,
+                    capturedAt: snapshot.capturedAt,
+                    count: 1
+                )
+                return nil
+            }
+            nextCount = min(previous.count + 1, 3)
+        } else {
+            nextCount = 1
+        }
+
+        liveSpatialConfirmation = LiveSpatialConfirmationState(
+            commandKey: commandKey,
+            capturedAt: snapshot.capturedAt,
+            count: nextCount
+        )
+        return nextCount >= 3 ? candidate : nil
     }
 
     private func liveHintDuration(for hint: LiveHintPresentation) -> TimeInterval {
@@ -9281,7 +10182,7 @@ final class AnalysisPipeline: ObservableObject {
         switch result {
         case let .accepted(validation, diagnostics):
             os_log(
-                "visual_evidence.accepted frame=%{public}@ reason=%{public}@",
+                "visual_evidence.accepted frame=%{private}@ reason=%{private}@",
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: .debug,
                 frameId,
@@ -9293,7 +10194,7 @@ final class AnalysisPipeline: ObservableObject {
                 ? "visual_evidence.skipped.unavailable"
                 : (reason == "policy_blocked" ? "visual_evidence.skipped.policy_blocked" : "visual_evidence.skipped")
             os_log(
-                "%{public}@ frame=%{public}@ reason=%{public}@",
+                "%{public}@ frame=%{private}@ reason=%{private}@",
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: .debug,
                 event,
@@ -9315,7 +10216,7 @@ final class AnalysisPipeline: ObservableObject {
                 logType = .error
             }
             os_log(
-                "%{public}@ frame=%{public}@ reason=%{public}@",
+                "%{public}@ frame=%{private}@ reason=%{private}@",
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: logType,
                 event,
@@ -9328,7 +10229,7 @@ final class AnalysisPipeline: ObservableObject {
                 ? "visual_evidence.policy_violation.mode_not_pause"
                 : "visual_evidence.fail.validation"
             os_log(
-                "%{public}@ frame=%{public}@ violations=%{public}@ reason=%{public}@",
+                "%{public}@ frame=%{private}@ violations=%{private}@ reason=%{private}@",
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: .debug,
                 event,
@@ -9417,7 +10318,8 @@ final class AnalysisPipeline: ObservableObject {
 
     private func schedulePauseReasoningRefinement(request: ReasoningRequest,
                                                   revision: Int,
-                                                  generation: UInt64? = nil) {
+                                                  generation: UInt64? = nil,
+                                                  publicationFence: PauseAnalysisPublicationFence? = nil) {
         let effectiveGeneration = generation ?? currentGeneration()
         guard isFrameWorkActive(effectiveGeneration) else { return }
         cancelPauseReasoningTask()
@@ -9431,7 +10333,7 @@ final class AnalysisPipeline: ObservableObject {
             case let .skipped(reason, diagnostics):
                 let event = reason == "provider_unavailable" ? "reasoning.skipped.unavailable" : "reasoning.skipped"
                 os_log(
-                    "%{public}@ (%{public}@)",
+                    "%{public}@ (%{private}@)",
                     log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                     type: .debug,
                     event,
@@ -9452,7 +10354,7 @@ final class AnalysisPipeline: ObservableObject {
                     logType = .error
                 }
                 os_log(
-                    "%{public}@ (%{public}@)",
+                    "%{public}@ (%{private}@)",
                     log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                     type: logType,
                     event,
@@ -9464,7 +10366,7 @@ final class AnalysisPipeline: ObservableObject {
                     ? "reasoning.policy_violation.mode_not_pause"
                     : "reasoning.fail.validation"
                 os_log(
-                    "%{public}@ (%{public}@), reason=%{public}@",
+                    "%{public}@ (%{private}@), reason=%{private}@",
                     log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                     type: .debug,
                     event,
@@ -9482,17 +10384,20 @@ final class AnalysisPipeline: ObservableObject {
                     guard let current = self.currentPauseCritique, current.frameId == request.frameId else { return }
                     let merged = self.mergePauseCritiqueRefinement(current: current, refined: presentation)
                     guard merged != current else { return }
-                    self.currentPauseCritique = merged
-                    if let baseTrace = self.currentPauseTraceBundle ?? request.trace,
-                       baseTrace.frameId == request.frameId {
-                        self.currentPauseTraceBundle = self.mergeOptionalReasoningTrace(
-                            optionalTraceItems,
-                            into: baseTrace
-                        )
+                    _ = self.withPausePublicationFence(publicationFence) {
+                        guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
+                        self.currentPauseCritique = merged
+                        if let baseTrace = self.currentPauseTraceBundle ?? request.trace,
+                           baseTrace.frameId == request.frameId {
+                            self.currentPauseTraceBundle = self.mergeOptionalReasoningTrace(
+                                optionalTraceItems,
+                                into: baseTrace
+                            )
+                        }
+                        self.lastRefinedPauseFrameId = request.frameId
                     }
-                    self.lastRefinedPauseFrameId = request.frameId
                     os_log(
-                        "Applied pause reasoning refinement for frame=%{public}@ (%{public}@)",
+                        "Applied pause reasoning refinement for frame=%{private}@ (%{private}@)",
                         log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                         type: .debug,
                         request.frameId,
@@ -9577,7 +10482,7 @@ final class AnalysisPipeline: ObservableObject {
         )
         if !bundle.validate(critiqueReport: critique, recommendationPlan: plan).isEmpty {
             os_log(
-                "pause trace validation failed for frame=%{public}@",
+                "pause trace validation failed for frame=%{private}@",
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: .error,
                 critique.frameId
@@ -9599,7 +10504,7 @@ final class AnalysisPipeline: ObservableObject {
         let validationErrors = bundle.validate(critiqueReport: critique, recommendationPlan: plan)
         if !validationErrors.isEmpty {
             os_log(
-                "live fusion trace validation failed for frame=%{public}@",
+                "live fusion trace validation failed for frame=%{private}@",
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: .error,
                 critique.frameId
@@ -10392,10 +11297,10 @@ final class AnalysisPipeline: ObservableObject {
 
     private func actionTypeForComposition(_ composition: CoachingFeatures.Composition) -> ActionTypeV1 {
         if composition.horizontalOffset > 0.15 {
-            return .moveFrameLeft
+            return .moveFrameRight
         }
         if composition.horizontalOffset < -0.15 {
-            return .moveFrameRight
+            return .moveFrameLeft
         }
         if composition.verticalOffset > 0.15 {
             return .moveFrameDown
@@ -10420,6 +11325,12 @@ final class AnalysisPipeline: ObservableObject {
     private func updateFeatures(_ block: (inout CoachingFeatures) -> Void) {
         featureQueue.sync {
             block(&features)
+        }
+    }
+
+    private func isCurrentHighFrameProvenance(_ provenance: FeatureSampleProvenance) -> Bool {
+        featureQueue.sync {
+            provenance.isKnown && latestHighFrameProvenance == provenance
         }
     }
 
@@ -10652,7 +11563,7 @@ final class AnalysisPipeline: ObservableObject {
         let center = computationCenter(from: boundingBox)
         var composition = CoachingFeatures.Composition()
         composition.horizontalOffset = CGFloat((center.x - 0.5) / 0.5)
-        composition.verticalOffset = CGFloat((center.y - 0.333) / 0.333)
+        composition.verticalOffset = max(-1.0, min(1.0, CGFloat((2.0 / 3.0 - center.y) / (1.0 / 3.0))))
         composition.subjectAreaRatio = boundingBox.width * boundingBox.height
         return composition
     }
@@ -10669,7 +11580,7 @@ final class AnalysisPipeline: ObservableObject {
     private func compositionFeatures(fromSaliency center: CGPoint) -> CoachingFeatures.Composition {
         var composition = CoachingFeatures.Composition()
         composition.horizontalOffset = CGFloat((center.x - 0.5) / 0.5)
-        composition.verticalOffset = CGFloat((center.y - 0.333) / 0.333)
+        composition.verticalOffset = max(-1.0, min(1.0, CGFloat((2.0 / 3.0 - center.y) / (1.0 / 3.0))))
         composition.subjectAreaRatio = 0.0
         return composition
     }
@@ -10802,6 +11713,38 @@ final class AnalysisPipeline: ObservableObject {
 
 #if DEBUG
 extension AnalysisPipeline {
+    private func invokePauseTerminalClaimHookForTesting() {
+        pauseTerminalClaimHookLock.lock()
+        let hook = pauseTerminalClaimHook
+        pauseTerminalClaimHookLock.unlock()
+        hook?()
+    }
+
+    func testingSetPauseAnalysisBeforeTerminalClaimHook(_ hook: (() -> Void)?) {
+        pauseTerminalClaimHookLock.lock()
+        pauseTerminalClaimHook = hook
+        pauseTerminalClaimHookLock.unlock()
+    }
+
+    private func installPauseAnalysisTimeoutTriggerForTesting(_ trigger: @escaping () -> Void) {
+        pauseTimeoutTriggerLock.lock()
+        pauseTimeoutTrigger = trigger
+        pauseTimeoutTriggerLock.unlock()
+    }
+
+    private func clearPauseAnalysisTimeoutTriggerForTesting() {
+        pauseTimeoutTriggerLock.lock()
+        pauseTimeoutTrigger = nil
+        pauseTimeoutTriggerLock.unlock()
+    }
+
+    func testingTriggerPauseAnalysisTimeout() {
+        pauseTimeoutTriggerLock.lock()
+        let trigger = pauseTimeoutTrigger
+        pauseTimeoutTriggerLock.unlock()
+        trigger?()
+    }
+
     @MainActor
     func testingReplayStillImageForSemanticEval(recordId: String,
                                                 filename: String,
@@ -10887,6 +11830,7 @@ extension AnalysisPipeline {
             latestLightingSample = nil
             latestLightingMeasuredAt = nil
             latestDetrSample = nil
+            latestHighFrameProvenance = nil
             latestAestheticSample = nil
             latestAestheticMeasuredAt = nil
             latestLiveNeuralOutcome = nil
@@ -10909,6 +11853,7 @@ extension AnalysisPipeline {
             horizonConfidence: 0,
             saliencyBalance: 0
         )
+        subjectRegions = []
     }
 
     @MainActor
@@ -10967,7 +11912,7 @@ extension AnalysisPipeline {
     @MainActor
     private func testingApplyVisionAndHorizonForReplay(trackingResult: VisionTrackingResult,
                                                        primarySubject: TrackedSubject?,
-                                                       horizon: (angle: CGFloat, confidence: CGFloat),
+                                                       horizon: HorizonEstimate,
                                                        saliencyBalance: CGFloat,
                                                        measuredAt: Date) {
         let visionSubjectsPayload = trackingResult.subjects.map {
@@ -10980,8 +11925,8 @@ extension AnalysisPipeline {
         let visionBaseConfidence = visionSubjectsPayload.map(\.confidence).max()
 
         updateFeatures { features in
-            features.horizon.angle = horizon.angle
-            features.horizon.confidence = horizon.confidence
+            features.horizon.angle = horizon.isAvailable ? horizon.angleDegrees : 0
+            features.horizon.confidence = horizon.isAvailable ? horizon.confidence : 0
             features.motion.shakeLevel = 0
             features.motion.state = .still
 
@@ -11024,19 +11969,19 @@ extension AnalysisPipeline {
             )
             self.latestHorizonSample = FeatureSample(
                 value: FeatureSnapshotHorizonPayload(
-                    angleDegrees: Double(horizon.angle),
-                    confidence: Double(horizon.confidence)
+                    angleDegrees: horizon.isAvailable ? Double(horizon.angleDegrees) : 0,
+                    confidence: horizon.isAvailable ? Double(horizon.confidence) : 0
                 ),
                 measuredAt: measuredAt,
-                baseConfidence: Double(horizon.confidence)
+                baseConfidence: horizon.isAvailable ? Double(horizon.confidence) : nil
             )
             self.latestHorizonMeasuredAt = measuredAt
         }
 
         overlayState = OverlayState(
             primaryBoundingBox: primarySubject?.boundingBox,
-            horizonAngle: horizon.angle,
-            horizonConfidence: horizon.confidence,
+            horizonAngle: horizon.isAvailable ? horizon.angleDegrees : 0,
+            horizonConfidence: horizon.isAvailable ? horizon.confidence : 0,
             saliencyBalance: saliencyBalance
         )
     }
@@ -11908,6 +12853,19 @@ extension AnalysisPipeline {
     }
 
     @MainActor
+    func testingApplyLiveHintCandidate(_ candidate: LiveHintPresentation?,
+                                       snapshot: FrameFeatureSnapshot,
+                                       semantics: SceneSemanticsReport,
+                                       now: Date = Date()) {
+        applyLiveHint(
+            candidate: candidate,
+            snapshot: snapshot,
+            semantics: semantics,
+            now: now
+        )
+    }
+
+    @MainActor
     func testingPreparePauseState(critique: PauseCritiquePresentation,
                                   traceBundle: ExplainabilityTraceBundle,
                                   revision: Int,
@@ -12070,6 +13028,10 @@ extension AnalysisPipeline {
 
     var testingLatestFrameEvidence: LatestFrameEvidenceStore.Snapshot? {
         latestFrameEvidenceStore.snapshot()
+    }
+
+    func testingDrainHighQueue() async {
+        await drainQueue(highQueue)
     }
 
     var testingFeatureEvidenceSampleCount: Int {

@@ -11,7 +11,7 @@ import RealityKit
 
 
 protocol CameraScreenInteractorProtocol: AnyObject {
-    func startRecording()
+    func startRecording() -> Bool
     func stopRecording()
     func prepareARView(arView: ARView)
     func prepareRecorder()
@@ -301,15 +301,16 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
         cameraService.session(session, didUpdate: frame)
     }
     
-    func startRecording() {
+    func startRecording() -> Bool {
+        guard cameraService.startRecording() else { return false }
+
         timer.invalidate()
         elapsedTime = 1
         timer = Timer(timeInterval: 1.0, target: self, selector: #selector(startCounting), userInfo: nil, repeats: true)
         RunLoop.current.add(timer, forMode: .default)
         finishEditingAtOnce { _ in }
         //finishEditingOneByOne {_ in}
-        cameraService.startRecording()
-        
+        return true
     }
     
     @objc func startCounting() {

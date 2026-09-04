@@ -51,6 +51,7 @@ FeatureAggregationInput
 - frameId: String
 - mode: AnalysisMode
 - capturedAt: Date
+- evaluatedAt: Date
 - motionState: CameraAnalysisMotionState
 - shakeLevel: CGFloat
 - vision: VisionSample?
@@ -72,6 +73,7 @@ FeatureAggregationInput
 Обязательные правила:
 - каждый `*Sample` обязан иметь `measuredAt`;
 - `baseConfidence` может быть `nil`, если модуль confidence не дает;
+- `evaluatedAt` фиксируется в момент оценки (`now` в production path), а не в момент публикации UI;
 - stale-eviction: если `freshnessMs > 3 * budgetMs`, sample считается недоступным (`available=false`, payload не используется);
 - сбор `FeatureAggregationInput` выполняется атомарно из одного `featureQueue` snapshot, чтобы исключить смешивание разных update-циклов.
 
@@ -81,7 +83,7 @@ FeatureAggregationInput
 
 Для каждого источника:
 - `available = sample != nil` и sample не прошел stale-eviction;
-- `freshnessMs = max(0, floor((capturedAt - measuredAt) * 1000))` в миллисекундах (если sample есть);
+- `freshnessMs = max(0, floor((evaluatedAt - measuredAt) * 1000))` в миллисекундах (если sample есть); для frame-age учитывается также `evaluatedAt - capturedAt`;
 - `confidence = effectiveSourceConfidence(sample)` после freshness penalty.
 
 Freshness budget (`v1`):
@@ -128,12 +130,13 @@ Confidence formula (`deterministic`):
    - `label asc`
    - `midX asc`
    - `midY asc`
-3. Для каждого кандидата вычисляется `effectiveCandidateConfidence`:
-   - Vision: `clamp01(rawConfidence * (sources.vision.confidence ?? 1.0))`
-   - DETR: `clamp01(rawConfidence * (sources.detr.confidence ?? 1.0))`
+3. Для каждого кандидата разделяются ranking и publication:
+   - `publishedConfidence = clamp01(rawConfidence * freshnessRatio(source, freshnessMs))`;
+   - `rankingScore` может учитывать kind/region/label priors, но эти priors не попадают в `publishedConfidence`;
+   - `sources.*.confidence` — агрегированная source confidence и не умножается на candidate confidence повторно.
 4. Выбор primary candidate:
-   - рассматриваются только кандидаты с `effectiveCandidateConfidence >= 0.20`;
-   - выбирается кандидат с максимальным `effectiveCandidateConfidence`;
+   - рассматриваются только кандидаты с `rankingScore >= 0.20`;
+   - выбирается кандидат с максимальным `rankingScore`;
    - при равенстве (`abs(delta) < 0.01`) приоритет у Vision-кандидата;
    - если eligible-кандидатов нет: `primaryCandidateRegion=nil`, `primaryCandidateConfidence=nil`.
 5. Нормализация региона:
@@ -145,9 +148,11 @@ Confidence formula (`deterministic`):
 - `personDetected = (vision.personCount > 0) || (vision.faceCount > 0)` (enforce invariants `faceDetected => personDetected`)
 - `personCount = vision.personCount` (если нет vision -> `0`; DETR никогда не влияет на это поле)
 - `topObjectLabel = detr.top1.label`
-- `topObjectConfidence = detr.top1.confidence`
+- `topObjectConfidence = detr.top1.confidence`, уменьшенный ровно одним `freshnessRatio`;
 - `primaryCandidateRegion = selected.region`
-- `primaryCandidateConfidence = selected.effectiveCandidateConfidence`
+- `primaryCandidateConfidence = selected.publishedConfidence`;
+
+`Vision VNConfidence` и `DETR confidence` здесь являются сырыми evidence/geometric-support scores, а не калиброванными вероятностями. Snapshot публикует их как evidence confidence после единственной freshness discount; downstream semantics/critique не должны повторно умножать их на source confidence или priors.
 
 ### 4) `horizon`
 
@@ -280,7 +285,7 @@ objects: totalCount=0, topKLabels=[]
 - добавлен детерминированный DETR tie-break;
 - закреплено source ownership для `personCount` (только Vision);
 - исправлен диапазон `AestheticScorer` до `0...10`;
-- выбор primary candidate переведен на `effectiveCandidateConfidence`;
+- выбор primary candidate разделяет `rankingScore` и `publishedConfidence`; повторное умножение raw confidence на source confidence запрещено;
 - формализована нормализация и отбрасывание вырожденных `NormalizedRect`;
 - уточнен расчет `freshnessMs` (clamp + rounding policy).
 

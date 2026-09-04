@@ -2,23 +2,35 @@ import SwiftUI
 import UIKit
 
 enum CameraCoachEntryCopy {
-    static let introTitle = "Снимайте увереннее"
-    static let introBody = "Camera Coach подсказывает, что улучшить в кадре. Базовый анализ работает на устройстве."
-    static let introAction = "Открыть камеру"
+    static let introTitleKey = SETCopyKey.entryPoster
+    static let introBodyKey = SETCopyKey.entryBody
+    static let introActionKey = SETCopyKey.actionMain
+    static let permissionContextTitleKey = SETCopyKey.permissionTitle
+    static let permissionContextBodyKey = SETCopyKey.permissionBody
+    static let localProcessingKey = SETCopyKey.entryLocalProcessing
+    static let permissionContextActionKey = SETCopyKey.permissionContinue
+    static let blockedBodyKey = SETCopyKey.entryBlockedBody
+    static let settingsActionKey = SETCopyKey.openSettings
+    static let recheckActionKey = SETCopyKey.checkAgain
+    static let settingsFallbackKey = SETCopyKey.entrySettingsFallback
 
-    static let permissionContextTitle = "Разрешите доступ к камере"
-    static let permissionContextBody = "Камера нужна, чтобы показать кадр и проверить изменение."
-    static let localProcessingSentence = "Базовый анализ работает на устройстве."
-    static let permissionContextAction = "Продолжить"
-
-    static let deniedTitle = "Доступ к камере выключен"
-    static let restrictedTitle = "Доступ к камере ограничен системой"
-    static let unavailableTitle = "Камера недоступна на этом устройстве"
-    static let unknownTitle = "Не удалось определить доступ к камере"
-    static let blockedBody = "Без доступа к камере локальный Coach не может показать кадр и проверить изменение."
-    static let settingsAction = "Открыть Настройки"
-    static let recheckAction = "Проверить снова"
-    static let settingsFallback = "Откройте Настройки → Конфиденциальность и безопасность → Камера и включите доступ для приложения."
+    // String accessors preserve the existing test-facing API while resolving
+    // visible copy through the String Catalog at render time.
+    static var introTitle: String { introTitleKey.localizedString }
+    static var introBody: String { introBodyKey.localizedString }
+    static var introAction: String { introActionKey.localizedString }
+    static var permissionContextTitle: String { permissionContextTitleKey.localizedString }
+    static var permissionContextBody: String { permissionContextBodyKey.localizedString }
+    static var localProcessingSentence: String { localProcessingKey.localizedString }
+    static var permissionContextAction: String { permissionContextActionKey.localizedString }
+    static var deniedTitle: String { SETCopyKey.blockedDenied.localizedString }
+    static var restrictedTitle: String { SETCopyKey.blockedRestricted.localizedString }
+    static var unavailableTitle: String { SETCopyKey.blockedUnavailable.localizedString }
+    static var unknownTitle: String { SETCopyKey.blockedUnknown.localizedString }
+    static var blockedBody: String { blockedBodyKey.localizedString }
+    static var settingsAction: String { settingsActionKey.localizedString }
+    static var recheckAction: String { recheckActionKey.localizedString }
+    static var settingsFallback: String { settingsFallbackKey.localizedString }
 }
 
 enum CameraCoachEntryAccessibilityID {
@@ -40,6 +52,8 @@ enum CameraCoachEntryAccessibilityID {
     static let blockedTitle = "camera-coach-entry-blocked-title"
     static let blockedBody = "camera-coach-entry-blocked-body"
     static let settingsFallback = "camera-coach-entry-settings-fallback"
+    static let posterRail = "camera-coach-entry-poster-rail"
+    static let phaseColumn = "camera-coach-entry-phase-column"
 
     static let openCameraAction = "camera-coach-entry-open-camera"
     static let continueAction = "camera-coach-entry-continue"
@@ -48,14 +62,21 @@ enum CameraCoachEntryAccessibilityID {
 }
 
 enum CameraCoachEntryVisualPolicy {
-    // Source markers for the focused contract tests: appearance still requires
-    // manual screenshot inspection in the real process UI evidence.
     static let sourceMarkers = [
-        "neutral-surface",
-        "typography-spacing-hierarchy",
-        "no-camera-preview",
-        "no-card-pill-glass-blur-gradient"
+        "set-os-two-registers",
+        "poster-typography-bilingual",
+        "single-orange-accent-wcag",
+        "mono-hud",
+        "glass-mark-annotation",
+        "leader-countdown",
+        "state-table-camera-coach",
+        "motion-respects-reduce-motion"
     ]
+}
+
+private enum EntryMarkerPlacement: Equatable {
+    case action
+    case title
 }
 
 struct CameraCoachEntryView: View {
@@ -63,111 +84,359 @@ struct CameraCoachEntryView: View {
     let onOpenCamera: () -> Void
     let onContinuePermissionRequest: () -> Void
     let onRecheckCameraAccess: () -> Void
+    let markerEventID: String?
+    let markerDrawProgress: CGFloat
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .largeTitle)
+    private var entryDisplayLargeSize: CGFloat = SETTypographySize.displayLarge
+    @ScaledMetric(relativeTo: .title)
+    private var entryDisplayCompactSize: CGFloat = SETTypographySize.displayMedium
     @State private var showsSettingsFallback = false
 
     init(
         phase: CameraCoachEntryPhase,
         onOpenCamera: @escaping () -> Void,
         onContinuePermissionRequest: @escaping () -> Void,
-        onRecheckCameraAccess: @escaping () -> Void
+        onRecheckCameraAccess: @escaping () -> Void,
+        markerEventID: String? = nil,
+        markerDrawProgress: CGFloat = 1
     ) {
         self.phase = phase
         self.onOpenCamera = onOpenCamera
         self.onContinuePermissionRequest = onContinuePermissionRequest
         self.onRecheckCameraAccess = onRecheckCameraAccess
+        self.markerEventID = markerEventID
+        self.markerDrawProgress = markerDrawProgress
     }
 
     var body: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                Color.setInk
+                    .ignoresSafeArea()
 
-            content
+                editorialContent(in: proxy)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                SETRegistrationMarks(color: .setWarmWhite, corner: .topLeading)
+                    .padding(.horizontal, proxy.safeAreaInsets.leading + SETSpacing.x4)
+                    .padding(.vertical, proxy.safeAreaInsets.top + SETSpacing.x4)
+            }
         }
         .preferredColorScheme(.dark)
         .accessibilityIdentifier(Self.rootAccessibilityIdentifier(for: phase))
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func editorialContent(in proxy: GeometryProxy) -> some View {
+        let availableSize = CGSize(
+            width: max(0, proxy.size.width - proxy.safeAreaInsets.leading - proxy.safeAreaInsets.trailing),
+            height: max(0, proxy.size.height - proxy.safeAreaInsets.top - proxy.safeAreaInsets.bottom)
+        )
+        let layout = SETEntryLayout.resolve(
+            container: availableSize,
+            accessibilityType: dynamicTypeSize.isAccessibilitySize
+        )
+        let horizontalPadding = layout.contentPadding
+        let sectionWidth = min(
+            SETComponentMetric.gallerySectionMaxWidth,
+            max(0, availableSize.width - horizontalPadding * 2)
+        )
+        let splitRailWidth = min(
+            sectionWidth * layout.landscapeRailFraction,
+            max(0, sectionWidth - layout.columnSpacing - SETComponentMetric.entryLandscapeMinimumPhaseWidth)
+        )
+        let splitPhaseWidth = max(0, sectionWidth - splitRailWidth - layout.columnSpacing)
+
+        ScrollView(.vertical) {
+            Group {
+                if layout.isSplit {
+                    HStack(alignment: .top, spacing: layout.columnSpacing) {
+                        posterColumn
+                            .frame(width: splitRailWidth, alignment: .leading)
+                        phaseColumnContainer(for: layout)
+                            .frame(width: splitPhaseWidth, alignment: .leading)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: layout.columnSpacing) {
+                        posterColumn
+                        phaseColumnContainer(for: layout)
+                    }
+                }
+            }
+            .frame(width: sectionWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, layout.contentPadding)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private var posterColumn: some View {
+        HStack(alignment: .center, spacing: SETSpacing.x3) {
+            Text(SETCopyKey.modeCamera.localizedTextKey)
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .tracking(SETTypographySize.label * 0.05)
+                .foregroundStyle(.setTextSecondary)
+
+            Rectangle()
+                .fill(.setHairline)
+                .frame(maxWidth: .infinity, minHeight: SETStroke.hairline, maxHeight: SETStroke.hairline)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(SETCopyKey.modeCamera.localizedTextKey))
+        .accessibilityIdentifier(CameraCoachEntryAccessibilityID.posterRail)
+    }
+
+    @ViewBuilder
+    private func phaseColumn(for layout: SETEntryLayout) -> some View {
         switch phase {
         case .resolving:
-            Text("Подготовка…")
-                .font(.footnote)
-                .foregroundStyle(Color.white.opacity(0.62))
-                .accessibilityIdentifier(CameraCoachEntryAccessibilityID.resolvingRoot)
-                .accessibilityLabel("Подготовка")
-
-        case .ready:
-            Text("Подготовка…")
-                .font(.footnote)
-                .foregroundStyle(Color.white.opacity(0.62))
-                .accessibilityIdentifier(CameraCoachEntryAccessibilityID.readyRoot)
-                .accessibilityLabel("Камера готова")
-
-        case .intro:
-            entryCopy(
-                title: CameraCoachEntryCopy.introTitle,
-                titleIdentifier: CameraCoachEntryAccessibilityID.introTitle,
-                body: CameraCoachEntryCopy.introBody,
-                bodyIdentifier: CameraCoachEntryAccessibilityID.introBody,
-                primaryTitle: CameraCoachEntryCopy.introAction,
-                primaryIdentifier: CameraCoachEntryAccessibilityID.openCameraAction,
-                primaryAccessibilityLabel: CameraCoachEntryCopy.introAction,
-                primaryAccessibilityHint: "Переходит к объяснению доступа к камере",
-                primaryAction: onOpenCamera
+            statusPanel(
+                title: .entryResolving,
+                rootIdentifier: CameraCoachEntryAccessibilityID.resolvingRoot,
+                accessibilityLabel: .entryResolving,
+                markerKind: nil,
+                layout: layout
             )
-
-        case .permissionContext:
-            entryCopy(
-                title: CameraCoachEntryCopy.permissionContextTitle,
-                titleIdentifier: CameraCoachEntryAccessibilityID.permissionContextTitle,
-                body: CameraCoachEntryCopy.permissionContextBody,
-                bodyIdentifier: CameraCoachEntryAccessibilityID.permissionContextBody,
-                supplemental: CameraCoachEntryCopy.localProcessingSentence,
-                supplementalIdentifier: CameraCoachEntryAccessibilityID.permissionContextLocalProcessing,
-                primaryTitle: CameraCoachEntryCopy.permissionContextAction,
-                primaryIdentifier: CameraCoachEntryAccessibilityID.continueAction,
-                primaryAccessibilityLabel: CameraCoachEntryCopy.permissionContextAction,
-                primaryAccessibilityHint: "Открывает системный запрос доступа к камере",
-                primaryAction: onContinuePermissionRequest
-            )
-
         case .requesting:
-            Text("Подготовка…")
-                .font(.footnote)
-                .foregroundStyle(Color.white.opacity(0.62))
-                .accessibilityIdentifier(CameraCoachEntryAccessibilityID.permissionContextRoot)
-                .accessibilityLabel("Запрос доступа к камере выполняется")
-
+            statusPanel(
+                title: .entryRequesting,
+                rootIdentifier: CameraCoachEntryAccessibilityID.requestingRoot,
+                accessibilityLabel: .entryRequesting,
+                markerKind: nil,
+                layout: layout
+            )
+        case .ready:
+            statusPanel(
+                title: .entryReady,
+                rootIdentifier: CameraCoachEntryAccessibilityID.readyRoot,
+                accessibilityLabel: .entryReady,
+                markerKind: .bracket,
+                layout: layout
+            )
+        case .intro:
+            entryPanel(
+                title: CameraCoachEntryCopy.introTitleKey,
+                titleIdentifier: CameraCoachEntryAccessibilityID.introTitle,
+                body: CameraCoachEntryCopy.introBodyKey,
+                bodyIdentifier: CameraCoachEntryAccessibilityID.introBody,
+                markerKind: .underline,
+                actionTitle: CameraCoachEntryCopy.introActionKey,
+                actionIdentifier: CameraCoachEntryAccessibilityID.openCameraAction,
+                actionLabel: .accessibilityOpenCamera,
+                actionHint: .entryHelper,
+                action: onOpenCamera,
+                layout: layout
+            )
+        case .permissionContext:
+            entryPanel(
+                title: CameraCoachEntryCopy.permissionContextTitleKey,
+                titleIdentifier: CameraCoachEntryAccessibilityID.permissionContextTitle,
+                body: CameraCoachEntryCopy.permissionContextBodyKey,
+                bodyIdentifier: CameraCoachEntryAccessibilityID.permissionContextBody,
+                supplemental: CameraCoachEntryCopy.localProcessingKey,
+                supplementalIdentifier: CameraCoachEntryAccessibilityID.permissionContextLocalProcessing,
+                markerKind: .underline,
+                actionTitle: CameraCoachEntryCopy.permissionContextActionKey,
+                actionIdentifier: CameraCoachEntryAccessibilityID.continueAction,
+                actionLabel: .accessibilityContinue,
+                actionHint: .permissionTitle,
+                action: onContinuePermissionRequest,
+                layout: layout
+            )
         case .blocked(let reason):
-            blockedCopy(for: reason)
+            blockedPanel(for: reason, layout: layout)
+        }
+    }
+
+    private func phaseColumnContainer(for layout: SETEntryLayout) -> some View {
+        phaseColumn(for: layout)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(CameraCoachEntryAccessibilityID.phaseColumn)
+    }
+
+    private func statusPanel(
+        title: SETCopyKey,
+        rootIdentifier: String,
+        accessibilityLabel: SETCopyKey,
+        markerKind: SETMarkerKind?,
+        layout: SETEntryLayout
+    ) -> some View {
+        VStack(alignment: .leading, spacing: layout.sectionSpacing) {
+            Text(title.localizedTextKey)
+                .font(SETTypography.uiBodyFont(weight: .semibold))
+                .foregroundStyle(.setTextPrimary)
+                .accessibilityLabel(Text(accessibilityLabel.localizedTextKey))
+
+            if let markerKind {
+                markerRail(kind: markerKind)
+            }
+        }
+        .accessibilityIdentifier(rootIdentifier)
+    }
+
+    @ViewBuilder
+    private func entryPanel(
+        title: SETCopyKey,
+        titleIdentifier: String,
+        body: SETCopyKey,
+        bodyIdentifier: String,
+        supplemental: SETCopyKey? = nil,
+        supplementalIdentifier: String? = nil,
+        markerKind: SETMarkerKind,
+        markerPlacement: EntryMarkerPlacement = .action,
+        actionTitle: SETCopyKey,
+        actionIdentifier: String,
+        actionLabel: SETCopyKey,
+        actionHint: SETCopyKey,
+        action: @escaping () -> Void,
+        secondaryAction: (() -> Void)? = nil,
+        secondaryTitle: SETCopyKey? = nil,
+        secondaryIdentifier: String? = nil,
+        footer: SETCopyKey? = nil,
+        layout: SETEntryLayout
+    ) -> some View {
+        VStack(alignment: .leading, spacing: layout.sectionSpacing) {
+            if markerPlacement == .title {
+                entryTitle(
+                    title,
+                    identifier: titleIdentifier,
+                    markerKind: markerKind,
+                    layout: layout
+                )
+            } else {
+                entryTitle(title, identifier: titleIdentifier, layout: layout)
+            }
+
+            Text(body.localizedTextKey)
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextSecondary)
+                .lineSpacing(SETSpacing.x1)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier(bodyIdentifier)
+
+            if let supplemental, let supplementalIdentifier {
+                Text(supplemental.localizedTextKey)
+                    .font(SETTypography.uiLabelFont())
+                    .foregroundStyle(.setTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier(supplementalIdentifier)
+            }
+
+            VStack(alignment: .leading, spacing: SETSpacing.x2) {
+                SETDigitalAction(title: actionTitle, helper: .entryHelper, action: action)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier(actionIdentifier)
+                    .accessibilityLabel(Text(actionLabel.localizedTextKey))
+                    .accessibilityHint(Text(actionHint.localizedTextKey))
+
+                if markerPlacement == .action {
+                    markerRail(kind: markerKind)
+                }
+            }
+
+            if let secondaryAction,
+               let secondaryTitle,
+               let secondaryIdentifier {
+                Button(action: secondaryAction) {
+                    SETCommandLabel(key: secondaryTitle, color: .setTextSecondary)
+                        .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(secondaryIdentifier)
+                .accessibilityLabel(Text(secondaryTitle.localizedTextKey))
+                .accessibilityHint(Text(SETCopyKey.accessibilityRecheck.localizedTextKey))
+            }
+
+            if let footer {
+                Text(footer.localizedTextKey)
+                    .font(SETTypography.uiLabelFont())
+                    .foregroundStyle(.setTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(CameraCoachEntryAccessibilityID.settingsFallback)
+                    .accessibilityLabel(Text(footer.localizedTextKey))
+            }
         }
     }
 
     @ViewBuilder
-    private func blockedCopy(for reason: CameraCoachCameraBlockReason) -> some View {
-        let presentation = blockedPresentation(for: reason)
+    private func entryTitle(
+        _ title: SETCopyKey,
+        identifier: String,
+        markerKind: SETMarkerKind? = nil,
+        layout: SETEntryLayout
+    ) -> some View {
+        let titleText = Text(title.localizedTextKey)
+            .font(
+                SETTypography.font(
+                    .display,
+                    size: layout.isCompactHeight ? entryDisplayCompactSize : entryDisplayLargeSize
+                )
+            )
+            .fontWeight(.bold)
+            .minimumScaleFactor(0.60)
+            .foregroundStyle(.setTextPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier(identifier)
 
-        entryCopy(
+        if let markerKind {
+            VStack(alignment: .leading, spacing: SETSpacing.x2) {
+                titleText
+                // Keep the single orange punctuation in its own rail. This
+                // reserves space below the glyphs, so a marker can never
+                // become an outline that clips a localized title.
+                markerRail(kind: markerKind)
+            }
+        } else { titleText }
+    }
+
+    private func markerRail(kind: SETMarkerKind) -> some View {
+        GlassMarkGuide(kind: kind, color: .setOrange, drawProgress: markerDrawProgress)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: SETComponentMetric.entryMarkerRailHeight,
+            maxHeight: SETComponentMetric.entryMarkerRailHeight,
+            alignment: .leading
+        )
+        .animation(
+            reduceMotion
+                ? .easeOut(duration: SETMotion.reducedMotionCrossfadeDuration)
+                : .linear(duration: SETMotion.markerDrawDuration),
+            value: markerDrawProgress
+        )
+    }
+
+    @ViewBuilder
+    private func blockedPanel(
+        for reason: CameraCoachCameraBlockReason,
+        layout: SETEntryLayout
+    ) -> some View {
+        let presentation = blockedPresentation(for: reason)
+        entryPanel(
             title: presentation.title,
             titleIdentifier: CameraCoachEntryAccessibilityID.blockedTitle,
-            body: CameraCoachEntryCopy.blockedBody,
+            body: CameraCoachEntryCopy.blockedBodyKey,
             bodyIdentifier: CameraCoachEntryAccessibilityID.blockedBody,
-            primaryTitle: presentation.primaryTitle,
-            primaryIdentifier: presentation.primaryIdentifier,
-            primaryAccessibilityLabel: presentation.primaryTitle,
-            primaryAccessibilityHint: reason == .denied
-                ? "Открывает настройки доступа к камере"
-                : "Повторно проверяет доступ к камере",
-            primaryAction: presentation.primaryAction,
-            secondaryTitle: reason == .denied ? CameraCoachEntryCopy.recheckAction : nil,
-            secondaryIdentifier: reason == .denied ? CameraCoachEntryAccessibilityID.recheckAction : nil,
-            secondaryAccessibilityHint: reason == .denied ? "Повторно проверяет доступ к камере" : nil,
+            markerKind: .underline,
+            markerPlacement: .title,
+            actionTitle: presentation.primaryTitle,
+            actionIdentifier: presentation.primaryIdentifier,
+            actionLabel: presentation.primaryLabel,
+            actionHint: presentation.primaryHint,
+            action: presentation.primaryAction,
             secondaryAction: reason == .denied ? onRecheckCameraAccess : nil,
-            footer: showsSettingsFallback ? settingsFallback : nil
+            secondaryTitle: reason == .denied ? CameraCoachEntryCopy.recheckActionKey : nil,
+            secondaryIdentifier: reason == .denied ? CameraCoachEntryAccessibilityID.recheckAction : nil,
+            footer: showsSettingsFallback ? CameraCoachEntryCopy.settingsFallbackKey : nil,
+            layout: layout
         )
     }
 
@@ -177,140 +446,41 @@ struct CameraCoachEntryView: View {
         switch reason {
         case .denied:
             return BlockedPresentation(
-                title: CameraCoachEntryCopy.deniedTitle,
-                primaryTitle: CameraCoachEntryCopy.settingsAction,
+                title: .blockedDenied,
+                primaryTitle: .openSettings,
                 primaryIdentifier: CameraCoachEntryAccessibilityID.openSettingsAction,
+                primaryLabel: .accessibilityOpenSettings,
+                primaryHint: .accessibilityOpenSettings,
                 primaryAction: openSettings
             )
         case .restricted:
             return BlockedPresentation(
-                title: CameraCoachEntryCopy.restrictedTitle,
-                primaryTitle: CameraCoachEntryCopy.recheckAction,
+                title: .blockedRestricted,
+                primaryTitle: .checkAgain,
                 primaryIdentifier: CameraCoachEntryAccessibilityID.recheckAction,
+                primaryLabel: .accessibilityRecheck,
+                primaryHint: .accessibilityRecheck,
                 primaryAction: onRecheckCameraAccess
             )
         case .unavailable:
             return BlockedPresentation(
-                title: CameraCoachEntryCopy.unavailableTitle,
-                primaryTitle: CameraCoachEntryCopy.recheckAction,
+                title: .blockedUnavailable,
+                primaryTitle: .checkAgain,
                 primaryIdentifier: CameraCoachEntryAccessibilityID.recheckAction,
+                primaryLabel: .accessibilityRecheck,
+                primaryHint: .accessibilityRecheck,
                 primaryAction: onRecheckCameraAccess
             )
         case .unknown:
             return BlockedPresentation(
-                title: CameraCoachEntryCopy.unknownTitle,
-                primaryTitle: CameraCoachEntryCopy.recheckAction,
+                title: .blockedUnknown,
+                primaryTitle: .checkAgain,
                 primaryIdentifier: CameraCoachEntryAccessibilityID.recheckAction,
+                primaryLabel: .accessibilityRecheck,
+                primaryHint: .accessibilityRecheck,
                 primaryAction: onRecheckCameraAccess
             )
         }
-    }
-
-    private func entryCopy(
-        title: String,
-        titleIdentifier: String,
-        body: String,
-        bodyIdentifier: String,
-        supplemental: String? = nil,
-        supplementalIdentifier: String? = nil,
-        primaryTitle: String? = nil,
-        primaryIdentifier: String? = nil,
-        primaryAccessibilityLabel: String? = nil,
-        primaryAccessibilityHint: String? = nil,
-        primaryAction: (() -> Void)? = nil,
-        secondaryTitle: String? = nil,
-        secondaryIdentifier: String? = nil,
-        secondaryAccessibilityHint: String? = nil,
-        secondaryAction: (() -> Void)? = nil,
-        footer: Text? = nil
-    ) -> some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 0) {
-                Spacer(minLength: 64)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(title)
-                        .font(.largeTitle.weight(.semibold))
-                        .foregroundStyle(Color.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier(titleIdentifier)
-
-                    Text(body)
-                        .font(.body)
-                        .foregroundStyle(Color.white.opacity(0.78))
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier(bodyIdentifier)
-                        .padding(.top, 20)
-
-                    if let supplemental, let supplementalIdentifier {
-                        Text(supplemental)
-                            .font(.footnote)
-                            .foregroundStyle(Color.white.opacity(0.62))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier(supplementalIdentifier)
-                            .padding(.top, 12)
-                    }
-                }
-
-                if let primaryTitle,
-                   let primaryIdentifier,
-                   let primaryAccessibilityLabel,
-                   let primaryAccessibilityHint,
-                   let primaryAction {
-                    Button(action: primaryAction) {
-                        Text(primaryTitle)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(Color.white)
-                            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier(primaryIdentifier)
-                    .accessibilityLabel(primaryAccessibilityLabel)
-                    .accessibilityHint(primaryAccessibilityHint)
-                    .padding(.top, 36)
-                }
-
-                if let secondaryTitle,
-                   let secondaryIdentifier,
-                   let secondaryAction {
-                    Button(action: secondaryAction) {
-                        Text(secondaryTitle)
-                            .font(.body)
-                            .foregroundStyle(Color.white.opacity(0.72))
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier(secondaryIdentifier)
-                    .accessibilityLabel(secondaryTitle)
-                    .accessibilityHint(secondaryAccessibilityHint ?? "")
-                    .padding(.top, 8)
-                }
-
-                if let footer {
-                    footer
-                        .font(.footnote)
-                        .foregroundStyle(Color.white.opacity(0.72))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier(CameraCoachEntryAccessibilityID.settingsFallback)
-                        .accessibilityLabel(CameraCoachEntryCopy.settingsFallback)
-                        .padding(.top, 20)
-                }
-
-                Spacer(minLength: 64)
-            }
-            .frame(maxWidth: 560, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
-        }
-        .scrollIndicators(.hidden)
-    }
-
-    private var settingsFallback: Text {
-        Text(CameraCoachEntryCopy.settingsFallback)
     }
 
     private func openSettings() {
@@ -368,9 +538,28 @@ struct CameraCoachEntryView: View {
     }
 }
 
+struct CameraCoachEntryLeaderOverlay: View {
+    let phase: SETLeaderPhase
+
+    var body: some View {
+        SETLeaderCountdown(phase: phase)
+            .frame(maxWidth: SETComponentMetric.entryLeaderMaximumDimension)
+            .padding(SETSpacing.x6)
+            .accessibilityIdentifier("camera-coach-entry-leader")
+            .transition(.opacity)
+            .animation(
+                .easeOut(duration: SETMotion.reducedMotionCrossfadeDuration),
+                value: phase
+            )
+            .allowsHitTesting(false)
+    }
+}
+
 private struct BlockedPresentation {
-    let title: String
-    let primaryTitle: String
+    let title: SETCopyKey
+    let primaryTitle: SETCopyKey
     let primaryIdentifier: String
+    let primaryLabel: SETCopyKey
+    let primaryHint: SETCopyKey
     let primaryAction: () -> Void
 }

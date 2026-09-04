@@ -33,6 +33,29 @@ struct FrameContext {
     let isStable: Bool
     let shakeLevel: Double
     let motionState: MotionState
+    let capturedAt: Date
+    /// Capture-side epoch assigned by CameraManager. This is deliberately
+    /// separate from AnalysisPipeline's lifecycle generation: a frame keeps
+    /// the camera input/lens epoch that actually produced its pixels.
+    let captureGeneration: UInt64
+
+    init(pixelBuffer: CVPixelBuffer,
+         timestamp: CMTime,
+         orientation: CGImagePropertyOrientation,
+         isStable: Bool,
+         shakeLevel: Double,
+         motionState: MotionState,
+         capturedAt: Date = Date(),
+         captureGeneration: UInt64 = 0) {
+        self.pixelBuffer = pixelBuffer
+        self.timestamp = timestamp
+        self.orientation = orientation
+        self.isStable = isStable
+        self.shakeLevel = shakeLevel
+        self.motionState = motionState
+        self.capturedAt = capturedAt
+        self.captureGeneration = captureGeneration
+    }
 }
 
 protocol FrameConsumer: AnyObject {

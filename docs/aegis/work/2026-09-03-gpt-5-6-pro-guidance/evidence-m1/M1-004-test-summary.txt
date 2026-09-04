@@ -1,0 +1,9 @@
+Executed 4 tests, 0 failures (CommercialShellLifecycleAdapterTests, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-004.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/CommercialShellLifecycleAdapterTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-004.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+Test case 'CommercialShellLifecycleAdapterTests.testBackgroundAfterRouteSwitchNeverReachesInactiveCameraRoute()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (74653)' (0.019 seconds)
+Test case 'CommercialShellLifecycleAdapterTests.testBackgroundReachesActiveCameraRouteExactlyOncePerEvent()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (74653)' (0.002 seconds)
+Test case 'CommercialShellLifecycleAdapterTests.testBackgroundReachesSceneWorkspaceProviderExactlyOnce()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (74653)' (0.107 seconds)
+Test case 'CommercialShellLifecycleAdapterTests.testForegroundRecheckStillReachesBlockedCameraEntry()' passed on 'Clone 1 of iPhone 17 - shafinMultitool (74653)' (0.004 seconds)

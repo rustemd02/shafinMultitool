@@ -1,0 +1,144 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "description": "M0-011 durable evidence manifest for SET OS App Store 1.0 gates. Every gate claim links commands, source state, toolchain, devices, artifacts and hashes.",
+ "required": [
+  "schema_version",
+  "task_id",
+  "milestone_gate",
+  "utc",
+  "source_state",
+  "toolchain",
+  "command",
+  "artifacts",
+  "claim_scope"
+ ],
+ "type": "object",
+ "properties": {
+  "schema_version": {
+   "const": "release-evidence-v1"
+  },
+  "task_id": {
+   "type": "string"
+  },
+  "milestone_gate": {
+   "type": "string"
+  },
+  "utc": {
+   "type": "string"
+  },
+  "source_state": {
+   "type": "object",
+   "required": [
+    "branch",
+    "head",
+    "porcelain_v2_sha256",
+    "dirty_receipt_sha256"
+   ],
+   "properties": {
+    "branch": {
+     "type": "string"
+    },
+    "head": {
+     "type": "string"
+    },
+    "porcelain_v2_sha256": {
+     "type": "string"
+    },
+    "dirty_receipt_sha256": {
+     "type": "string"
+    }
+   }
+  },
+  "toolchain": {
+   "type": "object",
+   "required": [
+    "xcode",
+    "sdk",
+    "sim_runtime"
+   ],
+   "properties": {
+    "xcode": {
+     "type": "string"
+    },
+    "sdk": {
+     "type": "string"
+    },
+    "sim_runtime": {
+     "type": "string"
+    }
+   }
+  },
+  "command": {
+   "type": "object",
+   "required": [
+    "argv",
+    "exit_code",
+    "log_sha256"
+   ],
+   "properties": {
+    "argv": {
+     "type": "string"
+    },
+    "exit_code": {
+     "type": "integer"
+    },
+    "log_sha256": {
+     "type": "string"
+    }
+   }
+  },
+  "destination": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "enum": [
+      "simulator",
+      "device",
+      "host"
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "os": {
+     "type": "string"
+    },
+    "model": {
+     "type": "string"
+    }
+   }
+  },
+  "artifacts": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "path",
+     "sha256",
+     "role"
+    ],
+    "properties": {
+     "path": {
+      "type": "string"
+     },
+     "sha256": {
+      "type": "string"
+     },
+     "role": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "claim_scope": {
+   "type": "string",
+   "description": "Weakest permitted reading: source|simulator|device|signed|asc|testflight. Never stronger than evidence."
+  },
+  "parent_evidence": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ }
+}

@@ -50,6 +50,11 @@ final class SceneParserService {
     private(set) var lastBundleResult: SceneBundleParsingResult?
     private(set) var lastExecutionTrace: SceneExecutionTrace?
 
+    /// M1-008 SceneGenerationOwner fence: parse work is not cancellation-aware, so a
+    /// cancelled/older request can outlive its generation task and must not publish
+    /// shared parse context over a newer request (or over a cleared context).
+    private let parseRequestFence = ParseRequestFence()
+
     private init() {}
 
     // MARK: - Public API
@@ -159,9 +164,16 @@ final class SceneParserService {
             let bundleResult = await parseBundleAsync(description, markedObjects: markedObjects)
             return ParsingResult(script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: bundleResult.diagnostics)
         }
+        let parseToken = parseRequestFence.begin()
         let output = await makeParseCoordinator().parseAsync(description: description, markedObjects: markedObjects, state: state) { [weak self] in
             self?.ruleBasedParse(description, markedObjects: markedObjects)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: .empty)
+        }
+        guard parseRequestFence.isCurrent(parseToken) else {
+            // Debug-only trace: the shared diagnostics formatter is not thread-safe
+            // and stale completions may resume off the main actor.
+            print("[PARSER][M1-008] stale parse context write suppressed token=\(parseToken)")
+            return output.result
         }
         lastRuntimeTrace = output.trace
         lastChunkState = makeChunkState(from: output.result.script, fallbackLocationName: state?.locationName)
@@ -182,6 +194,7 @@ final class SceneParserService {
         executionSupport: SceneGeneratorExecutionSupport = .live
     ) async -> SceneBundleParsingResult {
         let effectiveExecutionPolicy = defaultExecutionPolicy(for: description, explicit: executionPolicy)
+        let parseToken = parseRequestFence.begin()
         let result = await bundlePipeline.parse(
             description: description,
             markedObjects: markedObjects,
@@ -192,6 +205,10 @@ final class SceneParserService {
         ) { [weak self] text, markers, state in
             self?.ruleBasedParse(text, markedObjects: markers)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
+        }
+        guard parseRequestFence.isCurrent(parseToken) else {
+            print("[PARSER][M1-008] stale bundle context write suppressed token=\(parseToken)")
+            return result
         }
         updateBundleContext(with: result, fallbackLocationName: previousState?.stitchStates.last?.metadata.locationName)
         print("🤖 [PARSER_V1] bundle scenes=\(result.bundleScript.scenes.count) chunks=\(result.sceneChunks.count)")
@@ -207,6 +224,7 @@ final class SceneParserService {
         executionSupport: SceneGeneratorExecutionSupport = .live
     ) async -> SceneBundleParsingResult {
         let effectiveExecutionPolicy = defaultExecutionPolicy(for: description, explicit: executionPolicy)
+        let parseToken = parseRequestFence.begin()
         let result = await bundlePipeline.parseAsync(
             description: description,
             markedObjects: markedObjects,
@@ -217,6 +235,10 @@ final class SceneParserService {
         ) { [weak self] text, markers, _ in
             self?.ruleBasedParse(text, markedObjects: markers)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
+        }
+        guard parseRequestFence.isCurrent(parseToken) else {
+            print("[PARSER][M1-008] stale bundle context write suppressed token=\(parseToken)")
+            return result
         }
         updateBundleContext(with: result, fallbackLocationName: previousState?.stitchStates.last?.metadata.locationName)
         print("🤖 [PARSER_V1] bundle scenes=\(result.bundleScript.scenes.count) chunks=\(result.sceneChunks.count)")
@@ -258,6 +280,9 @@ final class SceneParserService {
     }
 
     func resetRuntimeContext() {
+        // M1-008: invalidate every in-flight parse so a late completion cannot
+        // repopulate the context this reset is clearing.
+        _ = parseRequestFence.begin()
         lastRuntimeTrace = nil
         lastChunkState = nil
         lastDocumentState = nil
@@ -1775,5 +1800,32 @@ extension SceneScript {
         }
 
         return result
+    }
+}
+
+/// M1-008 SceneGenerationOwner request-token fence. Parse pipelines are not
+/// cancellation-aware, so a parse request may complete after its generation task
+/// was cancelled or superseded. Call sites begin a token at request entry and
+/// must re-check currency immediately before any shared-context write; a stale
+/// token skips the write instead of publishing over a newer request.
+/// Lock-guarded because parse awaits resume off the caller's executor.
+final class ParseRequestFence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var epoch: UInt = 0
+
+    /// Starts a new parse request, invalidating every earlier token.
+    @discardableResult
+    func begin() -> UInt {
+        lock.lock()
+        defer { lock.unlock() }
+        epoch &+= 1
+        return epoch
+    }
+
+    /// True only while no newer request began (and the context was not reset).
+    func isCurrent(_ token: UInt) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return token == epoch
     }
 }

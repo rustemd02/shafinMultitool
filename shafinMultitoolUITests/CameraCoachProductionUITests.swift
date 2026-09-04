@@ -1,0 +1,207 @@
+import XCTest
+
+final class CameraCoachProductionUITests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
+    func testCorrectiveRUPortraitUsesProductionMonitorSurface() {
+        let app = launch(
+            fixture: "camera.corrective",
+            locale: "ru",
+            orientation: .portrait
+        )
+        assertRoot("camera.corrective", in: app)
+        assertStableCameraIdentifiers(in: app)
+        attachScreenshot(app, named: "camera-corrective-ru-portrait")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testCorrectiveENLandscapeUsesProductionMonitorSurface() {
+        let app = launch(
+            fixture: "camera.corrective",
+            locale: "en",
+            orientation: .landscapeLeft
+        )
+        assertRoot("camera.corrective", in: app)
+        assertStableCameraIdentifiers(in: app)
+        attachScreenshot(app, named: "camera-corrective-en-landscape")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testProductionLiveStateMatrix() {
+        let fixtures = [
+            "camera.seeking",
+            "camera.keep",
+            "camera.fallback",
+            "camera.starting",
+            "camera.failed",
+            "camera.explanation",
+            "camera.resuming",
+            "camera.eco"
+        ]
+
+        for fixture in fixtures {
+            let app = launch(fixture: fixture, locale: "ru", orientation: .portrait)
+            assertRoot(fixture, in: app)
+            XCTAssertTrue(
+                app.otherElements["camera_coach_live_surface"].waitForExistence(timeout: 3),
+                "Missing production monitor surface for \(fixture)"
+            )
+            attachScreenshot(app, named: fixture.replacingOccurrences(of: ".", with: "-"))
+            app.terminate()
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testProductionInterruptedFixtureUsesLifecycleCopy() {
+        let app = launch(
+            fixture: "camera.interrupted",
+            locale: "ru",
+            orientation: .portrait
+        )
+        assertRoot("camera.interrupted", in: app)
+        assertStableCameraIdentifiers(in: app)
+        attachScreenshot(app, named: "camera-interrupted")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testPauseLoadingSuccessEmptyFailureMatrix() {
+        let fixtures = [
+            "camera.pause-loading",
+            "camera.pause-success",
+            "camera.pause-empty",
+            "camera.pause-failure"
+        ]
+
+        for fixture in fixtures {
+            let locale = fixture == "camera.pause-success" ? "en" : "ru"
+            let app = launch(fixture: fixture, locale: locale, orientation: .portrait)
+            assertRoot(fixture, in: app)
+            XCTAssertTrue(
+                app.otherElements["camera_coach_pause_review"].waitForExistence(timeout: 3),
+                "Missing production pause review for \(fixture)"
+            )
+            XCTAssertTrue(app.buttons["camera_coach_pause"].exists)
+            attachScreenshot(app, named: fixture.replacingOccurrences(of: ".", with: "-"))
+            app.terminate()
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testProductionPauseTransitionAndResumeRoute() {
+        let app = launch(fixture: "camera.corrective", locale: "ru", orientation: .portrait)
+        assertRoot("camera.corrective", in: app)
+
+        let pauseButton = app.buttons["camera_coach_pause"]
+        XCTAssertTrue(pauseButton.waitForExistence(timeout: 3))
+        pauseButton.tap()
+
+        let pauseReview = app.otherElements["camera_coach_pause_review"]
+        XCTAssertTrue(pauseReview.waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "РАЗБОР")).firstMatch.waitForExistence(timeout: 3)
+        )
+
+        app.buttons["camera_coach_pause"].tap()
+        XCTAssertTrue(app.otherElements["camera_coach_live_surface"].waitForExistence(timeout: 3))
+
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testLensControlStartsCollapsedAndExpandsFromRealFixtureLenses() {
+        let app = launch(fixture: "camera.lens-switching", locale: "en", orientation: .landscapeLeft)
+        assertRoot("camera.lens-switching", in: app)
+
+        let zoom = app.otherElements["camera_coach_zoom_control"]
+        XCTAssertTrue(zoom.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["WIDE"].exists)
+        attachScreenshot(app, named: "camera-lens-collapsed-en-landscape")
+
+        zoom.buttons.firstMatch.tap()
+        XCTAssertGreaterThanOrEqual(zoom.buttons.count, 2)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "ULTRA")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "TELE")).firstMatch.exists)
+        attachScreenshot(app, named: "camera-lens-expanded-en-landscape")
+
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testReduceMotionAndDynamicTypeKeepProductionSurfaceReadable() {
+        let reduceMotionApp = launch(
+            fixture: "camera.corrective",
+            locale: "ru",
+            orientation: .portrait,
+            reduceMotion: true
+        )
+        assertRoot("camera.corrective", in: reduceMotionApp)
+        attachScreenshot(reduceMotionApp, named: "camera-corrective-ru-portrait-reduce-motion")
+        reduceMotionApp.terminate()
+
+        let dynamicTypeApp = launch(
+            fixture: "camera.corrective",
+            locale: "en",
+            orientation: .landscapeLeft,
+            dynamicType: true
+        )
+        assertRoot("camera.corrective", in: dynamicTypeApp)
+        XCTAssertTrue(dynamicTypeApp.buttons["camera_coach_pause"].exists)
+        attachScreenshot(dynamicTypeApp, named: "camera-corrective-en-landscape-dynamic-type")
+        dynamicTypeApp.terminate()
+
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    private func launch(
+        fixture: String,
+        locale: String,
+        orientation: UIDeviceOrientation,
+        reduceMotion: Bool = false,
+        dynamicType: Bool = false
+    ) -> XCUIApplication {
+        XCUIDevice.shared.orientation = orientation
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-SHAFIN_CAMERA_PRODUCTION_FIXTURE", fixture,
+            "-SHAFIN_SET_LOCALE", locale
+        ]
+        if reduceMotion {
+            app.launchArguments += ["-SHAFIN_SET_REDUCE_MOTION", "1"]
+        }
+        if dynamicType {
+            app.launchArguments += ["-SHAFIN_SET_DYNAMIC_TYPE", "xxl"]
+        }
+        app.launch()
+        return app
+    }
+
+    private func assertRoot(_ fixture: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(
+            app.otherElements[fixture].waitForExistence(timeout: 4),
+            "Missing deterministic production fixture \(fixture)",
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertStableCameraIdentifiers(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(app.buttons["camera_coach_close"].exists, file: file, line: line)
+        XCTAssertTrue(app.buttons["camera_coach_pause"].exists, file: file, line: line)
+        XCTAssertTrue(app.otherElements["camera_coach_live_surface"].exists, file: file, line: line)
+    }
+
+    private func attachScreenshot(_ app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "v26-package2-\(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}

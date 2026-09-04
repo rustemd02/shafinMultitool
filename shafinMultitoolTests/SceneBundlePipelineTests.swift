@@ -6,8 +6,10 @@
 //
 
 import XCTest
+import ARKit
 import simd
 import CoreGraphics
+import CoreVideo
 import ImageIO
 import UIKit
 @testable import shafinMultitool
@@ -1528,19 +1530,31 @@ final class SceneBundlePipelineTests: XCTestCase {
 
         let marina = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_1" })
         let oleg = try XCTUnwrap(planned.placedActors.first { $0.actorId == "actor_2" })
-        let marinaStarts = dialogueStarts(for: marina)
-        let olegStarts = dialogueStarts(for: oleg)
+        let serializedTurns = (dialogueStarts(for: marina) + dialogueStarts(for: oleg))
+            .sorted { lhs, rhs in lhs.start < rhs.start }
+        XCTAssertEqual(
+            serializedTurns.map(\.text),
+            [
+                "Он опять звонил?",
+                "Три раза. Я не стал брать.",
+                "Тогда дай сюда, я сама всё решу.",
+            ]
+        )
+        XCTAssertEqual(serializedTurns.count, 3)
+        for pair in zip(serializedTurns, serializedTurns.dropFirst()) {
+            XCTAssertLessThan(pair.0.start, pair.1.start)
+        }
 
-        XCTAssertEqual(marinaStarts.count, 2)
-        XCTAssertEqual(olegStarts.count, 1)
-        XCTAssertEqual(marinaStarts[0].start, 0, accuracy: 0.01)
-        XCTAssertEqual(olegStarts[0].start, 2, accuracy: 0.01)
-        XCTAssertEqual(marinaStarts[1].start, 4, accuracy: 0.01)
+        let marinaDuration = marina.pathDurations.reduce(0, +)
+        let olegDuration = oleg.pathDurations.reduce(0, +)
+        XCTAssertEqual(marinaDuration, olegDuration, accuracy: 0.01)
+        XCTAssertTrue((marina.pathDurations + oleg.pathDurations).allSatisfy { $0 > 0 })
 
         let viewModel = SceneGeneratorViewModel()
         let timeline = viewModel.buildBeatTimelineItems(for: planned, script: script)
         XCTAssertEqual(timeline.count, 1)
-        XCTAssertEqual(timeline[0].duration, 6, accuracy: 0.01)
+        XCTAssertEqual(timeline[0].duration, marinaDuration, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(timeline[0].duration, script.beats[0].minDuration ?? 0)
     }
 
     @MainActor
@@ -1976,6 +1990,48 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     @MainActor
+    func testSceneGeneratorInputValidationIsScopedAndWhitespaceAware() async {
+        let viewModel = SceneGeneratorViewModel(projectName: "input-validation-\(UUID().uuidString)")
+
+        viewModel.sceneDescription = " \n\t"
+        XCTAssertEqual(viewModel.inputValidationMessage, viewModel.localizedCopy(.generatorInputInvalid))
+        await viewModel.generateScene()
+
+        XCTAssertEqual(viewModel.inputValidationMessage, viewModel.localizedCopy(.generatorInputInvalid))
+        XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorInputInvalid))
+
+        viewModel.showInput()
+        XCTAssertNil(viewModel.inputValidationMessage)
+
+        viewModel.sceneDescription = "Актёр входит в кадр"
+        await viewModel.generateScene()
+
+        XCTAssertNil(viewModel.inputValidationMessage)
+        XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorErrorARNotReady))
+    }
+
+    @MainActor
+    func testARFailureMessageUsesContainerPresentationLocale() async {
+        let viewModel = SceneGeneratorViewModel()
+        let container = ARSceneContainer(
+            viewModel: viewModel,
+            presentationLocale: Locale(identifier: "en")
+        )
+        viewModel.setPresentationLocale(Locale(identifier: "en"))
+        let coordinator = container.makeCoordinator()
+        let error = NSError(
+            domain: "ARSession",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Unsupported configuration."]
+        )
+
+        coordinator.session(ARSession(), didFailWithError: error)
+        await Task.yield()
+
+        XCTAssertEqual(viewModel.errorMessage, "AR ERROR: Unsupported configuration.")
+    }
+
+    @MainActor
     func testSceneGeneratorOverlayPassesTouchesDuringMarkingButKeepsStoryboardEditorInteractive() throws {
         XCTAssertTrue(
             SceneGeneratorViewModel.shouldPassTouchesThroughSwiftUIOverlay(
@@ -2026,6 +2082,50 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     @MainActor
+    func testSceneGeneratorARInterruptionRecoveryRequiresPostInterruptionGenerationAndPlane() throws {
+        let viewModel = SceneGeneratorViewModel()
+        let plane = ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)
+
+        viewModel.processARFrameSnapshot(
+            cameraTransform: matrix_identity_float4x4,
+            planeSnapshots: [plane],
+            timestamp: 1
+        )
+        XCTAssertTrue(viewModel.isARSessionReady)
+
+        viewModel.handleARSessionInterruption(generation: 1)
+        XCTAssertTrue(viewModel.isARSessionInterrupted)
+        XCTAssertFalse(viewModel.isARSessionReady)
+        XCTAssertEqual(viewModel.statusMessage, "КАМЕРА ПРИОСТАНОВЛЕНА")
+
+        viewModel.handleARSessionInterruptionEnded(generation: 2)
+        XCTAssertFalse(viewModel.isARSessionInterrupted)
+        XCTAssertTrue(viewModel.isARSessionRecovering)
+        XCTAssertFalse(viewModel.isARSessionReady)
+        XCTAssertEqual(viewModel.statusMessage, "ВОЗВРАЩАЮСЬ В КАДР…")
+
+        // A pre-ended frame may still be queued on MainActor; its generation
+        // must not complete recovery after the interruption-ended callback.
+        viewModel.processARFrameSnapshot(
+            cameraTransform: matrix_identity_float4x4,
+            planeSnapshots: [plane],
+            timestamp: 2,
+            generation: 1
+        )
+        XCTAssertTrue(viewModel.isARSessionRecovering)
+        XCTAssertFalse(viewModel.isARSessionReady)
+
+        viewModel.processARFrameSnapshot(
+            cameraTransform: matrix_identity_float4x4,
+            planeSnapshots: [plane],
+            timestamp: 3,
+            generation: 2
+        )
+        XCTAssertFalse(viewModel.isARSessionRecovering)
+        XCTAssertTrue(viewModel.isARSessionReady)
+    }
+
+    @MainActor
     func testSceneGeneratorCameraHintsMapARInterfaceOrientationLikeCameraManager() throws {
         let viewModel = SceneGeneratorViewModel()
 
@@ -2059,14 +2159,107 @@ final class SceneBundlePipelineTests: XCTestCase {
 
         XCTAssertTrue(viewModel.isHintsEnabled)
         XCTAssertTrue(viewModel.isHintPauseAnalysisActive)
+        XCTAssertNil(viewModel.acceptedHintPauseSnapshot)
+        XCTAssertEqual(viewModel.hintPauseFailureReason, .noAcceptedEvidence)
+        guard case .failure(let snapshotID) = viewModel.hintPausePresentationState else {
+            return XCTFail("an unavailable accepted frame must be an explicit pause failure")
+        }
+        XCTAssertFalse(snapshotID.isEmpty)
         XCTAssertNil(viewModel.liveHint)
 
         viewModel.resumeHintLiveAnalysis()
 
         XCTAssertTrue(viewModel.isHintsEnabled)
         XCTAssertFalse(viewModel.isHintPauseAnalysisActive)
+        XCTAssertNil(viewModel.acceptedHintPauseSnapshot)
+        XCTAssertEqual(viewModel.hintPausePresentationState, .idle)
+        XCTAssertNil(viewModel.hintPauseFailureReason)
         XCTAssertNil(viewModel.hintPauseCritique)
         XCTAssertTrue(viewModel.hintPreviewSuggestions.isEmpty)
+    }
+
+    @MainActor
+    func testSceneGeneratorHintPauseUsesOneAcceptedFrameForDisplayAndAnalysis() async throws {
+        let viewModel = SceneGeneratorViewModel()
+        viewModel.toggleHintsEnabled()
+        let pixelBuffer = try makeDeterministicHintPixelBuffer()
+
+        viewModel.processARFrameSnapshot(
+            cameraTransform: matrix_identity_float4x4,
+            planeSnapshots: [ScenePlaneSnapshot(alignment: .horizontal, y: -1.0)],
+            timestamp: 7.0,
+            capturedImage: pixelBuffer,
+            interfaceOrientation: .portraitUpsideDown,
+            displayTransform: CGAffineTransform(a: 1, b: 0, c: 0, d: 1, tx: 0.1, ty: 0.2)
+        )
+        await viewModel.testingDrainHintAnalysis()
+        viewModel.startHintPauseAnalysis()
+        defer { viewModel.resumeHintLiveAnalysis() }
+
+        guard let acceptedSnapshot = viewModel.acceptedHintPauseSnapshot else {
+            return XCTFail("the current AR frame must be accepted synchronously")
+        }
+        XCTAssertEqual(acceptedSnapshot.sourceFrameId, "frame_7000")
+        XCTAssertEqual(acceptedSnapshot.orientation, .left)
+        XCTAssertNil(acceptedSnapshot.displayImage)
+
+        var displayReady = false
+        for _ in 0..<1_000 {
+            if viewModel.acceptedHintPauseSnapshot?.displayImage != nil {
+                displayReady = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(displayReady)
+
+        guard let displayedSnapshot = viewModel.acceptedHintPauseSnapshot else {
+            return XCTFail("the rendered pause frame must remain owned by the view model")
+        }
+        XCTAssertNotNil(displayedSnapshot.displayImage)
+        XCTAssertEqual(displayedSnapshot.snapshotID, acceptedSnapshot.snapshotID)
+        XCTAssertEqual(displayedSnapshot.sourceFrameId, acceptedSnapshot.sourceFrameId)
+
+        var analysisTerminal = false
+        for _ in 0..<1_000 {
+            if viewModel.hintPausePresentationState != .loading(snapshotID: acceptedSnapshot.snapshotID) {
+                analysisTerminal = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(analysisTerminal)
+        XCTAssertEqual(viewModel.hintPausePresentationState.snapshotID, acceptedSnapshot.snapshotID)
+        if case .success(let snapshotID, let critique) = viewModel.hintPausePresentationState {
+            XCTAssertEqual(snapshotID, acceptedSnapshot.snapshotID)
+            XCTAssertEqual(critique.frameId, acceptedSnapshot.snapshotID)
+        }
+
+        viewModel.resumeHintLiveAnalysis()
+        XCTAssertFalse(viewModel.isHintPauseAnalysisActive)
+        XCTAssertNil(viewModel.acceptedHintPauseSnapshot)
+        XCTAssertNil(viewModel.hintPauseCritique)
+        XCTAssertTrue(viewModel.hintPreviewSuggestions.isEmpty)
+    }
+
+    private func makeDeterministicHintPixelBuffer() throws -> CVPixelBuffer {
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [String: Any] = [
+            kCVPixelBufferWidthKey as String: 64,
+            kCVPixelBufferHeightKey as String: 48,
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            64,
+            48,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &pixelBuffer
+        )
+        XCTAssertEqual(status, kCVReturnSuccess)
+        return try XCTUnwrap(pixelBuffer)
     }
 
     func testLLMReleaseModelResourcesIsIdempotent() throws {
@@ -2758,6 +2951,56 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertFalse(saved)
         XCTAssertEqual(viewModel.parsedScript?.beats.first(where: { $0.id == "beat_4" })?.actions.first?.target, "actor_1")
         XCTAssertEqual(viewModel.errorMessage, "Нельзя передать объект самому себе")
+        XCTAssertEqual(
+            viewModel.storyboardValidationField,
+            .target(actionID: draft.actions[0].id)
+        )
+    }
+
+    @MainActor
+    func testStoryboardSelectionOwnerCancelsAndConsumesOneStableEvent() async throws {
+        let viewModel = makeStoryboardViewModel()
+
+        viewModel.selectStoryboardBeat(beatID: "beat_1", reduceMotion: false)
+        let cancelledEventID = try XCTUnwrap(viewModel.storyboardSelectionEventID)
+        viewModel.selectStoryboardBeat(beatID: "beat_2", reduceMotion: false)
+        let selectedEventID = try XCTUnwrap(viewModel.storyboardSelectionEventID)
+        XCTAssertNotEqual(cancelledEventID, selectedEventID)
+        XCTAssertEqual(viewModel.selectedStoryboardBeatID, "beat_2")
+
+        try await Task.sleep(nanoseconds: 380_000_000)
+
+        XCTAssertNil(viewModel.pendingStoryboardBeatID)
+        XCTAssertEqual(viewModel.storyboardEditorHandoffEventID, selectedEventID)
+        XCTAssertEqual(viewModel.activeStoryboardEditDraft?.beatID, "beat_2")
+
+        viewModel.refreshStoryboardBeatItems()
+        XCTAssertEqual(viewModel.storyboardEditorHandoffEventID, selectedEventID)
+    }
+
+    @MainActor
+    func testStoryboardMutationOwnerRejectsDuplicateSubmits() async throws {
+        let viewModel = makeStoryboardViewModel()
+        viewModel.openStoryboardEditor(for: "beat_1")
+        let draft = try XCTUnwrap(viewModel.activeStoryboardEditDraft)
+        viewModel.testingSetStoryboardMutationDelay(0.25)
+
+        let firstMutation = Task { @MainActor in
+            await viewModel.applyStoryboardBeatEdit(draft)
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertTrue(viewModel.isStoryboardMutationInFlight)
+
+        let duplicateSave = await viewModel.applyStoryboardBeatEdit(draft)
+        let duplicateDelete = await viewModel.deleteStoryboardBeat(beatID: "beat_1")
+        let duplicateMove = await viewModel.moveStoryboardBeat(beatID: "beat_1", offset: 1)
+        XCTAssertFalse(duplicateSave)
+        XCTAssertFalse(duplicateDelete)
+        XCTAssertFalse(duplicateMove)
+
+        let firstResult = await firstMutation.value
+        XCTAssertTrue(firstResult)
+        XCTAssertFalse(viewModel.isStoryboardMutationInFlight)
     }
 
     @MainActor

@@ -1,81 +1,162 @@
 import SwiftUI
-import UIKit
 
+/// A collapsed lens control keeps the live frame primary. The expanded menu is
+/// populated only from the camera manager's reported physical lenses; it never
+/// invents a focal-length rail.
 struct ZoomControlView: View {
     let availableLenses: [CameraLens]
     let currentLens: CameraLens
+    var lensDescriptors: [CameraLensDescriptor] = []
+    var isInteractionLocked = false
     let onLensChange: (CameraLens) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var isExpanded = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(availableLenses, id: \.rawValue) { lens in
-                ZoomButton(
-                    lens: lens,
-                    isSelected: lens == currentLens,
-                    reduceMotion: reduceMotion,
-                    action: { onLensChange(lens) }
+        Group {
+            if isExpanded {
+                expandedControl.transition(
+                    reduceMotion
+                        ? .opacity.animation(.easeOut(duration: SETMotion.reducedMotionCrossfadeDuration))
+                        : .opacity
+                )
+            } else {
+                collapsedControl.transition(
+                    reduceMotion
+                        ? .opacity.animation(.easeOut(duration: SETMotion.reducedMotionCrossfadeDuration))
+                        : .opacity
                 )
             }
         }
-        .padding(8)
-        .background(
-            reduceTransparency
-                ? AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
-                : AnyShapeStyle(.regularMaterial),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
+        .padding(SETSpacing.x1)
+        .background(reduceTransparency ? Color.setSurfaceSolid : Color.setHUDScrim)
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(uiColor: .separator).opacity(0.55), lineWidth: 0.7)
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("camera_coach_zoom_control")
-        .accessibilityLabel("Выбор масштаба камеры")
+        .accessibilityIdentifier(CameraOverlayAccessibilityID.zoom)
+        .accessibilityLabel(Text(SETCopyKey.cameraZoom.localizedTextKey))
+        .animation(
+            reduceMotion ? nil : SETMotion.standardSpring,
+            value: isExpanded
+        )
+        .onChange(of: availableLenses) { _, lenses in
+            if lenses.isEmpty { isExpanded = false }
+        }
     }
-}
 
-private struct ZoomButton: View {
-    let lens: CameraLens
-    let isSelected: Bool
-    let reduceMotion: Bool
-    let action: () -> Void
+    private var collapsedControl: some View {
+        Button {
+            guard !availableLenses.isEmpty else { return }
+            if reduceMotion {
+                isExpanded = true
+            } else {
+                withAnimation(SETMotion.standardSpring) {
+                    isExpanded = true
+                }
+            }
+        } label: {
+            HStack(spacing: SETCameraCoachMetric.compactControlSpacing) {
+                Text(label(for: currentLens))
+                    .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundStyle(.setTextPrimary)
 
-    var body: some View {
-        Button(action: action) {
-            Text(lens.displayName)
-                .font(.body.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? .primary : .secondary)
-                .frame(minWidth: CameraOverlayUXPresentation.minimumControlDimension,
-                       minHeight: CameraOverlayUXPresentation.minimumControlDimension)
-                .background(
-                    isSelected ? Color.accentColor.opacity(0.18) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.setTextSecondary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, SETSpacing.x3)
+            .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                   minHeight: SETComponentMetric.minimumHitTarget)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Масштаб \(lens.displayName)")
-        .accessibilityValue(isSelected ? "Выбран" : "")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isSelected)
+        .accessibilityValue(Text(label(for: currentLens)))
+        .accessibilityHint(Text(SETCopyKey.cameraLensExpand.localizedTextKey))
+    }
+
+    private var expandedControl: some View {
+        HStack(spacing: SETSpacing.x1) {
+            ForEach(availableLenses, id: \.rawValue) { lens in
+                Button {
+                    guard !isInteractionLocked else { return }
+                    onLensChange(lens)
+                    if reduceMotion {
+                        isExpanded = false
+                    } else {
+                        withAnimation(SETMotion.standardSpring) {
+                            isExpanded = false
+                        }
+                    }
+                } label: {
+                    Text(label(for: lens))
+                        .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                        .fontWeight(lens == currentLens ? .semibold : .regular)
+                        .monospacedDigit()
+                        .foregroundStyle(lens == currentLens ? .setTextPrimary : .setTextSecondary)
+                        .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                               minHeight: SETComponentMetric.minimumHitTarget)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(lens == currentLens ? Color.setOrange : Color.clear)
+                                .frame(height: SETStroke.standard)
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(isInteractionLocked)
+                .accessibilityLabel(Text(
+                    String(format: SETCopyKey.cameraLensOption.localizedString, label(for: lens))
+                ))
+                .accessibilityValue(Text(
+                    lens == currentLens ? SETCopyKey.cameraLensSelected.localizedTextKey : ""
+                ))
+                .accessibilityAddTraits(lens == currentLens ? .isSelected : [])
+            }
+
+            Button {
+                if reduceMotion {
+                    isExpanded = false
+                } else {
+                    withAnimation(SETMotion.standardSpring) {
+                        isExpanded = false
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.setTextSecondary)
+                    .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                           minHeight: SETComponentMetric.minimumHitTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(SETCopyKey.cameraLensCollapse.localizedTextKey))
+        }
+    }
+
+    private func label(for lens: CameraLens) -> String {
+        lensDescriptors.first(where: { $0.lens == lens })?.displayLabel
+            ?? lens.descriptor.displayLabel
     }
 }
 
 #Preview {
     ZStack {
-        Color.black.ignoresSafeArea()
+        Color.setInk.ignoresSafeArea()
 
         VStack {
             Spacer()
 
             ZoomControlView(
-                availableLenses: [.ultraWide, .wide, .telephoto2x, .telephoto3x],
+                availableLenses: [.ultraWide, .wide, .telephoto],
                 currentLens: .wide,
                 onLensChange: { _ in }
             )
-            .padding(.bottom, 40)
+            .padding(.bottom, SETSpacing.x8)
         }
     }
 }

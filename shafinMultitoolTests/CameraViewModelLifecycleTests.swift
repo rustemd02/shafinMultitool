@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import XCTest
 @testable import shafinMultitool
 
@@ -186,6 +187,342 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         await fixture.viewModel.releaseAndWait()
     }
 
+    func testInterruptionClearsProjectionReleasesOnceAndRetryWaitsForCleanup() async {
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: true)
+        ])
+        await fixture.viewModel.startAndWait()
+
+        fixture.viewModel.isPaused = true
+        fixture.viewModel.liveHint = LiveHintPresentation(
+            id: "interruption-hint",
+            frameId: "interruption-frame",
+            text: "Move the frame.",
+            confidence: 0.8,
+            actionType: nil,
+            actionId: nil,
+            linkedIssueIds: [],
+            summaryId: nil,
+            traceRootIds: [],
+            targetRegion: nil,
+            overlayHint: nil,
+            isFallback: false,
+            expandedVerdict: nil
+        )
+        fixture.viewModel.overlayAnnotations = [
+            OverlayAnnotationPresentation(
+                id: "interruption-annotation",
+                kind: .regionHighlight,
+                direction: nil,
+                targetRegion: NormalizedRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                emphasis: 1
+            )
+        ]
+        fixture.viewModel.currentLens = .telephoto
+
+        let releaseGate = CameraViewModelTestGate()
+        fixture.scheduler.setDrainGateForTesting(releaseGate.semaphore)
+        defer {
+            releaseGate.signal()
+            fixture.scheduler.setDrainGateForTesting(nil)
+        }
+
+        fixture.viewModel.reportSceneInactive()
+
+        // The projection boundary is synchronous; cleanup is intentionally still
+        // allowed to drain in the background.
+        XCTAssertEqual(fixture.viewModel.lifecycleState, .stopping)
+        XCTAssertFalse(fixture.viewModel.isPaused)
+        XCTAssertNil(fixture.viewModel.liveHint)
+        XCTAssertTrue(fixture.viewModel.overlayAnnotations.isEmpty)
+        XCTAssertEqual(fixture.viewModel.currentLens, .wide)
+
+        let releaseStarted = await waitUntil {
+            fixture.pipeline.testingReleaseInProgress
+        }
+        XCTAssertTrue(releaseStarted)
+        XCTAssertEqual(fixture.runner.stopCount, 1)
+
+        // Retry captures the shared release task and cannot reach a second
+        // registration set while that task is fenced.
+        fixture.viewModel.start()
+        let secondStartBeforeCleanup = await waitUntil(timeout: .milliseconds(100)) {
+            fixture.runner.startCount == 2
+        }
+        XCTAssertFalse(secondStartBeforeCleanup)
+
+        releaseGate.signal()
+        let retryRunning = await waitUntil {
+            fixture.runner.startCount == 2
+                && fixture.scheduler.registrationCountForTesting == 3
+                && fixture.viewModel.lifecycleState == .running
+        }
+        fixture.scheduler.setDrainGateForTesting(nil)
+
+        XCTAssertTrue(retryRunning)
+        XCTAssertEqual(fixture.runner.stopCount, 1)
+        XCTAssertEqual(fixture.runner.registrationCountsAtStart, [3, 3])
+        XCTAssertEqual(fixture.viewModel.lifecycleState, .running)
+        XCTAssertNil(fixture.viewModel.lifecycleError)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testLateStartCompletionCannotOverwriteInterruptionFailure() async {
+        let startGate = CameraViewModelTestGate()
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true, gate: startGate)
+        ])
+
+        fixture.viewModel.start()
+        let startEntered = await waitUntil {
+            fixture.runner.startCount == 1
+        }
+        XCTAssertTrue(startEntered)
+
+        fixture.viewModel.reportSceneInactive()
+        XCTAssertEqual(fixture.viewModel.lifecycleState, .stopping)
+
+        startGate.signal()
+        let failurePreserved = await waitUntil {
+            fixture.viewModel.lifecycleState == .failed(.sessionInterrupted)
+        }
+
+        XCTAssertTrue(failurePreserved)
+        XCTAssertEqual(fixture.viewModel.lifecycleError, .sessionInterrupted)
+        XCTAssertEqual(fixture.runner.startCount, 1)
+        XCTAssertEqual(fixture.runner.stopCount, 1)
+        XCTAssertEqual(fixture.scheduler.registrationCountForTesting, 0)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testStaleReleaseWaiterDoesNotClearReplacementReleaseOperation() async {
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: true),
+            .init(succeeds: true)
+        ])
+        await fixture.viewModel.startAndWait()
+
+        let releaseGate = DispatchSemaphore(value: 0)
+        fixture.scheduler.setDrainGateForTesting(releaseGate)
+        defer {
+            releaseGate.signal()
+            releaseGate.signal()
+            fixture.scheduler.setDrainGateForTesting(nil)
+        }
+
+        let replacementReleaseStarted = CompletionProbe()
+        let releaseAndReplace = Task { @MainActor in
+            await fixture.viewModel.releaseAndWait()
+            await fixture.viewModel.startAndWait()
+            replacementReleaseStarted.markCompleted()
+            await fixture.viewModel.releaseAndWait()
+        }
+        let firstReleaseStarted = await waitUntil {
+            fixture.pipeline.testingReleaseInProgress
+        }
+        XCTAssertTrue(firstReleaseStarted)
+
+        // This waiter owns the first release boundary. The replacement release
+        // is created by the first waiter after a fresh registration set exists.
+        // It is intentionally superseded before the first release drains so its
+        // completion is the stale continuation that must not clear the newer op.
+        let staleStart = Task(priority: .background) { @MainActor in
+            await fixture.viewModel.startAndWait()
+        }
+        await Task.yield()
+        releaseGate.signal()
+
+        let replacementInvoked = await waitUntil {
+            replacementReleaseStarted.isCompleted
+        }
+        XCTAssertTrue(replacementInvoked)
+
+        let replacementReleaseInProgress = await waitUntil {
+            fixture.pipeline.testingReleaseInProgress
+        }
+        XCTAssertTrue(replacementReleaseInProgress)
+
+        fixture.viewModel.start()
+        let startedBeforeReplacementRelease = await waitUntil(timeout: .milliseconds(100)) {
+            fixture.runner.startCount == 3
+        }
+        XCTAssertFalse(startedBeforeReplacementRelease)
+
+        releaseGate.signal()
+        let retryRunning = await waitUntil {
+            fixture.runner.startCount == 3
+                && fixture.scheduler.registrationCountForTesting == 3
+                && fixture.viewModel.lifecycleState == .running
+        }
+        XCTAssertTrue(retryRunning)
+
+        await staleStart.value
+        await releaseAndReplace.value
+        XCTAssertEqual(fixture.runner.stopCount, 2)
+        XCTAssertEqual(fixture.viewModel.lifecycleState, .running)
+
+        fixture.scheduler.setDrainGateForTesting(nil)
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testSupersededStopWaiterCannotStopRetry() async {
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: true)
+        ])
+        await fixture.viewModel.startAndWait()
+
+        let releaseGate = CameraViewModelTestGate()
+        fixture.scheduler.setDrainGateForTesting(releaseGate.semaphore)
+        defer {
+            releaseGate.signal()
+            fixture.scheduler.setDrainGateForTesting(nil)
+        }
+
+        fixture.viewModel.reportSceneInactive()
+        let releaseStarted = await waitUntil {
+            fixture.pipeline.testingReleaseInProgress
+        }
+        XCTAssertTrue(releaseStarted)
+
+        let staleStop = Task { @MainActor in
+            await fixture.viewModel.stopAndWait()
+        }
+        await Task.yield()
+        fixture.viewModel.start()
+
+        let retryStartedBeforeRelease = await waitUntil(timeout: .milliseconds(100)) {
+            fixture.runner.startCount == 2
+        }
+        XCTAssertFalse(retryStartedBeforeRelease)
+
+        releaseGate.signal()
+        let retryRunning = await waitUntil {
+            fixture.runner.startCount == 2
+                && fixture.scheduler.registrationCountForTesting == 3
+                && fixture.viewModel.lifecycleState == .running
+        }
+        XCTAssertTrue(retryRunning)
+
+        await staleStop.value
+        XCTAssertEqual(fixture.runner.stopCount, 1)
+        XCTAssertEqual(fixture.viewModel.lifecycleState, .running)
+
+        fixture.scheduler.setDrainGateForTesting(nil)
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testPauseUsesAcceptedTakeCountAndResumeProjectsUntilStartRuns() async {
+        let resumeGate = CameraViewModelTestGate()
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: true, gate: resumeGate)
+        ])
+
+        await fixture.viewModel.startAndWait()
+        fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 1))
+        let evidenceReady = await waitUntil {
+            fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_1000"
+        }
+        XCTAssertTrue(evidenceReady)
+
+        fixture.viewModel.togglePause()
+        let pauseAccepted = await waitUntil {
+            fixture.viewModel.takeNumber == 1
+                && fixture.viewModel.pausePresentationState.snapshotID == "frame_1000"
+        }
+        XCTAssertTrue(pauseAccepted)
+        let pauseProjectionReady = await waitUntil {
+            fixture.viewModel.isPaused && fixture.viewModel.isPauseProjectionReady
+        }
+        XCTAssertTrue(pauseProjectionReady)
+        XCTAssertNotNil(fixture.viewModel.acceptedPauseSnapshot?.displayImage)
+
+        fixture.viewModel.togglePause()
+        XCTAssertFalse(fixture.viewModel.isPaused)
+        XCTAssertEqual(fixture.viewModel.takeNumber, 1)
+        if case .resuming(let snapshotID) = fixture.viewModel.pausePresentationState {
+            XCTAssertEqual(snapshotID, "frame_1000")
+        } else {
+            XCTFail("resume must remain visibly represented until camera start succeeds")
+        }
+
+        resumeGate.signal()
+        let resumed = await waitUntil {
+            fixture.viewModel.lifecycleState == .running
+                && fixture.viewModel.pausePresentationState == .idle
+        }
+        XCTAssertTrue(resumed)
+
+        fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 2))
+        let secondEvidenceReady = await waitUntil {
+            fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_2000"
+        }
+        XCTAssertTrue(secondEvidenceReady)
+        fixture.viewModel.togglePause()
+        let secondPauseAccepted = await waitUntil {
+            fixture.viewModel.isPaused && fixture.viewModel.takeNumber == 2
+        }
+        XCTAssertTrue(secondPauseAccepted)
+
+        await fixture.viewModel.releaseAndWait()
+        XCTAssertEqual(fixture.viewModel.takeNumber, 0)
+    }
+
+    func testSelectedTeleLensPresentationSurvivesPauseResumeUntilManagerReportsAgain() async {
+        let resumeGate = CameraViewModelTestGate()
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: true, gate: resumeGate)
+        ])
+
+        await fixture.viewModel.startAndWait()
+        fixture.viewModel.currentLens = .telephoto
+        fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 3))
+        let evidenceReady = await waitUntil {
+            fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_3000"
+        }
+        XCTAssertTrue(evidenceReady)
+
+        fixture.viewModel.togglePause()
+        let paused = await waitUntil { fixture.viewModel.isPaused && fixture.viewModel.takeNumber == 1 }
+        XCTAssertTrue(paused)
+        fixture.viewModel.togglePause()
+        XCTAssertEqual(fixture.viewModel.currentLens, .telephoto)
+
+        resumeGate.signal()
+        let resumed = await waitUntil {
+            fixture.viewModel.lifecycleState == .running
+                && fixture.viewModel.pausePresentationState == .idle
+                && fixture.viewModel.currentLens == .telephoto
+        }
+        XCTAssertTrue(resumed)
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testPauseWithoutAcceptedEvidencePublishesRecoverableFailure() async {
+        let fixture = makeFixture(startPlans: [.init(succeeds: true)])
+        await fixture.viewModel.startAndWait()
+
+        fixture.viewModel.togglePause()
+
+        XCTAssertFalse(fixture.viewModel.isPaused)
+        XCTAssertFalse(fixture.viewModel.isPauseProjectionReady)
+        XCTAssertEqual(fixture.viewModel.pauseFailureReason, .noAcceptedEvidence)
+        guard case .failure(let snapshotID) = fixture.viewModel.pausePresentationState else {
+            return XCTFail("an unavailable accepted frame must be an explicit pause failure")
+        }
+        XCTAssertFalse(snapshotID.isEmpty)
+        XCTAssertEqual(fixture.viewModel.takeNumber, 0)
+        fixture.viewModel.togglePause()
+        XCTAssertFalse(fixture.viewModel.isPaused)
+        await fixture.viewModel.releaseAndWait()
+    }
+
     private func makeFixture(startPlans: [CameraViewModelStartPlan]) -> CameraViewModelFixture {
         let scheduler = RealtimeScheduler()
         let thermalGovernor = ThermalGovernor(thermalStateProvider: { .nominal },
@@ -198,7 +535,8 @@ final class CameraViewModelLifecycleTests: XCTestCase {
                                     thermalGovernor: thermalGovernor,
                                     motionGate: MotionGate(startMotionUpdates: false),
                                     sessionRunner: runner,
-                                    configuration: .ready)
+                                    configuration: .ready,
+                                    notificationCenter: NotificationCenter())
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
@@ -232,6 +570,33 @@ final class CameraViewModelLifecycleTests: XCTestCase {
             }
         }
         return condition()
+    }
+
+    private func makeFrameContext(timestamp: Double) -> FrameContext {
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [String: Any] = [
+            kCVPixelBufferWidthKey as String: 4,
+            kCVPixelBufferHeightKey as String: 4,
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            4,
+            4,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &pixelBuffer
+        )
+        XCTAssertEqual(status, kCVReturnSuccess)
+        return FrameContext(
+            pixelBuffer: pixelBuffer!,
+            timestamp: CMTimeMakeWithSeconds(timestamp, preferredTimescale: 600),
+            orientation: .up,
+            isStable: true,
+            shakeLevel: 0.05,
+            motionState: .still
+        )
     }
 
     private func isFailed(_ state: CameraLifecycleState) -> Bool {

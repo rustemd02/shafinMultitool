@@ -1,0 +1,11 @@
+Executed 16 tests, 0 failures (SceneWorkspaceTeardownTests, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-009.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/SceneWorkspaceTeardownTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-009.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+M1-009 acceptance verification (no code change required — handoff implementation preserved):
+- released path: stop-recording -> stop-playback -> persist -> release-recording -> pause-and-detach, .released only after all owners report (testTeardownPersistsThenPausesWhenWorkspaceIsIdle, testTeardownAwaitsRecordingFinalizationBeforePlaybackAndPersistence, testTeardownAwaitsPersistenceBeforeTerminalRecordingReleaseAndDetach)
+- blocked path: route retained, no camera constructed (testSceneWorkspaceFailureRetainsRouteAndDoesNotConstructCamera, testPresentedSceneModalBlocksWithoutStartingWorkspaceTeardown)
+- concurrent callers share one operation; retry after blocked deterministic (testConcurrentTeardownCallersShareOneOperation, testConcurrentPersistenceFailureCallersShareAttemptAndLaterRetry)
+- background hook single-flight idempotent via M1-004 adapter (testRouteBackgroundHookUsesTheSameIdempotentWorkspaceTeardown)
+- VM owner-token fence: clearBlockedTeardownTask guarded by teardownTaskID (SceneGeneratorViewModel.swift:1149)

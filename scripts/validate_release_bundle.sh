@@ -13,6 +13,8 @@ PRIVACY_VALIDATOR=""
 
 DETR_MODEL_ROOT="DETRResnet50SemanticSegmentationF16P8.mlmodelc"
 NIMA_MODEL_ROOT="aesthetic_nima_mobilenet_fp16.mlmodelc"
+KNOWN_BLOCKER_COUNT=0
+ASSETUTIL_BIN=""
 
 usage() {
     cat <<'EOF'
@@ -77,6 +79,82 @@ require_file() {
     if [ ! -f "$path" ] || [ -L "$path" ]; then
         fail "$label file is missing or is a symlink: $path"
     fi
+}
+
+require_nonempty_plist_value() {
+    local key="$1"
+    local value
+
+    if ! value="$(plutil -extract "$key" raw -o - -- "$APP_ROOT/Info.plist" 2>/dev/null)"; then
+        fail "$key is empty or missing in built Info.plist"
+    fi
+    if [ -z "${value//[[:space:]]/}" ]; then
+        fail "$key is empty or missing in built Info.plist"
+    fi
+    printf 'PASS bundle metadata: %s=%s\n' "$key" "$value"
+}
+
+validate_app_metadata() {
+    local scene_class
+    local font_xml="$TEMP_ROOT/uiappfonts.xml"
+    local font
+    local font_count=0
+    local locale
+    local asset_info="$TEMP_ROOT/assets.car.json"
+
+    printf 'STAGE 5: bundle metadata, fonts, localizations, and app icon\n'
+    require_nonempty_plist_value CFBundleIdentifier
+    require_nonempty_plist_value CFBundleShortVersionString
+    require_nonempty_plist_value CFBundleVersion
+    require_nonempty_plist_value CFBundleDisplayName
+
+    if ! scene_class="$(plutil -extract 'UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.0.UISceneClassName' raw -o - -- "$APP_ROOT/Info.plist" 2>/dev/null)"; then
+        fail "UISceneClassName must be UIWindowScene (missing)"
+    fi
+    if [ "$scene_class" != "UIWindowScene" ]; then
+        fail "UISceneClassName must be UIWindowScene (found '$scene_class')"
+    fi
+    printf 'PASS bundle metadata: UISceneClassName=UIWindowScene\n'
+
+    if ! plutil -extract UIAppFonts xml1 -o "$font_xml" -- "$APP_ROOT/Info.plist" 2>/dev/null; then
+        fail "UIAppFonts is empty or missing in built Info.plist"
+    fi
+    while IFS= read -r font; do
+        [ -n "$font" ] || continue
+        font_count=$((font_count + 1))
+        case "$font" in
+            */*|..|../*|*/../*)
+                fail "declared UIAppFonts entry is not an app-root filename: $font"
+                ;;
+        esac
+        require_file "declared UIAppFonts entry '$font'" "$APP_ROOT/$font"
+    done < <(sed -n 's/^[[:space:]]*<string>\(.*\)<\/string>[[:space:]]*$/\1/p' "$font_xml")
+    if [ "$font_count" -eq 0 ]; then
+        fail "UIAppFonts is empty or missing in built Info.plist"
+    fi
+    printf 'PASS UIAppFonts: %s declared root font file(s) present\n' "$font_count"
+
+    for locale in en ru; do
+        require_file "${locale}.lproj/InfoPlist.strings" "$APP_ROOT/${locale}.lproj/InfoPlist.strings"
+        require_file "${locale}.lproj/Localizable.strings" "$APP_ROOT/${locale}.lproj/Localizable.strings"
+    done
+    printf 'PASS localized resources: en/ru InfoPlist.strings and Localizable.strings present\n'
+
+    if [ -n "${ASSETUTIL_BIN_OVERRIDE:-}" ]; then
+        ASSETUTIL_BIN="$ASSETUTIL_BIN_OVERRIDE"
+    else
+        ASSETUTIL_BIN="$(xcrun --find assetutil 2>/dev/null || true)"
+    fi
+    if [ -z "$ASSETUTIL_BIN" ] || [ ! -x "$ASSETUTIL_BIN" ]; then
+        fail "assetutil is unavailable; cannot inspect Assets.car for AppIcon"
+    fi
+    if ! "$ASSETUTIL_BIN" --info "$APP_ROOT/Assets.car" > "$asset_info" 2> "$TEMP_ROOT/assetutil.stderr"; then
+        fail "assetutil could not inspect Assets.car"
+    fi
+    if ! grep -Eq '"Name"[[:space:]]*:[[:space:]]*"AppIcon"([,}]|$)' "$asset_info"; then
+        fail "Assets.car does not contain asset Name AppIcon"
+    fi
+    printf 'PASS asset catalog: Assets.car contains asset Name AppIcon\n'
 }
 
 is_allowed_model_path() {
@@ -335,13 +413,19 @@ validate_acknowledgements() {
 }
 
 report_provenance_blockers() {
+    KNOWN_BLOCKER_COUNT=0
     printf 'STAGE 9: provenance status\n'
     printf 'KNOWN_BLOCKER: component=llama.framework owner_task=CC-013B status=artifact-traceability-complete/rebuild-unproven blocker=exact-binary-legal-redistribution-approval-and-archive-notice-scope-pending release-allowlisted=true license_approved=false\n'
+    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
     printf 'KNOWN_BLOCKER: component=%s owner_task=CC-013B status=provenance-unresolved release-allowlisted=true license_approved=false\n' "$DETR_MODEL_ROOT"
+    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
     printf 'KNOWN_BLOCKER: component=%s owner_task=CC-013B status=provenance-unresolved release-allowlisted=true license_approved=false\n' "$NIMA_MODEL_ROOT"
+    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
     printf 'KNOWN_BLOCKER: component=Circle.usdz owner_task=CC-013C status=repository-correlation-verified blocker=creator-rights-export-causality-pending release-allowlisted=true license_approved=false\n'
+    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
     printf 'KNOWN_BLOCKER: component=Person.usdz owner_task=CC-013C status=provenance-unresolved release-allowlisted=true license_approved=false\n'
-    printf 'KNOWN_BLOCKER_COUNT=5\n'
+    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
+    printf 'KNOWN_BLOCKER_COUNT=%s\n' "$KNOWN_BLOCKER_COUNT"
 }
 
 report_material_sizes() {
@@ -429,13 +513,19 @@ fi
 
 validate_privacy
 validate_required_structure
+validate_app_metadata
 validate_forbidden_and_family_paths
 validate_acknowledgements
 report_provenance_blockers
 report_material_sizes
+printf 'MANIFEST_COUNT=2\n'
 
-printf 'PASS RELEASE BUNDLE VALIDATION: app=%s manifest_count=2 total_app_kib=%s material_contributors=%s known_blockers=5\n' \
+if [ "$KNOWN_BLOCKER_COUNT" -gt 0 ]; then
+    fail "release blocked by $KNOWN_BLOCKER_COUNT known provenance blocker(s)"
+fi
+
+printf 'PASS RELEASE BUNDLE VALIDATION: app=%s manifest_count=2 total_app_kib=%s material_contributors=%s known_blockers=%s\n' \
     "$APP_ROOT" \
     "$(du -sk "$APP_ROOT" | awk 'NR == 1 { print $1 }')" \
-    "$(wc -l < "$TEMP_ROOT/material-contributors-sorted.tsv" | tr -d '[:space:]')"
-printf 'MANIFEST_COUNT=2\n'
+    "$(wc -l < "$TEMP_ROOT/material-contributors-sorted.tsv" | tr -d '[:space:]')" \
+    "$KNOWN_BLOCKER_COUNT"

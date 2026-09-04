@@ -22,7 +22,7 @@ protocol CameraScreenPresenterProtocol: AnyObject {
     func handleTap(_ gesture: UITapGestureRecognizer, _ arView: ARView)
     func longTap(_ gesture: UILongPressGestureRecognizer, _ arView: ARView)
     func changeName(arView: ARView)
-    func startRecording()
+    func startRecording() -> Bool
     func stopRecording()
     func prepareRecorder()
     func fetchSettingsButtonValues() -> (SettingsValues, String)
@@ -183,7 +183,7 @@ extension CameraScreenPresenter: CameraScreenPresenterProtocol {
         interactor.session(session, didAdd: anchors, arView: arView)
     }
     
-    func startRecording() {
+    func startRecording() -> Bool {
         interactor.startRecording()
     }
 

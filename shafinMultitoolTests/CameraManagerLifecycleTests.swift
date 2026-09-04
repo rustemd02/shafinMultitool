@@ -1,10 +1,17 @@
 import XCTest
 import AVFoundation
+import Combine
 import ImageIO
 import UIKit
 @testable import shafinMultitool
 
 final class CameraManagerLifecycleTests: XCTestCase {
+
+    func testPhysicalLensInventoryHasOneTruthfulTelephotoDescriptor() {
+        XCTAssertEqual(CameraLens.allCases, [.ultraWide, .wide, .telephoto])
+        XCTAssertEqual(CameraLens.telephoto.displayName, "TELE")
+        XCTAssertFalse(CameraLens.allCases.map(\.displayName).joined(separator: " ").contains("×"))
+    }
 
     func testConcurrentStartsInvokeRunnerOnceAndFinishRunning() async throws {
         let (manager, runner) = makeManager()
@@ -115,6 +122,132 @@ final class CameraManagerLifecycleTests: XCTestCase {
         XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
     }
 
+    func testExactSessionInterruptionAndRuntimeNotificationsFailOnceAndCloseFrameGate() async throws {
+        let notificationCenter = NotificationCenter()
+        let session = AVCaptureSession()
+        let runner = FakeCameraSessionRunner()
+        let thermalGovernor = makeThermalGovernor()
+        let manager = CameraManager(scheduler: RealtimeScheduler(),
+                                    thermalGovernor: thermalGovernor,
+                                    motionGate: MotionGate(),
+                                    sessionRunner: runner,
+                                    configuration: .ready,
+                                    session: session,
+                                    notificationCenter: notificationCenter)
+        var failures: [CameraManagerError] = []
+        let subscription = manager.failurePublisher.sink { failures.append($0) }
+        defer { subscription.cancel() }
+
+        try await manager.startAndWait()
+        XCTAssertTrue(manager.frameDeliveryEnabledForTesting)
+
+        notificationCenter.post(name: AVCaptureSession.wasInterruptedNotification,
+                                object: AVCaptureSession())
+        XCTAssertTrue(failures.isEmpty)
+        XCTAssertTrue(manager.frameDeliveryEnabledForTesting)
+
+        notificationCenter.post(name: AVCaptureSession.wasInterruptedNotification,
+                                object: session)
+        XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+        XCTAssertEqual(manager.lifecycleState, .failed(.sessionInterrupted))
+        XCTAssertEqual(manager.lifecycleError, .sessionInterrupted)
+        XCTAssertEqual(failures, [.sessionInterrupted])
+
+        notificationCenter.post(name: AVCaptureSession.runtimeErrorNotification,
+                                object: session)
+        XCTAssertEqual(failures, [.sessionInterrupted])
+
+        await manager.releaseAndWait()
+        try await manager.startAndWait()
+        notificationCenter.post(name: AVCaptureSession.runtimeErrorNotification,
+                                object: session)
+
+        XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+        XCTAssertEqual(manager.lifecycleState, .failed(.runtimeError))
+        XCTAssertEqual(manager.lifecycleError, .runtimeError)
+        XCTAssertEqual(failures, [.sessionInterrupted, .runtimeError])
+        await manager.releaseAndWait()
+    }
+
+    func testConcurrentSessionFailuresPublishOnlyOneClaim() async throws {
+        let notificationCenter = NotificationCenter()
+        let session = AVCaptureSession()
+        let manager = CameraManager(scheduler: RealtimeScheduler(),
+                                    thermalGovernor: makeThermalGovernor(),
+                                    motionGate: MotionGate(),
+                                    sessionRunner: FakeCameraSessionRunner(),
+                                    configuration: .ready,
+                                    session: session,
+                                    notificationCenter: notificationCenter)
+        let failureLock = NSLock()
+        var failures: [CameraManagerError] = []
+        let subscription = manager.failurePublisher.sink { error in
+            failureLock.lock()
+            failures.append(error)
+            failureLock.unlock()
+        }
+        defer { subscription.cancel() }
+
+        try await manager.startAndWait()
+
+        let group = DispatchGroup()
+        let queue = DispatchQueue(label: "CameraManagerLifecycleTests.ConcurrentFailures",
+                                  attributes: .concurrent)
+        for name in [AVCaptureSession.wasInterruptedNotification,
+                     AVCaptureSession.runtimeErrorNotification] {
+            group.enter()
+            queue.async {
+                notificationCenter.post(name: name, object: session)
+                group.leave()
+            }
+        }
+        group.wait()
+
+        failureLock.lock()
+        let publishedFailures = failures
+        failureLock.unlock()
+        XCTAssertEqual(publishedFailures.count, 1)
+        guard let publishedFailure = publishedFailures.first else {
+            return XCTFail("one concurrent failure must be published")
+        }
+        XCTAssertEqual(manager.lifecycleState, .failed(publishedFailure))
+        XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+
+        await manager.releaseAndWait()
+    }
+
+    func testNotificationWinsFinalStartTransition() async throws {
+        let notificationCenter = NotificationCenter()
+        let session = AVCaptureSession()
+        let runner = FakeCameraSessionRunner()
+        let manager = CameraManager(scheduler: RealtimeScheduler(),
+                                    thermalGovernor: makeThermalGovernor(),
+                                    motionGate: MotionGate(),
+                                    sessionRunner: runner,
+                                    configuration: .ready,
+                                    session: session,
+                                    notificationCenter: notificationCenter)
+        runner.onStart = {
+            notificationCenter.post(name: AVCaptureSession.runtimeErrorNotification,
+                                    object: session)
+        }
+
+        do {
+            try await manager.startAndWait()
+            XCTFail("the claimed runtime failure must win the start transition")
+        } catch let error as CameraManagerError {
+            XCTAssertEqual(error, .runtimeError)
+        }
+
+        XCTAssertEqual(runner.startCount, 1)
+        XCTAssertEqual(runner.stopCount, 1)
+        XCTAssertEqual(manager.lifecycleState, .failed(.runtimeError))
+        XCTAssertEqual(manager.lifecycleError, .runtimeError)
+        XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+
+        await manager.releaseAndWait()
+    }
+
     func testOrientationMappingKeepsInterfaceCaptureAndImageSemanticsTogether() throws {
         let cases: [(UIInterfaceOrientation, AVCaptureVideoOrientation, CGImagePropertyOrientation)] = [
             (.portrait, .portrait, .right),
@@ -135,6 +268,32 @@ final class CameraManagerLifecycleTests: XCTestCase {
                 orientation
             )
         }
+    }
+
+    func testVideoDataConnectionConfiguratorRequestsNativeRotationAndNoMirroring() {
+        let supported = CameraDataOutputConnectionFake(
+            supportsRotation: true,
+            supportsMirroring: true
+        )
+        CameraDataOutputConnectionConfigurator.applyNativeGeometry(to: supported)
+
+        XCTAssertEqual(supported.rotationSupportChecks, [0])
+        XCTAssertEqual(supported.rotationAssignments, [0])
+        XCTAssertEqual(supported.configurationEvents, ["automatic:false", "mirrored:false"])
+
+        let unsupported = CameraDataOutputConnectionFake(
+            supportsRotation: false,
+            supportsMirroring: false
+        )
+        CameraDataOutputConnectionConfigurator.applyNativeGeometry(to: unsupported)
+
+        XCTAssertEqual(unsupported.rotationSupportChecks, [0])
+        XCTAssertTrue(unsupported.rotationAssignments.isEmpty)
+        XCTAssertEqual(unsupported.configurationEvents, ["automatic:false"])
+        XCTAssertEqual(
+            CameraFrameDeliveryOrientationContract.imageOrientation(for: .portrait),
+            .right
+        )
     }
 
     func testOrientationChangesInPlaceWithoutLifecycleReset() async throws {
@@ -214,8 +373,133 @@ final class CameraManagerLifecycleTests: XCTestCase {
         XCTAssertNil(viewModel.lifecycleError)
     }
 
+    func testStopDuringGatedStartFinishesIdleWithoutRevival() async throws {
+        // Isolated NotificationCenter: the gated window would otherwise admit
+        // async simulator AVCaptureSession noise (FigCaptureSessionSimulator)
+        // that other (fast, non-gated) tests never observe.
+        let runner = FakeCameraSessionRunner()
+        let startEntered = expectation(description: "runner start entered")
+        runner.onStart = { startEntered.fulfill() }
+        runner.startGate = DispatchSemaphore(value: 0)
+        let manager = CameraManager(scheduler: RealtimeScheduler(),
+                                    thermalGovernor: makeThermalGovernor(),
+                                    motionGate: MotionGate(),
+                                    sessionRunner: runner,
+                                    configuration: .ready,
+                                    notificationCenter: NotificationCenter())
+
+        let startTask = Task { try await manager.startAndWait() }
+        await fulfillment(of: [startEntered], timeout: 1.0)
+
+        let stopTask = Task { await manager.stopAndWait() }
+        runner.allowStart()
+        try await startTask.value
+        await stopTask.value
+
+        XCTAssertEqual(runner.startCount, 1)
+        XCTAssertEqual(runner.stopCount, 1)
+        XCTAssertEqual(manager.lifecycleState, .idle)
+    }
+
+    func testStopRequestedBeforeStartReattachKeepsFrameGateClosed() async throws {
+        let (manager, _) = makeManager()
+        let reattachEntered = expectation(description: "start reached frame reattach")
+        let reattachGate = DispatchSemaphore(value: 0)
+        manager.beforeFrameDeliveryEnableForTesting = {
+            reattachEntered.fulfill()
+            reattachGate.wait()
+        }
+
+        let startTask = Task { try await manager.startAndWait() }
+        await fulfillment(of: [reattachEntered], timeout: 1)
+        let stopTask = Task { await manager.stopAndWait() }
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(1))
+        while manager.sessionGenerationForTesting == 0, clock.now < deadline {
+            await Task.yield()
+        }
+        XCTAssertEqual(manager.sessionGenerationForTesting, 1)
+        reattachGate.signal()
+
+        try await startTask.value
+        await stopTask.value
+        XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+        // Initial input configuration owns generation 1; stop closes it with generation 2.
+        XCTAssertEqual(manager.captureGenerationForTesting, 2)
+        XCTAssertEqual(manager.lifecycleState, .idle)
+    }
+
+    func testFailureDuringOrientationReattachCannotReopenFrameGate() async throws {
+        let notificationCenter = NotificationCenter()
+        let runner = FakeCameraSessionRunner()
+        let manager = CameraManager(
+            scheduler: RealtimeScheduler(),
+            thermalGovernor: makeThermalGovernor(),
+            motionGate: MotionGate(),
+            sessionRunner: runner,
+            configuration: .ready,
+            notificationCenter: notificationCenter
+        )
+        try await manager.startAndWait()
+
+        let reattachEntered = expectation(description: "orientation reached frame reattach")
+        let reattachGate = DispatchSemaphore(value: 0)
+        manager.beforeFrameDeliveryEnableForTesting = {
+            reattachEntered.fulfill()
+            reattachGate.wait()
+        }
+        let orientationTask = Task {
+            await manager.setVideoOrientationAndWait(.portrait)
+        }
+        await fulfillment(of: [reattachEntered], timeout: 1)
+
+        notificationCenter.post(
+            name: AVCaptureSession.runtimeErrorNotification,
+            object: manager.captureSession
+        )
+        reattachGate.signal()
+        await orientationTask.value
+
+        XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+        XCTAssertEqual(manager.captureGenerationForTesting, 2)
+        XCTAssertEqual(manager.lifecycleState, .failed(.runtimeError))
+    }
+
+    func testSessionGenerationBumpsOnStopAndReleaseOnly() async throws {
+        let (manager, _) = makeManager()
+        XCTAssertEqual(manager.sessionGenerationForTesting, 0)
+
+        try await manager.startAndWait()
+        XCTAssertEqual(manager.sessionGenerationForTesting, 0)
+
+        await manager.stopAndWait()
+        XCTAssertEqual(manager.sessionGenerationForTesting, 1)
+
+        try await manager.startAndWait()
+        XCTAssertEqual(manager.sessionGenerationForTesting, 1)
+        XCTAssertEqual(manager.lifecycleState, .running)
+
+        await manager.releaseAndWait()
+        XCTAssertEqual(manager.sessionGenerationForTesting, 2)
+        XCTAssertEqual(manager.lifecycleState, .idle)
+    }
+
+    func testSequentialDoubleStopStopsRunnerOnceAndStaysIdle() async throws {
+        let (manager, runner) = makeManager()
+        try await manager.startAndWait()
+
+        await manager.stopAndWait()
+        await manager.stopAndWait()
+
+        XCTAssertEqual(runner.stopCount, 1)
+        XCTAssertEqual(manager.lifecycleState, .idle)
+        XCTAssertEqual(manager.configurationState, .configured)
+    }
+
     private func makeManager(
-        configuration: CameraManagerTestConfiguration = .ready
+        configuration: CameraManagerTestConfiguration = .ready,
+        notificationCenter: NotificationCenter = NotificationCenter()
     ) -> (CameraManager, FakeCameraSessionRunner) {
         let runner = FakeCameraSessionRunner()
         let thermalGovernor = makeThermalGovernor()
@@ -223,13 +507,47 @@ final class CameraManagerLifecycleTests: XCTestCase {
                                     thermalGovernor: thermalGovernor,
                                     motionGate: MotionGate(),
                                     sessionRunner: runner,
-                                    configuration: configuration)
+                                    configuration: configuration,
+                                    notificationCenter: notificationCenter)
         return (manager, runner)
     }
 
     private func makeThermalGovernor() -> ThermalGovernor {
         ThermalGovernor(thermalStateProvider: { .nominal },
                          batteryLevelProvider: { 1.0 })
+    }
+}
+
+@available(iOS 17.0, *)
+private final class CameraDataOutputConnectionFake: CameraDataOutputRotationConnectionConfiguring {
+    let supportsRotation: Bool
+    let supportsMirroring: Bool
+    private(set) var rotationSupportChecks: [CGFloat] = []
+    private(set) var rotationAssignments: [CGFloat] = []
+    private(set) var configurationEvents: [String] = []
+
+    var videoRotationAngle: CGFloat = 90 {
+        didSet { rotationAssignments.append(videoRotationAngle) }
+    }
+
+    var automaticallyAdjustsVideoMirroring: Bool = true {
+        didSet { configurationEvents.append("automatic:\(automaticallyAdjustsVideoMirroring)") }
+    }
+
+    var isVideoMirroringSupported: Bool { supportsMirroring }
+
+    var isVideoMirrored: Bool = true {
+        didSet { configurationEvents.append("mirrored:\(isVideoMirrored)") }
+    }
+
+    init(supportsRotation: Bool, supportsMirroring: Bool) {
+        self.supportsRotation = supportsRotation
+        self.supportsMirroring = supportsMirroring
+    }
+
+    func isVideoRotationAngleSupported(_ videoRotationAngle: CGFloat) -> Bool {
+        rotationSupportChecks.append(videoRotationAngle)
+        return supportsRotation && videoRotationAngle == 0
     }
 }
 

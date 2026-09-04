@@ -1,6 +1,13 @@
 import XCTest
 @testable import shafinMultitool
 
+private struct LiveProductionFixture {
+    let snapshot: FrameFeatureSnapshot
+    let semantics: SceneSemanticsReport
+    let critique: CritiqueReport
+    let plan: RecommendationPlan
+}
+
 final class SemanticTipPlannerTests: XCTestCase {
     private let planner = SemanticTipPlanner()
 
@@ -56,6 +63,70 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(output.livePrimaryTip?.actionType, .shiftFrameLeft)
         XCTAssertEqual(output.livePrimaryTip?.liveText, "Смести камеру чуть левее.")
         XCTAssertEqual(output.livePrimaryTip?.linkedIssueIds, ["issue-look-space"])
+    }
+
+    func testPersonEdgeTipsUsePhysicalCameraDirectionAndVisualCopy() throws {
+        let cases: [(action: ActionTypeV1, tip: SemanticTipType, direction: SemanticDirection, liveText: String, pauseText: String)] = [
+            (.moveFrameLeft, .moveSubjectOffLeftEdge, .left, "Смести героя чуть правее.", "Герой зажат слева. Смести его чуть правее."),
+            (.moveFrameRight, .moveSubjectOffRightEdge, .right, "Смести героя чуть левее.", "Герой зажат справа. Смести его чуть левее.")
+        ]
+
+        for (index, expected) in cases.enumerated() {
+            let frameId = "frame-person-edge-\(index)"
+            let issueId = "issue-person-edge-\(index)"
+            let critique = makeCritique(
+                frameId: frameId,
+                mode: .live,
+                verdict: .mixed,
+                issues: [
+                    FrameIssue(
+                        id: issueId,
+                        type: .subjectTooCloseToEdge,
+                        severity: 0.82,
+                        confidence: 0.86,
+                        rationale: "Герой зажат у края.",
+                        evidence: [EvidenceRef(source: .semantics, key: "readability.edgePressureScore", value: "0.82", confidence: 0.86)],
+                        affectedRegion: NormalizedRect(x: expected.direction == .left ? 0.01 : 0.72, y: 0.18, width: 0.20, height: 0.44),
+                        suggestedFixTypes: [.reframing]
+                    )
+                ]
+            )
+            let plan = RecommendationPlan(
+                frameId: frameId,
+                mode: .live,
+                inputVerdict: .mixed,
+                primaryAction: RecommendationAction(
+                    id: "action-person-edge-\(index)",
+                    actionType: expected.action,
+                    priority: 1,
+                    targetRegion: nil,
+                    linkedIssueIds: [issueId],
+                    expectedOutcome: "legacy",
+                    guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
+                    overlayHint: nil
+                ),
+                secondaryActions: [],
+                deferredActions: [],
+                noChangeRationale: nil,
+                planConfidence: 0.86
+            )
+
+            let output = planner.plan(
+                input: SemanticTipPlannerInput(
+                    frameId: frameId,
+                    mode: .live,
+                    critique: critique,
+                    recommendationPlan: plan,
+                    semantics: makeSemantics(frameId: frameId, mode: .live, subjectKind: .person)
+                )
+            )
+            let candidate = try XCTUnwrap(output.livePrimaryTip)
+            XCTAssertEqual(candidate.tipType, expected.tip)
+            XCTAssertEqual(candidate.actionType, expected.tip == .moveSubjectOffLeftEdge ? .shiftFrameLeft : .shiftFrameRight)
+            XCTAssertEqual(candidate.direction, expected.direction)
+            XCTAssertEqual(candidate.liveText, expected.liveText)
+            XCTAssertEqual(candidate.pauseText, expected.pauseText)
+        }
     }
 
     func testPausePlannerLocalizesFaceContourConflictWithValidatedVLMEntity() throws {
@@ -183,8 +254,8 @@ final class SemanticTipPlannerTests: XCTestCase {
             mode: .pause,
             inputVerdict: critique.verdict,
             primaryAction: RecommendationAction(
-                id: "action-edge-left",
-                actionType: .moveFrameLeft,
+                id: "action-edge-right",
+                actionType: .moveFrameRight,
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.72, y: 0.22, width: 0.20, height: 0.22),
                 linkedIssueIds: ["issue-object-edge"],
@@ -210,9 +281,64 @@ final class SemanticTipPlannerTests: XCTestCase {
 
         let primary = try XCTUnwrap(output.pauseExpandedTips.first)
         XCTAssertEqual(primary.tipType, .moveObjectOffRightEdge)
+        XCTAssertEqual(primary.actionType, .moveObjectLeft)
         XCTAssertEqual(primary.targetEntityDisplayLabel, "предмет")
+        XCTAssertEqual(primary.liveText, "Сдвинь предмет левее.")
         XCTAssertNil(primary.targetEntityRef)
         XCTAssertTrue(output.fallbackUsed)
+    }
+
+    func testPlannerMapsLeftObjectEdgeToMovingObjectRight() throws {
+        let critique = makeCritique(
+            frameId: "frame-object-edge-left",
+            mode: .pause,
+            verdict: .mixed,
+            issues: [
+                FrameIssue(
+                    id: "issue-object-edge-left",
+                    type: .subjectTooCloseToEdge,
+                    severity: 0.65,
+                    confidence: 0.75,
+                    rationale: "Главный объект зажат у края.",
+                    evidence: [EvidenceRef(source: .semantics, key: "readability.edgePressureScore", value: "0.75", confidence: 0.75)],
+                    affectedRegion: NormalizedRect(x: 0.02, y: 0.22, width: 0.20, height: 0.22),
+                    suggestedFixTypes: [.reframing]
+                )
+            ]
+        )
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: RecommendationAction(
+                id: "action-edge-left",
+                actionType: .moveFrameLeft,
+                priority: 1,
+                targetRegion: NormalizedRect(x: 0.02, y: 0.22, width: 0.20, height: 0.22),
+                linkedIssueIds: ["issue-object-edge-left"],
+                expectedOutcome: "Сдвинь предмет правее.",
+                guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
+                overlayHint: nil
+            ),
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.74
+        )
+
+        let output = planner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: critique.frameId,
+                mode: .pause,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .object)
+            )
+        )
+
+        let primary = try XCTUnwrap(output.pauseExpandedTips.first)
+        XCTAssertEqual(primary.tipType, .moveObjectOffLeftEdge)
+        XCTAssertEqual(primary.actionType, .moveObjectRight)
     }
 
     func testGoodFrameProducesPositiveTip() {
@@ -391,8 +517,8 @@ final class SemanticTipPlannerTests: XCTestCase {
             mode: .live,
             inputVerdict: critique.verdict,
             primaryAction: RecommendationAction(
-                id: "action-left",
-                actionType: .moveFrameLeft,
+                id: "action-right",
+                actionType: .moveFrameRight,
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.62, y: 0.18, width: 0.24, height: 0.44),
                 linkedIssueIds: ["issue-look-space"],
@@ -416,9 +542,9 @@ final class SemanticTipPlannerTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(semanticOutput.livePrimaryTip?.tipType, .createLookSpaceLeft)
-        XCTAssertEqual(semanticOutput.livePrimaryTip?.actionType, .shiftFrameLeft)
-        XCTAssertEqual(semanticOutput.livePrimaryTip?.liveText, "Смести камеру чуть левее.")
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.tipType, .createLookSpaceRight)
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.actionType, .shiftFrameRight)
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.liveText, "Смести камеру чуть правее.")
 
         await MainActor.run {
             pipeline.testingPublishLivePresentation(
@@ -461,8 +587,8 @@ final class SemanticTipPlannerTests: XCTestCase {
             mode: .live,
             inputVerdict: critique.verdict,
             primaryAction: RecommendationAction(
-                id: "action-edge-left",
-                actionType: .moveFrameLeft,
+                id: "action-edge-right",
+                actionType: .moveFrameRight,
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.72, y: 0.22, width: 0.20, height: 0.22),
                 linkedIssueIds: ["issue-object-edge"],
@@ -508,6 +634,366 @@ final class SemanticTipPlannerTests: XCTestCase {
         }
     }
 
+    func testLiveCoachQualityGateAcceptsFreshGroundedSingleSubject() {
+        let fixture = makeLiveProductionFixture()
+
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .moveFrameLeft,
+            mode: .live,
+            snapshot: fixture.snapshot,
+            semantics: fixture.semantics
+        ))
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .increaseSubjectSize,
+            mode: .live,
+            snapshot: fixture.snapshot,
+            semantics: fixture.semantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsStaleOrUnavailableVision() {
+        let semantics = makeLiveCoachSemantics()
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            )
+        )
+        let unavailableSnapshot = makeLiveCoachSnapshot(vision: .init(available: false))
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .moveFrameRight,
+            mode: .live,
+            snapshot: staleSnapshot,
+            semantics: semantics
+        ))
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .moveFrameRight,
+            mode: .live,
+            snapshot: unavailableSnapshot,
+            semantics: semantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsAmbiguousOrUngroundedSubject() {
+        let snapshot = makeLiveCoachSnapshot()
+        let ambiguousSemantics = makeLiveCoachSemantics(ambiguities: [
+            .init(
+                type: .multipleSubjectsSimilarConfidence,
+                note: "competing subjects",
+                candidateIds: ["subject-a", "subject-b"]
+            )
+        ])
+        let unknownSemantics = makeLiveCoachSemantics(
+            primaryKind: .unknown,
+            primaryRegion: nil,
+            primaryConfidence: 0
+        )
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .moveFrameDown,
+            mode: .live,
+            snapshot: snapshot,
+            semantics: ambiguousSemantics
+        ))
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .moveFrameDown,
+            mode: .live,
+            snapshot: snapshot,
+            semantics: unknownSemantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsAnySemanticAmbiguityForSpatialAction() {
+        let snapshot = makeLiveCoachSnapshot()
+        let sceneTypeTieSemantics = makeLiveCoachSemantics(ambiguities: [
+            .init(type: .sceneTypeTie, note: "scene tie", candidateIds: ["scene-a", "scene-b"])
+        ])
+        let weakSignalSemantics = makeLiveCoachSemantics(ambiguities: [
+            .init(type: .weakSignal, note: "weak signal", candidateIds: [])
+        ])
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .moveFrameLeft,
+            mode: .live,
+            snapshot: snapshot,
+            semantics: sceneTypeTieSemantics
+        ))
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .moveFrameLeft,
+            mode: .live,
+            snapshot: snapshot,
+            semantics: weakSignalSemantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsContextualSpatialIntentHiddenByNonSpatialAction() {
+        let semantics = makeLiveCoachSemantics()
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            )
+        )
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .changeAngle,
+            semanticActionTypes: [.shiftFrameLeft],
+            mode: .live,
+            snapshot: staleSnapshot,
+            semantics: semantics
+        ))
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.stepCloser],
+            mode: .live,
+            snapshot: staleSnapshot,
+            semantics: semantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsUngroundedOrStaleContextualStepBack() {
+        let groundedSemantics = makeLiveCoachSemantics()
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            )
+        )
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .changeAngle,
+            semanticActionTypes: [.stepBack],
+            mode: .live,
+            snapshot: staleSnapshot,
+            semantics: groundedSemantics
+        ))
+
+        let ungroundedSemantics = makeLiveCoachSemantics(
+            primaryKind: .unknown,
+            primaryRegion: nil,
+            primaryConfidence: 0
+        )
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .changeAngle,
+            semanticActionTypes: [.stepBack],
+            mode: .live,
+            snapshot: makeLiveCoachSnapshot(),
+            semantics: ungroundedSemantics
+        ))
+
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .changeAngle,
+            semanticActionTypes: [.stepBack],
+            mode: .live,
+            snapshot: makeLiveCoachSnapshot(),
+            semantics: groundedSemantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsMismatchedPrimaryRegions() {
+        let snapshot = makeLiveCoachSnapshot(
+            primaryRegion: .init(x: 0.70, y: 0.16, width: 0.20, height: 0.30)
+        )
+        let semantics = makeLiveCoachSemantics(
+            primaryRegion: .init(x: 0.05, y: 0.16, width: 0.20, height: 0.30)
+        )
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .moveFrameLeft,
+            mode: .live,
+            snapshot: snapshot,
+            semantics: semantics
+        ))
+    }
+
+    func testPipelineLivePresentationEmitsOnlyFreshGroundedDirectionalAction() async {
+        let fixture = makeLiveProductionFixture()
+        let frameId = fixture.snapshot.frameId
+        let firstFreshSnapshot = fixture.snapshot
+        let secondFreshSnapshot = makeLiveProductionFixture(
+            capturedAt: fixture.snapshot.capturedAt.addingTimeInterval(0.1)
+        ).snapshot
+        let thirdFreshSnapshot = makeLiveProductionFixture(
+            capturedAt: fixture.snapshot.capturedAt.addingTimeInterval(0.2)
+        ).snapshot
+
+        let freshPipeline = AnalysisPipeline(reasoningProvider: nil)
+        await MainActor.run {
+            freshPipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: firstFreshSnapshot,
+                critique: fixture.critique,
+                plan: fixture.plan,
+                semantics: fixture.semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_772_000_300)
+            )
+            XCTAssertNil(freshPipeline.currentLiveHint)
+            freshPipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: secondFreshSnapshot,
+                critique: fixture.critique,
+                plan: fixture.plan,
+                semantics: fixture.semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_772_000_300.1)
+            )
+            XCTAssertNil(freshPipeline.currentLiveHint)
+            freshPipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: thirdFreshSnapshot,
+                critique: fixture.critique,
+                plan: fixture.plan,
+                semantics: fixture.semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_772_000_300.2)
+            )
+            XCTAssertEqual(freshPipeline.currentLiveHint?.actionType, .moveFrameLeft)
+        }
+
+        let stalePipeline = AnalysisPipeline(reasoningProvider: nil)
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            )
+        )
+        await MainActor.run {
+            stalePipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: staleSnapshot,
+                critique: fixture.critique,
+                plan: fixture.plan,
+                semantics: fixture.semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_772_000_300)
+            )
+            XCTAssertNil(stalePipeline.currentLiveHint)
+        }
+
+        let ambiguousPipeline = AnalysisPipeline(reasoningProvider: nil)
+        let ambiguousSemantics = makeLiveCoachSemantics(ambiguities: [
+            .init(
+                type: .multipleSubjectsSimilarConfidence,
+                note: "competing subjects",
+                candidateIds: ["subject-a", "subject-b"]
+            )
+        ])
+        await MainActor.run {
+            ambiguousPipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: firstFreshSnapshot,
+                critique: fixture.critique,
+                plan: fixture.plan,
+                semantics: ambiguousSemantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: Date(timeIntervalSince1970: 1_772_000_300)
+            )
+            XCTAssertNil(ambiguousPipeline.currentLiveHint)
+        }
+    }
+
+    func testPipelineRejectsStaleOrMismatchedSecondarySpatialSemanticTip() async {
+        let fixture = makeLiveProductionFixture()
+        let frameId = fixture.snapshot.frameId
+        let semanticTip = planner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: frameId,
+                mode: .live,
+                critique: fixture.critique,
+                recommendationPlan: fixture.plan,
+                semantics: fixture.semantics
+            )
+        ).livePrimaryTip
+        XCTAssertNotNil(semanticTip)
+
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            )
+        )
+        let stalePipeline = AnalysisPipeline(reasoningProvider: nil)
+        await MainActor.run {
+            stalePipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: staleSnapshot,
+                critique: fixture.critique,
+                plan: fixture.plan,
+                semantics: fixture.semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true
+            )
+            XCTAssertNil(stalePipeline.currentLiveHint)
+        }
+
+        let mismatchedSnapshot = makeLiveCoachSnapshot(
+            primaryRegion: .init(x: 0.70, y: 0.16, width: 0.20, height: 0.30)
+        )
+        let mismatchedPipeline = AnalysisPipeline(reasoningProvider: nil)
+        await MainActor.run {
+            mismatchedPipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: mismatchedSnapshot,
+                critique: fixture.critique,
+                plan: fixture.plan,
+                semantics: fixture.semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true
+            )
+            XCTAssertNil(mismatchedPipeline.currentLiveHint)
+        }
+    }
+
+    func testPipelineDoesNotPublishStaleSpatialDemoHint() async {
+        let frameId = "live-quality"
+        let edgeRegion = NormalizedRect(x: 0.01, y: 0.16, width: 0.34, height: 0.48)
+        let snapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            ),
+            primaryRegion: edgeRegion
+        )
+        let semantics = makeLiveCoachSemantics(primaryRegion: edgeRegion)
+        let critique = makeCritique(frameId: frameId, mode: .live, verdict: .mixed, issues: [])
+        let plan = RecommendationPlan(
+            frameId: frameId,
+            mode: .live,
+            inputVerdict: .mixed,
+            primaryAction: nil,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0
+        )
+        let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        await MainActor.run {
+            pipeline.setCameraDemoSceneMode(.portrait)
+            pipeline.testingPublishLivePresentation(
+                frameId: frameId,
+                snapshot: snapshot,
+                critique: critique,
+                plan: plan,
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true
+            )
+            XCTAssertNil(pipeline.currentLiveHint)
+        }
+    }
+
     private func makeCritique(frameId: String,
                               mode: AnalysisMode,
                               verdict: FrameVerdict,
@@ -548,6 +1034,123 @@ final class SemanticTipPlannerTests: XCTestCase {
             readability: .init(subjectReadable: true, lookSpaceAdequate: false, edgePressureScore: 0.71, separationScore: 0.48),
             ambiguities: [],
             assumptions: []
+        )
+    }
+
+    private func makeLiveCoachSnapshot(
+        vision: SourceState = .init(available: true, freshnessMs: 80, confidence: 0.88),
+        primaryRegion: NormalizedRect? = .init(x: 0.22, y: 0.16, width: 0.34, height: 0.48),
+        primaryConfidence: Double? = 0.86,
+        capturedAt: Date = Date(timeIntervalSince1970: 1_772_000_300)
+    ) -> FrameFeatureSnapshot {
+        FrameFeatureSnapshot(
+            frameId: "live-quality",
+            mode: .live,
+            capturedAt: capturedAt,
+            sources: .init(
+                vision: vision,
+                horizon: .init(available: false),
+                lighting: .init(available: false),
+                detr: .init(available: false),
+                aesthetic: .init(available: false)
+            ),
+            composition: .init(
+                horizontalOffset: 0,
+                verticalOffset: 0,
+                subjectAreaRatio: 0.16,
+                saliencyLeftRightBalance: 0,
+                saliencyTopBottomBalance: 0
+            ),
+            subjectSignals: .init(
+                faceDetected: false,
+                personDetected: true,
+                personCount: 1,
+                primaryCandidateRegion: primaryRegion,
+                primaryCandidateConfidence: primaryConfidence
+            ),
+            horizon: .init(angleDegrees: 0, confidence: 0),
+            lighting: .init(exposureBiasHint: 0, backlightIndex: 0, keyToFillRatio: nil),
+            motion: .init(state: .still, shakeLevel: 0),
+            aesthetics: .init(),
+            objects: .init(totalCount: 0, topKLabels: []),
+            technicalFlags: []
+        )
+    }
+
+    private func makeLiveCoachSemantics(
+        primaryKind: SubjectKind = .person,
+        primaryRegion: NormalizedRect? = .init(x: 0.22, y: 0.16, width: 0.34, height: 0.48),
+        primaryConfidence: Double = 0.86,
+        ambiguities: [SemanticsAmbiguity] = []
+    ) -> SceneSemanticsReport {
+        SceneSemanticsReport(
+            frameId: "live-quality",
+            mode: .live,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: 0.88,
+            primarySubject: .init(
+                kind: primaryKind,
+                label: primaryKind == .unknown ? nil : "person",
+                region: primaryRegion,
+                confidence: primaryConfidence
+            ),
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.12, backgroundClutterScore: 0.10),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0.10, separationScore: 0.82),
+            ambiguities: ambiguities,
+            assumptions: []
+        )
+    }
+
+    private func makeLiveProductionFixture(
+        capturedAt: Date = Date(timeIntervalSince1970: 1_772_000_300)
+    ) -> LiveProductionFixture {
+        let region = CGRect(x: 0.0, y: 0.20, width: 0.20, height: 0.45)
+        let vision = FeatureSample(
+            value: FeatureSnapshotVisionPayload(
+                subjects: [
+                    .init(boundingBox: region, confidence: 0.92, isFace: true)
+                ],
+                saliencyCenter: CGPoint(x: region.midX, y: region.midY),
+                faceCount: 1,
+                personCount: 1
+            ),
+            measuredAt: capturedAt,
+            baseConfidence: 0.92
+        )
+        let input = FeatureAggregationInput(
+            frameId: "live-quality",
+            mode: .live,
+            capturedAt: capturedAt,
+            evaluatedAt: capturedAt,
+            motionState: .still,
+            shakeLevel: 0,
+            vision: vision,
+            horizon: FeatureSample(
+                value: .init(angleDegrees: 0.2, confidence: 0.90),
+                measuredAt: capturedAt,
+                baseConfidence: 0.90
+            ),
+            lighting: FeatureSample(
+                value: .init(exposureBiasHint: 0.1, backlightIndex: 0.1, keyToFillRatio: 1.0),
+                measuredAt: capturedAt,
+                baseConfidence: 0.90
+            ),
+            detr: nil,
+            aesthetic: FeatureSample(
+                value: .init(score10: 7.0),
+                measuredAt: capturedAt,
+                baseConfidence: 0.90
+            )
+        )
+        let snapshot = FeatureSnapshotAggregator().makeSnapshot(from: input)
+        let semantics = SceneSemanticsAnalyzer().analyze(snapshot: snapshot)
+        let critique = FrameCritiqueEngine().analyze(snapshot: snapshot, semantics: semantics)
+        let plan = RecommendationPlanner().makePlan(snapshot: snapshot, critique: critique)
+        return LiveProductionFixture(
+            snapshot: snapshot,
+            semantics: semantics,
+            critique: critique,
+            plan: plan
         )
     }
 }

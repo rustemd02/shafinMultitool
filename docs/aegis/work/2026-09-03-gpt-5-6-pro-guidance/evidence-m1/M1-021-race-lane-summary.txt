@@ -1,0 +1,7 @@
+Executed 168 tests, 0 failures (16 race/ownership suites, single runner, parallel disabled, deterministic, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-021.xcresult, xcodebuild TEST SUCCEEDED)
+
+Command: xcodebuild test-without-building (workspace shafinMultitool.xcworkspace, script-pty detached, -parallel-testing-enabled NO) -only-testing: CameraManagerLifecycleTests, AnalysisPipelineReleaseTests, SceneParseRequestFenceTests, SceneWorkspaceTeardownTests, SerializedMediaRecorderTests, SceneRecordingControllerTests, RecordingLifecycleTransitionTests, RecordingStartTeardownRaceTests, RecordingArtifactPromotionTests, DBServiceConcurrencyTests, ProjectLifecycleRegistryTests, PermissionCoordinatorTests, CommercialShellLifecycleAdapterTests, CommercialShellRoutingTests, CommercialShellLaunchCompositionTests, CommercialShellModeControlTests -derivedDataPath build
+
+Lane coverage map: camera=18, analysis-fence=17, parser-fence=7, teardown=16, recorder=23, controller=16, lifecycle-states=6, start-teardown-race=2, promotion=4, persistence-concurrency=5, deletion-leases=3, permissions=6, shell-adapter=4, shell-regression=33.
+
+Full log: /private/tmp/shafin-m1-021-test.log

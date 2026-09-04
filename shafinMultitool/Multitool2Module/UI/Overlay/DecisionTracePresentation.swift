@@ -105,19 +105,22 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                         pauseCritique: PauseCritiquePresentation?,
                         isPaused: Bool,
                         overlayAnnotations: [OverlayAnnotationPresentation],
-                        debugSignals: DecisionTraceDebugSignals) -> DecisionTracePresentation? {
+                        debugSignals: DecisionTraceDebugSignals,
+                        locale: Locale = Locale(identifier: "ru")) -> DecisionTracePresentation? {
         if isPaused, let pauseCritique {
             return pause(
                 critique: pauseCritique,
                 overlayAnnotations: overlayAnnotations,
-                debugSignals: debugSignals
+                debugSignals: debugSignals,
+                locale: locale
             )
         }
         if !isPaused, let liveHint {
             return live(
                 hint: liveHint,
                 overlayAnnotations: overlayAnnotations,
-                debugSignals: debugSignals
+                debugSignals: debugSignals,
+                locale: locale
             )
         }
         return nil
@@ -125,13 +128,15 @@ struct DecisionTracePresentation: Identifiable, Equatable {
 
     static func pause(critique: PauseCritiquePresentation,
                       overlayAnnotations: [OverlayAnnotationPresentation] = [],
-                      debugSignals: DecisionTraceDebugSignals = .empty) -> DecisionTracePresentation {
-        let reasonLines = pauseReasonLines(for: critique)
-        let evidenceRows = pauseEvidenceRows(for: critique)
-        let actionRows = pauseActionRows(for: critique)
+                      debugSignals: DecisionTraceDebugSignals = .empty,
+                      locale: Locale = Locale(identifier: "ru")) -> DecisionTracePresentation {
+        let reasonLines = pauseReasonLines(for: critique, locale: locale)
+        let evidenceRows = pauseEvidenceRows(for: critique, locale: locale)
+        let actionRows = pauseActionRows(for: critique, locale: locale)
         let limitations = limitationRows(
             fallbackUsed: critique.fallbackUsed,
-            assumptions: critique.assumptions
+            assumptions: critique.assumptions,
+            locale: locale
         )
         let traceIds = orderedTraceIds(
             critique.traceRootIds
@@ -142,8 +147,8 @@ struct DecisionTracePresentation: Identifiable, Equatable {
 
         return DecisionTracePresentation(
             id: "pause_\(critique.frameId)_\(critique.summaryId)",
-            modeLabel: "Пауза",
-            verdictLabel: verdictTitle(for: critique.verdict),
+            modeLabel: copy(.traceModePause, locale: locale),
+            verdictLabel: verdictTitle(for: critique.verdict, locale: locale),
             headline: critique.shortVerdict,
             confidence: .make(critique.verdictConfidence),
             reasonLines: reasonLines,
@@ -151,7 +156,8 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             actionRows: actionRows,
             signalRows: signalRows(
                 overlayAnnotations: overlayAnnotations,
-                debugSignals: debugSignals
+                debugSignals: debugSignals,
+                locale: locale
             ),
             limitationRows: limitations,
             traceIds: traceIds
@@ -160,18 +166,22 @@ struct DecisionTracePresentation: Identifiable, Equatable {
 
     static func live(hint: LiveHintPresentation,
                      overlayAnnotations: [OverlayAnnotationPresentation] = [],
-                     debugSignals: DecisionTraceDebugSignals = .empty) -> DecisionTracePresentation {
-        let reasonLines = liveReasonLines(for: hint)
-        let actionRows = liveActionRows(for: hint)
+                     debugSignals: DecisionTraceDebugSignals = .empty,
+                     locale: Locale = Locale(identifier: "ru")) -> DecisionTracePresentation {
+        let reasonLines = liveReasonLines(for: hint, locale: locale)
+        let actionRows = liveActionRows(for: hint, locale: locale)
         let limitations = limitationRows(
             fallbackUsed: hint.isFallback || hint.expandedVerdict?.fallbackUsed == true,
-            assumptions: hint.linkedIssueIds.isEmpty ? [] : ["Live-подсказка связана с issue ids: \(hint.linkedIssueIds.joined(separator: ", "))."]
+            assumptions: hint.linkedIssueIds.isEmpty
+                ? []
+                : [format(.traceAssumptionLinkedIssues, locale: locale, arguments: [hint.linkedIssueIds.joined(separator: ", ")])],
+            locale: locale
         )
 
         return DecisionTracePresentation(
             id: "live_\(hint.frameId)_\(hint.id)",
-            modeLabel: "Live",
-            verdictLabel: "Текущая подсказка",
+            modeLabel: copy(.traceModeLive, locale: locale),
+            verdictLabel: copy(.traceVerdictLive, locale: locale),
             headline: hint.text,
             confidence: .make(hint.confidence),
             reasonLines: reasonLines,
@@ -179,50 +189,143 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             actionRows: actionRows,
             signalRows: signalRows(
                 overlayAnnotations: overlayAnnotations,
-                debugSignals: debugSignals
+                debugSignals: debugSignals,
+                locale: locale
             ),
             limitationRows: limitations,
             traceIds: orderedTraceIds(hint.traceRootIds)
         )
     }
 
-    private static func pauseReasonLines(for critique: PauseCritiquePresentation) -> [ReasonLine] {
+#if DEBUG
+    /// Deterministic evidence for the real trace surface. Text is resolved
+    /// through the requested locale so the fixture never bakes one language
+    /// into the presentation payload.
+    static func debugFixture(locale: Locale) -> DecisionTracePresentation {
+        let issueRegion = NormalizedRect(x: 0.55, y: 0.20, width: 0.30, height: 0.50)
+        let issueID = "fixture_issue_background"
+        let issueTraceID = "fixture_trace_issue_background"
+        let strengthTraceID = "fixture_trace_strength_focus"
+        let actionTraceID = "fixture_trace_action_simplify"
+        let critique = PauseCritiquePresentation(
+            frameId: "fixture_trace_frame",
+            verdict: .mixed,
+            verdictConfidence: 0.78,
+            summaryId: "fixture_trace_summary",
+            shortVerdict: copy(.cameraCorrectiveObservation, locale: locale),
+            whyGood: copy(.traceStrengthFocus, locale: locale),
+            whyProblematic: copy(.traceIssueBackgroundCompetes, locale: locale),
+            strengths: [
+                PauseStrengthRow(
+                    strengthId: "fixture_strength_focus",
+                    type: .clearFocusHierarchy,
+                    rationale: copy(.traceStrengthFocus, locale: locale),
+                    confidence: 0.72,
+                    supportingRegion: nil,
+                    traceRefId: strengthTraceID
+                )
+            ],
+            issues: [
+                PauseIssueRow(
+                    issueId: issueID,
+                    type: .backgroundCompetesWithSubject,
+                    severity: 0.64,
+                    confidence: 0.81,
+                    rationale: copy(.traceIssueBackgroundCompetes, locale: locale),
+                    affectedRegion: issueRegion,
+                    suggestedFixTypes: [.reframing],
+                    traceRefId: issueTraceID
+                )
+            ],
+            actions: [
+                PauseActionRow(
+                    actionId: "fixture_action_simplify",
+                    actionType: .reduceBackgroundDistractions,
+                    semanticActionType: .simplifyBackground,
+                    priority: 1,
+                    confidence: 0.84,
+                    linkedIssueIds: [issueID],
+                    expectedOutcome: copy(.traceActionSimplifyBackground, locale: locale),
+                    targetRegion: issueRegion,
+                    overlayHintId: "fixture_overlay_background",
+                    traceRefId: actionTraceID
+                )
+            ],
+            noChangeRationale: nil,
+            assumptions: [
+                format(.traceAssumptionLinkedIssues, locale: locale, arguments: [issueID])
+            ],
+            traceRootIds: ["fixture_trace_root"],
+            fallbackUsed: false
+        )
+        return pause(
+            critique: critique,
+            overlayAnnotations: [
+                OverlayAnnotationPresentation(
+                    id: "fixture_overlay_background",
+                    kind: .regionHighlight,
+                    direction: nil,
+                    targetRegion: issueRegion,
+                    emphasis: 0.85
+                )
+            ],
+            debugSignals: DecisionTraceDebugSignals(
+                detrObjectCount: 2,
+                visionSubjectCount: 1,
+                saliencyCenter: CGPoint(x: 0.62, y: 0.48),
+                subjectAreaRatio: 0.18,
+                horizonAngle: -1.6,
+                horizonConfidence: 0.72,
+                backlightIndex: 0.31,
+                exposureBiasHint: -0.12,
+                motionState: "still",
+                aestheticScore: 0.57
+            ),
+            locale: locale
+        )
+    }
+#endif
+
+    private static func pauseReasonLines(for critique: PauseCritiquePresentation,
+                                         locale: Locale) -> [ReasonLine] {
         var rows: [ReasonLine] = []
         if critique.verdict == .good {
-            appendReason(&rows, id: "why_good", title: "Что сработало", text: critique.whyGood)
-            appendReason(&rows, id: "no_change", title: "Почему можно не менять", text: critique.noChangeRationale)
+            appendReason(&rows, id: "why_good", title: copy(.traceReasonWorked, locale: locale), text: critique.whyGood)
+            appendReason(&rows, id: "no_change", title: copy(.traceReasonKeep, locale: locale), text: critique.noChangeRationale)
         } else {
-            appendReason(&rows, id: "why_problematic", title: "Что мешает", text: critique.whyProblematic)
-            appendReason(&rows, id: "why_good", title: "Что уже работает", text: critique.whyGood)
+            appendReason(&rows, id: "why_problematic", title: copy(.traceReasonProblematic, locale: locale), text: critique.whyProblematic)
+            appendReason(&rows, id: "why_good", title: copy(.traceReasonWorked, locale: locale), text: critique.whyGood)
         }
         if rows.isEmpty {
-            appendReason(&rows, id: "summary", title: "Краткий вывод", text: critique.shortVerdict)
+            appendReason(&rows, id: "summary", title: copy(.traceReasonSummary, locale: locale), text: critique.shortVerdict)
         }
         return rows
     }
 
-    private static func liveReasonLines(for hint: LiveHintPresentation) -> [ReasonLine] {
+    private static func liveReasonLines(for hint: LiveHintPresentation,
+                                        locale: Locale) -> [ReasonLine] {
         var rows: [ReasonLine] = []
-        appendReason(&rows, id: "short_verdict", title: "Сигнал", text: hint.expandedVerdict?.shortVerdict)
-        appendReason(&rows, id: "supporting_text", title: "Почему", text: hint.expandedVerdict?.supportingText)
-        appendReason(&rows, id: "action_text", title: "Действие", text: hint.expandedVerdict?.actionText)
+        appendReason(&rows, id: "short_verdict", title: copy(.traceReasonSignal, locale: locale), text: hint.expandedVerdict?.shortVerdict)
+        appendReason(&rows, id: "supporting_text", title: copy(.traceReasonWhy, locale: locale), text: hint.expandedVerdict?.supportingText)
+        appendReason(&rows, id: "action_text", title: copy(.traceReasonAction, locale: locale), text: hint.expandedVerdict?.actionText)
         if rows.isEmpty {
-            appendReason(&rows, id: "hint", title: "Подсказка", text: hint.text)
+            appendReason(&rows, id: "hint", title: copy(.traceReasonHint, locale: locale), text: hint.text)
         }
         return rows
     }
 
-    private static func pauseEvidenceRows(for critique: PauseCritiquePresentation) -> [EvidenceRow] {
+    private static func pauseEvidenceRows(for critique: PauseCritiquePresentation,
+                                          locale: Locale) -> [EvidenceRow] {
         let issueRows = critique.issues.map { issue in
             EvidenceRow(
                 id: "issue_\(issue.issueId)",
                 sourceId: issue.issueId,
-                kindLabel: "Проблема",
-                title: issueTitle(issue.type),
+                kindLabel: copy(.traceKindIssue, locale: locale),
+                title: issueTitle(issue.type, locale: locale),
                 text: issue.rationale,
                 confidence: .make(issue.confidence),
                 severity: .make(issue.severity),
-                regionDescription: regionDescription(issue.affectedRegion),
+                regionDescription: regionDescription(issue.affectedRegion, locale: locale),
                 traceId: issue.traceRefId
             )
         }
@@ -230,19 +333,20 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             EvidenceRow(
                 id: "strength_\(strength.strengthId)",
                 sourceId: strength.strengthId,
-                kindLabel: "Сильная сторона",
-                title: strengthTitle(strength.type),
+                kindLabel: copy(.traceKindStrength, locale: locale),
+                title: strengthTitle(strength.type, locale: locale),
                 text: strength.rationale,
                 confidence: .make(strength.confidence),
                 severity: nil,
-                regionDescription: regionDescription(strength.supportingRegion),
+                regionDescription: regionDescription(strength.supportingRegion, locale: locale),
                 traceId: strength.traceRefId
             )
         }
         return issueRows + strengthRows
     }
 
-    private static func pauseActionRows(for critique: PauseCritiquePresentation) -> [ActionRow] {
+    private static func pauseActionRows(for critique: PauseCritiquePresentation,
+                                        locale: Locale) -> [ActionRow] {
         let rows = critique.actions.sorted { lhs, rhs in
             if lhs.priority != rhs.priority {
                 return lhs.priority < rhs.priority
@@ -251,13 +355,13 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         }.map { action in
             ActionRow(
                 id: action.actionId,
-                title: semanticActionTitle(action.semanticActionType),
+                title: semanticActionTitle(action.semanticActionType, locale: locale),
                 semanticActionId: action.semanticActionType.rawValue,
                 coarseActionId: action.actionType.rawValue,
                 detail: action.expectedOutcome,
                 linkedEvidenceIds: action.linkedIssueIds,
                 confidence: .make(action.confidence),
-                targetDescription: regionDescription(action.targetRegion),
+                targetDescription: regionDescription(action.targetRegion, locale: locale),
                 overlayHintId: action.overlayHintId,
                 traceId: action.traceRefId
             )
@@ -271,7 +375,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         return [
             ActionRow(
                 id: "keep_current_setup",
-                title: semanticActionTitle(.keepCurrentSetup),
+                title: semanticActionTitle(.keepCurrentSetup, locale: locale),
                 semanticActionId: SemanticActionType.keepCurrentSetup.rawValue,
                 coarseActionId: ActionTypeV1.leaveFrameAsIs.rawValue,
                 detail: rationale,
@@ -284,7 +388,8 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         ]
     }
 
-    private static func liveActionRows(for hint: LiveHintPresentation) -> [ActionRow] {
+    private static func liveActionRows(for hint: LiveHintPresentation,
+                                       locale: Locale) -> [ActionRow] {
         guard let actionType = hint.actionType else {
             return []
         }
@@ -292,13 +397,13 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         return [
             ActionRow(
                 id: hint.actionId ?? "live_action",
-                title: semanticActionTitle(semanticAction),
+                title: semanticActionTitle(semanticAction, locale: locale),
                 semanticActionId: semanticAction.rawValue,
                 coarseActionId: actionType.rawValue,
                 detail: hint.expandedVerdict?.actionText ?? hint.text,
                 linkedEvidenceIds: hint.linkedIssueIds,
                 confidence: .make(hint.confidence),
-                targetDescription: regionDescription(hint.targetRegion),
+                targetDescription: regionDescription(hint.targetRegion, locale: locale),
                 overlayHintId: hint.overlayHint?.id,
                 traceId: nil
             )
@@ -306,50 +411,126 @@ struct DecisionTracePresentation: Identifiable, Equatable {
     }
 
     private static func signalRows(overlayAnnotations: [OverlayAnnotationPresentation],
-                                   debugSignals: DecisionTraceDebugSignals) -> [SignalRow] {
+                                  debugSignals: DecisionTraceDebugSignals,
+                                  locale: Locale) -> [SignalRow] {
         var rows: [SignalRow] = []
         if debugSignals.detrObjectCount > 0 {
-            rows.append(SignalRow(id: "detr", title: "DETR objects", value: "\(debugSignals.detrObjectCount)", detail: "Объекты, найденные детектором."))
+            rows.append(
+                SignalRow(
+                    id: "detr",
+                    title: copy(.traceSignalDETR, locale: locale),
+                    value: "\(debugSignals.detrObjectCount)",
+                    detail: copy(.traceSignalDETRDetail, locale: locale)
+                )
+            )
         }
         if debugSignals.visionSubjectCount > 0 {
-            rows.append(SignalRow(id: "vision", title: "Vision subjects", value: "\(debugSignals.visionSubjectCount)", detail: "Кандидаты субъекта от Vision."))
+            rows.append(
+                SignalRow(
+                    id: "vision",
+                    title: copy(.traceSignalVision, locale: locale),
+                    value: "\(debugSignals.visionSubjectCount)",
+                    detail: copy(.traceSignalVisionDetail, locale: locale)
+                )
+            )
         }
         if !overlayAnnotations.isEmpty {
-            rows.append(SignalRow(id: "overlay", title: "Overlay annotations", value: "\(overlayAnnotations.count)", detail: overlaySummary(overlayAnnotations)))
+            rows.append(
+                SignalRow(
+                    id: "overlay",
+                    title: copy(.traceSignalOverlay, locale: locale),
+                    value: "\(overlayAnnotations.count)",
+                    detail: overlaySummary(overlayAnnotations, locale: locale)
+                )
+            )
         }
         if let saliencyCenter = debugSignals.saliencyCenter {
-            rows.append(SignalRow(id: "saliency", title: "Saliency center", value: pointString(saliencyCenter), detail: "Нормализованный центр внимания."))
+            rows.append(
+                SignalRow(
+                    id: "saliency",
+                    title: copy(.traceSignalSaliency, locale: locale),
+                    value: pointString(saliencyCenter, locale: locale),
+                    detail: copy(.traceSignalSaliencyDetail, locale: locale)
+                )
+            )
         }
         if let subjectAreaRatio = debugSignals.subjectAreaRatio {
-            rows.append(SignalRow(id: "subject_area", title: "Subject area", value: percentString(subjectAreaRatio), detail: "Доля главного субъекта в кадре."))
+            rows.append(
+                SignalRow(
+                    id: "subject_area",
+                    title: copy(.traceSignalSubjectArea, locale: locale),
+                    value: percentString(subjectAreaRatio),
+                    detail: copy(.traceSignalSubjectAreaDetail, locale: locale)
+                )
+            )
         }
         if let horizonAngle = debugSignals.horizonAngle,
            let horizonConfidence = debugSignals.horizonConfidence {
-            rows.append(SignalRow(id: "horizon", title: "Horizon", value: "\(decimalString(horizonAngle))°", detail: "Уверенность \(percentString(horizonConfidence))."))
+            rows.append(
+                SignalRow(
+                    id: "horizon",
+                    title: copy(.traceSignalHorizon, locale: locale),
+                    value: "\(decimalString(horizonAngle))°",
+                    detail: format(
+                        .traceSignalHorizonDetail,
+                        locale: locale,
+                        arguments: [percentString(horizonConfidence)]
+                    )
+                )
+            )
         }
         if let backlightIndex = debugSignals.backlightIndex {
-            rows.append(SignalRow(id: "backlight", title: "Backlight", value: percentString(backlightIndex), detail: "Оценка контрового света."))
+            rows.append(
+                SignalRow(
+                    id: "backlight",
+                    title: copy(.traceSignalBacklight, locale: locale),
+                    value: percentString(backlightIndex),
+                    detail: copy(.traceSignalBacklightDetail, locale: locale)
+                )
+            )
         }
         if let exposureBiasHint = debugSignals.exposureBiasHint {
-            rows.append(SignalRow(id: "exposure", title: "Exposure bias", value: decimalString(exposureBiasHint), detail: "Знак показывает направление экспокоррекции."))
+            rows.append(
+                SignalRow(
+                    id: "exposure",
+                    title: copy(.traceSignalExposure, locale: locale),
+                    value: decimalString(exposureBiasHint),
+                    detail: copy(.traceSignalExposureDetail, locale: locale)
+                )
+            )
         }
         if let motionState = nonEmpty(debugSignals.motionState) {
-            rows.append(SignalRow(id: "motion", title: "Motion", value: motionState, detail: "Состояние движения камеры."))
+            rows.append(
+                SignalRow(
+                    id: "motion",
+                    title: copy(.traceSignalMotion, locale: locale),
+                    value: motionState,
+                    detail: copy(.traceSignalMotionDetail, locale: locale)
+                )
+            )
         }
         if let aestheticScore = debugSignals.aestheticScore {
-            rows.append(SignalRow(id: "aesthetic", title: "Aesthetic score", value: percentString(aestheticScore), detail: "Нейрооценка качества кадра."))
+            rows.append(
+                SignalRow(
+                    id: "aesthetic",
+                    title: copy(.traceSignalAesthetic, locale: locale),
+                    value: percentString(aestheticScore),
+                    detail: copy(.traceSignalAestheticDetail, locale: locale)
+                )
+            )
         }
         return rows
     }
 
     private static func limitationRows(fallbackUsed: Bool,
-                                       assumptions: [String]) -> [LimitationRow] {
+                                       assumptions: [String],
+                                       locale: Locale) -> [LimitationRow] {
         var rows: [LimitationRow] = []
         if fallbackUsed {
             rows.append(
                 LimitationRow(
                     id: "fallback",
-                    text: "Использован fallback: часть расширенного reasoning недоступна, поэтому решение опирается на устойчивые структурные признаки."
+                    text: copy(.traceLimitFallback, locale: locale)
                 )
             )
         }
@@ -361,7 +542,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             rows.append(
                 LimitationRow(
                     id: "scope",
-                    text: "Панель объясняет текущую presentation-цепочку; она не является ручной разметкой и не гарантирует причинность за пределами доступных признаков."
+                    text: copy(.traceLimitScope, locale: locale)
                 )
             )
         }
@@ -386,124 +567,162 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         return result
     }
 
-    private static func verdictTitle(for verdict: FrameVerdict) -> String {
+    private static func verdictTitle(for verdict: FrameVerdict,
+                                     locale: Locale) -> String {
         switch verdict {
         case .good:
-            return "Кадр принят"
+            return copy(.traceVerdictGood, locale: locale)
         case .mixed:
-            return "Можно улучшить"
+            return copy(.traceVerdictMixed, locale: locale)
         case .needsFix:
-            return "Нужна правка"
+            return copy(.traceVerdictNeedsFix, locale: locale)
         }
     }
 
-    private static func issueTitle(_ issue: IssueTypeV1) -> String {
+    private static func issueTitle(_ issue: IssueTypeV1,
+                                   locale: Locale) -> String {
         switch issue {
         case .subjectTooCloseToEdge:
-            return "Субъект близко к краю"
+            return copy(.traceIssueSubjectEdge, locale: locale)
         case .subjectNotProminentEnough:
-            return "Субъект недостаточно заметен"
+            return copy(.traceIssueSubjectProminence, locale: locale)
         case .backgroundCompetesWithSubject:
-            return "Фон конкурирует с субъектом"
+            return copy(.traceIssueBackgroundCompetes, locale: locale)
         case .insufficientLookSpace:
-            return "Недостаточно пространства взгляда"
+            return copy(.traceIssueLookSpace, locale: locale)
         case .backlightHidesSubject:
-            return "Контровой свет скрывает субъект"
+            return copy(.traceIssueBacklight, locale: locale)
         case .sceneHasNoClearFocus:
-            return "Нет ясного фокуса внимания"
+            return copy(.traceIssueFocus, locale: locale)
         case .frameVisuallyOverloaded:
-            return "Кадр визуально перегружен"
+            return copy(.traceIssueOverloaded, locale: locale)
         case .horizonDistracts:
-            return "Горизонт отвлекает"
+            return copy(.traceIssueHorizon, locale: locale)
         }
     }
 
-    private static func strengthTitle(_ strength: StrengthTypeV1) -> String {
+    private static func strengthTitle(_ strength: StrengthTypeV1,
+                                      locale: Locale) -> String {
         switch strength {
         case .goodSubjectIsolation:
-            return "Субъект хорошо отделён"
+            return copy(.traceStrengthIsolation, locale: locale)
         case .goodLightEmphasis:
-            return "Свет подчёркивает субъект"
+            return copy(.traceStrengthLight, locale: locale)
         case .clearFocusHierarchy:
-            return "Ясная иерархия фокуса"
+            return copy(.traceStrengthFocus, locale: locale)
         case .stableHorizonSupportsScene:
-            return "Горизонт поддерживает сцену"
+            return copy(.traceStrengthHorizon, locale: locale)
         case .balancedCompositionForScene:
-            return "Композиция сбалансирована"
+            return copy(.traceStrengthComposition, locale: locale)
         }
     }
 
-    private static func semanticActionTitle(_ action: SemanticActionType) -> String {
+    private static func semanticActionTitle(_ action: SemanticActionType,
+                                            locale: Locale) -> String {
         switch action {
         case .shiftFrameLeft:
-            return "Сместить кадр влево"
+            return copy(.traceActionShiftLeft, locale: locale)
         case .shiftFrameRight:
-            return "Сместить кадр вправо"
+            return copy(.traceActionShiftRight, locale: locale)
         case .shiftFrameUp:
-            return "Поднять кадр"
+            return copy(.traceActionShiftUp, locale: locale)
         case .shiftFrameDown:
-            return "Опустить кадр"
+            return copy(.traceActionShiftDown, locale: locale)
         case .stepBack:
-            return "Отойти назад"
+            return copy(.traceActionStepBack, locale: locale)
         case .stepCloser:
-            return "Подойти ближе"
+            return copy(.traceActionStepCloser, locale: locale)
         case .lowerCamera:
-            return "Опустить камеру"
+            return copy(.traceActionLowerCamera, locale: locale)
         case .raiseCamera:
-            return "Поднять камеру"
+            return copy(.traceActionRaiseCamera, locale: locale)
         case .changeCameraAngle:
-            return "Сменить ракурс"
+            return copy(.traceActionChangeAngle, locale: locale)
         case .levelHorizon:
-            return "Выровнять горизонт"
+            return copy(.traceActionLevelHorizon, locale: locale)
         case .rotateSubjectTowardLight:
-            return "Повернуть субъект к свету"
+            return copy(.traceActionRotateSubject, locale: locale)
         case .moveSubjectLeft:
-            return "Сдвинуть субъект левее"
+            return copy(.traceActionMoveSubjectLeft, locale: locale)
         case .moveSubjectRight:
-            return "Сдвинуть субъект правее"
+            return copy(.traceActionMoveSubjectRight, locale: locale)
         case .moveSubjectAwayFromBackground:
-            return "Отделить субъект от фона"
+            return copy(.traceActionMoveSubjectAway, locale: locale)
         case .moveObjectLeft:
-            return "Сдвинуть объект левее"
+            return copy(.traceActionMoveObjectLeft, locale: locale)
         case .moveObjectRight:
-            return "Сдвинуть объект правее"
+            return copy(.traceActionMoveObjectRight, locale: locale)
         case .moveObjectForward:
-            return "Подвинуть объект вперёд"
+            return copy(.traceActionMoveObjectForward, locale: locale)
         case .moveObjectBack:
-            return "Отодвинуть объект назад"
+            return copy(.traceActionMoveObjectBack, locale: locale)
         case .removeDistractingObject:
-            return "Убрать отвлекающий объект"
+            return copy(.traceActionRemoveDistractingObject, locale: locale)
         case .repositionPropForBalance:
-            return "Переставить объект для баланса"
+            return copy(.traceActionRepositionProp, locale: locale)
         case .addFrontFillLight:
-            return "Добавить фронтальный заполняющий свет"
+            return copy(.traceActionAddFrontFill, locale: locale)
         case .addBackgroundLight:
-            return "Добавить фоновый свет"
+            return copy(.traceActionAddBackgroundLight, locale: locale)
         case .removeBackgroundHotspot:
-            return "Убрать яркое пятно на фоне"
+            return copy(.traceActionRemoveHotspot, locale: locale)
         case .simplifyBackground:
-            return "Упростить фон"
+            return copy(.traceActionSimplifyBackground, locale: locale)
         case .waitForBackgroundClearance:
-            return "Дождаться чистого фона"
+            return copy(.traceActionWaitClearance, locale: locale)
         case .keepCurrentSetup:
-            return "Оставить текущую постановку"
+            return copy(.traceActionKeepSetup, locale: locale)
         }
     }
 
-    private static func overlaySummary(_ annotations: [OverlayAnnotationPresentation]) -> String {
+    private static func overlaySummary(_ annotations: [OverlayAnnotationPresentation],
+                                       locale: Locale) -> String {
         let arrowCount = annotations.filter { $0.kind == .arrow }.count
         let regionCount = annotations.filter { $0.kind == .regionHighlight }.count
         let horizonCount = annotations.filter { $0.kind == .horizonLine }.count
-        return "arrows=\(arrowCount), regions=\(regionCount), horizon=\(horizonCount)"
+        return format(
+            .traceOverlaySummary,
+            locale: locale,
+            arguments: [arrowCount, regionCount, horizonCount]
+        )
     }
 
-    private static func regionDescription(_ region: NormalizedRect?) -> String? {
+    private static func regionDescription(_ region: NormalizedRect?,
+                                          locale: Locale) -> String? {
         guard let region else { return nil }
-        return "x=\(percentString(region.x)), y=\(percentString(region.y)), w=\(percentString(region.width)), h=\(percentString(region.height))"
+        return format(
+            .traceRegionCoordinates,
+            locale: locale,
+            arguments: [
+                percentString(region.x),
+                percentString(region.y),
+                percentString(region.width),
+                percentString(region.height)
+            ]
+        )
     }
 
-    private static func pointString(_ point: CGPoint) -> String {
-        "x=\(percentString(point.x)), y=\(percentString(point.y))"
+    private static func pointString(_ point: CGPoint,
+                                   locale: Locale) -> String {
+        format(
+            .tracePointCoordinates,
+            locale: locale,
+            arguments: [
+                percentString(point.x),
+                percentString(point.y)
+            ]
+        )
+    }
+
+    private static func copy(_ key: SETCopyKey,
+                             locale: Locale) -> String {
+        key.localizedString(locale: locale)
+    }
+
+    private static func format(_ key: SETCopyKey,
+                               locale: Locale,
+                               arguments: [CVarArg]) -> String {
+        key.localizedFormat(locale: locale, arguments: arguments)
     }
 
     private static func percentString(_ value: CGFloat) -> String {

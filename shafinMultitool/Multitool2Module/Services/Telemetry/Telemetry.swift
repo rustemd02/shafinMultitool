@@ -12,6 +12,7 @@ import Combine
 import UIKit
 
 enum CameraLog {
+#if DEBUG
     static let fps = false
     static let suggestions = false
     static let motion = false
@@ -19,6 +20,15 @@ enum CameraLog {
     static let detr = false
     static let modelLifecycle = false
     static let liveHintDecisions = true
+#else
+    static let fps = false
+    static let suggestions = false
+    static let motion = false
+    static let vision = false
+    static let detr = false
+    static let modelLifecycle = false
+    static let liveHintDecisions = false
+#endif
 }
 
 final class Telemetry: ObservableObject {
@@ -118,8 +128,10 @@ final class Telemetry: ObservableObject {
     }
 
     func recordSuggestion(_ suggestion: Suggestion?) {
+#if DEBUG
         guard CameraLog.suggestions, let suggestion else { return }
         os_log("Suggestion: %{public}@ [%{public}@]", log: log, type: .debug, suggestion.text, String(describing: suggestion.type))
+#endif
     }
     
     func setHeavyModelsEnabled(_ enabled: Bool) {

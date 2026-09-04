@@ -1,7 +1,11 @@
 import SwiftUI
 import AVFoundation
 import UIKit
+import Combine
 
+/// Runtime owner for the Camera Coach monitor. Presentation is delegated to
+/// SETCameraCoachProductionView; this wrapper retains the existing lifecycle
+/// and teardown boundary owned by the camera route.
 struct OverlayView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: CameraViewModel
@@ -14,90 +18,36 @@ struct OverlayView: View {
 
     var body: some View {
         ZStack {
-            CameraPreview(session: cameraManager.captureSession,
-                          cameraManager: cameraManager)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-
-            GeometryReader { proxy in
-                let canvasSize = proxy.size
-                let presentation = CameraOverlayUXPresentation.make(
-                    liveHint: viewModel.liveHint,
-                    isPaused: viewModel.isPaused
-                )
-                let hasZoomControl = !viewModel.availableLenses.isEmpty
-                let lowerThirdInset = CameraOverlayUXPresentation.lowerThirdBottomInset(
-                    hasZoomControl: hasZoomControl
-                )
-
-                ZStack(alignment: .center) {
-                    // A guide is allowed only when it is supplied by the
-                    // currently active corrective LiveHint. There is no
-                    // permanent grid, bounding box, annotation stack, or
-                    // legacy arrow fallback on the production surface.
-                    if !viewModel.isPaused,
-                       let overlayHint = presentation.overlayHint {
-                        ActionLinkedGuideView(
-                            hint: overlayHint,
-                            canvasSize: canvasSize
-                        )
-                    }
-
-                    if !viewModel.isPaused {
-                        if viewModel.liveHint != nil {
-                            LiveHintChipView(
-                                liveHint: viewModel.liveHint,
-                                fallbackSuggestion: nil,
-                                boundingBox: nil,
-                                canvasSize: canvasSize
-                            )
-                            .padding(.bottom, lowerThirdInset)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        } else {
-                            LiveAnalysisStatusChip(title: presentation.observation)
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, lowerThirdInset)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        }
-                    }
+            SETCameraCoachProductionView(
+                viewModel: viewModel,
+                cameraManager: cameraManager,
+                onDismiss: { dismiss() }
+            )
 
 #if DEBUG
-                    if viewModel.debugMode {
+            if viewModel.debugMode {
+                GeometryReader { proxy in
+                    ZStack {
                         DebugVisualizationOverlay(
                             detrDetections: viewModel.detrDetections,
                             visionSubjects: viewModel.visionSubjects,
                             saliencyCenter: viewModel.saliencyCenter,
-                            canvasSize: canvasSize
+                            canvasSize: proxy.size
                         )
+
                         DebugMetricsView(isVisible: true)
                     }
-#endif
-
-                    if !viewModel.isPaused && hasZoomControl {
-                        VStack {
-                            Spacer()
-                            ZoomControlView(
-                                availableLenses: viewModel.availableLenses,
-                                currentLens: viewModel.currentLens,
-                                onLensChange: { lens in
-                                    viewModel.switchLens(to: lens)
-                                }
-                            )
-                            .padding(.bottom, 28)
-                        }
-                    }
-
-                    topControls
-                        .zIndex(20)
+                    .allowsHitTesting(false)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-#if DEBUG
-            .onTapGesture(count: 2) {
-                viewModel.toggleDebug()
             }
 #endif
         }
+#if DEBUG
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            viewModel.toggleDebug()
+        }
+#endif
         .onAppear {
             lifecycleTask?.cancel()
             lifecycleTask = Task { @MainActor in
@@ -110,7 +60,7 @@ struct OverlayView: View {
 #endif
         }
 #if DEBUG
-        .onChange(of: viewModel.debugMode) { isDebugModeEnabled in
+        .onChange(of: viewModel.debugMode) { _, isDebugModeEnabled in
             if isDebugModeEnabled {
                 startUIFPSMonitoring()
             } else {
@@ -129,43 +79,6 @@ struct OverlayView: View {
         }
     }
 
-    @ViewBuilder
-    private var topControls: some View {
-        VStack {
-            HStack(alignment: .top) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark")
-                        .font(.body.weight(.semibold))
-                        .frame(width: CameraOverlayUXPresentation.minimumControlDimension,
-                               height: CameraOverlayUXPresentation.minimumControlDimension)
-                        .foregroundStyle(.primary)
-                        .background(.regularMaterial, in: Circle())
-                }
-                .accessibilityIdentifier("camera_coach_close")
-                .accessibilityLabel("Закрыть камеру")
-
-                Spacer()
-
-                Button(action: { viewModel.togglePause() }) {
-                    Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                        .font(.body.weight(.semibold))
-                        .frame(width: CameraOverlayUXPresentation.minimumControlDimension,
-                               height: CameraOverlayUXPresentation.minimumControlDimension)
-                        .foregroundStyle(.primary)
-                        .background(.regularMaterial, in: Circle())
-                }
-                .accessibilityIdentifier("camera_coach_pause")
-                .accessibilityLabel(viewModel.isPaused ? "Продолжить анализ" : "Поставить анализ на паузу")
-                .accessibilityValue(viewModel.isPaused ? "Пауза включена" : "Анализ продолжается")
-                .accessibilityAddTraits(viewModel.isPaused ? .isSelected : [])
-            }
-            .padding(.top, 16)
-            .padding(.horizontal, 16)
-
-            Spacer()
-        }
-    }
-
 #if DEBUG
     private func startUIFPSMonitoring() {
         guard uiFPSTimer == nil else { return }
@@ -181,88 +94,75 @@ struct OverlayView: View {
 #endif
 }
 
-private struct ActionLinkedGuideView: View {
-    let hint: OverlayHint
-    let canvasSize: CGSize
-
-    var body: some View {
-        ZStack {
-            if hint.kind == .regionHighlight, let targetRegion = hint.targetRegion {
-                BBoxOverlay(
-                    boundingBox: CGRect(
-                        x: targetRegion.x,
-                        y: targetRegion.y,
-                        width: targetRegion.width,
-                        height: targetRegion.height
-                    ),
-                    canvasSize: canvasSize
-                )
-                .stroke(Color.yellow.opacity(0.86), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [8, 4]))
-            }
-
-            if hint.kind == .arrow, let direction = hint.direction {
-                Image(systemName: arrowSystemName(for: direction))
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.yellow)
-                    .shadow(color: .black.opacity(0.45), radius: 2)
-                    .frame(minWidth: CameraOverlayUXPresentation.minimumControlDimension,
-                           minHeight: CameraOverlayUXPresentation.minimumControlDimension)
-            }
-        }
-        .accessibilityHidden(true)
-        .transition(.opacity)
+/// Preview-layer-owned conversion seam. Vision uses lower-left normalized
+/// coordinates; AVCapture metadata uses upper-left normalized coordinates.
+/// The conversion happens exactly once here, before the real preview layer
+/// performs aspect-fill/orientation/mirroring conversion.
+struct CameraPreviewRegionMapper {
+    static func metadataOutputRect(for normalizedRegion: NormalizedRect) -> CGRect? {
+        guard !normalizedRegion.isDegenerate else { return nil }
+        return CGRect(
+            x: CGFloat(normalizedRegion.x),
+            y: CGFloat(1.0 - normalizedRegion.y - normalizedRegion.height),
+            width: CGFloat(normalizedRegion.width),
+            height: CGFloat(normalizedRegion.height)
+        )
     }
 
-    private func arrowSystemName(for direction: OverlayDirection) -> String {
-        switch direction {
-        case .left:
-            return "arrow.left.circle.fill"
-        case .right:
-            return "arrow.right.circle.fill"
-        case .up:
-            return "arrow.up.circle.fill"
-        case .down:
-            return "arrow.down.circle.fill"
-        }
+    static func map(
+        _ normalizedRegion: NormalizedRect,
+        using converter: (CGRect) -> CGRect,
+        bounds: CGRect
+    ) -> CGRect? {
+        guard let metadataRect = metadataOutputRect(for: normalizedRegion) else { return nil }
+        let converted = converter(metadataRect).intersection(bounds)
+        guard !converted.isNull, !converted.isEmpty else { return nil }
+        return converted
     }
 }
 
-private struct LiveAnalysisStatusChip: View {
-    let title: String
+final class CameraPreviewTransformStore: ObservableObject {
+    @Published private(set) var subjectRegions: [CGRect] = []
+    @Published private(set) var targetRegion: CGRect?
 
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "viewfinder")
-                .font(.subheadline.weight(.semibold))
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
+    func update(subjectRegions: [CGRect], targetRegion: CGRect?) {
+        if self.subjectRegions != subjectRegions {
+            self.subjectRegions = subjectRegions
         }
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(CameraOverlayAccessibilityID.seeking)
-        .accessibilityLabel(title)
-        .accessibilityValue("Ожидание устойчивого совета")
+        if self.targetRegion != targetRegion {
+            self.targetRegion = targetRegion
+        }
+    }
+
+    func clear() {
+        update(subjectRegions: [], targetRegion: nil)
     }
 }
 
-private struct CameraPreview: UIViewRepresentable {
+struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
     let cameraManager: CameraManager
+    var subjectRegions: [NormalizedRect] = []
+    var correctiveTargetRegion: NormalizedRect?
+    var transformStore: CameraPreviewTransformStore?
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
         view.cameraManager = cameraManager
+        view.subjectRegions = subjectRegions
+        view.correctiveTargetRegion = correctiveTargetRegion
+        view.transformStore = transformStore
         return view
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
+        uiView.subjectRegions = subjectRegions
+        uiView.correctiveTargetRegion = correctiveTargetRegion
+        uiView.transformStore = transformStore
         uiView.updateOrientation()
+        uiView.updateMappedRegions()
     }
 }
 
@@ -270,6 +170,13 @@ final class PreviewView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
 
     weak var cameraManager: CameraManager?
+    weak var transformStore: CameraPreviewTransformStore?
+    var subjectRegions: [NormalizedRect] = [] {
+        didSet { setNeedsLayout() }
+    }
+    var correctiveTargetRegion: NormalizedRect? {
+        didSet { setNeedsLayout() }
+    }
     private var lastOrientation: AVCaptureVideoOrientation?
     private var orientationObserver: NSObjectProtocol?
     private var isGeneratingOrientationNotifications = false
@@ -291,6 +198,26 @@ final class PreviewView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         updateOrientation()
+        updateMappedRegions()
+    }
+
+    func updateMappedRegions() {
+        let bounds = videoPreviewLayer.bounds
+        guard bounds.width > 0, bounds.height > 0 else {
+            transformStore?.clear()
+            return
+        }
+        let converter: (CGRect) -> CGRect = { [weak self] metadataRect in
+            guard let self else { return .null }
+            return self.videoPreviewLayer.layerRectConverted(fromMetadataOutputRect: metadataRect)
+        }
+        let mappedSubjects = subjectRegions.compactMap {
+            CameraPreviewRegionMapper.map($0, using: converter, bounds: bounds)
+        }
+        let mappedTarget = correctiveTargetRegion.flatMap {
+            CameraPreviewRegionMapper.map($0, using: converter, bounds: bounds)
+        }
+        transformStore?.update(subjectRegions: mappedSubjects, targetRegion: mappedTarget)
     }
 
     func updateOrientation(force: Bool = false) {

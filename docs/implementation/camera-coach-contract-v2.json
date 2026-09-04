@@ -1,0 +1,101 @@
+{
+  "contractVersion": 2,
+  "authority": {
+    "spec": "docs/implementation/ux/camera-coach-state-spec.md (CC-008)",
+    "task": "M2-001 CameraCoachDomainOwner",
+    "notes": "Fail closed to WAIT/SELECT_SUBJECT/ABSTAIN rather than inventing advice."
+  },
+  "decisions": [
+    "KEEP",
+    "CORRECT",
+    "SELECT_SUBJECT",
+    "WAIT",
+    "ABSTAIN"
+  ],
+  "approvedActionIDs": [
+    "shift_frame_left",
+    "shift_frame_right",
+    "shift_frame_up",
+    "shift_frame_down",
+    "step_back",
+    "step_closer",
+    "lower_camera",
+    "raise_camera",
+    "change_camera_angle",
+    "level_horizon",
+    "rotate_subject_toward_light",
+    "move_subject_left",
+    "move_subject_right",
+    "move_subject_away_from_background",
+    "move_object_left",
+    "move_object_right",
+    "move_object_forward",
+    "move_object_back",
+    "remove_distracting_object",
+    "reposition_prop_for_balance",
+    "add_front_fill_light",
+    "add_background_light",
+    "remove_background_hotspot",
+    "simplify_background",
+    "wait_for_background_clearance",
+    "keep_current_setup"
+  ],
+  "legacyMigrations": [
+    {
+      "legacyActionID": "move_frame_left",
+      "decision": "CORRECT",
+      "approvedActionID": "shift_frame_left"
+    },
+    {
+      "legacyActionID": "move_frame_right",
+      "decision": "CORRECT",
+      "approvedActionID": "shift_frame_right"
+    },
+    {
+      "legacyActionID": "move_frame_up",
+      "decision": "CORRECT",
+      "approvedActionID": "shift_frame_up"
+    },
+    {
+      "legacyActionID": "move_frame_down",
+      "decision": "CORRECT",
+      "approvedActionID": "shift_frame_down"
+    },
+    {
+      "legacyActionID": "increase_subject_size",
+      "decision": "CORRECT",
+      "approvedActionID": "step_closer"
+    },
+    {
+      "legacyActionID": "reduce_background_distractions",
+      "decision": "CORRECT",
+      "approvedActionID": "simplify_background"
+    },
+    {
+      "legacyActionID": "change_angle",
+      "decision": "CORRECT",
+      "approvedActionID": "change_camera_angle"
+    },
+    {
+      "legacyActionID": "improve_front_light",
+      "decision": "CORRECT",
+      "approvedActionID": "add_front_fill_light"
+    },
+    {
+      "legacyActionID": "level_horizon",
+      "decision": "CORRECT",
+      "approvedActionID": "level_horizon"
+    },
+    {
+      "legacyActionID": "leave_frame_as_is",
+      "decision": "KEEP",
+      "approvedActionID": "keep_current_setup"
+    }
+  ],
+  "failClosedPolicy": {
+    "missingOrUnstableEvidence": "WAIT",
+    "resolvableSubjectAmbiguity": "SELECT_SUBJECT",
+    "insufficientEvidence": "ABSTAIN",
+    "unknownLegacyAction": "WAIT"
+  }
+}

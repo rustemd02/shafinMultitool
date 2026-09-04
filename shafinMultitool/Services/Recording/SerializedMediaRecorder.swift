@@ -164,7 +164,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         lastStopResult = nil
         advanceGenerationOnQueue()
         acceptingFrames = false
-        stateStorage = .prepared
+        setStateOnQueue(.prepared)
     }
 
     private func startOnQueue() throws {
@@ -200,8 +200,20 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             throw RecorderFailure.writerStartFailed
         }
 
+        let frameFence = RecordingFrameFence(
+            recordingID: configuration.id,
+            generation: activeGeneration
+        )
+
         if let preparedAudioDriver {
-            guard preparedAudioDriver.start() else {
+            let frameHandler: RecordingAudioFrameHandler = { [weak self] timestamp, payload in
+                self?.enqueueAudio(RecordingAudioFrame(
+                    fence: frameFence,
+                    timestamp: timestamp,
+                    payload: payload
+                ))
+            }
+            guard preparedAudioDriver.start(onFrame: frameHandler) else {
                 failStartOnQueue(.audioStartFailed,
                                  writer: preparedWriter,
                                  audioDriver: preparedAudioDriver)
@@ -213,7 +225,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
         pendingFailure = nil
         acceptingFrames = true
-        stateStorage = .recording
+        setStateOnQueue(.recording)
     }
 
     private func failStartOnQueue(_ failure: RecorderFailure,
@@ -227,7 +239,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         acceptingFrames = false
         advanceGenerationOnQueue()
         pendingFailure = failure
-        stateStorage = .failed
+        setStateOnQueue(.failed)
     }
 
     // MARK: - Frame queue
@@ -238,9 +250,14 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             return
         }
 
-        guard writer.appendVideo(frame) else {
+        switch writer.appendVideo(frame) {
+        case .failed:
             markAppendFailureOnQueue(.videoAppendFailed)
             return
+        case .dropped:
+            return
+        case .appended:
+            break
         }
 
         acceptedVideoCount += 1
@@ -261,8 +278,11 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             return
         }
 
-        guard writer.appendAudio(frame) else {
+        switch writer.appendAudio(frame) {
+        case .failed:
             markAppendFailureOnQueue(.audioAppendFailed)
+            return
+        case .dropped, .appended:
             return
         }
 
@@ -287,7 +307,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             audioStarted = false
         }
         advanceGenerationOnQueue()
-        stateStorage = .failed
+        setStateOnQueue(.failed)
     }
 
     // MARK: - Stop/finalization
@@ -311,7 +331,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         case .prepared:
             let result = terminalFailureResultOnQueue(.noVideoFrames)
             discardPreparedResourcesOnQueue()
-            stateStorage = .failed
+            setStateOnQueue(.failed)
             lastStopResult = result
             continuation.resume(returning: result)
 
@@ -345,7 +365,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             lastStopResult = result
             resolveStopWaitersOnQueue(with: result)
             resolveReleaseWaitersOnQueue(with: result)
-            stateStorage = releaseRequested ? .released : .failed
+            setStateOnQueue(releaseRequested ? .released : .failed)
             return
         }
 
@@ -353,7 +373,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         finishInFlight = true
         acceptingFrames = false
         advanceGenerationOnQueue()
-        stateStorage = .finishing
+        setStateOnQueue(.finishing)
 
         writer.markVideoInputAsFinished()
         if currentConfiguration?.audioMode == .required {
@@ -430,13 +450,13 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         lastStopResult = result
 
         if releaseRequested {
-            stateStorage = .released
+            setStateOnQueue(.released)
         } else {
             switch result {
             case .finalized:
-                stateStorage = .finished
+                setStateOnQueue(.finished)
             case .failed:
-                stateStorage = .failed
+                setStateOnQueue(.failed)
             }
         }
 
@@ -491,12 +511,12 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
         case .idle:
             discardPreparedResourcesOnQueue()
-            stateStorage = .released
+            setStateOnQueue(.released)
             continuation.resume(returning: lastStopResult)
 
         case .prepared:
             discardPreparedResourcesOnQueue()
-            stateStorage = .released
+            setStateOnQueue(.released)
             continuation.resume(returning: nil)
 
         case .recording:
@@ -510,7 +530,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
         case .finished:
             discardPreparedResourcesOnQueue()
-            stateStorage = .released
+            setStateOnQueue(.released)
             continuation.resume(returning: lastStopResult)
 
         case .failed:
@@ -523,7 +543,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
                 releaseWaiters.append(continuation)
             } else {
                 discardPreparedResourcesOnQueue()
-                stateStorage = .released
+                setStateOnQueue(.released)
                 continuation.resume(returning: lastStopResult)
             }
         }
@@ -554,5 +574,18 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         if activeGeneration == 0 {
             activeGeneration = 1
         }
+    }
+
+    /// M1-010: every state assignment funnels through the canonical transition
+    /// table so an illegal transition fails deterministically in the test lane
+    /// (assert is stripped from release builds).
+    private func setStateOnQueue(_ newState: RecorderState) {
+        let from = RecordingLifecycleState(stateStorage)
+        let to = RecordingLifecycleState(newState)
+        assert(
+            RecordingLifecycleState.isLegalTransition(from: from, to: to),
+            "SerializedMediaRecorder illegal lifecycle transition \(from) -> \(to)"
+        )
+        stateStorage = newState
     }
 }

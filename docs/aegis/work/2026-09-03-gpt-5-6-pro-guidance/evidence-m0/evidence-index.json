@@ -1,0 +1,107 @@
+[
+ {
+  "file": "build-settings-Debug.log",
+  "bytes": 44825,
+  "sha256": "c107164718721e591206c4c34475895e66bb3c01ab786b8998210e21abce33ae"
+ },
+ {
+  "file": "build-settings-Release.log",
+  "bytes": 44898,
+  "sha256": "a9ccd8e76cd8749e1d550e0b603a635fc0a15878c52f51e36239fdd7d06f55c4"
+ },
+ {
+  "file": "build-settings-matrix.csv",
+  "bytes": 640,
+  "sha256": "0b89f5b79b2569939e1f4682f74672b04b7f622e7a5039c093996f301ca4576c"
+ },
+ {
+  "file": "build-topology.json",
+  "bytes": 505,
+  "sha256": "8da8562dd5e885daa3b339d5b70c8717df5a0748b41d64534b9135a80cbc3efe"
+ },
+ {
+  "file": "configuration-input-register.json",
+  "bytes": 1561,
+  "sha256": "b5075429b0ee8353d37739b548ce26a8dd2e52eeea558f6b23ae8bbbdfed6ac0"
+ },
+ {
+  "file": "current-baseline-report.md",
+  "bytes": 2781,
+  "sha256": "aca4b03d2ac253dc208654d7939e35e9c82f39f94785edad5c835cb68b3169db"
+ },
+ {
+  "file": "current-state-receipt.json",
+  "bytes": 40471,
+  "sha256": "c6b150970384f40cec6c0bca1b20bc48a360b0180244d9c947a5d3060bf9f667"
+ },
+ {
+  "file": "diff-classification.jsonl",
+  "bytes": 12087,
+  "sha256": "8f005d2920c1a7d0b9967a67c50aa751bb822902b55464a661aefd9b2c17f4a7"
+ },
+ {
+  "file": "handoff-integrity-report.json",
+  "bytes": 5516,
+  "sha256": "4884c08cacf4063432d8914e101db95ee02da948f0e9f5009ff220bf1b6e5ae9"
+ },
+ {
+  "file": "handoff-to-checkout-drift.jsonl",
+  "bytes": 104327,
+  "sha256": "af7976f0f962665baa9895cc05e9d4884713ced3ae9d56e5e548c0d4ad2424b9"
+ },
+ {
+  "file": "historical-evidence-register.jsonl",
+  "bytes": 1220,
+  "sha256": "d517baaa06c949fefe86baed42f85b541136d5027dcc76ac31003443205b2075"
+ },
+ {
+  "file": "porcelain-v2.txt",
+  "bytes": 14723,
+  "sha256": "2dc8c226f608acb86cd2c864ff62722943982f30e3f5c56bc9f69eaaf9c92a90"
+ },
+ {
+  "file": "release-evidence-schema.json",
+  "bytes": 2390,
+  "sha256": "e16e0524bbdd867d4100e20edcd7539e3decb0f91b0e55c2ff7e645eb5518a6a"
+ },
+ {
+  "file": "sha256-manifest.txt",
+  "bytes": 296,
+  "sha256": "326271e6234f37ffcc0ae31c57fbb6a5f9a2c8789d4be441b336f3a1e6c29c7e"
+ },
+ {
+  "file": "size-summary.md",
+  "bytes": 1799,
+  "sha256": "3bcda9b88f0f2b50e9afdc1620d36196b18c3eca8ebb0db65f27e829d31b4fbc"
+ },
+ {
+  "file": "source-bundle-inventory.jsonl",
+  "bytes": 45837,
+  "sha256": "93015bf41c1e4cd38a29e64a0483dc867d781de1337bf66b96c3b2c23e7910a5"
+ },
+ {
+  "file": "test-topology.json",
+  "bytes": 57104,
+  "sha256": "955621d474299e414b291f9c43d3356b3f1caa3890da5f57c66e1c5460276cd1"
+ },
+ {
+  "file": "toolchain-receipt.json",
+  "bytes": 403,
+  "sha256": "7b81b43690be60c830ef29b7af4ce599426f9318e0cd76bcf41d4c3725f81257"
+ },
+ {
+  "file": "unknown-paths.md",
+  "bytes": 40,
+  "sha256": "b008eff56c3d20abb02ece72a2e8a50f2ba4bd287b768cd0c1fdc36a35eb1558"
+ },
+ {
+  "file": "xcodebuild-list.json",
+  "bytes": 278,
+  "sha256": "8ed28e3cb303754a159759360a0e8118200ad605d1509c0bf403f9019d7011d5"
+ },
+ {
+  "file": "xcodebuild-list.log",
+  "bytes": 440,
+  "sha256": "5bd9f3dff4d1476d369db80ce678e1e0eba29dd2c985af62112238c2e87f7ca9"
+ }
+]

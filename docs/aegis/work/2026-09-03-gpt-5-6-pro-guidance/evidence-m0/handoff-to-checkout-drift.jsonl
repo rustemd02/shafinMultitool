@@ -1,0 +1,2532 @@
+[
+ {
+  "path": "Podfile",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "e40fb56a239aed82367c9380a8c6b5432cb108ea391905dfb057e91f58fb9b90",
+  "snapshot_chars": 730,
+  "checkout_status": "present",
+  "checkout_sha256": "e62049e306855241b3b2bb40884e22646d6af51652c433d8e0afc6b7f27070e1",
+  "checkout_bytes": 728,
+  "drift_status": "same"
+ },
+ {
+  "path": "Podfile.lock",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "12e40fab7c8d02591d057ed9ce960fb6ee3cf84d03c4689d1a458e6a4f2df023",
+  "snapshot_chars": 283,
+  "checkout_status": "present",
+  "checkout_sha256": "6f57b660a78eecb4eeada8b5a259322ed3f1cc95812ecbdb7c8ea6c9851104f1",
+  "checkout_bytes": 281,
+  "drift_status": "same"
+ },
+ {
+  "path": "README.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "31bb7a53efe09806ce859314c98bb77264a379e95d6667549010d18190eb991e",
+  "snapshot_chars": 11761,
+  "checkout_status": "present",
+  "checkout_sha256": "2f8a4206ec9014b920d7263229b7c8eeb7bd92305253e4f2290ba72ae0d8528f",
+  "checkout_bytes": 11931,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/aegis/work/2026-08-15-camera-coach-release/20-checkpoint.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "4f38117e231c59c136effa01d0d079638eda9530721a2cf624addbed4543b40f",
+  "snapshot_chars": 58300,
+  "checkout_status": "present",
+  "checkout_sha256": "476b283bfb828f569b2511c5bcea5b2f89678aae07b0af75fec2e6630e78aafb",
+  "checkout_bytes": 58387,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/aegis/work/2026-08-15-camera-coach-release/90-evidence.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "f091118491ed9ae6b080c4232b52ad87ed3f0d10891113194855a232e5009283",
+  "snapshot_chars": 69435,
+  "checkout_status": "present",
+  "checkout_sha256": "2ee95b55716255af68f2b0da5594aea29415bc94c61bf8def101d0c8b456e1ec",
+  "checkout_bytes": 69661,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/aegis/work/2026-08-17-set-os-redesign/20-checkpoint.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "d7522d381224d46855c4ab70083a6b4dd90f36f7855f93953a22da615bf1d7cf",
+  "snapshot_chars": 36099,
+  "checkout_status": "present",
+  "checkout_sha256": "db0a5e77e73a21e8ce1cd9edd15584817711a990996dbe657857a2553bfe2545",
+  "checkout_bytes": 37305,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/aegis/work/2026-08-17-set-os-redesign/90-evidence.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "432facb1ac9e2102532fa092ce8f1e5d400a80ca7e981018adf2d7225bf623fa",
+  "snapshot_chars": 50454,
+  "checkout_status": "present",
+  "checkout_sha256": "82c1953c4cbb4f23decae6aa6078437c1cbfa9d9b7ed0112da374c390222b63c",
+  "checkout_bytes": 51319,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/app-store-product-plan.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "1fbf1fb38a7bc508914aef0c0bf42bd00bbccd8a5a3e4dfecbb6f0e11e17a254",
+  "snapshot_chars": 68771,
+  "checkout_status": "present",
+  "checkout_sha256": "e7caf95a34124d1f40eabd7052cbf0b4c44bbc65007612883fcf74c32252bde9",
+  "checkout_bytes": 113021,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/00-overview.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "b9021f42b14234f06b45651c8d63eedb38f10bce0f568e8beaa46e5cfe76d9bf",
+  "snapshot_chars": 2650,
+  "checkout_status": "present",
+  "checkout_sha256": "4a583ae88bec812883da60201640b0b3cd8e5bdbea92f70c1085b8a6d91bc3f1",
+  "checkout_bytes": 3946,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/01-roadmap.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "a78756d3f8cae63d4db97431818da9842266861aa638e268541ebb6267366a49",
+  "snapshot_chars": 11571,
+  "checkout_status": "present",
+  "checkout_sha256": "172b7e6d1f260b6d2e61838b817b2f3470742eba36f540e8f8793c963052014a",
+  "checkout_bytes": 13441,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/02-pipeline-architecture.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "0ac97813898dce3ad37b070c4240477c21b91342be2dae4a8fc8062439b26ee9",
+  "snapshot_chars": 8034,
+  "checkout_status": "present",
+  "checkout_sha256": "c36f7c9aca32446971be4c59b67ef964eac2d7a561a9b3c3eab99e361ca4d135",
+  "checkout_bytes": 9694,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/03-domain-contracts.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "f81c051cb96e8ef505a1c7571c1af34637b1e63880b69bb614ccea4bdfbd0bd7",
+  "snapshot_chars": 17749,
+  "checkout_status": "present",
+  "checkout_sha256": "ccf0124eabd98d57ffcdf7736fc2573be8717d522e1e7815111aa7f782f4a63b",
+  "checkout_bytes": 20846,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/04-explainability-contract.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "0513891aa3c8b36f586fdcf839829ae843613965a5a37e7cd9d6a563cc710dc7",
+  "snapshot_chars": 15611,
+  "checkout_status": "present",
+  "checkout_sha256": "b95400dafe97689bf70b9f852db03f9168aea5adb5b8abe01735dd4f2c491380",
+  "checkout_bytes": 19615,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/05-feature-snapshot-aggregator.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "3edb56efec2c59dc9032674664da86b05bd183bdbfdb51b5aa16bbae683ad7e1",
+  "snapshot_chars": 12851,
+  "checkout_status": "present",
+  "checkout_sha256": "c02792358afd0b409bdd2963dd5003063ce01a3d314664bdb3c8134d686a20d3",
+  "checkout_bytes": 15905,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/06-scene-semantics-layer.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "3742e373c037b8ea7e462261ef611d6eb18e4b1600adbb50fcbdc0813b5cd144",
+  "snapshot_chars": 16879,
+  "checkout_status": "present",
+  "checkout_sha256": "bbf3a5f618dcc72c3b69436b17e0f81d42620d04e9cfd546134581745bf5da63",
+  "checkout_bytes": 19777,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/07-critique-engine.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "41d264b012895a7fc5024ddb2ac138446f64aa92c71f898ea3031cab2caea0af",
+  "snapshot_chars": 23567,
+  "checkout_status": "present",
+  "checkout_sha256": "aa4aed2048b520efe12b8d503bccab2649a97783c20e799e32547f35937bbde0",
+  "checkout_bytes": 27150,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/08-ui-integration.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "adc45ceebe8d3130b80447dc6901052cd9cdfd897df62f8e42e838f606c71749",
+  "snapshot_chars": 24918,
+  "checkout_status": "present",
+  "checkout_sha256": "965beb065c687bd7babe76cd5852ba45126297d7fce8a762082a90a26477c9d6",
+  "checkout_bytes": 30769,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/09-reasoning-provider.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "166ae13d2d01b49abaab0f5ead7100b40dee079308b82f04271d91229bc010b1",
+  "snapshot_chars": 13600,
+  "checkout_status": "present",
+  "checkout_sha256": "632a2c3153a737689ecfd72bab1153c46c264fc72846e5d226cdcabaae338f9c",
+  "checkout_bytes": 16860,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/10-eval-harness.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "94b7639a47fa2a52d7fe9abd1f0765054dea8a41508c42089275b5c378546ee7",
+  "snapshot_chars": 24250,
+  "checkout_status": "present",
+  "checkout_sha256": "1c50121c18b1fc21704174e62357f58961a6a94daf70bbf4c02ab1038d435823",
+  "checkout_bytes": 29041,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/14-hybrid-research-framing.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "c4ff34cd922d35724f9c2a2c6615ede32b5be6f4dc8933d684be363f3bb658b0",
+  "snapshot_chars": 15405,
+  "checkout_status": "present",
+  "checkout_sha256": "90247842faaec2a73bf9f53da0fc9fa08edf27b9dfc53c3f565716fbc2cfd9fc",
+  "checkout_bytes": 19839,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/18-hybrid-model-architecture-spec.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "c756d644a60356c16f18222d0527295245e34888cb1e304ce84366bfc641f638",
+  "snapshot_chars": 27528,
+  "checkout_status": "present",
+  "checkout_sha256": "0efd298cdba1b0fd14ff9bcb2bc0ecc0dac31d0da5718b30fbd6bbede841b8cc",
+  "checkout_bytes": 30860,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/19-neural-evidence-domain-contract.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "8585289c910552421156217cb50d902a4984d3ad4987f1f12da55df0b3f59a6d",
+  "snapshot_chars": 29331,
+  "checkout_status": "present",
+  "checkout_sha256": "6365ee42c1d373dc7edbeda94b69898ca0355eb225472d3e36ece247ab36f00a",
+  "checkout_bytes": 33960,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/20-on-device-inference-wrapper.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "9c58e1abe3a9495d642b41d7315f2aa6a7582c1695fed15e60c977ad11b3f785",
+  "snapshot_chars": 21516,
+  "checkout_status": "present",
+  "checkout_sha256": "a7960609f6292a3b9728ef99da542d6b845826620e754f383eeef00a6ef1d8e3",
+  "checkout_bytes": 26503,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/21-hybrid-fusion-layer.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "acc36d0f069f4de2ffc0770adb65b4cd3b4541e92f0732b20a145af25ab4e713",
+  "snapshot_chars": 31677,
+  "checkout_status": "present",
+  "checkout_sha256": "4e98e49fe2d6f7f9ee8e1b6ed3797b22a3db150d1923e1c2bc8d2356415ab8f4",
+  "checkout_bytes": 36229,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/22-offloading-contract.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "dec0378410d37e45bd98b931109473bcf9ee4a7732250997edbe7a37e0638808",
+  "snapshot_chars": 35051,
+  "checkout_status": "present",
+  "checkout_sha256": "2cfa8c30f33f54fe9db972419bd2e5ab9b22ba53c13967f52a3d370dd44f352c",
+  "checkout_bytes": 42496,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/24-semantic-tip-taxonomy-and-action-catalog.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "924c793af54fcc959cef9aa4e3289d297079258afec9e5da3f997814401bafb3",
+  "snapshot_chars": 43640,
+  "checkout_status": "present",
+  "checkout_sha256": "745eb2ef006103dd48b6eba940ea074e6597e636b20b9574af3cb81f9d47531a",
+  "checkout_bytes": 49020,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "b0ead0f557333ced3950f9f1f38298175f9c13f898d9eea9aecb360edae5c8cc",
+  "snapshot_chars": 35043,
+  "checkout_status": "present",
+  "checkout_sha256": "ac74adf06cc8383765cac240787f39f7f5b8b08ba83a49c77779b0c9921ffad0",
+  "checkout_bytes": 36463,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/26-semantic-tip-fusion-and-planner.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "d63510ac60b914b0d32cc07129fa611495f8a5211e0964e9275b6412bb2971d9",
+  "snapshot_chars": 19333,
+  "checkout_status": "present",
+  "checkout_sha256": "30620aa4127e6815e5a4d72ed4a82f1aa701ec28b839258d336f50c6e603b040",
+  "checkout_bytes": 22393,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/27-pause-vlm-evidence-provider-prototype.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "19c5994b3daad9bb3ec2089784e8166eed1189a5e72363a9ca5b602107c3517c",
+  "snapshot_chars": 6499,
+  "checkout_status": "present",
+  "checkout_sha256": "abeec07d8505a04843af21be6bd7acb69ab639500929322b7f4e425aa0506aaa",
+  "checkout_bytes": 7818,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/28-vlm-labeled-semantic-tip-dataset.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "e33fec8cab7b1a18866600bbebb3294115e466f1acb12df5339dbe318ed06a4e",
+  "snapshot_chars": 24746,
+  "checkout_status": "present",
+  "checkout_sha256": "9f4896d6f2463f8bc25357a9c96d45e71bf9a25bb11e0e5c2501dfaa721a18f3",
+  "checkout_bytes": 27199,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/29-on-device-semantic-evidence-distillation-plan.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "c8f8c266178bae057b13d20d6a928778cc57a0e35986aa912f3a8d97a72d4456",
+  "snapshot_chars": 33098,
+  "checkout_status": "present",
+  "checkout_sha256": "6f9cf6af7fabc3729787022910f781c072503d94089a3dae7b301498b6bb2ab0",
+  "checkout_bytes": 39494,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/30-semantic-camera-source-of-truth.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "da9d1d1c82e0708d316e4855c828cdb210f71d45dd51e02c08311c9ed1e33e51",
+  "snapshot_chars": 11742,
+  "checkout_status": "present",
+  "checkout_sha256": "65a06a338e1b1a0151752efb3cc46c330ad2061c144ff69caead916ea4d97acf",
+  "checkout_bytes": 18121,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/31-dataset-eval-implementation-plan.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "ef64cc20f9284e0937e295b84eac2bfff20f9580a1efdfc8780fe10d01c7b419",
+  "snapshot_chars": 20573,
+  "checkout_status": "present",
+  "checkout_sha256": "19af58df6b46895ddde80c53f4a4c7fbb747b0b75cfb0e446aae8e2dda15262c",
+  "checkout_bytes": 20944,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/32-semantic-eval-output-contract.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "989b1d09a68d31faff9d95622904e8a4da97409d50b797de6bcf3666d87da3e1",
+  "snapshot_chars": 4918,
+  "checkout_status": "present",
+  "checkout_sha256": "72e5a735f04207bfb2536d4481e51cc8e990ec82bcc3bc85db9bb7ded04c6ab9",
+  "checkout_bytes": 5011,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/33-semantic-current-baseline-findings.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "53ba0d06b743c300175dc4d35cd3a74f0f3115e94a5c3296d5adc13f441dd368",
+  "snapshot_chars": 35321,
+  "checkout_status": "present",
+  "checkout_sha256": "53ba0d06b743c300175dc4d35cd3a74f0f3115e94a5c3296d5adc13f441dd368",
+  "checkout_bytes": 35321,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/dataset/inbox/semantic_labels_v2.jsonl",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "b73e6a69513bf3c8c461e4dd086e8660482d58bf85fd79e54d82d97078e7b665",
+  "snapshot_chars": 250324,
+  "checkout_status": "present",
+  "checkout_sha256": "3fb47ecfe3ac0edfda4afece45f9bd44fd507ab9d7476952108b83905f6da30a",
+  "checkout_bytes": 290304,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/dataset/inbox/semantic_labels_v2_summary.md",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "e7a101c48c57d03763539f96a9210220576b12c6ca25aa4dfcccc98067add756",
+  "snapshot_chars": 2458,
+  "checkout_status": "present",
+  "checkout_sha256": "68b50204c102c92cc1839dad736bd6c62088aaacc0ed03300df1204450fed00d",
+  "checkout_bytes": 2456,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/adapters.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "5624dd73a535abce272b04d2135b215b88f56de993883fe5f4dee1422f83a17e",
+  "snapshot_chars": 41058,
+  "checkout_status": "present",
+  "checkout_sha256": "2927beab3405d37421d691314b264d0a8c95ac57abe7adabd5cdd2452f2b738b",
+  "checkout_bytes": 41056,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/compare.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "34d4646f9b6badcd14856c42e200cd2e8e93e523867c9266cacf2cba55fb825d",
+  "snapshot_chars": 9980,
+  "checkout_status": "present",
+  "checkout_sha256": "6494779bc03bd73cb33a46fa1cf8f8bb90b7e3872dfef513ae25e87943c07661",
+  "checkout_bytes": 9978,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/compare_hybrid.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "e614b009e288228a7329d8aaa3d270fa2a9bd9d334e6d643f731c94b60ec2afb",
+  "snapshot_chars": 10135,
+  "checkout_status": "present",
+  "checkout_sha256": "a4a94e791508f1a9ed6ac439fb12467a74522be5d9d1db39b4fb059b2a3cc4be",
+  "checkout_bytes": 10133,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/eval_io.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "26ecf59cf11ad969da57ccfe536691f7e68fc362d519389980f94394f8da17c9",
+  "snapshot_chars": 2970,
+  "checkout_status": "present",
+  "checkout_sha256": "c1f81e9ce1740e058ea79def4d4d649b487c0b9243d220f97c53d3ae7d5299b4",
+  "checkout_bytes": 2968,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/io.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "42b0edacffaf7b75b9e5bf3bec4de3e672f560d346caffbb9d6cebe4b8118e17",
+  "snapshot_chars": 117,
+  "checkout_status": "present",
+  "checkout_sha256": "00ef21161475f49c120568e8cb8f684b710e3e2ccdbe4e00ead77a59e7bfa1a1",
+  "checkout_bytes": 115,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_after_r21a/bucket_metrics.json",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "afcb0ec210a638a36df0ef8e1fba912b60c316d9f00f272da189b427681c7e14",
+  "snapshot_chars": 27427,
+  "checkout_status": "present",
+  "checkout_sha256": "085a9d9bebe9711490bdfb050b8686c2cbc42ea9d6f65833eec83d517e7b5872",
+  "checkout_bytes": 27425,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_after_r21a/case_results.jsonl",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "06d87fc1916ffee5ff8225dabcc2b63022be924bce204d97a41bf97794bae183",
+  "snapshot_chars": 85885,
+  "checkout_status": "present",
+  "checkout_sha256": "06d87fc1916ffee5ff8225dabcc2b63022be924bce204d97a41bf97794bae183",
+  "checkout_bytes": 85885,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_after_r21a/semantic_eval_summary.md",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "474df9de044dfd0ed4c599572e9a6cfc82b278c2be95bda80c21b43255e5f21c",
+  "snapshot_chars": 503,
+  "checkout_status": "present",
+  "checkout_sha256": "eeac7e49bc4f640c5a6c581aa77a5387a77c2edfaeb8ebc627814ce3a694c3a1",
+  "checkout_bytes": 501,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_after_r21a/set_metrics.json",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "4d97d853a2ea885afabff72270be41df8f9ec54d10055ca91f0cb062f0ea4100",
+  "snapshot_chars": 535,
+  "checkout_status": "present",
+  "checkout_sha256": "9114dc1c0b33634c6295b1007ffacbce063a91a17c0d1d42ce1c8a8b856d407c",
+  "checkout_bytes": 533,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_v2_after_runtime_fix_r6/bucket_metrics.json",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "c9e9440e55e2685140c9731aff892c573b42b5eafc82103bdf1e239f63b55673",
+  "snapshot_chars": 86098,
+  "checkout_status": "present",
+  "checkout_sha256": "1db60624d4763917de90b1785d7d7cb02a39618dd7eaac79490beaab83ea7972",
+  "checkout_bytes": 86096,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_v2_after_runtime_fix_r6/case_results.jsonl",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "5a057310e01e54623a1753cb99e314fa5080a84710afc359fd8173bf0cd2ec17",
+  "snapshot_chars": 190334,
+  "checkout_status": "present",
+  "checkout_sha256": "b7dae2faabf0d356636acbf361f034cc262673b67376ff5affbd0ddec05af41a",
+  "checkout_bytes": 190332,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_v2_after_runtime_fix_r6/semantic_eval_summary.md",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "9345ea800340f0354724f6c45aa638014a81f6bc005a16d35f0a3b97e51d2df3",
+  "snapshot_chars": 2742,
+  "checkout_status": "present",
+  "checkout_sha256": "b7d3c61cc6c81426173244de6154c70e4aa34a72da4dd4630d136e61bc299f9c",
+  "checkout_bytes": 2740,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/out_semantic_real_runtime_v2_after_runtime_fix_r6/set_metrics.json",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "7ec98394285aab53ec2699149a3ffd0cd09bd880783a7384a297874c585b64c8",
+  "snapshot_chars": 858,
+  "checkout_status": "present",
+  "checkout_sha256": "952ee58bdcf522ef4c4384148492a6302f03099ff513e05db7f600bd178606b7",
+  "checkout_bytes": 856,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/run_eval.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "cc2173cb09510477946be1bf91140ea39dcb9628cfdaf1027587a237d9c5775a",
+  "snapshot_chars": 6240,
+  "checkout_status": "present",
+  "checkout_sha256": "6e06c766be51fdb9855a5d72e3f2bb1b47d862bf43ba0882d714ecdf648e5c7c",
+  "checkout_bytes": 6238,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/run_hybrid_eval.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "8d0815f27f11bcd0579e4937108e4319ec4722597f474a1a0754c0f88745d63d",
+  "snapshot_chars": 12950,
+  "checkout_status": "present",
+  "checkout_sha256": "a9a80521fbdf5da46a5688564aff796af613b7c768c6d2acc98e9f3b0c8ad4ff",
+  "checkout_bytes": 12948,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/run_semantic_label_eval.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "9ec0ca970afc2bc372d3bfa793510bc42fc8a31d8b6be41a76f1840fbb63ca8f",
+  "snapshot_chars": 4527,
+  "checkout_status": "present",
+  "checkout_sha256": "0d370819607b34f32cc3f073f25a3f768ec4e0571363f54d9d1135fc51305df0",
+  "checkout_bytes": 4525,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/scorer.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "b002cdcbfa40ba07c5ecdebd54cc1ad35343a7b7e468fa83fced1968722c4a43",
+  "snapshot_chars": 25624,
+  "checkout_status": "present",
+  "checkout_sha256": "2b1d351effe0ae61a07b66a729c79baa389f52480ea11290b171c31b846adfa2",
+  "checkout_bytes": 25622,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/scorer_hybrid.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "c2d06ee4513df764abe815be248e6afd0fd8fd747007d81c0e1e5a4409b61bf8",
+  "snapshot_chars": 67057,
+  "checkout_status": "present",
+  "checkout_sha256": "aaf06b9687ab516eba342dee83fcf45ea7d3b467ff047f6228c3b0d89e5bc2f4",
+  "checkout_bytes": 67055,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/semantic_label_adapter.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "69eb7ccc856c7d1258434e0131260cd1386159c73ae8ed9d1f9d83930a87b053",
+  "snapshot_chars": 9438,
+  "checkout_status": "present",
+  "checkout_sha256": "9927bce99985df1e6855b74ba9581a69bc0c5d77c4753d7f06c033a0e2e1df73",
+  "checkout_bytes": 9436,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/semantic_output_schema.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "68433b4746438e9a356aa5329328451b11c49c78d9a1988ab4bb80e2b3d9c1b6",
+  "snapshot_chars": 19427,
+  "checkout_status": "present",
+  "checkout_sha256": "b8d6489977abf7ab19934ac2ad1d5540ed4c2b5d1f06d5f5298c7ce63b7ae573",
+  "checkout_bytes": 19463,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/cameraanalysis/eval/semantic_tip_dataset_tools.py",
+  "bundle": "14-ml-eval-and-dataset-snapshot.txt",
+  "snapshot_sha256": "70560234d6abddeb105696c93d212fb794f974e6b00c8956e6076f04ee306a29",
+  "snapshot_chars": 23535,
+  "checkout_status": "present",
+  "checkout_sha256": "a61f63f10ee15f9cc98cd54837bfeba2ae20d5709be22a646a02a46bbce43df4",
+  "checkout_bytes": 23533,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/implementation/BACKLOG.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "3686ee1099f370df38a0fa85f0ecad6e8dd56ec55c4d3aea053f36d3cedabf9c",
+  "snapshot_chars": 63260,
+  "checkout_status": "present",
+  "checkout_sha256": "0c1a028933a9c61093b9b704c7f2d90f5b9d63ea0bdd62f22b9d5fdeefc1f1c0",
+  "checkout_bytes": 63622,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/implementation/PRODUCTION_ACCEPTANCE.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "26d42a9ed3f0295781e6a2fb781235b13504b7180751d92117f5451291b2195d",
+  "snapshot_chars": 17519,
+  "checkout_status": "present",
+  "checkout_sha256": "7778fd166bef9d9ded97fcc079f61f7ee1cf4504539bf339cd637890d185d85b",
+  "checkout_bytes": 17543,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/implementation/STATUS.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "a3b5f00572e1d7224906820711accf680a96b6bc0fa1259b14581cfdecee6677",
+  "snapshot_chars": 33789,
+  "checkout_status": "present",
+  "checkout_sha256": "61f549fe7eaf91af2db54c96579a5b22655a59decb32384c99f8403253bde278",
+  "checkout_bytes": 37142,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/implementation/ux/camera-coach-state-spec.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "7c292d6ccf2453b63f38f9c1318292e5fd090bd2f47e684294b1876dccd21d65",
+  "snapshot_chars": 44079,
+  "checkout_status": "present",
+  "checkout_sha256": "dfeab150a4384eb714862984bca40a35ee9d23ff23f578102230da5c08c68e28",
+  "checkout_bytes": 57946,
+  "drift_status": "same"
+ },
+ {
+  "path": "docs/implementation/ux/set-os-visual-policy.md",
+  "bundle": "13-authority-and-evidence-docs.txt",
+  "snapshot_sha256": "79e3692c27bdae1d710a355a81b7827f8cb2bfb1b3d7548c0c7321b57bc82b18",
+  "snapshot_chars": 115473,
+  "checkout_status": "present",
+  "checkout_sha256": "bcdb5232f101141635aa9915574cf04a6b90899bc5ea96527e496d85d4292205",
+  "checkout_bytes": 138854,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/copy_debug_device_benchmark_resources.sh",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "8be9255f3284afa75532929bf6ea485f2ad02c81658e663fb585690287d94b28",
+  "snapshot_chars": 1787,
+  "checkout_status": "present",
+  "checkout_sha256": "6801d88b1946ad4262ee99731ef6822dc7e18bb51b9930a8305a415d7905a8ac",
+  "checkout_bytes": 1785,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/run_device_benchmark.py",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "224bcb3920520aa655d339302631237e7317bad584f6fcb361b0806b27286139",
+  "snapshot_chars": 33552,
+  "checkout_status": "present",
+  "checkout_sha256": "2146d3b7f94e08def28c57684a7f9bd9e41bcb6eef86f6b3675edf0ad8c95aba",
+  "checkout_bytes": 33550,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/run_open_domain_scene_benchmark.py",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "bef8a3a6e073eaaf6709eefe8fb1c0812f2752eb85b617abbef9bd407bd14aae",
+  "snapshot_chars": 25021,
+  "checkout_status": "present",
+  "checkout_sha256": "eb3bffa2510e03f669cf7288d99badb76d0d21e3e28350a0dba5ed4305744c40",
+  "checkout_bytes": 25183,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/run_release_gates.sh",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "ac34e6580813442e77351888c81cdbcc129b0e8528c57300a56a3a19246a3403",
+  "snapshot_chars": 10810,
+  "checkout_status": "present",
+  "checkout_sha256": "9d39d51bcfc0ccb9f81d984fa8df58f1f582e43b372188b43dd0a5fbb33c103a",
+  "checkout_bytes": 10808,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/tests/test_release_bundle_gate.sh",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "9a25276c39d140b4c6e5e749a13e9087aa5e9fd2a416f14cfbf84c1a3de813e7",
+  "snapshot_chars": 8867,
+  "checkout_status": "present",
+  "checkout_sha256": "8b0f29c35b472defb31a57bead17f6bc835188d3e12623c9db1291d2f7ff74e5",
+  "checkout_bytes": 8865,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/tests/test_release_provenance_gate.sh",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "9ff9fec39ee48dd62baff5eda9f97462caed8f5d66316e53bd7fda1cf9b91997",
+  "snapshot_chars": 4868,
+  "checkout_status": "present",
+  "checkout_sha256": "fa697fd95982384859b11690cc7604dc5a4e1f8a43a348a8ddc1ad82909c3c82",
+  "checkout_bytes": 4866,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/tests/test_run_device_benchmark.py",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "2e6a58d4b65d2b2054383ffcd513f035de87c77cee97601a907de01828424f75",
+  "snapshot_chars": 3726,
+  "checkout_status": "present",
+  "checkout_sha256": "f2438a880c60ec059a177050ac8fc0457c4a6284abc214832cf35ad8ef9b3d7d",
+  "checkout_bytes": 3724,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/tests/test_validate_circle_asset_provenance.py",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "6aafbaf524b979a49db56c5c77ad84a5d785c0f02112f3fb186743fdadcc22b2",
+  "snapshot_chars": 8433,
+  "checkout_status": "present",
+  "checkout_sha256": "4478563e76fb2df4dfddd4582191aebb654fbedd9dd400594589dbd1aaee9c0c",
+  "checkout_bytes": 8431,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/tests/test_validate_llama_framework_provenance.py",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "63e182122f71556ddae01cd8ee0b89c458524fc30a391f50a044cf9d7ea2f219",
+  "snapshot_chars": 21698,
+  "checkout_status": "present",
+  "checkout_sha256": "63eec595cc3f826e6f441c5e6dba5e1e47cf102c4b728a2511be8e713759ed6a",
+  "checkout_bytes": 21696,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/validate_circle_asset_provenance.py",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "1e6ac32c306f970de880b6d35af512fa3a8207043af74b5c52299e90acddf1c2",
+  "snapshot_chars": 28914,
+  "checkout_status": "present",
+  "checkout_sha256": "6adf7dc543af72bc4b64d3109313a44d02c4091e62ccaccb07e02f463bed46ba",
+  "checkout_bytes": 28912,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/validate_llama_framework_provenance.py",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "c7506c61914769dc4a023982915e9aa672f36550aefd0d0f3f5cbfac39095251",
+  "snapshot_chars": 29794,
+  "checkout_status": "present",
+  "checkout_sha256": "a599d7674dfc9cbdf9e4e41730a7ca189995faf6ba55f52ae9815f50693a42fc",
+  "checkout_bytes": 29792,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/validate_privacy_manifest.sh",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "c11f335a42a1a5936550d2c74d0f94dd92a28ddfbb1f189ddee3adc98ef37a9e",
+  "snapshot_chars": 13260,
+  "checkout_status": "present",
+  "checkout_sha256": "15f1be4d7dd9840b1423d65f3eb426a069d1ececc90dc12f84d1601c575163e1",
+  "checkout_bytes": 13258,
+  "drift_status": "same"
+ },
+ {
+  "path": "scripts/validate_release_bundle.sh",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "8c8e9b95e83ed37e66b85e7bca4d9be46eaaa869032359e9f82ab3be2eb885ba",
+  "snapshot_chars": 20327,
+  "checkout_status": "present",
+  "checkout_sha256": "4d39b1383d86473952a91ccf0e41a10a7f9b4784c666955898a67f845ef4daf7",
+  "checkout_bytes": 20325,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool.xcodeproj/project.pbxproj",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "47d53a8b6b88356b3411b49d2aa8d6e5dd2a0e9207f135bb7dbff28b7c59fc1d",
+  "snapshot_chars": 30930,
+  "checkout_status": "present",
+  "checkout_sha256": "d1f88ab38be25764c491609b524e7bb3c65d653e58927469d307b7f6a7685d6b",
+  "checkout_bytes": 31488,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/CommercialShell/CommercialShellModeControl.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "d971f7fbc4425fb159e33ab855fa0f0fa70890a0b2efeed9667744843a333fb4",
+  "snapshot_chars": 10740,
+  "checkout_status": "present",
+  "checkout_sha256": "9308248ba57ac2d18b03991c8a5b532dce77570f38b1e2e37ea1dbac8d686dbe",
+  "checkout_bytes": 10738,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/CommercialShell/CommercialShellRouteComposition.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "fb0db8fb93cff245753628fc190dced976089f36ab81a139d5d4f5b89c703e3e",
+  "snapshot_chars": 12409,
+  "checkout_status": "present",
+  "checkout_sha256": "f270035ae310583e56f9ea27f1bf6e5389dabb8ab48584bb0d3f093b0aace430",
+  "checkout_bytes": 12455,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/CommercialShell/CommercialShellViewController.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "01a1cba58146baa9487be4fdf08b5cf1dd9ccedfd81cbcf2f540f185b3f6e701",
+  "snapshot_chars": 13279,
+  "checkout_status": "present",
+  "checkout_sha256": "28d5135a54baa5867bd95e1f467233f7a6725f55d9ad165c8147b2e35ad8abb7",
+  "checkout_bytes": 13277,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Entity/ActorData.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "b2d1079cc64d5b4d4797a6fe5bacc853d7a0077f85f7cce14e0eb4ada806119e",
+  "snapshot_chars": 2085,
+  "checkout_status": "present",
+  "checkout_sha256": "3497c3dfe28bd1c8e538655aa15a9b3e5a55c01907a327cd3a84ecf10609640a",
+  "checkout_bytes": 2089,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Entity/SceneData.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "3b04639406ef90cac8d36a8534ffa8084c92fd297382e46c416b77789e8d540c",
+  "snapshot_chars": 6476,
+  "checkout_status": "present",
+  "checkout_sha256": "1bfa67c39f91e76b528a881b390da08c4ec02f32f2ad228e225d678b3f183512",
+  "checkout_bytes": 6480,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Entity/SettingsValues.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "d32e3cb4a29064be5383f11c3f20f051a0e7a4b5614d94bdbf918eff382d65d3",
+  "snapshot_chars": 940,
+  "checkout_status": "present",
+  "checkout_sha256": "2607c15d1e7016de165af1fdf26d0c2bf3d00f2b66a6bf2ce5e0cb4be2f62ff8",
+  "checkout_bytes": 944,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Info.plist",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "41b2e2fa967b411ce0c57cb19c8e8a811727c55bdbb6305200a2edb4d6719d2f",
+  "snapshot_chars": 1005,
+  "checkout_status": "present",
+  "checkout_sha256": "a1dd8e100438f022041e1565e93077d1b73b2d4264be499fd2a7734fb87702f2",
+  "checkout_bytes": 1003,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/ContentView.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "04f750a0f03d563c8dab23ca3793eb7a1ac4a77e5993b46adc8147cbf2381383",
+  "snapshot_chars": 5173,
+  "checkout_status": "present",
+  "checkout_sha256": "38db5311589f5bdad03fd1fc78a4a3eea57649a7a78a5815a73d21499e1f9ec1",
+  "checkout_bytes": 5177,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/EntryFlow/CameraCoachEntryFlowModel.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "a1c3d51bc0d4171f818d57718ca3f3841a185fe183ca7ea5c7421329fbd70937",
+  "snapshot_chars": 10428,
+  "checkout_status": "present",
+  "checkout_sha256": "d0e5b10e0388947bf0562269c1f0e6512e232f332b0646533b175047bc4f90b3",
+  "checkout_bytes": 10428,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/EntryFlow/CameraCoachEntryView.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "1f1f4bd83d5f44e4c1ea6bf1e3ed9d4f92971a8786a87bfb81f7d0cbc786db99",
+  "snapshot_chars": 23841,
+  "checkout_status": "present",
+  "checkout_sha256": "74f26cbc82676dc2203afb3e72f018ac3b03709e7326528c16b1bd09ee37f437",
+  "checkout_bytes": 23839,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "83afe0c8fd3371aea9aa51effde96b54e97797ca93d1991c4add71ae7d8b28b2",
+  "snapshot_chars": 140798,
+  "checkout_status": "present",
+  "checkout_sha256": "00363dfd23a30935e3e9fb6930008e208e7e6d54109d2325eb9e61bd401f5a55",
+  "checkout_bytes": 141062,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "20409463ab01300b58779f5211fde54f75ce834683e0a59848a98b5d7742262d",
+  "snapshot_chars": 3174,
+  "checkout_status": "present",
+  "checkout_sha256": "54f9105fc5fdc28ce694a1bd9d0b3d1cce5d1dac2e0c6c06c3a1088130e2a404",
+  "checkout_bytes": 3178,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "38b007339418f1949e6dc3a5bde42fb7f48e03417985430bf45ba397956e71d3",
+  "snapshot_chars": 12624,
+  "checkout_status": "present",
+  "checkout_sha256": "254eeff6f4ae60a7753610bfdeed4516113a477a03ba482e844ca57bd72e0a13",
+  "checkout_bytes": 12793,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/Lighting/LightingEstimator.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "b7f3f610d9d8962ee4742f7246dac044d73608284eb170d7177d5c61ddf06d6d",
+  "snapshot_chars": 5167,
+  "checkout_status": "present",
+  "checkout_sha256": "6d9e6a6a7ce8dbcb924f84e04e1a8fcb4fb53e3b0a4224a38d39907c53bd9bf8",
+  "checkout_bytes": 5171,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/Vision/HorizonEstimator.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "6aad8b242cca13f1755bd10a69556284c5cdce8c8a5765370d25903c530fdf3e",
+  "snapshot_chars": 3805,
+  "checkout_status": "present",
+  "checkout_sha256": "d1f9ecdfdc40c2368a805ec191e1bce0d08ca51fdd0bb640c50096585f5cfb0e",
+  "checkout_bytes": 3906,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Models/Vision/VisionTracking.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "48afe07875e9c0f7f41853ab3f3ed5efafae97e6e45da7e9bf8b83aaa5935a03",
+  "snapshot_chars": 6158,
+  "checkout_status": "present",
+  "checkout_sha256": "a0e165252021fbfea3d6e66b4573d9928196d5819654b228d13b6370f8c1b4ad",
+  "checkout_bytes": 6244,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Camera/CameraInputReplacementTransaction.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "b5516285da92a03e31c018e48cacddc845d6f41baaaaa4ff7a319515d4ffaee9",
+  "snapshot_chars": 1078,
+  "checkout_status": "present",
+  "checkout_sha256": "bf8edbdc8864f2d309d07b5ad80bb0334c74c0e219024ba2c5bb0790c46bb6fe",
+  "checkout_bytes": 1076,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "2f1ec86d966eeeb3381ee754db71481f8ed8ee923b3a6a188fb03d0717011c82",
+  "snapshot_chars": 37542,
+  "checkout_status": "present",
+  "checkout_sha256": "5355d33260bb1ae34ec7f88feca379029c60d68176b2f841e6180c901145a959",
+  "checkout_bytes": 37547,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Critique/DeterministicCritiqueSummaryBuilder.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "d0e69ce13370ebe0b81373fa2344e160a37900863f0fb7454d356f594aed3876",
+  "snapshot_chars": 1199,
+  "checkout_status": "present",
+  "checkout_sha256": "bb519a7e1d80fd110c50fb9d87ba9d5fddd6e721581f3e2d1b33e7057188be87",
+  "checkout_bytes": 1364,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Critique/FrameCritiqueEngine.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "eae4932e0087548a55db9b90360770a7c5be1034119a3bf4fe76016a1ecde03a",
+  "snapshot_chars": 50564,
+  "checkout_status": "present",
+  "checkout_sha256": "d87492add641ddf41de3d64b0a70b82997cabfadff0057e642aa0872adea70ab",
+  "checkout_bytes": 51156,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Offloading/DeepCriticOffloadingCoordinator.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "15571d1171a84ecc4fc0b1dd6e48f65cc5444eceaee47c8322f9fdae34b50abd",
+  "snapshot_chars": 45080,
+  "checkout_status": "present",
+  "checkout_sha256": "b8e7602589c1926ade64f8632789deddd44c0bb8901951d838637e8466bee0c0",
+  "checkout_bytes": 45383,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Offloading/MockDeepCriticProvider.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "40c10960ca5b451558113d75fec936d8cb5a209b28e8387205449b85dc9518d9",
+  "snapshot_chars": 1161,
+  "checkout_status": "present",
+  "checkout_sha256": "72a9a9d8a1c28e5e94829cc824439668814bfcc5253582cbe6ff75bed2497e9d",
+  "checkout_bytes": 1159,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "fe2912a6693c5ff32748118c4ba141090706a370da8d174db0e1b5d25aa9ea0f",
+  "snapshot_chars": 583698,
+  "checkout_status": "present",
+  "checkout_sha256": "8531cb4cac7a80a785f16e4a042453ca6f54aa9478800b7ae214a9c1dadc2258",
+  "checkout_bytes": 601039,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/CoreMLNeuralEvidenceProvider.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "d22911b6e71c4cdfdea08925993f4598d608aeea1f18e168cde2e309199284f4",
+  "snapshot_chars": 11880,
+  "checkout_status": "present",
+  "checkout_sha256": "7b36741d762e39f1e615c353d7be81966af736774d11ca38bf7a7f18c00acd32",
+  "checkout_bytes": 11878,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/HybridFusionService.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "e1e015ad13c343b76fd2c1e07b7fa293a81400964dd13b79b4b5cc84ef48675c",
+  "snapshot_chars": 31662,
+  "checkout_status": "present",
+  "checkout_sha256": "9f0531414413d0e692a034413310d80de8f75f9669e7838dd5bfa13b6cc92fff",
+  "checkout_bytes": 31660,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/LatestFrameEvidenceStore.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "120079badcbad0476779b241ae69372d99943b01940958e01bac0c8443a21062",
+  "snapshot_chars": 9332,
+  "checkout_status": "present",
+  "checkout_sha256": "8c7b3158bc7e2fd061dda77b430371464bc9846e3dc1832dcc885b134a802fd1",
+  "checkout_bytes": 9330,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/MockNeuralEvidenceProvider.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "3389aeb227833e58d6e2f77211b7f00528105f236574797c4876d15cb7c7fcca",
+  "snapshot_chars": 1828,
+  "checkout_status": "present",
+  "checkout_sha256": "d4c27feb3198d75b0628f3f3c7585dc47735190622e262384941a9bbe0711106",
+  "checkout_bytes": 1826,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/NeuralEvidenceInferenceService.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "301db256b48c1800ebc8272eb345003ed6925831412c71760853ec753f5d0e1f",
+  "snapshot_chars": 30201,
+  "checkout_status": "present",
+  "checkout_sha256": "3c9a3a43a7a189f3c6d852af27e6617185c7424924dac52d9836c00060cebbba",
+  "checkout_bytes": 30199,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/RealtimeScheduler.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "d7efcf9361a625b44807952265a2a137db6980bb4a2f5e570b360e2df30a325a",
+  "snapshot_chars": 5784,
+  "checkout_status": "present",
+  "checkout_sha256": "27d63bc7cebc74c515236bdbd3cc282e85e8e2788bf8842af6b7e719c1ccce4d",
+  "checkout_bytes": 5788,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Pipeline/ThermalGovernor.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "8d2b800ba31c5bd003632613c41d6e8f0a744155649d48e7251652889e9a2afe",
+  "snapshot_chars": 3612,
+  "checkout_status": "present",
+  "checkout_sha256": "580dbcdc0eb5d2dac044e1b58f7664cb5c4ef671d45e527791688fc06019d1a9",
+  "checkout_bytes": 3616,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Reasoning/PauseReasoningCoordinator.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "15d36d4080ecfd37fa3274dfa6584f7d9e83d3a7d7c45ef90fca81dd96d49132",
+  "snapshot_chars": 37410,
+  "checkout_status": "present",
+  "checkout_sha256": "ad1f16d04e987be40516f9526032a23afd949c7b8466a0e76f5d369541782faf",
+  "checkout_bytes": 37878,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Reasoning/VisualSemanticEvidenceCoordinator.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "3a546692eb713044ebd3299cb42b3679e47d65499b1715e79fb58ef0b4ad3023",
+  "snapshot_chars": 19283,
+  "checkout_status": "present",
+  "checkout_sha256": "b0b786ea713e2071f185ba5f46e78fc349717ad2d33f674d371aeb381d1e0469",
+  "checkout_bytes": 19286,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Recommendation/SemanticTipPlanner.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "376b542ac44a49d01b1f9dd304117a1e80916aec7364a36c65391aa5f50bdc68",
+  "snapshot_chars": 50985,
+  "checkout_status": "present",
+  "checkout_sha256": "cc18170475c17a7a16f98a457682501f111142809b025224fb34ca6b01cf0b42",
+  "checkout_bytes": 53487,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Suggestion/PrioritySelector.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "dda4249f11f2df5964c42a1b3d9403d1cda7540ae1ba90326034bbd26ed983f1",
+  "snapshot_chars": 1524,
+  "checkout_status": "present",
+  "checkout_sha256": "b928c5cd1d2e560757dd47c745a36a301bd947095b88603d6cd53924024d4c70",
+  "checkout_bytes": 1528,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Suggestion/SuggestionEngine.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "0541229646cde6397ec3062d2a15209f66c6d70dd049538cb69ff182295dce5e",
+  "snapshot_chars": 16904,
+  "checkout_status": "present",
+  "checkout_sha256": "410b8e73e484bdcdb0e07bd883898684cc95639caa95cca84c0979cf782c068c",
+  "checkout_bytes": 17941,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Services/Telemetry/Telemetry.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "33b8cf44175740456acd9254d45b683a2f85289e2afb0786a7a38547aa7ba944",
+  "snapshot_chars": 5413,
+  "checkout_status": "present",
+  "checkout_sha256": "636af89e2dda851919cdb3a923b48efd1c4f14e2a82e2d9a84f8bd5fd7a4d6ae",
+  "checkout_bytes": 5458,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/DesignSystemPreviews.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "004161ddb9a4c3a8bb07bb4026cc5467fa102f6bd0a6f91b701884b746b87765",
+  "snapshot_chars": 33235,
+  "checkout_status": "present",
+  "checkout_sha256": "69352208e99d939006146d2570a83c9f5fadc71e35d80da1bc8e0503a2badf20",
+  "checkout_bytes": 33233,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETColor.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "441c666a336d3612279602f6bf6188fc32317d0c1de3a19a1eabc42acbf50631",
+  "snapshot_chars": 4121,
+  "checkout_status": "present",
+  "checkout_sha256": "dca9a9e5d5882a9501eb1ecc96d17a4ca7d480fa79e402e42c303ef451077c2d",
+  "checkout_bytes": 4119,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETComponents.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "396b3833a8aa49ea9d92936ab5198ed3e097c0a37852fe6dc854f2a53b24a90e",
+  "snapshot_chars": 44080,
+  "checkout_status": "present",
+  "checkout_sha256": "5c9dcf92ba5502b10051dc749ebdc7a683096da7e5dc2ec934d695edb66e511a",
+  "checkout_bytes": 44078,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETFixtureCatalog.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "b04cf7d412e73bf5f8d8d4b0764b65f3c67995e337d89efcd8e1325ab0679c10",
+  "snapshot_chars": 6708,
+  "checkout_status": "present",
+  "checkout_sha256": "68066ab45ebb79ec7787a75717f2761879dcde5b9b8ea867e347fd6aeeb6280f",
+  "checkout_bytes": 6710,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETLiveMonitorFixtures.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "f0a356092476ecc5f140c0c9a7f1834aff9ca80204967200b2850313a4762f41",
+  "snapshot_chars": 9613,
+  "checkout_status": "present",
+  "checkout_sha256": "43f5220d76bebd34d188b7cb49c6a8b0d58aef86475f1d79b30fb2be8ad86759",
+  "checkout_bytes": 9613,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETLocalization.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "33e1273e78e4d6595a057844c25497917289a267b77ee3bd41bf01ca022650c9",
+  "snapshot_chars": 26475,
+  "checkout_status": "present",
+  "checkout_sha256": "766ea7eade6c4d304d267076d3fadeafb4c6dad2ee9ff74b8c2cf1a0af2bca19",
+  "checkout_bytes": 26473,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETMetrics.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "3dbf4b34f4dba3de389b9707af4477465c1303ea4aff41f3949b7c399408d179",
+  "snapshot_chars": 23478,
+  "checkout_status": "present",
+  "checkout_sha256": "ad6db271b2f29f76dc54d3a3266e7740997ea919a6e71fdccf9ffb9da3376ba6",
+  "checkout_bytes": 23476,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETMotion.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "6b652d1758e1977444b449d452ba5f7d7b6f80517be292a226c6c39cc9dbdf50",
+  "snapshot_chars": 3848,
+  "checkout_status": "present",
+  "checkout_sha256": "10ab6a68548591de2c71c26e05a86022d7797dc86284d60b205e25dd7e096daf",
+  "checkout_bytes": 3846,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/DesignSystem/SETTypography.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "f2812bf50fdc512bf580200520de407b6b68d20337b85764bd93ea6375277cc6",
+  "snapshot_chars": 5707,
+  "checkout_status": "present",
+  "checkout_sha256": "74355170b9aedb23a152d0528bb49dff3f1209ece4a94a81e01141f0a71f359d",
+  "checkout_bytes": 5788,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/BBoxOverlay.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "cb1530ca8fc656acd1381278bd09c6b83854b68c3fe6ff14e51db7861588a632",
+  "snapshot_chars": 793,
+  "checkout_status": "present",
+  "checkout_sha256": "fa3351bd34a4cfd5bde7b00bd6347281f7e37f3bdbdcdea68dc05871d0704a75",
+  "checkout_bytes": 797,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/CameraOverlayUXPresentation.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "dffca3916647ef20787ea4488bf52d33ee558d33dae34a36ca5d09a96c03ffc3",
+  "snapshot_chars": 9980,
+  "checkout_status": "present",
+  "checkout_sha256": "76e5c46be6893cd1bf7b64969ec14acece5c8200014207827ef7564f70fca7db",
+  "checkout_bytes": 10029,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/DebugOverlay.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "4dffec8cb52b6d0c5f46ea8c1743b329d43888b666f2a70ccd6c95cf5553e7bf",
+  "snapshot_chars": 8321,
+  "checkout_status": "present",
+  "checkout_sha256": "00a480a0017d92c45f9d1fc3bafeb059ba38085f51ad9f3a9ea554bb44d2f3b9",
+  "checkout_bytes": 8425,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/DebugVisualizationOverlay.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "aeff8597e575ecb32f016b09735b94f6aec5d72dd03e7aa658cfd5c555db3969",
+  "snapshot_chars": 4551,
+  "checkout_status": "present",
+  "checkout_sha256": "64985e5631d635d2ab2ded97639955dffc9da84ad0553008d964096a170b2453",
+  "checkout_bytes": 4672,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/DecisionTracePresentation.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "05205f3e1b6d626565ecd2343b1ec2d84d43f7be72830fbc66dee89eb9234455",
+  "snapshot_chars": 30378,
+  "checkout_status": "present",
+  "checkout_sha256": "17d02397adb293f7dd3032d0757c37c389bd65a1e5be662f0a1011db3d62acfa",
+  "checkout_bytes": 30377,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/DecisionTraceView.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "82a88282373b6fb4c3cb581a95bd73761326a7834f8d20a0917365db9e19ebc6",
+  "snapshot_chars": 20279,
+  "checkout_status": "present",
+  "checkout_sha256": "fba1986123f73760174db5e425c287648a52c29d2b6720154a7c90500cebabbe",
+  "checkout_bytes": 20423,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/DirectionArrows.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "fdbdb37a0ef83049d689363e6ef0c1d0fd2c299352b17e96088d0c253bf46d7c",
+  "snapshot_chars": 4330,
+  "checkout_status": "present",
+  "checkout_sha256": "e74c0209f78c6426256586b76644c0e85ef5c23c508293e12512783dda3569f4",
+  "checkout_bytes": 4499,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/HorizonOverlay.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "ac459e79e0f6604794ce6376d159494782465444d209d1f2f2667e8617143e15",
+  "snapshot_chars": 709,
+  "checkout_status": "present",
+  "checkout_sha256": "ce18c6ddad91881b13f52228f7d0de8085925190b2dbc2034ad6c88b1d1c2666",
+  "checkout_bytes": 713,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "9119df5194b6beb537599bb03e956d09e12eadf9b18409010ef42034d6382c16",
+  "snapshot_chars": 9971,
+  "checkout_status": "present",
+  "checkout_sha256": "a2239f3305589f6c5b1ca148ff7301b81cc519d9cd7fa09fb7a23551a7f1fc47",
+  "checkout_bytes": 9969,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/SETCameraCoachProductionView.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "0ab636e6cfaa6e153940800cb8057020ab9785efbfc5a1af30a47497301283c4",
+  "snapshot_chars": 69000,
+  "checkout_status": "present",
+  "checkout_sha256": "49db1eeb76833fe54e27bd8f7e76501c1b26ebe417370a22b9030ae865d7005e",
+  "checkout_bytes": 68998,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/SuggestionChip.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "0dd181a5915dd1212fa6c6380f905d1b83b8f1a63dd38ab80ddc9666d7a013a2",
+  "snapshot_chars": 6709,
+  "checkout_status": "present",
+  "checkout_sha256": "3bf985896fba2e9dacf7ac6fa1ada53c093ad931f2553162b925bd61db19baac",
+  "checkout_bytes": 6707,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/SuggestionListView.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "7f3757fe27d53d0246c1e2ab837e62d649f2ca042629c62832a439018e9d5f56",
+  "snapshot_chars": 16678,
+  "checkout_status": "present",
+  "checkout_sha256": "d7e87d06c9ec86ab88f1f979d791ff177db69d80adfecd4658b09580e158547c",
+  "checkout_bytes": 17218,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/ThirdsGridOverlay.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "1ff36403da8e20f8bc44fb5b3e75d0850e86a1d48a9c65072edc2b504ee6a2ea",
+  "snapshot_chars": 746,
+  "checkout_status": "present",
+  "checkout_sha256": "cd4ab1c9090f46d1d522c12688976d5c858476801d5e9f5b3fc25e1d550cab2b",
+  "checkout_bytes": 750,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/UI/Overlay/ZoomControlView.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "b86ad83873868b08c08d24e56429b6daac6474cb884d93061808908a1c025ef2",
+  "snapshot_chars": 6379,
+  "checkout_status": "present",
+  "checkout_sha256": "8bf853824e7a553631cc1e83d0af25723a15cfd3a298b71f47b03798aa97dbb6",
+  "checkout_bytes": 6377,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Utilities/Filters/EMA.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "fb4887c1db233a75312458c41b9b66be07e664fd7ade454bc02aebfb2d552ba9",
+  "snapshot_chars": 906,
+  "checkout_status": "present",
+  "checkout_sha256": "50813a02d1dd871646315c00a71e5ebdf8f8814abb1e8d702366a8c75d00b77e",
+  "checkout_bytes": 910,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Utilities/Filters/HysteresisGate.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "766a924f9f614d0f4cc26d0d17e72170ddbe17c6951c6a66acf7e81352d53a7f",
+  "snapshot_chars": 807,
+  "checkout_status": "present",
+  "checkout_sha256": "fbf842af77d388b5345177810785fecf0aa315ed507a01ff54acddac69ee1ed3",
+  "checkout_bytes": 811,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Utilities/Filters/KalmanFilter.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "dd4eaa500ec4bd2b62edd093e20a6d6901558b0b71eee9cc121d85f0e59287c0",
+  "snapshot_chars": 1164,
+  "checkout_status": "present",
+  "checkout_sha256": "38e91dbe695ddb3bfb88349acd1a752d108916bea93add0f8bf17b0ab30fd149",
+  "checkout_bytes": 1168,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Utilities/Filters/MotionGate.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "e33a62d7721c036f734f20e476650c701105bfb49e13e1c54475bb0002dfd2a2",
+  "snapshot_chars": 7641,
+  "checkout_status": "present",
+  "checkout_sha256": "3141bd950af418cece6374910660a4881f852ff7058ad9372930571eb5a5e9dc",
+  "checkout_bytes": 7653,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/Utilities/Metal/MetalPreprocessor.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "0a599955f7fad880b1cee7b91ffbbde10e99540f46f175f58fa62c442c0ff40d",
+  "snapshot_chars": 2061,
+  "checkout_status": "present",
+  "checkout_sha256": "2fa77e18c2e864832f0f53997570c295601eff50f4ab0e77f6818aeb7cf50c9d",
+  "checkout_bytes": 2065,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/ViewModels/CameraViewModel.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "e0e0053b495438a0499299c1c499abe9c839a20fb316ceb7bf5bad0ef1069163",
+  "snapshot_chars": 30699,
+  "checkout_status": "present",
+  "checkout_sha256": "90c7b41efb46a24ffe3797ce06116bc2abd17bf23f44d362f9db5d3222d763d5",
+  "checkout_bytes": 30721,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Multitool2Module/multitool2App.swift",
+  "bundle": "10-camera-coach-source.txt",
+  "snapshot_sha256": "d90b316eae95b2171b4818fde7e051fb8d091d0b2e2340e508871b7697f1b137",
+  "snapshot_chars": 280,
+  "checkout_status": "present",
+  "checkout_sha256": "d90b316eae95b2171b4818fde7e051fb8d091d0b2e2340e508871b7697f1b137",
+  "checkout_bytes": 286,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/PrivacyInfo.xcprivacy",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "f953ba99994eddf8fe1c7d1723ca44a2da3df5ac96b05f09f375fa3d76f465cc",
+  "snapshot_chars": 816,
+  "checkout_status": "present",
+  "checkout_sha256": "f953ba99994eddf8fe1c7d1723ca44a2da3df5ac96b05f09f375fa3d76f465cc",
+  "checkout_bytes": 816,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Resources/AppDelegate.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "89b1a6122b0dc4a8d8491dd0a2df87ac7f7ba5483f5f28eb00d04c220ee1b3ca",
+  "snapshot_chars": 1758,
+  "checkout_status": "present",
+  "checkout_sha256": "3b0398303b1a294279c6491c754c7d1761dfe252c8a762e57a2dfcd4c76c4339",
+  "checkout_bytes": 1762,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Resources/InfoPlist.xcstrings",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "a61dc719f8ba9da0ecfcc25b1885c00971789b9c4114827ed96f692191523324",
+  "snapshot_chars": 1827,
+  "checkout_status": "present",
+  "checkout_sha256": "988ebbc39b369d497a7f89ae4da7704ef4ffedb2f4020569bb8bec01585ebb5b",
+  "checkout_bytes": 2046,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Resources/Localizable.xcstrings",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "5a7cc9939605d0a3d1e9b529873af4c85142baa50b2be939f379435424eb0de4",
+  "snapshot_chars": 153139,
+  "checkout_status": "present",
+  "checkout_sha256": "7904d90fc0f59e23baff425354a2494db8e7087a99e450c969f4e8c90579e069",
+  "checkout_bytes": 160245,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Resources/SceneDelegate.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "8fdcb23c04db51ea569c87a09f6cb0f9615b878fe2bc1d3bdba93f4febdc0b44",
+  "snapshot_chars": 14690,
+  "checkout_status": "present",
+  "checkout_sha256": "d73bd04371a4999c60a6a49186c3d16eed897472e496692237b62ba305e97064",
+  "checkout_bytes": 14694,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Models/SceneBundleContracts.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "e15a2e27af3a4489a2db269b75645c534f02ed286fff2d4ff07784f70a6a90c9",
+  "snapshot_chars": 9421,
+  "checkout_status": "present",
+  "checkout_sha256": "d9f7ca906383c8828684cb0081f57bb68295107ff000434da48de7cce44b1bc5",
+  "checkout_bytes": 9419,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Models/SceneChunkState.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "b9c2de9a8411ba2236d7679d11055478dbb631767556a86bb2b67b3e09034511",
+  "snapshot_chars": 2073,
+  "checkout_status": "present",
+  "checkout_sha256": "5bfc43ae9fca7616d7fda549612bc25c301fb1b1d632a6fee17b6f848534902d",
+  "checkout_bytes": 2178,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Models/SceneExecutionRuntimeContracts.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "05621fa9210a71a37fdcd4e9eaa9974807dbebb751200bd7f2a35b29405f8a06",
+  "snapshot_chars": 6194,
+  "checkout_status": "present",
+  "checkout_sha256": "b30a4fb5c67ddb5b19fe6ad273e3aa6319d42d2e2d12e27fed3faf38b1cc663e",
+  "checkout_bytes": 6192,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Models/ScenePlanning.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "9bde700207e8b5409efbc3b01953ce2153b60d5112b4b9e55cd9c0251af8d1f7",
+  "snapshot_chars": 16903,
+  "checkout_status": "present",
+  "checkout_sha256": "0efb84a122fcbe00fa668c886217b5bde8ceb5b708c9d31affe8a619b09eee87",
+  "checkout_bytes": 16901,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Models/SceneScript.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "98708b61f28f138317858b8321f4a4fd38c2dc5e7f8b59f2265a4b4135891eba",
+  "snapshot_chars": 27952,
+  "checkout_status": "present",
+  "checkout_sha256": "0b6a4e64fc03d98d3107b9997876a86d49d4c56741c67157a710b245548a8e7c",
+  "checkout_bytes": 32012,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/SceneWorkspaceTeardown.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "c62816834bdb7100b7edf94430991427e7b31112218180831dc09841fe896209",
+  "snapshot_chars": 2637,
+  "checkout_status": "present",
+  "checkout_sha256": "3adeaab539c370d1eca2e1829779132fa0ac53bdb8705012385ae9d234786c16",
+  "checkout_bytes": 2635,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/DiagnosticsCalculator.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "dadc89523381d9e143d0baa6aa3d0aee62e8d50beb82746e74103b2322a0e788",
+  "snapshot_chars": 9601,
+  "checkout_status": "present",
+  "checkout_sha256": "b5a45c06bc7db02ea7a81065ccb21ae44dcc758f58889057a8c658b890a583af",
+  "checkout_bytes": 11186,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/LLMParserService.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "56fc16ca127f32466274895d6c371e7228acacea2caf40b0a3785084473170a3",
+  "snapshot_chars": 107845,
+  "checkout_status": "present",
+  "checkout_sha256": "a54584b35009af362253879c3af960687a39d4134db8062e897d3100df39b6a2",
+  "checkout_bytes": 112675,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/Lemmatizer.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "f653d60c0af4a40cb0ebd348848a51d7b07583f5528486577eef04b72bcaecf2",
+  "snapshot_chars": 8390,
+  "checkout_status": "present",
+  "checkout_sha256": "429dd558384ae1aaf5496333d21e10e5d96e554c14b6a017031d5a8dc3597974",
+  "checkout_bytes": 9871,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/LlamaContext.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "55e33557efa2b2d5b20027bdab1aa252f9a6fbf62a2351bf475ac903e87609e6",
+  "snapshot_chars": 17669,
+  "checkout_status": "present",
+  "checkout_sha256": "26c9ec285823c2277bb7dbc0659d9cdd0911e050bd13d93aea69d8b50aab9b40",
+  "checkout_bytes": 18653,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/MarkedObjectMatcher.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "e86d41710c1736ae28f2321f2e8efd8ae7dc553cefd30fee79dcfa3f37a3a5c1",
+  "snapshot_chars": 10992,
+  "checkout_status": "present",
+  "checkout_sha256": "347587a3445fc648d9200bfcd954fb6de9939adbacb468f83e8ed4d0740d5031",
+  "checkout_bytes": 12281,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/ObjectDetectionBridge.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "d4a1934d20535a279918a748fac40eae4663d485b505a460c5ec2dafad67bad9",
+  "snapshot_chars": 11000,
+  "checkout_status": "present",
+  "checkout_sha256": "fff66707617731d7dc6859c35f788376b4f76df7e3b747f106195e14a027470a",
+  "checkout_bytes": 12557,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneAnchorExtractor.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "9e3df549f73e975a069c4822b5791bce45f5f1f90cf1aec56a5cbb30ccf92603",
+  "snapshot_chars": 6003,
+  "checkout_status": "present",
+  "checkout_sha256": "19b79ffb19a9bdda891a27104004088ab2e4893db478de1c04c4017a716de90e",
+  "checkout_bytes": 6298,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneBundlePipeline.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "e5885500efa2e4ba783ed34625a636f7a7146e8d4cff7b259560447b47de01b3",
+  "snapshot_chars": 217369,
+  "checkout_status": "present",
+  "checkout_sha256": "75ad062e5feac2bc149291ac6f152cabaffc3f310f27d6200d2be5c284f71c31",
+  "checkout_bytes": 220401,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneEventTableV9Service.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "5b656315cf5bf993b9ea9df142cd74c58fbeb016ddb09455098132d0ed90c8e0",
+  "snapshot_chars": 25122,
+  "checkout_status": "present",
+  "checkout_sha256": "8347164683adca98697e7aec90a52a99d7b32969b86c4bb1b5ed4255d5de47de",
+  "checkout_bytes": 25478,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneGeneratorDiagnosticsLogger.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "f1ed502cbac391c7e78b7639bfec470e72ed09f0a9a3553aeaace71e5711178f",
+  "snapshot_chars": 857,
+  "checkout_status": "present",
+  "checkout_sha256": "6c57408e615411716b3c8c70ce0819d4de623a96191e957b9f8a1aa23484cb59",
+  "checkout_bytes": 855,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneMetadataExtractor.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "8ef82ca3d99d2963453a8113981fc98934b3be3f04b4ac086e7f6b39339cd828",
+  "snapshot_chars": 9712,
+  "checkout_status": "present",
+  "checkout_sha256": "63e3589c58f9752bbe84bf236525ffb906b67505a17c6b1312198ed05fbb3532",
+  "checkout_bytes": 9920,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneParseCoordinator.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "8c4a78c7b58b9f74bcec080afb3b60af2aa5d2d82ca41d2577e60cf019ec19bb",
+  "snapshot_chars": 9949,
+  "checkout_status": "present",
+  "checkout_sha256": "f8a7ccc2caf14fdb5a6f7b4cc2490ff49fef464d66fed3697d3b9678cc95c653",
+  "checkout_bytes": 9947,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneParserService.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "56bf16b1d3afc5dff336afe200b12502afc3fb570c2234428cf54c997cf6052b",
+  "snapshot_chars": 81606,
+  "checkout_status": "present",
+  "checkout_sha256": "63b3c5fae9341a748cbca5134391229c8aae562f2104a7c542602cba2e9631ce",
+  "checkout_bytes": 88294,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/ScenePlanCompiler.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "e1418d5b2f04f01972abf63a16a361f4c495b1672348880038946b8786cccc15",
+  "snapshot_chars": 11041,
+  "checkout_status": "present",
+  "checkout_sha256": "33cdf8508567363c6fe63f4cb771f845000b41a954c45caebcd74109c812def3",
+  "checkout_bytes": 11039,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneQualityGate.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "e412bbfd4eefb80a7810873d00547c6f265ebd067243cef650d677c0ea1cbadf",
+  "snapshot_chars": 5443,
+  "checkout_status": "present",
+  "checkout_sha256": "f3ff31e57748ebb66bf347776c62b4cd6a42ac796d991cb2d020427822b7b2cd",
+  "checkout_bytes": 5617,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SceneRecordingController.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "2c48bc143f403137d0167aa01c86c154b55f831cd753c3b5642d7c987bbde6d1",
+  "snapshot_chars": 15712,
+  "checkout_status": "present",
+  "checkout_sha256": "627d089c620dc0274808e9a0948eb40cda797a46f54b5e6ddd41d8ac0edc9f35",
+  "checkout_bytes": 15710,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Services/SpatialPlannerService.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "03819880247ba86a9770568c0ee25daf3bcd73fd747e03fd90eaa7012b9b6302",
+  "snapshot_chars": 60587,
+  "checkout_status": "present",
+  "checkout_sha256": "f7d49db0723081717f3d9c899398da08f8e873391dcb8813f3ac374b653d689a",
+  "checkout_bytes": 64018,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/ViewModels/SceneGeneratorViewModel.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "c1b914effc94b88a16e27fc4f5bc9c7e640a099164d2174d6657e941b829949e",
+  "snapshot_chars": 226526,
+  "checkout_status": "present",
+  "checkout_sha256": "6d928742ba9d0a10eab991d3059e56ff60699b6e366c48ddb5627865eca40822",
+  "checkout_bytes": 232212,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/ARSceneContainer.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "c42e0df6ca72b69d2c343893e7447dcc49465cd352aa8f80890ded1bf7c74ac8",
+  "snapshot_chars": 27720,
+  "checkout_status": "present",
+  "checkout_sha256": "dee56757f110d51d360f48a5007aa9fbf251759ec62eb862841fa62181d65107",
+  "checkout_bytes": 28064,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/LegacySceneGeneratorCameraShell.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "99b59b9f0f2d6493baa0e8d655a78b12cf54380e1dc2d4e3a5a5c790a34f5ef8",
+  "snapshot_chars": 113969,
+  "checkout_status": "present",
+  "checkout_sha256": "3dcef6741bbab3b3c9150b7223ca67101e9ec73cd7406f0743d9b83ef7594fd6",
+  "checkout_bytes": 113976,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/SceneGeneratorView.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "c66072d41bead652af5ec67ad4f869a6c5c560a88394014bb92121d6aa736a28",
+  "snapshot_chars": 11587,
+  "checkout_status": "present",
+  "checkout_sha256": "db1bb60f909145c3011b30bf4b67e7a9496adebb0ade32f9f648e189216646d0",
+  "checkout_bytes": 11595,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/SceneGeneratorModule/Views/SceneInputSheet.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "95b86f4613a3a8e7ded905301065cbc4dd18cef795e854629b9e7ff81fc606f8",
+  "snapshot_chars": 14692,
+  "checkout_status": "present",
+  "checkout_sha256": "77de86abacad9b1992449a5cc0b6f4693f59b9c7d20fb185c41886baefcce850",
+  "checkout_bytes": 14690,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SETLibraryProductionView.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "f3269b0879181cd6b1ee1538900acd043471e789aaac0b7ac685eb5673b98f06",
+  "snapshot_chars": 34525,
+  "checkout_status": "present",
+  "checkout_sha256": "247d6bd86808875d42f351d9952448c0237757436a53c8c6cae9bc3af66f9677",
+  "checkout_bytes": 34523,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SOInteractor.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "fa2239fdc44d84993ae2a0f97d06c7207b8bb0c572696741bee85b39aa426763",
+  "snapshot_chars": 1796,
+  "checkout_status": "present",
+  "checkout_sha256": "84a94e6bc1809662e736e68903f577365663ff8232b2ef3edf9b169ab1ee452b",
+  "checkout_bytes": 1800,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SOModuleBuilder.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "d745677836d368072452052fa8c4954b8dd490d7a64f44e6148d6fca8a2a30cd",
+  "snapshot_chars": 594,
+  "checkout_status": "present",
+  "checkout_sha256": "9d8a7319def30d03ba9061dead8ff6539ab1cd5bc7a4e5fc7e1d62fc83292977",
+  "checkout_bytes": 598,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SOPresenter.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "2e660485e1f6aa0f6ef58407e755e84fc30a14f23e0794e7f5672bfb05ed7cc3",
+  "snapshot_chars": 1739,
+  "checkout_status": "present",
+  "checkout_sha256": "cbed697e84c97c143724e2323370598ac23cd54f7ad710847fed24da9e3c37da",
+  "checkout_bytes": 1743,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SORouter.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "47640e863a915234e87e813f3e20dbf1342449cdcb907da41b57a0163ca05eef",
+  "snapshot_chars": 3261,
+  "checkout_status": "present",
+  "checkout_sha256": "0d2947f964a08420387d2a3d444abfc5c21cfbeb8b91dde3a786cf950d2b7356",
+  "checkout_bytes": 3265,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SOViewController.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "522da45f10dc117334f857c57ee7de53eadd7c0e9e329b3125411bd3178d3289",
+  "snapshot_chars": 1914,
+  "checkout_status": "present",
+  "checkout_sha256": "2beb277e65c7131d09516efb5e0de2b7e712f0e6b1fb79d95369d0ca668c59a7",
+  "checkout_bytes": 1918,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/ScenesOverviewModule/SceneInfoCell.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "5946e829654035d1955d183c86d2c9547e41864b088d00c174da5a3ae1122a89",
+  "snapshot_chars": 2068,
+  "checkout_status": "present",
+  "checkout_sha256": "8178e9b07a067d2efc3ac3db97e0be48ede34db2d536623c0253017c45d4dc52",
+  "checkout_bytes": 2072,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/CameraService.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "4e73079f698dc1fcc66f9d581cd4ced1f68222de1ee519012abd44f0998e4e79",
+  "snapshot_chars": 26248,
+  "checkout_status": "present",
+  "checkout_sha256": "5394401847da5046a2c4caf4202d5e2ef8b3c6fe09d2e9386304baa758372258",
+  "checkout_bytes": 26252,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/Converter.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "78a1b930904e315495ec37fc3ac1dfb0cdee3d3401b3d2e5f11b83a4b51c9110",
+  "snapshot_chars": 1578,
+  "checkout_status": "present",
+  "checkout_sha256": "c50afba7f0e02efcfab11d615ae551a5afb5c61e3d81313c0253320628a48c62",
+  "checkout_bytes": 1582,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/DBService.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "925972a3c6e0a59908183a4452669d7e6925b15fdf81907b9af40f8436f539b7",
+  "snapshot_chars": 15101,
+  "checkout_status": "present",
+  "checkout_sha256": "141bbbbaf5be21defe4acc8bfd90028cb09f62da7d4648db2d3372b05741464d",
+  "checkout_bytes": 15105,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/DiagnosticsLogger.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "d2754fbe7eab19feea17916bf77b9c00951c119f2130ec89cc6ea7c7ab5219c2",
+  "snapshot_chars": 2478,
+  "checkout_status": "present",
+  "checkout_sha256": "b059333c7c75af607f3da1d747e044cb56bf369381a5bcb96513ecffb43505e2",
+  "checkout_bytes": 2476,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/FrameSkipController.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "5e6f234f86710d87d41d113937e2851627bfc1d7620d3bdfa685f8b7babb0a25",
+  "snapshot_chars": 1238,
+  "checkout_status": "present",
+  "checkout_sha256": "af7500ca730be7468db29d1748f1e0bb3b4c86eab62f9e7e1d56b96e8c6af6ed",
+  "checkout_bytes": 1236,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/PerformanceMonitor.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "714d3966ef04ef31a79750299ea9f533deb0ac20715987a538708c677300afb7",
+  "snapshot_chars": 10449,
+  "checkout_status": "present",
+  "checkout_sha256": "16efd9e36bd6fd20c4f2b1f42316fd976db9e8c16ca2c9af0fd643bf0e0fc826",
+  "checkout_bytes": 10447,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/Permissions/PermissionContracts.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "58dd05e3ada69ded6d5860cdd606ab618f4973160ebebd455578333a43fe69a2",
+  "snapshot_chars": 971,
+  "checkout_status": "present",
+  "checkout_sha256": "b604d370fa47d3e7afa0ed0fbac745cc54ff0bf01cb094963b615977af2991f4",
+  "checkout_bytes": 969,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/Permissions/SystemPermissionClient.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "5273139dd5ce566d8664b85ee175e688d7041c32b72bf78ca34ca10105c775bd",
+  "snapshot_chars": 9473,
+  "checkout_status": "present",
+  "checkout_sha256": "469bc3215f700505faad1339380baa66954ecea9d6de670a3fabe98b587872f8",
+  "checkout_bytes": 9471,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/PreProductionThermalGovernor.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "7ecb19b956e1ff832b4135d9777014a0ecf28ee39eb730c5c37724b9fb124bf5",
+  "snapshot_chars": 4391,
+  "checkout_status": "present",
+  "checkout_sha256": "e578850e5d68d255cacf50d041d61c737a914afdea5a0974ab83712f15202ee1",
+  "checkout_bytes": 4393,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/AppleRecordingAdapters.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "db5256f683e41e1b90f847cb42e3f59f4974d0f45af10aa688a8535c6e0375b9",
+  "snapshot_chars": 21186,
+  "checkout_status": "present",
+  "checkout_sha256": "c7c007d52f341bce34aa50a107d92f657d1df82269464bf5c3d7e38827331e25",
+  "checkout_bytes": 21184,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/RecorderContracts.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "4d8ca51d6e0ecc1778c589a1336f3eab96a26c0eb77e7d844af6bc75d8171eea",
+  "snapshot_chars": 7262,
+  "checkout_status": "present",
+  "checkout_sha256": "95f12acf9a3d62c4083e97e08cdc341c5fe853d7329adff5f8ff19016c6e8c08",
+  "checkout_bytes": 7260,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/RecordingArtifactStore.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "519799eaa51c1516fcb8765992258df8fed88272c8a2c17bcb7963b31e0c170e",
+  "snapshot_chars": 16361,
+  "checkout_status": "present",
+  "checkout_sha256": "3377a3b2b14ff2870797aba731aaaa19f50421da2765fa95584a3d7e20cb6e9f",
+  "checkout_bytes": 16359,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/Recording/SerializedMediaRecorder.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "494334e06c484b0ae0eee5107049e76b73c4d6b353e0f4bd9849a93b3daebfe7",
+  "snapshot_chars": 19962,
+  "checkout_status": "present",
+  "checkout_sha256": "41cc6e263155bf0df09dcd4e85117c1385c57d3c8c8b85ce5f0a24726e180eea",
+  "checkout_bytes": 19960,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitool/Services/SpeechRecognitionService.swift",
+  "bundle": "11-scene-mode-source.txt",
+  "snapshot_sha256": "3ba655e2b7ebae79e4147345a9048ad0db9dcde6be11cb0836312d99da22c4b3",
+  "snapshot_chars": 3464,
+  "checkout_status": "present",
+  "checkout_sha256": "3ba655e2b7ebae79e4147345a9048ad0db9dcde6be11cb0836312d99da22c4b3",
+  "checkout_bytes": 3470,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/AnalysisPipelinePresentationTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "1a94fe48baa3dc5aeade40abd6f040350edc6fb65e53d3e5e9a9362bc71c2383",
+  "snapshot_chars": 225259,
+  "checkout_status": "present",
+  "checkout_sha256": "a50f86cf800230ecb86c2d40071b776a5be6d17272f8c859939eba900b28a014",
+  "checkout_bytes": 227728,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/AnalysisPipelineReleaseTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "cf47e37812db5f5ba795f3d42bfd2284296033f8dbce2e85f0265627439c197b",
+  "snapshot_chars": 27970,
+  "checkout_status": "present",
+  "checkout_sha256": "66974cfd6baaeb89c0d05b5b41e6b1659344d2db53ccb4eed1cf60b3aba335e7",
+  "checkout_bytes": 28002,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/AppleRecordingAdaptersTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "53ce20421a42209c8c1589a8f3286462fbb9199857bceb50eff4b68342116de7",
+  "snapshot_chars": 19057,
+  "checkout_status": "present",
+  "checkout_sha256": "b1b3aca60bd8ff13a7e6bcea40baefa6170120fc56ee4e501f569fa02c454bec",
+  "checkout_bytes": 19055,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "f64601129099e37ae90715669b1e89c90584d1abf757bda4d4a6b183273e4c1f",
+  "snapshot_chars": 150906,
+  "checkout_status": "present",
+  "checkout_sha256": "00dca076df201b055dadcad11d589fe8c975e9e2d004c3a86753597d0f257b53",
+  "checkout_bytes": 152020,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraCoachEntryFlowModelTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "c7b7d987ffd08d771b3b5157313957a4768b339b7c1260264a761a36861ca02e",
+  "snapshot_chars": 15919,
+  "checkout_status": "present",
+  "checkout_sha256": "c4f91bf9b9c1e4b133b943eb0bbbfd53085ad900ea7c25c094aba2b4dfb8da6b",
+  "checkout_bytes": 15917,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraCoachEntryPresentationTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "5c44aaeb6e769433af47695585f5a84de040c531def76752a58629991bf896e2",
+  "snapshot_chars": 9371,
+  "checkout_status": "present",
+  "checkout_sha256": "757175e26764befd7f34dd68e2854a607e88e0012494555743dca94dd3a6272a",
+  "checkout_bytes": 9385,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraLensSwitchTransactionTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "f39bb6c210870497eb2fcdc02cfb332099ebf5dd5d78ded67fef3f220bb6dbcb",
+  "snapshot_chars": 3977,
+  "checkout_status": "present",
+  "checkout_sha256": "18163d7cd84a759a5b9756d2d696cc48e6d239e4d6818d13820fcb50e9b04d87",
+  "checkout_bytes": 3975,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraManagerLifecycleTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "51529666d61c3ceccb3488f2ca4291b193d92df5e18e33b10576d34756b5dc87",
+  "snapshot_chars": 18665,
+  "checkout_status": "present",
+  "checkout_sha256": "bc201051cb5daa2cb7feb11536df0e9454b459625b411f2bdbccdb9a5331aede",
+  "checkout_bytes": 18664,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraOverlayUXPresentationTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "eda5b3f264be854f88b231e6a8ac84075c750bf1bb888f5f50438594ce9e921e",
+  "snapshot_chars": 19833,
+  "checkout_status": "present",
+  "checkout_sha256": "d1b5c6a9945a1baee7cbd93464e6d8622a608e8e1905cd92a583fde7ae48f036",
+  "checkout_bytes": 20395,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraViewModelLensSwitchTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "31e3b2aac4e2de04efd8cc8967c5515f76f8dd18130a01917433a07ab15a7948",
+  "snapshot_chars": 16374,
+  "checkout_status": "present",
+  "checkout_sha256": "1cf5f13f0b1f0cc8c79a4c09838f9d5476a32faf70242014c58bf98982196f61",
+  "checkout_bytes": 16372,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CameraViewModelLifecycleTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "2943521eb11f3f0d996274c48cfb3d34ba34a75c83efaf0931e02606f637babf",
+  "snapshot_chars": 26819,
+  "checkout_status": "present",
+  "checkout_sha256": "aa7325abbde4362a415866ae182e441866ffbfac7c5ddf89a41f8b1b99f057b7",
+  "checkout_bytes": 26817,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CommercialShellLaunchCompositionTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "3d6d0dda2f64f4a3d4d14f7e5281991aba5a8d87fea90646cb6cdd0613968fa5",
+  "snapshot_chars": 20706,
+  "checkout_status": "present",
+  "checkout_sha256": "a8ab3671ee03b169d3bd9eb8d430f700d5a42704630b2bbdda1306ab031158e0",
+  "checkout_bytes": 20752,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CommercialShellModeControlTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "cf3e5d94f68f67311453b398fa9330bf0879026de53bc21df8a0cf02cec8437e",
+  "snapshot_chars": 9584,
+  "checkout_status": "present",
+  "checkout_sha256": "96eb4d8365f0a13d5c4a3df4cc1c90bd77d09fdcf4434f11d558b99beb02cede",
+  "checkout_bytes": 9582,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/CommercialShellRoutingTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "7ed1966fd7a183d59feadcf3aaa0f5d97bda9ed77c76d07fc91f03611cf71b6e",
+  "snapshot_chars": 16728,
+  "checkout_status": "present",
+  "checkout_sha256": "72980976d766e412d818e833e1550b6fd0b15cc802b30340263dc6bd5c33cb85",
+  "checkout_bytes": 16726,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/ConverterTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "f0731f1ac1ce3326e2f254ece1624978075140c204c69bb0eb15b8b280861de8",
+  "snapshot_chars": 8170,
+  "checkout_status": "present",
+  "checkout_sha256": "52fcb1a948c2522dccd6dd6456ad4ec87302e2a00a4a1e57bf8bcd6191d79b2d",
+  "checkout_bytes": 9337,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/DETRDetectorTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "3378bd0c9cfd7a449b588160a4536c167c8197a128fc44f2a0afed0e9b342da2",
+  "snapshot_chars": 7498,
+  "checkout_status": "present",
+  "checkout_sha256": "ae3d0f595f98a738ced0bd582611b2e63fca00022d47ff6f6e6ca10e27f5fe5c",
+  "checkout_bytes": 7496,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/DecisionTracePresentationTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "d9e3339c0b6c9864953cd7e91a16077594914b175079a55168f9a8ef9c324c53",
+  "snapshot_chars": 6633,
+  "checkout_status": "present",
+  "checkout_sha256": "d63a3abd8c8eda6ebdd5ba8f8f539bdfbc8dc337755f8ad218142fd82565f3ad",
+  "checkout_bytes": 7357,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/DeepCriticOffloadingCoordinatorTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "9bc7a1b9d01f6316ed43f727c30d8d750b2458af0d7cbc6c8ef4f057a941cd52",
+  "snapshot_chars": 45948,
+  "checkout_status": "present",
+  "checkout_sha256": "2095cb057480118c7f1851cf4fcb37fb1243322ad8e272980933a3f8197bed2b",
+  "checkout_bytes": 47297,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/DeviceBenchmarkHarnessTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "276688caa9a9f2206b329314a193b62e7a1a0f750474563b0583e3742fd46560",
+  "snapshot_chars": 5147,
+  "checkout_status": "present",
+  "checkout_sha256": "b8a2ea0d3224471b3022cc288a96f47c1fdb4ed62474712f22728070ec063873",
+  "checkout_bytes": 5145,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/DeviceBenchmarkSupportTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "ce41b86024db3820166011ac10d552372b719859fa84c30902c1dfcccd5562a7",
+  "snapshot_chars": 6014,
+  "checkout_status": "present",
+  "checkout_sha256": "668166f312188c7d249b40d927471e4ce5d4824ff93110b605e2189db8f4d416",
+  "checkout_bytes": 6012,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/DeviceBenchmarkUITests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "d4f8d3d0a8f0d208dae2d884197c3087fd4590c1735480f963b5aa24fc219ed2",
+  "snapshot_chars": 497,
+  "checkout_status": "present",
+  "checkout_sha256": "868540287467d81e621517b5b9e494613b64a6e612e1cce479046269d6cc426e",
+  "checkout_bytes": 495,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/FrameCritiqueEngineTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "4a48110ced75f25045f529ebf06a5efd2718d18014898286edc8b2bc5655249e",
+  "snapshot_chars": 51104,
+  "checkout_status": "present",
+  "checkout_sha256": "d3147bca164ddbd31aa91b99bb750fe09b3cdf363099f38aebd18fd2325cc526",
+  "checkout_bytes": 51102,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/HybridFusionServiceTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "4e6bc756ca7c5cefa4e34102864eb1673f04edaae58d6daec1ce72792524f8ac",
+  "snapshot_chars": 26911,
+  "checkout_status": "present",
+  "checkout_sha256": "ef30b0271ce64039d153ad323bc0ef1b6a85a257c67837aae01e9ca41585b2f0",
+  "checkout_bytes": 28064,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/LatestFrameEvidenceStoreTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "c31b834a58c26333ec839fdf29961c15286c4c1f14016921c8a27ce4910570f6",
+  "snapshot_chars": 10717,
+  "checkout_status": "present",
+  "checkout_sha256": "1df4d19ef0bc06f1442510b30fe549ef7d4a38904a0e65c2be4a45f1967bcce0",
+  "checkout_bytes": 10715,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/LemmatizerTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "c6eb544985f109689219b96663117e3fc1d0d24d81a53d0f7280f783777a7e44",
+  "snapshot_chars": 3288,
+  "checkout_status": "present",
+  "checkout_sha256": "dd2285940c5dd350cfc9fbe95828a5321409abedd4bec8306549b3cb9f39f7f5",
+  "checkout_bytes": 3990,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/MotionGateTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "d8a5570eaa2b35c4a7947bc3b6fae96541f1ef71062fe449e69dd78d02b791b7",
+  "snapshot_chars": 6781,
+  "checkout_status": "present",
+  "checkout_sha256": "2bec3f0f4cc99bcb076d5a73fc249e09e4247fd168b84d81e88a84763d1c82f4",
+  "checkout_bytes": 6779,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/NeuralEvidenceInferenceServiceTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "fd05026799460f4dbcd8de4d4791ccf3fee071841580d3e88d989c747310da2f",
+  "snapshot_chars": 17981,
+  "checkout_status": "present",
+  "checkout_sha256": "18d89cef59eba283697019cbf6aa8306836372a3389150f9f7a8370614e301ca",
+  "checkout_bytes": 17979,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/PauseReasoningCoordinatorTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "ffbdcd9d0431607659b2cf4993aa6b67e3a3e662c31e027f947f639bbad8db1c",
+  "snapshot_chars": 38418,
+  "checkout_status": "present",
+  "checkout_sha256": "15a98ce9b349f996ec07302479cbdd0476596a2395dfee764042fcbec21c285f",
+  "checkout_bytes": 39668,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/PerformanceTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "4700fa8a2427faf163b3c973643b6dbbd6a27017737f221d4036cec4ff4fa357",
+  "snapshot_chars": 11266,
+  "checkout_status": "present",
+  "checkout_sha256": "3e8cf373f8615cf90af6a64d56cea49dcba1e983a328abee1180decab2b4af90",
+  "checkout_bytes": 12540,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/PermissionFoundationTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "b17f9020c20dd4ce560abc110e7f0c2e95de8ef84db303613fb29a28012b2da5",
+  "snapshot_chars": 17340,
+  "checkout_status": "present",
+  "checkout_sha256": "ab122751418a282ae824cc0c83cdc963f98fbe4b3caed77ab90e068e3b134c23",
+  "checkout_bytes": 17338,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/RealtimeSchedulerTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "794dc01facdeac539a32d296358a96d12ce3082ce31c9e91902c9e485e3c29d9",
+  "snapshot_chars": 6307,
+  "checkout_status": "present",
+  "checkout_sha256": "717816d10c7965b74321f9e4328123a73e3e5fd39f138fe7e6671f303b9da79c",
+  "checkout_bytes": 6305,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SETDesignSystemTokenTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "3e9e20b9e46695516c8f89cefbc149a69cfee40c610e9fa1990dd888a5ef496e",
+  "snapshot_chars": 18478,
+  "checkout_status": "present",
+  "checkout_sha256": "0754e9ca468539bd449792e815fb6892a6c7bfd918869b7d03e3d47823760884",
+  "checkout_bytes": 18499,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SETFixtureCatalogTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "264f0a6e3123464ddf564e3fc66bcf680caaa7831279898d2424617a39c5bbc3",
+  "snapshot_chars": 5375,
+  "checkout_status": "present",
+  "checkout_sha256": "f24f572cd906a5edde669e5195a8209be2d2232acec142124d4b4e1b6fede0ba",
+  "checkout_bytes": 5373,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SETFontGlyphCoverageTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "0b6ee7120d70c6e613cac62280a9ebce0545b7d1409cd3f369120e1e72e6e399",
+  "snapshot_chars": 3187,
+  "checkout_status": "present",
+  "checkout_sha256": "47f754f7ae0dbc6568ae547dcb06345c9af9373e0cde90b002abf403aa070cf0",
+  "checkout_bytes": 3185,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SETLibraryModelTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "45a753d65a2d3cef0f611dc6600a2535caf6dc46a94e91f182e16953dee89206",
+  "snapshot_chars": 8298,
+  "checkout_status": "present",
+  "checkout_sha256": "05c52aee78daf1a557a8707f0d7c1d76ce968450bd1c0aea20590f68156a1db6",
+  "checkout_bytes": 8449,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneBundlePipelineTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "29ac986085f4218b3b6c0e6013f98bef4b5759ddbd6edc38443fed49597cc4d3",
+  "snapshot_chars": 140268,
+  "checkout_status": "present",
+  "checkout_sha256": "2b214a765c54d75ecafd6f45f02ca489f29bc06dfe4978d15d6f09b064d09bd6",
+  "checkout_bytes": 145688,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneParserServiceTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "56a20c863112d640026d9447f3830b1e7fae4fc26fa6019de5dbccc1c192ab80",
+  "snapshot_chars": 8350,
+  "checkout_status": "present",
+  "checkout_sha256": "c386d4cc286ce78fd27394949d89336013c2f1f43bc32cfae4466b8405a8a081",
+  "checkout_bytes": 9690,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneRecordingControllerTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "15005f82ba8c65ee549e223014e75a35c6d56305e39d7340899e586b363d361a",
+  "snapshot_chars": 38465,
+  "checkout_status": "present",
+  "checkout_sha256": "3ec01eb20981ffc74ec77675b5de13cc3e06d3bcafddbb9c14a44ec95ed9a066",
+  "checkout_bytes": 38463,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneSaveLoadTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "7aa1797715c265dc98cf264b681d73b9db13363d4bacb3ff6411a92bb0503ff2",
+  "snapshot_chars": 32171,
+  "checkout_status": "present",
+  "checkout_sha256": "4b039074cb6685dfeb2facc11a44da6d7b2420f97db99be219b1fc4735043e33",
+  "checkout_bytes": 34531,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneScriptsMarkdownSmokeTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "ed636beebd83d497a162d47a9d111a326a418c6f8d8daa1c8c03eeb6cf17f674",
+  "snapshot_chars": 15841,
+  "checkout_status": "present",
+  "checkout_sha256": "0a8db3b67d3a1ec1fc2b8b55c58d89aa92eda8108d51b63beb60cd76b8668c76",
+  "checkout_bytes": 16003,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneV8PipelineTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "4be2aa8b8ac9a203be47d2452a656a94d4b21054581754f691d9e8d8be3844b3",
+  "snapshot_chars": 49866,
+  "checkout_status": "present",
+  "checkout_sha256": "8b39b7bc131d12fdf6b7a391b2fdae857200321269bddd9912cabeef73e0518c",
+  "checkout_bytes": 50869,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SceneWorkspaceTeardownTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "8d96767a828cb4063983e1add12a3f4940491dba61ccadc58cdc57a856ea6443",
+  "snapshot_chars": 28785,
+  "checkout_status": "present",
+  "checkout_sha256": "aff568b9c654e60ab6f971c9ad61313db7c420f5f7b0e244237d9518fd71c928",
+  "checkout_bytes": 28889,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/ScriptParsingTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "27442a4f50c3234f7f70898872d2aff40bca29d5fda9d90b3aa2cedec90c39c6",
+  "snapshot_chars": 9041,
+  "checkout_status": "present",
+  "checkout_sha256": "05fd675ae4d42d52a64f845beff6d9ee2238d8584ab32cc60759814780840c6b",
+  "checkout_bytes": 10863,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SemanticTipPlannerTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "d53168d371a83eec360841349354c28a807dce118e2a5a3c0daf28e3c53de8cd",
+  "snapshot_chars": 46447,
+  "checkout_status": "present",
+  "checkout_sha256": "5a02cd364aa419624c797acb4bf47fa447c17b70b79e5f480d79087ce736bde2",
+  "checkout_bytes": 47125,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SerializedMediaRecorderTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "11e200c7bb843f38129cc396c9563f2cad32b17095f3812d7b5e8e8175733efa",
+  "snapshot_chars": 42338,
+  "checkout_status": "present",
+  "checkout_sha256": "95714f3f62334b0911fe704d0f90b16073a881a34c7275964f359f7f08838d47",
+  "checkout_bytes": 42336,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/SettingsTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "75e2157f9244f50edb57039b0cad343e0690c688b8594ab5673df649b5c06b6d",
+  "snapshot_chars": 12333,
+  "checkout_status": "present",
+  "checkout_sha256": "067de776819416a8a6f5e29bf20ff2252cf0c7ca8d0f48dcddf2f4e221ff2e9b",
+  "checkout_bytes": 14069,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/ThermalGovernorTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "c271a0d0461bb0d15c2a85645e38bb90baa4212445bc9e00151e40473aec2fad",
+  "snapshot_chars": 5916,
+  "checkout_status": "present",
+  "checkout_sha256": "5c07f94db3a262260e9e3eef6795c12e5b29cb61a6adf23e2f72918270cf26f2",
+  "checkout_bytes": 5914,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/UserDefaultsTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "dd3c18b3f67275d79d9a89176d3b0767ca12d9a48f793373cdb30b6df48ce703",
+  "snapshot_chars": 11353,
+  "checkout_status": "present",
+  "checkout_sha256": "103a0579e3f82d0781a12feae9ee3bcb06612f41116aebc3281e83802181a143",
+  "checkout_bytes": 12684,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/VisualSemanticEvidenceCoordinatorTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "a22480ea83fba4aba951ecf6340af72b6096948cab5657bdc903f67510b44cc5",
+  "snapshot_chars": 16870,
+  "checkout_status": "present",
+  "checkout_sha256": "9964ee8e33fa3a0f326221ee4387befd916a6d69c9e0dfc46eda8e38f94f0aef",
+  "checkout_bytes": 17093,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolTests/shafinMultitoolTests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "cda25ae9d8b5e65e9e903861ca9e9032bf18c116c903c35d559b825db5aac194",
+  "snapshot_chars": 1213,
+  "checkout_status": "present",
+  "checkout_sha256": "00ddbc8084779aefed01fceb91cb891ec343b79f2b64ed25c4dec34e38399bfa",
+  "checkout_bytes": 1217,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolUITests/CameraCoachEntryFlowUITests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "6c3ce4696a682e4ca045b69f65eb322cce3431fe75f06033e0ed5f0694e16526",
+  "snapshot_chars": 13333,
+  "checkout_status": "present",
+  "checkout_sha256": "8860fd95ff771235325cca36d061ee17cc34559b07ef94eedffd82d574ca6b04",
+  "checkout_bytes": 13427,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolUITests/CameraCoachProductionUITests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "43533f929e5376407e9276b4cf106274d091f94ef0cc196ea65b0b9a79c07108",
+  "snapshot_chars": 7849,
+  "checkout_status": "present",
+  "checkout_sha256": "c9ed94ff5af0708c74fba5d3bef47a353c76604cb7aa56bf15718078a5b8f69c",
+  "checkout_bytes": 7853,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolUITests/SETDesignSystemGalleryUITests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "0b23731bc2da0ba85ea8de95b67a50994555481374690a60f9e8adc2fd907c07",
+  "snapshot_chars": 3562,
+  "checkout_status": "present",
+  "checkout_sha256": "8a11bc3f3ac61e10d455a9139c26ee1c50d94d8a34cfac969cad3f881f55eaa9",
+  "checkout_bytes": 3560,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolUITests/SETGeneratorProductionUITests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "9fe34956ddf1af237c8d7077abb19d960295bb10060b8d5cdf625893b557be98",
+  "snapshot_chars": 28429,
+  "checkout_status": "present",
+  "checkout_sha256": "0ece30b4641f262ff75ec5aa98a177a8ccaa6222b6efd27a9d787344731c3e1a",
+  "checkout_bytes": 28499,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolUITests/SETLibraryProductionUITests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "da38d67a145173ae64f5bce7925ec53b480e36fccdf72d45d2948623dac5a118",
+  "snapshot_chars": 6695,
+  "checkout_status": "present",
+  "checkout_sha256": "49d16ae4321861139c1fd2e27ad1cba9491617fcd3c50cdbb44a23457c4779ac",
+  "checkout_bytes": 6712,
+  "drift_status": "same"
+ },
+ {
+  "path": "shafinMultitoolUITests/UITests.swift",
+  "bundle": "12-tests-and-release-source.txt",
+  "snapshot_sha256": "ff48f8ad460899b153a97b5786954fd7238f58314c92e229b766f4c41b43b9fa",
+  "snapshot_chars": 8522,
+  "checkout_status": "present",
+  "checkout_sha256": "bde755ea925286ca02f690ae3c629bc6988746f8612531d89d88e59bb2ddd4c2",
+  "checkout_bytes": 8555,
+  "drift_status": "same"
+ }
+]

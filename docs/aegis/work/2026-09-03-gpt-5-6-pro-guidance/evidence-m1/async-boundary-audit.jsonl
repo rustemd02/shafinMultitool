@@ -1,0 +1,13 @@
+{"group": "CameraSessionOwner", "no_check_count": 13, "note": "sessionQueue start/stop/release/switchLens/orientation continuations + scheduler drain/dispatch"}
+{"group": "route-side client (CameraViewModel)", "no_check_count": 10, "note": "7 Combine assigns + failure sink + feature Timer + demoMode Task"}
+{"group": "AnalysisPipeline", "no_check_count": 5, "note": "drain/fence continuations + TaskGroup child + 2 testing bridges"}
+{"group": "SceneWorkspaceOwner", "no_check_count": 32, "note": "ViewModel 25 + ARSceneContainer 7 + Coordinator 0"}
+{"group": "RecordingOwner", "no_check_count": 9, "note": "recorder continuations 5 + adapters 4; controller 0"}
+{"group": "MediaLifecycleOwner", "no_check_count": 0, "note": "sync-only, no async boundaries"}
+{"group": "PersistenceOwner", "no_check_count": 2, "note": "DBService sync completions"}
+{"group": "Legacy/Unmapped (CameraService)", "no_check_count": 11, "note": "no M1-001 designation; authoritative-recorder question open"}
+{"id": "HAZ-01", "file": "SceneGeneratorViewModel.swift:4431/4495", "risk": "orphan take after workspace release; blocks retry/stop identity"}
+{"id": "HAZ-02", "file": "CameraManager.swift:446/475/917/1009", "risk": "pre-release enqueued session ops execute post-release, rearming capture"}
+{"id": "HAZ-03", "file": "SceneGeneratorViewModel.swift:1640/2804/2827/4020/4066/3986", "risk": "stale playback cues fire into next/stopped workspace"}
+{"id": "HAZ-04", "file": "ARSceneContainer.swift:353/561/587 + CameraService.swift:591", "risk": "stale AR/vision callbacks mutate post-recovery state, cross-thread"}
+{"id": "HAZ-05", "file": "SceneGeneratorViewModel.swift:1091/4963/5049", "risk": "stale world-map persists over newer edits; teardown retry ambiguity"}

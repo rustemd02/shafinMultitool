@@ -1,0 +1,4 @@
+Shell regression after M1-004 adapter integration: Executed 33 tests, 0 failures (CommercialShellRoutingTests + CommercialShellLaunchCompositionTests + CommercialShellModeControlTests, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-004-regress.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/CommercialShellRoutingTests -only-testing:shafinMultitoolTests/CommercialShellLaunchCompositionTests -only-testing:shafinMultitoolTests/CommercialShellModeControlTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-004-regress.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)

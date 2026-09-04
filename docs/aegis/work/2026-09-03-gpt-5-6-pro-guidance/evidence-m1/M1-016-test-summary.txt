@@ -1,0 +1,8 @@
+Executed 24 tests, 0 failures (ProjectLifecycleRegistryTests 3 + DBServiceConcurrencyTests 5 + SceneWorkspaceTeardownTests 16, iPhone 17 sim iOS 26.5, xcresult /private/tmp/shafin-m1-016.xcresult)
+
+Command: xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:shafinMultitoolTests/ProjectLifecycleRegistryTests -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests -only-testing:shafinMultitoolTests/SceneWorkspaceTeardownTests -derivedDataPath build -resultBundlePath /private/tmp/shafin-m1-016.xcresult
+xcodebuild exit: 0 (TEST SUCCEEDED)
+
+Implementation: NEW Services/ProjectLifecycleRegistry.swift (lock-guarded lease map projectID->ownerToken; acquire exclusive/token-fenced release/isLeased). DBService init +projectLeases param (default .shared); deleteUnifiedSceneProjectOnQueue rejects deletion (typed log + completion(false)) while project is leased -> no ghost workspace, no autosave resurrection. SceneGeneratorViewModel: acquires lease in init (nil token tolerated with log), releases on successful teardown (.released) and in deinit; blocked teardown keeps lease -> deletion stays rejected (M1-009 blocked-route semantics).
+
+Acceptance: deletion rejected while ownership cannot be safely released; successful deletion removes database state + artifacts atomically (store fd-based removal, pre-existing M1-014/015 verified).

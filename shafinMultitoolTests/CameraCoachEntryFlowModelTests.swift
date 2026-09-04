@@ -171,6 +171,45 @@ final class CameraCoachEntryFlowModelTests: XCTestCase {
         XCTAssertEqual(snapshotCount, 2)
     }
 
+    func testConcurrentRechecksShareOneSnapshotWithoutRequesting() async {
+        let denied = cameraSnapshot(authorization: .denied)
+        let authorized = cameraSnapshot(authorization: .authorized)
+        let client = MockPermissionClient(
+            snapshot: authorized,
+            queuedSnapshots: [denied],
+            requestResult: authorized,
+            holdsSnapshot: true
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore(seen: true)
+        )
+
+        await model.resolveInitialState()
+        let firstRecheck = Task { @MainActor in
+            await model.recheckCameraAccess()
+        }
+        let snapshotIssued = await client.waitUntilSnapshotIssued()
+        XCTAssertTrue(snapshotIssued)
+        let secondRecheck = Task { @MainActor in
+            await model.recheckCameraAccess()
+        }
+
+        await Task.yield()
+        let snapshotCountBeforeCompletion = await client.snapshotCount(for: .camera)
+        XCTAssertEqual(snapshotCountBeforeCompletion, 2)
+
+        await client.completeSnapshots()
+        await firstRecheck.value
+        await secondRecheck.value
+
+        XCTAssertEqual(model.phase, .ready)
+        let snapshotCount = await client.snapshotCount(for: .camera)
+        let requestCount = await client.requestCount(for: .camera)
+        XCTAssertEqual(snapshotCount, 2)
+        XCTAssertEqual(requestCount, 0)
+    }
+
     func testEntryFlowNeverRequestsMicrophoneSpeechOrPhotos() async {
         let notDetermined = cameraSnapshot(authorization: .notDetermined)
         let client = MockPermissionClient(
@@ -191,6 +230,80 @@ final class CameraCoachEntryFlowModelTests: XCTestCase {
         XCTAssertFalse(requestedPermissions.contains(.microphone))
         XCTAssertFalse(requestedPermissions.contains(.speechRecognition))
         XCTAssertFalse(requestedPermissions.contains(.photosAddOnly))
+    }
+
+    func testPresentationEventIDAndRevisionStayStableWithoutAStateTransition() async {
+        let authorized = cameraSnapshot(authorization: .authorized)
+        let client = MockPermissionClient(
+            snapshot: authorized,
+            queuedSnapshots: [],
+            requestResult: authorized
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore(seen: true)
+        )
+
+        await model.resolveInitialState()
+        let eventID = model.presentationEventID
+        let revision = model.presentationRevision
+        model.updateAccessibilityPreferences(reduceMotion: false)
+        model.acceptCameraEntry(reduceMotion: true)
+
+        XCTAssertEqual(model.presentationEventID, eventID)
+        XCTAssertEqual(model.presentationRevision, revision)
+        XCTAssertEqual(model.phase, .ready)
+    }
+
+    func testEntryMarkerEventIsConsumedOnceAndReduceMotionPublishesFinalGeometry() async {
+        let notDetermined = cameraSnapshot(authorization: .notDetermined)
+        let client = MockPermissionClient(
+            snapshot: notDetermined,
+            queuedSnapshots: [],
+            requestResult: notDetermined
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore(seen: true)
+        )
+
+        model.updateAccessibilityPreferences(reduceMotion: true)
+        await model.resolveInitialState()
+
+        guard let markerID = model.markerEventID else {
+            XCTFail("Entry marker event was not issued")
+            return
+        }
+        XCTAssertEqual(model.markerDrawProgress, 1)
+        XCTAssertTrue(model.motionEventLedger.hasConsumed(markerID))
+        XCTAssertFalse(model.motionEventLedger.consume(markerID))
+    }
+
+    func testLeaderCannotReplayWithinOneRouteSessionAndReduceMotionUsesFinalAction() async {
+        let authorized = cameraSnapshot(authorization: .authorized)
+        let client = MockPermissionClient(
+            snapshot: authorized,
+            queuedSnapshots: [],
+            requestResult: authorized
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore(seen: true)
+        )
+
+        await model.resolveInitialState()
+        model.acceptCameraEntry(reduceMotion: true)
+        let leaderID = model.leaderEventID
+        XCTAssertEqual(model.leaderPhase, .action)
+        model.acceptCameraEntry(reduceMotion: false)
+
+        XCTAssertEqual(model.leaderEventID, leaderID)
+        guard let leaderID else {
+            XCTFail("Leader event was not issued")
+            return
+        }
+        XCTAssertTrue(model.motionEventLedger.hasConsumed(leaderID))
+        XCTAssertFalse(model.motionEventLedger.consume(leaderID))
     }
 
     private func cameraSnapshot(authorization: PermissionAuthorization,
@@ -226,19 +339,23 @@ private actor MockPermissionClient: PermissionClient {
     private var queuedSnapshots: [PermissionSnapshot]
     private let requestResult: PermissionSnapshot
     private let holdsRequest: Bool
+    private let holdsSnapshot: Bool
     private var snapshotCounts: [AppPermission: Int] = [:]
     private var requestCounts: [AppPermission: Int] = [:]
+    private var snapshotContinuations: [CheckedContinuation<PermissionSnapshot, Never>] = []
     private var requestContinuations: [CheckedContinuation<PermissionSnapshot, Never>] = []
     private var requestedPermissionList: [AppPermission] = []
 
     init(snapshot: PermissionSnapshot,
          queuedSnapshots: [PermissionSnapshot],
          requestResult: PermissionSnapshot,
-         holdsRequest: Bool = false) {
+         holdsRequest: Bool = false,
+         holdsSnapshot: Bool = false) {
         self.currentSnapshot = snapshot
         self.queuedSnapshots = queuedSnapshots
         self.requestResult = requestResult
         self.holdsRequest = holdsRequest
+        self.holdsSnapshot = holdsSnapshot
     }
 
     func snapshot(for permission: AppPermission) async -> PermissionSnapshot {
@@ -246,7 +363,11 @@ private actor MockPermissionClient: PermissionClient {
         if !queuedSnapshots.isEmpty {
             return queuedSnapshots.removeFirst()
         }
-        return currentSnapshot
+        guard holdsSnapshot else { return currentSnapshot }
+
+        return await withCheckedContinuation { continuation in
+            snapshotContinuations.append(continuation)
+        }
     }
 
     func request(_ permission: AppPermission) async -> PermissionSnapshot {
@@ -269,6 +390,12 @@ private actor MockPermissionClient: PermissionClient {
         continuations.forEach { $0.resume(returning: requestResult) }
     }
 
+    func completeSnapshots() {
+        let continuations = snapshotContinuations
+        snapshotContinuations.removeAll()
+        continuations.forEach { $0.resume(returning: currentSnapshot) }
+    }
+
     func snapshotCount(for permission: AppPermission) -> Int {
         snapshotCounts[permission, default: 0]
     }
@@ -284,6 +411,16 @@ private actor MockPermissionClient: PermissionClient {
     func waitUntilRequestIssued() async -> Bool {
         for _ in 0..<1_000 {
             if requestCounts[.camera, default: 0] > 0 {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        return false
+    }
+
+    func waitUntilSnapshotIssued() async -> Bool {
+        for _ in 0..<1_000 {
+            if snapshotCounts[.camera, default: 0] > 1 {
                 return true
             }
             try? await Task.sleep(nanoseconds: 1_000_000)

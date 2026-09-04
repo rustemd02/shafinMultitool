@@ -7,102 +7,104 @@
 
 import SwiftUI
 
-/// Модальное окно для ввода сценария сцены
+/// Screenplay input sheet, SET OS editorial register (`generator.input-*` and
+/// `sheet.screenplay-input` rows). Behavior stays with `SceneGeneratorViewModel`;
+/// this surface only restyles the projection.
 struct SceneInputSheet: View {
-    
+
     @ObservedObject var viewModel: SceneGeneratorViewModel
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextFieldFocused: Bool
-    
-    private let panelFill = Color.white.opacity(0.06)
-    private let panelBorder = Color.white.opacity(0.16)
-    private let secondaryText = Color.white.opacity(0.64)
-    
+
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                portraitLayout
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                    .foregroundColor(.white)
-                }
-                
-                if isTextFieldFocused {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            isTextFieldFocused = false
-                        } label: {
-                            Image(systemName: "keyboard.chevron.compact.down")
-                                .foregroundColor(.white)
-                        }
-                    }
-                }
-            }
+        ZStack {
+            Color.setInk.ignoresSafeArea()
+            portraitLayout
+        }
+        .overlay(alignment: .topTrailing) {
+            SETRegistrationMarks(corner: .topTrailing)
+                .frame(width: 28, height: 28)
+                .padding(SETSpacing.x3)
         }
         .preferredColorScheme(.dark)
     }
-    
-    // MARK: - Portrait Layout
-    
+
+    // MARK: - Layout
+
     private var portraitLayout: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: SETSpacing.x4) {
                     headerSection
                     if !viewModel.markedObjects.isEmpty { markedObjectsSection }
                     textInputSection
                     if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
-                    Spacer(minLength: 100)
+                    Spacer(minLength: SETSpacing.x12)
                 }
-                .padding()
+                .padding(SETSpacing.x4)
             }
             generateButton
         }
     }
-    
-    // MARK: - Header Section
-    
+
+    // MARK: - Header
+
     private var headerSection: some View {
-        Text("Сценарий")
-            .font(.system(size: 22, weight: .semibold))
-            .foregroundColor(.white)
+        HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
+            Text(SETCopyKey.generatorInputTitle.localizedTextKey)
+                .font(SETTypography.font(.display, size: SETTypographySize.displayMedium))
+                .fontWeight(.bold)
+                .setDisplayTracking()
+                .foregroundStyle(.setTextPrimary)
+                .accessibilityIdentifier("generator_input_title")
+
+            Spacer(minLength: SETSpacing.x3)
+
+            Button {
+                dismiss()
+            } label: {
+                Text(SETCopyKey.libraryCancel.localizedTextKey)
+                    .font(SETTypography.uiBodyFont(weight: .semibold))
+                    .foregroundStyle(.setTextSecondary)
+                    .underline()
+                    .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                           minHeight: SETComponentMetric.minimumHitTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("generator_input_cancel")
+        }
     }
-    
-    // MARK: - Text Input Section
-    
+
+    // MARK: - Text input
+
     private var textInputSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Сценарий")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(secondaryText)
-            
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Text(SETCopyKey.generatorInputTitle.localizedTextKey)
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .tracking(0.65)
+                .foregroundStyle(.setTextSecondary)
+
             ZStack(alignment: .topLeading) {
-                // Placeholder
                 if viewModel.sceneDescription.isEmpty {
-                    Text("Введите текст сцены")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white.opacity(0.34))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 16)
+                    Text(SETCopyKey.generatorInputPlaceholder.localizedTextKey)
+                        .font(SETTypography.font(.screenplay, size: SETTypographySize.body))
+                        .foregroundStyle(.setTextTertiary)
+                        .padding(.horizontal, SETSpacing.x4)
+                        .padding(.vertical, SETSpacing.x3)
+                        .allowsHitTesting(false)
                 }
-                
-                // Text editor
+
                 TextEditor(text: $viewModel.sceneDescription)
-                    .font(.system(size: 16))
-                    .foregroundColor(.white)
+                    .font(SETTypography.font(.screenplay, size: SETTypographySize.body))
+                    .foregroundStyle(.setTextPrimary)
                     .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .padding(.bottom, 36) // место под кнопку Вставить
+                    .padding(.horizontal, SETSpacing.x3)
+                    .padding(.vertical, SETSpacing.x2)
+                    .padding(.bottom, SETSpacing.x12)
                     .focused($isTextFieldFocused)
-                
-                // Кнопка «Вставить» — в правом нижнем углу поля
+                    .accessibilityIdentifier("generator_input_editor")
+
+                // Paste stays an inline affordance tied to the field.
                 VStack {
                     Spacer()
                     HStack {
@@ -115,57 +117,69 @@ struct SceneInputSheet: View {
                                 viewModel.sceneDescription += clipboardText
                             }
                         } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "doc.on.clipboard")
-                                    .font(.system(size: 11))
-                                Text("Вставить")
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                Capsule()
-                                    .fill(Color.white.opacity(0.08))
-                                    .overlay(
-                                        Capsule()
-                                            .strokeBorder(panelBorder, lineWidth: 1)
-                                    )
-                            )
+                            Text(SETCopyKey.generatorInputPaste.localizedTextKey)
+                                .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                                .tracking(0.45)
+                                .foregroundStyle(.setTextSecondary)
+                                .padding(.horizontal, SETSpacing.x3)
+                                .padding(.vertical, SETSpacing.x2)
+                                .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                                       minHeight: SETComponentMetric.minimumHitTarget)
+                                .background(Color.setHUDScrim)
+                                .overlay {
+                                    Capsule().stroke(.setHairline, lineWidth: SETStroke.hairline)
+                                }
+                                .clipShape(Capsule())
                         }
-                        .padding(.trailing, 10)
-                        .padding(.bottom, 8)
+                        .buttonStyle(.plain)
+                        .padding(.trailing, SETSpacing.x3)
+                        .padding(.bottom, SETSpacing.x3)
+                        .accessibilityIdentifier("generator_input_paste")
                     }
                 }
             }
             .frame(minHeight: 120, maxHeight: 200)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(panelFill)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(
-                                isTextFieldFocused ? Color.white.opacity(0.35) : panelBorder,
-                                lineWidth: 1
-                            )
-                    )
-            )
-            
+            .background(Color.setSurfaceSolid)
+            .overlay {
+                Rectangle().stroke(
+                    isTextFieldFocused && viewModel.inputValidationMessage == nil
+                        ? Color.setOrange
+                        : Color.setHairline,
+                    lineWidth: isTextFieldFocused && viewModel.inputValidationMessage == nil
+                        ? SETStroke.standard
+                        : SETStroke.hairline
+                )
+            }
+
+            if let inputValidationMessage = viewModel.inputValidationMessage {
+                VStack(alignment: .leading, spacing: SETSpacing.x1) {
+                    Text(inputValidationMessage)
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                        .foregroundStyle(.setTextPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("generator_input_validation")
+                    Rectangle()
+                        .fill(Color.setOrange)
+                        .frame(height: SETStroke.standard)
+                }
+            }
         }
     }
-    
-    // MARK: - Marked Objects Section (User-defined)
-    
+
+    // MARK: - Marked objects
+
     private var markedObjectsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Объекты")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(secondaryText)
-            
-            FlowLayout(spacing: 8) {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Text(SETCopyKey.generatorInputMarked.localizedTextKey)
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .tracking(0.65)
+                .foregroundStyle(.setTextSecondary)
+
+            FlowLayout(spacing: SETSpacing.x2) {
                 ForEach(viewModel.markedObjects) { marker in
-                    MarkedObjectChip(
-                        marker: marker,
+                    SceneObjectChip(
+                        label: marker.name,
+                        isActive: true,
                         onTap: {
                             if !viewModel.sceneDescription.isEmpty && !viewModel.sceneDescription.hasSuffix(" ") {
                                 viewModel.sceneDescription += " "
@@ -175,37 +189,29 @@ struct SceneInputSheet: View {
                     )
                 }
             }
-            
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.black.opacity(0.45))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.green.opacity(0.42), lineWidth: 1)
-                )
-        )
+        .padding(SETSpacing.x3)
+        .background(Color.setSurfaceSolid)
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
     }
-    
-    // MARK: - Detected Objects Section
-    
+
+    // MARK: - Detected objects
+
     private var detectedObjectsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "eye.fill")
-                    .foregroundColor(.white)
-                Text("Обнаруженные объекты")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(secondaryText)
-            }
-            
-            FlowLayout(spacing: 8) {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Text(SETCopyKey.generatorInputDetected.localizedTextKey)
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .tracking(0.65)
+                .foregroundStyle(.setTextSecondary)
+
+            FlowLayout(spacing: SETSpacing.x2) {
                 ForEach(viewModel.detectedObjects.prefix(8)) { object in
-                    DetectedObjectChip(
+                    SceneObjectChip(
                         label: KeywordsMapping.cocoToRussian[object.label] ?? object.label,
+                        isActive: false,
                         onTap: {
-                            // Добавляем объект в описание
                             let objectName = KeywordsMapping.cocoToRussian[object.label] ?? object.label
                             if !viewModel.sceneDescription.isEmpty && !viewModel.sceneDescription.hasSuffix(" ") {
                                 viewModel.sceneDescription += " "
@@ -215,130 +221,84 @@ struct SceneInputSheet: View {
                     )
                 }
             }
-            
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.black.opacity(0.45))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(panelBorder, lineWidth: 1)
-                )
-        )
+        .padding(SETSpacing.x3)
+        .background(Color.setSurfaceSolid)
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
     }
-    
-    // MARK: - Generate Button
-    
+
+    // MARK: - Generate command
+
     private var generateButton: some View {
         VStack(spacing: 0) {
-            LinearGradient(
-                colors: [Color.clear, Color.black.opacity(0.9)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 40)
-            
+            // Registration is the entry annotation; the focused field or
+            // eligible action edge supplies the single cinematic accent.
+            // Keep the command boundary neutral so accents never stack.
+            Rectangle()
+                .fill(.setHairline)
+                .frame(height: SETStroke.hairline)
+
             HStack {
-                Button(action: {
-                    isTextFieldFocused = false
-                    Task {
-                        await viewModel.generateScene()
-                    }
-                }) {
-                    HStack(spacing: 12) {
-                        if viewModel.isGenerating {
-                            ProgressView()
-                                .tint(.black)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
+                SETDigitalAction(
+                    title: viewModel.isGenerating ? .generatorInputGenerating : .generatorAction,
+                    helper: viewModel.isGenerating ? nil : .generatorHelper,
+                    showsAccentEdge: shouldShowGenerateAccent,
+                    action: {
+                        isTextFieldFocused = false
+                        Task {
+                            await viewModel.generateScene()
                         }
-                        
-                        Text(viewModel.isGenerating ? "Собираю сцену..." : "Сохранить и собрать сцену")
-                            .font(.system(size: 17, weight: .semibold))
                     }
-                    .foregroundColor(
-                        viewModel.sceneDescription.isEmpty ? Color.white.opacity(0.5) : .black
-                    )
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(
-                                viewModel.sceneDescription.isEmpty
-                                ? Color.white.opacity(0.16)
-                                : Color.white
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(panelBorder, lineWidth: 1)
-                            )
+                )
+                .disabled(viewModel.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isGenerating)
+                .opacity(viewModel.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                .accessibilityIdentifier("generator_input_generate")
+            }
+            .padding(.horizontal, SETSpacing.x4)
+            .padding(.vertical, SETSpacing.x3)
+            .background(Color.setInk)
+        }
+    }
+
+    private var shouldShowGenerateAccent: Bool {
+        viewModel.inputValidationMessage == nil
+            && !isTextFieldFocused
+            && !viewModel.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !viewModel.isGenerating
+    }
+}
+
+// MARK: - Object chip
+
+/// One flat object chip: active chips use a heavier warm-white edge while
+/// inactive chips stay on the neutral hairline, never introducing another
+/// cinematic accent.
+struct SceneObjectChip: View {
+    let label: String
+    var isActive: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(label.capitalized)
+                .font(SETTypography.uiBodyFont(weight: .semibold))
+                .foregroundStyle(isActive ? Color.setTextPrimary : Color.setTextSecondary)
+                .padding(.horizontal, SETSpacing.x3)
+                .padding(.vertical, SETSpacing.x2)
+                .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                       minHeight: SETComponentMetric.minimumHitTarget)
+                .background(Color.setSurfaceSolid)
+                .overlay {
+                    Capsule().stroke(
+                        isActive ? Color.setWarmWhite : Color.setHairline,
+                        lineWidth: isActive ? SETStroke.standard : SETStroke.hairline
                     )
                 }
-                .disabled(viewModel.sceneDescription.isEmpty || viewModel.isGenerating)
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
-            .background(Color.black.opacity(0.9))
+                .clipShape(Capsule())
         }
-    }
-}
-
-// MARK: - Marked Object Chip (User-defined)
-
-struct MarkedObjectChip: View {
-    let marker: MarkedObject
-    let onTap: () -> Void
-    
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 0) {
-                Text(marker.name.capitalized)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(Color.black.opacity(0.45))
-                    .overlay(
-                        Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-                    )
-            )
-        }
-    }
-}
-
-// MARK: - Detected Object Chip
-
-struct DetectedObjectChip: View {
-    let label: String
-    let onTap: () -> Void
-    
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 6) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white)
-                
-                Text(label.capitalized)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(Color.black.opacity(0.45))
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-                    )
-            )
-        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -346,15 +306,15 @@ struct DetectedObjectChip: View {
 
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
-    
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let result = arrangeSubviews(proposal: proposal, subviews: subviews)
         return result.size
     }
-    
+
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let result = arrangeSubviews(proposal: proposal, subviews: subviews)
-        
+
         for (index, subview) in subviews.enumerated() {
             if index < result.positions.count {
                 let position = result.positions[index]
@@ -365,7 +325,7 @@ struct FlowLayout: Layout {
             }
         }
     }
-    
+
     private func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
         let maxWidth = proposal.width ?? .infinity
         var positions: [CGPoint] = []
@@ -373,23 +333,23 @@ struct FlowLayout: Layout {
         var currentY: CGFloat = 0
         var lineHeight: CGFloat = 0
         var maxX: CGFloat = 0
-        
+
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            
+
             if currentX + size.width > maxWidth && currentX > 0 {
                 currentX = 0
                 currentY += lineHeight + spacing
                 lineHeight = 0
             }
-            
+
             positions.append(CGPoint(x: currentX, y: currentY))
-            
+
             currentX += size.width + spacing
             maxX = max(maxX, currentX)
             lineHeight = max(lineHeight, size.height)
         }
-        
+
         return (CGSize(width: maxX, height: currentY + lineHeight), positions)
     }
 }

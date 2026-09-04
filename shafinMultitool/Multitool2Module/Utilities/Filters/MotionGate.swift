@@ -17,6 +17,15 @@ struct MotionSnapshot: Equatable, Sendable {
     let isStable: Bool
 }
 
+/// M2-015: one committed state transition, stamped by the gate's clock.
+/// Movement timestamps are retained (bounded history) for WAIT gating and
+/// before/after capture.
+struct MotionTransition: Equatable, Sendable {
+    let state: MotionState
+    let timestamp: Date
+    let shakeLevel: Double
+}
+
 final class MotionGate: @unchecked Sendable {
     private let motionManager = CMMotionManager()
     private var gyroEMA = ExponentialMovingAverage(alpha: 0.3)
@@ -30,6 +39,12 @@ final class MotionGate: @unchecked Sendable {
     private var publishedSnapshot = MotionSnapshot(motionState: .still,
                                                    shakeLevel: 0.0,
                                                    isStable: true)
+
+    /// M2-015: injectable clock — deterministic tests drive the gate with a
+    /// synthetic time sequence.
+    private var clock: () -> Date = { Date() }
+    private var transitions: [MotionTransition] = []
+    private var stateStartedAt: Date = Date()
 
     private let stillEnterShakeThreshold = 0.18
     private let stillExitShakeThreshold = 0.42
@@ -55,8 +70,12 @@ final class MotionGate: @unchecked Sendable {
     }
 
 #if DEBUG
-    init(startMotionUpdates: Bool) {
+    init(startMotionUpdates: Bool, clock: (() -> Date)? = nil) {
         configureQueue()
+        if let clock {
+            self.clock = clock
+            stateStartedAt = clock()
+        }
         if startMotionUpdates {
             self.startMotionUpdates()
         }
@@ -67,6 +86,30 @@ final class MotionGate: @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return publishedSnapshot
+    }
+
+    // MARK: - M2-015 movement timeline
+
+    /// Committed state transitions, oldest first (bounded to the last 32).
+    func timeline() -> [MotionTransition] {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return transitions
+    }
+
+    /// When the current state began.
+    func stateStartTimestamp() -> Date? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return stateStartedAt
+    }
+
+    /// Seconds spent in the current state as of `asOf`.
+    func dwellSeconds(asOf: Date) -> TimeInterval? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard stateStartedAt <= asOf else { return nil }
+        return asOf.timeIntervalSince(stateStartedAt)
     }
 
     private func configureQueue() {
@@ -130,6 +173,16 @@ final class MotionGate: @unchecked Sendable {
         publishedSnapshot = MotionSnapshot(motionState: nextState,
                                            shakeLevel: shake,
                                            isStable: nextState == .still && shake < stillExitShakeThreshold)
+        if nextState != currentState {
+            let timestamp = clock()
+            transitions.append(MotionTransition(state: nextState,
+                                                timestamp: timestamp,
+                                                shakeLevel: shake))
+            if transitions.count > 32 {
+                transitions.removeFirst(transitions.count - 32)
+            }
+            stateStartedAt = timestamp
+        }
 
         if motionLoggingEnabled, currentState != nextState {
             stateChangeLog = (oldState: currentState,

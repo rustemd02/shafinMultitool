@@ -13,6 +13,12 @@ enum RecordingAudioMode: Sendable, Equatable {
     case required
 }
 
+enum RecordingAppendDisposition: Sendable, Equatable {
+    case appended
+    case dropped
+    case failed
+}
+
 struct RecordingConfiguration: Sendable, Equatable {
     let id: RecordingID
     let outputURL: URL
@@ -79,6 +85,88 @@ enum RecorderState: String, Sendable, Equatable {
     case finished
     case failed
     case released
+}
+
+/// M1-010 RecordingOwner canonical recording lifecycle. This is the single
+/// state vocabulary for recording progress across `SerializedMediaRecorder`,
+/// `SceneRecordingController` and the legacy `CameraService` writer path; the
+/// owners keep their own confinement and policies but every state they expose
+/// maps onto one of these cases, and every transition must be legal per
+/// ``isLegalTransition(from:to:)``.
+enum RecordingLifecycleState: String, CaseIterable, Sendable, Equatable {
+    case idle
+    case preparing
+    case ready
+    case starting
+    case recording
+    case stopping
+    case finalizing
+    case promoting
+    case completed
+    case failed
+    case cancelled
+    /// Owner-cleanup terminal: workspace/route release has disposed the take.
+    /// Beyond the plan's canonical set because both existing owners expose it.
+    case released
+
+    init(_ recorderState: RecorderState) {
+        self = switch recorderState {
+        case .idle: .idle
+        case .prepared: .ready
+        case .recording: .recording
+        case .finishing: .finalizing
+        case .finished: .completed
+        case .failed: .failed
+        case .released: .released
+        }
+    }
+
+    /// Canonical transition table. `released` is terminal. Coarse legacy edges
+    /// (`idle → recording` atomic start, `finalizing/failed → idle` cleanup)
+    /// and the controller's between-takes return (`recording/stopping → idle`)
+    /// exist on the owner paths and are kept legal so the table describes
+    /// observed behavior; the serialized recorder enforces its own stricter
+    /// policy on top.
+    static func isLegalTransition(from: RecordingLifecycleState,
+                                  to: RecordingLifecycleState) -> Bool {
+        if from == to { return false }
+        switch from {
+        case .idle:
+            switch to {
+            case .preparing, .ready, .starting, .recording, .failed, .cancelled, .released:
+                return true
+            default:
+                return false
+            }
+        case .preparing:
+            return to == .ready || to == .failed || to == .cancelled || to == .released
+        case .ready:
+            return to == .starting || to == .recording || to == .failed
+                || to == .cancelled || to == .released
+        case .starting:
+            return to == .recording || to == .stopping || to == .idle
+                || to == .failed || to == .cancelled || to == .released
+        case .recording:
+            return to == .stopping || to == .finalizing || to == .idle
+                || to == .failed || to == .cancelled || to == .released
+        case .stopping:
+            return to == .finalizing || to == .completed || to == .idle || to == .failed
+                || to == .cancelled || to == .released
+        case .finalizing:
+            return to == .promoting || to == .completed || to == .failed
+                || to == .cancelled || to == .idle || to == .released
+        case .promoting:
+            return to == .completed || to == .failed || to == .cancelled
+        case .completed:
+            return to == .promoting || to == .released
+        case .failed:
+            return to == .finalizing || to == .idle || to == .cancelled || to == .released
+        case .cancelled:
+            return to == .released
+        case .released:
+            return false
+        }
+    }
 }
 
 struct RecordingFrameFence: Hashable, Sendable, Equatable {
@@ -178,8 +266,8 @@ struct RecordingWriterFinish: Sendable, Equatable {
 
 protocol RecordingWriter: AnyObject {
     func start() -> Bool
-    func appendVideo(_ frame: RecordingVideoFrame) -> Bool
-    func appendAudio(_ frame: RecordingAudioFrame) -> Bool
+    func appendVideo(_ frame: RecordingVideoFrame) -> RecordingAppendDisposition
+    func appendAudio(_ frame: RecordingAudioFrame) -> RecordingAppendDisposition
     func markVideoInputAsFinished()
     func markAudioInputAsFinished()
     func finishWriting(completion: @escaping (Result<RecordingWriterFinish, RecordingWriterError>) -> Void)
@@ -190,8 +278,13 @@ protocol RecordingWriterFactory {
     func makeWriter(for configuration: RecordingConfiguration) throws -> any RecordingWriter
 }
 
+typealias RecordingAudioFrameHandler = @Sendable (
+    _ timestamp: TimeInterval,
+    _ payload: any RecordingAudioFramePayload
+) -> Void
+
 protocol RecordingAudioDriver: AnyObject {
-    func start() -> Bool
+    func start(onFrame: @escaping RecordingAudioFrameHandler) -> Bool
     func stop()
 }
 

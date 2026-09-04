@@ -6,35 +6,76 @@
 //
 
 import Combine
+import AVKit
 import SnapKit
 import SwiftUI
 import UIKit
 
 struct LegacySceneGeneratorCameraShell: UIViewControllerRepresentable {
-    @ObservedObject var viewModel: SceneGeneratorViewModel
+    let viewModel: SceneGeneratorViewModel
     let onBack: () -> Void
+    let presentationLocale: Locale
+    let reduceMotion: Bool
+    let reduceTransparency: Bool
+    let dynamicTypeSize: DynamicTypeSize
+
+    init(
+        viewModel: SceneGeneratorViewModel,
+        presentationLocale: Locale = .current,
+        reduceMotion: Bool = false,
+        reduceTransparency: Bool = false,
+        dynamicTypeSize: DynamicTypeSize = .large,
+        onBack: @escaping () -> Void
+    ) {
+        self.viewModel = viewModel
+        self.presentationLocale = presentationLocale
+        self.reduceMotion = reduceMotion
+        self.reduceTransparency = reduceTransparency
+        self.dynamicTypeSize = dynamicTypeSize
+        self.onBack = onBack
+    }
 
     func makeUIViewController(context: Context) -> LegacySceneGeneratorCameraViewController {
-        LegacySceneGeneratorCameraViewController(viewModel: viewModel, onBack: onBack)
+        viewModel.setPresentationLocale(presentationLocale)
+        return LegacySceneGeneratorCameraViewController(
+            viewModel: viewModel,
+            presentationLocale: presentationLocale,
+            reduceMotion: reduceMotion,
+            reduceTransparency: reduceTransparency,
+            dynamicTypeSize: dynamicTypeSize,
+            onBack: onBack
+        )
     }
 
     func updateUIViewController(_ uiViewController: LegacySceneGeneratorCameraViewController, context: Context) {
-        uiViewController.refreshUI()
+        uiViewController.updateEnvironment(
+            presentationLocale: presentationLocale,
+            reduceMotion: reduceMotion,
+            reduceTransparency: reduceTransparency,
+            dynamicTypeSize: dynamicTypeSize
+        )
     }
 }
 
-final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestureRecognizerDelegate {
+final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestureRecognizerDelegate, UIAdaptivePresentationControllerDelegate {
     private let viewModel: SceneGeneratorViewModel
     private let onBack: () -> Void
+    private var presentationLocale: Locale
+    private var reduceMotion: Bool
+    private var reduceTransparency: Bool
+    private var dynamicTypeSize: DynamicTypeSize
     private var cancellables = Set<AnyCancellable>()
 
     private let backgroundView = UIView()
     private let arContainerView = UIView()
     private let settingsBarBackgroundView = UIView()
+    private let settingsBarHairlineView = UIView()
     private let backButton = UIButton(type: .custom)
     private let sceneButtonBackgroundView = UIView()
+    private let sceneButtonAccentView = UIView()
     private let sceneButton = UIButton(type: .custom)
     private let stopwatchBackgroundView = UIView()
+    private let stopwatchAccentView = UIView()
     private let stopwatchLabel = UILabel()
     private let captureSettingsStackView = UIStackView()
     private let resolutionChipButton = UIButton(type: .custom)
@@ -46,21 +87,41 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     private let hintButton = UIButton(type: .custom)
     private let recordButton = UIButton(type: .custom)
     private let stopButton = UIButton(type: .custom)
+    private let rightControlStackView = UIStackView()
+    private let recordingReviewBand = UIView()
+    private let recordingReviewAccentView = UIView()
+    private let recordingReviewStatusLabel = UILabel()
+    private let recordingReviewPlayButton = UIButton(type: .system)
+    private let recordingReviewShareButton = UIButton(type: .system)
 
     private let centerDot = UILabel()
     private let loadingView = UIView()
     private let loadingLabel = UILabel()
+    private let loadingPerforationStripView = UIStackView()
     private let settingPickerView = UIPickerView()
 
     private var arHostingController: UIHostingController<ARSceneContainer>?
-    private var overlayHostingController: UIHostingController<LegacySceneGeneratorSwiftUIOverlay>?
+    private var overlayHostingController: UIHostingController<AnyView>?
     private var overlayActorDragLongPressRecognizer: UILongPressGestureRecognizer?
     private var shellTouchProbeTapRecognizer: UITapGestureRecognizer?
     private var shellTouchProbeLongPressRecognizer: UILongPressGestureRecognizer?
     private var overlayTouchProbeTapRecognizer: UITapGestureRecognizer?
+    private var recordingPlayer: AVPlayer?
+    private weak var recordingPlayerViewController: AVPlayerViewController?
 
-    init(viewModel: SceneGeneratorViewModel, onBack: @escaping () -> Void) {
+    init(
+        viewModel: SceneGeneratorViewModel,
+        presentationLocale: Locale = .current,
+        reduceMotion: Bool = false,
+        reduceTransparency: Bool = false,
+        dynamicTypeSize: DynamicTypeSize = .large,
+        onBack: @escaping () -> Void
+    ) {
         self.viewModel = viewModel
+        self.presentationLocale = presentationLocale
+        self.reduceMotion = reduceMotion
+        self.reduceTransparency = reduceTransparency
+        self.dynamicTypeSize = dynamicTypeSize
         self.onBack = onBack
         super.init(nibName: nil, bundle: nil)
     }
@@ -70,23 +131,90 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         nil
     }
 
+    func updateEnvironment(
+        presentationLocale: Locale,
+        reduceMotion: Bool,
+        reduceTransparency: Bool,
+        dynamicTypeSize: DynamicTypeSize
+    ) {
+        let localeChanged = self.presentationLocale.identifier != presentationLocale.identifier
+        let environmentChanged = localeChanged
+            || self.reduceMotion != reduceMotion
+            || self.reduceTransparency != reduceTransparency
+            || self.dynamicTypeSize != dynamicTypeSize
+        guard environmentChanged else { return }
+
+        self.presentationLocale = presentationLocale
+        self.reduceMotion = reduceMotion
+        self.reduceTransparency = reduceTransparency
+        self.dynamicTypeSize = dynamicTypeSize
+        viewModel.setPresentationLocale(presentationLocale)
+        overlayHostingController?.rootView = makeOverlayRoot()
+        if localeChanged {
+            refreshUI()
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupActions()
         bindViewModel()
         refreshUI()
+#if DEBUG
+        // Simulator UI-test lane: no ARKit session can start, so the loading
+        // overlay would otherwise block the settings bar forever.
+        if ProcessInfo.processInfo.arguments.contains("-SHAFIN_GENERATOR_MARK_AR_READY") {
+            // `viewDidLoad` can run inside a SwiftUI representable update
+            // transaction. Defer the DEBUG-only @Published mutation until the
+            // next MainActor turn so SwiftUI never observes a publish during
+            // its own view update.
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self else { return }
+                viewModel.testingMarkARSessionReady()
+                self.loadingView.isHidden = true
+                self.loadingLabel.isHidden = true
+                self.refreshUI()
+            }
+        }
+#endif
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        applySplitButtonMasks()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard recordingPlayerViewController?.presentingViewController === self else {
+            releaseRecordingPlayer()
+            return
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        let workspaceIsBeingRemoved = isBeingDismissed
+            || isMovingFromParent
+            || navigationController?.isBeingDismissed == true
+            || navigationController?.isMovingFromParent == true
+        if presentedViewController === recordingPlayerViewController,
+           !workspaceIsBeingRemoved {
+            return
+        }
+        releaseRecordingPlayer()
+    }
+
+    deinit {
+        recordingPlayer?.pause()
+        recordingPlayerViewController?.player = nil
     }
 
     private func setupUI() {
-        view.backgroundColor = .black
+        view.backgroundColor = SETPalette.ink.uiColor
         view.addSubview(backgroundView)
-        backgroundView.backgroundColor = .black
+        backgroundView.backgroundColor = SETPalette.ink.uiColor
         backgroundView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
@@ -104,12 +232,18 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         embedSwiftUIOverlay()
         setupSettingsBar()
         setupLegacyControls()
+        setupRecordingReviewBand()
         setupLoadingView()
         setupTouchDiagnostics()
     }
 
     private func embedARView() {
-        let hostingController = UIHostingController(rootView: ARSceneContainer(viewModel: viewModel))
+        let hostingController = UIHostingController(
+            rootView: ARSceneContainer(
+                viewModel: viewModel,
+                presentationLocale: presentationLocale
+            )
+        )
         hostingController.view.backgroundColor = .clear
         addChild(hostingController)
         arContainerView.addSubview(hostingController.view)
@@ -121,8 +255,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     }
 
     private func embedSwiftUIOverlay() {
-        let overlay = LegacySceneGeneratorSwiftUIOverlay(viewModel: viewModel)
-        let hostingController = UIHostingController(rootView: overlay)
+        let hostingController = UIHostingController(rootView: makeOverlayRoot())
         hostingController.view.backgroundColor = .clear
         hostingController.view.isUserInteractionEnabled = true
         let overlayTapGesture = UITapGestureRecognizer(target: self, action: #selector(overlayTouchProbeTapped(_:)))
@@ -150,20 +283,47 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         overlayHostingController = hostingController
     }
 
+    private func makeOverlayRoot() -> AnyView {
+        AnyView(
+            LegacySceneGeneratorSwiftUIOverlay(
+                viewModel: viewModel,
+                presentationLocale: presentationLocale,
+                dynamicTypeSize: dynamicTypeSize
+            )
+            .environment(\.locale, presentationLocale)
+            .environment(\.dynamicTypeSize, dynamicTypeSize)
+            .environment(\.setReduceMotionOverride, reduceMotion)
+            .environment(\.setReduceTransparencyOverride, reduceTransparency)
+        )
+    }
+
     private func setupSettingsBar() {
         arContainerView.addSubview(settingsBarBackgroundView)
-        settingsBarBackgroundView.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        settingsBarBackgroundView.backgroundColor = SETPalette.ink.uiColor
         settingsBarBackgroundView.snp.makeConstraints { make in
             make.leading.top.trailing.equalToSuperview()
-            make.height.equalTo(37.5)
+            // The bar owns a full minimum hit target so its centered scene
+            // command never places the 44pt accessibility frame above the
+            // camera surface (the compact editorial pill remains 30pt).
+            make.height.equalTo(SETComponentMetric.minimumHitTarget)
+        }
+
+        settingsBarBackgroundView.addSubview(settingsBarHairlineView)
+        settingsBarHairlineView.backgroundColor = SETPalette.hairline.uiColor
+        settingsBarHairlineView.snp.makeConstraints { make in
+            make.height.equalTo(SETStroke.hairline)
+            make.leading.trailing.bottom.equalToSuperview()
         }
 
         settingsBarBackgroundView.addSubview(backButton)
         backButton.setImage(UIImage(systemName: "arrow.uturn.backward.circle.fill"), for: .normal)
-        backButton.tintColor = .white
+        backButton.tintColor = SETPalette.warmWhite.uiColor
+        backButton.accessibilityIdentifier = "generator_back_button"
+        backButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityBack)
         backButton.snp.makeConstraints { make in
             make.centerY.equalToSuperview()
             make.leadingMargin.equalToSuperview().offset(15)
+            make.width.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
         }
 
         captureSettingsStackView.axis = .horizontal
@@ -172,39 +332,67 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         settingsBarBackgroundView.addSubview(captureSettingsStackView)
         configureCaptureSettingChip(resolutionChipButton)
         configureCaptureSettingChip(fpsChipButton)
+        fpsChipButton.titleLabel?.font = UIFontMetrics(forTextStyle: .caption1)
+            .scaledFont(for: SETTypography.uiFont(.hudMono, size: 12))
+        fpsChipButton.titleLabel?.adjustsFontForContentSizeCategory = true
+        fpsChipButton.accessibilityIdentifier = "generator_capture_fps_button"
+        fpsChipButton.isAccessibilityElement = true
+        fpsChipButton.accessibilityTraits = .staticText
+        fpsChipButton.isUserInteractionEnabled = false
         captureSettingsStackView.addArrangedSubview(resolutionChipButton)
         captureSettingsStackView.addArrangedSubview(fpsChipButton)
         resolutionChipButton.snp.makeConstraints { make in
-            make.height.equalTo(24)
+            make.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
         }
         fpsChipButton.snp.makeConstraints { make in
-            make.height.equalTo(24)
+            make.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
         }
         captureSettingsStackView.snp.makeConstraints { make in
             make.centerY.equalToSuperview()
             make.leading.equalTo(backButton.snp.trailing).offset(34)
         }
 
-        sceneButtonBackgroundView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.8)
-        sceneButtonBackgroundView.layer.cornerRadius = 10
+        sceneButtonBackgroundView.backgroundColor = SETPalette.surfaceSolid.uiColor
+        sceneButtonBackgroundView.layer.cornerRadius = 15
+        sceneButtonBackgroundView.layer.borderWidth = SETStroke.hairline
+        sceneButtonBackgroundView.layer.borderColor = SETPalette.hairline.uiColor.cgColor
         sceneButtonBackgroundView.layer.masksToBounds = true
         settingsBarBackgroundView.addSubview(sceneButtonBackgroundView)
         sceneButtonBackgroundView.snp.makeConstraints { make in
             make.height.equalTo(30)
-            make.center.equalToSuperview()
+            make.width.equalTo(SETComponentMetric.capsuleSegmentWidth + SETSpacing.x8)
+            make.trailing.equalToSuperview().inset(SETSpacing.x3)
+            make.centerY.equalToSuperview()
         }
 
-        sceneButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
-        sceneButton.setTitleColor(.white, for: .normal)
-        sceneButtonBackgroundView.addSubview(sceneButton)
+        sceneButtonBackgroundView.addSubview(sceneButtonAccentView)
+        sceneButtonAccentView.backgroundColor = SETPalette.hairline.uiColor
+        sceneButtonAccentView.snp.makeConstraints { make in
+            make.width.equalTo(2)
+            make.leading.top.bottom.equalToSuperview()
+        }
+
+        sceneButton.titleLabel?.font = SETTypography.uiFont(.display, size: 15)
+        sceneButton.titleLabel?.lineBreakMode = .byTruncatingMiddle
+        sceneButton.titleLabel?.numberOfLines = 1
+        sceneButton.setTitleColor(SETPalette.warmWhite.uiColor, for: .normal)
+        sceneButton.accessibilityIdentifier = "generator_scene_button"
+        sceneButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityOpenScenes)
+        // Keep the editorial pill compact while giving the actual UIButton a
+        // full minimum hit frame. The button sits above the visual background
+        // so its accessibility frame is not clipped to the 30pt pill.
+        settingsBarBackgroundView.addSubview(sceneButton)
         sceneButton.snp.makeConstraints { make in
-            make.center.equalToSuperview()
-            make.top.bottom.leading.trailing.equalToSuperview().inset(10)
+            make.center.equalTo(sceneButtonBackgroundView)
+            make.leading.trailing.equalTo(sceneButtonBackgroundView).inset(SETSpacing.x3)
+            make.width.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
         }
 
         stopwatchBackgroundView.isHidden = true
-        stopwatchBackgroundView.backgroundColor = UIColor.red.withAlphaComponent(0.8)
-        stopwatchBackgroundView.layer.cornerRadius = 10
+        stopwatchBackgroundView.backgroundColor = SETPalette.ink.uiColor
+        stopwatchBackgroundView.layer.cornerRadius = 15
+        stopwatchBackgroundView.layer.borderWidth = SETStroke.hairline
+        stopwatchBackgroundView.layer.borderColor = SETPalette.hairline.uiColor.cgColor
         stopwatchBackgroundView.layer.masksToBounds = true
         settingsBarBackgroundView.addSubview(stopwatchBackgroundView)
         stopwatchBackgroundView.snp.makeConstraints { make in
@@ -213,9 +401,16 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
             make.center.equalToSuperview()
         }
 
-        stopwatchLabel.textColor = .white
-        stopwatchLabel.font = .boldSystemFont(ofSize: 16)
-        stopwatchLabel.text = "00:00"
+        stopwatchBackgroundView.addSubview(stopwatchAccentView)
+        stopwatchAccentView.backgroundColor = SETPalette.setOrange.uiColor
+        stopwatchAccentView.snp.makeConstraints { make in
+            make.width.equalTo(2)
+            make.leading.top.bottom.equalToSuperview()
+        }
+
+        stopwatchLabel.textColor = SETPalette.warmWhite.uiColor
+        stopwatchLabel.font = SETTypography.uiFont(.hudMono, size: 13)
+        stopwatchLabel.text = viewModel.localizedCopy(.hudRec) + " 00:00"
         stopwatchBackgroundView.addSubview(stopwatchLabel)
         stopwatchLabel.snp.makeConstraints { make in
             make.center.equalToSuperview()
@@ -223,81 +418,53 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     }
 
     private func setupLegacyControls() {
-        configureRoundButton(addActorButton,
-                             size: 75,
-                             backgroundColor: .white,
-                             imageName: "plus",
-                             tintColor: .black)
-        backgroundView.addSubview(addActorButton)
-        addActorButton.snp.makeConstraints { make in
-            make.width.height.equalTo(75)
+        rightControlStackView.axis = .vertical
+        rightControlStackView.alignment = .fill
+        rightControlStackView.distribution = .fill
+        rightControlStackView.spacing = 8
+        backgroundView.addSubview(rightControlStackView)
+        rightControlStackView.snp.makeConstraints { make in
+            make.width.equalTo(56)
+            make.trailing.equalToSuperview().inset(12)
             make.centerY.equalToSuperview()
-            make.trailing.equalToSuperview().inset(10)
+            make.top.greaterThanOrEqualTo(settingsBarBackgroundView.snp.bottom).offset(12)
+            make.bottom.lessThanOrEqualToSuperview().inset(12)
         }
 
-        configureRoundButton(previewButton,
-                             size: 60,
-                             backgroundColor: .white,
-                             imageName: "play",
-                             tintColor: .black)
-        backgroundView.addSubview(previewButton)
-        previewButton.snp.makeConstraints { make in
-            make.width.height.equalTo(60)
-            make.topMargin.equalToSuperview().offset(15)
-            make.centerX.equalTo(addActorButton.snp.centerX).offset(-10)
-        }
+        configureRailButton(addActorButton, imageName: "plus")
+        addActorButton.accessibilityIdentifier = "generator_mark_object_button"
+        rightControlStackView.addArrangedSubview(addActorButton)
 
-        configureRoundButton(regenerateButton,
-                             size: 60,
-                             backgroundColor: .white,
-                             imageName: "sparkles",
-                             tintColor: .black)
-        backgroundView.addSubview(regenerateButton)
-        regenerateButton.snp.makeConstraints { make in
-            make.width.height.equalTo(60)
-            make.topMargin.equalToSuperview().offset(25)
-            make.centerX.equalTo(addActorButton.snp.centerX).offset(10)
-        }
+        configureRailButton(previewButton, imageName: "play")
+        previewButton.accessibilityIdentifier = "generator_preview_button"
+        rightControlStackView.addArrangedSubview(previewButton)
 
-        configureRoundButton(hintButton,
-                             size: 60,
-                             backgroundColor: UIColor.white.withAlphaComponent(0.5),
-                             imageName: "lightbulb",
-                             tintColor: .black)
-        backgroundView.addSubview(hintButton)
-        hintButton.snp.makeConstraints { make in
-            make.width.height.equalTo(60)
-            make.leftMargin.equalToSuperview().offset(40)
-            make.centerY.equalTo(addActorButton.snp_centerYWithinMargins)
-        }
+        configureRailButton(regenerateButton, imageName: "sparkles")
+        regenerateButton.accessibilityIdentifier = "generator_regenerate_button"
+        rightControlStackView.addArrangedSubview(regenerateButton)
 
-        configureRoundButton(recordButton,
-                             size: 60,
-                             backgroundColor: .red,
-                             imageName: "largecircle.fill.circle",
-                             tintColor: .white)
-        backgroundView.addSubview(recordButton)
-        recordButton.snp.makeConstraints { make in
-            make.width.height.equalTo(60)
-            make.bottomMargin.equalToSuperview().inset(5)
-            make.centerX.equalTo(addActorButton.snp.centerX)
-        }
+        configureRailButton(hintButton, imageName: "lightbulb")
+        hintButton.accessibilityIdentifier = "generator_hint_button"
+        rightControlStackView.addArrangedSubview(hintButton)
 
-        configureRoundButton(stopButton,
-                             size: 60,
-                             backgroundColor: .white,
-                             imageName: "stop.fill",
-                             tintColor: .black)
-        backgroundView.addSubview(stopButton)
-        stopButton.snp.makeConstraints { make in
-            make.width.height.equalTo(60)
-            make.bottomMargin.equalToSuperview().inset(5)
-            make.centerX.equalTo(addActorButton.snp.centerX)
+        configureRailButton(recordButton, imageName: "largecircle.fill.circle")
+        recordButton.accessibilityIdentifier = "generator_record_button"
+        rightControlStackView.addArrangedSubview(recordButton)
+
+        configureRailButton(stopButton, imageName: "stop.fill")
+        stopButton.accessibilityIdentifier = "generator_stop_recording_button"
+        stopButton.isHidden = true
+        rightControlStackView.addArrangedSubview(stopButton)
+
+        for button in [addActorButton, previewButton, regenerateButton, hintButton, recordButton, stopButton] {
+            button.snp.makeConstraints { make in
+                make.height.equalTo(48)
+            }
         }
 
         centerDot.text = "+"
-        centerDot.font = .systemFont(ofSize: 30)
-        centerDot.textColor = .white
+        centerDot.font = SETTypography.uiFont(.hudMono, size: 30)
+        centerDot.textColor = SETPalette.warmWhite.uiColor
         arContainerView.addSubview(centerDot)
         centerDot.snp.makeConstraints { make in
             make.center.equalToSuperview()
@@ -305,7 +472,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
 
         backgroundView.addSubview(settingPickerView)
         settingPickerView.isHidden = true
-        settingPickerView.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        settingPickerView.backgroundColor = SETPalette.hudScrim.uiColor
         settingPickerView.layer.cornerRadius = 10
         settingPickerView.snp.makeConstraints { make in
             make.rightMargin.equalTo(arContainerView.snp_rightMargin).offset(-12.5)
@@ -313,15 +480,86 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         }
     }
 
+    private func setupRecordingReviewBand() {
+        recordingReviewBand.backgroundColor = SETPalette.ink.uiColor
+        recordingReviewBand.accessibilityIdentifier = "generator_recording_review_band"
+        recordingReviewBand.isHidden = true
+        backgroundView.addSubview(recordingReviewBand)
+        recordingReviewBand.snp.makeConstraints { make in
+            make.leading.equalTo(arContainerView.snp.leading).offset(16)
+            make.bottom.equalTo(arContainerView.snp.bottom).inset(92)
+            make.height.greaterThanOrEqualTo(56)
+            make.trailing.lessThanOrEqualTo(rightControlStackView.snp.leading).offset(-12)
+            make.width.lessThanOrEqualTo(360)
+        }
+
+        recordingReviewAccentView.backgroundColor = SETPalette.setOrange.uiColor
+        recordingReviewBand.addSubview(recordingReviewAccentView)
+        recordingReviewAccentView.snp.makeConstraints { make in
+            make.leading.top.bottom.equalToSuperview()
+            make.width.equalTo(SETStroke.standard)
+        }
+
+        recordingReviewStatusLabel.textColor = SETPalette.warmWhite.uiColor
+        recordingReviewStatusLabel.font = UIFontMetrics(forTextStyle: .caption1)
+            .scaledFont(for: SETTypography.uiFont(.hudMono, size: 12))
+        recordingReviewStatusLabel.adjustsFontForContentSizeCategory = true
+        recordingReviewStatusLabel.numberOfLines = 2
+        recordingReviewBand.addSubview(recordingReviewStatusLabel)
+        recordingReviewStatusLabel.snp.makeConstraints { make in
+            make.leading.equalTo(recordingReviewAccentView.snp.trailing).offset(10)
+            make.top.equalToSuperview().offset(8)
+            make.bottom.equalToSuperview().inset(8)
+        }
+
+        configureRecordingReviewButton(
+            recordingReviewPlayButton,
+            systemImage: "play.fill",
+            accessibilityIdentifier: "generator_recording_playback_button"
+        )
+        configureRecordingReviewButton(
+            recordingReviewShareButton,
+            systemImage: "square.and.arrow.up",
+            accessibilityIdentifier: "generator_recording_share_button"
+        )
+        recordingReviewBand.addSubview(recordingReviewShareButton)
+        recordingReviewShareButton.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().inset(4)
+            make.centerY.equalToSuperview()
+            make.width.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
+        }
+        recordingReviewBand.addSubview(recordingReviewPlayButton)
+        recordingReviewPlayButton.snp.makeConstraints { make in
+            make.trailing.equalTo(recordingReviewShareButton.snp.leading)
+            make.centerY.equalToSuperview()
+            make.width.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
+        }
+        recordingReviewStatusLabel.snp.makeConstraints { make in
+            make.trailing.lessThanOrEqualTo(recordingReviewPlayButton.snp.leading).offset(-4)
+        }
+    }
+
+    private func configureRecordingReviewButton(
+        _ button: UIButton,
+        systemImage: String,
+        accessibilityIdentifier: String
+    ) {
+        button.tintColor = SETPalette.warmWhite.uiColor
+        button.setImage(UIImage(systemName: systemImage), for: .normal)
+        button.accessibilityIdentifier = accessibilityIdentifier
+        button.adjustsImageWhenHighlighted = true
+    }
+
     private func setupLoadingView() {
         backgroundView.addSubview(loadingView)
-        loadingView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        loadingView.backgroundColor = SETPalette.ink.uiColor.withAlphaComponent(0.88)
+        loadingView.accessibilityIdentifier = "generator_progress_overlay"
         loadingView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
 
-        loadingLabel.textColor = .white
-        loadingLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        loadingLabel.textColor = SETPalette.warmWhite.uiColor
+        loadingLabel.font = SETTypography.uiFont(.hudMono, size: 15)
         loadingLabel.textAlignment = .center
         loadingLabel.numberOfLines = 2
         backgroundView.addSubview(loadingLabel)
@@ -329,18 +567,49 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
             make.center.equalToSuperview()
             make.leading.trailing.equalToSuperview().inset(32)
         }
+
+        setupLoadingPerforationStrip()
     }
 
-    private func configureRoundButton(_ button: UIButton,
-                                      size: CGFloat,
-                                      backgroundColor: UIColor,
-                                      imageName: String,
-                                      tintColor: UIColor) {
-        button.backgroundColor = backgroundColor
-        button.layer.cornerRadius = size / 2
+    /// Static deterministic perforation strip: the generator-progress edge
+    /// micro-rhythm (policy §6.1). Decorative only — removed from hit testing
+    /// and from the accessibility tree.
+    private func setupLoadingPerforationStrip() {
+        loadingPerforationStripView.axis = .horizontal
+        loadingPerforationStripView.spacing = 4
+        loadingPerforationStripView.isUserInteractionEnabled = false
+        loadingPerforationStripView.isAccessibilityElement = false
+        loadingPerforationStripView.accessibilityElementsHidden = true
+
+        for index in 0..<14 {
+            let perforationView = UIView()
+            perforationView.backgroundColor = index < 7 ? SETPalette.setOrange.uiColor : .clear
+            perforationView.layer.borderWidth = SETStroke.hairline
+            perforationView.layer.borderColor = SETPalette.hairline.uiColor.cgColor
+            perforationView.isUserInteractionEnabled = false
+            perforationView.isAccessibilityElement = false
+            loadingPerforationStripView.addArrangedSubview(perforationView)
+            perforationView.snp.makeConstraints { make in
+                make.width.equalTo(6)
+                make.height.equalTo(10)
+            }
+        }
+
+        loadingView.addSubview(loadingPerforationStripView)
+        loadingPerforationStripView.snp.makeConstraints { make in
+            make.centerX.equalToSuperview()
+            make.top.equalTo(loadingLabel.snp.bottom).offset(14)
+        }
+    }
+
+    private func configureRailButton(_ button: UIButton, imageName: String) {
+        button.backgroundColor = SETPalette.surfaceSolid.uiColor
+        button.layer.cornerRadius = SETRadius.control / 2
+        button.layer.borderWidth = SETStroke.hairline
+        button.layer.borderColor = SETPalette.hairline.uiColor.cgColor
         button.layer.masksToBounds = true
         button.setImage(UIImage(systemName: imageName), for: .normal)
-        button.tintColor = tintColor
+        button.tintColor = SETPalette.warmWhite.uiColor
     }
 
     private func setupActions() {
@@ -353,73 +622,155 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         hintButton.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(hintButtonLongPressed(_:))))
         recordButton.addTarget(self, action: #selector(recordButtonPressed), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopButtonPressed), for: .touchUpInside)
+        recordingReviewPlayButton.addTarget(self, action: #selector(recordingPlaybackButtonPressed), for: .touchUpInside)
+        recordingReviewShareButton.addTarget(self, action: #selector(recordingShareButtonPressed), for: .touchUpInside)
         resolutionChipButton.addTarget(self, action: #selector(resolutionChipPressed), for: .touchUpInside)
-        fpsChipButton.addTarget(self, action: #selector(fpsChipPressed), for: .touchUpInside)
     }
 
     private func bindViewModel() {
-        viewModel.objectWillChange
+        let chromePublishers: [AnyPublisher<Void, Never>] = [
+            viewModel.$sceneTitle.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isRecording.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isRecordingStarting.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isRecordingFinalizing.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$recordingResolutionLabel.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$recordingSourceFPS.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$recordingElapsedTime.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$recordingReferences.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$latestAvailableRecordingArtifact.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$sceneDescription.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$plannedScene.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isMarkingMode.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isPlaying.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isGenerating.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$generationStage.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isHintsEnabled.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isARSessionReady.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isARSessionInterrupted.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isARSessionRecovering.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$statusMessage.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$activeStoryboardEditDraft.map { _ in () }.eraseToAnyPublisher(),
+        ]
+
+        Publishers.MergeMany(chromePublishers)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                DispatchQueue.main.async {
-                    self?.refreshUI()
-                }
+                self?.refreshUI()
             }
             .store(in: &cancellables)
     }
 
     func refreshUI() {
         sceneButton.setTitle(viewModel.sceneTitle, for: .normal)
+        sceneButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityOpenScenes)
         sceneButtonBackgroundView.isHidden = viewModel.isRecording
         stopwatchBackgroundView.isHidden = !viewModel.isRecording
-        stopwatchLabel.text = formattedTime(viewModel.recordingElapsedTime)
+        stopwatchLabel.text = viewModel.localizedCopy(.hudRec) + " " + formattedTime(viewModel.recordingElapsedTime)
         refreshCaptureSettingChips()
+        refreshRecordingReviewBand()
 
         let hasDescription = !viewModel.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasGeneratedScene = viewModel.plannedScene != nil
 
-        addActorButton.backgroundColor = viewModel.isMarkingMode ? .systemGreen : .white
-        addActorButton.tintColor = viewModel.isMarkingMode ? .white : .black
+        addActorButton.backgroundColor = SETPalette.surfaceSolid.uiColor
+        addActorButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityMarkObject)
+        addActorButton.tintColor = SETPalette.warmWhite.uiColor
+        addActorButton.layer.borderColor = SETPalette.hairline.uiColor.cgColor
         addActorButton.setImage(UIImage(systemName: viewModel.isMarkingMode ? "checkmark" : "plus"), for: .normal)
+        addActorButton.isEnabled = viewModel.canToggleMarkingMode
+        addActorButton.alpha = addActorButton.isEnabled ? 1 : 0.45
 
         previewButton.isHidden = !hasGeneratedScene
-        previewButton.isEnabled = hasGeneratedScene && !viewModel.isRecording
+        previewButton.isEnabled = viewModel.isPlaying || viewModel.canStartPlayback
         previewButton.alpha = previewButton.isEnabled ? 1 : 0.45
+        previewButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityPreviewScene)
         previewButton.setImage(UIImage(systemName: viewModel.isPlaying ? "stop.fill" : "play"), for: .normal)
 
         regenerateButton.isHidden = !hasDescription
-        regenerateButton.isEnabled = hasDescription && !viewModel.isGenerating
+        regenerateButton.isEnabled = hasDescription && viewModel.canGenerateScene
         regenerateButton.alpha = regenerateButton.isEnabled ? 1 : 0.45
+        regenerateButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityRegenerateScene)
 
-        hintButton.backgroundColor = UIColor.white.withAlphaComponent(viewModel.isHintsEnabled ? 0.85 : 0.5)
+        hintButton.backgroundColor = SETPalette.surfaceSolid.uiColor
+        hintButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityToggleHints)
+        hintButton.tintColor = SETPalette.warmWhite.uiColor
+        hintButton.layer.borderColor = SETPalette.hairline.uiColor.cgColor
         hintButton.setImage(UIImage(systemName: viewModel.isHintsEnabled ? "lightbulb.fill" : "lightbulb"), for: .normal)
+        hintButton.isEnabled = viewModel.canToggleHints
+        hintButton.alpha = hintButton.isEnabled ? 1 : 0.45
 
         recordButton.isHidden = viewModel.isRecording
-        recordButton.isEnabled = hasGeneratedScene
-        recordButton.alpha = hasGeneratedScene ? 1 : 0.45
+        recordButton.isEnabled = viewModel.canStartRecording
+        recordButton.alpha = recordButton.isEnabled ? 1 : 0.45
+        recordButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityRecord)
+        recordButton.backgroundColor = recordButton.isEnabled ? SETPalette.setOrange.uiColor : SETPalette.surfaceSolid.uiColor
+        recordButton.tintColor = recordButton.isEnabled ? SETPalette.ink.uiColor : SETPalette.warmWhite.uiColor
+        recordButton.layer.borderColor = recordButton.isEnabled ? UIColor.clear.cgColor : SETPalette.hairline.uiColor.cgColor
         stopButton.isHidden = !viewModel.isRecording
+        stopButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityStopRecording)
+        stopButton.backgroundColor = SETPalette.surfaceSolid.uiColor
+        stopButton.tintColor = SETPalette.warmWhite.uiColor
+        stopButton.layer.borderColor = SETPalette.hairline.uiColor.cgColor
 
         loadingView.isHidden = viewModel.isARSessionReady && !viewModel.isGenerating
+        // Simulator UI-test lane: the AR session can never become ready, so
+        // keep the loading overlay hidden when the test hook marked it ready.
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-SHAFIN_GENERATOR_MARK_AR_READY") {
+            loadingView.isHidden = true
+        }
+#endif
         loadingLabel.isHidden = loadingView.isHidden
-        loadingLabel.text = viewModel.isGenerating ? "Собираю сцену" : viewModel.statusMessage
+        loadingLabel.text = viewModel.isGenerating
+            ? generatorProgressLabel()
+            : viewModel.statusMessage
         centerDot.isHidden = !viewModel.isMarkingMode
 
         let passTouchesToAR = SceneGeneratorViewModel.shouldPassTouchesThroughSwiftUIOverlay(
             isMarkingMode: viewModel.isMarkingMode,
             hasActiveStoryboardEditor: viewModel.activeStoryboardEditDraft != nil
         )
+        #if DEBUG
+        // UI-test lane: the overlay's full-container hit area swallows taps
+        // aimed at the settings bar; disable it so chrome stays reachable.
+        // Storyboard fixtures and an active editor intentionally keep the
+        // overlay interactive because their tray/editor controls live there.
+        let hasStoryboardFixture = ProcessInfo.processInfo.arguments.contains(
+            SETGalleryLaunchConfiguration.generatorStoryboardFixtureArgument
+        )
+        if ProcessInfo.processInfo.arguments.contains("-SHAFIN_GENERATOR_MARK_AR_READY")
+            && !passTouchesToAR
+            && viewModel.activeStoryboardEditDraft == nil
+            && !hasStoryboardFixture {
+            overlayHostingController?.view.isUserInteractionEnabled = false
+            return
+        }
+        #endif
         overlayHostingController?.view.isUserInteractionEnabled = !passTouchesToAR
     }
 
+    private func generatorProgressLabel() -> String {
+        switch viewModel.generationStage {
+        case .reading:
+            return viewModel.localizedCopy(.generatorProgressReading)
+        case .planning:
+            return viewModel.localizedCopy(.generatorProgressAnchors)
+        case .placing:
+            return viewModel.localizedCopy(.generatorProgressFrame)
+        case nil:
+            return viewModel.statusMessage
+        }
+    }
+
     private func configureCaptureSettingChip(_ button: UIButton) {
-        button.backgroundColor = UIColor.white.withAlphaComponent(0.14)
+        button.backgroundColor = SETPalette.hudScrim.uiColor
         button.layer.cornerRadius = 8
-        button.layer.borderWidth = 0.5
-        button.layer.borderColor = UIColor.white.withAlphaComponent(0.28).cgColor
+        button.layer.borderWidth = SETStroke.hairline
+        button.layer.borderColor = SETPalette.hairline.uiColor.cgColor
         button.layer.masksToBounds = true
-        button.titleLabel?.font = .systemFont(ofSize: 12, weight: .semibold)
-        button.setTitleColor(.white, for: .normal)
-        button.setTitleColor(UIColor.white.withAlphaComponent(0.65), for: .highlighted)
+        button.titleLabel?.font = SETTypography.uiFont(.hudMono, size: 12)
+        button.setTitleColor(SETPalette.warmWhite.uiColor, for: .normal)
+        button.setTitleColor(SETPalette.textSecondary.uiColor, for: .highlighted)
         button.contentEdgeInsets = UIEdgeInsets(top: 2, left: 9, bottom: 2, right: 9)
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
         button.setContentHuggingPriority(.required, for: .horizontal)
@@ -427,9 +778,36 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
 
     private func refreshCaptureSettingChips() {
         resolutionChipButton.setTitle(currentResolutionLabel(), for: .normal)
+        resolutionChipButton.isEnabled = false
+        resolutionChipButton.alpha = 0.72
         fpsChipButton.setTitle(currentFPSLabel(), for: .normal)
-        resolutionChipButton.accessibilityLabel = "Разрешение \(currentResolutionLabel())"
-        fpsChipButton.accessibilityLabel = "Частота \(currentFPSLabel()) кадров"
+        resolutionChipButton.accessibilityLabel = SETCopyKey.captureResolution.localizedFormat(
+            locale: presentationLocale,
+            arguments: [currentResolutionLabel()]
+        )
+        fpsChipButton.accessibilityLabel = SETCopyKey.captureFPS.localizedFormat(
+            locale: presentationLocale,
+            arguments: [currentFPSAccessibilityValue()]
+        )
+    }
+
+    private func refreshRecordingReviewBand() {
+        let isRecording = viewModel.isRecording
+            || viewModel.isRecordingStarting
+            || viewModel.isRecordingFinalizing
+        let hasReferences = !viewModel.recordingReferences.isEmpty
+        let hasAvailableArtifact = viewModel.latestAvailableRecordingArtifact != nil
+
+        recordingReviewBand.isHidden = isRecording || !hasReferences
+        recordingReviewStatusLabel.text = viewModel.localizedCopy(
+            hasAvailableArtifact ? .generatorRecordingReady : .generatorRecordingMissing
+        )
+        recordingReviewPlayButton.accessibilityLabel = viewModel.localizedCopy(.generatorRecordingPlay)
+        recordingReviewShareButton.accessibilityLabel = viewModel.localizedCopy(.generatorRecordingShare)
+        recordingReviewPlayButton.isEnabled = hasAvailableArtifact && !isRecording
+        recordingReviewShareButton.isEnabled = hasAvailableArtifact && !isRecording
+        recordingReviewPlayButton.alpha = recordingReviewPlayButton.isEnabled ? 1 : 0.45
+        recordingReviewShareButton.alpha = recordingReviewShareButton.isEnabled ? 1 : 0.45
     }
 
     private func setupTouchDiagnostics() {
@@ -451,63 +829,23 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         shellTouchProbeLongPressRecognizer = longPressGesture
     }
 
-    private func applySplitButtonMasks() {
-        guard previewButton.bounds.width > 0, regenerateButton.bounds.width > 0 else { return }
-
-        let previewMask = CAShapeLayer()
-        previewMask.frame = previewButton.bounds
-        let previewPath = UIBezierPath()
-        previewPath.move(to: CGPoint(x: 0, y: 0))
-        previewPath.addLine(to: CGPoint(x: 0, y: previewButton.bounds.height))
-        previewPath.addLine(to: CGPoint(x: previewButton.bounds.width, y: 0))
-        previewPath.close()
-        previewMask.path = previewPath.cgPath
-        previewButton.layer.mask = previewMask
-        previewButton.imageEdgeInsets = UIEdgeInsets(top: 0,
-                                                     left: 0,
-                                                     bottom: previewButton.bounds.height / 3.5,
-                                                     right: previewButton.bounds.width / 3.5)
-
-        let regenerateMask = CAShapeLayer()
-        regenerateMask.frame = regenerateButton.bounds
-        let regeneratePath = UIBezierPath()
-        regeneratePath.move(to: CGPoint(x: 0, y: regenerateButton.bounds.height))
-        regeneratePath.addLine(to: CGPoint(x: regenerateButton.bounds.width, y: regenerateButton.bounds.height))
-        regeneratePath.addLine(to: CGPoint(x: regenerateButton.bounds.width, y: 0))
-        regeneratePath.close()
-        regenerateMask.path = regeneratePath.cgPath
-        regenerateButton.layer.mask = regenerateMask
-        regenerateButton.imageEdgeInsets = UIEdgeInsets(top: regenerateButton.bounds.height / 3.5,
-                                                        left: regenerateButton.bounds.width / 3.5,
-                                                        bottom: 0,
-                                                        right: 0)
-    }
-
     private func formattedTime(_ elapsedTime: TimeInterval) -> String {
         let totalSeconds = Int(elapsedTime.rounded(.down))
         return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 
     private func currentResolutionLabel() -> String {
-        let description = UserDefaults.standard.string(forKey: "resolutionDescription")?.lowercased()
-        let width = UserDefaults.standard.integer(forKey: "resolutionWidth")
-        let height = UserDefaults.standard.integer(forKey: "resolutionHeight")
-
-        if description == "uhd" || width >= 3840 || height >= 2160 {
-            return "4K"
-        }
-        if description == "fhd" || width >= 1920 || height >= 1080 {
-            return "FHD"
-        }
-        if description == "hd" || width >= 1280 || height >= 720 {
-            return "HD"
-        }
-        return "4K"
+        viewModel.recordingResolutionLabel
     }
 
     private func currentFPSLabel() -> String {
-        let fps = UserDefaults.standard.integer(forKey: "framerate")
-        return String(fps == 0 ? 30 : fps)
+        guard let fps = viewModel.recordingSourceFPS, fps > 0 else { return "FPS —" }
+        return "\(fps) FPS"
+    }
+
+    private func currentFPSAccessibilityValue() -> String {
+        guard let fps = viewModel.recordingSourceFPS, fps > 0 else { return "—" }
+        return "\(fps) FPS"
     }
 
     @objc private func backButtonPressed() {
@@ -539,40 +877,16 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     }
 
     @objc private func resolutionChipPressed() {
-        let presets: [(description: String, width: Int, height: Int)] = [
-            ("hd", 1280, 720),
-            ("fhd", 1920, 1080),
-            ("uhd", 3840, 2160)
-        ]
-        let currentDescription = UserDefaults.standard.string(forKey: "resolutionDescription")?.lowercased()
-        let currentWidth = UserDefaults.standard.integer(forKey: "resolutionWidth")
-        let currentIndex = presets.firstIndex { preset in
-            preset.description == currentDescription || preset.width == currentWidth
-        } ?? (presets.count - 1)
-        let next = presets[(currentIndex + 1) % presets.count]
-        UserDefaults.standard.set(next.description, forKey: "resolutionDescription")
-        UserDefaults.standard.set(next.width, forKey: "resolutionWidth")
-        UserDefaults.standard.set(next.height, forKey: "resolutionHeight")
-        refreshCaptureSettingChips()
-        SceneGeneratorDiagnosticsLogger.shared.log("[CAPTURE_SETTINGS] resolution changed label=\(currentResolutionLabel()), width=\(next.width), height=\(next.height)")
-    }
-
-    @objc private func fpsChipPressed() {
-        let presets = [24, 25, 30, 60]
-        let currentFPS = UserDefaults.standard.integer(forKey: "framerate")
-        let currentIndex = presets.firstIndex(of: currentFPS) ?? 1
-        let next = presets[(currentIndex + 1) % presets.count]
-        UserDefaults.standard.set(next, forKey: "framerate")
-        refreshCaptureSettingChips()
-        SceneGeneratorDiagnosticsLogger.shared.log("[CAPTURE_SETTINGS] fps changed fps=\(next)")
+        // The AR buffer owns the real dimensions; there is no scaler/crop
+        // selector to cycle here.
     }
 
     @objc private func hintButtonLongPressed(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began else { return }
 
         let alert = UIAlertController(
-            title: "Режим анализа",
-            message: "Скрытая настройка для записи демо. На экране съёмки режим не показывается.",
+            title: SETCopyKey.generatorDemoAnalysisTitle.localizedString(locale: presentationLocale),
+            message: SETCopyKey.generatorDemoAnalysisMessage.localizedString(locale: presentationLocale),
             preferredStyle: .actionSheet
         )
         for mode in CameraDemoSceneMode.allCases {
@@ -585,7 +899,12 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
                 }
             )
         }
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        alert.addAction(
+            UIAlertAction(
+                title: SETCopyKey.libraryCancel.localizedString(locale: presentationLocale),
+                style: .cancel
+            )
+        )
         alert.popoverPresentationController?.sourceView = hintButton
         alert.popoverPresentationController?.sourceRect = hintButton.bounds
         present(alert, animated: true)
@@ -717,52 +1036,136 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         viewModel.stopRecording()
     }
 
-    private func demoModeTitle(_ mode: CameraDemoSceneMode) -> String {
-        switch mode {
-        case .auto:
-            return "Авто"
-        case .object:
-            return "Предмет"
-        case .portrait:
-            return "Портрет"
-        case .cinematicPortrait:
-            return "Кино-портрет"
-        case .dialogue:
-            return "Диалог"
+    @objc private func recordingPlaybackButtonPressed() {
+        guard let artifact = viewModel.latestAvailableRecordingArtifact else { return }
+
+        releaseRecordingPlayer()
+        let player = AVPlayer(url: artifact.localURL)
+        let playerViewController = AVPlayerViewController()
+        playerViewController.player = player
+        recordingPlayer = player
+        recordingPlayerViewController = playerViewController
+        present(playerViewController, animated: true) { [weak self, weak playerViewController] in
+            playerViewController?.presentationController?.delegate = self
+            player.play()
         }
+    }
+
+    @objc private func recordingShareButtonPressed() {
+        guard let artifact = viewModel.latestAvailableRecordingArtifact else { return }
+
+        let activityViewController = UIActivityViewController(
+            activityItems: [artifact.localURL],
+            applicationActivities: nil
+        )
+        activityViewController.popoverPresentationController?.sourceView = recordingReviewShareButton
+        activityViewController.popoverPresentationController?.sourceRect = recordingReviewShareButton.bounds
+        present(activityViewController, animated: true)
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        guard recordingPlayer != nil else { return }
+        releaseRecordingPlayer()
+    }
+
+    private func releaseRecordingPlayer() {
+        recordingPlayer?.pause()
+        recordingPlayerViewController?.player = nil
+        recordingPlayer = nil
+        recordingPlayerViewController = nil
+    }
+
+    private func demoModeTitle(_ mode: CameraDemoSceneMode) -> String {
+        let key: SETCopyKey = switch mode {
+        case .auto: .generatorDemoModeAuto
+        case .object: .generatorDemoModeObject
+        case .portrait: .generatorDemoModePortrait
+        case .cinematicPortrait: .generatorDemoModeCinematicPortrait
+        case .dialogue: .generatorDemoModeDialogue
+        }
+        return key.localizedString(locale: presentationLocale)
     }
 }
 
 private struct LegacySceneGeneratorSwiftUIOverlay: View {
     @ObservedObject var viewModel: SceneGeneratorViewModel
+    let presentationLocale: Locale
+    let dynamicTypeSize: DynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.setReduceMotionOverride) private var reduceMotionOverride
     @State private var decisionTrace: DecisionTracePresentation?
     @State private var isStoryboardTrayExpanded = false
     @State private var storyboardEditorDetent: PresentationDetent = .medium
 
+    private var isMotionReduced: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+    private var storyboardEditorDetents: Set<PresentationDetent> {
+#if DEBUG
+        switch viewModel.testingStoryboardFixtureID {
+        case "storyboard.editor-medium", "storyboard.editor-large":
+            // UIKit's medium detent is unavailable in compact landscape
+            // height. A fixture-only height detent keeps the medium baseline
+            // measurable while production retains .medium/.large.
+            return [.height(300), .large]
+        default:
+            return [.medium, .large]
+        }
+#else
+        return [.medium, .large]
+#endif
+    }
+
+    private var storyboardEditorInitialDetent: PresentationDetent {
+#if DEBUG
+        switch viewModel.testingStoryboardFixtureID {
+        case "storyboard.editor-medium":
+            return .height(300)
+        case "storyboard.editor-large":
+            return .large
+        default:
+            return .medium
+        }
+#else
+        return .medium
+#endif
+    }
+
     var body: some View {
         GeometryReader { proxy in
+            let isHintPauseActive = viewModel.isHintPauseAnalysisActive
             ZStack {
-                ThirdsGridOverlay()
-                    .stroke(Color.black.opacity(0.48), lineWidth: 1)
-                    .allowsHitTesting(false)
+                if isHintPauseActive,
+                   let acceptedSnapshot = viewModel.acceptedHintPauseSnapshot,
+                   acceptedSnapshot.displayImage != nil {
+                    SETPauseSnapshotFrame(snapshot: acceptedSnapshot)
+                        .ignoresSafeArea()
+                }
 
-                objectLabelsOverlay
-                    .allowsHitTesting(false)
+                if !isHintPauseActive {
+                    ThirdsGridOverlay()
+                        .stroke(SETPalette.blackGuide.color, lineWidth: 1)
+                        .allowsHitTesting(false)
+
+                    objectLabelsOverlay
+                        .allowsHitTesting(false)
+                }
 
                 if viewModel.isHintsEnabled {
-                    HintAnnotationsOverlayView(
-                        overlayState: viewModel.coachingOverlayState,
-                        annotations: viewModel.coachingOverlayAnnotations,
-                        canvasSize: proxy.size,
-                        displayTransform: viewModel.hintDisplayTransform,
-                        showPrimaryBoundingBox: shouldShowPrimaryHintBoundingBox
-                    )
-                    .allowsHitTesting(false)
+                    if !isHintPauseActive {
+                        HintAnnotationsOverlayView(
+                            overlayState: viewModel.coachingOverlayState,
+                            annotations: viewModel.coachingOverlayAnnotations,
+                            canvasSize: proxy.size,
+                            displayTransform: viewModel.hintDisplayTransform,
+                            showPrimaryBoundingBox: shouldShowPrimaryHintBoundingBox
+                        )
+                        .allowsHitTesting(false)
+                    }
 
                     hintTopControls
 
-                    if viewModel.isHintPauseAnalysisActive {
-                        hintPausePanel(size: proxy.size)
+                    if isHintPauseActive {
+                        hintPausePanel()
                     } else if viewModel.liveHint != nil {
                         liveHintPanel(size: proxy.size)
                     } else {
@@ -770,7 +1173,7 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                     }
                 }
 
-                if shouldShowBeatHUD {
+                if !isHintPauseActive, shouldShowBeatHUD {
                     VStack {
                         HStack {
                             beatHUD
@@ -784,40 +1187,50 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                     .allowsHitTesting(false)
                 }
 
-                VStack {
-                    Spacer()
+                if !isHintPauseActive {
+                    VStack {
+                        Spacer()
 
-                    if viewModel.isMarkingMode {
-                        markingHint
-                            .padding(.bottom, 68)
+                        if viewModel.isMarkingMode {
+                            markingHint
+                                .padding(.bottom, 68)
+                                .allowsHitTesting(false)
+                        }
+
+                        if shouldShowStoryboardStrip {
+                            storyboardPresentation
+                                .padding(.bottom, 8)
+                        }
+
+                        captions
+                            .padding(.bottom, shouldShowStoryboardStrip ? 8 : 18)
                             .allowsHitTesting(false)
                     }
-
-                    if shouldShowStoryboardStrip {
-                        storyboardPresentation
-                            .padding(.bottom, 8)
-                    }
-
-                    captions
-                        .padding(.bottom, shouldShowStoryboardStrip ? 8 : 18)
-                        .allowsHitTesting(false)
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
             }
         }
         .sheet(item: $viewModel.activeStoryboardEditDraft) { draft in
             StoryboardBeatEditorSheet(draft: draft, viewModel: viewModel)
-                .presentationDetents([.medium, .large], selection: $storyboardEditorDetent)
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
+                .presentationDetents(storyboardEditorDetents, selection: $storyboardEditorDetent)
                 .presentationDragIndicator(.visible)
                 .modifier(StoryboardEditorPresentationModifier())
                 .onAppear {
-                    storyboardEditorDetent = .medium
+                    storyboardEditorDetent = storyboardEditorInitialDetent
                 }
         }
         .sheet(item: $decisionTrace) { trace in
             DecisionTraceView(trace: trace)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+#if DEBUG
+            if viewModel.testingStoryboardFixtureID == "storyboard.tray-expanded" {
+                isStoryboardTrayExpanded = true
+            }
+#endif
         }
     }
 
@@ -857,7 +1270,8 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                             .accessibilityHidden(true)
                     }
                     .buttonStyle(ARHintIconButtonStyle())
-                    .accessibilityLabel("Показать объяснение live-подсказки")
+                    .accessibilityLabel(Text(SETCopyKey.accessibilityExplainHint.localizedTextKey))
+                    .accessibilityIdentifier("generator_decision_trace")
                 }
 
                 Button(action: toggleHintPauseAnalysis) {
@@ -865,7 +1279,11 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                         .accessibilityHidden(true)
                 }
                 .buttonStyle(ARHintIconButtonStyle())
-                .accessibilityLabel(viewModel.isHintPauseAnalysisActive ? "Продолжить live-анализ" : "Запустить углубленный разбор кадра")
+                .accessibilityLabel(Text(
+                    (viewModel.isHintPauseAnalysisActive
+                        ? SETCopyKey.accessibilityResumeHint
+                        : SETCopyKey.accessibilityPauseHint).localizedTextKey
+                ))
             }
             .padding(.top, 47)
             .padding(.horizontal, 16)
@@ -903,8 +1321,12 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
     private var liveStatusPanel: some View {
         VStack {
             ARLiveAnalysisStatusChip(
-                title: viewModel.isRecording ? "Стабилизирую кадр" : "Анализ кадра активен",
-                message: viewModel.isRecording ? "Подсказка появится при уверенном сигнале." : "Для полного разбора нажми «Разбор»."
+                title: viewModel.localizedCopy(
+                    viewModel.isRecording ? .arStatusStabilizing : .arStatusActive
+                ),
+                message: viewModel.localizedCopy(
+                    viewModel.isRecording ? .arStatusHintAppears : .arStatusReviewAction
+                )
             )
             .padding(.top, 52)
 
@@ -915,29 +1337,81 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
     }
 
     @ViewBuilder
-    private func hintPausePanel(size: CGSize) -> some View {
+    private func hintPausePanel() -> some View {
         VStack {
             Spacer()
 
-            if let pauseCritique = viewModel.hintPauseCritique {
-                PauseCritiqueCardView(
-                    critique: pauseCritique,
-                    legacySuggestions: viewModel.hintPreviewSuggestions,
-                    maxHeight: pausePanelMaxHeight(for: size),
-                    onContinue: resumeHintLiveAnalysis,
-                    onExplain: canShowDecisionTrace ? showDecisionTrace : nil
-                )
-            } else {
-                PauseStatusPanelView(
-                    title: "Анализирую кадр",
-                    message: "Остановил поток и собираю признаки для разбора.",
-                    suggestions: viewModel.hintPreviewSuggestions,
-                    maxHeight: pausePanelMaxHeight(for: size),
-                    onContinue: resumeHintLiveAnalysis
-                )
-            }
+            SETPauseReviewBand(
+                title: hintPauseBandTitle,
+                detail: hintPauseBandDetail,
+                isLoading: hintPauseIsLoading,
+                actionTitle: hintPauseIsFailure ? .pauseFailureRecovery : .actionMoreTake,
+                loadingEventID: "\(viewModel.hintPausePresentationState.snapshotID ?? "hint-pause").pause-loading",
+                eventLedger: viewModel.hintPauseMotionEventLedger,
+                reduceMotion: isMotionReduced,
+                actionAccessibilityIdentifier: nil,
+                onAction: resumeHintLiveAnalysis
+            )
         }
         .padding(.bottom, 18)
+    }
+
+    private var hintPauseIsLoading: Bool {
+        if case .loading = viewModel.hintPausePresentationState { return true }
+        return false
+    }
+
+    private var hintPauseIsFailure: Bool {
+        if case .failure = viewModel.hintPausePresentationState { return true }
+        return false
+    }
+
+    private var hintPauseBandTitle: String {
+        switch viewModel.hintPausePresentationState {
+        case .loading:
+            return viewModel.localizedCopy(.pauseLoading)
+        case .success:
+            return SETLocalizedPauseCopy.title(number: viewModel.hintPauseTakeNumber, locale: presentationLocale)
+        case .empty:
+            return viewModel.localizedCopy(.pauseEmpty)
+        case .failure:
+            return viewModel.localizedCopy(hintPauseFailureTitleKey)
+        case .idle, .resuming:
+            return viewModel.localizedCopy(.arPauseTitle)
+        }
+    }
+
+    private var hintPauseBandDetail: String? {
+        switch viewModel.hintPausePresentationState {
+        case .loading, .idle, .resuming:
+            return viewModel.localizedCopy(.arPauseMessage)
+        case .success:
+            return SETLocalizedPauseCopy.summary(for: viewModel.hintPauseCritique, locale: presentationLocale)
+        case .empty:
+            return nil
+        case .failure:
+            return viewModel.localizedCopy(hintPauseFailureDetailKey)
+        }
+    }
+
+    private var hintPauseFailureTitleKey: SETCopyKey {
+        switch viewModel.hintPauseFailureReason {
+        case .noAcceptedEvidence: return .pauseFailureNoEvidenceTitle
+        case .displayRenderFailed: return .pauseFailureRenderTitle
+        case .pipelineUnavailable: return .pauseFailurePipelineTitle
+        case .timeout: return .pauseFailureTimeoutTitle
+        case nil: return .pauseFailure
+        }
+    }
+
+    private var hintPauseFailureDetailKey: SETCopyKey {
+        switch viewModel.hintPauseFailureReason {
+        case .noAcceptedEvidence: return .pauseFailureNoEvidenceDetail
+        case .displayRenderFailed: return .pauseFailureRenderDetail
+        case .pipelineUnavailable: return .pauseFailurePipelineDetail
+        case .timeout: return .pauseFailureTimeoutDetail
+        case nil: return .pauseFailureRecovery
+        }
     }
 
     private var canShowDecisionTrace: Bool {
@@ -962,10 +1436,6 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
         decisionTrace = viewModel.makeHintDecisionTrace()
     }
 
-    private func pausePanelMaxHeight(for size: CGSize) -> CGFloat {
-        max(210, size.height * 0.42)
-    }
-
     private var beatHUD: some View {
         let total = max(viewModel.beatTimelineItems.count, 1)
         let activeIndex = min(max(viewModel.activeBeatIndex, 0), total - 1)
@@ -975,38 +1445,45 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
 
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                Text("Такт \(activeIndex + 1)/\(total) · \(activeItem.kindTitle)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
+                Text(SETCopyKey.generatorBeatStatus.localizedFormat(
+                    locale: presentationLocale,
+                    arguments: [
+                        activeIndex + 1,
+                        total,
+                        activeItem.kindCopyKey.localizedString(locale: presentationLocale)
+                    ]
+                ))
+                    .font(SETTypography.font(.hudMono, size: 12))
+                    .foregroundColor(.setTextPrimary)
                     .lineLimit(1)
 
                 if activeItem.hasDialogueCaption {
                     Image(systemName: "text.bubble.fill")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.cyan)
+                        .foregroundColor(.setTextSecondary)
                 }
 
                 if activeItem.hasActionCaption {
                     Image(systemName: "sparkles")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.yellow)
+                        .foregroundColor(.setTextSecondary)
                 }
             }
 
             if let currentCaption {
                 Text(currentCaption)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.78))
+                    .font(SETTypography.font(.hudMono, size: 10))
+                    .foregroundColor(.setTextSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.22))
-                    Capsule()
-                        .fill(Color.white.opacity(0.88))
+                    Rectangle()
+                        .fill(Color.setHairline)
+                    Rectangle()
+                        .fill(Color.setWarmWhite)
                         .frame(width: geometry.size.width * progress)
                 }
             }
@@ -1020,16 +1497,9 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
 
                 HStack(spacing: markerSpacing) {
                     ForEach(viewModel.beatTimelineItems) { item in
-                        Capsule()
-                            .fill(item.index == activeIndex ? Color.white.opacity(0.92) : Color.white.opacity(0.32))
+                        Rectangle()
+                            .fill(item.index == activeIndex ? Color.setWarmWhite : SETPalette.textTertiary.color)
                             .frame(width: markerWidth, height: item.index == activeIndex ? 5 : 4)
-                            .overlay(alignment: .center) {
-                                if item.hasDialogueCaption || item.hasActionCaption {
-                                    Circle()
-                                        .fill(item.hasDialogueCaption ? Color.cyan.opacity(0.95) : Color.yellow.opacity(0.95))
-                                        .frame(width: min(3, markerWidth), height: min(3, markerWidth))
-                                }
-                            }
                     }
                 }
             }
@@ -1039,12 +1509,17 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
         .padding(.vertical, 9)
         .frame(width: 210, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.52))
+            Rectangle()
+                .fill(Color.setHUDScrim)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    Rectangle()
+                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                 )
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.setOrange)
+                        .frame(width: SETStroke.standard)
+                }
         )
     }
 
@@ -1062,56 +1537,69 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
     private var markingHint: some View {
         HStack(spacing: 8) {
             Image(systemName: "hand.tap.fill")
-                .foregroundColor(.green.opacity(0.9))
+                .foregroundColor(.setOrange)
 
-            Text("Тапните на объект для разметки")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white)
+            Text(SETCopyKey.arMarkingHint.localizedTextKey)
+                .font(SETTypography.font(.hudMono, size: 14))
+                .foregroundColor(.setTextPrimary)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.45))
+            Rectangle()
+                .fill(Color.setHUDScrim)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.green.opacity(0.55), lineWidth: 1)
+                    Rectangle()
+                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                 )
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.setOrange)
+                        .frame(width: SETStroke.standard)
+                }
         )
     }
 
     private var storyboardStrip: some View {
         let activeBeatID = activeStoryboardBeatID
         let progress = min(max(viewModel.beatProgress, 0), 1)
+        let selectedBeatID = viewModel.selectedStoryboardBeatID ?? activeBeatID ?? viewModel.storyboardBeatItems.first?.beatID ?? ""
 
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(viewModel.storyboardBeatItems) { item in
-                    Button {
-                        viewModel.openStoryboardEditor(for: item.beatID)
-                    } label: {
-                        StoryboardBeatChip(
-                            item: item,
-                            isActive: item.beatID == activeBeatID,
-                            progress: item.beatID == activeBeatID ? progress : 0
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Редактировать \(item.kindTitle) \(item.index + 1)")
-                }
+        return SETMontageReflow(
+            items: viewModel.storyboardBeatItems,
+            selectedID: selectedBeatID,
+            axis: .horizontal,
+            onSelect: { item in
+                selectStoryboardBeat(item)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-        }
-        .frame(height: 70)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.50))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        ) { item, isSelected in
+            StoryboardBeatChip(
+                item: item,
+                isActive: isSelected || item.beatID == activeBeatID,
+                isSelected: isSelected,
+                progress: item.beatID == activeBeatID ? progress : 0
+            )
+            .accessibilityIdentifier("storyboard_beat_\(item.beatID)")
+            .accessibilityLabel(
+                SETCopyKey.storyboardEditBeat.localizedFormat(
+                    locale: presentationLocale,
+                    arguments: [
+                        item.kindCopyKey.localizedString(locale: presentationLocale),
+                        item.index + 1
+                    ]
                 )
+            )
+        }
+        .frame(height: 88)
+        .background(
+            Rectangle()
+                .fill(Color.setHUDScrim)
+                .overlay(Rectangle().stroke(Color.setHairline, lineWidth: SETStroke.hairline))
         )
+    }
+
+    private func selectStoryboardBeat(_ item: StoryboardBeatPresentationItem) {
+        viewModel.selectStoryboardBeat(beatID: item.beatID, reduceMotion: isMotionReduced)
     }
 
     @ViewBuilder
@@ -1123,37 +1611,67 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
         VStack(spacing: 6) {
             if isStoryboardTrayExpanded {
                 storyboardStrip
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(
+                        isMotionReduced
+                            ? .opacity.animation(
+                                .easeOut(duration: SETMotion.reducedMotionCrossfadeDuration)
+                            )
+                            : .move(edge: .bottom).combined(with: .opacity)
+                    )
             }
 
             Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                if isMotionReduced {
+                    // The reduced-motion transition owns opacity only; the
+                    // tray's insertion/removal and all surrounding geometry
+                    // resolve in the same layout pass.
                     isStoryboardTrayExpanded.toggle()
+                } else {
+                    withAnimation(SETMotion.standardSpring) {
+                        isStoryboardTrayExpanded.toggle()
+                    }
                 }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: isStoryboardTrayExpanded ? "chevron.down" : "chevron.up")
                         .font(.system(size: 10, weight: .bold))
 
-                    Text("Такты \(viewModel.storyboardBeatItems.count)")
-                        .font(.system(size: 10, weight: .bold))
+                    Text(SETCopyKey.storyboardTrayCount.localizedFormat(
+                        locale: presentationLocale,
+                        arguments: [viewModel.storyboardBeatItems.count]
+                    ))
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
                         .monospacedDigit()
                 }
-                .foregroundStyle(.white.opacity(0.94))
+                .foregroundStyle(.setTextPrimary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
-                    Capsule()
-                        .fill(Color.black.opacity(0.52))
+                    RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                        .fill(Color.setHUDScrim)
                         .overlay(
-                            Capsule()
-                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                                .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                         )
                 )
+                // Keep the visible tray chip compact while exposing a stable
+                // minimum hit frame around it.
+                .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                       minHeight: SETComponentMetric.minimumHitTarget)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isStoryboardTrayExpanded ? "Свернуть сториборд" : "Развернуть сториборд")
+            .accessibilityIdentifier("storyboard_tray_toggle")
+            .accessibilityLabel(Text(
+                (isStoryboardTrayExpanded ? SETCopyKey.storyboardTrayCollapse : SETCopyKey.storyboardTrayExpand).localizedTextKey
+            ))
         }
+        .animation(
+            isMotionReduced
+                ? nil
+                : SETMotion.standardSpring,
+            value: isStoryboardTrayExpanded
+        )
     }
 
     private var activeStoryboardBeatID: String? {
@@ -1186,32 +1704,41 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                 .font(.system(size: 10, weight: .bold))
 
             Text(text)
-                .font(.system(size: 10, weight: .semibold))
+                .font(SETTypography.font(.hudMono, size: 10))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
         }
-        .foregroundColor(.white.opacity(0.94))
+        .foregroundColor(.setTextPrimary)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: 260)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.black.opacity(0.52))
+            Rectangle()
+                .fill(Color.setHUDScrim)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.setHairline)
+                        .frame(width: SETStroke.hairline)
+                }
         )
     }
 
     private func legacySubtitle(text: String) -> some View {
         Text(text)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(.white)
+            .font(SETTypography.font(.screenplay, size: 16))
+            .foregroundColor(.setTextPrimary)
             .multilineTextAlignment(.center)
             .lineLimit(2)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .frame(maxWidth: 280)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.black.opacity(0.5))
+                Rectangle()
+                    .fill(Color.setHUDScrim)
+                    .overlay(
+                        Rectangle()
+                            .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
+                    )
             )
     }
 }
@@ -1222,12 +1749,12 @@ private struct ObjectTrackingLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(item.swiftUIColor.opacity(0.95))
+                .fill(item.swiftUIColor)
                 .frame(width: 6, height: 6)
 
             Text(item.text)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.96))
+                .font(SETTypography.font(.hudMono, size: 11))
+                .foregroundStyle(.setTextPrimary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
@@ -1235,33 +1762,35 @@ private struct ObjectTrackingLabel: View {
         .padding(.vertical, 5)
         .background(
             Capsule()
-                .fill(Color.black.opacity(0.58))
+                .fill(Color.setHUDScrim)
                 .overlay(
                     Capsule()
-                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                 )
         )
-        .shadow(color: .black.opacity(0.28), radius: 5, x: 0, y: 2)
     }
 }
 
 private struct StoryboardBeatChip: View {
     let item: StoryboardBeatPresentationItem
     let isActive: Bool
+    let isSelected: Bool
     let progress: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Text("\(item.index + 1)")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(isActive ? .black : .white)
+                    .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                    .foregroundStyle(isActive ? Color.setInk : Color.setTextPrimary)
                     .frame(width: 18, height: 18)
-                    .background(Circle().fill(isActive ? Color.white.opacity(0.92) : Color.white.opacity(0.18)))
+                    .background(
+                        Circle().fill(isActive ? Color.setWarmWhite : Color.setHairline)
+                    )
 
-                Text(item.kindTitle)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.82))
+                Text(item.kindCopyKey.localizedTextKey)
+                    .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                    .foregroundStyle(.setTextSecondary)
                     .lineLimit(1)
 
                 Spacer(minLength: 2)
@@ -1269,19 +1798,19 @@ private struct StoryboardBeatChip: View {
                 if item.hasDialogueCaption {
                     Image(systemName: "text.bubble.fill")
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(.setTextSecondary)
                 }
 
                 if item.hasActionCaption {
                     Image(systemName: "sparkles")
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(.setTextSecondary)
                 }
             }
 
             Text(item.summary)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.92))
+                .font(SETTypography.font(.screenplay, size: SETTypographySize.body))
+                .foregroundStyle(.setTextPrimary)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1289,9 +1818,9 @@ private struct StoryboardBeatChip: View {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color.white.opacity(0.14))
+                        .fill(Color.setHairline)
                     Capsule()
-                        .fill(isActive ? Color.white.opacity(0.88) : Color.white.opacity(0.28))
+                        .fill(isActive ? Color.setWarmWhite : SETPalette.textTertiary.color)
                         .frame(width: geometry.size.width * CGFloat(isActive ? min(max(progress, 0), 1) : 1))
                 }
             }
@@ -1299,13 +1828,15 @@ private struct StoryboardBeatChip: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
-        .frame(width: 132, height: 54, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isActive ? Color.white.opacity(0.16) : Color.white.opacity(0.08))
+                Rectangle()
+                    .fill(Color.setSurfaceSolid)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(isActive ? Color.white.opacity(0.38) : Color.white.opacity(0.12), lineWidth: 1)
+                    Rectangle().stroke(
+                        isSelected ? Color.setHairline : (isActive ? Color.setOrange : Color.setHairline),
+                        lineWidth: SETStroke.standard
+                    )
                 )
         )
     }
@@ -1313,8 +1844,13 @@ private struct StoryboardBeatChip: View {
 
 private struct StoryboardBeatEditorSheet: View {
     @ObservedObject var viewModel: SceneGeneratorViewModel
+    @Environment(\.locale) private var locale
     @State private var draft: StoryboardBeatEditDraft
-    @State private var isSaving = false
+    @State private var isDeleteConfirmationPresented = false
+
+    private var isMutationInFlight: Bool {
+        viewModel.isStoryboardMutationInFlight
+    }
 
     init(draft: StoryboardBeatEditDraft, viewModel: SceneGeneratorViewModel) {
         self.viewModel = viewModel
@@ -1322,9 +1858,65 @@ private struct StoryboardBeatEditorSheet: View {
     }
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+        ZStack {
+            VStack(spacing: 0) {
+            HStack(spacing: SETSpacing.x2) {
+                Button {
+                    viewModel.cancelStoryboardEditor()
+                } label: {
+                    Text(SETCopyKey.libraryCancel.localizedTextKey)
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                        .foregroundStyle(.setTextSecondary)
+                        .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                               minHeight: SETComponentMetric.minimumHitTarget)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(SETCopyKey.libraryCancel.localizedTextKey)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("storyboard_editor_cancel")
+
+                Text(SETCopyKey.storyboardEditorTitle.localizedTextKey)
+                    .font(SETTypography.scaledFont(.display, size: SETTypographySize.title, relativeTo: .title2))
+                    .foregroundStyle(.setTextPrimary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    Task { await save() }
+                } label: {
+                    Text(isMutationInFlight
+                         ? SETCopyKey.storyboardSaving.localizedTextKey
+                         : SETCopyKey.generatorMarkerSave.localizedTextKey)
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                        .foregroundStyle(.setTextPrimary)
+                        .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                               minHeight: SETComponentMetric.minimumHitTarget)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isMutationInFlight
+                                    ? SETCopyKey.storyboardSaving.localizedTextKey
+                                    : SETCopyKey.generatorMarkerSave.localizedTextKey)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("storyboard_editor_save")
+                .disabled(isMutationInFlight)
+                .accessibilityRespondsToUserInteraction(!isMutationInFlight)
+            }
+            .padding(.horizontal, SETSpacing.x3)
+            .frame(minHeight: SETComponentMetric.minimumHitTarget)
+            .background(Color.setInk)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.setHairline)
+                    .frame(height: SETStroke.hairline)
+            }
+            .overlay(alignment: .bottom) {
+                CutSeam(axis: .horizontal)
+                    .frame(width: SETComponentMetric.registrationMarkLength * 4)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
                     StoryboardBeatInspectorCard(
                         title: draft.title,
                         inspector: viewModel.buildStoryboardBeatInspector(for: draft)
@@ -1335,66 +1927,141 @@ private struct StoryboardBeatEditorSheet: View {
                             action: $action,
                             actorOptions: draft.actorOptions,
                             targetOptions: targetOptions(for: action),
+                            validationField: viewModel.storyboardValidationField,
+                            validationMessage: viewModel.storyboardValidationMessage,
                             onDelete: { removeAction(id: action.id) }
                         )
+                        .disabled(isMutationInFlight)
                     }
 
                     Button(action: addAction) {
-                        Label("Добавить действие", systemImage: "plus.circle.fill")
+                        Label(SETCopyKey.storyboardActionAdd.localizedTextKey, systemImage: "plus.circle.fill")
                     }
                     .buttonStyle(StoryboardEditorSecondaryButtonStyle())
+                    .disabled(isMutationInFlight)
 
                     HStack(spacing: 10) {
                         Button {
                             Task { await move(offset: -1) }
                         } label: {
-                            Label("Влево", systemImage: "chevron.left")
+                            Label(SETCopyKey.storyboardMoveLeft.localizedTextKey, systemImage: "chevron.left")
                         }
                         .buttonStyle(StoryboardEditorSecondaryButtonStyle())
+                        .disabled(isMutationInFlight)
 
                         Button {
                             Task { await move(offset: 1) }
                         } label: {
-                            Label("Вправо", systemImage: "chevron.right")
+                            Label(SETCopyKey.storyboardMoveRight.localizedTextKey, systemImage: "chevron.right")
                         }
                         .buttonStyle(StoryboardEditorSecondaryButtonStyle())
+                        .disabled(isMutationInFlight)
                     }
 
-                    Button(role: .destructive) {
-                        Task { await deleteBeat() }
+                    Button {
+                        isDeleteConfirmationPresented = true
                     } label: {
-                        Label("Удалить такт", systemImage: "trash")
+                        HStack(spacing: SETSpacing.x2) {
+                            Image(systemName: "trash")
+                            Text(SETCopyKey.libraryDelete.localizedTextKey).underline()
+                        }
                     }
                     .buttonStyle(StoryboardEditorDestructiveButtonStyle())
+                    .disabled(isMutationInFlight)
+                    .accessibilityIdentifier("storyboard_editor_delete")
+                    }
+                    .padding(18)
                 }
-                .padding(18)
+                .background(Color.setInk.ignoresSafeArea())
             }
-            .background(Color.black.opacity(0.94).ignoresSafeArea())
-            .navigationTitle("Редактор такта")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        viewModel.cancelStoryboardEditor()
-                    }
-                    .foregroundStyle(.white.opacity(0.86))
-                }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Сохраняю" : "Сохранить") {
-                        Task { await save() }
-                    }
-                    .disabled(isSaving)
-                    .foregroundStyle(.white)
-                }
+            if isDeleteConfirmationPresented {
+                deleteConfirmationOverlay
+                    .zIndex(1)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("storyboard_editor_sheet")
         .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private var deleteConfirmationOverlay: some View {
+        ZStack {
+            Color.setInk.opacity(0.9)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: SETSpacing.x3) {
+                Text(SETCopyKey.storyboardDeleteTitle.localizedTextKey)
+                    .font(SETTypography.scaledFont(.display, size: SETTypographySize.title, relativeTo: .title2))
+                    .foregroundStyle(.setTextPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(verbatim: SETCopyKey.storyboardDeleteDetail.localizedFormat(
+                    locale: locale,
+                    arguments: [draft.title]
+                ))
+                .font(SETTypography.scaledFont(.screenplay, size: SETTypographySize.body, relativeTo: .body))
+                .foregroundStyle(.setTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: SETSpacing.x2) {
+                    Button {
+                        isDeleteConfirmationPresented = false
+                    } label: {
+                        Text(SETCopyKey.libraryCancel.localizedTextKey)
+                            .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                            .foregroundStyle(.setTextPrimary)
+                            .frame(maxWidth: .infinity, minHeight: SETComponentMetric.minimumHitTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .overlay {
+                        Rectangle().stroke(Color.setHairline, lineWidth: SETStroke.hairline)
+                    }
+                    .disabled(isMutationInFlight)
+
+                    Button {
+                        isDeleteConfirmationPresented = false
+                        Task { await deleteBeat() }
+                    } label: {
+                        Text(SETCopyKey.storyboardDeleteConfirm.localizedTextKey)
+                            .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                            .foregroundStyle(.setOrange)
+                            .frame(maxWidth: .infinity, minHeight: SETComponentMetric.minimumHitTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .overlay {
+                        Rectangle().stroke(Color.setOrange, lineWidth: SETStroke.hairline)
+                    }
+                    .accessibilityIdentifier("storyboard_editor_delete_confirm")
+                    .disabled(isMutationInFlight)
+                }
+            }
+            .padding(SETSpacing.x4)
+            .frame(maxWidth: SETComponentMetric.chipMaxWidth)
+            .background(Color.setSurfaceSolid)
+            .overlay {
+                Rectangle().stroke(Color.setHairline, lineWidth: SETStroke.standard)
+            }
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.setOrange)
+                    .frame(width: SETStroke.standard)
+            }
+            .padding(.horizontal, SETSpacing.x4)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("storyboard_editor_delete_confirmation")
+        }
     }
 
     private func targetOptions(for action: StoryboardActionEditDraft) -> [StoryboardEntityOption] {
         guard action.type.usesStoryboardTarget else {
-            return [StoryboardEntityOption(id: "none", label: "Нет цели", kind: .none)]
+            return [StoryboardEntityOption(
+                id: "none",
+                label: SETCopyKey.storyboardNoTarget.localizedString(locale: locale),
+                kind: .none
+            )]
         }
         if action.type == .give {
             return draft.targetOptions.filter { option in
@@ -1412,7 +2079,7 @@ private struct StoryboardBeatEditorSheet: View {
                 actorId: actorID,
                 type: .describedAction,
                 target: nil,
-                text: "Новое действие",
+                text: SETCopyKey.storyboardNewAction.localizedString(locale: locale),
                 isDeleted: false,
                 isNew: true
             )
@@ -1424,21 +2091,15 @@ private struct StoryboardBeatEditorSheet: View {
     }
 
     private func save() async {
-        isSaving = true
         _ = await viewModel.applyStoryboardBeatEdit(draft)
-        isSaving = false
     }
 
     private func deleteBeat() async {
-        isSaving = true
         _ = await viewModel.deleteStoryboardBeat(beatID: draft.beatID)
-        isSaving = false
     }
 
     private func move(offset: Int) async {
-        isSaving = true
         _ = await viewModel.moveStoryboardBeat(beatID: draft.beatID, offset: offset)
-        isSaving = false
     }
 }
 
@@ -1446,7 +2107,9 @@ private struct StoryboardEditorPresentationModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 16.4, *) {
-            content.presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            content
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationCompactAdaptation(.sheet)
         } else {
             content
         }
@@ -1456,79 +2119,94 @@ private struct StoryboardEditorPresentationModifier: ViewModifier {
 private struct StoryboardBeatInspectorCard: View {
     let title: String
     let inspector: StoryboardBeatInspectorPresentation
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .font(SETTypography.scaledFont(.display, size: 18, relativeTo: .headline))
+                    .foregroundStyle(.setTextPrimary)
 
-                Text(inspector.kindTitle)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.76))
+                Text(inspector.kindCopyKey.localizedTextKey)
+                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .caption))
+                    .foregroundStyle(.setTextSecondary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.white.opacity(0.10)))
+                    .background(
+                        RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                            .fill(Color.setSurfaceSolid)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                                    .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
+                            )
+                    )
 
                 Spacer()
 
                 Label(inspector.durationText, systemImage: "timer")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.78))
+                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .caption))
+                    .foregroundStyle(.setTextSecondary)
             }
 
             Text(inspector.summary)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.92))
+                .font(SETTypography.scaledFont(.screenplay, size: SETTypographySize.body, relativeTo: .body))
+                .foregroundStyle(.setTextPrimary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 8) {
                 if !inspector.actorLabels.isEmpty {
-                    inspectorChipRow(title: "Актёры", labels: inspector.actorLabels, color: .cyan, icon: "person.2.fill")
+                    inspectorChipRow(title: SETCopyKey.storyboardInspectorActors.localizedString(locale: locale),
+                                     labels: inspector.actorLabels,
+                                     icon: "person.2.fill")
                 }
 
                 if !inspector.targetLabels.isEmpty {
-                    inspectorChipRow(title: "Цели", labels: inspector.targetLabels, color: .yellow, icon: "scope")
+                    inspectorChipRow(title: SETCopyKey.storyboardInspectorTargets.localizedString(locale: locale),
+                                     labels: inspector.targetLabels,
+                                     icon: "scope")
                 }
 
                 if !inspector.warnings.isEmpty {
-                    inspectorChipRow(title: "Проверка", labels: inspector.warnings, color: .orange, icon: "exclamationmark.triangle.fill")
+                    inspectorChipRow(title: SETCopyKey.storyboardInspectorWarnings.localizedString(locale: locale),
+                                     labels: inspector.warnings,
+                                     icon: "exclamationmark.triangle.fill")
                 }
             }
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.08))
+            Rectangle()
+                .fill(Color.setSurfaceSolid)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    Rectangle()
+                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                 )
         )
+        .accessibilityIdentifier("storyboard_editor_inspector")
     }
 
-    private func inspectorChipRow(title: String, labels: [String], color: Color, icon: String) -> some View {
+    private func inspectorChipRow(title: String, labels: [String], icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: icon)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white.opacity(0.62))
+                .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .caption))
+                .foregroundStyle(.setTextSecondary)
 
             FlowLayout(spacing: 6) {
                 ForEach(labels, id: \.self) { label in
                     Text(label)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .caption))
+                        .foregroundStyle(.setTextPrimary)
                         .lineLimit(1)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(
-                            Capsule()
-                                .fill(color.opacity(0.16))
+                            RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                                .fill(Color.setSurfaceSolid)
                                 .overlay(
-                                    Capsule()
-                                        .stroke(color.opacity(0.34), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                                 )
                         )
                 }
@@ -1541,38 +2219,50 @@ private struct StoryboardActionEditorRow: View {
     @Binding var action: StoryboardActionEditDraft
     let actorOptions: [StoryboardEntityOption]
     let targetOptions: [StoryboardEntityOption]
+    let validationField: StoryboardValidationField?
+    let validationMessage: String?
     let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(action.type.storyboardEditorTitle)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                Text(action.type.storyboardEditorCopyKey.localizedTextKey)
+                    .font(SETTypography.scaledFont(.screenplay, size: SETTypographySize.label, relativeTo: .callout))
+                    .foregroundStyle(.setTextPrimary)
 
                 Spacer()
 
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                         .font(.system(size: 13, weight: .semibold))
+                        .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                               minHeight: SETComponentMetric.minimumHitTarget)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.red.opacity(0.9))
+                .foregroundStyle(.setTextSecondary)
+                .accessibilityLabel(SETCopyKey.storyboardActionDelete.localizedTextKey)
             }
 
-            Picker("Актёр", selection: $action.actorId) {
-                ForEach(actorOptions) { option in
-                    Text(option.label).tag(option.id)
+            VStack(alignment: .leading, spacing: 4) {
+                Picker(SETCopyKey.storyboardLabelActor.localizedTextKey, selection: $action.actorId) {
+                    ForEach(actorOptions) { option in
+                        Text(option.label).tag(option.id)
+                    }
                 }
+                .pickerStyle(.menu)
+                .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                .tint(.setTextPrimary)
+                validationRecovery(for: .actor(actionID: action.id))
             }
-            .pickerStyle(.menu)
 
-            Picker("Тип", selection: $action.type) {
+            Picker(SETCopyKey.storyboardLabelType.localizedTextKey, selection: $action.type) {
                 ForEach(SceneGeneratorViewModel.supportedStoryboardEditActionTypes, id: \.rawValue) { type in
-                    Text(type.storyboardEditorTitle).tag(type)
+                    Text(type.storyboardEditorCopyKey.localizedTextKey).tag(type)
                 }
             }
             .pickerStyle(.menu)
+            .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+            .tint(.setTextPrimary)
             .onChange(of: action.type) { newType in
                 if !newType.usesStoryboardTarget {
                     action.target = nil
@@ -1580,35 +2270,40 @@ private struct StoryboardActionEditorRow: View {
             }
 
             if action.type.usesStoryboardTarget {
-                Picker("Цель", selection: Binding<String?>(
-                    get: { action.target },
-                    set: { action.target = $0 }
-                )) {
-                    ForEach(targetOptions) { option in
-                        Text(option.label).tag(optionalTargetTag(for: option))
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker(SETCopyKey.storyboardLabelTarget.localizedTextKey, selection: Binding<String?>(
+                        get: { action.target },
+                        set: { action.target = $0 }
+                    )) {
+                        ForEach(targetOptions) { option in
+                            Text(option.label).tag(optionalTargetTag(for: option))
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                    .tint(.setTextPrimary)
+                    validationRecovery(for: .target(actionID: action.id))
                 }
-                .pickerStyle(.menu)
             }
 
-            TextField("Текст подписи или реплики", text: $action.text, axis: .vertical)
-                .font(.system(size: 13, weight: .medium))
+            TextField(SETCopyKey.storyboardLabelText.localizedTextKey, text: $action.text, axis: .vertical)
+                .font(SETTypography.scaledFont(.screenplay, size: SETTypographySize.label, relativeTo: .body))
                 .lineLimit(1...3)
-                .foregroundStyle(.white)
+                .foregroundStyle(.setTextPrimary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
+                    RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                        .fill(Color.setHairline)
                 )
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.07))
+            Rectangle()
+                .fill(Color.setSurfaceSolid)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    Rectangle()
+                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                 )
         )
         .onChange(of: action.actorId) { actorID in
@@ -1621,22 +2316,35 @@ private struct StoryboardActionEditorRow: View {
     private func optionalTargetTag(for option: StoryboardEntityOption) -> String? {
         option.kind == .none ? nil : option.id
     }
+
+    @ViewBuilder
+    private func validationRecovery(for field: StoryboardValidationField) -> some View {
+        if validationField == field, let validationMessage {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(validationMessage)
+                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                    .foregroundStyle(.setTextPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("storyboard_editor_validation_error")
+                Rectangle()
+                    .fill(Color.setOrange)
+                    .frame(height: SETStroke.standard)
+            }
+        }
+    }
 }
 
 private struct StoryboardEditorSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.68 : 0.94))
+            .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+            .foregroundStyle(configuration.isPressed ? Color.setTextSecondary : Color.setTextPrimary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.10 : 0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
+            .frame(minHeight: SETComponentMetric.minimumHitTarget)
+            .background(Color.setSurfaceSolid)
+            .overlay(
+                Rectangle()
+                    .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
             )
     }
 }
@@ -1644,40 +2352,47 @@ private struct StoryboardEditorSecondaryButtonStyle: ButtonStyle {
 private struct StoryboardEditorDestructiveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.red.opacity(configuration.isPressed ? 0.68 : 0.92))
+            .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+            .foregroundStyle(configuration.isPressed ? Color.setTextSecondary : Color.setTextPrimary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.red.opacity(configuration.isPressed ? 0.14 : 0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.red.opacity(0.24), lineWidth: 1)
-                    )
+            .frame(minHeight: SETComponentMetric.minimumHitTarget)
+            .background(Color.setSurfaceSolid)
+            .overlay(alignment: .leading) {
+                // The single destructive accent: one orange edge, no red.
+                Rectangle()
+                    .fill(Color.setOrange)
+                    .frame(width: 2)
+            }
+            .overlay(
+                Rectangle()
+                    .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
             )
     }
 }
 
 private extension SceneAction.ActionType {
     var storyboardEditorTitle: String {
+        storyboardEditorCopyKey.localizedString
+    }
+
+    var storyboardEditorCopyKey: SETCopyKey {
         switch self {
         case .stand:
-            return "Стоит"
+            return .storyboardActionStand
         case .walk:
-            return "Идёт"
+            return .storyboardActionWalk
         case .lookAt:
-            return "Смотрит"
+            return .storyboardActionLookAt
         case .pickUp:
-            return "Берёт"
+            return .storyboardActionPickUp
         case .give:
-            return "Передаёт"
+            return .storyboardActionGive
         case .talk:
-            return "Реплика"
+            return .storyboardActionTalk
         case .describedAction:
-            return "Описание"
+            return .storyboardActionDescription
         default:
-            return rawValue
+            return .storyboardActionDescription
         }
     }
 
@@ -1694,17 +2409,17 @@ private extension SceneAction.ActionType {
 private struct ARHintControlButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.68 : 0.96))
+            .font(SETTypography.font(.hudMono, size: 11))
+            .foregroundStyle(configuration.isPressed ? Color.setTextSecondary : Color.setTextPrimary)
             .lineLimit(1)
             .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .frame(minHeight: SETComponentMetric.minimumHitTarget)
             .background(
                 Capsule()
-                    .fill(Color.black.opacity(configuration.isPressed ? 0.42 : 0.54))
+                    .fill(Color.setHUDScrim)
                     .overlay(
                         Capsule()
-                            .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                            .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                     )
             )
     }
@@ -1712,18 +2427,22 @@ private struct ARHintControlButtonStyle: ButtonStyle {
 
 private struct ARHintIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.68 : 0.96))
-            .frame(width: 32, height: 32)
-            .background(
-                Circle()
-                    .fill(Color.black.opacity(configuration.isPressed ? 0.40 : 0.54))
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                    )
-            )
+        ZStack {
+            Circle()
+                .fill(Color.setHUDScrim)
+                .overlay(
+                    Circle()
+                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
+                )
+                .frame(width: 32, height: 32)
+
+            configuration.label
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(configuration.isPressed ? Color.setTextSecondary : Color.setTextPrimary)
+        }
+        .frame(width: SETComponentMetric.minimumHitTarget,
+               height: SETComponentMetric.minimumHitTarget)
+        .contentShape(Rectangle())
     }
 }
 
@@ -1731,17 +2450,17 @@ private struct ARLiveHintCheckView: View {
     var body: some View {
         Image(systemName: "checkmark.circle.fill")
             .font(.system(size: 24, weight: .semibold))
-            .foregroundStyle(.green)
+            .foregroundStyle(.setWarmWhite)
             .padding(6)
             .background(
                 Circle()
-                    .fill(Color.black.opacity(0.46))
+                    .fill(Color.setHUDScrim)
                     .overlay(
                         Circle()
-                            .stroke(Color.green.opacity(0.44), lineWidth: 1)
+                            .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                     )
             )
-            .accessibilityLabel("Кадр зафиксирован")
+            .accessibilityLabel(Text(SETCopyKey.accessibilityFrameHeld.localizedTextKey))
     }
 }
 
@@ -1757,8 +2476,8 @@ private struct ARLiveHintCompactChip: View {
                     .frame(width: 6, height: 6)
 
                 Text(liveHint.text)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.96))
+                    .font(SETTypography.font(.hudMono, size: 11))
+                    .foregroundStyle(.setTextPrimary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1766,17 +2485,18 @@ private struct ARLiveHintCompactChip: View {
                 if onExplain != nil {
                     Image(systemName: "chevron.down.circle.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.82))
+                        .foregroundStyle(.setTextSecondary)
                 }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
+            .frame(minHeight: SETComponentMetric.minimumHitTarget)
             .background(
                 Capsule()
-                    .fill(Color.black.opacity(0.58))
+                    .fill(Color.setHUDScrim)
                     .overlay(
                         Capsule()
-                            .stroke(toneColor.opacity(0.55), lineWidth: 1)
+                            .stroke(toneColor, lineWidth: SETStroke.hairline)
                     )
             )
         }
@@ -1784,16 +2504,19 @@ private struct ARLiveHintCompactChip: View {
         .disabled(onExplain == nil)
         .allowsHitTesting(onExplain != nil)
         .accessibilityLabel(liveHint.text)
+        .accessibilityIdentifier("generator_decision_trace_chip")
     }
 
+    /// Single-accent tone grammar: corrective hints carry the orange focus
+    /// edge; abstention keeps warm-white; unknown states stay neutral.
     private var toneColor: Color {
         if liveHint.actionType == .leaveFrameAsIs {
-            return .green
+            return .setWarmWhite
         }
         if liveHint.actionType == nil {
-            return .yellow
+            return SETPalette.textSecondary.color
         }
-        return .red
+        return .setOrange
     }
 }
 
@@ -1805,18 +2528,18 @@ private struct ARLiveAnalysisStatusChip: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "waveform.path.ecg")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(.setOrange)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.96))
+                    .font(SETTypography.font(.hudMono, size: 12))
+                    .foregroundStyle(.setTextPrimary)
                     .lineLimit(1)
 
                 Text(message)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.78))
+                    .font(SETTypography.font(.hudMono, size: 10))
+                    .foregroundStyle(.setTextSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1827,10 +2550,10 @@ private struct ARLiveAnalysisStatusChip: View {
         .frame(width: min(280, max(190, UIScreen.main.bounds.width * 0.34)), alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.52))
+                .fill(Color.setHUDScrim)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                        .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
                 )
         )
     }
@@ -1850,7 +2573,7 @@ private struct HintAnnotationsOverlayView: View {
                let rawBoundingBox = overlayState.primaryBoundingBox,
                let boundingBox = displayRect(from: rawBoundingBox) {
                 Rectangle()
-                    .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                    .stroke(SETPalette.decorativeGrid.color, lineWidth: 1)
                     .frame(width: boundingBox.width * canvasSize.width,
                            height: boundingBox.height * canvasSize.height)
                     .position(x: boundingBox.midX * canvasSize.width,
@@ -1872,12 +2595,12 @@ private struct HintAnnotationsOverlayView: View {
 
                     if let label = annotation.label {
                         Text(label)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(SETTypography.font(.hudMono, size: 11))
+                            .foregroundColor(.setInk)
                             .lineLimit(1)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(color.opacity(0.92), in: Capsule())
+                            .background(color, in: Capsule())
                             .position(labelPosition(for: rect))
                     }
                 }
@@ -1891,22 +2614,25 @@ private struct HintAnnotationsOverlayView: View {
         }
     }
 
+    /// Single-accent grammar: actionable/corrective annotations are orange,
+    /// informational geometry is warm-white. Ink label text keeps contrast on
+    /// both fills (ink on orange 6.3:1, ink on warmWhite well above AA).
     private func annotationColor(for annotation: OverlayAnnotationPresentation) -> Color {
         switch annotation.tone {
         case .success:
-            return .green.opacity(0.92)
+            return .setWarmWhite
         case .warning:
-            return .yellow.opacity(0.92)
+            return .setOrange
         case .danger:
-            return .red.opacity(0.94)
+            return .setOrange
         case .neutral:
             switch annotation.kind {
             case .arrow:
-                return .yellow.opacity(0.9)
+                return .setOrange
             case .regionHighlight:
-                return .white.opacity(0.7)
+                return .setWarmWhite
             case .horizonLine:
-                return .blue.opacity(0.85)
+                return .setWarmWhite
             }
         }
     }
