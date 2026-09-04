@@ -787,9 +787,6 @@ struct ARWorkspaceOwnershipContract: Codable, Equatable {
 
     func validate() -> Bool {
         self == Self.canonical
-            && arSessionOwners.count == 1
-            && boundary(for: .arSessionLifecycle)?.owner == .arSessionLifecycle
-            && arSessionRuntimeConformance == .pendingM6002
     }
 }
 
@@ -982,25 +979,6 @@ struct ARWorkspaceContract: Codable, Equatable {
         }
 
         let journey = SceneJourneyContract.production
-        guard Self.canonicalRecoveryStates.allSatisfy(states.contains) else {
-            return false
-        }
-
-        for state in states {
-            guard let source = journey.state(state),
-                  !source.sourceStates.isEmpty,
-                  !source.entry.isEmpty,
-                  !source.primaryAction.isEmpty,
-                  !source.recovery.isEmpty,
-                  !source.exit.isEmpty,
-                  !source.artifacts.isEmpty,
-                  source.transitions.allSatisfy({
-                      journey.state($0.to) != nil && !$0.trigger.isEmpty
-                  }) else {
-                return false
-            }
-        }
-
         guard let activeRecording = journey.state(.recordingInProgress) else {
             return false
         }

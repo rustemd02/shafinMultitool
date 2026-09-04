@@ -91,9 +91,34 @@ final class ARWorkspaceContractTests: XCTestCase {
 
     func testOwnershipMappingsAreExactAndSessionConformanceIsPending() {
         let contract = ARWorkspaceContract.production
+        let expectedRoles: [ARWorkspaceOwnerRole] = [
+            .workspaceLifecycle,
+            .arSessionLifecycle,
+            .presentation,
+            .placementAnchors,
+            .marking,
+            .hints,
+            .playback,
+            .recording,
+            .persistence,
+            .teardown
+        ]
+        let expectedOwners: [ARWorkspaceOwnerReference] = [
+            .workspaceLifecycle,
+            .arSessionLifecycle,
+            .presentation,
+            .placementAnchors,
+            .marking,
+            .hints,
+            .playback,
+            .recording,
+            .persistence,
+            .teardown
+        ]
 
         XCTAssertTrue(contract.ownership.validate())
-        XCTAssertEqual(contract.ownership.boundaries.count, ARWorkspaceOwnerRole.allCases.count)
+        XCTAssertEqual(contract.ownership.boundaries.map(\.role), expectedRoles)
+        XCTAssertEqual(contract.ownership.boundaries.map(\.owner), expectedOwners)
         XCTAssertEqual(contract.ownership.arSessionOwners.count, 1)
         XCTAssertEqual(
             contract.ownership.boundary(for: .arSessionLifecycle)?.owner,
@@ -116,12 +141,58 @@ final class ARWorkspaceContractTests: XCTestCase {
 
     func testIdentityFencesAreExactAndGenerationSafe() {
         let contract = ARWorkspaceContract.production
+        let expectedFences: [ARWorkspaceIdentityFence] = [
+            ARWorkspaceIdentityFence(
+                identity: .workspace,
+                rules: [.stableAcrossFrames, .invalidatedByTeardown]
+            ),
+            ARWorkspaceIdentityFence(
+                identity: .sessionGeneration,
+                rules: [
+                    .stableAcrossFrames,
+                    .rejectStaleGeneration,
+                    .invalidatedByInterruption,
+                    .invalidatedByReset,
+                    .revalidatedAfterRelocalization,
+                    .revalidatedAfterMapRestore,
+                    .invalidatedByTeardown
+                ]
+            ),
+            ARWorkspaceIdentityFence(
+                identity: .project,
+                rules: [.stableAcrossFrames]
+            ),
+            ARWorkspaceIdentityFence(
+                identity: .plannedScene,
+                rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByReset, .revalidatedAfterMapRestore]
+            ),
+            ARWorkspaceIdentityFence(
+                identity: .entity,
+                rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByReset, .revalidatedAfterMapRestore]
+            ),
+            ARWorkspaceIdentityFence(
+                identity: .anchor,
+                rules: [
+                    .stableAcrossFrames,
+                    .boundToSessionGeneration,
+                    .invalidatedByInterruption,
+                    .invalidatedByReset,
+                    .revalidatedAfterRelocalization,
+                    .revalidatedAfterMapRestore
+                ]
+            ),
+            ARWorkspaceIdentityFence(
+                identity: .marker,
+                rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByReset, .revalidatedAfterMapRestore]
+            ),
+            ARWorkspaceIdentityFence(
+                identity: .recording,
+                rules: [.stableAcrossFrames, .boundToSessionGeneration, .invalidatedByInterruption, .invalidatedByTeardown]
+            )
+        ]
 
         XCTAssertTrue(contract.identity.validate())
-        XCTAssertEqual(
-            Set(contract.identity.fences.map(\.identity)),
-            Set(ARWorkspaceIdentityKind.allCases)
-        )
+        XCTAssertEqual(contract.identity.fences, expectedFences)
 
         var missing = contract.identity.fences
         missing.removeLast()

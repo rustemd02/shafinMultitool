@@ -33,9 +33,19 @@ the smallest honest projection:
   of storing an AR evidence row for each state.
 
 The production M6-001 section is now 332 lines versus 772 lines in the prior
-commit: 440 fewer lines (57.0% reduction). The correction diff is 522 deleted
-and 82 added production lines. The focused test file is 217 lines versus 242
-previously.
+commit: 440 fewer lines (57.0% reduction). The first correction diff was 522
+deleted and 82 added production lines. The focused test file was 217 lines
+versus 242 previously.
+
+The follow-up reviewer found that the compact projection still retained
+tautological ownership clauses, a recovery-subset check implied by the exact
+state list, and generic per-row field validation already owned by
+`SceneJourneyContract`. The second correction removes those 22 production
+lines. It also makes the focused tests independent specification oracles: all
+10 role-to-owner mappings and all 8 identity/fence rule sets are declared as
+literal expected values rather than compared with production constants. The
+current production section is 310 lines (462 fewer than the original 772,
+59.8% reduction), and the focused test file is 288 lines.
 
 ## Canonical state matrix
 
@@ -205,7 +215,38 @@ xcrun xcresulttool get test-results summary --path /tmp/setos-m6-001-correction-
 ~~~
 
 `git diff --check` exited 0. The final `git status --short` after the
-correction commit is empty.
+first correction commit was empty.
+
+Second correction verification (fresh unique result path, exit code 0):
+
+~~~sh
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5' -only-testing:shafinMultitoolTests/ARWorkspaceContractTests -only-testing:shafinMultitoolTests/SceneJourneyContractTests -only-testing:shafinMultitoolTests/SceneWorkspaceTeardownTests -derivedDataPath /tmp/setos-m6-001-correction-v3/DerivedData -resultBundlePath /tmp/setos-m6-001-correction-v3/M6-001-correction.xcresult CODE_SIGNING_ALLOWED=NO
+~~~
+
+Result summary:
+
+~~~text
+device: iPhone 17e, iOS Simulator, OS 26.5
+passedTests: 31
+failedTests: 0
+skippedTests: 0
+expectedFailures: 0
+result: Passed
+~~~
+
+Suite counts: `ARWorkspaceContractTests` 9/9,
+`SceneJourneyContractTests` 6/6, and `SceneWorkspaceTeardownTests` 16/16.
+
+Result bundle: `/tmp/setos-m6-001-correction-v3/M6-001-correction.xcresult`
+
+Supplementary summary command (exit code 0):
+
+~~~sh
+xcrun xcresulttool get test-results summary --path /tmp/setos-m6-001-correction-v3/M6-001-correction.xcresult
+~~~
+
+`git diff --check` exited 0 before the second correction commit; the final
+post-commit check and clean status are reported with the correction commit.
 
 ## Scope audit and limitations
 
