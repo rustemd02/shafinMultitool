@@ -110,6 +110,10 @@ final class SceneJourneyContractTests: XCTestCase {
         XCTAssertEqual(contract.state(.recordingPromoting)?.artifact(.recording)?.status, .pending)
         XCTAssertTrue(contract.state(.recordingPromoting)?.recovery.contains("pendingRecordingArtifacts") == true)
         XCTAssertTrue(contract.state(.recordingPromoting)?.recovery.contains("retry recordingPromoting") == true)
+        let promotionRetry = contract.state(.recordingPromoting)?.transitions.first { $0.to == .recordingPromoting }
+        XCTAssertEqual(promotionRetry?.kind, .retry)
+        XCTAssertTrue(promotionRetry?.trigger.contains("pendingRecordingArtifacts") == true)
+        XCTAssertEqual(contract.state(.recordingPromoting)?.artifact(.recording)?.requirement, .required)
         XCTAssertFalse(contract.allows(.recordingPromoting, .recordingFailure))
         XCTAssertFalse(contract.allows(.recordingFailure, .recordingPromoting))
         XCTAssertEqual(contract.state(.recordingExported)?.owner, .export)
@@ -121,7 +125,13 @@ final class SceneJourneyContractTests: XCTestCase {
         XCTAssertTrue(contract.state(.recordingExporting)?.owner.rawValue.contains("LegacySceneGeneratorCameraShell") == true)
         XCTAssertFalse(contract.state(.recordingExporting)?.owner.rawValue.contains("RecordingArtifactStore") == true)
         XCTAssertEqual(contract.state(.recordingPhotosExporting)?.owner, .photosExport)
-        XCTAssertEqual(contract.state(.recordingPhotosExported)?.artifact(.recordingExport)?.status, .promoted)
+        XCTAssertNil(contract.state(.recordingPhotosExporting)?.artifact(.recordingExport))
+        XCTAssertEqual(contract.state(.recordingPhotosExporting)?.artifact(.photosExportReceipt)?.status, .pending)
+        XCTAssertEqual(contract.state(.recordingPhotosExported)?.artifact(.photosExportReceipt)?.status, .promoted)
+        XCTAssertEqual(contract.state(.recordingPhotosExported)?.artifact(.photosExportReceipt)?.requirement, .required)
+        XCTAssertEqual(contract.state(.recordingPhotosExported)?.artifact(.project)?.status, .promoted)
+        XCTAssertEqual(contract.state(.recordingPhotosExported)?.artifact(.recording)?.status, .promoted)
+        XCTAssertNil(contract.state(.recordingPhotosExported)?.artifact(.recordingExport))
         XCTAssertTrue(contract.state(.recordingPhotosExporting)?.owner.rawValue.contains("PHPhotoLibrary") == true)
         XCTAssertTrue(contract.state(.recordingPhotosExporting)?.sourceStates.contains(.recordingPhotosExport) == true)
         XCTAssertTrue(contract.state(.recordingPhotosExporting)?.owner.rawValue.contains("M7-028") == true)
@@ -186,6 +196,7 @@ final class SceneJourneyContractTests: XCTestCase {
         assertTrace([.storyboardPlanning, .storyboardValidation, .storyboardProjectionValidationFailure, .storyboardPlanning, .storyboardValidation])
         assertTrace([.storyboardEditorMedium, .storyboardValidationFailure, .storyboardEditorLarge])
         assertTrace([.storyboardEditorMedium, .storyboardDeleteConfirmation, .storyboardResult])
+        assertTrace([.recordingFinalizing, .recordingPromoting, .recordingPromoting, .recordingCompleted])
         assertTrace([.recordingFinalizing, .recordingFailure, .recordingRecovery, .recordingPreflight, .recordingPermission, .recordingIdle, .recordingPreparing, .recordingReady])
         assertTrace([.recordingStarting, .recordingCancelled, .recordingReleased])
         assertTrace([.recordingCompleted, .recordingReview, .recordingPlayback, .recordingReview])
@@ -205,6 +216,13 @@ final class SceneJourneyContractTests: XCTestCase {
                 let fromLifecycle = state.state.recordingLifecycleState
                 let toLifecycle = transition.to.recordingLifecycleState
                 guard fromLifecycle != nil || toLifecycle != nil else { continue }
+                if state.state == .recordingPromoting && transition.to == .recordingPromoting {
+                    XCTAssertEqual(transition.kind, .retry)
+                    XCTAssertTrue(transition.trigger.contains("pendingRecordingArtifacts"))
+                    XCTAssertEqual(state.artifact(.recording)?.status, .pending)
+                    XCTAssertEqual(state.artifact(.recording)?.requirement, .required)
+                    continue
+                }
                 if transition.kind == .outerNavigation {
                     continue
                 }
@@ -286,6 +304,26 @@ final class SceneJourneyContractTests: XCTestCase {
         )
         XCTAssertFalse(
             SceneJourneyContract(sourceVocabulary: contract.sourceVocabulary, states: malformedStates).validate()
+        )
+
+        var invalidPromotionRetryStates = contract.states
+        let promotionIndex = invalidPromotionRetryStates.firstIndex { $0.state == .recordingPromoting }!
+        let promotion = invalidPromotionRetryStates[promotionIndex]
+        invalidPromotionRetryStates[promotionIndex] = SceneJourneyStateContract(
+            state: promotion.state,
+            availability: promotion.availability,
+            owner: promotion.owner,
+            sourceStates: promotion.sourceStates,
+            entry: promotion.entry,
+            primaryAction: promotion.primaryAction,
+            recovery: promotion.recovery,
+            exit: promotion.exit,
+            persistence: promotion.persistence,
+            artifacts: promotion.artifacts.filter { $0.artifact != .recording },
+            transitions: promotion.transitions
+        )
+        XCTAssertFalse(
+            SceneJourneyContract(sourceVocabulary: contract.sourceVocabulary, states: invalidPromotionRetryStates).validate()
         )
     }
 

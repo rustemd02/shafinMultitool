@@ -49,7 +49,9 @@ separate future `PHPhotoLibrary` owner (M7-028). Share and Photos failure/cancel
 preserve the promoted source recording.
 Photos success uses `project + retained recording source + external export receipt`
 persistence: the project-owned source remains available while the external Photos
-copy is recorded separately.
+copy is recorded separately. Photos export states use the distinct typed
+`SceneJourneyArtifact.photosExportReceipt` relation; the generic
+`recordingExport` relation remains reserved for the current share hand-off.
 `recording.released` retains project-owned media as an optional relation and
 project persistence; it is not encoded as artifact deletion. This preserves
 the same terminal owner state for both cancelled/no-artifact and
@@ -68,7 +70,10 @@ only the closed allowlist. The illegal promoting→released and failed→ready
 edges are absent. A failed promotion remains in `recording.promoting` with a
 pending relation and is never represented as a project-owned/promoted recording.
 The owner retains the same finalized source in `pendingRecordingArtifacts` and retries
-`recording.promoting`; it does not mark that source missing or retry finalization.
+`recording.promoting` through an explicit typed `.retry` self-edge; the validator
+allows only that self-edge when the required recording relation is `.pending` and
+the trigger identifies `pendingRecordingArtifacts`. It does not mark that source
+missing or retry finalization.
 Only `recording.completed` exposes review/share/Photos edges. Capture/finalization
 failure remains the separate missing-artifact `recording.failed` path.
 
@@ -81,11 +86,11 @@ runtime ownership is a later task rather than claiming they already exist.
 
 | Check | Result |
 |---|---|
-| `xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5' -only-testing:shafinMultitoolTests/SceneJourneyContractTests -derivedDataPath /tmp/setos-m5-001-correction5-20260904/DerivedData -resultBundlePath /tmp/setos-m5-001-correction5-20260904/SceneJourneyContractTests.xcresult CODE_SIGNING_ALLOWED=NO` | PASS; 6/6 focused cases passed on iPhone 17e (simulator, OS 26.5), exit 0 |
+| `xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5' -only-testing:shafinMultitoolTests/SceneJourneyContractTests -derivedDataPath /tmp/setos-m5-001-correction6-20260904/DerivedData -resultBundlePath /tmp/setos-m5-001-correction6-20260904/SceneJourneyContractTests.xcresult CODE_SIGNING_ALLOWED=NO` | PASS; 6/6 focused cases passed on iPhone 17e (simulator, OS 26.5), exit 0 |
 | `git diff --check` | PASS after correction and evidence update |
-| canonical 96-ID set, graph reachability from both Library entries, typed source/owner/persistence/artifact mappings | PASS in `testProductionContractIsCompleteAndTyped` and `testExpectedOwnerPersistenceAndArtifactMappings` |
+| canonical 96-ID set, graph reachability from both Library entries, typed source/owner/persistence/artifact mappings | PASS in `testProductionContractIsCompleteAndTyped` and `testExpectedOwnerPersistenceAndArtifactMappings`; Photos uses typed `photosExportReceipt`, separate from share `recordingExport` |
 | full success/current-share/Photos route, storyboard validation route, and generator/AR/recording failure/recovery/teardown traces | PASS in `testSuccessExportTraceUsesLegalTypedEdges` and `testFailureRecoveryAndTeardownTraces` |
-| exhaustive recorder lifecycle edge classification and legal transition check | PASS in `testRecordingTransitionsAreExhaustiveAndTyped`; outer navigation is explicit and allowlisted, with no active-recording→AR shortcut or illegal promoting→released/failed→ready edge |
+| exhaustive recorder lifecycle edge classification and legal transition check | PASS in `testRecordingTransitionsAreExhaustiveAndTyped`; outer navigation is explicit and allowlisted, promotion retry is the only invariant-backed lifecycle self-edge, with no active-recording→AR shortcut or illegal promoting→released/failed→ready edge |
 | truncated/malformed custom contracts fail closed | PASS in `testCustomContractValidationFailsClosed` |
 | completed → released does not imply recording cleanup | PASS: `recording.completed → recording.released` is legal while released recording status is `.optional` and persistence remains `.project`; Photos completion uses retained-source + external-export-receipt semantics |
 | future state ownership does not overclaim production | PASS: generator/AR/recording future states carry `.pending` availability and explicit `planned:` source/owner labels where downstream ownership is not proven; current share owner remains the only claimed external export owner |
