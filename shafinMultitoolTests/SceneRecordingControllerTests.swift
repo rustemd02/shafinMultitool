@@ -585,6 +585,36 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertNoThrow(try store.removeProjectArtifacts(projectID: projectID))
     }
 
+    func testStagedArtifactCommitRollsBackAfterInjectedPartialUnlink() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-recording-store-rollback-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+        let store = try RecordingArtifactStore(
+            applicationSupportDirectoryURL: applicationSupportURL
+        )
+        let projectID = UUID()
+        let projectURL = store.projectsDirectoryURL
+            .appendingPathComponent(projectID.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let firstURL = projectURL.appendingPathComponent("\(UUID().uuidString).mov")
+        let secondURL = projectURL.appendingPathComponent("\(UUID().uuidString).mov")
+        let firstData = Data("first artifact".utf8)
+        let secondData = Data("second artifact".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: firstURL.path, contents: firstData))
+        XCTAssertTrue(FileManager.default.createFile(atPath: secondURL.path, contents: secondData))
+
+        let staged = try store.stageProjectArtifacts(projectID: projectID)
+        store.testArtifactCommitFailureAfterUnlinks = 1
+
+        XCTAssertThrowsError(try staged.commit()) { error in
+            XCTAssertEqual(error as? RecordingArtifactStoreError, .fileSystemFailure)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: projectURL.path))
+        XCTAssertEqual(try Data(contentsOf: firstURL), firstData)
+        XCTAssertEqual(try Data(contentsOf: secondURL), secondData)
+    }
+
     func testRecordingArtifactStoreFailsClosedForUnexpectedEntryWithoutTouchingExternalTarget() throws {
         let applicationSupportURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("scene-recording-store-\(UUID().uuidString)", isDirectory: true)

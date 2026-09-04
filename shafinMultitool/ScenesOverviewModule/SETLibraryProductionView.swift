@@ -229,6 +229,20 @@ final class SETLibraryModel: ObservableObject {
         scenes.first { $0.id == selectedSceneID }
     }
 
+    /// A load failure is a recovery hero, even when a previous projection is
+    /// still present. Keeping this decision in the model makes the rendering
+    /// rule testable without a UI harness and prevents an empty-state branch
+    /// from masking persistence failure.
+    var loadFailure: FailureKind? {
+        guard case .failure(let kind) = flow,
+              case .load = kind else { return nil }
+        return kind
+    }
+
+    var shouldShowEmptyState: Bool {
+        scenes.isEmpty && loadFailure == nil
+    }
+
     func reload() {
         switch controlling.librarySceneSnapshots() {
         case .success(let snapshots):
@@ -814,7 +828,10 @@ private struct SETLibraryContactSheet: View {
             VStack(alignment: .leading, spacing: SETSpacing.x3) {
                 header
 
-                if model.scenes.isEmpty {
+                if let loadFailure = model.loadFailure {
+                    SETLibraryFailurePanel(model: model, kind: loadFailure)
+                        .frame(maxHeight: .infinity)
+                } else if model.shouldShowEmptyState {
                     SETLibraryEmptyState(model: model)
                         .frame(maxHeight: .infinity)
                 } else {
@@ -822,11 +839,13 @@ private struct SETLibraryContactSheet: View {
                         .frame(maxHeight: .infinity)
                 }
 
-                flowPanel
+                if model.loadFailure == nil {
+                    flowPanel
+                }
             }
             .padding(SETSpacing.x4)
             .overlay(alignment: .topTrailing) {
-                if model.scenes.isEmpty {
+                if model.shouldShowEmptyState {
                     SETFilmEdge()
                         .padding(SETSpacing.x3)
                 }

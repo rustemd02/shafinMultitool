@@ -18,8 +18,8 @@ final class DBServiceConcurrencyTests: XCTestCase {
         try super.setUpWithError()
         dbService = DBService()
         dbService.resetUnifiedSceneProjectsForUITesting()
-        // Completion callbacks run synchronously inside the persistence queue,
-        // so this cleanup needs no expectations.
+        // The legacy cleanup API completes synchronously to its caller after
+        // the serialized operation, so this setup needs no expectations.
         for title in dbService.getAllARWorldMapTitles() ?? [] {
             dbService.deleteMap(with: title) { _ in }
         }
@@ -208,6 +208,97 @@ final class DBServiceConcurrencyTests: XCTestCase {
         XCTAssertEqual(dbService.loadUnifiedSceneProject(named: project.name)?.0, withRecording)
     }
 
+    func testTypedDeleteRollsBackMetadataWhenArtifactCommitFailsPartway() throws {
+        let store = try RecordingArtifactStore()
+        let service = DBService(recordingArtifactStore: store)
+        let project = try service.createUnifiedSceneProject(named: "delete-partial-artifact-\(UUID().uuidString)")
+        let recordingIDs = [UUID(), UUID()]
+        let references = recordingIDs.map { recordingID in
+            SceneRecordingReference(
+                recordingID: recordingID,
+                relativePath: "Recordings/Projects/\(project.id.uuidString)/\(recordingID.uuidString).mov"
+            )
+        }
+        var enriched = project
+        enriched.sceneDescription = "partial artifact rollback"
+        enriched.recordingReferences = references
+        try service.saveUnifiedSceneProject(enriched, worldMap: nil)
+
+        let projectArtifactsURL = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectArtifactsURL, withIntermediateDirectories: true)
+        let artifactData = [Data("first partial artifact".utf8), Data("second partial artifact".utf8)]
+        let artifactURLs = zip(recordingIDs, artifactData).map { recordingID, data in
+            let url = projectArtifactsURL.appendingPathComponent("\(recordingID.uuidString).mov")
+            XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: data))
+            return url
+        }
+
+        let documentsURL = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+        let mapURL = documentsURL
+            .appendingPathComponent("UnifiedSceneProjects", isDirectory: true)
+            .appendingPathComponent("\(project.id.uuidString)_worldmap")
+        let projectURL = documentsURL
+            .appendingPathComponent("UnifiedSceneProjects", isDirectory: true)
+            .appendingPathComponent("\(project.id.uuidString)_project.json")
+        let mapData = Data("partial rollback world map".utf8)
+        try mapData.write(to: mapURL, options: [.atomic])
+        defer {
+            try? FileManager.default.removeItem(at: projectURL)
+            try? FileManager.default.removeItem(at: mapURL)
+            try? FileManager.default.removeItem(at: projectArtifactsURL)
+        }
+
+        store.testArtifactCommitFailureAfterUnlinks = 1
+        var result: Result<Void, SETLibraryFailure>?
+        service.deleteUnifiedSceneProject(id: project.id, expectedUpdatedAt: enriched.updatedAt) {
+            result = $0
+        }
+
+        guard case .failure(.artifactCleanup) = result else {
+            return XCTFail("expected typed artifact cleanup failure, got \(String(describing: result))")
+        }
+        XCTAssertEqual(service.loadUnifiedSceneProject(named: project.name)?.0, enriched)
+        XCTAssertEqual(try Data(contentsOf: mapURL), mapData)
+        for (url, data) in zip(artifactURLs, artifactData) {
+            XCTAssertEqual(try Data(contentsOf: url), data)
+        }
+    }
+
+    func testTypedDeleteCompletionCanSynchronouslyReloadWithoutDeadlock() throws {
+        let name = "delete-reentrant-\(UUID().uuidString)"
+        let project = try dbService.createUnifiedSceneProject(named: name)
+        let completion = expectation(description: "delete completion")
+        var result: Result<Void, SETLibraryFailure>?
+
+        dbService.deleteUnifiedSceneProject(id: project.id, expectedUpdatedAt: project.updatedAt) {
+            result = $0
+            // This was a queue re-entrancy deadlock before the completion was
+            // moved outside persistenceQueue.sync.
+            _ = self.dbService.loadLibrarySceneSnapshots()
+            completion.fulfill()
+        }
+
+        wait(for: [completion], timeout: 2)
+        guard case .success = result else {
+            return XCTFail("expected successful typed delete, got \(String(describing: result))")
+        }
+        XCTAssertNil(dbService.loadUnifiedSceneProject(named: name))
+    }
+
+    func testStagedDeleteRollsBackAfterWorldMapFailure() throws {
+        try assertStagedDeleteRollsBack(after: .afterWorldMapRemoval)
+    }
+
+    func testStagedDeleteRollsBackAfterProjectFailure() throws {
+        try assertStagedDeleteRollsBack(after: .afterProjectRemoval)
+    }
+
     func testMissingStoredFileIsAnInitialWriteNotAConflict() throws {
         let project = UnifiedSceneProject(name: "fresh-project")
 
@@ -257,6 +348,70 @@ final class DBServiceConcurrencyTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func assertStagedDeleteRollsBack(
+        after failurePoint: DBService.TestDeletionFailurePoint
+    ) throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-db-rollback-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+
+        let store = try RecordingArtifactStore(
+            applicationSupportDirectoryURL: applicationSupportURL
+        )
+        let service = DBService(recordingArtifactStore: store)
+        let name = "rollback-\(UUID().uuidString)"
+        let project = try service.createUnifiedSceneProject(named: name)
+        let recordingID = UUID()
+        let reference = SceneRecordingReference(
+            recordingID: recordingID,
+            relativePath: "Recordings/Projects/\(project.id.uuidString)/\(recordingID.uuidString).mov"
+        )
+        var enriched = project
+        enriched.sceneDescription = "rollback aggregate"
+        enriched.recordingReferences = [reference]
+        try service.saveUnifiedSceneProject(enriched, worldMap: nil)
+
+        let projectArtifactsURL = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectArtifactsURL, withIntermediateDirectories: true)
+        let artifactURL = projectArtifactsURL.appendingPathComponent("\(recordingID.uuidString).mov")
+        let artifactData = Data("rollback artifact".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: artifactData))
+
+        let documentsURL = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+        let mapURL = documentsURL
+            .appendingPathComponent("UnifiedSceneProjects", isDirectory: true)
+            .appendingPathComponent("\(project.id.uuidString)_worldmap")
+        let projectURL = documentsURL
+            .appendingPathComponent("UnifiedSceneProjects", isDirectory: true)
+            .appendingPathComponent("\(project.id.uuidString)_project.json")
+        defer {
+            try? FileManager.default.removeItem(at: projectURL)
+            try? FileManager.default.removeItem(at: mapURL)
+        }
+        let mapData = Data("rollback world map".utf8)
+        try mapData.write(to: mapURL, options: [.atomic])
+
+        service.testDeletionFailurePoint = failurePoint
+        var result: Result<Void, SETLibraryFailure>?
+        service.deleteUnifiedSceneProject(id: project.id, expectedUpdatedAt: enriched.updatedAt) {
+            result = $0
+        }
+
+        guard case .failure(.persistence) = result else {
+            return XCTFail("expected persistence failure, got \(String(describing: result))")
+        }
+        XCTAssertEqual(service.loadUnifiedSceneProject(named: name)?.0, enriched)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: artifactURL.path))
+        XCTAssertEqual(try Data(contentsOf: artifactURL), artifactData)
+        XCTAssertEqual(try Data(contentsOf: mapURL), mapData)
+    }
 
     /// Runs `body` on `iterations` parallel threads and collects the returned
     /// values (lock-guarded: concurrent Array writes are not data-race-free).

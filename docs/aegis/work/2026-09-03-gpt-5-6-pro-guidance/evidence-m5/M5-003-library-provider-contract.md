@@ -1,9 +1,10 @@
 # M5-003 — Library provider contract
 
-Status: implementation and focused simulator verification complete on the
-task branch. This receipt covers the Library ownership/CRUD contract only; it
-does not claim completion of the later Library visual slices, physical-device
-camera/AR verification, media capture, or App Store qualification.
+Status: correction implementation and focused simulator verification complete
+on `codex/set-os-m5-003-fix1`. This receipt covers the Library
+ownership/CRUD contract only; it does not claim completion of the later Library
+visual slices, physical-device camera/AR verification, media capture, or App
+Store qualification.
 
 ## Contract implemented
 
@@ -25,11 +26,13 @@ camera/AR verification, media capture, or App Store qualification.
 - Rename is UUID- and `expectedUpdatedAt`-based. It changes only name and
   timestamp, keeps the full project aggregate and legacy world-map bytes, and
   returns typed missing/duplicate/stale/persistence outcomes.
-- Delete is UUID- and snapshot-based, checks the existing lifecycle lease,
-  validates/removes owned recording artifacts before deleting project state,
-  and reports artifact-cleanup failure without mutating the project record.
-  The legacy name-based API remains available and now maps the typed outcome
-  to its original Bool completion.
+- Delete is UUID- and snapshot-based, checks the existing lifecycle lease, and
+  stages owned recording artifacts before removing project/map metadata. The
+  artifact owner commits only after metadata mutations succeed and restores
+  partial unlink failures; DBService restores the exact project/map bytes on
+  any later failure. Typed artifact-cleanup/persistence failures are returned
+  without claiming deletion success. The legacy name-based API remains
+  available and now maps the typed outcome to its original Bool completion.
 - Model retry stores an immutable operation (including UUID and expected
   timestamp) rather than resolving a later selection by name. Load failures,
   create/rename/delete/open failures, duplicate flows, and cancellation remain
@@ -58,8 +61,9 @@ camera/AR verification, media capture, or App Store qualification.
 - `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m5/M5-003-library-provider-contract.md`
   — this receipt.
 
-No project file, router, teardown owner, schema model, recording store, or
-execution-state file was changed. No M5-004…M5-012 visual work is included.
+No project file, router, teardown owner, schema model, or execution-state file
+was changed. `RecordingArtifactStore` changed only to add the reversible
+staging/commit/rollback seam; no M5-004…M5-012 visual work is included.
 
 ## Verification
 
@@ -102,3 +106,60 @@ change the production visual surface; later visual packages own that evidence.
   permissions, and App Store release checks remain outside M5-003.
 - Result bundles are task evidence under `/tmp`; cleanup may remove only the
   explicitly named M5-003 temporary directories after parent integration.
+
+## Correction round — `codex/set-os-m5-003-fix1`
+
+Root causes closed:
+
+- Artifact deletion unlinked source files directly, so a later unlink or
+  metadata failure could leave a partial project. The store now creates
+  identity-checked same-volume hard-link staging, commits only after all
+  metadata mutations succeed, and rolls back missing source links on failure.
+- Typed and legacy delete completions were invoked inside
+  `persistenceQueue.sync`; a callback that synchronously queried DBService
+  could deadlock. Each API now captures its result inside the queue and calls
+  back after leaving it.
+- The Library contact sheet independently rendered `scenes.isEmpty` and the
+  failure panel, allowing a load failure to masquerade as an empty Library.
+  A typed load failure now owns the hero branch and suppresses empty-state
+  content and mutation controls.
+
+Direct regression coverage:
+
+- `testStagedArtifactCommitRollsBackAfterInjectedPartialUnlink` proves an
+  injected second-unlink fault restores both artifacts.
+- `testTypedDeleteRollsBackMetadataWhenArtifactCommitFailsPartway` proves the
+  DB path returns `.artifactCleanup` and restores project JSON, world-map
+  sidecar, and both artifacts.
+- `testStagedDeleteRollsBackAfterWorldMapFailure` and
+  `testStagedDeleteRollsBackAfterProjectFailure` prove staged artifacts and
+  both metadata roots are restored after injected post-mutation faults.
+- `testTypedDeleteCompletionCanSynchronouslyReloadWithoutDeadlock` exercises
+  a reentrant completion callback with a bounded XCTest expectation.
+- `testTypedLoadFailureIsNotPresentedAsEmptyLibrary` proves the model's
+  rendering decision suppresses the empty-state hero on load failure.
+
+Final focused command (ordinary iPhone 17 Simulator UUID
+`1F708A11-8262-4E09-9F3A-46C86381911D`; never iPhone 17 Pro or physical
+device):
+
+```text
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -configuration Debug -destination 'platform=iOS Simulator,id=1F708A11-8262-4E09-9F3A-46C86381911D' -derivedDataPath /tmp/setos-m5-003-fix1-final-dd -resultBundlePath /tmp/setos-m5-003-fix1-final.xcresult -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests -only-testing:shafinMultitoolTests/SETLibraryModelTests -only-testing:shafinMultitoolTests/SceneProjectSchemaMigrationTests -only-testing:shafinMultitoolTests/SceneRecordingControllerTests/testFinalizedArtifactPromotionIsIdempotentAndResolvesProjectFile -only-testing:shafinMultitoolTests/SceneRecordingControllerTests/testRecordingArtifactStoreRejectsOutsideAndSymlinkPaths -only-testing:shafinMultitoolTests/SceneRecordingControllerTests/testRecordingArtifactStoreRemovesOnlyChosenProjectAndIsIdempotent -only-testing:shafinMultitoolTests/SceneRecordingControllerTests/testStagedArtifactCommitRollsBackAfterInjectedPartialUnlink -only-testing:shafinMultitoolTests/SceneRecordingControllerTests/testRecordingArtifactStoreFailsClosedForUnexpectedEntryWithoutTouchingExternalTarget -only-testing:shafinMultitoolTests/SceneRecordingControllerTests/testRecordingArtifactStoreRejectsSymlinkedRootAndProjectDirectory
+```
+
+Result: `** TEST SUCCEEDED **`; 42/42 test cases passed:
+
+- `DBServiceConcurrencyTests`: 14/14.
+- `SETLibraryModelTests`: 14/14.
+- `SceneProjectSchemaMigrationTests`: 8/8.
+- RecordingArtifactStore-focused `SceneRecordingControllerTests`: 6/6.
+
+Evidence paths: `/tmp/setos-m5-003-fix1-final.xcresult` and
+`/tmp/setos-m5-003-fix1-final.log`. `git diff --check` passed after the
+correction edits; scope audit contains only the three owned production/test
+paths plus this receipt.
+
+Known correction risk: a post-commit tombstone cleanup interruption retains a
+hidden staging directory for safety; it is not reported as a rollback failure
+after the authoritative deletion has already committed. Physical filesystem,
+camera/AR timing, and App Store release behavior remain outside this slice.

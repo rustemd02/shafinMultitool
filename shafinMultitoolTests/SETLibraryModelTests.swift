@@ -130,6 +130,8 @@ final class SETLibraryModelTests: XCTestCase {
 
         XCTAssertTrue(model.scenes.isEmpty)
         XCTAssertEqual(model.flow, .failure(.load(.persistence)))
+        XCTAssertFalse(model.shouldShowEmptyState, "Load failure must replace the empty-state hero.")
+        XCTAssertNotNil(model.loadFailure)
     }
 
     func testSelectRequiresIdleFlow() {

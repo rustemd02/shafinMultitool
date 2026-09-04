@@ -75,6 +75,33 @@ class DBService {
     private let legacyScenesDirectoryName = "Scenes"
     private let unifiedProjectsDirectoryName = "UnifiedSceneProjects"
 
+#if DEBUG
+    /// Test-only fault points keep rollback coverage deterministic without
+    /// replacing the production FileManager or persistence owner.
+    enum TestDeletionFailurePoint: Equatable {
+        case afterArtifactStage
+        case afterWorldMapRemoval
+        case afterProjectRemoval
+    }
+
+    var testDeletionFailurePoint: TestDeletionFailurePoint?
+#else
+    private enum TestDeletionFailurePoint {
+        case afterArtifactStage
+        case afterWorldMapRemoval
+        case afterProjectRemoval
+    }
+#endif
+
+    private struct UnifiedSceneDeletionBackup {
+        let projectURL: URL
+        let projectData: Data
+        let mapURL: URL
+        let mapData: Data?
+    }
+
+    private struct InjectedDeletionFailure: Error {}
+
     init(
         fileManager: FileManager = .default,
         recordingArtifactStore: RecordingArtifactStore? = nil,
@@ -209,7 +236,7 @@ class DBService {
     }
 
     func deleteMap(with name: String, completion: @escaping (Bool) -> ()) {
-        persistenceQueue.sync {
+        let deleted: Bool = persistenceQueue.sync {
             do {
                 let arMapsDirectory = try legacyScenesDirectoryURL()
 
@@ -220,13 +247,13 @@ class DBService {
                 for storedFile in storedFiles where fileManager.fileExists(atPath: storedFile.path) {
                     try fileManager.removeItem(at: storedFile)
                 }
-
-                completion(true)
+                return true
             } catch {
                 print(error)
-                completion(false)
+                return false
             }
         }
+        completion(deleted)
     }
 
     func createARMapsDirectory() {
@@ -348,9 +375,10 @@ class DBService {
         expectedUpdatedAt: Date,
         completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
     ) {
-        persistenceQueue.sync {
-            completion(deleteUnifiedSceneProjectOnQueue(id: id, expectedUpdatedAt: expectedUpdatedAt))
+        let result = persistenceQueue.sync {
+            deleteUnifiedSceneProjectOnQueue(id: id, expectedUpdatedAt: expectedUpdatedAt)
         }
+        completion(result)
     }
 
     private func listUnifiedSceneProjectsOnQueue() -> [UnifiedSceneProjectSummary] {
@@ -499,31 +527,33 @@ class DBService {
     }
 
     func deleteUnifiedSceneProject(named name: String, completion: @escaping (Bool) -> ()) {
-        persistenceQueue.sync {
+        let deleted: Bool = persistenceQueue.sync {
             do {
                 try createUnifiedSceneProjectsDirectory()
                 let directory = try unifiedSceneProjectsDirectoryURL()
                 guard let projectURL = try findUnifiedProjectFileURL(named: name, in: directory),
                       let id = UUID(uuidString: String(projectURL.lastPathComponent.dropLast("_project.json".count))) else {
-                    completion(false)
-                    return
+                    return false
                 }
                 if case .success = deleteUnifiedSceneProjectOnQueue(id: id, expectedUpdatedAt: nil) {
-                    completion(true)
+                    return true
                 } else {
-                    completion(false)
+                    return false
                 }
             } catch {
                 print("Error deleting unified scene project: \(error)")
-                completion(false)
+                return false
             }
         }
+        completion(deleted)
     }
 
     private func deleteUnifiedSceneProjectOnQueue(
         id: UUID,
         expectedUpdatedAt: Date?
     ) -> Result<Void, SETLibraryFailure> {
+        var artifactStage: RecordingArtifactStore.StagedProjectArtifacts?
+        var metadataBackup: UnifiedSceneDeletionBackup?
         do {
             try createUnifiedSceneProjectsDirectory()
             let directory = try unifiedSceneProjectsDirectoryURL()
@@ -547,31 +577,123 @@ class DBService {
                 return .failure(.inUse)
             }
 
-            // Validate and remove owned artifacts before deleting the project
-            // record. RecordingArtifactStore validates the complete directory
-            // before unlinking, so a cleanup failure leaves project state intact.
+            let mapURL = directory.appendingPathComponent(worldMapFilename(for: stored.project.id))
+            metadataBackup = try makeDeletionBackupOnQueue(
+                projectURL: projectURL,
+                mapURL: mapURL
+            )
+
+            // Stage owned artifacts while their source paths remain intact.
+            // Any later metadata failure can therefore restore the exact
+            // recording files rather than trying to recreate media bytes.
             if !stored.project.recordingReferences.isEmpty {
                 guard case .success(let artifactStore) = recordingArtifactStore else {
                     return .failure(.artifactCleanup)
                 }
-                do {
-                    try artifactStore.removeProjectArtifacts(projectID: stored.project.id)
-                } catch {
-                    return .failure(.artifactCleanup)
-                }
+                artifactStage = try artifactStore.stageProjectArtifacts(projectID: stored.project.id)
             }
+            try consumeInjectedDeletionFailureOnQueue(.afterArtifactStage)
 
-            let mapURL = directory.appendingPathComponent(worldMapFilename(for: stored.project.id))
             if fileManager.fileExists(atPath: mapURL.path) {
                 try fileManager.removeItem(at: mapURL)
             }
+            try consumeInjectedDeletionFailureOnQueue(.afterWorldMapRemoval)
             if fileManager.fileExists(atPath: projectURL.path) {
                 try fileManager.removeItem(at: projectURL)
             }
+            try consumeInjectedDeletionFailureOnQueue(.afterProjectRemoval)
+
+            // This is the first irreversible artifact operation, and it is
+            // reached only after the authoritative project/map mutations have
+            // completed. The artifact owner restores partial unlink failures.
+            try artifactStage?.commit()
             return .success(())
         } catch {
+            var rollbackFailed = false
+            if let artifactStage {
+                do {
+                    try artifactStage.rollback()
+                } catch {
+                    rollbackFailed = true
+                    print("Recording artifact deletion rollback failed: \(error)")
+                }
+            }
+            if let metadataBackup {
+                do {
+                    try restoreDeletionBackupOnQueue(metadataBackup)
+                } catch {
+                    rollbackFailed = true
+                    print("Unified scene metadata deletion rollback failed: \(error)")
+                }
+            }
+            if rollbackFailed {
+                // Fail closed: the caller gets a typed failure and the
+                // surviving authoritative paths remain available for repair.
+                return .failure(.persistence)
+            }
+            if error is RecordingArtifactStoreError {
+                return .failure(.artifactCleanup)
+            }
             return .failure(libraryFailure(for: error))
         }
+    }
+
+    private func makeDeletionBackupOnQueue(
+        projectURL: URL,
+        mapURL: URL
+    ) throws -> UnifiedSceneDeletionBackup {
+        let projectData = try Data(contentsOf: projectURL)
+        let mapData: Data?
+        if fileManager.fileExists(atPath: mapURL.path) {
+            mapData = try Data(contentsOf: mapURL)
+        } else {
+            mapData = nil
+        }
+        return UnifiedSceneDeletionBackup(
+            projectURL: projectURL,
+            projectData: projectData,
+            mapURL: mapURL,
+            mapData: mapData
+        )
+    }
+
+    private func restoreDeletionBackupOnQueue(
+        _ backup: UnifiedSceneDeletionBackup
+    ) throws {
+        try restoreDeletionFileOnQueue(backup.projectData, to: backup.projectURL)
+        if let mapData = backup.mapData {
+            try restoreDeletionFileOnQueue(mapData, to: backup.mapURL)
+        }
+    }
+
+    private func restoreDeletionFileOnQueue(_ data: Data, to url: URL) throws {
+        if fileManager.fileExists(atPath: url.path) {
+            guard let current = try? Data(contentsOf: url), current == data,
+                  !isSymbolicLinkOnQueue(url) else {
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            return
+        }
+        guard !isSymbolicLinkOnQueue(url) else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        try data.write(to: url, options: [.atomic])
+    }
+
+    private func isSymbolicLinkOnQueue(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
+    }
+
+    private func consumeInjectedDeletionFailureOnQueue(
+        _ point: TestDeletionFailurePoint
+    ) throws {
+#if DEBUG
+        guard testDeletionFailurePoint == point else { return }
+        testDeletionFailurePoint = nil
+        throw InjectedDeletionFailure()
+#else
+        _ = point
+#endif
     }
 
     private func legacyScenesDirectoryURL() throws -> URL {
