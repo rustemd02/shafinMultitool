@@ -360,3 +360,8 @@
 - `run_release_gates.sh` validates the registry before any `xcodebuild`; bundle validation consumes stable `KNOWN_BLOCKER` rows and exactly one dynamic count instead of a hard-coded five-item reporter.
 - Verification: 18/18 Python schema fixtures and 5/5 orchestration fixtures PASS; shell syntax, Python compilation, JSON validation and `git diff --check` PASS. Canonical validator intentionally exits 1 with 16 blockers. Final fresh Sol audit: `SHIP`. Integrated head: `4fdae56`.
 - Honest boundary: a fresh Release bundle still needs later full validation; historical bundle lacks the required root privacy manifest. Tracker total: 68/424 completed, 356 remaining.
+
+### 2026-09-04T19:30Z — M7-002 READINESS CORRECTION
+- Fresh dependency audit found the earlier readiness note incorrect: M7-002 requires M6-004, which requires M6-002, which requires M6-001.
+- Required order is `M6-001 → M6-002 → M6-004 → M7-002`; M7-002 remains blocked and must not be dispatched before that chain closes with evidence.
+- No completion count changed. The next safe product/release action is preparation of the dependency-ready M6-001 AR product contract.
