@@ -288,6 +288,70 @@ used only `iPhone 17e`; no iPhone 17 Pro, physical device, or CUA was used.
 FigCaptureSourceSimulator diagnostics during launch; they did not affect the
 85/85 deterministic result and are not hardware-camera proof.
 
+### Correction5 verification
+
+Correction5 replaces the former subject-change regression's direct typed
+`.baseline`/invalidation fixture with a production live-handoff regression.
+The only test entry point added for deterministic setup is `#if DEBUG` and
+delegates to `publishLiveCoachingEpisodeObservation`; the test does not call
+the typed event publisher and does not bypass `updateLiveSubjectTracker`.
+
+The regression first feeds three same-subject Vision samples through the live
+handoff, allowing the real subject tracker and advice stabilizer to establish
+the old tracked identity and baseline token. It then feeds a same-action frame
+with no Vision candidate. The production adapter marks the subject
+unavailable, atomically resets the pipeline-owned lifecycle before publishing
+the queued `.subjectChanged` terminal, and the ViewModel observes the
+cancellation. Finally, three samples with a different resolved region pass
+through the same production handoff; the fresh identity reaches a new
+baseline after stabilization, with a token and subject identity distinct from
+the old episode. This proves reset ordering and fresh production resolution,
+not merely event-delivery behavior.
+
+The production-path seam passed 1/1 on the allowed `iPhone 17e` iOS Simulator
+26.5:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-camera-b1-correction5-seam-derived-20260904f \
+  -resultBundlePath /tmp/setos-camera-b1-correction5-seam-20260904f.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests/testProductionSubjectChangeResetsOwnerBeforeFreshResolutionBaseline test
+```
+
+Result: `TEST SUCCEEDED`, 1/1 passed, 0 failures, 0 skipped. Durable result
+bundle: `/tmp/setos-camera-b1-correction5-seam-20260904f.xcresult`.
+
+The complete M2-024 focused suites then passed 85/85, 0 failures, 0 skipped,
+on the same allowed simulator:
+
+```text
+xcodebuild -workspace shafinMultitool.xcworkspace \
+  -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' \
+  -derivedDataPath /tmp/setos-camera-b1-correction5-final-derived-20260904f \
+  -resultBundlePath /tmp/setos-camera-b1-correction5-final-20260904f.xcresult \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests \
+  -only-testing:shafinMultitoolTests/AdviceStabilizerTests \
+  -only-testing:shafinMultitoolTests/SubjectTrackLifecycleTests \
+  -only-testing:shafinMultitoolTests/UserMovementObserverTests \
+  -only-testing:shafinMultitoolTests/CameraAdviceSafetyGateTests \
+  -only-testing:shafinMultitoolTests/CameraViewModelLensSwitchTests test
+```
+
+Result: `TEST SUCCEEDED`, 85/85 passed, 0 failures, 0 skipped. Durable result
+bundle: `/tmp/setos-camera-b1-correction5-final-20260904f.xcresult`.
+The run used only `iPhone 17e`; no iPhone 17 Pro, physical device, or CUA was
+used. `git diff --check`: passed. The simulator again emitted the existing
+CoreMotion and FigCaptureSourceSimulator diagnostics during launch; these are
+simulator infrastructure messages and do not constitute camera hardware
+evidence.
+
 ## Known boundary
 
 The actual device path still requires M2-025/M2-026 for four-way verification,

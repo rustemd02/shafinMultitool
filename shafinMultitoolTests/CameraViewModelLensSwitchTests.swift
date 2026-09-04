@@ -1,4 +1,5 @@
 import Foundation
+import CoreVideo
 import XCTest
 @testable import shafinMultitool
 
@@ -128,41 +129,77 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         }
         let base = Date(timeIntervalSince1970: 35_000)
 
-        fixture.pipeline.publishCoachingEpisodeEvent(
-            .baseline(makeEpisodeObservation(
-                id: "subject-old-f0",
-                x: 0.20,
-                capturedAt: base
-            ))
-        )
+        for index in 0..<3 {
+            let frame = makeProductionEpisodeFrame(
+                pipeline: fixture.pipeline,
+                id: "subject-old-f\(index)",
+                region: CGRect(x: 0.20, y: 0.30, width: 0.20, height: 0.40),
+                capturedAt: base.addingTimeInterval(Double(index) * 0.05),
+                subjectDetected: true
+            )
+            fixture.pipeline.testingPublishLiveCoachingEpisodeObservation(
+                snapshot: frame.snapshot,
+                semantics: frame.semantics,
+                plan: frame.plan,
+                frameEvidence: frame.evidence,
+                evaluatedAt: frame.capturedAt
+            )
+        }
         let baselinePublished = await waitUntil {
             fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-old-f2"
         }
         XCTAssertTrue(baselinePublished)
         let oldToken = fixture.viewModel.coachingEpisodeState.token
+        let oldIdentity = fixture.viewModel.coachingEpisodeState.baseline?.subjectIdentity
+        XCTAssertNotNil(oldIdentity)
 
-        // Exercise the production invalidation publisher and its ordering,
-        // rather than injecting `.cancel(.subjectChanged)` into the stream.
-        fixture.pipeline.testingInvalidateLiveCoachingEpisodeForSubjectChange()
+        // Produce a real same-action frame with no candidate. The production
+        // adapter calls updateLiveSubjectTracker, marks the old identity lost,
+        // and publishes the typed subjectChanged terminal itself.
+        let lostFrame = makeProductionEpisodeFrame(
+            pipeline: fixture.pipeline,
+            id: "subject-lost-f3",
+            region: nil,
+            capturedAt: base.addingTimeInterval(0.20),
+            subjectDetected: false
+        )
+        fixture.pipeline.testingPublishLiveCoachingEpisodeObservation(
+            snapshot: lostFrame.snapshot,
+            semantics: lostFrame.semantics,
+            plan: lostFrame.plan,
+            frameEvidence: lostFrame.evidence,
+            evaluatedAt: lostFrame.capturedAt
+        )
         let cancelled = await waitUntil {
             fixture.viewModel.coachingEpisodeState.phase == .cancelled
                 && fixture.viewModel.coachingEpisodeState.cancellationReason == .subjectChanged
         }
         XCTAssertTrue(cancelled)
 
-        fixture.pipeline.publishCoachingEpisodeEvent(
-            .baseline(makeEpisodeObservation(
-                id: "subject-fresh-f0",
-                x: 0.32,
-                capturedAt: base.addingTimeInterval(0.10)
-            ))
-        )
+        for index in 0..<3 {
+            let frame = makeProductionEpisodeFrame(
+                pipeline: fixture.pipeline,
+                id: "subject-fresh-f\(index)",
+                region: CGRect(x: 0.52, y: 0.30, width: 0.20, height: 0.40),
+                capturedAt: base.addingTimeInterval(0.25 + Double(index) * 0.05),
+                subjectDetected: true
+            )
+            fixture.pipeline.testingPublishLiveCoachingEpisodeObservation(
+                snapshot: frame.snapshot,
+                semantics: frame.semantics,
+                plan: frame.plan,
+                frameEvidence: frame.evidence,
+                evaluatedAt: frame.capturedAt
+            )
+        }
         let recovered = await waitUntil {
             fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
-                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-fresh-f0"
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-fresh-f2"
         }
         XCTAssertTrue(recovered)
         XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.token, oldToken)
+        XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.baseline?.subjectIdentity, oldIdentity)
 
         await fixture.viewModel.releaseAndWait()
     }
@@ -615,6 +652,152 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         )!
     }
 
+    private func makeProductionEpisodeFrame(
+        pipeline: AnalysisPipeline,
+        id: String,
+        region: CGRect?,
+        capturedAt: Date,
+        subjectDetected: Bool
+    ) -> ProductionEpisodeFrameFixture {
+        let normalizedRegion = region.map {
+            NormalizedRect(
+                x: Double($0.minX),
+                y: Double($0.minY),
+                width: Double($0.width),
+                height: Double($0.height)
+            )
+        }
+        let visionSubjects = subjectDetected
+            ? [FeatureSnapshotVisionSubject(
+                boundingBox: region!,
+                confidence: 0.94,
+                isFace: false
+            )]
+            : []
+        let adapterState = PipelineFeatureSnapshotAdapterState(
+            features: CoachingFeatures(),
+            debugData: DebugData(),
+            vision: FeatureSample(
+                value: FeatureSnapshotVisionPayload(
+                    subjects: visionSubjects,
+                    saliencyCenter: nil,
+                    saliencyRegion: nil,
+                    faceCount: 0,
+                    personCount: subjectDetected ? 1 : 0
+                ),
+                measuredAt: capturedAt,
+                baseConfidence: subjectDetected ? 0.94 : 0
+            ),
+            horizonMeasuredAt: nil,
+            horizon: nil,
+            lightingMeasuredAt: nil,
+            lighting: nil,
+            detr: nil,
+            aestheticMeasuredAt: nil,
+            aesthetic: nil
+        )
+        let snapshot = pipeline.testingMakeFeatureSnapshot(
+            mode: .live,
+            frameId: id,
+            capturedAt: capturedAt,
+            adapterState: adapterState
+        )
+        let semantics = SceneSemanticsReport(
+            frameId: id,
+            mode: .live,
+            sceneType: .singleCharacterMedium,
+            sceneTypeConfidence: subjectDetected ? 0.92 : 0,
+            primarySubject: .init(
+                kind: subjectDetected ? .person : .unknown,
+                region: normalizedRegion,
+                confidence: subjectDetected ? 0.94 : 0
+            ),
+            dominance: .init(
+                hasClearFocus: subjectDetected,
+                focusCompetitionScore: subjectDetected ? 0.16 : 0,
+                backgroundClutterScore: subjectDetected ? 0.18 : 0
+            ),
+            readability: .init(
+                subjectReadable: subjectDetected,
+                lookSpaceAdequate: subjectDetected,
+                edgePressureScore: 0.10,
+                separationScore: subjectDetected ? 0.80 : 0
+            ),
+            ambiguities: [],
+            assumptions: []
+        )
+        let issueID = "production_subject_issue_\(id)"
+        let issue = FrameIssue(
+            id: issueID,
+            type: .subjectTooCloseToEdge,
+            severity: 0.96,
+            confidence: 0.96,
+            rationale: "Production episode fixture requires a bounded composition correction.",
+            evidence: [EvidenceRef(
+                source: .snapshot,
+                key: "subject.primary",
+                value: subjectDetected ? "resolved" : "unresolved",
+                confidence: 0.96
+            )],
+            affectedRegion: normalizedRegion,
+            suggestedFixTypes: [.reframing]
+        )
+        let action = RecommendationAction(
+            id: "production_subject_move_right",
+            actionType: .moveFrameRight,
+            priority: 1,
+            targetRegion: normalizedRegion,
+            linkedIssueIds: [issueID],
+            expectedOutcome: "Move the frame right.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.90,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: id,
+            mode: .live,
+            inputVerdict: .needsFix,
+            primaryAction: action,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.96
+        )
+        let evidence = LatestFrameEvidenceStore.Snapshot(
+            pixelBuffer: makeProductionEpisodePixelBuffer(),
+            orientation: .up,
+            sourceFrameId: id,
+            capturedAt: capturedAt,
+            isStable: true,
+            adapterState: adapterState,
+            lensGeneration: 7
+        )!
+        return ProductionEpisodeFrameFixture(
+            snapshot: snapshot,
+            semantics: semantics,
+            plan: plan,
+            evidence: evidence,
+            capturedAt: capturedAt
+        )
+    }
+
+    private func makeProductionEpisodePixelBuffer() -> CVPixelBuffer {
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            64,
+            64,
+            kCVPixelFormatType_32BGRA,
+            nil,
+            &pixelBuffer
+        )
+        XCTAssertEqual(status, kCVReturnSuccess)
+        return pixelBuffer!
+    }
+
     private static func makeManager() -> CameraManager {
         let scheduler = RealtimeScheduler()
         let thermalGovernor = ThermalGovernor(thermalStateProvider: { .nominal },
@@ -692,6 +875,14 @@ private struct CameraViewModelLensSwitchFixture {
     let manager: CameraManager
     let pipeline: AnalysisPipeline
     let viewModel: CameraViewModel
+}
+
+private struct ProductionEpisodeFrameFixture {
+    let snapshot: FrameFeatureSnapshot
+    let semantics: SceneSemanticsReport
+    let plan: RecommendationPlan
+    let evidence: LatestFrameEvidenceStore.Snapshot
+    let capturedAt: Date
 }
 
 private actor LensSwitchTestGate {

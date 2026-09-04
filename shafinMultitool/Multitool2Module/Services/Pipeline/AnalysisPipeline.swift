@@ -6034,13 +6034,16 @@ final class AnalysisPipeline: ObservableObject {
         currentLiveFusionTraceBundle = nil
     }
 
-    /// Publishes one typed event to the production episode owner. The baseline
-    /// is the only advice-bearing event; frame evidence and cancellation are
-    /// explicit so a missing recommendation is not conflated with stale data.
+#if DEBUG
+    /// Deterministic typed-stream fixture seam. Production publishes through
+    /// `publishLiveCoachingEpisodeObservation`; keeping this direct publisher
+    /// debug-only prevents synthetic episode events from entering a release
+    /// build.
     @MainActor
     func publishCoachingEpisodeEvent(_ event: CoachingEpisodeStreamEvent) {
         publishLiveCoachingEpisodeEvent(event)
     }
+#endif
 
     /// Invalidates the pipeline-owned episode before an external capture
     /// boundary (for example a lens request) starts. This keeps the stream
@@ -6098,14 +6101,32 @@ final class AnalysisPipeline: ObservableObject {
         currentCoachingEpisodeEvent = event
     }
 
-    /// Deterministic fixture seam for the live subject resolver's invalidation
-    /// path. This intentionally enters the same production cancellation
-    /// publisher used when an active subject can no longer be resolved; tests
-    /// must observe the ordering rather than inject a typed cancel event.
+#if DEBUG
+    /// Deterministic fixture seam that enters the complete production live
+    /// handoff, including subject resolution/tracking and terminal
+    /// publication. The test supplies immutable frame evidence; it does not
+    /// inject a typed episode event or bypass `updateLiveSubjectTracker`.
     @MainActor
-    func testingInvalidateLiveCoachingEpisodeForSubjectChange() {
-        clearLiveCoachingEpisodeObservation(reason: "subject_unavailable")
+    func testingPublishLiveCoachingEpisodeObservation(
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        plan: RecommendationPlan,
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        evaluatedAt: Date,
+        technicalQualitySignal: TechnicalQualitySignal = .empty,
+        allowStabilityWhileMoving: Bool = false
+    ) {
+        publishLiveCoachingEpisodeObservation(
+            snapshot: snapshot,
+            semantics: semantics,
+            plan: plan,
+            frameEvidence: frameEvidence,
+            evaluatedAt: evaluatedAt,
+            technicalQualitySignal: technicalQualitySignal,
+            allowStabilityWhileMoving: allowStabilityWhileMoving
+        )
     }
+#endif
 
     // MARK: - M2-024 live episode handoff
 
