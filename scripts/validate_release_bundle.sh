@@ -432,6 +432,9 @@ validate_component_status() {
         fail "component status validator failed without a stable KNOWN_BLOCKER_COUNT metric"
     fi
     KNOWN_BLOCKER_COUNT="$(extract_metric KNOWN_BLOCKER_COUNT "$status_log")"
+    if [ "$(grep -Ec '^KNOWN_BLOCKER: ' "$status_log" || true)" -ne "$KNOWN_BLOCKER_COUNT" ]; then
+        fail "component status validator blocker rows do not match KNOWN_BLOCKER_COUNT"
+    fi
     if [ "$validator_status" -eq 0 ] && [ "$KNOWN_BLOCKER_COUNT" -ne 0 ]; then
         fail "component status validator exited zero with nonzero blocker count"
     fi

@@ -6,8 +6,9 @@ approval and replacement verification remain intentionally open.
 ## Contract
 
 `docs/implementation/provenance/release-component-status.json` is the single
-status input for the five provenance rows that used to be hard-coded in
-`scripts/validate_release_bundle.sh`. The validator is
+status input for every material model, framework, media, font, asset, and
+dependency family derived from M0-007. It replaces the five provenance rows
+that used to be hard-coded in `scripts/validate_release_bundle.sh`. The validator is
 `scripts/validate_release_component_status.py` and is offline/read-only.
 
 Every component record has:
@@ -17,7 +18,7 @@ Every component record has:
   `REMOVE_AFTER_VERIFIED_REPLACEMENT`;
 - a non-empty `CAMERA_ONLY`/`SCENE_ONLY` scope set;
 - owner, reason, expected source/bundle path, legal state, replacement
-  dependency, and Debug/Release membership;
+  dependency, source presence state, and Debug/Release membership;
 - strict unknown-field and missing-field rejection.
 
 `PENDING` legal state is schema-valid, but blocks a Release component. A
@@ -27,7 +28,8 @@ replacement. The validator emits one stable row per blocking component and one
 `KNOWN_BLOCKER_COUNT=<n>` line. A malformed record fails before it can be used
 as release evidence.
 
-The canonical current record reports five blockers:
+The canonical current record contains 19 material component records and reports
+five Release blockers:
 
 | ID | component | scope | disposition | current blocker | owner |
 |---|---|---|---|---|---|
@@ -37,7 +39,10 @@ The canonical current record reports five blockers:
 | `nima-aesthetic-model` | `aesthetic_nima_mobilenet_fp16.mlmodelc` | `CAMERA_ONLY` | `REMOVE_AFTER_VERIFIED_REPLACEMENT` | legal state pending | M12-034 |
 | `person-usdz` | `Person.usdz` | `SCENE_ONLY` | `KEEP` | legal state pending | M12-038 |
 
-The count is derived from the validator output, not from a shell constant.
+The five-row count is derived from the validator output, not from a shell
+constant. The other material records remain complete records with Release
+membership `deferred` or `excluded` while their dedicated M12 gates own the
+remaining provenance decisions.
 `validate_release_bundle.sh` still owns all existing privacy, bundle structure,
 payload, acknowledgement, manifest, size, and material-contributor checks.
 `run_release_gates.sh` still runs the existing offline llama and Circle
@@ -50,29 +55,30 @@ The record is anchored to the SHA-256 of the M0 source inventory:
 `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/source-bundle-inventory.jsonl`
 → `93015bf41c1e4cd38a29e64a0483dc867d781de1337bf66b96c3b2c23e7910a5`.
 
-Each current material family is represented once below, either by a blocking
-component record or an explicit exclusion/deferred owner. The exclusions do
-not assert legal approval; they prevent this five-blocker gate from silently
-claiming ownership of later M12 work.
+Each current model/framework/media/font/asset/dependency family is represented
+once by a full component record. The two explicit exclusions below are only
+benchmark and fixture resources, which are not public material components.
+`Release=deferred` is a typed membership state, not a legal approval claim.
 
 | M0 material family | M12-033 representation | release treatment |
 |---|---|---|
-| `Frameworks/llama.xcframework` | `llama-framework` | component record; current bundle path is blocking |
-| DETR Core ML package | `detr-segmentation-model` | component record; current bundle path is blocking |
-| NIMA Core ML package | `nima-aesthetic-model` | component record; current bundle path is blocking |
-| `Resources/Circle.usdz` | `circle-usdz` | component record; rights pending |
-| `Resources/Person.usdz` | `person-usdz` | component record; rights pending |
+| `Frameworks/llama.xcframework` | `llama-framework` | full record; current bundle path is blocking |
+| DETR Core ML package | `detr-segmentation-model` | full record; current bundle path is blocking |
+| NIMA Core ML package | `nima-aesthetic-model` | full record; current bundle path is blocking |
+| M0 GGUF (`Resources/Models/dataset_v9_event_sft_q4_k_m.gguf`) | `scene-gguf-model` | full record; source absent and Debug/Release excluded |
+| `Resources/Circle.usdz` | `circle-usdz` | full record; rights pending |
+| `Resources/Person.usdz` | `person-usdz` | full record; rights pending |
+| `Resources/Circle.rcproject` | `circle-rcproject` | full record; source project excluded from app bundle |
+| five bundled `.ttf` font files | `font-*` records (5) | full records; Release deferred to M12-036 |
+| `Resources/Assets.xcassets` | `resource-assets-catalog` | full record; Release deferred to M12-037 |
+| `Multitool2Module/Assets.xcassets` | `module-assets-catalog` | full record; Release deferred to M12-037 |
+| `Resources/Textures/SETGrain.png` | `set-grain-texture` | full record; Release deferred to M12-037 |
+| `Resources/Localizable.xcstrings` | `localized-resources` | full record; Release deferred to M12-041 |
+| `Resources/InfoPlist.xcstrings` | `info-plist-localization` | full record; Release deferred to M12-041 |
+| `PrivacyInfo.xcprivacy` | `privacy-manifest` | full record; Release deferred to M12-027 |
+| `Pods/SnapKit` | `snapkit-dependency` | full record; Release deferred to M12-039 |
 | `Resources/DeviceBenchmark` | `device-benchmark-resources` exclusion | Release excluded; Debug/evaluation only |
 | `Resources/Fixtures` | `fixture-resources` exclusion | Release excluded; test-only |
-| `Resources/Textures` | `camera-textures` exclusion | deferred to M12-037 asset review |
-| `Resources/Fonts` | `bundled-fonts` exclusion | deferred to M12-036 font/provenance review |
-| `Resources/Assets.xcassets` | `resource-assets-catalog` exclusion | deferred to M12-037 asset/branding review |
-| `Multitool2Module/Assets.xcassets` | `module-assets-catalog` exclusion | deferred to M12-037 AppIcon/branding review |
-| `Resources/Localizable.xcstrings` | `localized-resources` exclusion | deferred to M12-041 localization/release review |
-| `Resources/InfoPlist.xcstrings` | `info-plist-localization` exclusion | deferred to M12-041 localization/release review |
-| `PrivacyInfo.xcprivacy` | `privacy-manifest` exclusion | owned by M12-027 privacy gate |
-| `Pods/SnapKit` | `snapkit-dependency-source` exclusion | deferred to M12-039 notice/license gate |
-| M0-recorded GGUF under excluded `Resources/Models` | explicit M0 exclusion (absent from current checkout) | never Release; no path is invented here; M12-034 owns final model disposition |
 
 The generated `Assets.car` and app executable are derived release outputs, not
 new source component identities; their existing bundle/size validators remain
@@ -85,7 +91,7 @@ Commands run in the isolated worktree:
 
 ```text
 python3 scripts/tests/test_validate_release_component_status.py
-→ exit 0; 7 tests passed
+→ exit 0; 16 tests passed
 
 python3 scripts/validate_release_component_status.py \
   --repo-root "$PWD" \
@@ -100,7 +106,7 @@ bash -n scripts/tests/test_release_provenance_gate.sh
 → exit 0 for each
 
 scripts/tests/test_release_provenance_gate.sh
-→ exit 0; all three offline orchestration fixtures passed
+→ exit 0; all five offline orchestration fixtures passed
 
 git diff --check
 → exit 0

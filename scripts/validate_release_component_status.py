@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Validate the release component disposition record.
 
-This gate owns the *status* of the five material provenance blockers that were
-previously emitted by ``validate_release_bundle.sh`` as hard-coded rows.  The
-record deliberately keeps legal and replacement decisions explicit: technical
-repository evidence is not legal approval, and a pending replacement never
-turns into an allowed Release payload by accident.
+This gate owns the status of every material family, replacing the five
+provenance blocker rows previously emitted by ``validate_release_bundle.sh``.
+The record deliberately keeps legal and replacement decisions explicit:
+technical repository evidence is not legal approval, and a pending replacement
+never turns into an allowed Release payload by accident.
 
 The validator is offline and read-only.  It checks the record shape, the
 repository source paths, and (when ``--app`` is supplied) the expected paths in
@@ -49,12 +49,26 @@ REPLACEMENT_DISPOSITIONS = frozenset(
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9.-]*\Z")
 
-EXPECTED_COMPONENTS = {
-    "llama-framework",
-    "detr-segmentation-model",
-    "nima-aesthetic-model",
-    "circle-usdz",
-    "person-usdz",
+MATERIAL_KINDS = frozenset(
+    {"framework", "model", "media", "font", "asset", "dependency"}
+)
+NON_RELEASE_KINDS = frozenset({"benchmark", "fixture"})
+SUPPLEMENTAL_MATERIAL_PATHS = frozenset({"Pods/SnapKit"})
+EXPECTED_ID_OVERRIDES = {
+    "Frameworks/llama.xcframework": "llama-framework",
+    "shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage": "detr-segmentation-model",
+    "shafinMultitool/Multitool2Module/Models/CoreML/aesthetic_nima_mobilenet_fp16.mlpackage": "nima-aesthetic-model",
+    "shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf": "scene-gguf-model",
+    "shafinMultitool/Resources/Circle.rcproject": "circle-rcproject",
+    "shafinMultitool/Resources/Circle.usdz": "circle-usdz",
+    "shafinMultitool/Resources/Person.usdz": "person-usdz",
+    "shafinMultitool/Multitool2Module/Assets.xcassets": "module-assets-catalog",
+    "shafinMultitool/Resources/Assets.xcassets": "resource-assets-catalog",
+    "shafinMultitool/PrivacyInfo.xcprivacy": "privacy-manifest",
+    "shafinMultitool/Resources/InfoPlist.xcstrings": "info-plist-localization",
+    "shafinMultitool/Resources/Localizable.xcstrings": "localized-resources",
+    "shafinMultitool/Resources/Textures/SETGrain.png": "set-grain-texture",
+    "Pods/SnapKit": "snapkit-dependency",
 }
 
 
@@ -135,7 +149,103 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _validate_source(source: dict[str, Any], repo_root: Path) -> None:
+def _load_inventory_rows(path: Path) -> list[dict[str, Any]]:
+    try:
+        raw_rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        _fail(f"malformed source inventory: cannot read {path}: {exc}")
+    rows = _list(raw_rows, "source inventory")
+    if not rows:
+        _fail("malformed source inventory: must not be empty")
+    result: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    for index, raw_row in enumerate(rows):
+        row = _mapping(raw_row, f"source inventory[{index}]")
+        path_value = _safe_relative_path(
+            _required(row, "path", f"source inventory[{index}]"),
+            f"source inventory[{index}].path",
+        )
+        if path_value in seen_paths:
+            _fail(f"malformed source inventory: duplicate path: {path_value}")
+        seen_paths.add(path_value)
+        result.append({"path": path_value})
+    return result
+
+
+def _material_family_paths(rows: list[dict[str, Any]]) -> set[str]:
+    """Derive material family roots from the complete M0 inventory.
+
+    Packages and asset catalogs are one release family each; individual font,
+    texture, media, localization, and manifest files remain independently
+    addressable. This keeps the coverage check exact-once without pretending
+    that every package member is an independent product component.
+    """
+
+    families: set[str] = set()
+    for row in rows:
+        value = row["path"]
+        path = PurePosixPath(value)
+        if value.startswith("Frameworks/llama.xcframework/"):
+            families.add("Frameworks/llama.xcframework")
+            continue
+        if ".mlpackage/" in value:
+            package_end = value.index(".mlpackage/") + len(".mlpackage")
+            families.add(value[:package_end])
+            continue
+        if ".xcassets/" in value:
+            catalog_end = value.index(".xcassets/") + len(".xcassets")
+            families.add(value[:catalog_end])
+            continue
+        if value.endswith(".usdz") or value.endswith(".gguf"):
+            families.add(value)
+            continue
+        if value.endswith(".rcproject/"):
+            families.add(value.rstrip("/"))
+            continue
+        if ".rcproject/" in value:
+            project_end = value.index(".rcproject/") + len(".rcproject")
+            families.add(value[:project_end])
+            continue
+        if "/Fonts/" in value and value.endswith(".ttf"):
+            families.add(value)
+            continue
+        if value.endswith(".xcstrings") or value.endswith(".xcprivacy"):
+            families.add(value)
+            continue
+        if "/Textures/" in value and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".heic", ".webp"}:
+            families.add(value)
+    families.update(SUPPLEMENTAL_MATERIAL_PATHS)
+    if not families:
+        _fail("malformed source inventory: no material families were derived")
+    return families
+
+
+def _canonical_component_id(source_path: str) -> str:
+    if source_path in EXPECTED_ID_OVERRIDES:
+        return EXPECTED_ID_OVERRIDES[source_path]
+    name = source_path.rsplit("/", 1)[-1]
+    if name.endswith(".ttf"):
+        name = name[:-4]
+    elif name.endswith(".png"):
+        name = name[:-4]
+    elif name.endswith(".xcstrings"):
+        name = name[:-10]
+    elif name.endswith(".xcprivacy"):
+        name = name[:-10]
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    prefix = "font" if "/Fonts/" in source_path else "asset"
+    return f"{prefix}-{slug}"
+
+
+def _reject_path_overlaps(paths: set[str], label: str) -> None:
+    ordered = sorted(paths)
+    for index, first in enumerate(ordered):
+        for second in ordered[index + 1 :]:
+            if second.startswith(first + "/") or first.startswith(second + "/"):
+                _fail(f"malformed record: cross-family {label} overlap: {first} and {second}")
+
+
+def _validate_source(source: dict[str, Any], repo_root: Path) -> set[str]:
     _strict_keys(
         source,
         {"baseline_task", "inventory_path", "inventory_sha256"},
@@ -155,6 +265,7 @@ def _validate_source(source: dict[str, Any], repo_root: Path) -> None:
         _fail(f"source inventory is missing or is a symlink: {inventory_path}")
     if _file_digest(inventory) != inventory_sha256:
         _fail(f"source inventory hash mismatch: {inventory_path}")
+    return _material_family_paths(_load_inventory_rows(inventory))
 
 
 def _validate_expected(expected: dict[str, Any], label: str) -> dict[str, str | None]:
@@ -220,6 +331,7 @@ def _validate_component(
             "kind",
             "disposition",
             "scope",
+            "source_state",
             "owner",
             "reason",
             "expected",
@@ -234,7 +346,7 @@ def _validate_component(
     if not ID_RE.fullmatch(component_id):
         _fail(f"malformed record: {label}.id is not a stable lowercase id: {component_id}")
     kind = _nonempty_string(component, "kind", label)
-    if kind not in {"framework", "model", "media"}:
+    if kind not in MATERIAL_KINDS:
         _fail(f"malformed record: {label}.kind is unknown: {kind}")
     disposition = _nonempty_string(component, "disposition", label)
     if disposition not in DISPOSITIONS:
@@ -249,12 +361,17 @@ def _validate_component(
         if raw_scope in scope:
             _fail(f"malformed record: {label}.scope contains a duplicate value: {raw_scope}")
         scope.append(raw_scope)
+    source_state = _nonempty_string(component, "source_state", label)
+    if source_state not in {"present", "absent"}:
+        _fail(f"malformed record: {label}.source_state is unknown: {source_state}")
     owner = _nonempty_string(component, "owner", label)
     reason = _nonempty_string(component, "reason", label)
     expected = _validate_expected(
         _mapping(_required(component, "expected", label), f"{label}.expected"),
         f"{label}.expected",
     )
+    if expected["source_path"] is None:
+        _fail(f"malformed record: {label}.expected.source_path is required for material coverage")
     legal_state = _nonempty_string(component, "legal_state", label)
     if legal_state not in LEGAL_STATES:
         _fail(f"malformed record: {label}.legal_state is unknown: {legal_state}")
@@ -266,18 +383,23 @@ def _validate_component(
     )
 
     source_path = expected["source_path"]
-    if source_path is not None:
-        source = repo_root / source_path
-        if not source.exists() or source.is_symlink():
-            _fail(f"component source path is missing or is a symlink: {source_path}")
+    assert source_path is not None
+    source = repo_root / source_path
+    source_present = source.exists() and not source.is_symlink()
+    if source_state == "present" and not source_present:
+        _fail(f"component source path is missing or is a symlink: {source_path}")
+    if source_state == "absent" and source_present:
+        _fail(f"component source state says absent but path exists: {source_path}")
     bundle_path = expected["bundle_path"]
     if app_root is not None and bundle_path is not None:
         bundle = app_root / bundle_path
         present = bundle.exists() and not bundle.is_symlink()
         if membership["Release"] == "bundled" and not present:
             _fail(f"component bundle path is missing or is a symlink: {bundle_path}")
-        if membership["Release"] != "bundled" and present:
+        if membership["Release"] == "excluded" and present:
             _fail(f"excluded component is present in Release bundle: {bundle_path}")
+    if membership["Release"] == "bundled" and source_state != "present":
+        _fail(f"malformed record: {label} cannot bundle an absent source")
 
     blocker: str | None = None
     if membership["Release"] == "bundled":
@@ -294,6 +416,7 @@ def _validate_component(
         "kind": kind,
         "disposition": disposition,
         "scope": scope,
+        "source_state": source_state,
         "owner": owner,
         "reason": reason,
         "expected": expected,
@@ -304,7 +427,7 @@ def _validate_component(
     return normalized, blocker
 
 
-def _validate_exclusions(value: Any, repo_root: Path) -> None:
+def _validate_exclusions(value: Any, repo_root: Path) -> set[str]:
     exclusions = _list(value, "explicit_exclusions")
     seen_ids: set[str] = set()
     seen_paths: set[str] = set()
@@ -322,17 +445,20 @@ def _validate_exclusions(value: Any, repo_root: Path) -> None:
             _fail(f"malformed record: duplicate or unstable exclusion id: {exclusion_id}")
         seen_ids.add(exclusion_id)
         kind = _nonempty_string(exclusion, "kind", label)
-        if kind not in {"font", "asset", "fixture", "benchmark", "model", "dependency"}:
+        if kind not in NON_RELEASE_KINDS:
             _fail(f"malformed record: {label}.kind is unknown: {kind}")
         scopes = _list(_required(exclusion, "scope", label), f"{label}.scope")
         if not scopes or any(scope not in SCOPES for scope in scopes):
             _fail(f"malformed record: {label}.scope is empty or unknown")
+        if len(scopes) != len(set(scopes)):
+            _fail(f"malformed record: {label}.scope contains a duplicate value")
         path = _safe_relative_path(_required(exclusion, "path", label), f"{label}.path")
         if path in seen_paths:
             _fail(f"malformed record: duplicate exclusion path: {path}")
         seen_paths.add(path)
-        if not (repo_root / path).exists():
-            _fail(f"explicit exclusion path is missing: {path}")
+        exclusion_path = repo_root / path
+        if not exclusion_path.exists() or exclusion_path.is_symlink():
+            _fail(f"explicit exclusion path is missing or is a symlink: {path}")
         _nonempty_string(exclusion, "owner", label)
         _nonempty_string(exclusion, "reason", label)
         membership = _validate_release_membership(
@@ -341,6 +467,7 @@ def _validate_exclusions(value: Any, repo_root: Path) -> None:
         )
         if membership["Release"] not in {"excluded", "deferred"}:
             _fail(f"malformed record: {label} must not mark an exclusion as bundled")
+    return seen_paths
 
 
 def _validate_record_shape(
@@ -356,29 +483,60 @@ def _validate_record_shape(
         _fail("malformed record: unsupported schema")
     if _required(record, "schema_version", "record") != EXPECTED_SCHEMA_VERSION:
         _fail("malformed record: unsupported schema_version")
-    _validate_source(_mapping(_required(record, "source", "record"), "source"), repo_root)
+    material_family_paths = _validate_source(
+        _mapping(_required(record, "source", "record"), "source"), repo_root
+    )
     components = _list(_required(record, "components", "record"), "components")
     if not components:
         _fail("malformed record: components must not be empty")
     results: list[tuple[dict[str, Any], str | None]] = []
     seen_ids: set[str] = set()
+    seen_source_paths: set[str] = set()
+    seen_bundle_paths: set[str] = set()
     for index, raw in enumerate(components):
         normalized, blocker = _validate_component(raw, index, repo_root, app_root)
         component_id = normalized["id"]
         if component_id in seen_ids:
             _fail(f"malformed record: duplicate component id: {component_id}")
+        source_path = normalized["expected"]["source_path"]
+        assert source_path is not None
+        if source_path in seen_source_paths:
+            _fail(f"malformed record: duplicate component source path: {source_path}")
+        expected_id = _canonical_component_id(source_path)
+        if component_id != expected_id:
+            _fail(
+                f"malformed record: component id does not match source family: "
+                f"{component_id} != {expected_id}"
+            )
+        seen_source_paths.add(source_path)
+        bundle_path = normalized["expected"]["bundle_path"]
+        if bundle_path is not None:
+            if bundle_path in seen_bundle_paths:
+                _fail(f"malformed record: duplicate component bundle path: {bundle_path}")
+            seen_bundle_paths.add(bundle_path)
         seen_ids.add(component_id)
         results.append((normalized, blocker))
-    if seen_ids != EXPECTED_COMPONENTS:
-        missing = sorted(EXPECTED_COMPONENTS - seen_ids)
-        unknown = sorted(seen_ids - EXPECTED_COMPONENTS)
+    _reject_path_overlaps(seen_source_paths, "source path")
+    _reject_path_overlaps(seen_bundle_paths, "bundle path")
+    if seen_source_paths != material_family_paths:
+        missing = sorted(material_family_paths - seen_source_paths)
+        unknown = sorted(seen_source_paths - material_family_paths)
         details = []
         if missing:
             details.append(f"missing={','.join(missing)}")
         if unknown:
             details.append(f"unknown={','.join(unknown)}")
-        _fail("malformed record: component coverage mismatch (" + "; ".join(details) + ")")
-    _validate_exclusions(_required(record, "explicit_exclusions", "record"), repo_root)
+        _fail("malformed record: material family coverage mismatch (" + "; ".join(details) + ")")
+    exclusion_paths = _validate_exclusions(
+        _required(record, "explicit_exclusions", "record"), repo_root
+    )
+    duplicate_coverage_paths = sorted(seen_source_paths & exclusion_paths)
+    if duplicate_coverage_paths:
+        _fail(
+            "malformed record: coverage path is listed as both component and exclusion: "
+            + ",".join(duplicate_coverage_paths)
+        )
+    _reject_path_overlaps(seen_source_paths | exclusion_paths, "coverage path")
     return results
 
 

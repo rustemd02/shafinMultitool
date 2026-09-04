@@ -241,12 +241,21 @@ circle_provenance=(
 run_logged_command "3" "Circle asset provenance (offline)" "$OWNED_ROOT/circle-provenance.log" "${circle_provenance[@]}"
 cat "$OWNED_ROOT/circle-provenance.log"
 
+component_status=(
+    python3
+    "$COMPONENT_STATUS_VALIDATOR"
+    --repo-root "$REPO_ROOT"
+    --record "$COMPONENT_STATUS_RECORD"
+)
+run_logged_command "4" "release component dispositions (offline)" "$OWNED_ROOT/component-status.log" "${component_status[@]}"
+cat "$OWNED_ROOT/component-status.log"
+
 privacy_self_test=(
     "$PRIVACY_VALIDATOR"
     --self-test
     --source-manifest "$SOURCE_MANIFEST"
 )
-run_logged_command "4" "privacy validator self-test" "$OWNED_ROOT/privacy-self-test.log" "${privacy_self_test[@]}"
+run_logged_command "5" "privacy validator self-test" "$OWNED_ROOT/privacy-self-test.log" "${privacy_self_test[@]}"
 cat "$OWNED_ROOT/privacy-self-test.log"
 
 debug_build=(
@@ -260,7 +269,7 @@ debug_build=(
     COMPILER_INDEX_STORE_ENABLE=NO
     build-for-testing
 )
-run_logged_command "5" "Debug build-for-testing" "$OWNED_ROOT/debug-build.log" "${debug_build[@]}"
+run_logged_command "6" "Debug build-for-testing" "$OWNED_ROOT/debug-build.log" "${debug_build[@]}"
 debug_app="$(resolve_exact_app "$DEBUG_DERIVED_ROOT" "$OWNED_ROOT/debug-apps.list")"
 debug_xctestrun="$(find "$DEBUG_DERIVED_ROOT" -type f -name '*.xctestrun' -print -quit)"
 if [ -z "$debug_xctestrun" ]; then
@@ -279,7 +288,7 @@ release_build=(
     COMPILER_INDEX_STORE_ENABLE=NO
     build
 )
-run_logged_command "6" "Release build" "$OWNED_ROOT/release-build.log" "${release_build[@]}"
+run_logged_command "7" "Release build" "$OWNED_ROOT/release-build.log" "${release_build[@]}"
 release_app="$(resolve_exact_app "$RELEASE_DERIVED_ROOT" "$OWNED_ROOT/release-apps.list")"
 printf 'RELEASE_APP: %s\n' "$release_app"
 
@@ -289,14 +298,14 @@ release_validation=(
     --source-manifest "$SOURCE_MANIFEST"
     --app "$release_app"
 )
-run_logged_command "7" "Release bundle validation" "$OWNED_ROOT/release-validation.log" "${release_validation[@]}"
+run_logged_command "8" "Release bundle validation" "$OWNED_ROOT/release-validation.log" "${release_validation[@]}"
 cat "$OWNED_ROOT/release-validation.log"
 
 fixture_test=(
     "$FIXTURE_TEST"
     --release-app "$release_app"
 )
-run_logged_command "8" "Release bundle contamination fixtures" "$OWNED_ROOT/release-fixtures.log" "${fixture_test[@]}"
+run_logged_command "9" "Release bundle contamination fixtures" "$OWNED_ROOT/release-fixtures.log" "${fixture_test[@]}"
 cat "$OWNED_ROOT/release-fixtures.log"
 
 manifest_count="$(extract_metric MANIFEST_COUNT "$OWNED_ROOT/release-validation.log")"

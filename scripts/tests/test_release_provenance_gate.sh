@@ -60,6 +60,7 @@ run_case() {
     local status
     local llama_line
     local circle_line
+    local component_line
     local xcode_line
 
     mkdir -p -- "$fake_bin" "$derived_root"
@@ -74,6 +75,8 @@ run_case() {
         'case "$FAKE_PROVENANCE_FAILURE:$1" in' \
         '    llama:*validate_llama_framework_provenance.py) exit 41 ;;' \
         '    circle:*validate_circle_asset_provenance.py) exit 42 ;;' \
+        '    component-malformed:*validate_release_component_status.py) printf "FAIL COMPONENT STATUS: malformed record\\n" >&2; exit 43 ;;' \
+        '    component-pending:*validate_release_component_status.py) printf "KNOWN_BLOCKER: id=pending-component component=pending kind=model disposition=KEEP scope=CAMERA_ONLY legal_state=PENDING blocker=legal-state-pending\\n"; printf "KNOWN_BLOCKER_COUNT=%s\\n" "$(printf "pending\\n" | wc -l | tr -d "[:space:]")"; exit 44 ;;' \
         'esac' \
         'exit 0' > "$fake_bin/python3"
     chmod +x "$fake_bin/python3"
@@ -104,13 +107,15 @@ run_case() {
 
     if [ "$failure_mode" = "" ]; then
         assert_present 'validate_circle_asset_provenance.py' "$invocation_log"
+        assert_present 'validate_release_component_status.py' "$invocation_log"
         assert_present 'xcodebuild' "$invocation_log"
         llama_line="$(line_number 'validate_llama_framework_provenance.py' "$invocation_log")"
         circle_line="$(line_number 'validate_circle_asset_provenance.py' "$invocation_log")"
+        component_line="$(line_number 'validate_release_component_status.py' "$invocation_log")"
         xcode_line="$(line_number 'xcodebuild' "$invocation_log")"
-        if [ -z "$llama_line" ] || [ -z "$circle_line" ] || [ -z "$xcode_line" ] || \
-            [ "$llama_line" -ge "$circle_line" ] || [ "$circle_line" -ge "$xcode_line" ]; then
-            fail "$label did not run llama, Circle, then xcodebuild in order"
+        if [ -z "$llama_line" ] || [ -z "$circle_line" ] || [ -z "$component_line" ] || [ -z "$xcode_line" ] || \
+            [ "$llama_line" -ge "$circle_line" ] || [ "$circle_line" -ge "$component_line" ] || [ "$component_line" -ge "$xcode_line" ]; then
+            fail "$label did not run llama, Circle, component status, then xcodebuild in order"
         fi
         assert_present "$resolved_derived_root/shafin-release-gates/DebugDerivedData" "$invocation_log"
         [ -f "$derived_root/shafin-release-gates/llama-provenance.log" ] || fail "$label missing llama log"
@@ -120,7 +125,13 @@ run_case() {
         assert_absent 'xcodebuild' "$invocation_log"
     elif [ "$failure_mode" = "circle" ]; then
         assert_present 'validate_circle_asset_provenance.py' "$invocation_log"
+        assert_absent 'validate_release_component_status.py' "$invocation_log"
         assert_absent 'xcodebuild' "$invocation_log"
+    elif [ "$failure_mode" = "component-malformed" ] || [ "$failure_mode" = "component-pending" ]; then
+        assert_present 'validate_circle_asset_provenance.py' "$invocation_log"
+        assert_present 'validate_release_component_status.py' "$invocation_log"
+        assert_absent 'xcodebuild' "$invocation_log"
+        assert_absent '--app' "$invocation_log"
     else
         fail "unknown fixture failure mode: $failure_mode"
     fi
@@ -138,5 +149,7 @@ TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-provenance-gate.XXXXXX")"
 run_case success-before-build "" 77
 run_case llama-failure llama 41
 run_case circle-failure circle 42
+run_case component-malformed component-malformed 43
+run_case component-pending component-pending 44
 
 printf 'PASS release provenance orchestration self-test: pre-build ordering, fail-fast, offline args, separate logs, and spaced paths\n'

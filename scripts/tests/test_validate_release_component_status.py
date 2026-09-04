@@ -30,6 +30,8 @@ class ReleaseComponentStatusTests(unittest.TestCase):
         inventory_path.parent.mkdir(parents=True)
         shutil.copy2(REPO_ROOT / self.record["source"]["inventory_path"], inventory_path)
         for component in self.record["components"]:
+            if component["source_state"] == "absent":
+                continue
             source_path = component["expected"]["source_path"]
             path = self.root / source_path
             path.mkdir(parents=True)
@@ -53,9 +55,14 @@ class ReleaseComponentStatusTests(unittest.TestCase):
 
     def test_default_record_reports_each_pending_component_once(self) -> None:
         blockers = MODULE.validate_record(self.root, self.record_path)
-        self.assertEqual(len(blockers), 5)
+        bundled_ids = {
+            component["id"]
+            for component in self.record["components"]
+            if component["release_config_membership"]["Release"] == "bundled"
+        }
+        self.assertEqual(len(blockers), len(bundled_ids))
         self.assertEqual(
-            {blocker["id"] for blocker in blockers}, MODULE.EXPECTED_COMPONENTS
+            {blocker["id"] for blocker in blockers}, bundled_ids
         )
 
         stdout = io.StringIO()
@@ -66,12 +73,15 @@ class ReleaseComponentStatusTests(unittest.TestCase):
             )
         self.assertEqual(status, 1)
         output = stdout.getvalue()
-        self.assertEqual(output.count("KNOWN_BLOCKER: "), 5)
+        self.assertEqual(output.count("KNOWN_BLOCKER: "), len(bundled_ids))
         self.assertEqual(output.count("KNOWN_BLOCKER_COUNT="), 1)
         self.assertIn(
-            f"KNOWN_BLOCKER_COUNT={len(MODULE.EXPECTED_COMPONENTS)}", output
+            f"KNOWN_BLOCKER_COUNT={len(bundled_ids)}", output
         )
-        self.assertIn("release blocked by 5 known provenance blocker(s)", stderr.getvalue())
+        self.assertIn(
+            f"release blocked by {len(bundled_ids)} known provenance blocker(s)",
+            stderr.getvalue(),
+        )
 
     def test_verified_legal_and_replacement_states_unblock_release(self) -> None:
         for component in self.record["components"]:
@@ -112,11 +122,107 @@ class ReleaseComponentStatusTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "disposition is unknown"):
             MODULE.validate_record(self.root, self.record_path)
 
-    def test_missing_component_fails_closed(self) -> None:
-        self.record["components"].pop()
+    def test_missing_font_or_asset_component_fails_closed(self) -> None:
+        original_components = copy.deepcopy(self.record["components"])
+        for component_id in ("font-oswald-variable", "set-grain-texture"):
+            with self.subTest(component_id=component_id):
+                self.record["components"] = [
+                    component
+                    for component in original_components
+                    if component["id"] != component_id
+                ]
+                self._write_record()
+                with self.assertRaisesRegex(
+                    MODULE.ComponentStatusValidationError, "coverage mismatch"
+                ):
+                    MODULE.validate_record(self.root, self.record_path)
+        self.record["components"] = original_components
         self._write_record()
 
-        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "coverage mismatch"):
+    def test_retrain_and_replace_dispositions_are_valid_only_with_dependency(self) -> None:
+        for component in self.record["components"]:
+            component["legal_state"] = "APPROVED"
+            dependency = component["replacement_dependency"]
+            if dependency is not None:
+                dependency["status"] = "VERIFIED"
+        detr = next(
+            component
+            for component in self.record["components"]
+            if component["id"] == "detr-segmentation-model"
+        )
+        detr["disposition"] = "RETRAIN"
+        circle = next(
+            component
+            for component in self.record["components"]
+            if component["id"] == "circle-usdz"
+        )
+        circle["disposition"] = "REPLACE"
+        circle["replacement_dependency"] = {
+            "task": "M12-038",
+            "status": "VERIFIED",
+            "reason": "Verified replacement is available.",
+        }
+        self._write_record()
+
+        self.assertEqual(MODULE.validate_record(self.root, self.record_path), [])
+
+    def test_replacement_disposition_without_dependency_fails_closed(self) -> None:
+        detr = next(
+            component
+            for component in self.record["components"]
+            if component["id"] == "detr-segmentation-model"
+        )
+        detr["disposition"] = "REPLACE"
+        detr["replacement_dependency"] = None
+        self._write_record()
+
+        with self.assertRaisesRegex(
+            MODULE.ComponentStatusValidationError, "replacement_dependency.*must be an object"
+        ):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_duplicate_scope_value_fails_closed(self) -> None:
+        self.record["components"][0]["scope"].append(
+            self.record["components"][0]["scope"][0]
+        )
+        self._write_record()
+
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "duplicate value"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_unknown_scope_value_fails_closed(self) -> None:
+        self.record["components"][0]["scope"] = ["GLOBAL"]
+        self._write_record()
+
+        with self.assertRaisesRegex(
+            MODULE.ComponentStatusValidationError, r"scope\[0\].*unknown"
+        ):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_exclusion_duplicate_scope_value_fails_closed(self) -> None:
+        exclusion = self.record["explicit_exclusions"][0]
+        exclusion["scope"].append(exclusion["scope"][0])
+        self._write_record()
+
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "duplicate value"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_cross_family_duplicate_source_path_fails_closed(self) -> None:
+        first, second = self.record["components"][:2]
+        second["expected"]["source_path"] = first["expected"]["source_path"]
+        self._write_record()
+
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "duplicate component source path"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_component_and_exclusion_path_duplication_fails_closed(self) -> None:
+        source_path = self.record["components"][0]["expected"]["source_path"]
+        self.record["explicit_exclusions"][0]["path"] = source_path
+        self._write_record()
+
+        with self.assertRaisesRegex(
+            MODULE.ComponentStatusValidationError, "both component and exclusion"
+        ):
             MODULE.validate_record(self.root, self.record_path)
 
     def test_missing_expected_path_fails_closed(self) -> None:
@@ -144,13 +250,24 @@ class ReleaseComponentStatusTests(unittest.TestCase):
         app = self.root / "Built/shafinMultitool.app"
         app.mkdir(parents=True)
         for component in self.record["components"]:
-            (app / component["expected"]["bundle_path"]).parent.mkdir(
+            bundle_path = component["expected"].get("bundle_path")
+            if bundle_path is None:
+                continue
+            (app / bundle_path).parent.mkdir(
                 parents=True, exist_ok=True
             )
-            (app / component["expected"]["bundle_path"]).write_bytes(b"bundle fixture")
+            (app / bundle_path).write_bytes(b"bundle fixture")
         blockers = MODULE.validate_record(self.root, self.record_path, app)
-        self.assertEqual(len(blockers), 5)
-        (app / self.record["components"][0]["expected"]["bundle_path"]).unlink()
+        self.assertEqual(
+            len(blockers),
+            sum(
+                component["release_config_membership"]["Release"] == "bundled"
+                for component in self.record["components"]
+            ),
+        )
+        bundle_path = self.record["components"][0]["expected"]["bundle_path"]
+        assert bundle_path is not None
+        (app / bundle_path).unlink()
 
         with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundle path is missing"):
             MODULE.validate_record(self.root, self.record_path, app)
