@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last integrated task head: `0cdc876` (M5-001; journal-only commits may follow; no push)
+- Last integrated task head: `ba06e10` (M5-002; journal-only commits may follow; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-024 fix-first correction3; M12-033 component-disposition schema; M5-002 scene schema migration
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001, M5-001, M7-001, M7-003, M7-004]
-- In-progress: [M2-024, M5-002, M12-033]
+- Current task: M2-024 fix-first correction5; M12-033 component-disposition correction
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001, M5-001, M5-002, M7-001, M7-003, M7-004]
+- In-progress: [M2-024, M12-033]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -334,3 +334,9 @@
 ### 2026-09-04T18:35Z — M5-002 STARTED
 - Sol packet confirmed a single-envelope migration: existing `UnifiedSceneProjectFile` gains schema version 1; legacy raw/unversioned records remain byte-identical until a legitimate save; malformed/future records fail closed without artifact mutation.
 - Dedicated Luna worktree owns only `DBService`/aggregate compatibility where necessary, focused legacy/current/future fixtures, existing persistence regressions and evidence. No parallel store/migrator/schema registry is allowed.
+
+### 2026-09-04T18:45Z — M5-002 CLOSED
+- Existing `UnifiedSceneProjectFile` is now versioned at schema 1. Raw and unversioned v0 records decode without read-time mutation and migrate only on the next legitimate atomic save; malformed/negative/future versions fail closed.
+- Correction added one shared safe-relative recording-path validator for decode+encode, manually authored non-empty frozen v0 fixtures, and byte-preservation checks for project JSON plus a real recording artifact on future-version load/save/delete rejection.
+- Verification: 41/41 focused migration/save-load/concurrency tests PASS on ordinary iPhone 17 simulator iOS 26.5; `git diff --check` PASS. Fresh Sol audit: `SHIP`. Integrated head: `ba06e10`.
+- Tracker total: 66/424 completed, 358 remaining. M5-003 is now dependency-ready; its library-owner files do not overlap active Camera or release-provenance work.
