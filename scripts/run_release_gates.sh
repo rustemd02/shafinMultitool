@@ -13,6 +13,8 @@ BUNDLE_VALIDATOR="$REPO_ROOT/scripts/validate_release_bundle.sh"
 FIXTURE_TEST="$REPO_ROOT/scripts/tests/test_release_bundle_gate.sh"
 LLAMA_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_llama_framework_provenance.py"
 CIRCLE_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_circle_asset_provenance.py"
+COMPONENT_STATUS_VALIDATOR="$REPO_ROOT/scripts/validate_release_component_status.py"
+COMPONENT_STATUS_RECORD="$REPO_ROOT/docs/implementation/provenance/release-component-status.json"
 DERIVED_DATA_ROOT_ARG=""
 DERIVED_DATA_ROOT=""
 OWNED_ROOT=""
@@ -189,6 +191,12 @@ for required_validator in "$LLAMA_PROVENANCE_VALIDATOR" "$CIRCLE_PROVENANCE_VALI
         fail "preflight" "required offline provenance validator is missing or is a symlink: $required_validator"
     fi
 done
+if [ ! -f "$COMPONENT_STATUS_VALIDATOR" ] || [ -L "$COMPONENT_STATUS_VALIDATOR" ] || [ ! -x "$COMPONENT_STATUS_VALIDATOR" ]; then
+    fail "preflight" "component disposition validator is missing, symlinked, or not executable: $COMPONENT_STATUS_VALIDATOR"
+fi
+if [ ! -f "$COMPONENT_STATUS_RECORD" ] || [ -L "$COMPONENT_STATUS_RECORD" ]; then
+    fail "preflight" "component disposition record is missing or is a symlink: $COMPONENT_STATUS_RECORD"
+fi
 validate_derived_data_root "$DERIVED_DATA_ROOT_ARG"
 
 TESTED_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)" || fail "preflight" "could not resolve tested Git commit"

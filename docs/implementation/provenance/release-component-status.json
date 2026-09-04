@@ -1,0 +1,236 @@
+{
+  "$schema": "https://set-os.local/schemas/release-component-status-v1.json",
+  "schema": "set-os-release-component-status",
+  "schema_version": 1,
+  "source": {
+    "baseline_task": "M0-007",
+    "inventory_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/source-bundle-inventory.jsonl",
+    "inventory_sha256": "93015bf41c1e4cd38a29e64a0483dc867d781de1337bf66b96c3b2c23e7910a5"
+  },
+  "components": [
+    {
+      "id": "llama-framework",
+      "kind": "framework",
+      "disposition": "REMOVE_AFTER_VERIFIED_REPLACEMENT",
+      "scope": ["SCENE_ONLY"],
+      "owner": "M12-034",
+      "reason": "Transitional local/research dependency. Remove it only after the typed Scene backend and local fallback pass their replacement gate; the checked-in technical record does not claim legal redistribution approval.",
+      "expected": {
+        "source_path": "Frameworks/llama.xcframework",
+        "bundle_path": "Frameworks/llama.framework"
+      },
+      "legal_state": "PENDING",
+      "replacement_dependency": {
+        "task": "M12-034",
+        "status": "PENDING",
+        "reason": "Typed Scene generation path and local fallback are not yet proven as a verified replacement."
+      },
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "bundled"
+      }
+    },
+    {
+      "id": "detr-segmentation-model",
+      "kind": "model",
+      "disposition": "REMOVE_AFTER_VERIFIED_REPLACEMENT",
+      "scope": ["CAMERA_ONLY"],
+      "owner": "M12-034",
+      "reason": "Transitional Camera baseline. Its current semantic output and pseudo-confidence are not a verified object-aware production contract; remove it after an evidence-approved replacement proves grounding and safety parity.",
+      "expected": {
+        "source_path": "shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage",
+        "bundle_path": "DETRResnet50SemanticSegmentationF16P8.mlmodelc"
+      },
+      "legal_state": "PENDING",
+      "replacement_dependency": {
+        "task": "M12-034",
+        "status": "PENDING",
+        "reason": "SETCompositionNet or another approved Camera path has not yet completed provenance, calibration, and device gates."
+      },
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "bundled"
+      }
+    },
+    {
+      "id": "nima-aesthetic-model",
+      "kind": "model",
+      "disposition": "REMOVE_AFTER_VERIFIED_REPLACEMENT",
+      "scope": ["CAMERA_ONLY"],
+      "owner": "M12-034",
+      "reason": "Transitional aesthetic baseline. The local package lacks a complete provenance and calibrated action-utility record; remove it after a verified good-frame/action replacement exists.",
+      "expected": {
+        "source_path": "shafinMultitool/Multitool2Module/Models/CoreML/aesthetic_nima_mobilenet_fp16.mlpackage",
+        "bundle_path": "aesthetic_nima_mobilenet_fp16.mlmodelc"
+      },
+      "legal_state": "PENDING",
+      "replacement_dependency": {
+        "task": "M12-034",
+        "status": "PENDING",
+        "reason": "A calibrated production aesthetics replacement and its release provenance are not yet verified."
+      },
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "bundled"
+      }
+    },
+    {
+      "id": "circle-usdz",
+      "kind": "media",
+      "disposition": "KEEP",
+      "scope": ["SCENE_ONLY"],
+      "owner": "M12-038",
+      "reason": "Required AR media payload remains in the current production path, subject to creator-rights and source-to-export approval. Repository correlation is not legal approval.",
+      "expected": {
+        "source_path": "shafinMultitool/Resources/Circle.usdz",
+        "bundle_path": "Circle.usdz"
+      },
+      "legal_state": "PENDING",
+      "replacement_dependency": null,
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "bundled"
+      }
+    },
+    {
+      "id": "person-usdz",
+      "kind": "media",
+      "disposition": "KEEP",
+      "scope": ["SCENE_ONLY"],
+      "owner": "M12-038",
+      "reason": "Required AR media payload remains in the current production path, subject to source, author, and redistribution evidence. No rights approval is inferred from the file or checksum.",
+      "expected": {
+        "source_path": "shafinMultitool/Resources/Person.usdz",
+        "bundle_path": "Person.usdz"
+      },
+      "legal_state": "PENDING",
+      "replacement_dependency": null,
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "bundled"
+      }
+    }
+  ],
+  "explicit_exclusions": [
+    {
+      "id": "device-benchmark-resources",
+      "kind": "benchmark",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Resources/DeviceBenchmark",
+      "owner": "M0-007",
+      "reason": "Development benchmark pack; not a public Release component and governed by benchmark-lane gates.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "excluded"
+      }
+    },
+    {
+      "id": "fixture-resources",
+      "kind": "fixture",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Resources/Fixtures",
+      "owner": "M0-007",
+      "reason": "Test-only media and data; not a public Release component.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "excluded"
+      }
+    },
+    {
+      "id": "camera-textures",
+      "kind": "asset",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Resources/Textures",
+      "owner": "M12-037",
+      "reason": "Texture family remains outside this five-blocker status gate until asset membership and motif-budget review is complete.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    },
+    {
+      "id": "bundled-fonts",
+      "kind": "font",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Resources/Fonts",
+      "owner": "M12-036",
+      "reason": "Font provenance, redistribution, and glyph coverage are governed by the dedicated M12-036 record; this task does not infer approval.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    },
+    {
+      "id": "resource-assets-catalog",
+      "kind": "asset",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Resources/Assets.xcassets",
+      "owner": "M12-037",
+      "reason": "Branding and asset-catalog provenance is governed by M12-037; no ownership or trademark approval is inferred here.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    },
+    {
+      "id": "module-assets-catalog",
+      "kind": "asset",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Multitool2Module/Assets.xcassets",
+      "owner": "M12-037",
+      "reason": "Branding and AppIcon provenance is governed by M12-037; this task does not infer approval.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    },
+    {
+      "id": "localized-resources",
+      "kind": "asset",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Resources/Localizable.xcstrings",
+      "owner": "M12-041",
+      "reason": "Localization resource integrity is outside the five provenance blocker records and remains covered by the release/localization gates.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    },
+    {
+      "id": "info-plist-localization",
+      "kind": "asset",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/Resources/InfoPlist.xcstrings",
+      "owner": "M12-041",
+      "reason": "Info.plist localization is outside the five provenance blocker records and remains covered by the release/localization gates.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    },
+    {
+      "id": "privacy-manifest",
+      "kind": "asset",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "shafinMultitool/PrivacyInfo.xcprivacy",
+      "owner": "M12-027",
+      "reason": "Privacy manifest is validated by its dedicated gate; this status record does not replace privacy review.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    },
+    {
+      "id": "snapkit-dependency-source",
+      "kind": "dependency",
+      "scope": ["CAMERA_ONLY", "SCENE_ONLY"],
+      "path": "Pods/SnapKit",
+      "owner": "M12-039",
+      "reason": "SnapKit acknowledgement and license handling remain owned by M12-039; this task does not infer redistribution approval.",
+      "release_config_membership": {
+        "Debug": "bundled",
+        "Release": "deferred"
+      }
+    }
+  ]
+}

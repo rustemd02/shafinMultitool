@@ -10,10 +10,12 @@ APP_ROOT=""
 SOURCE_MANIFEST=""
 REPO_ROOT=""
 PRIVACY_VALIDATOR=""
+COMPONENT_STATUS_VALIDATOR=""
+COMPONENT_STATUS_RECORD=""
 
 DETR_MODEL_ROOT="DETRResnet50SemanticSegmentationF16P8.mlmodelc"
 NIMA_MODEL_ROOT="aesthetic_nima_mobilenet_fp16.mlmodelc"
-KNOWN_BLOCKER_COUNT=0
+KNOWN_BLOCKER_COUNT=""
 ASSETUTIL_BIN=""
 
 usage() {
@@ -412,20 +414,31 @@ validate_acknowledgements() {
     printf 'PASS CocoaPods acknowledgements: SnapKit present, ARVideoKit absent\n'
 }
 
-report_provenance_blockers() {
-    KNOWN_BLOCKER_COUNT=0
-    printf 'STAGE 9: provenance status\n'
-    printf 'KNOWN_BLOCKER: component=llama.framework owner_task=CC-013B status=artifact-traceability-complete/rebuild-unproven blocker=exact-binary-legal-redistribution-approval-and-archive-notice-scope-pending release-allowlisted=true license_approved=false\n'
-    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
-    printf 'KNOWN_BLOCKER: component=%s owner_task=CC-013B status=provenance-unresolved release-allowlisted=true license_approved=false\n' "$DETR_MODEL_ROOT"
-    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
-    printf 'KNOWN_BLOCKER: component=%s owner_task=CC-013B status=provenance-unresolved release-allowlisted=true license_approved=false\n' "$NIMA_MODEL_ROOT"
-    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
-    printf 'KNOWN_BLOCKER: component=Circle.usdz owner_task=CC-013C status=repository-correlation-verified blocker=creator-rights-export-causality-pending release-allowlisted=true license_approved=false\n'
-    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
-    printf 'KNOWN_BLOCKER: component=Person.usdz owner_task=CC-013C status=provenance-unresolved release-allowlisted=true license_approved=false\n'
-    KNOWN_BLOCKER_COUNT=$((KNOWN_BLOCKER_COUNT + 1))
-    printf 'KNOWN_BLOCKER_COUNT=%s\n' "$KNOWN_BLOCKER_COUNT"
+validate_component_status() {
+    local status_log="$TEMP_ROOT/component-status.log"
+    local validator_status
+
+    printf 'STAGE 9: machine-readable component disposition\n'
+    set +e
+    python3 "$COMPONENT_STATUS_VALIDATOR" \
+        --repo-root "$REPO_ROOT" \
+        --record "$COMPONENT_STATUS_RECORD" \
+        --app "$APP_ROOT" > "$status_log" 2>&1
+    validator_status=$?
+    set -e
+    cat "$status_log"
+
+    if [ "$(grep -Ec '^KNOWN_BLOCKER_COUNT=[0-9]+$' "$status_log" || true)" -ne 1 ]; then
+        fail "component status validator failed without a stable KNOWN_BLOCKER_COUNT metric"
+    fi
+    KNOWN_BLOCKER_COUNT="$(extract_metric KNOWN_BLOCKER_COUNT "$status_log")"
+    if [ "$validator_status" -eq 0 ] && [ "$KNOWN_BLOCKER_COUNT" -ne 0 ]; then
+        fail "component status validator exited zero with nonzero blocker count"
+    fi
+    if [ "$validator_status" -ne 0 ] && [ "$KNOWN_BLOCKER_COUNT" -eq 0 ]; then
+        fail "component status validator failed without reporting a blocker"
+    fi
+    printf 'PASS component disposition schema: known_blockers=%s\n' "$KNOWN_BLOCKER_COUNT"
 }
 
 report_material_sizes() {
@@ -502,10 +515,17 @@ require_file "source PrivacyInfo.xcprivacy" "$SOURCE_MANIFEST"
 require_directory "supplied app" "$APP_ROOT"
 
 PRIVACY_VALIDATOR="$REPO_ROOT/scripts/validate_privacy_manifest.sh"
+COMPONENT_STATUS_VALIDATOR="$REPO_ROOT/scripts/validate_release_component_status.py"
+COMPONENT_STATUS_RECORD="$REPO_ROOT/docs/implementation/provenance/release-component-status.json"
 require_file "privacy validator" "$PRIVACY_VALIDATOR"
 if [ ! -x "$PRIVACY_VALIDATOR" ]; then
     fail "privacy validator is not executable: $PRIVACY_VALIDATOR"
 fi
+require_file "component status validator" "$COMPONENT_STATUS_VALIDATOR"
+if [ ! -x "$COMPONENT_STATUS_VALIDATOR" ]; then
+    fail "component status validator is not executable: $COMPONENT_STATUS_VALIDATOR"
+fi
+require_file "component status record" "$COMPONENT_STATUS_RECORD"
 
 if ! TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-bundle-validator.XXXXXX")"; then
     fail "could not create validator temporary directory"
@@ -516,7 +536,7 @@ validate_required_structure
 validate_app_metadata
 validate_forbidden_and_family_paths
 validate_acknowledgements
-report_provenance_blockers
+validate_component_status
 report_material_sizes
 printf 'MANIFEST_COUNT=2\n'
 

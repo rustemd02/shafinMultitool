@@ -132,13 +132,25 @@ if [ "$clean_status" -eq 0 ]; then
     cat "$TEMP_ROOT/clean.log" >&2
     fail "clean copied Release app unexpectedly passed"
 fi
-if ! grep -Fq 'release blocked by 5 known provenance blocker(s)' "$TEMP_ROOT/clean.log"; then
+clean_blocker_count="$(sed -n 's/^KNOWN_BLOCKER_COUNT=\([0-9][0-9]*\)$/\1/p' "$TEMP_ROOT/clean.log")"
+case "$clean_blocker_count" in
+    ''|*[!0-9]*)
+        cat "$TEMP_ROOT/clean.log" >&2
+        fail "clean validation omitted a numeric known-blocker count"
+        ;;
+esac
+if [ "$clean_blocker_count" -eq 0 ]; then
+    cat "$TEMP_ROOT/clean.log" >&2
+    fail "clean validation unexpectedly reported no known provenance blockers"
+fi
+if ! grep -Fq "release blocked by $clean_blocker_count known provenance blocker(s)" "$TEMP_ROOT/clean.log"; then
     cat "$TEMP_ROOT/clean.log" >&2
     fail "clean validation failed without stable known-blocker token"
 fi
-if ! grep -Fq 'KNOWN_BLOCKER_COUNT=5' "$TEMP_ROOT/clean.log"; then
+known_blocker_rows="$(grep -c '^KNOWN_BLOCKER: ' "$TEMP_ROOT/clean.log" || true)"
+if [ "$known_blocker_rows" -ne "$clean_blocker_count" ]; then
     cat "$TEMP_ROOT/clean.log" >&2
-    fail "clean validation omitted KNOWN_BLOCKER_COUNT=5"
+    fail "clean validation row/count mismatch: rows=$known_blocker_rows count=$clean_blocker_count"
 fi
 if ! grep -Eq '^MANIFEST_COUNT=2$' "$TEMP_ROOT/clean.log" \
     || ! grep -Eq '^TOTAL_APP_KIB=[0-9]+$' "$TEMP_ROOT/clean.log" \

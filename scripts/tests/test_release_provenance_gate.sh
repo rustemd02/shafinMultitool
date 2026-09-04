@@ -129,6 +129,10 @@ run_case() {
 }
 
 [ -x "$GATE" ] || fail "canonical gate is missing or not executable: $GATE"
+assert_present 'validate_release_component_status.py' "$REPO_ROOT/scripts/validate_release_bundle.sh"
+assert_present 'release-component-status.json' "$REPO_ROOT/scripts/validate_release_bundle.sh"
+assert_absent 'component=llama.framework owner_task=' "$REPO_ROOT/scripts/validate_release_bundle.sh"
+assert_absent 'component=Circle.usdz owner_task=' "$REPO_ROOT/scripts/validate_release_bundle.sh"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-provenance-gate.XXXXXX")"
 
 run_case success-before-build "" 77
