@@ -242,10 +242,11 @@ final class CameraViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .assign(to: &$liveHint)
 
-        analysisPipeline.$currentCoachingEpisodeObservation
+        analysisPipeline.$currentCoachingEpisodeEvent
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] observation in
-                self?.consumeCoachingEpisodeObservation(observation)
+            .compactMap { $0 }
+            .sink { [weak self] event in
+                self?.consumeCoachingEpisodeEvent(event)
             }
             .store(in: &cancellables)
 
@@ -797,23 +798,11 @@ final class CameraViewModel: ObservableObject {
         featurePollingCancellable = nil
     }
 
-    private func consumeCoachingEpisodeObservation(_ observation: CoachingEpisodeObservation?) {
-        guard let observation else {
-            coachingEpisodeState = coachingEpisodeCoordinator.cancel(reason: .staleEvidence)
-            return
-        }
-
-        switch coachingEpisodeCoordinator.phase {
-        case .idle:
-            _ = coachingEpisodeCoordinator.begin(with: observation)
-        case .awaitingMovement, .collectingStableAfterFrames:
-            _ = coachingEpisodeCoordinator.observe(observation)
-        case .readyForVerification, .cancelled, .expired:
-            // A terminal episode cannot be reopened by a late publisher. The
-            // capture owner resets it explicitly on the next session.
-            break
-        }
-        coachingEpisodeState = coachingEpisodeCoordinator.state
+    private func consumeCoachingEpisodeEvent(_ event: CoachingEpisodeStreamEvent) {
+        // The coordinator owns the terminal-boundary rule: only a typed
+        // baseline may reset a cancelled/expired episode. Frame events never
+        // reopen a terminal state and never replace the frozen advice.
+        coachingEpisodeState = coachingEpisodeCoordinator.consume(event)
     }
 
     private func cancelCoachingEpisode(reason: CoachingEpisodeCancellationReason) {

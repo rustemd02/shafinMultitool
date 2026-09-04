@@ -97,12 +97,29 @@ final class CameraAdviceSafetyGateTests: XCTestCase {
     }
 
     func testLostSubjectIdentityAbstainsCorrections() {
-        for family in [CameraAdviceActionFamily.exposure, .composition, .horizon, .focus] {
+        for family in [CameraAdviceActionFamily.exposure, .composition, .focus] {
             XCTAssertEqual(
                 CameraAdviceSafetyGate.evaluate(actionFamily: family, input: input(subjectTrackLost: true)),
                 .abstain(reason: .subjectIdentityLost)
             )
         }
+    }
+
+    func testFrameGlobalFamiliesDoNotRequireSubjectIdentity() {
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluate(
+                actionFamily: .horizon,
+                input: input(subjectTrackLost: nil, horizonAvailable: true)
+            ),
+            .allow
+        )
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluate(
+                actionFamily: .stability,
+                input: input(subjectTrackLost: nil, motionStateIsStill: false)
+            ),
+            .allow
+        )
     }
 
     func testUnresolvedSubjectRequiresSelection() {
@@ -165,12 +182,13 @@ final class CameraAdviceSafetyGateTests: XCTestCase {
 
     // MARK: - Order of gates: identity beats family gates
 
-    func testIdentityLossOverridesFamilyGates() {
-        // Even with the horizon available, a lost subject abstains.
+    func testIdentityLossOverridesSubjectDependentFamilyGates() {
+        // Subject-dependent corrections still abstain even when their other
+        // evidence is available.
         XCTAssertEqual(
             CameraAdviceSafetyGate.evaluate(
-                actionFamily: .horizon,
-                input: input(subjectTrackLost: true, horizonAvailable: true)
+                actionFamily: .exposure,
+                input: input(subjectTrackLost: true)
             ),
             .abstain(reason: .subjectIdentityLost)
         )

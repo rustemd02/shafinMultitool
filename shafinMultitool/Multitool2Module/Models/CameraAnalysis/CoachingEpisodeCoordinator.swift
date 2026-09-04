@@ -59,28 +59,44 @@ struct CoachingEpisodeConfiguration: Equatable, Sendable {
 struct CoachingEpisodeBaseline: Equatable, Sendable {
     let advice: StabilizedAdvice
     let actionID: String
-    let subjectIdentity: SubjectTrackIdentity
+    /// Nil for frame-global actions (horizon/stability). Subject-dependent
+    /// actions always freeze a valid identity here.
+    let subjectIdentity: SubjectTrackIdentity?
     let frameID: String
     let capturedAt: Date
     let orientation: CameraCoachOrientation
     let lensID: String?
     let captureGeneration: UInt64
-    let subjectRegion: NormalizedRect
+    let subjectRegion: NormalizedRect?
+}
+
+extension UserMovementActionFamily {
+    /// Subject identity is part of the evidence contract only for actions that
+    /// measure a subject. Horizon and stability are frame-global and must be
+    /// able to proceed without inventing a subject sentinel.
+    var requiresSubjectBinding: Bool {
+        switch self {
+        case .subjectDisplacement, .scaleDistance, .lightExposure, .focus:
+            return true
+        case .horizonRotation, .stability:
+            return false
+        }
+    }
 }
 
 /// One same-frame handoff from the bounded/stabilized pipeline into the
-/// episode owner. The initializer is failable so malformed or mixed-provenance
-/// data cannot enter the state machine.
+/// episode owner. This is the baseline event: it is the only event that
+/// carries the advice which becomes frozen for the episode.
 struct CoachingEpisodeObservation: Equatable, Sendable {
     let frame: UserMovementFrame
     let stabilizedAdvice: StabilizedAdvice
-    let subjectTrack: SubjectTrackState
+    let subjectTrack: SubjectTrackState?
     let lifecycle: SubjectTrackLifecycleContext
     let isStable: Bool
 
     init?(frame: UserMovementFrame,
           stabilizedAdvice: StabilizedAdvice,
-          subjectTrack: SubjectTrackState,
+          subjectTrack: SubjectTrackState?,
           lifecycle: SubjectTrackLifecycleContext,
           isStable: Bool) {
         guard stabilizedAdvice.decision == .correct,
@@ -88,30 +104,46 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
               !actionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               stabilizedAdvice.frameID == frame.frameID,
               let actionFamily = UserMovementObserver.actionFamily(for: actionID),
-              subjectTrack.phase == .active,
-              subjectTrack.identity.isValid,
               lifecycle.generation != 0,
-              lifecycle.generation == subjectTrack.identity.generation,
               let evidence = frame.evidence,
               evidence.lensGeneration != 0,
               evidence.lensGeneration == lifecycle.generation,
               evidence.orientation == lifecycle.orientation,
-              let binding = evidence.subjectBinding,
-              binding.frameID == frame.frameID,
-              binding.identity == subjectTrack.identity,
-              binding.identity.generation == evidence.lensGeneration,
-              // SubjectTracker stores the source Vision region (y-up), while
-              // the frame stores the explicit coaching-space conversion. The
-              // binding must agree with both; an identity with unrelated
-              // geometry is not a same-subject observation.
-              binding.region == subjectTrack.lastRegion,
-              binding.coachingRegion == frame.subjectRegion,
               evidence.capturedAt <= evidence.evaluatedAt,
-              // A stabilization action is intentionally baselined while the
-              // camera is unstable; every other action requires a still,
-              // stabilized baseline. The after-frame gate below remains
-              // strict for both paths.
               actionFamily == .stability || (isStable && frame.motionIsStill) else {
+            return nil
+        }
+
+        if actionFamily.requiresSubjectBinding {
+            guard let subjectTrack,
+                  Self.isValidSubjectBinding(
+                    evidence.subjectBinding,
+                    frame: frame,
+                    subjectTrack: subjectTrack,
+                    generation: evidence.lensGeneration
+                  ) else {
+                return nil
+            }
+        } else if let subjectTrack {
+            // A frame-global baseline may carry optional subject context, but
+            // if it does, that context must still be same-frame and honest.
+            guard subjectTrack.phase == .active,
+                  subjectTrack.identity.isValid,
+                  subjectTrack.identity.generation == evidence.lensGeneration else {
+                return nil
+            }
+            if evidence.subjectBinding != nil {
+                guard Self.isValidSubjectBinding(
+                    evidence.subjectBinding,
+                    frame: frame,
+                    subjectTrack: subjectTrack,
+                    generation: evidence.lensGeneration
+                ) else {
+                    return nil
+                }
+            }
+        } else if evidence.subjectBinding != nil {
+            // A free binding without a track owner cannot establish identity.
             return nil
         }
 
@@ -121,6 +153,123 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
         self.lifecycle = lifecycle
         self.isStable = isStable
     }
+
+    private static func isValidSubjectBinding(
+        _ binding: UserMovementSubjectBinding?,
+        frame: UserMovementFrame,
+        subjectTrack: SubjectTrackState,
+        generation: UInt64
+    ) -> Bool {
+        guard subjectTrack.phase == .active,
+              subjectTrack.identity.isValid,
+              subjectTrack.identity.generation == generation,
+              let binding,
+              binding.frameID == frame.frameID,
+              binding.identity == subjectTrack.identity,
+              binding.identity.generation == generation,
+              // SubjectTracker stores the source region (y-up), while the
+              // frame stores the explicit coaching-space conversion. Both
+              // must agree before identity can enter an episode.
+              binding.region == subjectTrack.lastRegion,
+              binding.coachingRegion == frame.subjectRegion else {
+            return false
+        }
+        return true
+    }
+
+    /// Converts a baseline observation into a fresh frame event. The event
+    /// deliberately carries only the current action signal; the baseline
+    /// advice itself remains frozen in the coordinator.
+    func asFrameEvidence(currentActionID: String? = nil) -> CoachingEpisodeFrameEvidence? {
+        CoachingEpisodeFrameEvidence(
+            frame: frame,
+            subjectTrack: subjectTrack,
+            lifecycle: lifecycle,
+            isStable: isStable,
+            currentActionID: currentActionID
+        )
+    }
+}
+
+/// Fresh same-frame evidence after the baseline. It may report that the
+/// recommendation disappeared (`currentActionID == nil`) without replacing the
+/// frozen baseline advice. A competing action is explicit and cancels the
+/// episode in the coordinator.
+struct CoachingEpisodeFrameEvidence: Equatable, Sendable {
+    let frame: UserMovementFrame
+    let subjectTrack: SubjectTrackState?
+    let lifecycle: SubjectTrackLifecycleContext
+    let isStable: Bool
+    let currentActionID: String?
+
+    init?(frame: UserMovementFrame,
+          subjectTrack: SubjectTrackState?,
+          lifecycle: SubjectTrackLifecycleContext,
+          isStable: Bool,
+          currentActionID: String? = nil) {
+        let normalizedActionID = currentActionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedActionID,
+           (normalizedActionID.isEmpty || UserMovementObserver.actionFamily(for: normalizedActionID) == nil) {
+            return nil
+        }
+        guard !frame.frameID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              lifecycle.generation != 0,
+              let evidence = frame.evidence,
+              evidence.lensGeneration == lifecycle.generation,
+              evidence.orientation == lifecycle.orientation,
+              evidence.capturedAt.timeIntervalSinceReferenceDate.isFinite,
+              evidence.evaluatedAt.timeIntervalSinceReferenceDate.isFinite,
+              evidence.capturedAt <= evidence.evaluatedAt else {
+            return nil
+        }
+
+        if let subjectTrack {
+            guard subjectTrack.phase == .active,
+                  subjectTrack.identity.isValid,
+                  subjectTrack.identity.generation == lifecycle.generation else {
+                return nil
+            }
+            if let binding = evidence.subjectBinding {
+                guard binding.frameID == frame.frameID,
+                      binding.identity == subjectTrack.identity,
+                      binding.identity.generation == evidence.lensGeneration,
+                      binding.region == subjectTrack.lastRegion,
+                      binding.coachingRegion == frame.subjectRegion else {
+                    return nil
+                }
+            }
+        } else if evidence.subjectBinding != nil {
+            return nil
+        }
+
+        if let normalizedActionID,
+           let actionFamily = UserMovementObserver.actionFamily(for: normalizedActionID),
+           actionFamily.requiresSubjectBinding {
+            guard let subjectTrack,
+                  let binding = evidence.subjectBinding,
+                  binding.frameID == frame.frameID,
+                  binding.identity == subjectTrack.identity,
+                  binding.region == subjectTrack.lastRegion,
+                  binding.coachingRegion == frame.subjectRegion else {
+                return nil
+            }
+        }
+
+        self.frame = frame
+        self.subjectTrack = subjectTrack
+        self.lifecycle = lifecycle
+        self.isStable = isStable
+        self.currentActionID = normalizedActionID
+    }
+}
+
+/// Typed boundary between AnalysisPipeline and CameraViewModel. Baseline is
+/// the only advice-bearing event; frame events carry fresh evidence and an
+/// optional current action signal; cancel is explicit instead of nil-as-stale.
+enum CoachingEpisodeStreamEvent: Equatable, Sendable {
+    case baseline(CoachingEpisodeObservation)
+    case frame(CoachingEpisodeFrameEvidence)
+    case cancel(CoachingEpisodeCancellationReason)
 }
 
 /// Observable state returned after every coordinator operation.
@@ -154,7 +303,7 @@ struct CoachingEpisodeCoordinator {
 
     private var movementTracker: UserMovementTracker?
     private var lifecycleGuard: SubjectTrackLifecycleGuard?
-    private var lastObservation: CoachingEpisodeObservation?
+    private var lastObservation: CoachingEpisodeFrameEvidence?
     private var seenFrameIDs = Set<String>()
 
     init(configuration: CoachingEpisodeConfiguration = .init()) {
@@ -172,27 +321,32 @@ struct CoachingEpisodeCoordinator {
     mutating func begin(with observation: CoachingEpisodeObservation) -> CoachingEpisodeState {
         guard state.phase == .idle else { return state }
 
-        let baseline = CoachingEpisodeBaseline(
-            advice: observation.stabilizedAdvice,
-            actionID: observation.stabilizedAdvice.actionID!,
-            subjectIdentity: observation.subjectTrack.identity,
-            frameID: observation.frame.frameID,
-            capturedAt: observation.frame.evidence!.capturedAt,
-            orientation: observation.lifecycle.orientation,
-            lensID: observation.lifecycle.lensID,
-            captureGeneration: observation.lifecycle.generation,
-            subjectRegion: observation.frame.subjectRegion!
-        )
-        let actionFamily = UserMovementObserver.actionFamily(for: baseline.actionID)
-        guard actionFamily == .stability
-            || (observation.isStable && observation.frame.motionIsStill),
-              observation.lifecycle.routeActive,
-              !observation.lifecycle.isAppBackgrounded else {
+        guard let capturedAt = observation.frame.evidence?.capturedAt else {
             return state
         }
+        return beginValidated(
+            observation: observation,
+            capturedAt: capturedAt,
+            subjectRegion: observation.frame.subjectRegion
+        )
+    }
+
+    private mutating func beginValidated(
+        observation: CoachingEpisodeObservation,
+        capturedAt: Date,
+        subjectRegion: NormalizedRect?
+    ) -> CoachingEpisodeState {
+        guard let actionID = observation.stabilizedAdvice.actionID,
+              let actionFamily = UserMovementObserver.actionFamily(for: actionID),
+              observation.lifecycle.routeActive,
+              !observation.lifecycle.isAppBackgrounded,
+              actionFamily == .stability || (observation.isStable && observation.frame.motionIsStill) else {
+            return state
+        }
+
         let guardState = SubjectTrackLifecycleGuard(context: observation.lifecycle)
         var tracker = UserMovementTracker(
-            actionID: baseline.actionID,
+            actionID: actionID,
             requiredRelevantFrames: configuration.requiredMovementFrames
         )
         // Seed the tracker with the exact baseline. The first observation is
@@ -204,8 +358,24 @@ struct CoachingEpisodeCoordinator {
 
         movementTracker = tracker
         lifecycleGuard = guardState
-        lastObservation = observation
+        guard let initialFrame = observation.asFrameEvidence(currentActionID: actionID) else {
+            return state
+        }
+        lastObservation = initialFrame
         seenFrameIDs = [observation.frame.frameID]
+        let baseline = CoachingEpisodeBaseline(
+            advice: observation.stabilizedAdvice,
+            actionID: actionID,
+            subjectIdentity: actionFamily.requiresSubjectBinding
+                ? observation.subjectTrack?.identity
+                : nil,
+            frameID: observation.frame.frameID,
+            capturedAt: capturedAt,
+            orientation: observation.lifecycle.orientation,
+            lensID: observation.lifecycle.lensID,
+            captureGeneration: observation.lifecycle.generation,
+            subjectRegion: actionFamily.requiresSubjectBinding ? subjectRegion : nil
+        )
         state = CoachingEpisodeState(
             phase: .awaitingMovement,
             token: guardState.episode,
@@ -218,6 +388,24 @@ struct CoachingEpisodeCoordinator {
         return state
     }
 
+    /// Consumes the typed pipeline stream. A new baseline is the explicit
+    /// terminal-boundary signal that permits one retry after cancellation or
+    /// expiry; late frame events never reopen a terminal episode.
+    @discardableResult
+    mutating func consume(_ event: CoachingEpisodeStreamEvent) -> CoachingEpisodeState {
+        switch event {
+        case .baseline(let observation):
+            if state.phase == .cancelled || state.phase == .expired {
+                resetForRetry()
+            }
+            return begin(with: observation)
+        case .frame(let frameEvidence):
+            return observe(frameEvidence)
+        case .cancel(let reason):
+            return cancel(reason: reason)
+        }
+    }
+
     /// Alias matching the domain vocabulary used by the state machine.
     @discardableResult
     mutating func start(with observation: CoachingEpisodeObservation) -> CoachingEpisodeState {
@@ -228,6 +416,19 @@ struct CoachingEpisodeCoordinator {
     /// mismatch fails closed; duplicate frames are ignored without advancing.
     @discardableResult
     mutating func observe(_ observation: CoachingEpisodeObservation) -> CoachingEpisodeState {
+        guard let frameEvidence = observation.asFrameEvidence(
+            currentActionID: observation.stabilizedAdvice.actionID
+        ) else {
+            return cancel(reason: .invalidObservation)
+        }
+        return observe(frameEvidence)
+    }
+
+    /// Consumes fresh evidence without replacing the frozen baseline advice.
+    /// `currentActionID == nil` means the recommendation disappeared; it is
+    /// not itself a stale-evidence cancellation.
+    @discardableResult
+    mutating func observe(_ frameEvidence: CoachingEpisodeFrameEvidence) -> CoachingEpisodeState {
         guard state.phase == .awaitingMovement || state.phase == .collectingStableAfterFrames else {
             return state
         }
@@ -237,14 +438,14 @@ struct CoachingEpisodeCoordinator {
             return cancel(reason: .invalidObservation)
         }
 
-        let frameID = observation.frame.frameID
+        let frameID = frameEvidence.frame.frameID
         guard !seenFrameIDs.contains(frameID) else {
             // A retransmitted callback is not evidence of progress and must
             // not mutate the streak or stable-after count.
             return state
         }
 
-        let capturedAt = observation.frame.evidence?.capturedAt
+        let capturedAt = frameEvidence.frame.evidence?.capturedAt
         guard let capturedAt, capturedAt.timeIntervalSinceReferenceDate.isFinite else {
             return cancel(reason: .invalidObservation)
         }
@@ -255,43 +456,57 @@ struct CoachingEpisodeCoordinator {
             return cancel(reason: .outOfOrder)
         }
 
-        guard observation.stabilizedAdvice.decision == .correct,
-              observation.stabilizedAdvice.actionID == baseline.actionID else {
+        if let currentActionID = frameEvidence.currentActionID,
+           currentActionID != baseline.actionID {
             return cancel(reason: .actionChanged)
         }
         if let invalidation = lifecycleGuard?.validate(
-            observation.lifecycle,
+            frameEvidence.lifecycle,
             frameID: frameID
         ) {
             return cancel(reason: Self.reason(for: invalidation.cause))
         }
 
-        guard observation.subjectTrack.phase == .active,
-              observation.subjectTrack.identity == baseline.subjectIdentity else {
-            return cancel(reason: .subjectChanged)
-        }
-        guard observation.lifecycle.generation == baseline.captureGeneration,
-              observation.lifecycle.orientation == baseline.orientation,
-              observation.lifecycle.lensID == baseline.lensID,
-              observation.lifecycle.routeActive,
-              !observation.lifecycle.isAppBackgrounded else {
+        guard frameEvidence.lifecycle.generation == baseline.captureGeneration,
+              frameEvidence.lifecycle.orientation == baseline.orientation,
+              frameEvidence.lifecycle.lensID == baseline.lensID,
+              frameEvidence.lifecycle.routeActive,
+              !frameEvidence.lifecycle.isAppBackgrounded else {
             return cancel(reason: .invalidObservation)
         }
 
-        guard let evidence = observation.frame.evidence,
+        let actionFamily = UserMovementObserver.actionFamily(for: baseline.actionID)
+        if actionFamily?.requiresSubjectBinding == true {
+            guard let baselineIdentity = baseline.subjectIdentity,
+                  let subjectTrack = frameEvidence.subjectTrack,
+                  subjectTrack.phase == .active,
+                  subjectTrack.identity == baselineIdentity else {
+                return cancel(reason: .subjectChanged)
+            }
+        }
+
+        guard let evidence = frameEvidence.frame.evidence,
               evidence.lensGeneration == baseline.captureGeneration,
               evidence.orientation == baseline.orientation,
-              evidence.subjectBinding?.identity == baseline.subjectIdentity,
-              evidence.subjectBinding?.source == previous.frame.evidence?.subjectBinding?.source else {
-            return cancel(reason: .subjectChanged)
+              evidence.capturedAt <= evidence.evaluatedAt else {
+            return cancel(reason: .staleEvidence)
+        }
+        if let baselineIdentity = baseline.subjectIdentity {
+            guard frameEvidence.subjectTrack?.identity == baselineIdentity else {
+                return cancel(reason: .subjectChanged)
+            }
+            guard evidence.subjectBinding?.identity == baselineIdentity,
+                  evidence.subjectBinding?.source == previous.frame.evidence?.subjectBinding?.source else {
+                return cancel(reason: .subjectChanged)
+            }
         }
 
         seenFrameIDs.insert(frameID)
-        lastObservation = observation
+        lastObservation = frameEvidence
 
         switch state.phase {
         case .awaitingMovement:
-            let verdict = tracker.observe(observation.frame, asOf: evidence.evaluatedAt)
+            let verdict = tracker.observe(frameEvidence.frame, asOf: evidence.evaluatedAt)
             movementTracker = tracker
             switch verdict {
             case .relevant:
@@ -305,7 +520,20 @@ struct CoachingEpisodeCoordinator {
                     lastFrameID: frameID,
                     cancellationReason: nil
                 )
-            case .noOp, .opposite, .uncertain:
+            case .noOp, .opposite:
+                state = CoachingEpisodeState(
+                    phase: .awaitingMovement,
+                    token: state.token,
+                    baseline: baseline,
+                    movementFrames: 0,
+                    stableAfterFrames: 0,
+                    lastFrameID: frameID,
+                    cancellationReason: nil
+                )
+            case .uncertain(let reason):
+                if Self.isStaleEvidenceReason(reason) {
+                    return cancel(reason: .staleEvidence)
+                }
                 state = CoachingEpisodeState(
                     phase: .awaitingMovement,
                     token: state.token,
@@ -324,13 +552,16 @@ struct CoachingEpisodeCoordinator {
             // the stable-after dwell but cannot fake completion.
             let evidenceVerdict = UserMovementObserver.observe(
                 previous: previous.frame,
-                current: observation.frame,
+                current: frameEvidence.frame,
                 actionID: baseline.actionID,
                 asOf: evidence.evaluatedAt
             )
             let isFreshStableAfterFrame: Bool
             if case .noOp = evidenceVerdict {
-                isFreshStableAfterFrame = observation.isStable && observation.frame.motionIsStill
+                isFreshStableAfterFrame = frameEvidence.isStable && frameEvidence.frame.motionIsStill
+            } else if case .uncertain(let reason) = evidenceVerdict,
+                      Self.isStaleEvidenceReason(reason) {
+                return cancel(reason: .staleEvidence)
             } else {
                 isFreshStableAfterFrame = false
             }
@@ -414,6 +645,17 @@ struct CoachingEpisodeCoordinator {
         case .cameraGenerationChange: return .cameraGenerationChange
         case .background: return .background
         case .sceneCut: return .sceneCut
+        }
+    }
+
+    private static func isStaleEvidenceReason(_ reason: String) -> Bool {
+        switch reason {
+        case "evidence_missing", "feature_missing", "feature_confidence",
+             "stale_evidence", "uncalibrated", "evidence_time",
+             "orientation_changed", "lens_generation":
+            return true
+        default:
+            return false
         }
     }
 }

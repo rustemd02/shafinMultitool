@@ -140,6 +140,15 @@ struct TechnicalQualitySignal: Codable, Equatable, Sendable {
         uniqueActionIds(issues.filter(\.isDominant).map { $0.actionType.rawValue })
     }
 
+    /// Exposure contradiction is derived from the already-computed technical
+    /// signal. Live consumers must not rescan the full pixel buffer on the
+    /// main actor merely to repeat this invariant.
+    var exposureContradictionFree: Bool {
+        let hasUnderexposure = issues.contains { $0.type == .underexposure }
+        let hasOverexposure = issues.contains { $0.type == .overexposure }
+        return !(hasUnderexposure && hasOverexposure)
+    }
+
     static let empty = TechnicalQualitySignal(issues: [])
 
     private func uniqueActionIds(_ values: [String]) -> [String] {

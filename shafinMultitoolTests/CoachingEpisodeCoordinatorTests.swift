@@ -109,6 +109,72 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         )!
     }
 
+    private func frameGlobalObservation(
+        id: String,
+        capturedAt: Date,
+        actionID: String,
+        horizonAngle: Double? = nil,
+        stabilityScore: Double? = nil,
+        stable: Bool = true,
+        still: Bool = true,
+        generation: UInt64 = 7,
+        orientation: CameraCoachOrientation = .portrait,
+        lensID: String? = "wide",
+        routeActive: Bool = true,
+        backgrounded: Bool = false,
+        sceneSignature: String? = "scene-a"
+    ) -> CoachingEpisodeObservation {
+        let measuredAt = capturedAt
+        let family = UserMovementObserver.actionFamily(for: actionID)!
+        let evidence = UserMovementEvidence(
+            capturedAt: capturedAt,
+            evaluatedAt: capturedAt,
+            lensGeneration: generation,
+            subjectTrackID: nil,
+            subjectBinding: nil,
+            orientation: orientation,
+            isCalibrated: true,
+            calibrationVersion: "cal1",
+            featureMeasuredAt: [family: measuredAt],
+            featureConfidence: [family: 0.92],
+            sourceAvailability: [family: true]
+        )
+        let frame = UserMovementFrame(
+            frameID: id,
+            subjectRegion: nil,
+            meanLuma: 0.5,
+            motionIsStill: still,
+            metrics: UserMovementMetrics(
+                horizonAngleDegrees: horizonAngle,
+                stabilityScore: stabilityScore,
+                shakeLevel: stabilityScore.map { 1.0 - $0 }
+            ),
+            evidence: evidence
+        )
+        let lifecycle = SubjectTrackLifecycleContext(
+            generation: generation,
+            orientation: orientation,
+            lensID: lensID,
+            routeActive: routeActive,
+            isAppBackgrounded: backgrounded,
+            sceneSignature: sceneSignature
+        )
+        let advice = StabilizedAdvice(
+            decision: .correct,
+            actionID: actionID,
+            frameID: id,
+            targetX: nil,
+            targetY: nil
+        )
+        return CoachingEpisodeObservation(
+            frame: frame,
+            stabilizedAdvice: advice,
+            subjectTrack: nil,
+            lifecycle: lifecycle,
+            isStable: stable
+        )!
+    }
+
     private func baselineObservation() -> CoachingEpisodeObservation {
         observation(id: "f0", capturedAt: startDate)
     }
@@ -169,10 +235,180 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.state.baseline?.subjectIdentity, identity)
     }
 
+    func testRecommendationDisappearanceDoesNotDiscardFrozenBaseline() {
+        var coordinator = CoachingEpisodeCoordinator()
+        let baseline = baselineObservation()
+        XCTAssertEqual(coordinator.consume(.baseline(baseline)).phase, .awaitingMovement)
+
+        let movement1 = observation(
+            id: "disappear-1",
+            x: 0.26,
+            capturedAt: startDate.addingTimeInterval(0.1)
+        )
+        let movement2 = observation(
+            id: "disappear-2",
+            x: 0.32,
+            capturedAt: startDate.addingTimeInterval(0.2)
+        )
+        XCTAssertEqual(
+            coordinator.consume(.frame(movement1.asFrameEvidence()!)).movementFrames,
+            1
+        )
+        XCTAssertEqual(
+            coordinator.consume(.frame(movement2.asFrameEvidence()!)).phase,
+            .collectingStableAfterFrames
+        )
+
+        let stable3 = observation(
+            id: "disappear-3",
+            x: 0.32,
+            capturedAt: startDate.addingTimeInterval(0.3)
+        )
+        let stable4 = observation(
+            id: "disappear-4",
+            x: 0.32,
+            capturedAt: startDate.addingTimeInterval(0.4)
+        )
+        XCTAssertEqual(
+            coordinator.consume(.frame(stable3.asFrameEvidence()!)).stableAfterFrames,
+            1
+        )
+        XCTAssertEqual(
+            coordinator.consume(.frame(stable4.asFrameEvidence()!)).phase,
+            .readyForVerification
+        )
+        XCTAssertEqual(coordinator.state.baseline?.frameID, "f0")
+        XCTAssertEqual(coordinator.state.baseline?.advice.frameID, "f0")
+    }
+
+    func testCompetingActionProducesTypedCancellation() {
+        var coordinator = CoachingEpisodeCoordinator()
+        XCTAssertEqual(coordinator.consume(.baseline(baselineObservation())).phase, .awaitingMovement)
+        let competing = observation(
+            id: "competing",
+            x: 0.26,
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: SemanticActionType.moveSubjectLeft.rawValue
+        )
+
+        let state = coordinator.consume(.frame(
+            competing.asFrameEvidence(currentActionID: SemanticActionType.moveSubjectLeft.rawValue)!
+        ))
+        XCTAssertEqual(state.phase, .cancelled)
+        XCTAssertEqual(state.cancellationReason, .actionChanged)
+    }
+
+    func testTypedTerminalBoundaryAllowsFreshBaselineButIgnoresLateFrameBeforeRetry() {
+        var coordinator = CoachingEpisodeCoordinator()
+        let firstBaseline = baselineObservation()
+        XCTAssertEqual(coordinator.consume(.baseline(firstBaseline)).phase, .awaitingMovement)
+        let firstToken = coordinator.episodeToken
+        XCTAssertEqual(coordinator.consume(.cancel(.staleEvidence)).phase, .cancelled)
+
+        let lateFrame = observation(
+            id: "late-old-frame",
+            x: 0.32,
+            capturedAt: startDate.addingTimeInterval(0.1)
+        )
+        XCTAssertEqual(
+            coordinator.consume(.frame(lateFrame.asFrameEvidence()!)).phase,
+            .cancelled,
+            "a frame cannot reopen a terminal episode"
+        )
+
+        let freshBaseline = observation(
+            id: "fresh-baseline",
+            capturedAt: startDate.addingTimeInterval(2.0)
+        )
+        XCTAssertEqual(coordinator.consume(.baseline(freshBaseline)).phase, .awaitingMovement)
+        XCTAssertNotEqual(coordinator.episodeToken, firstToken)
+        XCTAssertEqual(coordinator.state.baseline?.frameID, "fresh-baseline")
+    }
+
+    func testFrameGlobalHorizonEpisodeNeedsNoSubjectBinding() {
+        let actionID = SemanticActionType.levelHorizon.rawValue
+        var coordinator = CoachingEpisodeCoordinator()
+        XCTAssertEqual(
+            coordinator.consume(.baseline(frameGlobalObservation(
+                id: "horizon-0",
+                capturedAt: startDate,
+                actionID: actionID,
+                horizonAngle: 5
+            ))).phase,
+            .awaitingMovement
+        )
+        XCTAssertNil(coordinator.state.baseline?.subjectIdentity)
+
+        for (index, angle) in [(1, 3.0), (2, 1.0)] {
+            let frame = frameGlobalObservation(
+                id: "horizon-\(index)",
+                capturedAt: startDate.addingTimeInterval(Double(index) * 0.1),
+                actionID: actionID,
+                horizonAngle: angle
+            )
+            _ = coordinator.consume(.frame(frame.asFrameEvidence()!))
+        }
+        XCTAssertEqual(coordinator.phase, .collectingStableAfterFrames)
+
+        for index in 3...4 {
+            let frame = frameGlobalObservation(
+                id: "horizon-\(index)",
+                capturedAt: startDate.addingTimeInterval(Double(index) * 0.1),
+                actionID: actionID,
+                horizonAngle: 1
+            )
+            _ = coordinator.consume(.frame(frame.asFrameEvidence()!))
+        }
+        XCTAssertEqual(coordinator.phase, .readyForVerification)
+    }
+
+    func testFrameGlobalStabilityEpisodeCanRecoverWithoutSubjectBinding() {
+        let actionID = TechnicalQualityActionType.stabilizeCamera.rawValue
+        var coordinator = CoachingEpisodeCoordinator()
+        XCTAssertEqual(
+            coordinator.consume(.baseline(frameGlobalObservation(
+                id: "stability-global-0",
+                capturedAt: startDate,
+                actionID: actionID,
+                stabilityScore: 0.20,
+                stable: false,
+                still: false
+            ))).phase,
+            .awaitingMovement
+        )
+        XCTAssertNil(coordinator.state.baseline?.subjectIdentity)
+
+        for (index, score) in [(1, 0.40), (2, 0.60)] {
+            let frame = frameGlobalObservation(
+                id: "stability-global-\(index)",
+                capturedAt: startDate.addingTimeInterval(Double(index) * 0.1),
+                actionID: actionID,
+                stabilityScore: score,
+                stable: false,
+                still: false
+            )
+            _ = coordinator.consume(.frame(frame.asFrameEvidence()!))
+        }
+        XCTAssertEqual(coordinator.phase, .collectingStableAfterFrames)
+
+        for index in 3...4 {
+            let frame = frameGlobalObservation(
+                id: "stability-global-\(index)",
+                capturedAt: startDate.addingTimeInterval(Double(index) * 0.1),
+                actionID: actionID,
+                stabilityScore: 0.60,
+                stable: true,
+                still: true
+            )
+            _ = coordinator.consume(.frame(frame.asFrameEvidence()!))
+        }
+        XCTAssertEqual(coordinator.phase, .readyForVerification)
+    }
+
     func testMismatchedTrackGeometryIsRejected() {
         let baseline = baselineObservation()
         let mismatchedTrack = SubjectTrackState(
-            identity: baseline.subjectTrack.identity,
+            identity: baseline.subjectTrack!.identity,
             phase: .active,
             lastRegion: NormalizedRect(x: 0.72, y: 0.30, width: 0.20, height: 0.40),
             lastSeenFrameID: baseline.frame.frameID,
@@ -509,17 +745,19 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         )), beforeDuplicate)
 
         var outOfOrder = startedCoordinator()
-        _ = outOfOrder.observe(observation(
+        let firstOutOfOrderState = outOfOrder.observe(observation(
             id: "o1",
             x: 0.26,
-            capturedAt: startDate.addingTimeInterval(0.4)
+            capturedAt: startDate.addingTimeInterval(0.1)
         ))
+        let secondOutOfOrderState = outOfOrder.observe(observation(
+            id: "o0",
+            x: 0.32,
+            capturedAt: startDate.addingTimeInterval(0.05)
+        ))
+        XCTAssertEqual(firstOutOfOrderState.phase, .awaitingMovement)
         XCTAssertEqual(
-            outOfOrder.observe(observation(
-                id: "o0",
-                x: 0.32,
-                capturedAt: startDate.addingTimeInterval(0.3)
-            )).cancellationReason,
+            secondOutOfOrderState.cancellationReason,
             .outOfOrder
         )
         XCTAssertNotEqual(outOfOrder.phase, .readyForVerification)

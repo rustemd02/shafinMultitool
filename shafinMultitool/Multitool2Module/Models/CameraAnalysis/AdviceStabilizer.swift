@@ -91,12 +91,17 @@ struct AdviceStabilizer {
             return countPending(incoming)
         }
 
-        // Identical to what is published: keep, reset hysteresis.
-        if incoming == current {
+        // The frame ID and target are provenance, not the semantic identity
+        // of advice. A recurring action on a fresh frame must refresh its
+        // attribution; otherwise downstream consumers receive an old frame
+        // ID and reject otherwise-valid same-action evidence as stale.
+        if incoming.decision == current.decision,
+           incoming.actionID == current.actionID {
             pendingDecision = nil
             pendingActionID = nil
             pendingCount = 0
-            return current
+            published = incoming
+            return incoming
         }
 
         // A different decision is building up: require the hysteresis dwell.

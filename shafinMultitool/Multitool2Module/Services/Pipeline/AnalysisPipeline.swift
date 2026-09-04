@@ -3522,6 +3522,10 @@ final class AnalysisPipeline: ObservableObject {
     /// identity, lifecycle context, and stabilized action; consumers must not
     /// reconstruct it from live text, timers, or mutable UI samples.
     @Published private(set) var currentCoachingEpisodeObservation: CoachingEpisodeObservation?
+    /// Typed stream boundary for the production before/after episode. A
+    /// baseline freezes advice once; frame events carry fresh evidence even
+    /// when the current recommendation disappears; cancellation is explicit.
+    @Published private(set) var currentCoachingEpisodeEvent: CoachingEpisodeStreamEvent?
 
     private let visionTracking = VisionTracking()
     private let horizonEstimator = HorizonEstimator()
@@ -3554,6 +3558,13 @@ final class AnalysisPipeline: ObservableObject {
     private let liveSubjectTracker = SubjectTracker()
     private var liveSubjectLifecycleContext: SubjectTrackLifecycleContext?
     private var liveSubjectSource: FeatureSourceID?
+    /// Pipeline-side stream identity tells the boundary whether the next
+    /// admissible event is the first baseline or a fresh frame for it. It is
+    /// cleared only by an explicit typed cancellation/lifecycle reset.
+    private var liveEpisodeActionID: String?
+    private var liveEpisodeGeneration: UInt64?
+    private var liveEpisodeOrientation: CameraCoachOrientation?
+    private var liveEpisodeSource: FeatureSourceID?
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -4675,8 +4686,6 @@ final class AnalysisPipeline: ObservableObject {
                 // stability signal is present, preserve only its pending
                 // hysteresis across subsequent moving frames.
                 clearLiveCoachingEpisodeObservation(reason: "camera_motion")
-            } else {
-                currentCoachingEpisodeObservation = nil
             }
             if lastLiveMotionBecameUnstableAt == nil {
                 lastLiveMotionBecameUnstableAt = now
@@ -4794,12 +4803,17 @@ final class AnalysisPipeline: ObservableObject {
         guard isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+        // Reuse the technical signal already consumed by live presentation.
+        // The episode handoff must not rescan the full-resolution buffer on
+        // the main actor merely to recompute exposure contradiction.
+        let technicalQualitySignal = technicalQualitySignal(for: frameEvidence.pixelBuffer)
         publishLiveCoachingEpisodeObservation(
             snapshot: snapshot,
             semantics: semantics,
             plan: plan,
             frameEvidence: frameEvidence,
-            evaluatedAt: now
+            evaluatedAt: now,
+            technicalQualitySignal: technicalQualitySignal
         )
         let semanticTips = semanticTipPlanner.plan(
             input: SemanticTipPlannerInput(
@@ -4828,7 +4842,6 @@ final class AnalysisPipeline: ObservableObject {
             plan: plan,
             motionState: snapshot.motion.state
         )
-        let technicalQualitySignal = technicalQualitySignal(for: frameEvidence.pixelBuffer)
         publishLivePresentation(
             frameId: snapshot.frameId,
             critique: critique,
@@ -5912,10 +5925,12 @@ final class AnalysisPipeline: ObservableObject {
         currentSuggestion = nil
         currentLiveHint = nil
         currentCoachingEpisodeObservation = nil
+        currentCoachingEpisodeEvent = .cancel(.routeExit)
         _ = liveAdviceStabilizer.invalidate(frameID: "release", reason: "release")
         liveSubjectTracker.reset()
         liveSubjectLifecycleContext = nil
         liveSubjectSource = nil
+        resetLiveEpisodeStream()
         currentPauseCritique = nil
         currentOverlayAnnotations = []
         liveHintShownAt = .distantPast
@@ -5997,11 +6012,12 @@ final class AnalysisPipeline: ObservableObject {
         DispatchQueue.main.async {
             guard self.isGenerationCurrent(generation) else { return }
             self.currentLiveHint = nil
-            self.currentCoachingEpisodeObservation = nil
+            self.publishLiveCoachingEpisodeEvent(.cancel(.routeExit))
             _ = self.liveAdviceStabilizer.invalidate(frameID: "live_clear", reason: "live_clear")
             self.liveSubjectTracker.reset()
             self.liveSubjectLifecycleContext = nil
             self.liveSubjectSource = nil
+            self.resetLiveEpisodeStream()
             self.liveHintShownAt = .distantPast
             self.liveHintExpiresAt = .distantPast
             self.lastLiveMotionBecameUnstableAt = nil
@@ -6012,22 +6028,43 @@ final class AnalysisPipeline: ObservableObject {
         currentLiveFusionTraceBundle = nil
     }
 
-    /// Publishes one immutable, already bounded and stabilized observation to
-    /// the production episode owner. Keeping this seam explicit prevents a
-    /// view model from deriving movement evidence from presentation text or a
-    /// wall-clock timer. Passing nil closes the live observation stream.
+    /// Publishes one typed event to the production episode owner. The baseline
+    /// is the only advice-bearing event; frame evidence and cancellation are
+    /// explicit so a missing recommendation is not conflated with stale data.
     @MainActor
     func publishCoachingEpisodeObservation(_ observation: CoachingEpisodeObservation?) {
-        currentCoachingEpisodeObservation = observation
+        if let observation {
+            publishLiveCoachingEpisodeEvent(.baseline(observation))
+        } else {
+            publishLiveCoachingEpisodeEvent(.cancel(.staleEvidence))
+        }
+    }
+
+    @MainActor
+    func publishCoachingEpisodeEvent(_ event: CoachingEpisodeStreamEvent) {
+        publishLiveCoachingEpisodeEvent(event)
+    }
+
+    @MainActor
+    private func publishLiveCoachingEpisodeEvent(_ event: CoachingEpisodeStreamEvent) {
+        currentCoachingEpisodeEvent = event
+        switch event {
+        case .baseline(let observation):
+            currentCoachingEpisodeObservation = observation
+        case .frame, .cancel:
+            // Kept only for source compatibility; consumers must use the
+            // typed stream because a frame has no mutable advice payload.
+            currentCoachingEpisodeObservation = nil
+        }
     }
 
     // MARK: - M2-024 live episode handoff
 
-    /// Builds the only production episode observation. The legacy presentation
-    /// plan is first migrated to the canonical action catalog, passed through
-    /// the M2-019 safety gate and M2-020 bounded planner, then temporally
-    /// stabilized before the typed frame envelope is published. A non-correct
-    /// or mixed-provenance result closes the stream immediately.
+    /// Builds the only production episode stream. The first accepted action is
+    /// a baseline and freezes advice; later events carry only fresh frame
+    /// evidence and an optional current action signal. A missing recommendation
+    /// is therefore a valid frame event, while unavailable/stale evidence is a
+    /// typed cancellation.
     @MainActor
     private func publishLiveCoachingEpisodeObservation(
         snapshot: FrameFeatureSnapshot,
@@ -6064,41 +6101,121 @@ final class AnalysisPipeline: ObservableObject {
             // tracked subject or the temporal advice streak.
             liveSubjectTracker.reset()
             clearLiveCoachingEpisodeObservation(reason: "capture_context_changed")
+            liveSubjectLifecycleContext = lifecycle
+            return
         }
         liveSubjectLifecycleContext = lifecycle
 
-        guard let subjectTrack = updateLiveSubjectTracker(
-            snapshot: snapshot,
-            semantics: semantics,
-            adapterState: frameEvidence.adapterState,
-            frameID: snapshot.frameId,
-            generation: frameEvidence.lensGeneration
-        ),
-        subjectTrack.phase == .active,
-        subjectTrack.lastSeenFrameID == snapshot.frameId,
-        let subjectRegion = snapshot.subjectSignals.primaryCandidateRegion,
-        let source = snapshot.subjectSignals.primaryCandidateSource,
-        let measuredAt = frameEvidence.featureSourceTimestamps[source],
-        let binding = UserMovementSubjectBinding(
-            identity: subjectTrack.identity,
-            frameID: snapshot.frameId,
-            region: subjectRegion,
-            source: source,
-            coordinateSpace: .vision,
-            measuredAt: measuredAt,
-            confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0
-        ) else {
-            clearLiveCoachingEpisodeObservation(reason: "subject_unavailable")
+        guard plan.validate(expectedFrameId: snapshot.frameId).isEmpty else {
+            clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
             return
         }
 
-        let envelope = frameEvidence.makeEnvelope()
-        let calibrationVersion: String
-        if stabilityAdmission {
-            calibrationVersion = "technical-quality-v1"
+        let candidate: (
+            actionID: String,
+            safetyFamily: CameraAdviceActionFamily,
+            probability: Double,
+            priorityBand: Int,
+            targetPoint: (x: Double, y: Double)?
+        )?
+        if let legacyAction = plan.primaryAction,
+           let migration = CameraCoachContractV2.production.migration(
+               forLegacyActionID: legacyAction.actionType.rawValue
+           ),
+           migration.decision == .correct,
+           let semanticAction = SemanticActionType(rawValue: migration.approvedActionID),
+           let migratedFamily = UserMovementObserver.actionFamily(for: semanticAction),
+           let migratedSafetyFamily = cameraAdviceActionFamily(for: migratedFamily) {
+            candidate = (
+                actionID: semanticAction.rawValue,
+                safetyFamily: migratedSafetyFamily,
+                probability: min(legacyAction.guardrail.minConfidence, plan.planConfidence),
+                priorityBand: legacyAction.priority,
+                targetPoint: migratedFamily == .subjectDisplacement
+                    ? snapshot.subjectSignals.primaryCandidateRegion.map {
+                        let centerX = $0.x + ($0.width * 0.5)
+                        let centerY = $0.y + ($0.height * 0.5)
+                        return (x: centerX, y: centerY)
+                    }
+                    : nil
+            )
+        } else if stabilityAdmission,
+                  let stabilityIssue {
+            // Technical stability is the only typed action that may be
+            // admitted without a RecommendationAction while the camera moves.
+            candidate = (
+                actionID: TechnicalQualityActionType.stabilizeCamera.rawValue,
+                safetyFamily: .stability,
+                probability: stabilityIssue.confidence,
+                priorityBand: 0,
+                targetPoint: nil
+            )
         } else {
-            calibrationVersion = "bounded-plan-v1"
+            candidate = nil
         }
+
+        if plan.primaryAction != nil, candidate == nil {
+            // A declared but unmigratable action is unavailable evidence, not
+            // the honest "recommendation disappeared" frame case.
+            clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
+            return
+        }
+
+        if let candidateActionID = candidate?.actionID,
+           let liveEpisodeActionID,
+           candidateActionID != liveEpisodeActionID {
+            // The current frame explicitly proposes a competing action. Do
+            // not let AdviceStabilizer's pending hysteresis keep the old
+            // episode alive; the typed stream owns this cancellation.
+            clearLiveCoachingEpisodeObservation(reason: "action_changed")
+            return
+        }
+
+        let episodeActionID = liveEpisodeActionID ?? candidate?.actionID
+        guard episodeActionID != nil else {
+            // No baseline exists and this frame has no actionable recommendation.
+            return
+        }
+        let actionFamily = episodeActionID.flatMap(UserMovementObserver.actionFamily)
+        let requiresSubject = actionFamily?.requiresSubjectBinding == true
+
+        let subjectTrack: SubjectTrackState?
+        let binding: UserMovementSubjectBinding?
+        if requiresSubject {
+            guard let tracked = updateLiveSubjectTracker(
+                snapshot: snapshot,
+                semantics: semantics,
+                adapterState: frameEvidence.adapterState,
+                frameID: snapshot.frameId,
+                generation: frameEvidence.lensGeneration
+            ),
+            tracked.phase == .active,
+            tracked.lastSeenFrameID == snapshot.frameId,
+            let subjectRegion = snapshot.subjectSignals.primaryCandidateRegion,
+            let source = snapshot.subjectSignals.primaryCandidateSource,
+            let measuredAt = frameEvidence.featureSourceTimestamps[source],
+            let subjectBinding = UserMovementSubjectBinding(
+                identity: tracked.identity,
+                frameID: snapshot.frameId,
+                region: subjectRegion,
+                source: source,
+                coordinateSpace: .vision,
+                measuredAt: measuredAt,
+                confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0
+            ) else {
+                clearLiveCoachingEpisodeObservation(reason: "subject_unavailable")
+                return
+            }
+            subjectTrack = tracked
+            binding = subjectBinding
+        } else {
+            // Frame-global actions intentionally carry no synthetic subject.
+            subjectTrack = nil
+            binding = nil
+        }
+
+        let envelope = frameEvidence.makeEnvelope()
+        let calibrationVersion = stabilityAdmission ? "technical-quality-v1" : "bounded-plan-v1"
         guard let frame = UserMovementFrame(
             snapshot: snapshot,
             envelope: envelope,
@@ -6114,131 +6231,103 @@ final class AnalysisPipeline: ObservableObject {
             return
         }
 
-        guard plan.validate(expectedFrameId: snapshot.frameId).isEmpty else {
-            clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
-            return
-        }
-
-        let actionID: String
-        let safetyFamily: CameraAdviceActionFamily
-        let probability: Double
-        let priorityBand: Int
-        let targetPoint: (x: Double, y: Double)?
-        if let legacyAction = plan.primaryAction,
-           let migration = CameraCoachContractV2.production.migration(
-               forLegacyActionID: legacyAction.actionType.rawValue
-           ),
-           migration.decision == .correct,
-           let semanticAction = SemanticActionType(rawValue: migration.approvedActionID),
-           let migratedFamily = UserMovementObserver.actionFamily(for: semanticAction),
-           let migratedSafetyFamily = cameraAdviceActionFamily(for: migratedFamily) {
-            actionID = semanticAction.rawValue
-            safetyFamily = migratedSafetyFamily
-            probability = min(legacyAction.guardrail.minConfidence, plan.planConfidence)
-            priorityBand = legacyAction.priority
-            targetPoint = migratedFamily == .subjectDisplacement
-                ? frame.subjectRegion.map {
-                    (x: $0.x + ($0.width * 0.5), y: $0.y + ($0.height * 0.5))
-                }
-                : nil
-        } else if stabilityAdmission,
-                  let stabilityIssue {
-            // Technical stability is the only typed action that may be
-            // admitted without a RecommendationAction while the camera moves.
-            // The issue confidence is the bounded technical-quality probability;
-            // M2-025 owns any later four-way calibration refinement.
-            actionID = TechnicalQualityActionType.stabilizeCamera.rawValue
-            safetyFamily = .stability
-            probability = stabilityIssue.confidence
-            priorityBand = 0
-            targetPoint = nil
-        } else {
-            clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
-            return
-        }
-
-        guard probability.isFinite, probability >= 0 else {
-            clearLiveCoachingEpisodeObservation(reason: "probability_invalid")
-            return
-        }
-
-        let exposureContradictionFree: Bool
-        if CVPixelBufferGetPixelFormatType(frameEvidence.pixelBuffer) == kCVPixelFormatType_32BGRA {
-            exposureContradictionFree = ExposureFeatureSignals.analyse(
-                pixelBuffer: frameEvidence.pixelBuffer,
-                subjectRegion: frame.subjectRegion.map(coachingCGRect(from:))
-            ).isContradictionFree
-        } else {
-            // Unsupported pixel formats cannot prove the exposure invariant.
-            exposureContradictionFree = false
-        }
-
-        let safetyDecision = CameraAdviceSafetyGate.evaluate(
-            actionFamily: safetyFamily,
-            input: CameraAdviceSafetyInput(
-                lensGenerationKnown: frameEvidence.lensGeneration != 0,
-                subjectTrackLost: subjectTrack.isLost,
-                subjectAmbiguous: semantics.ambiguities.contains {
-                    $0.type == .multipleSubjectsSimilarConfidence
-                },
-                motionStateIsStill: snapshot.motion.state == .still && frameEvidence.isStable,
-                exposureContradictionFree: exposureContradictionFree,
-                refocusAdviceAdmitted: false,
-                horizonAvailable: snapshot.sources.horizon.available
-                    && snapshot.sources.horizon.confidence != nil,
-                calibratedProbability: probability,
-                minimumConfidence: CameraAdviceSafetyGate.defaultMinimumConfidence
-            )
-        )
-        let candidate = CameraPlannerCandidate(
-            actionID: actionID,
-            actionFamily: safetyFamily,
-            calibratedProbability: probability,
-            priorityBand: priorityBand,
-            targetPoint: targetPoint
-        )
-        let boundedDecision = CameraBoundedActionPlanner.plan(
-            safetyDecision: safetyDecision,
-            candidates: [candidate],
-            goodFrameScore: 0,
-            frameID: snapshot.frameId
-        )
-        guard boundedDecision.decision == .correct,
-              boundedDecision.actionID == actionID else {
-            clearLiveCoachingEpisodeObservation(reason: "bounded_plan_blocked")
-            return
-        }
-
-        let stabilized = liveAdviceStabilizer.observe(boundedDecision)
-        guard let stabilized,
-              stabilized.decision == .correct,
-              stabilized.actionID == actionID,
-              stabilized.frameID == frame.frameID else {
-            // A different pending action must not leave the previous action
-            // alive while its replacement is still below hysteresis.
-            if let stabilized,
-               stabilized.decision == .correct,
-               stabilized.actionID != actionID {
-                _ = liveAdviceStabilizer.invalidate(
-                    frameID: snapshot.frameId,
-                    reason: "action_changed"
-                )
+        if let candidate {
+            guard candidate.probability.isFinite, candidate.probability >= 0 else {
+                clearLiveCoachingEpisodeObservation(reason: "probability_invalid")
+                return
             }
-            currentCoachingEpisodeObservation = nil
-            return
+
+            let safetyDecision = CameraAdviceSafetyGate.evaluate(
+                actionFamily: candidate.safetyFamily,
+                input: CameraAdviceSafetyInput(
+                    lensGenerationKnown: frameEvidence.lensGeneration != 0,
+                    subjectTrackLost: subjectTrack?.isLost,
+                    subjectAmbiguous: semantics.ambiguities.contains {
+                        $0.type == .multipleSubjectsSimilarConfidence
+                    },
+                    motionStateIsStill: snapshot.motion.state == .still && frameEvidence.isStable,
+                    exposureContradictionFree: technicalQualitySignal.exposureContradictionFree,
+                    refocusAdviceAdmitted: false,
+                    horizonAvailable: snapshot.sources.horizon.available
+                        && snapshot.sources.horizon.confidence != nil,
+                    calibratedProbability: candidate.probability,
+                    minimumConfidence: CameraAdviceSafetyGate.defaultMinimumConfidence
+                )
+            )
+            let boundedDecision = CameraBoundedActionPlanner.plan(
+                safetyDecision: safetyDecision,
+                candidates: [
+                    CameraPlannerCandidate(
+                        actionID: candidate.actionID,
+                        actionFamily: candidate.safetyFamily,
+                        calibratedProbability: candidate.probability,
+                        priorityBand: candidate.priorityBand,
+                        targetPoint: candidate.targetPoint
+                    )
+                ],
+                goodFrameScore: 0,
+                frameID: snapshot.frameId
+            )
+            guard boundedDecision.decision == .correct,
+                  boundedDecision.actionID == candidate.actionID else {
+                clearLiveCoachingEpisodeObservation(reason: "bounded_plan_blocked")
+                return
+            }
+
+            let stabilized = liveAdviceStabilizer.observe(boundedDecision)
+            if liveEpisodeActionID == nil {
+                guard let stabilized,
+                      stabilized.decision == .correct,
+                      stabilized.actionID == candidate.actionID,
+                      stabilized.frameID == frame.frameID else {
+                    // Initial hysteresis is still pending; no baseline has
+                    // been emitted and there is nothing to cancel.
+                    return
+                }
+                guard let observation = CoachingEpisodeObservation(
+                    frame: frame,
+                    stabilizedAdvice: stabilized,
+                    subjectTrack: subjectTrack,
+                    lifecycle: lifecycle,
+                    isStable: frameEvidence.isStable
+                ) else {
+                    clearLiveCoachingEpisodeObservation(reason: "observation_rejected")
+                    return
+                }
+                liveEpisodeActionID = candidate.actionID
+                liveEpisodeGeneration = lifecycle.generation
+                liveEpisodeOrientation = lifecycle.orientation
+                liveEpisodeSource = binding?.source
+                publishLiveCoachingEpisodeEvent(.baseline(observation))
+                return
+            }
+
+            // The advice remains frozen in the baseline. Stabilizer output is
+            // consulted for the current action, but never replaces baseline
+            // advice in a frame event.
+            guard let stabilized,
+                  stabilized.decision == .correct,
+                  stabilized.actionID == liveEpisodeActionID,
+                  stabilized.frameID == frame.frameID else {
+                clearLiveCoachingEpisodeObservation(reason: "stale_evidence")
+                return
+            }
         }
 
-        guard let observation = CoachingEpisodeObservation(
-            frame: frame,
-            stabilizedAdvice: stabilized,
-            subjectTrack: subjectTrack,
-            lifecycle: lifecycle,
-            isStable: frameEvidence.isStable
-        ) else {
+        guard liveEpisodeGeneration == lifecycle.generation,
+              liveEpisodeOrientation == lifecycle.orientation,
+              liveEpisodeSource == binding?.source,
+              let frameEvidenceEvent = CoachingEpisodeFrameEvidence(
+                frame: frame,
+                subjectTrack: subjectTrack,
+                lifecycle: lifecycle,
+                isStable: frameEvidence.isStable,
+                currentActionID: candidate?.actionID
+              ) else {
             clearLiveCoachingEpisodeObservation(reason: "observation_rejected")
             return
         }
-        currentCoachingEpisodeObservation = observation
+        publishLiveCoachingEpisodeEvent(.frame(frameEvidenceEvent))
     }
 
     @MainActor
@@ -6258,7 +6347,6 @@ final class AnalysisPipeline: ObservableObject {
             // Vision and DETR are separate provenance domains. Never carry a
             // track identity across that boundary, even when boxes overlap.
             liveSubjectTracker.reset()
-            clearLiveCoachingEpisodeObservation(reason: "subject_source_changed")
         }
         liveSubjectSource = source
 
@@ -6428,10 +6516,6 @@ final class AnalysisPipeline: ObservableObject {
             && abs(lhs.height - rhs.height) < 0.0001
     }
 
-    private func coachingCGRect(from region: NormalizedRect) -> CGRect {
-        CGRect(x: region.x, y: region.y, width: region.width, height: region.height)
-    }
-
     private func coachingOrientation(
         for orientation: CGImagePropertyOrientation
     ) -> CameraCoachOrientation? {
@@ -6464,7 +6548,32 @@ final class AnalysisPipeline: ObservableObject {
     @MainActor
     private func clearLiveCoachingEpisodeObservation(reason: String) {
         _ = liveAdviceStabilizer.invalidate(frameID: "live", reason: reason)
-        currentCoachingEpisodeObservation = nil
+        publishLiveCoachingEpisodeEvent(.cancel(coachingEpisodeCancellationReason(for: reason)))
+        resetLiveEpisodeStream()
+    }
+
+    @MainActor
+    private func resetLiveEpisodeStream() {
+        liveEpisodeActionID = nil
+        liveEpisodeGeneration = nil
+        liveEpisodeOrientation = nil
+        liveEpisodeSource = nil
+    }
+
+    private func coachingEpisodeCancellationReason(
+        for reason: String
+    ) -> CoachingEpisodeCancellationReason {
+        switch reason {
+        case "action_changed": return .actionChanged
+        case "subject_unavailable", "subject_source_changed": return .subjectChanged
+        case "capture_context_changed": return .cameraGenerationChange
+        case "camera_motion": return .staleEvidence
+        case "invalid_live_envelope", "frame_adapter_rejected", "bounded_plan_blocked",
+             "probability_invalid", "plan_not_actionable": return .staleEvidence
+        case "observation_rejected": return .invalidObservation
+        case "adapter_state_missing": return .staleEvidence
+        default: return .invalidObservation
+        }
     }
 
     /// Accepts one frame from the existing evidence store before an async

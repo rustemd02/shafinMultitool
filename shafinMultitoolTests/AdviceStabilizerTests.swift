@@ -64,6 +64,21 @@ final class AdviceStabilizerTests: XCTestCase {
         XCTAssertEqual(stabilizer.currentAdvice?.actionID, "a")
     }
 
+    func testSameSemanticActionRefreshesCurrentFrameProvenance() {
+        let clock = ScriptedClock()
+        var stabilizer = stabilizer(clock: { clock.tick() })
+
+        for frame in 0..<3 {
+            _ = stabilizer.observe(decision(.correct, action: "a", frame: frame))
+        }
+        XCTAssertEqual(stabilizer.currentAdvice?.frameID, "f2")
+
+        let refreshed = stabilizer.observe(decision(.correct, action: "a", frame: 99))
+        XCTAssertEqual(refreshed?.actionID, "a")
+        XCTAssertEqual(refreshed?.frameID, "f99")
+        XCTAssertEqual(stabilizer.currentAdvice?.frameID, "f99")
+    }
+
     func testNonCorrectionDecisionPublishesImmediately() {
         let clock = ScriptedClock()
         var now = { clock.tick() }

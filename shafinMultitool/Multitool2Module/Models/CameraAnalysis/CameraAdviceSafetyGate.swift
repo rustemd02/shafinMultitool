@@ -90,18 +90,30 @@ enum CameraAdviceSafetyGate {
             return .abstain(reason: .lensGenerationUnknown)
         }
 
-        // 2. Subject identity: a lost track invalidates every correction.
-        if input.subjectTrackLost == true {
-            return .abstain(reason: .subjectIdentityLost)
+        // 2. Subject identity is required only by subject-dependent action
+        //    families. Horizon and stability are frame-global and must remain
+        //    actionable when no subject was selected.
+        let requiresSubjectIdentity: Bool
+        switch actionFamily {
+        case .composition, .exposure, .focus:
+            requiresSubjectIdentity = true
+        case .horizon, .stability, .keep:
+            requiresSubjectIdentity = false
         }
-        // 2a. Declared ambiguity requires the S05 tap: no correction can be
-        //     emitted while the subject is not resolved.
-        if input.subjectAmbiguous {
-            return .selectSubject(reason: .subjectAmbiguous)
-        }
-        // 2b. No subject resolution at all is also a SELECT_SUBJECT case.
-        if input.subjectTrackLost == nil {
-            return .selectSubject(reason: .subjectAmbiguous)
+        if requiresSubjectIdentity {
+            // 2a. A lost track invalidates subject-dependent corrections.
+            if input.subjectTrackLost == true {
+                return .abstain(reason: .subjectIdentityLost)
+            }
+            // 2b. Declared ambiguity requires the S05 tap: no correction can
+            //     be emitted while the subject is not resolved.
+            if input.subjectAmbiguous {
+                return .selectSubject(reason: .subjectAmbiguous)
+            }
+            // 2c. No subject resolution at all is also SELECT_SUBJECT.
+            if input.subjectTrackLost == nil {
+                return .selectSubject(reason: .subjectAmbiguous)
+            }
         }
 
         // 3. Motion: ordinary corrections wait for a still frame. A typed
