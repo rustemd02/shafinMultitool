@@ -17,9 +17,43 @@ enum DBServiceError: Error, Equatable {
 
 class DBService {
 
+    private static let unifiedSceneProjectSchemaVersion = 1
+
     private struct UnifiedSceneProjectFile: Codable {
+        let schemaVersion: Int
         let project: UnifiedSceneProject
         let archivedWorldMap: Data?
+
+        init(project: UnifiedSceneProject, archivedWorldMap: Data?) {
+            schemaVersion = DBService.unifiedSceneProjectSchemaVersion
+            self.project = project
+            self.archivedWorldMap = archivedWorldMap
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if container.contains(.schemaVersion) {
+                schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+            } else {
+                schemaVersion = 0
+            }
+            guard schemaVersion >= 0,
+                  schemaVersion <= DBService.unifiedSceneProjectSchemaVersion else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .schemaVersion,
+                    in: container,
+                    debugDescription: "Unsupported unified scene project schema version " + String(schemaVersion)
+                )
+            }
+            project = try container.decode(UnifiedSceneProject.self, forKey: .project)
+            archivedWorldMap = try container.decodeIfPresent(Data.self, forKey: .archivedWorldMap)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case schemaVersion
+            case project
+            case archivedWorldMap
+        }
     }
 
     static let shared = DBService()
@@ -298,32 +332,25 @@ class DBService {
         project: UnifiedSceneProject,
         expectedUpdatedAt: Date?
     ) throws {
-        if let expectedUpdatedAt,
-           let stored = loadUnifiedSceneProjectByIDOnQueue(project.id) {
-            guard stored.project.updatedAt == expectedUpdatedAt else {
-                throw DBServiceError.staleSnapshot(storedUpdatedAt: stored.project.updatedAt)
+        let directory = try unifiedSceneProjectsDirectoryURL()
+        let projectURL = directory.appendingPathComponent(projectFilename(for: project.id))
+
+        // Decode an existing file before writing so malformed/future records
+        // fail closed instead of being silently downgraded by a save.
+        if fileManager.fileExists(atPath: projectURL.path) {
+            let stored = try loadUnifiedSceneProjectFile(projectURL)
+            if let expectedUpdatedAt {
+                guard stored.project.updatedAt == expectedUpdatedAt else {
+                    throw DBServiceError.staleSnapshot(storedUpdatedAt: stored.project.updatedAt)
+                }
             }
         }
 
         try createUnifiedSceneProjectsDirectory()
-        let directory = try unifiedSceneProjectsDirectoryURL()
-        let projectURL = directory.appendingPathComponent(projectFilename(for: project.id))
         try projectData.write(to: projectURL, options: [.atomic])
 
         let mapURL = directory.appendingPathComponent(worldMapFilename(for: project.id))
         try? fileManager.removeItem(at: mapURL)
-    }
-
-    private func loadUnifiedSceneProjectByIDOnQueue(_ id: UUID) -> (project: UnifiedSceneProject, archivedWorldMap: Data?)? {
-        guard let directory = try? unifiedSceneProjectsDirectoryURL() else {
-            return nil
-        }
-        let projectURL = directory.appendingPathComponent(projectFilename(for: id))
-        guard fileManager.fileExists(atPath: projectURL.path),
-              let stored = try? loadUnifiedSceneProjectFile(projectURL) else {
-            return nil
-        }
-        return (stored.project, stored.archivedWorldMap)
     }
 
     func loadUnifiedSceneProject(named name: String) -> (UnifiedSceneProject, ARWorldMap?)? {
@@ -443,10 +470,20 @@ class DBService {
             ))
         }
 
+        let hasProjectKey = object.keys.contains("project")
+        let hasSchemaVersionKey = object.keys.contains("schemaVersion")
         let stored: (project: UnifiedSceneProject, archivedWorldMap: Data?, isLegacy: Bool)
-        if object.keys.contains("project") {
+        if hasProjectKey {
             let file = try JSONDecoder().decode(UnifiedSceneProjectFile.self, from: data)
-            stored = (file.project, file.archivedWorldMap, false)
+            stored = (file.project, file.archivedWorldMap, file.schemaVersion == 0)
+        } else if hasSchemaVersionKey {
+            // A schema discriminator belongs to the envelope. Refusing this
+            // shape prevents a versioned/malformed record from falling back to
+            // the raw v0 project decoder, which would ignore the discriminator.
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: [],
+                debugDescription: "Unified scene project schema version requires an envelope"
+            ))
         } else {
             stored = (try JSONDecoder().decode(UnifiedSceneProject.self, from: data), nil, true)
         }
