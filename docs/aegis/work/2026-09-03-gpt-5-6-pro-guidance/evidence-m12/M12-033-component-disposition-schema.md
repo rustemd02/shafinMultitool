@@ -70,7 +70,8 @@ Each current model/framework/media/font/asset/dependency family is represented
 once by a full component record. The two explicit exclusions below are only
 benchmark and fixture resources, which are not public material components.
 `Release=deferred` is a typed unresolved membership state that blocks Release;
-it is not a legal approval claim.
+it is not a legal approval claim. Explicit exclusions must use
+`Release=excluded`, so they cannot hide an unresolved deferred state.
 
 | M0 material family | M12-033 representation | release treatment |
 |---|---|---|
@@ -103,7 +104,7 @@ Commands run in the isolated worktree:
 
 ```text
 python3 scripts/tests/test_validate_release_component_status.py
-→ exit 0; 17 tests passed
+→ exit 0; 18 tests passed
 
 python3 scripts/validate_release_component_status.py \
   --repo-root "$PWD" \

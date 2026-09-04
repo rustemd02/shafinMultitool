@@ -219,6 +219,16 @@ class ReleaseComponentStatusTests(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "duplicate value"):
             MODULE.validate_record(self.root, self.record_path)
 
+    def test_deferred_exclusion_fails_closed(self) -> None:
+        exclusion = self.record["explicit_exclusions"][0]
+        exclusion["release_config_membership"]["Release"] = "deferred"
+        self._write_record()
+
+        with self.assertRaisesRegex(
+            MODULE.ComponentStatusValidationError, "must have Release=excluded"
+        ):
+            MODULE.validate_record(self.root, self.record_path)
+
     def test_cross_family_duplicate_source_path_fails_closed(self) -> None:
         first, second = self.record["components"][:2]
         second["expected"]["source_path"] = first["expected"]["source_path"]

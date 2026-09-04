@@ -467,8 +467,8 @@ def _validate_exclusions(value: Any, repo_root: Path) -> set[str]:
             _required(exclusion, "release_config_membership", label),
             f"{label}.release_config_membership",
         )
-        if membership["Release"] not in {"excluded", "deferred"}:
-            _fail(f"malformed record: {label} must not mark an exclusion as bundled")
+        if membership["Release"] != "excluded":
+            _fail(f"malformed record: {label} must have Release=excluded")
     return seen_paths
 
 
