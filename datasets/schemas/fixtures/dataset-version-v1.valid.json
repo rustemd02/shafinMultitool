@@ -1,0 +1,73 @@
+{
+  "schema_id": "dataset-version-v1",
+  "dataset_id": "camera-coach-fixture",
+  "dataset_version": "v1.0.0",
+  "data": {
+    "id": "camera-coach-fixture-data",
+    "version": "v1.0.0",
+    "sha256": "b4ff6436d14913aab77f313f03dd638247d6e57f1188144a3203c1b01842ad03"
+  },
+  "label_schema": {
+    "id": "camera-coach-labels",
+    "version": "v1.0.0",
+    "sha256": "588c0aec3adfcca2d4e6c00bd8a631bb6f237309099a7ef7a861c9ba76c793db"
+  },
+  "split": {
+    "id": "camera-coach-split",
+    "version": "v1.0.0",
+    "sha256": "9cdb40054ac8d186ce1f1966f9382a3636de67774bd2feaedc0c3639e0ebbcc0"
+  },
+  "rights_manifest": {
+    "id": "camera-coach-rights",
+    "version": "v1.0.0",
+    "sha256": "6f08b55cf212829264db5b501e16d6e96bca70941d0941732f1b615641be6847"
+  },
+  "feature_schema": {
+    "id": "camera-coach-features",
+    "version": "v1.0.0",
+    "sha256": "a120ca382f6d6571570efe6da9d363349c42208c2c64bb7c1f1c032bcd4b89fe"
+  },
+  "evaluator": {
+    "id": "camera-coach-evaluator",
+    "version": "v1.0.0",
+    "sha256": "5e73a51701b84ae4d5c23a21de99b853cd3c82edaee66bce42def037b3a4d522"
+  },
+  "model_candidate": {
+    "id": "camera-coach-model-unselected",
+    "version": "v1.0.0",
+    "sha256": "ce9deff8119bc8e90e17b2bb27c2437924a89a963e83ba5cd91288960bda70b5"
+  },
+  "rights_status": "approved",
+  "unresolved_rights_count": 0,
+  "storage": {
+    "addressing": "content-addressed",
+    "hash_algorithm": "sha256",
+    "raw_data_location": "outside_git",
+    "rights_uncleared_location": "outside_git"
+  },
+  "access_control": {
+    "policy_id": "camera-coach-fixture-access",
+    "reader_roles": [
+      "dataset-owner",
+      "ml-evaluator",
+      "release-owner"
+    ],
+    "writer_roles": [
+      "dataset-owner"
+    ]
+  },
+  "retention": {
+    "policy_id": "camera-coach-fixture-retention",
+    "raw_data_days": 30,
+    "derived_data_days": 365,
+    "release_manifest": "permanent",
+    "deletion_requires_new_version": true
+  },
+  "release": {
+    "status": "frozen",
+    "hash_algorithm": "sha256",
+    "canonicalization": "json-sort-keys-utf8-no-whitespace-v1",
+    "created_at": "2026-09-04T00:00:00Z",
+    "manifest_sha256": "ca09976a2c817d34bdf024723bf88d914dc900ccec5ea6e756280ae9381a09a5"
+  }
+}

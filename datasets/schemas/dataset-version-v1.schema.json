@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/dataset-version-v1.schema.json",
+  "title": "SET OS dataset release manifest v1",
+  "description": "A frozen, content-addressed dataset manifest. Raw and rights-uncleared data are never stored by this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "dataset_id",
+    "dataset_version",
+    "data",
+    "label_schema",
+    "split",
+    "rights_manifest",
+    "feature_schema",
+    "evaluator",
+    "model_candidate",
+    "rights_status",
+    "unresolved_rights_count",
+    "storage",
+    "access_control",
+    "retention",
+    "release"
+  ],
+  "properties": {
+    "schema_id": {
+      "const": "dataset-version-v1"
+    },
+    "dataset_id": {
+      "$ref": "#/$defs/id"
+    },
+    "dataset_version": {
+      "$ref": "#/$defs/version"
+    },
+    "data": {
+      "$ref": "#/$defs/identity"
+    },
+    "label_schema": {
+      "$ref": "#/$defs/identity"
+    },
+    "split": {
+      "$ref": "#/$defs/identity"
+    },
+    "rights_manifest": {
+      "$ref": "#/$defs/identity"
+    },
+    "feature_schema": {
+      "$ref": "#/$defs/identity"
+    },
+    "evaluator": {
+      "$ref": "#/$defs/identity"
+    },
+    "model_candidate": {
+      "$ref": "#/$defs/identity"
+    },
+    "rights_status": {
+      "const": "approved"
+    },
+    "unresolved_rights_count": {
+      "const": 0
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "addressing",
+        "hash_algorithm",
+        "raw_data_location",
+        "rights_uncleared_location"
+      ],
+      "properties": {
+        "addressing": {
+          "const": "content-addressed"
+        },
+        "hash_algorithm": {
+          "const": "sha256"
+        },
+        "raw_data_location": {
+          "const": "outside_git"
+        },
+        "rights_uncleared_location": {
+          "const": "outside_git"
+        }
+      }
+    },
+    "access_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "reader_roles",
+        "writer_roles"
+      ],
+      "properties": {
+        "policy_id": {
+          "$ref": "#/$defs/id"
+        },
+        "reader_roles": {
+          "$ref": "#/$defs/roles"
+        },
+        "writer_roles": {
+          "$ref": "#/$defs/roles"
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "raw_data_days",
+        "derived_data_days",
+        "release_manifest",
+        "deletion_requires_new_version"
+      ],
+      "properties": {
+        "policy_id": {
+          "$ref": "#/$defs/id"
+        },
+        "raw_data_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "derived_data_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "release_manifest": {
+          "const": "permanent"
+        },
+        "deletion_requires_new_version": {
+          "const": true
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "hash_algorithm",
+        "canonicalization",
+        "created_at",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "status": {
+          "const": "frozen"
+        },
+        "hash_algorithm": {
+          "const": "sha256"
+        },
+        "canonicalization": {
+          "const": "json-sort-keys-utf8-no-whitespace-v1"
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "sha256"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "dataset-owner",
+          "annotator",
+          "adjudicator",
+          "ml-trainer",
+          "ml-evaluator",
+          "release-owner"
+        ]
+      }
+    }
+  }
+}
