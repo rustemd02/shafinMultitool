@@ -64,6 +64,10 @@ enum CameraAdviceActionFamily: String, Equatable, Sendable, CaseIterable {
     case focus = "focus"
     case exposure = "exposure"
     case composition = "composition"
+    /// Technical camera-stability evidence may be admitted while the camera
+    /// is moving. It never makes composition/exposure/focus advice actionable
+    /// during motion; those families still fail closed below.
+    case stability = "stability"
     case keep = "keep"
 }
 
@@ -100,15 +104,19 @@ enum CameraAdviceSafetyGate {
             return .selectSubject(reason: .subjectAmbiguous)
         }
 
-        // 3. Motion: corrections wait for a still frame — stabilisation
-        //    advice is not actionable while the camera moves.
-        if !input.motionStateIsStill {
+        // 3. Motion: ordinary corrections wait for a still frame. A typed
+        //    stability action is the sole exception: its purpose is to tell
+        //    the operator to stop moving, and its after-frame verification
+        //    remains strict in the episode coordinator.
+        if !input.motionStateIsStill && actionFamily != .stability {
             return .wait(reason: .motionNotStill)
         }
 
         // 4. Exposure contradiction: under- and overexposure cannot both be
-        //    advised — the metric set is unreliable, wait it out.
-        if !input.exposureContradictionFree {
+        //    advised — the metric set is unreliable, wait it out. Stability
+        //    is frame-global and does not make an exposure claim, so it does
+        //    not inherit this unrelated family gate.
+        if !input.exposureContradictionFree && actionFamily != .stability {
             return .wait(reason: .exposureContradiction)
         }
 
@@ -123,7 +131,7 @@ enum CameraAdviceSafetyGate {
             guard input.refocusAdviceAdmitted == true else {
                 return .abstain(reason: .focusEvidenceNotAdmitted)
             }
-        case .exposure, .composition, .keep:
+        case .exposure, .composition, .stability, .keep:
             break
         }
 

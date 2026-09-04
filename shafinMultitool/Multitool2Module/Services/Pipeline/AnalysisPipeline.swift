@@ -8,6 +8,7 @@
 import Combine
 import CoreGraphics
 import CoreMedia
+import CoreVideo
 import Foundation
 import Vision
 import QuartzCore
@@ -3516,6 +3517,11 @@ final class AnalysisPipeline: ObservableObject {
     @Published private(set) var currentLiveHint: LiveHintPresentation?
     @Published private(set) var currentPauseCritique: PauseCritiquePresentation?
     @Published private(set) var currentOverlayAnnotations: [OverlayAnnotationPresentation] = []
+    /// Immutable handoff from the bounded planner + AdviceStabilizer into the
+    /// episode owner. The value contains one frame's evidence, typed subject
+    /// identity, lifecycle context, and stabilized action; consumers must not
+    /// reconstruct it from live text, timers, or mutable UI samples.
+    @Published private(set) var currentCoachingEpisodeObservation: CoachingEpisodeObservation?
 
     private let visionTracking = VisionTracking()
     private let horizonEstimator = HorizonEstimator()
@@ -3539,6 +3545,15 @@ final class AnalysisPipeline: ObservableObject {
     private let liveHybridFusionEnabled: Bool
     private let demoLiveCoachEnabled: Bool
     private let pauseAnalysisAvailabilityProvider: () -> Bool
+
+    /// Main-actor owners for the live movement handoff. The accepted-frame
+    /// callback builds one immutable observation after the existing bounded
+    /// recommendation plan; no view or timer can manufacture episode
+    /// progress.
+    private var liveAdviceStabilizer = AdviceStabilizer()
+    private let liveSubjectTracker = SubjectTracker()
+    private var liveSubjectLifecycleContext: SubjectTrackLifecycleContext?
+    private var liveSubjectSource: FeatureSourceID?
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -4641,16 +4656,61 @@ final class AnalysisPipeline: ObservableObject {
     @MainActor
     private func emitSuggestion(generation: UInt64,
                                 frameEvidence: LatestFrameEvidenceStore.Snapshot) async {
-        guard isCurrentLiveEvidence(frameEvidence, generation: generation),
-              let adapterState = frameEvidence.adapterState else { return }
+        guard isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
+        guard let adapterState = frameEvidence.adapterState else {
+            clearLiveCoachingEpisodeObservation(reason: "adapter_state_missing")
+            return
+        }
         let now = Date()
         let localFeatures = adapterState.features
         
         if localFeatures.motion.state != .still {
+            let technicalSignal = technicalQualitySignal(for: frameEvidence.pixelBuffer)
+            let stabilityIssue = admittedTechnicalStabilityIssue(from: technicalSignal)
+            let enteringMotion = lastLiveMotionBecameUnstableAt == nil
             resetLiveSpatialConfirmation()
             resetLiveTechnicalConfirmation()
+            if enteringMotion || stabilityIssue == nil {
+                // Drop ordinary advice once motion starts. When a typed
+                // stability signal is present, preserve only its pending
+                // hysteresis across subsequent moving frames.
+                clearLiveCoachingEpisodeObservation(reason: "camera_motion")
+            } else {
+                currentCoachingEpisodeObservation = nil
+            }
             if lastLiveMotionBecameUnstableAt == nil {
                 lastLiveMotionBecameUnstableAt = now
+            }
+
+            if stabilityIssue != nil {
+                let snapshot = makeFeatureSnapshot(
+                    mode: .live,
+                    frameId: frameEvidence.sourceFrameId,
+                    capturedAt: frameEvidence.capturedAt,
+                    evaluatedAt: now,
+                    captureGeneration: frameEvidence.lensGeneration,
+                    orientation: frameEvidence.orientation,
+                    adapterState: adapterState
+                )
+                let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+                publishLiveCoachingEpisodeObservation(
+                    snapshot: snapshot,
+                    semantics: semantics,
+                    plan: RecommendationPlan(
+                        frameId: snapshot.frameId,
+                        mode: .live,
+                        inputVerdict: .needsFix,
+                        primaryAction: nil,
+                        secondaryActions: [],
+                        deferredActions: [],
+                        noChangeRationale: nil,
+                        planConfidence: stabilityIssue?.confidence ?? 0
+                    ),
+                    frameEvidence: frameEvidence,
+                    evaluatedAt: now,
+                    technicalQualitySignal: technicalSignal,
+                    allowStabilityWhileMoving: true
+                )
             }
 
             let unstableDuration = now.timeIntervalSince(lastLiveMotionBecameUnstableAt ?? now)
@@ -4734,6 +4794,13 @@ final class AnalysisPipeline: ObservableObject {
         guard isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+        publishLiveCoachingEpisodeObservation(
+            snapshot: snapshot,
+            semantics: semantics,
+            plan: plan,
+            frameEvidence: frameEvidence,
+            evaluatedAt: now
+        )
         let semanticTips = semanticTipPlanner.plan(
             input: SemanticTipPlannerInput(
                 frameId: snapshot.frameId,
@@ -5844,6 +5911,11 @@ final class AnalysisPipeline: ObservableObject {
                                      saliencyBalance: 0)
         currentSuggestion = nil
         currentLiveHint = nil
+        currentCoachingEpisodeObservation = nil
+        _ = liveAdviceStabilizer.invalidate(frameID: "release", reason: "release")
+        liveSubjectTracker.reset()
+        liveSubjectLifecycleContext = nil
+        liveSubjectSource = nil
         currentPauseCritique = nil
         currentOverlayAnnotations = []
         liveHintShownAt = .distantPast
@@ -5925,6 +5997,11 @@ final class AnalysisPipeline: ObservableObject {
         DispatchQueue.main.async {
             guard self.isGenerationCurrent(generation) else { return }
             self.currentLiveHint = nil
+            self.currentCoachingEpisodeObservation = nil
+            _ = self.liveAdviceStabilizer.invalidate(frameID: "live_clear", reason: "live_clear")
+            self.liveSubjectTracker.reset()
+            self.liveSubjectLifecycleContext = nil
+            self.liveSubjectSource = nil
             self.liveHintShownAt = .distantPast
             self.liveHintExpiresAt = .distantPast
             self.lastLiveMotionBecameUnstableAt = nil
@@ -5933,6 +6010,461 @@ final class AnalysisPipeline: ObservableObject {
             self.currentOverlayAnnotations = []
         }
         currentLiveFusionTraceBundle = nil
+    }
+
+    /// Publishes one immutable, already bounded and stabilized observation to
+    /// the production episode owner. Keeping this seam explicit prevents a
+    /// view model from deriving movement evidence from presentation text or a
+    /// wall-clock timer. Passing nil closes the live observation stream.
+    @MainActor
+    func publishCoachingEpisodeObservation(_ observation: CoachingEpisodeObservation?) {
+        currentCoachingEpisodeObservation = observation
+    }
+
+    // MARK: - M2-024 live episode handoff
+
+    /// Builds the only production episode observation. The legacy presentation
+    /// plan is first migrated to the canonical action catalog, passed through
+    /// the M2-019 safety gate and M2-020 bounded planner, then temporally
+    /// stabilized before the typed frame envelope is published. A non-correct
+    /// or mixed-provenance result closes the stream immediately.
+    @MainActor
+    private func publishLiveCoachingEpisodeObservation(
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        plan: RecommendationPlan,
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        evaluatedAt: Date,
+        technicalQualitySignal: TechnicalQualitySignal = .empty,
+        allowStabilityWhileMoving: Bool = false
+    ) {
+        let stabilityIssue = admittedTechnicalStabilityIssue(from: technicalQualitySignal)
+        let stabilityAdmission = allowStabilityWhileMoving && stabilityIssue != nil
+        guard snapshot.mode == .live,
+              snapshot.frameId == frameEvidence.sourceFrameId,
+              (stabilityAdmission || (frameEvidence.isStable && snapshot.motion.state == .still)),
+              frameEvidence.lensGeneration != 0,
+              let orientation = coachingOrientation(for: frameEvidence.orientation) else {
+            clearLiveCoachingEpisodeObservation(reason: "invalid_live_envelope")
+            return
+        }
+
+        let lifecycle = SubjectTrackLifecycleContext(
+            generation: frameEvidence.lensGeneration,
+            orientation: orientation,
+            lensID: nil,
+            routeActive: true,
+            isAppBackgrounded: false,
+            sceneSignature: nil
+        )
+        if let previous = liveSubjectLifecycleContext,
+           previous.generation != lifecycle.generation ||
+           previous.orientation != lifecycle.orientation {
+            // A new capture epoch/orientation cannot inherit either the
+            // tracked subject or the temporal advice streak.
+            liveSubjectTracker.reset()
+            clearLiveCoachingEpisodeObservation(reason: "capture_context_changed")
+        }
+        liveSubjectLifecycleContext = lifecycle
+
+        guard let subjectTrack = updateLiveSubjectTracker(
+            snapshot: snapshot,
+            semantics: semantics,
+            adapterState: frameEvidence.adapterState,
+            frameID: snapshot.frameId,
+            generation: frameEvidence.lensGeneration
+        ),
+        subjectTrack.phase == .active,
+        subjectTrack.lastSeenFrameID == snapshot.frameId,
+        let subjectRegion = snapshot.subjectSignals.primaryCandidateRegion,
+        let source = snapshot.subjectSignals.primaryCandidateSource,
+        let measuredAt = frameEvidence.featureSourceTimestamps[source],
+        let binding = UserMovementSubjectBinding(
+            identity: subjectTrack.identity,
+            frameID: snapshot.frameId,
+            region: subjectRegion,
+            source: source,
+            coordinateSpace: .vision,
+            measuredAt: measuredAt,
+            confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0
+        ) else {
+            clearLiveCoachingEpisodeObservation(reason: "subject_unavailable")
+            return
+        }
+
+        let envelope = frameEvidence.makeEnvelope()
+        let calibrationVersion: String
+        if stabilityAdmission {
+            calibrationVersion = "technical-quality-v1"
+        } else {
+            calibrationVersion = "bounded-plan-v1"
+        }
+        guard let frame = UserMovementFrame(
+            snapshot: snapshot,
+            envelope: envelope,
+            subjectBinding: binding,
+            evaluatedAt: evaluatedAt,
+            // The bounded plan's probability is already the only admitted
+            // action confidence. Raw model logits never enter this handoff.
+            isCalibrated: true,
+            calibrationVersion: calibrationVersion,
+            orientation: orientation
+        ) else {
+            clearLiveCoachingEpisodeObservation(reason: "frame_adapter_rejected")
+            return
+        }
+
+        guard plan.validate(expectedFrameId: snapshot.frameId).isEmpty else {
+            clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
+            return
+        }
+
+        let actionID: String
+        let safetyFamily: CameraAdviceActionFamily
+        let probability: Double
+        let priorityBand: Int
+        let targetPoint: (x: Double, y: Double)?
+        if let legacyAction = plan.primaryAction,
+           let migration = CameraCoachContractV2.production.migration(
+               forLegacyActionID: legacyAction.actionType.rawValue
+           ),
+           migration.decision == .correct,
+           let semanticAction = SemanticActionType(rawValue: migration.approvedActionID),
+           let migratedFamily = UserMovementObserver.actionFamily(for: semanticAction),
+           let migratedSafetyFamily = cameraAdviceActionFamily(for: migratedFamily) {
+            actionID = semanticAction.rawValue
+            safetyFamily = migratedSafetyFamily
+            probability = min(legacyAction.guardrail.minConfidence, plan.planConfidence)
+            priorityBand = legacyAction.priority
+            targetPoint = migratedFamily == .subjectDisplacement
+                ? frame.subjectRegion.map {
+                    (x: $0.x + ($0.width * 0.5), y: $0.y + ($0.height * 0.5))
+                }
+                : nil
+        } else if stabilityAdmission,
+                  let stabilityIssue {
+            // Technical stability is the only typed action that may be
+            // admitted without a RecommendationAction while the camera moves.
+            // The issue confidence is the bounded technical-quality probability;
+            // M2-025 owns any later four-way calibration refinement.
+            actionID = TechnicalQualityActionType.stabilizeCamera.rawValue
+            safetyFamily = .stability
+            probability = stabilityIssue.confidence
+            priorityBand = 0
+            targetPoint = nil
+        } else {
+            clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
+            return
+        }
+
+        guard probability.isFinite, probability >= 0 else {
+            clearLiveCoachingEpisodeObservation(reason: "probability_invalid")
+            return
+        }
+
+        let exposureContradictionFree: Bool
+        if CVPixelBufferGetPixelFormatType(frameEvidence.pixelBuffer) == kCVPixelFormatType_32BGRA {
+            exposureContradictionFree = ExposureFeatureSignals.analyse(
+                pixelBuffer: frameEvidence.pixelBuffer,
+                subjectRegion: frame.subjectRegion.map(coachingCGRect(from:))
+            ).isContradictionFree
+        } else {
+            // Unsupported pixel formats cannot prove the exposure invariant.
+            exposureContradictionFree = false
+        }
+
+        let safetyDecision = CameraAdviceSafetyGate.evaluate(
+            actionFamily: safetyFamily,
+            input: CameraAdviceSafetyInput(
+                lensGenerationKnown: frameEvidence.lensGeneration != 0,
+                subjectTrackLost: subjectTrack.isLost,
+                subjectAmbiguous: semantics.ambiguities.contains {
+                    $0.type == .multipleSubjectsSimilarConfidence
+                },
+                motionStateIsStill: snapshot.motion.state == .still && frameEvidence.isStable,
+                exposureContradictionFree: exposureContradictionFree,
+                refocusAdviceAdmitted: false,
+                horizonAvailable: snapshot.sources.horizon.available
+                    && snapshot.sources.horizon.confidence != nil,
+                calibratedProbability: probability,
+                minimumConfidence: CameraAdviceSafetyGate.defaultMinimumConfidence
+            )
+        )
+        let candidate = CameraPlannerCandidate(
+            actionID: actionID,
+            actionFamily: safetyFamily,
+            calibratedProbability: probability,
+            priorityBand: priorityBand,
+            targetPoint: targetPoint
+        )
+        let boundedDecision = CameraBoundedActionPlanner.plan(
+            safetyDecision: safetyDecision,
+            candidates: [candidate],
+            goodFrameScore: 0,
+            frameID: snapshot.frameId
+        )
+        guard boundedDecision.decision == .correct,
+              boundedDecision.actionID == actionID else {
+            clearLiveCoachingEpisodeObservation(reason: "bounded_plan_blocked")
+            return
+        }
+
+        let stabilized = liveAdviceStabilizer.observe(boundedDecision)
+        guard let stabilized,
+              stabilized.decision == .correct,
+              stabilized.actionID == actionID,
+              stabilized.frameID == frame.frameID else {
+            // A different pending action must not leave the previous action
+            // alive while its replacement is still below hysteresis.
+            if let stabilized,
+               stabilized.decision == .correct,
+               stabilized.actionID != actionID {
+                _ = liveAdviceStabilizer.invalidate(
+                    frameID: snapshot.frameId,
+                    reason: "action_changed"
+                )
+            }
+            currentCoachingEpisodeObservation = nil
+            return
+        }
+
+        guard let observation = CoachingEpisodeObservation(
+            frame: frame,
+            stabilizedAdvice: stabilized,
+            subjectTrack: subjectTrack,
+            lifecycle: lifecycle,
+            isStable: frameEvidence.isStable
+        ) else {
+            clearLiveCoachingEpisodeObservation(reason: "observation_rejected")
+            return
+        }
+        currentCoachingEpisodeObservation = observation
+    }
+
+    @MainActor
+    private func updateLiveSubjectTracker(
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        adapterState: PipelineFeatureSnapshotAdapterState?,
+        frameID: String,
+        generation: UInt64
+    ) -> SubjectTrackState? {
+        guard let source = snapshot.subjectSignals.primaryCandidateSource,
+              source == .vision || source == .detr else {
+            liveSubjectTracker.markLost(frameID: frameID)
+            return nil
+        }
+        if let previousSource = liveSubjectSource, previousSource != source {
+            // Vision and DETR are separate provenance domains. Never carry a
+            // track identity across that boundary, even when boxes overlap.
+            liveSubjectTracker.reset()
+            clearLiveCoachingEpisodeObservation(reason: "subject_source_changed")
+        }
+        liveSubjectSource = source
+
+        let sourceAvailable: Bool
+        switch source {
+        case .vision:
+            sourceAvailable = snapshot.sources.vision.available
+        case .detr:
+            sourceAvailable = snapshot.sources.detr.available
+        default:
+            sourceAvailable = false
+        }
+        guard sourceAvailable,
+              let primaryRegion = snapshot.subjectSignals.primaryCandidateRegion,
+              isValidVisionRegion(primaryRegion),
+              let primaryConfidence = snapshot.subjectSignals.primaryCandidateConfidence,
+              primaryConfidence >= 0.55,
+              subjectKind(semantics.primarySubject.kind, matches: source),
+              semantics.primarySubject.region.map({ regionsMatch($0, primaryRegion) }) == true,
+              !semantics.ambiguities.contains(where: {
+                  $0.type == .multipleSubjectsSimilarConfidence
+              }) else {
+            liveSubjectTracker.markLost(frameID: frameID)
+            return nil
+        }
+
+        let candidates = liveSubjectCandidates(
+            from: adapterState,
+            source: source
+        )
+        guard !candidates.isEmpty else {
+            liveSubjectTracker.markLost(frameID: frameID)
+            return nil
+        }
+
+        let selected = SubjectCandidate(
+            id: source == .vision ? "vision-primary" : "detr-primary",
+            kind: subjectKind(semantics.primarySubject.kind, for: source),
+            region: primaryRegion,
+            confidence: primaryConfidence
+        )
+        if liveSubjectTracker.current == nil {
+            guard let resolution = try? SubjectResolutionV2(
+                resolution: .automatic,
+                selected: selected,
+                track: nil,
+                provenance: .automatic,
+                confidence: primaryConfidence,
+                ambiguityReasons: [],
+                decidedAtFrameID: frameID
+            ) else {
+                return nil
+            }
+            liveSubjectTracker.begin(
+                resolution: resolution,
+                frameID: frameID,
+                generation: generation
+            )
+        } else if liveSubjectTracker.current?.identity.generation != generation {
+            liveSubjectTracker.reset()
+            return nil
+        } else {
+            _ = liveSubjectTracker.observe(frameID: frameID, candidates: candidates)
+        }
+
+        guard let state = liveSubjectTracker.current,
+              state.phase == .active,
+              state.lastSeenFrameID == frameID else {
+            return nil
+        }
+        return state
+    }
+
+    private func liveSubjectCandidates(
+        from adapterState: PipelineFeatureSnapshotAdapterState?,
+        source: FeatureSourceID
+    ) -> [SubjectCandidate] {
+        switch source {
+        case .vision:
+            return adapterState?.vision?.value.subjects.enumerated().compactMap { index, subject in
+                guard let region = normalizedVisionRegion(subject.boundingBox) else { return nil }
+                return SubjectCandidate(
+                    id: "vision-\(index)",
+                    kind: subject.isFace ? .face : .person,
+                    region: region,
+                    confidence: subject.confidence
+                )
+            } ?? []
+        case .detr:
+            return adapterState?.detr?.value.detections.enumerated().compactMap { index, detection in
+                guard let region = normalizedVisionRegion(detection.boundingBox) else { return nil }
+                return SubjectCandidate(
+                    id: "detr-\(index)",
+                    kind: .object,
+                    label: detection.label,
+                    region: region,
+                    confidence: detection.confidence
+                )
+            } ?? []
+        default:
+            return []
+        }
+    }
+
+    private func subjectKind(
+        _ kind: SubjectKind,
+        matches source: FeatureSourceID
+    ) -> Bool {
+        switch source {
+        case .vision:
+            return kind == .face || kind == .person
+        case .detr:
+            return kind == .object
+        default:
+            return false
+        }
+    }
+
+    private func subjectKind(
+        _ kind: SubjectKind,
+        for source: FeatureSourceID
+    ) -> SubjectKind {
+        switch source {
+        case .vision:
+            return kind == .face ? .face : .person
+        case .detr:
+            return .object
+        default:
+            return .unknown
+        }
+    }
+
+    private func normalizedVisionRegion(_ box: CGRect) -> NormalizedRect? {
+        guard box.minX.isFinite,
+              box.minY.isFinite,
+              box.width.isFinite,
+              box.height.isFinite,
+              box.minX >= 0,
+              box.minY >= 0,
+              box.width > 0,
+              box.height > 0,
+              box.maxX <= 1,
+              box.maxY <= 1 else {
+            return nil
+        }
+        return NormalizedRect(
+            x: Double(box.minX),
+            y: Double(box.minY),
+            width: Double(box.width),
+            height: Double(box.height)
+        )
+    }
+
+    private func isValidVisionRegion(_ region: NormalizedRect) -> Bool {
+        region.x.isFinite && region.y.isFinite
+            && region.width.isFinite && region.height.isFinite
+            && !region.isDegenerate
+            && region.x >= 0 && region.y >= 0
+            && region.x + region.width <= 1
+            && region.y + region.height <= 1
+    }
+
+    private func regionsMatch(_ lhs: NormalizedRect, _ rhs: NormalizedRect) -> Bool {
+        abs(lhs.x - rhs.x) < 0.0001
+            && abs(lhs.y - rhs.y) < 0.0001
+            && abs(lhs.width - rhs.width) < 0.0001
+            && abs(lhs.height - rhs.height) < 0.0001
+    }
+
+    private func coachingCGRect(from region: NormalizedRect) -> CGRect {
+        CGRect(x: region.x, y: region.y, width: region.width, height: region.height)
+    }
+
+    private func coachingOrientation(
+        for orientation: CGImagePropertyOrientation
+    ) -> CameraCoachOrientation? {
+        switch orientation {
+        case .right: return .portrait
+        case .left: return .portraitUpsideDown
+        case .up: return .landscapeRight
+        case .down: return .landscapeLeft
+        default: return nil
+        }
+    }
+
+    private func cameraAdviceActionFamily(
+        for movementFamily: UserMovementActionFamily
+    ) -> CameraAdviceActionFamily? {
+        switch movementFamily {
+        case .subjectDisplacement, .scaleDistance:
+            return .composition
+        case .horizonRotation:
+            return .horizon
+        case .lightExposure:
+            return .exposure
+        case .focus:
+            return .focus
+        case .stability:
+            return .stability
+        }
+    }
+
+    @MainActor
+    private func clearLiveCoachingEpisodeObservation(reason: String) {
+        _ = liveAdviceStabilizer.invalidate(frameID: "live", reason: reason)
+        currentCoachingEpisodeObservation = nil
     }
 
     /// Accepts one frame from the existing evidence store before an async
@@ -7238,6 +7770,31 @@ final class AnalysisPipeline: ObservableObject {
     private func technicalQualitySignal(for pixelBuffer: CVPixelBuffer?) -> TechnicalQualitySignal {
         guard let pixelBuffer else { return .empty }
         return technicalQualityAnalyzer.signal(pixelBuffer: pixelBuffer)
+    }
+
+    /// Returns the only technical issue that may open a moving-camera
+    /// coaching episode. Composition, exposure, focus, and every non-dominant
+    /// quality signal remain suppressed until the camera is still.
+    private func admittedTechnicalStabilityIssue(
+        from signal: TechnicalQualitySignal
+    ) -> TechnicalQualityIssueSignal? {
+        signal.issues
+            .filter {
+                $0.actionType == .stabilizeCamera
+                    && $0.isDominant
+                    && $0.confidence >= CameraAdviceSafetyGate.defaultMinimumConfidence
+                    && $0.severity >= CameraAdviceSafetyGate.defaultMinimumConfidence
+            }
+            .sorted {
+                if $0.confidence != $1.confidence {
+                    return $0.confidence > $1.confidence
+                }
+                if $0.severity != $1.severity {
+                    return $0.severity > $1.severity
+                }
+                return $0.type.rawValue < $1.type.rawValue
+            }
+            .first
     }
 
     private func dominantTechnicalQualityIssue(from signal: TechnicalQualitySignal) -> TechnicalQualityIssueSignal? {

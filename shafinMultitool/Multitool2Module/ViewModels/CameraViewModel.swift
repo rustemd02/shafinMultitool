@@ -177,6 +177,7 @@ final class CameraViewModel: ObservableObject {
     @Published private(set) var acceptedPauseSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot?
     @Published private(set) var takeNumber: Int = 0
     @Published private(set) var subjectRegions: [NormalizedRect] = []
+    @Published private(set) var coachingEpisodeState: CoachingEpisodeState = .idle
 
     var isPauseProjectionReady: Bool {
         isPaused && acceptedPauseSnapshot?.displayImage != nil
@@ -190,6 +191,9 @@ final class CameraViewModel: ObservableObject {
     /// route rotation. Production marker views never own this ledger.
     let motionEventLedger = SETMotionEventLedger()
     let pauseCutMarkController: SETPauseCutMarkController
+    /// Camera Coach owns the episode lifetime; presentation views only observe
+    /// this projection and cannot restart an episode during recomposition.
+    private var coachingEpisodeCoordinator = CoachingEpisodeCoordinator()
 
     private let cameraManager: CameraManager
     private let analysisPipeline: AnalysisPipeline
@@ -238,6 +242,13 @@ final class CameraViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .assign(to: &$liveHint)
 
+        analysisPipeline.$currentCoachingEpisodeObservation
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] observation in
+                self?.consumeCoachingEpisodeObservation(observation)
+            }
+            .store(in: &cancellables)
+
         analysisPipeline.$currentPauseCritique
             .receive(on: DispatchQueue.main)
             .assign(to: &$pauseCritique)
@@ -259,6 +270,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func start() {
+        resetCoachingEpisodeForNewCapture()
         let intent = beginLifecycleRequest(.starting)
         let pendingRollback = failedStartRollbackOperation
         let pendingRelease = releaseOperation
@@ -281,6 +293,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func startAndWait() async {
+        resetCoachingEpisodeForNewCapture()
         let intent = beginLifecycleRequest(.starting)
         if let pendingRollback = failedStartRollbackOperation {
             await awaitFailedStartRollback(pendingRollback)
@@ -298,6 +311,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stop() {
+        cancelCoachingEpisode(reason: .routeExit)
         cancelPendingPauseRenderIfNeeded()
         let intent = beginLifecycleRequest(.stopping)
         stopFeaturePolling()
@@ -313,6 +327,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func stopAndWait() async {
+        cancelCoachingEpisode(reason: .routeExit)
         cancelPendingPauseRenderIfNeeded()
         let intent = beginLifecycleRequest(.stopping)
         stopFeaturePolling()
@@ -329,6 +344,7 @@ final class CameraViewModel: ObservableObject {
     /// interruption notification.
     func reportSceneInactive() {
         guard hasActiveCaptureOrPauseWork else { return }
+        cancelCoachingEpisode(reason: .background)
         if lifecycleState == .starting || lifecycleState == .running {
             cameraManager.reportSessionInterrupted()
         }
@@ -336,6 +352,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func releaseAndWait() async {
+        cancelCoachingEpisode(reason: .routeExit)
         let intent = beginLifecycleRequest(.stopping)
         stopFeaturePolling()
         clearPresentationProjection()
@@ -407,6 +424,8 @@ final class CameraViewModel: ObservableObject {
     private func handleCameraFailure(_ error: CameraManagerError) {
         guard hasActiveCaptureOrPauseWork else { return }
 
+        cancelCoachingEpisode(reason: .routeExit)
+
         lifecycleTask?.cancel()
         lifecycleTask = nil
         lensSwitchTask?.cancel()
@@ -461,6 +480,8 @@ final class CameraViewModel: ObservableObject {
         nominalTimecode = CameraNominalTimecode.string(elapsed: 0)
         nominalTimecodePublisher.publish(nominalTimecode)
         motionEventLedger.reset()
+        coachingEpisodeCoordinator.resetForRetry()
+        coachingEpisodeState = .idle
     }
 
     private func cancelPendingPauseRenderIfNeeded() {
@@ -703,6 +724,10 @@ final class CameraViewModel: ObservableObject {
     }
     
     func switchLens(to lens: CameraLens) {
+        // Invalidate the current episode before the asynchronous lens switch
+        // starts. A delayed result from the old lens must not remain eligible
+        // while CameraManager is changing the capture input.
+        cancelCoachingEpisode(reason: .lensChange)
         lensSwitchTask?.cancel()
         let intent = UUID()
         lensSwitchIntent = intent
@@ -770,6 +795,34 @@ final class CameraViewModel: ObservableObject {
     private func stopFeaturePolling() {
         featurePollingCancellable?.cancel()
         featurePollingCancellable = nil
+    }
+
+    private func consumeCoachingEpisodeObservation(_ observation: CoachingEpisodeObservation?) {
+        guard let observation else {
+            coachingEpisodeState = coachingEpisodeCoordinator.cancel(reason: .staleEvidence)
+            return
+        }
+
+        switch coachingEpisodeCoordinator.phase {
+        case .idle:
+            _ = coachingEpisodeCoordinator.begin(with: observation)
+        case .awaitingMovement, .collectingStableAfterFrames:
+            _ = coachingEpisodeCoordinator.observe(observation)
+        case .readyForVerification, .cancelled, .expired:
+            // A terminal episode cannot be reopened by a late publisher. The
+            // capture owner resets it explicitly on the next session.
+            break
+        }
+        coachingEpisodeState = coachingEpisodeCoordinator.state
+    }
+
+    private func cancelCoachingEpisode(reason: CoachingEpisodeCancellationReason) {
+        coachingEpisodeState = coachingEpisodeCoordinator.cancel(reason: reason)
+    }
+
+    private func resetCoachingEpisodeForNewCapture() {
+        coachingEpisodeCoordinator.resetForRetry()
+        coachingEpisodeState = .idle
     }
 
     private func publishNominalTimecode() {
