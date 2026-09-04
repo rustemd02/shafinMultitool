@@ -5,16 +5,16 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- HEAD: `2ddfa33a050015716335d0a40bbc7ee7b3e4a994` (local integration through M3-001; no push)
-- Upstream: `origin/store` (+3/-0 after local checkpoint and M3-001 integration)
+- Last integrated task head: `b8f2c10` (M7-001; journal-only commits may follow; no push)
+- Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
   - Modified (staged-as-unstaged `1 .M`, ~75 paths): docs/aegis camera-release checkpoints, docs/cameraanalysis (05,06,24), scripts (copy_debug_device_benchmark_resources, test_release_bundle_gate, validate_privacy_manifest, validate_release_bundle), project.pbxproj, CommercialShell (3), Entity/SceneData, Info.plist, ContentView, EntryFlow (2), CameraAnalysisDomainContracts, CoreMLWrappers (AestheticScorer, DETRDetector), VisionTracking, CameraManager, AnalysisPipeline, LatestFrameEvidenceStore, RealtimeScheduler, SemanticTipPlanner, Telemetry, Overlay (6), CameraViewModel, PrivacyInfo.xcprivacy, SceneDelegate, SceneWorkspaceTeardown, SceneGeneratorDiagnosticsLogger, SceneGeneratorViewModel, ARSceneContainer, LegacySceneGeneratorCameraShell, SceneGeneratorView, SceneInputSheet, CameraScreenModule (3), ScenesOverviewModule (4), CameraService, DBService, RecorderContracts, SerializedMediaRecorder, ~18 Tests + 2 UITests.
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
-- Current milestone: M2 camera closure in parallel with dependency-ready M3/M5 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-024 implementation; M5-001 fix-first correction
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001]
+- Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
+- Current task: M2-024 implementation; M5-001 fix-first correction3
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001, M7-001]
 - In-progress: [M2-024, M5-001]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
@@ -303,3 +303,10 @@
 - Verification on integrated `store`: `python3 tools/dataset/governance_check.py --self-test` PASS and fixture check PASS, manifest SHA-256 `1ab4d8715ea1af6a98d30ed68b4831500cc747b2eb8a79b877cf9fccaa2a1bec`. Fresh Sol correction audit: `ship`.
 - Evidence: `evidence-m3/M3-001-dataset-governance.md`. Commits integrated locally without push: `2d819d1`, `2ddfa33`.
 - Tracker total: 61/424 completed, 363 remaining. M3-002 remains dependency-blocked by M2-025; M3-023 and M3-024 are newly dependency-ready from the M3 side but retain their other listed dependencies.
+
+### 2026-09-04T13:45Z — M7-001 CLOSED
+- Published the compile-checked immutable `RecordingContractV1` for Camera Coach and AR recording: generation-tagged source ownership, explicit audio policy, QuickTime format, orientation/mirroring metadata, monotonic timebase and one canonical M1 lifecycle projection.
+- Initial Sol audit returned `fix-first`: app-local recordings could incorrectly require project promotion and terminal rows did not constrain artifact/failure/cancellation presence. Correction makes obligations promotion-target-aware, rejects incompatible target/disposition pairs, and binds each terminal outcome to typed `RecordingArtifact`/`RecorderFailure` invariants without adding another runtime state machine.
+- Verification: 15/15 PASS, 0 failed/skipped (`RecordingContractV1Tests` 9 + `RecordingLifecycleTransitionTests` 6), iPhone 17 simulator iOS 26.5, never iPhone 17 Pro or a physical device. Fresh Sol correction audit: `ship`. Evidence: `evidence-m7/M7-001-recording-contract-v1.md`; integrated commit `b8f2c10`.
+- Honest boundary: legacy `CameraService` does not yet adopt this contract; serialized source ownership, audio-session integration, journal/promotion runtime and physical A/V properties remain downstream M7 work.
+- Tracker total: 62/424 completed, 362 remaining. M7-002 and M7-003 are dependency-ready but must be scheduled against their additional dependencies and overlapping file ownership.
