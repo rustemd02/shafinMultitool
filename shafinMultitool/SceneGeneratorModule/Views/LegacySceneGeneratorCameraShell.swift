@@ -80,6 +80,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     private let captureSettingsStackView = UIStackView()
     private let resolutionChipButton = UIButton(type: .custom)
     private let fpsChipButton = UIButton(type: .custom)
+    private let recordingSoundChipButton = UIButton(type: .custom)
 
     private let addActorButton = UIButton(type: .custom)
     private let previewButton = UIButton(type: .custom)
@@ -108,6 +109,9 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     private var overlayTouchProbeTapRecognizer: UITapGestureRecognizer?
     private var recordingPlayer: AVPlayer?
     private weak var recordingPlayerViewController: AVPlayerViewController?
+    private let recordingPlaybackOwnerID = UUID()
+    private var recordingPlaybackTask: Task<Void, Never>?
+    private var recordingPlaybackRequestID = UUID()
 
     init(
         viewModel: SceneGeneratorViewModel,
@@ -339,12 +343,19 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         fpsChipButton.isAccessibilityElement = true
         fpsChipButton.accessibilityTraits = .staticText
         fpsChipButton.isUserInteractionEnabled = false
+        configureCaptureSettingChip(recordingSoundChipButton)
+        recordingSoundChipButton.accessibilityIdentifier = "generator_recording_sound_button"
+        recordingSoundChipButton.isAccessibilityElement = true
         captureSettingsStackView.addArrangedSubview(resolutionChipButton)
         captureSettingsStackView.addArrangedSubview(fpsChipButton)
+        captureSettingsStackView.addArrangedSubview(recordingSoundChipButton)
         resolutionChipButton.snp.makeConstraints { make in
             make.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
         }
         fpsChipButton.snp.makeConstraints { make in
+            make.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
+        }
+        recordingSoundChipButton.snp.makeConstraints { make in
             make.height.greaterThanOrEqualTo(SETComponentMetric.minimumHitTarget)
         }
         captureSettingsStackView.snp.makeConstraints { make in
@@ -625,6 +636,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         recordingReviewPlayButton.addTarget(self, action: #selector(recordingPlaybackButtonPressed), for: .touchUpInside)
         recordingReviewShareButton.addTarget(self, action: #selector(recordingShareButtonPressed), for: .touchUpInside)
         resolutionChipButton.addTarget(self, action: #selector(resolutionChipPressed), for: .touchUpInside)
+        recordingSoundChipButton.addTarget(self, action: #selector(recordingSoundChipPressed), for: .touchUpInside)
     }
 
     private func bindViewModel() {
@@ -635,6 +647,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
             viewModel.$isRecordingFinalizing.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$recordingResolutionLabel.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$recordingSourceFPS.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$recordingSoundEnabled.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$recordingElapsedTime.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$recordingReferences.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$latestAvailableRecordingArtifact.map { _ in () }.eraseToAnyPublisher(),
@@ -781,6 +794,23 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         resolutionChipButton.isEnabled = false
         resolutionChipButton.alpha = 0.72
         fpsChipButton.setTitle(currentFPSLabel(), for: .normal)
+        recordingSoundChipButton.setTitle(
+            viewModel.localizedCopy(
+                viewModel.recordingSoundEnabled ? .captureSoundOn : .captureSoundOff
+            ),
+            for: .normal
+        )
+        recordingSoundChipButton.isEnabled = viewModel.canToggleRecordingSound
+        recordingSoundChipButton.alpha = recordingSoundChipButton.isEnabled ? 1 : 0.55
+        recordingSoundChipButton.accessibilityLabel = viewModel.localizedCopy(
+            .accessibilityToggleRecordingSound
+        )
+        recordingSoundChipButton.accessibilityValue = viewModel.localizedCopy(
+            viewModel.recordingSoundEnabled ? .captureSoundOn : .captureSoundOff
+        )
+        recordingSoundChipButton.accessibilityTraits = viewModel.recordingSoundEnabled
+            ? [.button, .selected]
+            : [.button]
         resolutionChipButton.accessibilityLabel = SETCopyKey.captureResolution.localizedFormat(
             locale: presentationLocale,
             arguments: [currentResolutionLabel()]
@@ -879,6 +909,11 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     @objc private func resolutionChipPressed() {
         // The AR buffer owns the real dimensions; there is no scaler/crop
         // selector to cycle here.
+    }
+
+    @objc private func recordingSoundChipPressed() {
+        guard viewModel.canToggleRecordingSound else { return }
+        viewModel.setRecordingSoundEnabled(!viewModel.recordingSoundEnabled)
     }
 
     @objc private func hintButtonLongPressed(_ recognizer: UILongPressGestureRecognizer) {
@@ -1040,14 +1075,39 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         guard let artifact = viewModel.latestAvailableRecordingArtifact else { return }
 
         releaseRecordingPlayer()
-        let player = AVPlayer(url: artifact.localURL)
-        let playerViewController = AVPlayerViewController()
-        playerViewController.player = player
-        recordingPlayer = player
-        recordingPlayerViewController = playerViewController
-        present(playerViewController, animated: true) { [weak self, weak playerViewController] in
-            playerViewController?.presentationController?.delegate = self
-            player.play()
+        let requestID = UUID()
+        recordingPlaybackRequestID = requestID
+        let ownerID = recordingPlaybackOwnerID
+        let viewModel = self.viewModel
+        recordingPlaybackTask = Task { @MainActor [weak self] in
+            await viewModel.releaseRecordingPlaybackLease(ownerID: ownerID)
+            guard let self,
+                  !Task.isCancelled,
+                  self.recordingPlaybackRequestID == requestID,
+                  self.viewIfLoaded?.window != nil else { return }
+
+            do {
+                _ = try await viewModel.acquireRecordingPlaybackLease(ownerID: ownerID)
+                guard !Task.isCancelled,
+                      self.recordingPlaybackRequestID == requestID,
+                      self.viewIfLoaded?.window != nil else {
+                    await viewModel.releaseRecordingPlaybackLease(ownerID: ownerID)
+                    return
+                }
+
+                let player = AVPlayer(url: artifact.localURL)
+                let playerViewController = AVPlayerViewController()
+                playerViewController.player = player
+                self.recordingPlayer = player
+                self.recordingPlayerViewController = playerViewController
+                self.present(playerViewController, animated: true) { [weak self, weak playerViewController] in
+                    playerViewController?.presentationController?.delegate = self
+                    player.play()
+                }
+            } catch {
+                guard self.recordingPlaybackRequestID == requestID else { return }
+                self.viewModel.errorMessage = self.viewModel.localizedCopy(.generatorErrorRecorder)
+            }
         }
     }
 
@@ -1069,10 +1129,18 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     }
 
     private func releaseRecordingPlayer() {
+        recordingPlaybackTask?.cancel()
+        recordingPlaybackTask = nil
+        recordingPlaybackRequestID = UUID()
         recordingPlayer?.pause()
         recordingPlayerViewController?.player = nil
         recordingPlayer = nil
         recordingPlayerViewController = nil
+        let viewModel = self.viewModel
+        let ownerID = recordingPlaybackOwnerID
+        Task { @MainActor in
+            await viewModel.releaseRecordingPlaybackLease(ownerID: ownerID)
+        }
     }
 
     private func demoModeTitle(_ mode: CameraDemoSceneMode) -> String {

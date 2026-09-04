@@ -52,6 +52,11 @@ struct SceneGeneratorView: View {
             // camera shell keeps running underneath the inline recovery.
             if viewModel.isGeneratorErrorBandVisible {
                 GeneratorErrorBand(viewModel: viewModel)
+                    // Keep the fixed capture toolbar reachable while an
+                    // inline error is present. The band remains the first
+                    // content surface below it instead of swallowing the
+                    // toolbar's controls in the accessibility hit-test.
+                    .padding(.top, SETComponentMetric.minimumHitTarget)
                     .transition(
                         reduceMotion
                             ? AnyTransition.opacity
@@ -137,6 +142,15 @@ private struct GeneratorErrorBand: View {
                         .accessibilityLabel(SETCopyKey.accessibilityRecheck.localizedTextKey)
                         .accessibilityHint(SETCopyKey.accessibilityRecheck.localizedTextKey)
                 }
+            }
+
+            if viewModel.recordingVideoOnlyRecoveryAvailable {
+                SETDigitalAction(
+                    title: .generatorRecordWithoutSound,
+                    action: viewModel.startRecordingWithoutSound
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(SETCopyKey.generatorRecordWithoutSound.localizedTextKey)
             }
 
             ZStack(alignment: .bottom) {

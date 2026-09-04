@@ -143,6 +143,50 @@ final class SETGeneratorProductionUITests: XCTestCase {
         )
     }
 
+    func testRecordingSoundControlIsExplicitAndAccessible() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "-SHAFIN_GENERATOR_MARK_AR_READY",
+            "-SHAFIN_LIBRARY_RESET_FOR_UI_TESTING",
+            "-SHAFIN_SET_LOCALE", "en"
+        ]
+        app.launchEnvironment = [
+            "SHAFIN_UI_TESTING": "1",
+            "DEVICE_BENCHMARK_CONFIG_BASE64": ""
+        ]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: launchTimeout))
+        openLibraryAndCreateScene(named: "SET-UITest-Sound-\(UUID().uuidString.prefix(6))")
+
+        let soundButton = app.buttons["generator_recording_sound_button"]
+        XCTAssertTrue(
+            soundButton.waitForExistence(timeout: launchTimeout),
+            "The recording sound choice must be reachable on the production generator route."
+        )
+        XCTAssertGreaterThanOrEqual(soundButton.frame.height, 44)
+        XCTAssertTrue(soundButton.isEnabled)
+        XCTAssertTrue(soundButton.label.localizedCaseInsensitiveContains("recording sound"))
+        XCTAssertTrue(soundButton.value as? String == "SOUND ON")
+
+        soundButton.tap()
+        let soundOff = NSPredicate(format: "value CONTAINS 'SOUND OFF'")
+        expectation(for: soundOff, evaluatedWith: soundButton)
+        waitForExpectations(timeout: 3)
+        XCTAssertEqual(soundButton.value as? String, "SOUND OFF")
+
+        soundButton.tap()
+        let soundOn = NSPredicate(format: "value CONTAINS 'SOUND ON'")
+        expectation(for: soundOn, evaluatedWith: soundButton)
+        waitForExpectations(timeout: 3)
+        XCTAssertEqual(soundButton.value as? String, "SOUND ON")
+
+        app.buttons["generator_back_button"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["library_root"].waitForExistence(timeout: launchTimeout)
+        )
+    }
+
     // MARK: - Helpers
 
     private func launchApp() {

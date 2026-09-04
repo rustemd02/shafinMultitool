@@ -4001,6 +4001,22 @@
         }
       }
     },
+    "set.a11y.toggle_recording_sound": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle recording sound"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переключить звук записи"
+          }
+        }
+      }
+    },
     "set.a11y.record": {
       "localizations": {
         "en": {
@@ -4125,6 +4141,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "Частота кадров %@"
+          }
+        }
+      }
+    },
+    "set.capture.sound.on": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SOUND ON"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ЗВУК ВКЛ"
+          }
+        }
+      }
+    },
+    "set.capture.sound.off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SOUND OFF"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ЗВУК ВЫКЛ"
           }
         }
       }
@@ -4461,6 +4509,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Поделиться записью"
+          }
+        }
+      }
+    },
+    "set.generator.record_without_sound": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record without sound"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записать без звука"
           }
         }
       }

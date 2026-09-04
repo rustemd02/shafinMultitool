@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import AVFoundation
 @testable import shafinMultitool
 
 @MainActor
@@ -17,11 +18,15 @@ final class RecordingStartTeardownRaceTests: XCTestCase {
 
     func testTeardownDuringMicrophoneAwaitAbortsRecordingStartOnReleasedWorkspace() async throws {
         let client = GatedMicrophonePermissionClient()
+        let audioCoordinator = AudioSessionCoordinator(
+            platform: RecordingRaceAudioSessionPlatform()
+        )
         let projectName = "m1-011-\(UUID().uuidString)"
         let viewModel = SceneGeneratorViewModel(
             projectName: projectName,
             isNewProject: true,
-            permissionClient: client
+            permissionClient: client,
+            audioSessionCoordinator: audioCoordinator
         )
         defer {
             DBService.shared.resetUnifiedSceneProjectsForUITesting()
@@ -54,15 +59,21 @@ final class RecordingStartTeardownRaceTests: XCTestCase {
         XCTAssertFalse(viewModel.isRecording, "a released workspace must never report an armed take")
         XCTAssertFalse(viewModel.isRecordingStarting)
         XCTAssertNil(viewModel.recordingPermissionRecovery)
+        let leaseAfterPermissionRace = await audioCoordinator.currentLease
+        XCTAssertNil(leaseAfterPermissionRace)
     }
 
     func testStartAbortsWhenTeardownCompletesBeforePermissionRequest() async throws {
         let client = GatedMicrophonePermissionClient()
+        let audioCoordinator = AudioSessionCoordinator(
+            platform: RecordingRaceAudioSessionPlatform()
+        )
         let projectName = "m1-011b-\(UUID().uuidString)"
         let viewModel = SceneGeneratorViewModel(
             projectName: projectName,
             isNewProject: true,
-            permissionClient: client
+            permissionClient: client,
+            audioSessionCoordinator: audioCoordinator
         )
         defer {
             DBService.shared.resetUnifiedSceneProjectsForUITesting()
@@ -88,7 +99,22 @@ final class RecordingStartTeardownRaceTests: XCTestCase {
         XCTAssertEqual(client.totalRequestCount, 0, "no permission request may start on a released workspace")
         XCTAssertFalse(viewModel.isRecording)
         XCTAssertFalse(viewModel.isRecordingStarting)
+        let leaseAfterTeardown = await audioCoordinator.currentLease
+        XCTAssertNil(leaseAfterTeardown)
     }
+}
+
+private final class RecordingRaceAudioSessionPlatform: AudioSessionPlatform, @unchecked Sendable {
+    func setCategory(
+        _ category: AVAudioSession.Category,
+        mode: AVAudioSession.Mode,
+        options: AVAudioSession.CategoryOptions
+    ) throws {}
+
+    func setActive(
+        _ active: Bool,
+        options: AVAudioSession.SetActiveOptions
+    ) throws {}
 }
 
 /// Permission fake whose microphone request parks on a gate so the test

@@ -1,4 +1,5 @@
 import CoreVideo
+import AVFoundation
 import Foundation
 import XCTest
 @testable import shafinMultitool
@@ -152,6 +153,7 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertEqual(box.count, 0)
         XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorErrorMicrophoneDenied))
         XCTAssertEqual(viewModel.recordingPermissionRecovery, .openSettings)
+        XCTAssertTrue(viewModel.recordingVideoOnlyRecoveryAvailable)
 
         viewModel.errorMessage = viewModel.localizedCopy(.generatorErrorNoScene)
         XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorErrorNoScene))
@@ -165,7 +167,8 @@ final class SceneRecordingControllerTests: XCTestCase {
         let permissionClient = ToggleMicrophonePermissionClient(authorization: .denied)
         let viewModel = SceneGeneratorViewModel(
             permissionClient: permissionClient,
-            recordingController: controller
+            recordingController: controller,
+            audioSessionCoordinator: makeTestAudioSessionCoordinator()
         )
         viewModel.plannedScene = PlannedScene(placedActors: [], placedObjects: [])
         viewModel.isARSessionReady = true
@@ -214,6 +217,7 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertEqual(box.count, 0)
         XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorErrorMicrophoneRestricted))
         XCTAssertEqual(viewModel.recordingPermissionRecovery, .recheck)
+        XCTAssertTrue(viewModel.recordingVideoOnlyRecoveryAvailable)
     }
 
     func testMicrophoneUnavailableAndUnknownUseGenericRecorderErrorWithoutRecovery() async throws {
@@ -242,7 +246,96 @@ final class SceneRecordingControllerTests: XCTestCase {
             XCTAssertEqual(box.count, 0)
             XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorErrorRecorder))
             XCTAssertNil(viewModel.recordingPermissionRecovery)
+            XCTAssertTrue(viewModel.recordingVideoOnlyRecoveryAvailable)
         }
+    }
+
+    func testSoundOffSkipsMicrophoneAndAudioSessionAndUsesDisabledContract() async throws {
+        let (controller, box, temporaryDirectory) = try makeController()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let permissionClient = CountingMicrophonePermissionClient(authorization: .denied)
+        let platform = SceneRecordingTestAudioSessionPlatform()
+        let viewModel = SceneGeneratorViewModel(
+            permissionClient: permissionClient,
+            recordingController: controller,
+            audioSessionCoordinator: AudioSessionCoordinator(platform: platform)
+        )
+        viewModel.plannedScene = PlannedScene(placedActors: [], placedObjects: [])
+        viewModel.isARSessionReady = true
+        viewModel.claimRecordingSource(ownerID: UUID(), fps: 30)
+        controller.enqueueVideo(try makePixelBuffer(width: 640, height: 480), at: 1)
+
+        viewModel.setRecordingSoundEnabled(false)
+        viewModel.startRecording()
+        for _ in 0..<200 where !viewModel.isRecording {
+            await Task.yield()
+        }
+
+        let recorder = try XCTUnwrap(box.recorder(at: 0))
+        XCTAssertTrue(viewModel.isRecording)
+        XCTAssertEqual(recorder.configuration?.audioMode, .disabled)
+        let soundOffSnapshotCount = await permissionClient.snapshotCount
+        let soundOffRequestCount = await permissionClient.requestCount
+        XCTAssertEqual(soundOffSnapshotCount, 0)
+        XCTAssertEqual(soundOffRequestCount, 0)
+        XCTAssertEqual(platform.callCount, 0)
+
+        viewModel.stopRecording()
+        for _ in 0..<50 where viewModel.isRecordingFinalizing {
+            await Task.yield()
+        }
+        _ = await controller.releaseAndWait()
+    }
+
+    func testDeniedMicrophoneOffersExplicitSilentRetryWithoutPermissionRequest() async throws {
+        let (controller, box, temporaryDirectory) = try makeController()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let permissionClient = CountingMicrophonePermissionClient(authorization: .denied)
+        let viewModel = SceneGeneratorViewModel(
+            permissionClient: permissionClient,
+            recordingController: controller,
+            audioSessionCoordinator: AudioSessionCoordinator(
+                platform: SceneRecordingTestAudioSessionPlatform()
+            )
+        )
+        viewModel.plannedScene = PlannedScene(placedActors: [], placedObjects: [])
+        viewModel.isARSessionReady = true
+        viewModel.claimRecordingSource(ownerID: UUID(), fps: 30)
+        controller.enqueueVideo(try makePixelBuffer(width: 640, height: 480), at: 1)
+
+        viewModel.startRecording()
+        for _ in 0..<50 where viewModel.isRecordingStarting {
+            await Task.yield()
+        }
+
+        XCTAssertFalse(viewModel.isRecording)
+        XCTAssertEqual(viewModel.recordingPermissionRecovery, .openSettings)
+        XCTAssertTrue(viewModel.recordingVideoOnlyRecoveryAvailable)
+        let initialSnapshotCount = await permissionClient.snapshotCount
+        let initialRequestCount = await permissionClient.requestCount
+        XCTAssertEqual(initialSnapshotCount, 1)
+        XCTAssertEqual(initialRequestCount, 0)
+
+        viewModel.startRecordingWithoutSound()
+        for _ in 0..<200 where !viewModel.isRecording {
+            await Task.yield()
+        }
+
+        let recorder = try XCTUnwrap(box.recorder(at: 0))
+        XCTAssertTrue(viewModel.isRecording)
+        XCTAssertEqual(recorder.configuration?.audioMode, .disabled)
+        let silentSnapshotCount = await permissionClient.snapshotCount
+        let silentRequestCount = await permissionClient.requestCount
+        XCTAssertEqual(silentSnapshotCount, 1)
+        XCTAssertEqual(silentRequestCount, 0)
+
+        viewModel.stopRecording()
+        for _ in 0..<50 where viewModel.isRecordingFinalizing {
+            await Task.yield()
+        }
+        _ = await controller.releaseAndWait()
     }
 
     func testAuthorizedRetryClearsMicrophoneRecoveryAndStartsRecording() async throws {
@@ -252,7 +345,8 @@ final class SceneRecordingControllerTests: XCTestCase {
         let permissionClient = ToggleMicrophonePermissionClient(authorization: .denied)
         let viewModel = SceneGeneratorViewModel(
             permissionClient: permissionClient,
-            recordingController: controller
+            recordingController: controller,
+            audioSessionCoordinator: makeTestAudioSessionCoordinator()
         )
         viewModel.plannedScene = PlannedScene(placedActors: [], placedObjects: [])
         viewModel.isARSessionReady = true
@@ -291,7 +385,8 @@ final class SceneRecordingControllerTests: XCTestCase {
         controller.enqueueVideo(pixelBuffer, at: 1)
         let viewModel = SceneGeneratorViewModel(
             permissionClient: AuthorizedMicrophonePermissionClient(),
-            recordingController: controller
+            recordingController: controller,
+            audioSessionCoordinator: makeTestAudioSessionCoordinator()
         )
         viewModel.plannedScene = PlannedScene(placedActors: [], placedObjects: [])
         viewModel.isARSessionReady = true
@@ -583,6 +678,10 @@ final class SceneRecordingControllerTests: XCTestCase {
         return (controller, box, temporaryDirectory)
     }
 
+    private func makeTestAudioSessionCoordinator() -> AudioSessionCoordinator {
+        AudioSessionCoordinator(platform: SceneRecordingTestAudioSessionPlatform())
+    }
+
     private func makePixelBuffer(width: Int, height: Int) throws -> CVPixelBuffer {
         var pixelBuffer: CVPixelBuffer?
         let status = CVPixelBufferCreate(
@@ -597,6 +696,67 @@ final class SceneRecordingControllerTests: XCTestCase {
             throw NSError(domain: "SceneRecordingControllerTests", code: Int(status))
         }
         return pixelBuffer
+    }
+}
+
+private final class SceneRecordingTestAudioSessionPlatform: AudioSessionPlatform, @unchecked Sendable {
+    private let lock = NSLock()
+    private var callsStorage = 0
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return callsStorage
+    }
+
+    func setCategory(
+        _ category: AVAudioSession.Category,
+        mode: AVAudioSession.Mode,
+        options: AVAudioSession.CategoryOptions
+    ) throws {
+        lock.lock()
+        callsStorage += 1
+        lock.unlock()
+    }
+
+    func setActive(
+        _ active: Bool,
+        options: AVAudioSession.SetActiveOptions
+    ) throws {
+        lock.lock()
+        callsStorage += 1
+        lock.unlock()
+    }
+}
+
+private actor CountingMicrophonePermissionClient: PermissionClient {
+    private let authorization: PermissionAuthorization
+    private var snapshots = 0
+    private var requests = 0
+
+    init(authorization: PermissionAuthorization) {
+        self.authorization = authorization
+    }
+
+    var snapshotCount: Int { snapshots }
+    var requestCount: Int { requests }
+
+    func snapshot(for permission: AppPermission) async -> PermissionSnapshot {
+        snapshots += 1
+        return PermissionSnapshot(
+            permission: permission,
+            authorization: authorization,
+            availability: .available
+        )
+    }
+
+    func request(_ permission: AppPermission) async -> PermissionSnapshot {
+        requests += 1
+        return PermissionSnapshot(
+            permission: permission,
+            authorization: authorization,
+            availability: .available
+        )
     }
 }
 

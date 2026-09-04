@@ -25,8 +25,10 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var assetWriterVideoInput: AVAssetWriterInput?
     
     private var videoCaptureDevice: AVCaptureDevice!
-    
-    private var audioSession: AVAudioSession!
+
+    private let audioSessionCoordinator = AudioSessionCoordinator.shared
+    private let audioSessionOwnerID = UUID()
+    private var audioSessionLease: AudioSessionLease?
     private var audioCaptureSession: AVCaptureSession!
     private var audioCaptureDevice: AVCaptureDevice!
     private var audioCaptureDeviceInput: AVCaptureDeviceInput!
@@ -41,6 +43,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private let recorderLock = NSLock()
     private var recorderStateStorage: RecorderState = .idle
     private var isPreparingRecorder = false
+    private var preparationIdentity: UUID?
 
     var recorderState: RecorderState {
         recorderLock.lock()
@@ -84,47 +87,70 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             return
         }
         isPreparingRecorder = true
+        let identity = UUID()
+        preparationIdentity = identity
         let previousResources = detachRecorderResourcesLocked()
         recorderLock.unlock()
 
-        if Thread.isMainThread,
-           previousResources.captureSession != nil || previousResources.audioSession != nil {
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                self?.prepareRecorder(afterDetaching: previousResources)
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            Task { [weak self] in
+                await self?.prepareRecorder(
+                    afterDetaching: previousResources,
+                    identity: identity
+                )
             }
-            return
         }
-
-        prepareRecorder(afterDetaching: previousResources)
     }
 
     private func prepareRecorder(afterDetaching previousResources: (writer: AVAssetWriter?,
                                                                      captureSession: AVCaptureSession?,
-                                                                     audioSession: AVAudioSession?,
-                                                                     audioOutput: AVCaptureAudioDataOutput?)) {
-        stopDetachedResources(previousResources)
+                                                                     audioSessionLease: AudioSessionLease?,
+                                                                     audioOutput: AVCaptureAudioDataOutput?),
+                                 identity: UUID) async {
+        await stopDetachedResources(previousResources)
+        guard isPreparationCurrent(identity) else { return }
 
-        let preparedAudioSession = AVAudioSession.sharedInstance()
+        let lease: AudioSessionLease
         do {
-            try preparedAudioSession.setCategory(.playAndRecord, mode: .default, options: [])
-            try preparedAudioSession.setActive(true, options: [])
+            lease = try await audioSessionCoordinator.acquire(
+                ownerID: audioSessionOwnerID,
+                purpose: .recording
+            )
+            try await audioSessionCoordinator.activate(
+                lease,
+                configuration: .recording
+            )
         } catch {
-            try? preparedAudioSession.setActive(false, options: .notifyOthersOnDeactivation)
             recorderLock.lock()
-            recorderStateStorage = .failed
-            isPreparingRecorder = false
+            if preparationIdentity == identity {
+                recorderStateStorage = .failed
+                isPreparingRecorder = false
+                preparationIdentity = nil
+            }
             recorderLock.unlock()
             return
         }
 
+        guard isPreparationCurrent(identity) else {
+            try? await audioSessionCoordinator.deactivate(lease)
+            return
+        }
+
         recorderLock.lock()
-        audioSession = preparedAudioSession
+        guard preparationIdentity == identity,
+              recorderStateStorage != .recording,
+              recorderStateStorage != .finishing else {
+            recorderLock.unlock()
+            try? await audioSessionCoordinator.deactivate(lease)
+            return
+        }
+        audioSessionLease = lease
         let failedResources = prepareRecorderLocked()
         let sessionToStart = recorderStateStorage == .prepared ? audioCaptureSession : nil
         let audioOutputToAttach = recorderStateStorage == .prepared ? audioCaptureOutput : nil
         recorderLock.unlock()
 
-        stopDetachedResources(failedResources)
+        await stopDetachedResources(failedResources)
         audioOutputToAttach?.setSampleBufferDelegate(
             self,
             queue: DispatchQueue(label: "audioCaptureQueue")
@@ -134,42 +160,51 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         let didPrepare = sessionToStart != nil
             && audioCaptureOutput === audioOutputToAttach
             && recorderStateStorage == .prepared
-        isPreparingRecorder = false
+            && audioSessionLease == lease
+            && preparationIdentity == identity
+        if preparationIdentity == identity {
+            isPreparingRecorder = false
+            preparationIdentity = nil
+        }
         recorderLock.unlock()
 
-        if !didPrepare, failedResources.audioSession == nil {
-            try? preparedAudioSession.setActive(false, options: .notifyOthersOnDeactivation)
+        if !didPrepare, failedResources.audioSessionLease == nil {
+            try? await audioSessionCoordinator.deactivate(lease)
         }
         guard didPrepare, let sessionToStart else {
             return
         }
 
-        DispatchQueue.global(qos: .utility).async { [weak self, sessionToStart] in
-            guard let self else { return }
-            self.recorderLock.lock()
-            let canStart = self.audioCaptureSession === sessionToStart
-                && (self.recorderStateStorage == .prepared || self.recorderStateStorage == .recording)
-            self.recorderLock.unlock()
+        recorderLock.lock()
+        let canStart = audioCaptureSession === sessionToStart
+            && (recorderStateStorage == .prepared || recorderStateStorage == .recording)
+        recorderLock.unlock()
 
-            guard canStart else {
-                return
-            }
+        guard canStart else { return }
 
-            sessionToStart.startRunning()
-            self.recorderLock.lock()
-            let isStillCurrent = self.audioCaptureSession === sessionToStart
-                && (self.recorderStateStorage == .prepared || self.recorderStateStorage == .recording)
-            self.recorderLock.unlock()
+        sessionToStart.startRunning()
+        recorderLock.lock()
+        let isStillCurrent = audioCaptureSession === sessionToStart
+            && (recorderStateStorage == .prepared || recorderStateStorage == .recording)
+        recorderLock.unlock()
 
-            if !isStillCurrent {
-                sessionToStart.stopRunning()
-            }
+        if !isStillCurrent {
+            sessionToStart.stopRunning()
         }
+    }
+
+    private func isPreparationCurrent(_ identity: UUID) -> Bool {
+        recorderLock.lock()
+        defer { recorderLock.unlock() }
+        return preparationIdentity == identity
+            && isPreparingRecorder
+            && recorderStateStorage != .recording
+            && recorderStateStorage != .finishing
     }
 
     private func prepareRecorderLocked() -> (writer: AVAssetWriter?,
                                               captureSession: AVCaptureSession?,
-                                              audioSession: AVAudioSession?,
+                                              audioSessionLease: AudioSessionLease?,
                                               audioOutput: AVCaptureAudioDataOutput?) {
         guard recorderStateStorage != .recording,
               recorderStateStorage != .finishing else { return (nil, nil, nil, nil) }
@@ -186,16 +221,18 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         startTime = nil
 
         guard let outputURL = getVideoFileURL() else {
+            let resources = detachRecorderResourcesLocked()
             recorderStateStorage = .failed
-            return (nil, nil, nil, nil)
+            return resources
         }
         self.outputURL = outputURL
         settingsValues = DBService.shared.fetchSettingsButtonValues()
         generateWBValues()
 
         guard let writer = try? AVAssetWriter(outputURL: outputURL, fileType: .mov) else {
+            let resources = detachRecorderResourcesLocked()
             recorderStateStorage = .failed
-            return (nil, nil, nil, nil)
+            return resources
         }
         assetWriter = writer
         writer.movieFragmentInterval = CMTime.invalid
@@ -322,8 +359,35 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         guard recorderStateStorage == .recording,
               let writer = assetWriter,
               let videoInput = assetWriterVideoInput else {
+            // A legacy route may request stop while preparation is waiting on
+            // the shared audio lease. Invalidate that preparation identity so
+            // a late activation cannot recreate a recorder after teardown.
+            if isPreparingRecorder, recorderStateStorage == .idle {
+                preparationIdentity = nil
+                isPreparingRecorder = false
+            }
+            let shouldReleasePreparedResources = recorderStateStorage == .prepared
+            let detachedResources = shouldReleasePreparedResources
+                ? detachRecorderResourcesLocked()
+                : nil
+            if shouldReleasePreparedResources {
+                isPreparingRecorder = true
+            }
             recorderLock.unlock()
-            completion?()
+            guard let detachedResources else {
+                completion?()
+                return
+            }
+            Task { [weak self] in
+                guard let self else { return }
+                await self.stopDetachedResources(detachedResources)
+                self.recorderLock.lock()
+                self.isPreparingRecorder = false
+                self.recorderLock.unlock()
+                await MainActor.run {
+                    completion?()
+                }
+            }
             return
         }
 
@@ -367,49 +431,51 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         recorderLock.unlock()
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self else { return }
-            self.stopDetachedResources(detachedResources)
-            DispatchQueue.main.async { [weak self] in
+            Task { [weak self] in
                 guard let self else { return }
-                self.recorderLock.lock()
-                let isStillCurrent = self.isPreparingRecorder
-                    && self.recorderStateStorage == (didFinish ? .finished : .failed)
-                    && self.assetWriter == nil
-                if isStillCurrent {
-                    self.isPreparingRecorder = false
-                }
-                self.recorderLock.unlock()
-
-                guard isStillCurrent else {
-                    completion?()
-                    return
-                }
-
-                if didFinish {
-                    if let outputURL {
-                        self.saveVideoToLibrary(videoURL: outputURL)
+                await self.stopDetachedResources(detachedResources)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.recorderLock.lock()
+                    let isStillCurrent = self.isPreparingRecorder
+                        && self.recorderStateStorage == (didFinish ? .finished : .failed)
+                        && self.assetWriter == nil
+                    if isStillCurrent {
+                        self.isPreparingRecorder = false
                     }
-                } else {
-                    NotificationCenter.default.post(name: Self.recorderDidFailNotification, object: self)
+                    self.recorderLock.unlock()
+
+                    guard isStillCurrent else {
+                        completion?()
+                        return
+                    }
+
+                    if didFinish {
+                        if let outputURL {
+                            self.saveVideoToLibrary(videoURL: outputURL)
+                        }
+                    } else {
+                        NotificationCenter.default.post(name: Self.recorderDidFailNotification, object: self)
+                    }
+                    completion?()
                 }
-                completion?()
             }
         }
     }
 
     private func detachRecorderResourcesLocked() -> (writer: AVAssetWriter?,
                                                       captureSession: AVCaptureSession?,
-                                                      audioSession: AVAudioSession?,
+                                                      audioSessionLease: AudioSessionLease?,
                                                       audioOutput: AVCaptureAudioDataOutput?) {
         let resources = (
             writer: assetWriter,
             captureSession: audioCaptureSession,
-            audioSession: audioSession,
+            audioSessionLease: audioSessionLease,
             audioOutput: audioCaptureOutput
         )
         audioCaptureOutput = nil
         audioCaptureSession = nil
-        audioSession = nil
+        audioSessionLease = nil
         audioCaptureDeviceInput = nil
         audioCaptureDevice = nil
         assetWriter = nil
@@ -424,11 +490,13 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     private func stopDetachedResources(_ resources: (writer: AVAssetWriter?,
                                                        captureSession: AVCaptureSession?,
-                                                       audioSession: AVAudioSession?,
-                                                       audioOutput: AVCaptureAudioDataOutput?)) {
+                                                       audioSessionLease: AudioSessionLease?,
+                                                       audioOutput: AVCaptureAudioDataOutput?)) async {
         resources.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
         resources.captureSession?.stopRunning()
-        try? resources.audioSession?.setActive(false, options: .notifyOthersOnDeactivation)
+        if let audioSessionLease = resources.audioSessionLease {
+            try? await audioSessionCoordinator.deactivate(audioSessionLease)
+        }
         if let writer = resources.writer, writer.status == .writing {
             writer.cancelWriting()
         }
@@ -436,7 +504,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     private func failRecorderLocked() -> (writer: AVAssetWriter?,
                                            captureSession: AVCaptureSession?,
-                                           audioSession: AVAudioSession?,
+                                           audioSessionLease: AudioSessionLease?,
                                            audioOutput: AVCaptureAudioDataOutput?) {
         let resources = detachRecorderResourcesLocked()
         recorderStateStorage = .failed
@@ -447,16 +515,18 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private func publishRecorderFailureAndCleanup(
         _ resources: (writer: AVAssetWriter?,
                       captureSession: AVCaptureSession?,
-                      audioSession: AVAudioSession?,
+                      audioSessionLease: AudioSessionLease?,
                       audioOutput: AVCaptureAudioDataOutput?)
     ) {
         NotificationCenter.default.post(name: Self.recorderDidFailNotification, object: self)
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self else { return }
-            self.stopDetachedResources(resources)
-            self.recorderLock.lock()
-            self.isPreparingRecorder = false
-            self.recorderLock.unlock()
+            Task { [weak self] in
+                guard let self else { return }
+                await self.stopDetachedResources(resources)
+                self.recorderLock.lock()
+                self.isPreparingRecorder = false
+                self.recorderLock.unlock()
+            }
         }
     }
 

@@ -325,6 +325,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Идёт ли запись видео
     @Published var isRecording: Bool = false
 
+    /// Audio is opt-out and the choice is sampled once at the REC boundary.
+    /// It cannot change while a take is starting, recording, or finalizing.
+    @Published private(set) var recordingSoundEnabled = true
+
     /// REC tap has passed the identity gate and is waiting on microphone
     /// permission/writer preparation.
     @Published private(set) var isRecordingStarting: Bool = false
@@ -478,6 +482,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             // A non-recording error must retire any microphone-specific
             // recovery affordance before its own flow is rendered.
             recordingPermissionRecovery = nil
+            recordingVideoOnlyRecoveryAvailable = false
         }
     }
 
@@ -532,6 +537,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private let projectStore: DBService
     private let permissionClient: any PermissionClient
     private let recordingController: SceneRecordingController?
+    private let audioSessionCoordinator: AudioSessionCoordinator
+    private let recordingAudioOwnerID = UUID()
+    private var recordingAudioLease: AudioSessionLease?
+    private var recordingPlaybackLease: AudioSessionLease?
     private let hintThermalGovernor = ThermalGovernor()
     private lazy var analysisPipeline = AnalysisPipeline(
         thermalGovernor: hintThermalGovernor,
@@ -700,9 +709,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
          projectStore: DBService = .shared,
          presentationLocale: Locale? = nil,
          permissionClient: any PermissionClient = PermissionCoordinator(client: SystemPermissionClient()),
-         recordingController: SceneRecordingController? = nil) {
+         recordingController: SceneRecordingController? = nil,
+         audioSessionCoordinator: AudioSessionCoordinator = .shared) {
         self.projectStore = projectStore
         self.permissionClient = permissionClient
+        self.audioSessionCoordinator = audioSessionCoordinator
         if let recordingController {
             self.recordingController = recordingController
         } else if let artifactStore = try? RecordingArtifactStore() {
@@ -1146,6 +1157,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             refreshIdleStatusMessage()
         }
 
+        await releaseRecordingPlaybackLease()
         let result = await workspaceTeardownCoordinator.teardownAndWait()
         if result == .released {
             isWorkspaceReleased = true
@@ -1322,6 +1334,43 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             && !isRecordingStarting
             && !isRecordingFinalizing
             && !isMarkingMode
+            && recordingPlaybackLease == nil
+    }
+
+    var canToggleRecordingSound: Bool {
+        teardownTask == nil
+            && !isWorkspaceReleased
+            && !isRecordingStarting
+            && !isRecording
+            && !isRecordingFinalizing
+    }
+
+    /// M7-001 keeps required audio fail-closed. The only video-only policy is
+    /// the user-selected sound-off attempt; it is never inferred from a
+    /// permission or audio-session failure.
+    private var selectedRecordingAudioPolicy: RecordingAudioPolicy {
+        recordingSoundEnabled
+            ? RecordingAudioPolicy(mode: .required, unavailableBehavior: .failRecording)
+            : RecordingAudioPolicy(mode: .disabled, unavailableBehavior: .explicitVideoOnlySelection)
+    }
+
+    /// A permission/session failure may offer an explicit silent retry. The
+    /// fallback is never selected by the required-audio start path itself.
+    @Published private(set) var recordingVideoOnlyRecoveryAvailable = false
+
+    func setRecordingSoundEnabled(_ enabled: Bool) {
+        guard canToggleRecordingSound else { return }
+        recordingSoundEnabled = enabled
+        if !enabled {
+            recordingVideoOnlyRecoveryAvailable = false
+        }
+    }
+
+    func startRecordingWithoutSound() {
+        guard canStartRecording else { return }
+        setRecordingSoundEnabled(false)
+        clearGeneratorError()
+        startRecording()
     }
 
     var canStartPlayback: Bool {
@@ -4480,56 +4529,109 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return
         }
 
-        let currentMicrophone = await permissionClient.snapshot(for: .microphone)
-        guard !Task.isCancelled else { return }
-        guard currentMicrophone.availability == .available else {
-            errorMessage = localizedCopy(.generatorErrorRecorder)
-            recordingPermissionRecovery = nil
-            return
-        }
-
-        let microphone = currentMicrophone.authorization == .notDetermined
-            ? await permissionClient.request(.microphone)
-            : currentMicrophone
-        guard !Task.isCancelled else { return }
-        guard microphone.availability == .available else {
-            errorMessage = localizedCopy(.generatorErrorRecorder)
-            recordingPermissionRecovery = nil
-            return
-        }
-        guard microphone.authorization == .authorized else {
-            switch microphone.authorization {
-            case .denied:
-                errorMessage = localizedCopy(.generatorErrorMicrophoneDenied)
-                recordingPermissionRecovery = .openSettings
-            case .restricted:
-                errorMessage = localizedCopy(.generatorErrorMicrophoneRestricted)
-                recordingPermissionRecovery = .recheck
-            default:
-                errorMessage = localizedCopy(.generatorErrorRecorder)
-                recordingPermissionRecovery = nil
+        let audioPolicy = selectedRecordingAudioPolicy
+        let audioLease: AudioSessionLease?
+        if audioPolicy.mode == .required {
+            let currentMicrophone = await permissionClient.snapshot(for: .microphone)
+            guard !Task.isCancelled else { return }
+            guard currentMicrophone.availability == .available else {
+                publishRecordingAudioFailure(
+                    copy: .generatorErrorRecorder,
+                    recovery: nil,
+                    offerVideoOnly: true
+                )
+                return
             }
-            return
+
+            let microphone = currentMicrophone.authorization == .notDetermined
+                ? await permissionClient.request(.microphone)
+                : currentMicrophone
+            guard !Task.isCancelled else { return }
+            guard microphone.availability == .available else {
+                publishRecordingAudioFailure(
+                    copy: .generatorErrorRecorder,
+                    recovery: nil,
+                    offerVideoOnly: true
+                )
+                return
+            }
+            guard microphone.authorization == .authorized else {
+                switch microphone.authorization {
+                case .denied:
+                    publishRecordingAudioFailure(
+                        copy: .generatorErrorMicrophoneDenied,
+                        recovery: .openSettings,
+                        offerVideoOnly: true
+                    )
+                case .restricted:
+                    publishRecordingAudioFailure(
+                        copy: .generatorErrorMicrophoneRestricted,
+                        recovery: .recheck,
+                        offerVideoOnly: true
+                    )
+                default:
+                    publishRecordingAudioFailure(
+                        copy: .generatorErrorRecorder,
+                        recovery: nil,
+                        offerVideoOnly: true
+                    )
+                }
+                return
+            }
+
+            do {
+                let lease = try await audioSessionCoordinator.acquire(
+                    ownerID: recordingAudioOwnerID,
+                    purpose: .recording
+                )
+                try await audioSessionCoordinator.activate(
+                    lease,
+                    configuration: .recording
+                )
+                audioLease = lease
+            } catch {
+                publishRecordingAudioFailure(
+                    copy: .generatorErrorRecorder,
+                    recovery: nil,
+                    offerVideoOnly: true
+                )
+                return
+            }
+        } else {
+            audioLease = nil
         }
 
         guard !Task.isCancelled,
               teardownTask == nil,
               !isWorkspaceReleased,
               let sourceFPS = recordingSourceFPS,
-              sourceFPS > 0 else { return }
+              sourceFPS > 0 else {
+            if let audioLease {
+                try? await audioSessionCoordinator.deactivate(audioLease)
+            }
+            return
+        }
         do {
             try await recordingController.start(
                 requestedFPS: sourceFPS,
-                audioMode: .required
+                audioMode: audioPolicy.mode
             )
         } catch {
-            errorMessage = localizedCopy(.generatorErrorRecorder)
-            recordingPermissionRecovery = nil
+            if let audioLease {
+                try? await audioSessionCoordinator.deactivate(audioLease)
+            }
+            publishRecordingAudioFailure(
+                copy: .generatorErrorRecorder,
+                recovery: nil,
+                offerVideoOnly: audioPolicy.mode == .required
+            )
             return
         }
 
         errorMessage = nil
         recordingPermissionRecovery = nil
+        recordingVideoOnlyRecoveryAvailable = false
+        recordingAudioLease = audioLease
 
         if let dimensions = recordingController.currentVideoDimensions {
             recordingResolutionLabel = "\(dimensions.width)×\(dimensions.height)"
@@ -4537,6 +4639,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         guard !isWorkspaceReleased else {
             _ = await recordingController.stop(reason: .routeExit)
+            await releaseRecordingAudioLease()
             return
         }
         prepareWorkspaceIfNeeded()
@@ -4554,6 +4657,63 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
+    }
+
+    private func publishRecordingAudioFailure(
+        copy: SETCopyKey,
+        recovery: SceneRecordingPermissionRecovery?,
+        offerVideoOnly: Bool
+    ) {
+        errorMessage = localizedCopy(copy)
+        recordingPermissionRecovery = recovery
+        recordingVideoOnlyRecoveryAvailable = offerVideoOnly
+    }
+
+    private func releaseRecordingAudioLease() async {
+        guard let audioLease = recordingAudioLease else { return }
+        recordingAudioLease = nil
+        try? await audioSessionCoordinator.deactivate(audioLease)
+    }
+
+    /// The shell calls this before presenting a finalized take. The lease is
+    /// stored in the ViewModel so route teardown can release it even if UIKit
+    /// dismisses the player without a delegate callback.
+    func acquireRecordingPlaybackLease(ownerID: UUID) async throws -> AudioSessionLease {
+        guard !isWorkspaceReleased,
+              teardownTask == nil,
+              !isRecording,
+              !isRecordingStarting,
+              !isRecordingFinalizing,
+              !isPlaying else {
+            throw AudioSessionCoordinatorError.busy(
+                ownerID: recordingAudioOwnerID,
+                purpose: .recording
+            )
+        }
+
+        let lease = try await audioSessionCoordinator.acquire(
+            ownerID: ownerID,
+            purpose: .playback
+        )
+        do {
+            try await audioSessionCoordinator.activate(
+                lease,
+                configuration: .playback
+            )
+        } catch {
+            // The coordinator clears failed activations; keep this method's
+            // ownership projection equally empty on every failure path.
+            throw error
+        }
+        recordingPlaybackLease = lease
+        return lease
+    }
+
+    func releaseRecordingPlaybackLease(ownerID: UUID? = nil) async {
+        guard let playbackLease = recordingPlaybackLease,
+              ownerID == nil || playbackLease.ownerID == ownerID else { return }
+        recordingPlaybackLease = nil
+        try? await audioSessionCoordinator.deactivate(playbackLease)
     }
 
     func stopRecording() {
@@ -4596,6 +4756,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard isRecording || isRecordingStarting || isRecordingFinalizing else {
             let result = await recordingController?.stop(reason: reason)
             acceptFinalizedRecording(from: result)
+            await releaseRecordingAudioLease()
             recordingStopTask = nil
             return result
         }
@@ -4613,6 +4774,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         let result = await recordingController?.stop(reason: reason)
         acceptFinalizedRecording(from: result)
+        await releaseRecordingAudioLease()
         if case .failed = result {
             errorMessage = localizedCopy(.generatorErrorRecorder)
             recordingPermissionRecovery = nil
