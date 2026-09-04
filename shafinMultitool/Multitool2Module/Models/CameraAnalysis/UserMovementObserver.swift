@@ -28,31 +28,47 @@ enum UserMovementActionFamily: String, Codable, CaseIterable, Equatable, Hashabl
 /// missing; the observer never substitutes a timer or an unrelated feature.
 struct UserMovementMetrics: Equatable, Sendable {
     let subjectAreaRatio: Double?
+    /// Optional depth proxy from a future geometry producer. It remains nil
+    /// when the live pipeline has no honest depth measurement.
+    let subjectBackgroundDepth: Double?
     let horizonAngleDegrees: Double?
     let exposureBiasHint: Double?
+    /// Explicit technical predicate; never inferred from exposureBiasHint.
+    let exposureFault: ExposureFaultState?
     let subjectMeanLuma: Double?
     let backgroundMeanLuma: Double?
     let subjectToBackgroundDelta: Double?
     let backgroundHotspotRatio: Double?
+    /// Focus evidence is optional until a live focus producer is connected.
+    let focusIsDefocused: Bool?
+    let focusReadability: Double?
     let stabilityScore: Double?
     let shakeLevel: Double?
 
     init(subjectAreaRatio: Double? = nil,
+         subjectBackgroundDepth: Double? = nil,
          horizonAngleDegrees: Double? = nil,
          exposureBiasHint: Double? = nil,
+         exposureFault: ExposureFaultState? = nil,
          subjectMeanLuma: Double? = nil,
          backgroundMeanLuma: Double? = nil,
          subjectToBackgroundDelta: Double? = nil,
          backgroundHotspotRatio: Double? = nil,
+         focusIsDefocused: Bool? = nil,
+         focusReadability: Double? = nil,
          stabilityScore: Double? = nil,
          shakeLevel: Double? = nil) {
         self.subjectAreaRatio = subjectAreaRatio
+        self.subjectBackgroundDepth = subjectBackgroundDepth
         self.horizonAngleDegrees = horizonAngleDegrees
         self.exposureBiasHint = exposureBiasHint
+        self.exposureFault = exposureFault
         self.subjectMeanLuma = subjectMeanLuma
         self.backgroundMeanLuma = backgroundMeanLuma
         self.subjectToBackgroundDelta = subjectToBackgroundDelta
         self.backgroundHotspotRatio = backgroundHotspotRatio
+        self.focusIsDefocused = focusIsDefocused
+        self.focusReadability = focusReadability
         self.stabilityScore = stabilityScore
         self.shakeLevel = shakeLevel
     }
@@ -375,6 +391,34 @@ enum UserMovementVerdict: Equatable, Sendable {
     case uncertain(reason: String)
 }
 
+/// Detailed form of the existing movement comparison. The verifier consumes
+/// this instead of maintaining a second action-to-metric switch. For a
+/// directional placement action, `beforeValue` is zero and `afterValue` is
+/// the projected displacement in the requested direction.
+struct UserMovementComparison: Equatable, Sendable {
+    let family: UserMovementActionFamily?
+    let metric: ActionVerificationMetric?
+    let beforeValue: Double?
+    let afterValue: Double?
+    let delta: Double?
+    let directedDelta: Double?
+    let deadband: Double?
+    let verdict: UserMovementVerdict
+
+    static func uncertain(reason: String,
+                          family: UserMovementActionFamily? = nil,
+                          metric: ActionVerificationMetric? = nil) -> Self {
+        Self(family: family,
+             metric: metric,
+             beforeValue: nil,
+             afterValue: nil,
+             delta: nil,
+             directedDelta: nil,
+             deadband: nil,
+             verdict: .uncertain(reason: reason))
+    }
+}
+
 /// Pure action-aware movement classifier. Evidence age is a validity gate,
 /// not a completion heuristic; completion remains the tracker's frame streak.
 enum UserMovementObserver {
@@ -427,6 +471,16 @@ enum UserMovementObserver {
                         current: UserMovementFrame,
                         actionID: String,
                         asOf: Date? = nil) -> UserMovementVerdict {
+        compare(previous: previous, current: current, actionID: actionID, asOf: asOf).verdict
+    }
+
+    /// Returns the existing action-aware comparison plus the finite metric
+    /// used to classify it. The action mapping and deadbands remain owned by
+    /// this observer; M2-025 only consumes the extracted detail.
+    static func compare(previous: UserMovementFrame,
+                        current: UserMovementFrame,
+                        actionID: String,
+                        asOf: Date? = nil) -> UserMovementComparison {
         guard let intent = intent(for: actionID) else {
             return .uncertain(reason: "unsupported_action")
         }
@@ -434,9 +488,18 @@ enum UserMovementObserver {
                                         current: current,
                                         family: intent.family,
                                         asOf: asOf) {
-            return .uncertain(reason: reason)
+            return .uncertain(reason: reason, family: intent.family, metric: metricID(for: intent.metric, displacement: intent.displacement))
         }
         return evaluate(previous: previous, current: current, intent: intent)
+    }
+
+    /// Descriptive alias for callers that want to make the before/after
+    /// boundary explicit at the call site.
+    static func detailedComparison(previous: UserMovementFrame,
+                                  current: UserMovementFrame,
+                                  actionID: String,
+                                  asOf: Date? = nil) -> UserMovementComparison {
+        compare(previous: previous, current: current, actionID: actionID, asOf: asOf)
     }
 
     static func actionFamily(for actionID: String) -> UserMovementActionFamily? {
@@ -680,9 +743,13 @@ enum UserMovementObserver {
 
     private static func evaluate(previous: UserMovementFrame,
                                  current: UserMovementFrame,
-                                 intent: ActionIntent) -> UserMovementVerdict {
+                                 intent: ActionIntent) -> UserMovementComparison {
         if intent.family != .stability, !current.motionIsStill {
-            return .uncertain(reason: "camera_motion")
+            return .uncertain(
+                reason: "camera_motion",
+                family: intent.family,
+                metric: metricID(for: intent.metric, displacement: intent.displacement)
+            )
         }
 
         if let desired = intent.displacement {
@@ -690,40 +757,112 @@ enum UserMovementObserver {
                   let after = current.subjectRegion,
                   !before.isDegenerate,
                   !after.isDegenerate else {
-                return .uncertain(reason: "subject_missing")
+                return .uncertain(
+                    reason: "subject_missing",
+                    family: intent.family,
+                    metric: .placement
+                )
             }
             let p = center(of: after)
             let q = center(of: before)
-            return directionalVerdict(dx: p.x - q.x,
-                                      dy: p.y - q.y,
-                                      desired: desired,
-                                      deadband: movementDeadband)
+            let dx = p.x - q.x
+            let dy = p.y - q.y
+            let desiredLength = (desired.dx * desired.dx + desired.dy * desired.dy).squareRoot()
+            guard desiredLength.isFinite, desiredLength > 0 else {
+                return .uncertain(reason: "unsupported_action", family: intent.family, metric: .placement)
+            }
+            let projection = (dx * desired.dx + dy * desired.dy) / desiredLength
+            let verdict = directionalVerdict(
+                dx: dx,
+                dy: dy,
+                desired: desired,
+                deadband: movementDeadband
+            )
+            return UserMovementComparison(
+                family: intent.family,
+                metric: .placement,
+                beforeValue: 0,
+                afterValue: projection,
+                delta: projection,
+                directedDelta: projection,
+                deadband: movementDeadband,
+                verdict: verdict
+            )
         }
 
         guard let metric = intent.metric,
               let before = value(for: metric, frame: previous),
               let after = value(for: metric, frame: current),
               let relation = intent.relation else {
-            return .uncertain(reason: missingReason(for: intent.metric))
+            return .uncertain(
+                reason: missingReason(for: intent.metric),
+                family: intent.family,
+                metric: metricID(for: intent.metric, displacement: intent.displacement)
+            )
         }
-        let delta: Double
+        let classifierDelta: Double
         let deadband: Double
         if metric == .horizon {
             switch relation {
             case .absoluteChange:
-                delta = abs(after - before)
+                classifierDelta = abs(after - before)
             case .increase, .decrease:
-                delta = abs(after) - abs(before)
+                classifierDelta = abs(after) - abs(before)
             }
             deadband = rotationDeadbandDegrees
         } else if metric == .area {
-            delta = after - before
+            classifierDelta = after - before
             deadband = scaleDeadband
         } else {
-            delta = after - before
+            classifierDelta = after - before
             deadband = scalarDeadband
         }
-        return scalarVerdict(delta: delta, relation: relation, deadband: deadband)
+        let rawDelta = after - before
+        let directedDelta: Double
+        switch relation {
+        case .increase:
+            directedDelta = rawDelta
+        case .decrease:
+            directedDelta = metric == .horizon
+                ? abs(before) - abs(after)
+                : -rawDelta
+        case .absoluteChange:
+            directedDelta = abs(rawDelta)
+        }
+        return UserMovementComparison(
+            family: intent.family,
+            metric: metricID(for: metric, displacement: nil),
+            beforeValue: before,
+            afterValue: after,
+            delta: rawDelta,
+            directedDelta: directedDelta,
+            deadband: deadband,
+            verdict: scalarVerdict(
+                delta: classifierDelta,
+                relation: relation,
+                deadband: deadband
+            )
+        )
+    }
+
+    private static func metricID(
+        for metric: Metric?,
+        displacement: (dx: Double, dy: Double)?
+    ) -> ActionVerificationMetric? {
+        if displacement != nil { return .placement }
+        switch metric {
+        case .area: return .scale
+        case .depth: return .depth
+        case .horizon: return .horizon
+        case .exposure: return .exposure
+        case .subjectLuma: return .subjectLuma
+        case .backgroundLuma: return .backgroundLuma
+        case .separation: return .separation
+        case .hotspot: return .hotspot
+        case .focus: return .focus
+        case .stability: return .stability
+        case nil: return nil
+        }
     }
 
     private static func missingReason(for metric: Metric?) -> String {
@@ -744,7 +883,7 @@ enum UserMovementObserver {
             return frame.metrics.subjectAreaRatio
                 ?? frame.subjectRegion.map { $0.width * $0.height }
         case .depth:
-            return nil
+            return frame.metrics.subjectBackgroundDepth
         case .horizon:
             return frame.metrics.horizonAngleDegrees
         case .exposure:
@@ -758,7 +897,10 @@ enum UserMovementObserver {
         case .hotspot:
             return frame.metrics.backgroundHotspotRatio
         case .focus:
-            return nil
+            if let readability = frame.metrics.focusReadability {
+                return readability
+            }
+            return frame.metrics.focusIsDefocused.map { $0 ? 0 : 1 }
         case .stability:
             if let score = frame.metrics.stabilityScore { return score }
             if let shake = frame.metrics.shakeLevel { return 1.0 - shake }

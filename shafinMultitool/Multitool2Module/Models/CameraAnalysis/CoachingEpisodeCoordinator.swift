@@ -75,6 +75,11 @@ struct CoachingEpisodeConfiguration: Equatable, Sendable {
 struct CoachingEpisodeBaseline: Equatable, Sendable {
     let advice: StabilizedAdvice
     let actionID: String
+    /// The exact immutable frame that produced the accepted advice. Keeping
+    /// this value (rather than reconstructing it later) gives M2-025 the
+    /// before half of a truthful pair.
+    let frame: UserMovementFrame
+    let lifecycle: SubjectTrackLifecycleContext
     /// Nil for frame-global actions (horizon/stability). Subject-dependent
     /// actions always freeze a valid identity here.
     let subjectIdentity: SubjectTrackIdentity?
@@ -330,6 +335,29 @@ struct CoachingEpisodeCoordinator {
     var isReadyForVerification: Bool { state.phase == .readyForVerification }
     var episodeToken: CoachingEpisodeToken? { state.token }
 
+    /// Exact handoff for M2-025. It exists only after the coordinator has
+    /// accepted the configured stable-after frame; terminal/cancelled states
+    /// cannot manufacture a pair or reuse a stale transient observation.
+    var verificationInput: ActionVerificationInput? {
+        guard isReadyForVerification,
+              let token = state.token,
+              let baseline = state.baseline,
+              let finalObservation = lastObservation,
+              state.lastFrameID == finalObservation.frame.frameID,
+              state.stableAfterFrames >= configuration.requiredStableAfterFrames else {
+            return nil
+        }
+        return ActionVerificationInput(
+            token: token,
+            actionID: baseline.actionID,
+            before: baseline.frame,
+            after: finalObservation.frame,
+            beforeLifecycle: baseline.lifecycle,
+            afterLifecycle: finalObservation.lifecycle,
+            subjectIdentity: baseline.subjectIdentity
+        )
+    }
+
     /// Starts exactly one episode from one accepted, stabilized same-frame
     /// observation. Calling this while active/ready is a no-op; callers must
     /// explicitly reset before retrying so a fresh token is unavoidable.
@@ -382,6 +410,8 @@ struct CoachingEpisodeCoordinator {
         let baseline = CoachingEpisodeBaseline(
             advice: observation.stabilizedAdvice,
             actionID: actionID,
+            frame: observation.frame,
+            lifecycle: observation.lifecycle,
             subjectIdentity: actionFamily.requiresSubjectBinding
                 ? observation.subjectTrack?.identity
                 : nil,

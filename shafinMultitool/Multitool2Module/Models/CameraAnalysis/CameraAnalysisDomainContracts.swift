@@ -27,6 +27,165 @@ enum FrameVerdict: String, Codable, Sendable {
     case needsFix = "needs_fix"
 }
 
+// MARK: - M2-025 Action verification contracts
+
+/// The four outcomes a before/after pair may honestly produce. `fixed` is
+/// reserved for an established objective predicate; a directional change by
+/// itself is only `improved`.
+enum ActionVerificationOutcome: String, Codable, CaseIterable, Sendable, Equatable {
+    case fixed
+    case improved
+    case unchanged
+    case worse
+}
+
+/// Stable metric names emitted by the pure before/after verifier. They are
+/// deliberately narrower than the full feature vocabulary: each one names a
+/// user action family or a directly observed technical quantity.
+enum ActionVerificationMetric: String, Codable, CaseIterable, Sendable, Equatable {
+    case placement
+    case scale
+    case depth
+    case horizon
+    case exposure
+    case separation
+    case subjectLuma = "subject_luma"
+    case backgroundLuma = "background_luma"
+    case hotspot
+    case focus
+    case stability
+}
+
+/// Why a pair cannot be compared. These IDs are diagnostics contracts rather
+/// than presentation copy; callers must fail closed on every case.
+enum ActionVerificationIncomparableReason: String, Codable, CaseIterable, Sendable, Equatable {
+    case notReadyForVerification = "not_ready_for_verification"
+    case tokenMismatch = "token_mismatch"
+    case unsupportedAction = "unsupported_action"
+    case emptyAction = "empty_action"
+    case frameIdentityMissing = "frame_identity_missing"
+    case duplicateFrame = "duplicate_frame"
+    case outOfOrder = "out_of_order"
+    case evidenceMissing = "evidence_missing"
+    case evidenceTimeInvalid = "evidence_time_invalid"
+    case evidenceStale = "evidence_stale"
+    case lifecycleUnavailable = "lifecycle_unavailable"
+    case generationMismatch = "generation_mismatch"
+    case orientationMismatch = "orientation_mismatch"
+    case lensMismatch = "lens_mismatch"
+    case calibrationMismatch = "calibration_mismatch"
+    case subjectBindingMissing = "subject_binding_missing"
+    case subjectIdentityMismatch = "subject_identity_mismatch"
+    case subjectSourceMismatch = "subject_source_mismatch"
+    case subjectSpaceMismatch = "subject_space_mismatch"
+    case sceneMismatch = "scene_mismatch"
+    case featureUnavailable = "feature_unavailable"
+    case featureConfidenceLow = "feature_confidence_low"
+    case focusProvenanceMissing = "focus_provenance_missing"
+    case metricUnavailable = "metric_unavailable"
+    case nonFiniteMetric = "non_finite_metric"
+    case safetyRegression = "safety_regression"
+}
+
+/// Safety changes supplied by the feature owner or derived by the verifier.
+/// A non-empty list blocks a positive outcome and is retained in the result.
+enum ActionVerificationSafetyRegression: String, Codable, CaseIterable, Sendable, Equatable {
+    case cameraMoving = "camera_moving"
+    case subjectLost = "subject_lost"
+    case featureBecameUnavailable = "feature_became_unavailable"
+    case confidenceDropped = "confidence_dropped"
+    case exposureContradiction = "exposure_contradiction"
+    case focusStateInvalid = "focus_state_invalid"
+    case lifecycleChanged = "lifecycle_changed"
+}
+
+/// Explicit technical exposure predicate carried by a verification fixture or
+/// a future live adapter. A numeric luma change alone never proves that an
+/// exposure fault was cleared.
+enum ExposureFaultState: String, Codable, CaseIterable, Sendable, Equatable {
+    case underexposed
+    case overexposed
+    case clear
+}
+
+/// A decision is either a classified comparable pair or an explicit
+/// fail-closed reason. No implicit `unchanged` is used for missing evidence.
+enum ActionVerificationDecision: Sendable, Equatable {
+    case comparable(outcome: ActionVerificationOutcome)
+    case incomparable(reason: ActionVerificationIncomparableReason)
+}
+
+/// One finite before/after measurement. `directedDelta` is positive when the
+/// observed change follows the action's expected direction; `delta` remains
+/// the raw after-minus-before value for diagnostics.
+struct ActionVerificationMetricDelta: Sendable, Equatable {
+    let metric: ActionVerificationMetric
+    let before: Double
+    let after: Double
+    let delta: Double
+    let directedDelta: Double
+    let deadband: Double
+
+    init(metric: ActionVerificationMetric,
+         before: Double,
+         after: Double,
+         delta: Double,
+         directedDelta: Double,
+         deadband: Double) {
+        self.metric = metric
+        self.before = before
+        self.after = after
+        self.delta = delta
+        self.directedDelta = directedDelta
+        self.deadband = deadband
+    }
+}
+
+/// Immutable verifier input. Lifecycle contexts are required for a
+/// production comparison so lens and route provenance cannot be guessed.
+struct ActionVerificationInput: Sendable, Equatable {
+    let token: CoachingEpisodeToken
+    let actionID: String
+    let before: UserMovementFrame
+    let after: UserMovementFrame
+    let beforeLifecycle: SubjectTrackLifecycleContext?
+    let afterLifecycle: SubjectTrackLifecycleContext?
+    /// Required only for subject-bound families; frame-global actions keep it
+    /// nil and do not invent a subject sentinel.
+    let subjectIdentity: SubjectTrackIdentity?
+    let safetyRegressions: [ActionVerificationSafetyRegression]
+
+    init(token: CoachingEpisodeToken,
+         actionID: String,
+         before: UserMovementFrame,
+         after: UserMovementFrame,
+         beforeLifecycle: SubjectTrackLifecycleContext? = nil,
+         afterLifecycle: SubjectTrackLifecycleContext? = nil,
+         subjectIdentity: SubjectTrackIdentity? = nil,
+         safetyRegressions: [ActionVerificationSafetyRegression] = []) {
+        self.token = token
+        self.actionID = actionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.before = before
+        self.after = after
+        self.beforeLifecycle = beforeLifecycle
+        self.afterLifecycle = afterLifecycle
+        self.subjectIdentity = subjectIdentity
+        self.safetyRegressions = safetyRegressions
+    }
+}
+
+/// Complete immutable result. Deltas are retained even when a safety
+/// regression blocks the positive classification, when they were measurable.
+struct ActionVerificationResult: Sendable, Equatable {
+    let token: CoachingEpisodeToken
+    let actionID: String
+    let beforeFrameID: String
+    let afterFrameID: String
+    let decision: ActionVerificationDecision
+    let deltas: [ActionVerificationMetricDelta]
+    let safetyRegressions: [ActionVerificationSafetyRegression]
+}
+
 struct NormalizedRect: Codable, Equatable, Sendable {
     let x: Double
     let y: Double

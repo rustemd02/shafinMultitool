@@ -233,6 +233,24 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.state.baseline?.frameID, "f0")
         XCTAssertEqual(coordinator.state.baseline?.actionID, SemanticActionType.moveSubjectRight.rawValue)
         XCTAssertEqual(coordinator.state.baseline?.subjectIdentity, identity)
+
+        guard let verificationInput = coordinator.verificationInput else {
+            return XCTFail("ready_for_verification must expose one immutable before/after pair")
+        }
+        XCTAssertEqual(verificationInput.token, coordinator.episodeToken)
+        XCTAssertEqual(verificationInput.actionID, SemanticActionType.moveSubjectRight.rawValue)
+        XCTAssertEqual(verificationInput.before.frameID, "f0")
+        XCTAssertEqual(verificationInput.after.frameID, "f4")
+        XCTAssertEqual(verificationInput.before, coordinator.state.baseline?.frame)
+
+        // A ready episode is terminal until an explicit retry baseline; a
+        // late callback cannot replace the final accepted stable frame.
+        _ = coordinator.observe(observation(
+            id: "late-ready",
+            x: 0.45,
+            capturedAt: startDate.addingTimeInterval(0.5)
+        ))
+        XCTAssertEqual(coordinator.verificationInput, verificationInput)
     }
 
     func testRecommendationDisappearanceDoesNotDiscardFrozenBaseline() {
