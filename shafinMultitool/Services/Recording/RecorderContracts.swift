@@ -327,3 +327,515 @@ protocol MediaRecording: AnyObject {
     func enqueueVideo(_ frame: RecordingVideoFrame)
     func enqueueAudio(_ frame: RecordingAudioFrame)
 }
+
+// MARK: - M7-001 recording contract v1
+
+/// The two production workspaces that may own a recording source.  A source
+/// is part of the owner token rather than an inferred property of a frame so a
+/// Camera and AR producer cannot silently share a take.
+enum RecordingWorkspaceSource: String, CaseIterable, Sendable, Equatable {
+    case cameraCoach
+    case arWorkspace
+}
+
+/// The non-UI identity fence for one recording take.  `generation` starts at
+/// one and changes whenever the source owner is replaced.  It is deliberately
+/// separate from `RecordingFrameFence`: the latter is the existing enqueue
+/// boundary, while this token is the v1 source contract.
+struct RecordingOwnerToken: Hashable, Sendable {
+    let source: RecordingWorkspaceSource
+    let ownerID: UUID
+    let recordingID: RecordingID
+    let generation: UInt64
+
+    init(source: RecordingWorkspaceSource,
+         ownerID: UUID,
+         recordingID: RecordingID,
+         generation: UInt64) {
+        self.source = source
+        self.ownerID = ownerID
+        self.recordingID = recordingID
+        self.generation = generation
+    }
+}
+
+/// QuickTime movies are the only v1 container.  Codec support is still
+/// checked by the later adapter task; the contract records the selected
+/// supported codec instead of guessing a fallback.
+enum RecordingQuickTimeCodec: String, CaseIterable, Sendable, Equatable {
+    case h264
+    case hevc
+}
+
+enum RecordingMediaContainer: String, CaseIterable, Sendable, Equatable {
+    case quickTimeMovie
+}
+
+struct RecordingQuickTimeMediaFormat: Sendable, Equatable {
+    let container: RecordingMediaContainer
+    let codec: RecordingQuickTimeCodec
+    /// Native pixel-format FourCC.  Zero is not a valid pixel format.
+    let pixelFormatFourCC: UInt32
+    let width: Int
+    let height: Int
+    let framesPerSecond: Int
+
+    init(container: RecordingMediaContainer,
+         codec: RecordingQuickTimeCodec,
+         pixelFormatFourCC: UInt32,
+         width: Int,
+         height: Int,
+         framesPerSecond: Int) {
+        self.container = container
+        self.codec = codec
+        self.pixelFormatFourCC = pixelFormatFourCC
+        self.width = width
+        self.height = height
+        self.framesPerSecond = framesPerSecond
+    }
+
+    /// Alias matching the existing recording vocabulary and plan wording.
+    var fps: Int { framesPerSecond }
+}
+
+/// Four capture orientations are represented as metadata.  The recording
+/// writer must not rotate every frame merely to make a preview look upright.
+enum RecordingCaptureOrientation: String, CaseIterable, Sendable, Equatable {
+    case portrait
+    case portraitUpsideDown
+    case landscapeLeft
+    case landscapeRight
+}
+
+enum RecordingTrackTransformMetadataStrategy: String, CaseIterable, Sendable, Equatable {
+    /// Keep source pixels native and write the orientation to the track.
+    case preferredTransformMetadata
+    /// Preserve an explicitly identity transform for already-normalized input.
+    case identityMetadata
+}
+
+struct RecordingTrackTransformMetadata: Sendable, Equatable {
+    let captureOrientation: RecordingCaptureOrientation
+    let isMirrored: Bool
+    let strategy: RecordingTrackTransformMetadataStrategy
+
+    init(captureOrientation: RecordingCaptureOrientation,
+         isMirrored: Bool,
+         strategy: RecordingTrackTransformMetadataStrategy) {
+        self.captureOrientation = captureOrientation
+        self.isMirrored = isMirrored
+        self.strategy = strategy
+    }
+}
+
+/// A required microphone is a hard precondition.  Video-only capture is an
+/// explicit caller selection (`.disabled`), never a fallback from `.required`.
+enum RecordingAudioUnavailableBehavior: String, CaseIterable, Sendable, Equatable {
+    case notRequested
+    case failRecording
+    case explicitVideoOnlySelection
+}
+
+struct RecordingAudioPolicy: Sendable, Equatable {
+    let mode: RecordingAudioMode
+    let unavailableBehavior: RecordingAudioUnavailableBehavior
+
+    init(mode: RecordingAudioMode,
+         unavailableBehavior: RecordingAudioUnavailableBehavior) {
+        self.mode = mode
+        self.unavailableBehavior = unavailableBehavior
+    }
+}
+
+/// The host clock, origin and ordering rule are all explicit parts of the
+/// schema.  No AVFoundation clock or UIKit orientation type crosses this
+/// boundary.
+enum RecordingHostTimebase: String, CaseIterable, Sendable, Equatable {
+    case hostMonotonic
+}
+
+enum RecordingTimeOrigin: String, CaseIterable, Sendable, Equatable {
+    case firstAcceptedVideoOrigin
+}
+
+enum RecordingStreamTimePolicy: String, CaseIterable, Sendable, Equatable {
+    case strictPerStreamMonotonic
+}
+
+struct RecordingTimebasePolicy: Sendable, Equatable {
+    let hostClock: RecordingHostTimebase
+    let origin: RecordingTimeOrigin
+    let streamPolicy: RecordingStreamTimePolicy
+
+    init(hostClock: RecordingHostTimebase,
+         origin: RecordingTimeOrigin,
+         streamPolicy: RecordingStreamTimePolicy) {
+        self.hostClock = hostClock
+        self.origin = origin
+        self.streamPolicy = streamPolicy
+    }
+
+    static let canonical = RecordingTimebasePolicy(
+        hostClock: .hostMonotonic,
+        origin: .firstAcceptedVideoOrigin,
+        streamPolicy: .strictPerStreamMonotonic
+    )
+}
+
+/// A recording can remain app-local until a project exists, or can be
+/// promoted to exactly one identified scene project.  The all-zero UUID is
+/// rejected by `RecordingContractV1.validate()`.
+enum RecordingPromotionTarget: Sendable, Equatable {
+    case appLocal
+    case sceneProject(UUID)
+}
+
+enum RecordingTerminalOutcome: String, CaseIterable, Sendable, Equatable {
+    case finalized
+    case recoverableFailure
+    case unrecoverableFailure
+    case cancelledPrecommit
+    case promotedProjectOwned
+}
+
+enum RecordingTerminalObligation: String, CaseIterable, Sendable, Equatable {
+    /// Keep a finalized artifact in app-local storage until a project exists.
+    case preserveAppLocalMedia
+    /// Pending → durable journal → idempotent promotion.
+    case pendingJournalThenIdempotentPromotion
+    /// Keep the failed artifact and write a recovery journal.
+    case recoveryJournal
+    /// Remove only partials owned by this recording task.
+    case cleanTaskPartials
+    /// A promoted project file is user media and must not be cleaned up here.
+    case preserveProjectOwnedMedia
+    /// `.promotedProjectOwned` cannot occur while the target is app-local.
+    case notApplicableForAppLocalTarget
+
+    static func canonical(for outcome: RecordingTerminalOutcome,
+                          target: RecordingPromotionTarget) -> Self {
+        switch (outcome, target) {
+        case (.finalized, .appLocal):
+            return .preserveAppLocalMedia
+        case (.finalized, .sceneProject):
+            return .pendingJournalThenIdempotentPromotion
+        case (.recoverableFailure, _):
+            return .recoveryJournal
+        case (.unrecoverableFailure, _), (.cancelledPrecommit, _):
+            return .cleanTaskPartials
+        case (.promotedProjectOwned, .appLocal):
+            return .notApplicableForAppLocalTarget
+        case (.promotedProjectOwned, .sceneProject):
+            return .preserveProjectOwnedMedia
+        }
+    }
+}
+
+/// Explicitly states whether a terminal row may carry a local artifact. A
+/// recoverable failure therefore cannot silently become a journal-only error
+/// with no artifact to recover.
+enum RecordingTerminalArtifactRequirement: String, CaseIterable, Sendable, Equatable {
+    case required
+    case forbidden
+}
+
+/// Relates a terminal row to the existing typed recorder and cancellation
+/// values. A nil associated value is a deliberate wildcard meaning "any value
+/// of this existing typed category", not an untyped error fallback.
+enum RecordingTerminalFailureRelation: Sendable, Equatable {
+    case none
+    case recoverableFailure(RecorderFailure?)
+    case unrecoverableFailure(RecorderFailure?)
+    case cancelled(RecordingStopReason?)
+
+    private enum Kind: Sendable, Equatable {
+        case none
+        case recoverableFailure
+        case unrecoverableFailure
+        case cancelled
+    }
+
+    private var kind: Kind {
+        switch self {
+        case .none: return .none
+        case .recoverableFailure: return .recoverableFailure
+        case .unrecoverableFailure: return .unrecoverableFailure
+        case .cancelled: return .cancelled
+        }
+    }
+
+    /// Allows a row to be either wildcard-typed (the canonical table) or more
+    /// specific while preserving the same terminal category.
+    fileprivate func isCompatible(with expected: Self) -> Bool {
+        kind == expected.kind
+    }
+}
+
+struct RecordingTerminalDisposition: Sendable, Equatable {
+    let outcome: RecordingTerminalOutcome
+    let obligation: RecordingTerminalObligation
+    let artifactRequirement: RecordingTerminalArtifactRequirement
+    let failureRelation: RecordingTerminalFailureRelation
+
+    init(outcome: RecordingTerminalOutcome,
+         obligation: RecordingTerminalObligation,
+         artifactRequirement: RecordingTerminalArtifactRequirement,
+         failureRelation: RecordingTerminalFailureRelation) {
+        self.outcome = outcome
+        self.obligation = obligation
+        self.artifactRequirement = artifactRequirement
+        self.failureRelation = failureRelation
+    }
+
+    static func canonical(for outcome: RecordingTerminalOutcome,
+                          target: RecordingPromotionTarget) -> Self {
+        let artifactRequirement: RecordingTerminalArtifactRequirement
+        let failureRelation: RecordingTerminalFailureRelation
+        switch outcome {
+        case .finalized, .promotedProjectOwned:
+            artifactRequirement = .required
+            failureRelation = .none
+        case .recoverableFailure:
+            artifactRequirement = .required
+            failureRelation = .recoverableFailure(nil)
+        case .unrecoverableFailure:
+            artifactRequirement = .forbidden
+            failureRelation = .unrecoverableFailure(nil)
+        case .cancelledPrecommit:
+            artifactRequirement = .forbidden
+            failureRelation = .cancelled(nil)
+        }
+        return RecordingTerminalDisposition(
+            outcome: outcome,
+            obligation: RecordingTerminalObligation.canonical(
+                for: outcome,
+                target: target
+            ),
+            artifactRequirement: artifactRequirement,
+            failureRelation: failureRelation
+        )
+    }
+
+    /// Purely checks a terminal observation against this row. Runtime owners
+    /// remain responsible for producing the observation; this method only
+    /// applies the v1 schema.
+    func accepts(artifact: RecordingArtifact?,
+                 recorderFailure: RecorderFailure?,
+                 stopReason: RecordingStopReason?) -> Bool {
+        guard obligation != .notApplicableForAppLocalTarget else { return false }
+
+        let artifactIsValid = switch artifactRequirement {
+        case .required: artifact != nil
+        case .forbidden: artifact == nil
+        }
+        guard artifactIsValid else { return false }
+
+        switch failureRelation {
+        case .none:
+            return recorderFailure == nil && stopReason == nil
+        case .recoverableFailure(let expectedFailure):
+            guard let recorderFailure, stopReason == nil else { return false }
+            return expectedFailure == nil || expectedFailure == recorderFailure
+        case .unrecoverableFailure(let expectedFailure):
+            guard let recorderFailure, stopReason == nil else { return false }
+            return expectedFailure == nil || expectedFailure == recorderFailure
+        case .cancelled(let expectedReason):
+            guard recorderFailure == nil, let stopReason else { return false }
+            return expectedReason == nil || expectedReason == stopReason
+        }
+    }
+}
+
+/// A data table rather than a switch keeps the terminal obligations inspectable
+/// in evidence and makes missing/duplicate outcomes testable.  The canonical
+/// table is the only v1 mapping accepted by `RecordingContractV1`.
+struct RecordingTerminalDispositionMatrix: Sendable, Equatable {
+    let entries: [RecordingTerminalDisposition]
+
+    init(entries: [RecordingTerminalDisposition]) {
+        self.entries = entries
+    }
+
+    static func canonical(for target: RecordingPromotionTarget) -> Self {
+        RecordingTerminalDispositionMatrix(
+            entries: RecordingTerminalOutcome.allCases.map {
+                RecordingTerminalDisposition.canonical(for: $0, target: target)
+            }
+        )
+    }
+
+    func disposition(for outcome: RecordingTerminalOutcome) -> RecordingTerminalDisposition? {
+        entries.first(where: { $0.outcome == outcome })
+    }
+
+    func obligation(for outcome: RecordingTerminalOutcome) -> RecordingTerminalObligation? {
+        disposition(for: outcome)?.obligation
+    }
+}
+
+/// Typed failures from the pure v1 contract validator.  These are contract
+/// failures, not framework errors, and therefore do not import AVFoundation or
+/// UIKit and do not expose raw framework strings to the UI.
+enum RecordingContractViolation: Sendable, Equatable {
+    case zeroOwnerID
+    case zeroRecordingID
+    case zeroGeneration
+    case invalidDimensions
+    case invalidFramesPerSecond
+    case zeroPixelFormatFourCC
+    case requiredAudioCannotDowngrade
+    case invalidAudioPolicy
+    case zeroPromotionProjectID
+    case terminalOutcomeMissing(RecordingTerminalOutcome)
+    case terminalOutcomeDuplicated(RecordingTerminalOutcome)
+    case terminalObligationMismatch(RecordingTerminalOutcome)
+    case terminalDispositionTargetMismatch(RecordingTerminalOutcome)
+    case terminalArtifactRequirementMismatch(RecordingTerminalOutcome)
+    case terminalFailureRelationMismatch(RecordingTerminalOutcome)
+}
+
+/// Canonical source/state/artifact contract for one recording take.  This is
+/// intentionally schema-only: runtime adoption belongs to M7-002…M7-032.
+/// Existing M1 lifecycle types remain the state authority; the computed
+/// projection below prevents a second transition table from drifting.
+struct RecordingContractV1: Sendable, Equatable {
+    let owner: RecordingOwnerToken
+    let audioPolicy: RecordingAudioPolicy
+    let mediaFormat: RecordingQuickTimeMediaFormat
+    let trackTransform: RecordingTrackTransformMetadata
+    let timebase: RecordingTimebasePolicy
+    let promotionTarget: RecordingPromotionTarget
+    let terminalDisposition: RecordingTerminalDispositionMatrix
+
+    init(owner: RecordingOwnerToken,
+         audioPolicy: RecordingAudioPolicy,
+         mediaFormat: RecordingQuickTimeMediaFormat,
+         trackTransform: RecordingTrackTransformMetadata,
+         timebase: RecordingTimebasePolicy,
+         promotionTarget: RecordingPromotionTarget,
+         terminalDisposition: RecordingTerminalDispositionMatrix) {
+        self.owner = owner
+        self.audioPolicy = audioPolicy
+        self.mediaFormat = mediaFormat
+        self.trackTransform = trackTransform
+        self.timebase = timebase
+        self.promotionTarget = promotionTarget
+        self.terminalDisposition = terminalDisposition
+    }
+
+    /// Compatibility aliases keep plan vocabulary readable without creating
+    /// duplicate storage or another source of truth.
+    var format: RecordingQuickTimeMediaFormat { mediaFormat }
+    var audioMode: RecordingAudioMode { audioPolicy.mode }
+    var terminalOutcomeMatrix: RecordingTerminalDispositionMatrix {
+        terminalDisposition
+    }
+
+    /// M1-010 remains the single lifecycle state/transition authority.
+    static var lifecycleStates: [RecordingLifecycleState] {
+        RecordingLifecycleState.allCases
+    }
+
+    static func allowsTransition(from: RecordingLifecycleState,
+                                 to: RecordingLifecycleState) -> Bool {
+        RecordingLifecycleState.isLegalTransition(from: from, to: to)
+    }
+
+    /// Pure validation: the result depends only on immutable contract values;
+    /// no filesystem, clock, device, or framework state is consulted.
+    func validate() -> [RecordingContractViolation] {
+        var violations: [RecordingContractViolation] = []
+
+        if isZeroUUID(owner.ownerID) {
+            violations.append(.zeroOwnerID)
+        }
+        if isZeroUUID(owner.recordingID.rawValue) {
+            violations.append(.zeroRecordingID)
+        }
+        if owner.generation == 0 {
+            violations.append(.zeroGeneration)
+        }
+        if mediaFormat.width <= 0 || mediaFormat.height <= 0 {
+            violations.append(.invalidDimensions)
+        }
+        if mediaFormat.framesPerSecond <= 0 {
+            violations.append(.invalidFramesPerSecond)
+        }
+        if mediaFormat.pixelFormatFourCC == 0 {
+            violations.append(.zeroPixelFormatFourCC)
+        }
+
+        switch (audioPolicy.mode, audioPolicy.unavailableBehavior) {
+        case (.disabled, .notRequested),
+             (.disabled, .explicitVideoOnlySelection),
+             (.required, .failRecording):
+            break
+        case (.required, .explicitVideoOnlySelection):
+            violations.append(.requiredAudioCannotDowngrade)
+        default:
+            violations.append(.invalidAudioPolicy)
+        }
+
+        if case .sceneProject(let projectID) = promotionTarget,
+           isZeroUUID(projectID) {
+            violations.append(.zeroPromotionProjectID)
+        }
+
+        violations.append(contentsOf: terminalDispositionValidation())
+        return violations
+    }
+
+    /// Convenience boundary for callers that need a typed throwing check
+    /// while keeping `validate()` suitable for table-driven tests.
+    func validated() throws -> RecordingContractV1 {
+        let violations = validate()
+        guard violations.isEmpty else {
+            throw RecordingContractValidationError(violations: violations)
+        }
+        return self
+    }
+
+    private func terminalDispositionValidation() -> [RecordingContractViolation] {
+        var violations: [RecordingContractViolation] = []
+        for outcome in RecordingTerminalOutcome.allCases {
+            let matches = terminalDisposition.entries.filter { $0.outcome == outcome }
+            if matches.isEmpty {
+                violations.append(.terminalOutcomeMissing(outcome))
+                continue
+            }
+            if matches.count > 1 {
+                violations.append(.terminalOutcomeDuplicated(outcome))
+                continue
+            }
+            let actual = matches[0]
+            let expected = RecordingTerminalDisposition.canonical(
+                for: outcome,
+                target: promotionTarget
+            )
+            if actual.obligation != expected.obligation {
+                switch outcome {
+                case .finalized, .promotedProjectOwned:
+                    violations.append(.terminalDispositionTargetMismatch(outcome))
+                case .recoverableFailure, .unrecoverableFailure, .cancelledPrecommit:
+                    violations.append(.terminalObligationMismatch(outcome))
+                }
+            }
+
+            if actual.artifactRequirement != expected.artifactRequirement {
+                violations.append(.terminalArtifactRequirementMismatch(outcome))
+            }
+            if !actual.failureRelation.isCompatible(with: expected.failureRelation) {
+                violations.append(.terminalFailureRelationMismatch(outcome))
+            }
+        }
+        return violations
+    }
+}
+
+struct RecordingContractValidationError: Error, Sendable, Equatable {
+    let violations: [RecordingContractViolation]
+}
+
+private func isZeroUUID(_ value: UUID) -> Bool {
+    value == UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+}
