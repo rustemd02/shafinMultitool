@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last integrated task head: `b8f2c10` (M7-001; journal-only commits may follow; no push)
+- Last integrated task head: `17e7410` (M7-003 + M7-004; journal-only commits may follow; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-024 Sol audit; M5-001 fix-first correction3; M7-003+M7-004 implementation
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001, M7-001]
-- In-progress: [M2-024, M5-001, M7-003, M7-004]
+- Current task: M2-024 fix-first correction2; M5-001 fix-first correction6
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-023, M3-001, M7-001, M7-003, M7-004]
+- In-progress: [M2-024, M5-001]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -310,3 +310,11 @@
 - Verification: 15/15 PASS, 0 failed/skipped (`RecordingContractV1Tests` 9 + `RecordingLifecycleTransitionTests` 6), iPhone 17 simulator iOS 26.5, never iPhone 17 Pro or a physical device. Fresh Sol correction audit: `ship`. Evidence: `evidence-m7/M7-001-recording-contract-v1.md`; integrated commit `b8f2c10`.
 - Honest boundary: legacy `CameraService` does not yet adopt this contract; serialized source ownership, audio-session integration, journal/promotion runtime and physical A/V properties remain downstream M7 work.
 - Tracker total: 62/424 completed, 362 remaining. M7-002 and M7-003 are dependency-ready but must be scheduled against their additional dependencies and overlapping file ownership.
+
+### 2026-09-04T18:10Z — M7-003 + M7-004 CLOSED
+- Added the single serialized `AudioSessionCoordinator` owner for recording/playback leases, generation fencing, interruptions, route changes and media-services reset; `CameraService` no longer mutates `AVAudioSession` directly.
+- Microphone access is contextual and fail-closed. Video-only capture is an explicit user choice through a reachable RU/EN sound toggle; permission denial never silently downgrades an audio take.
+- Verification: 26/26 focused unit tests and 1/1 production-route UI test PASS on ordinary iPhone 17 simulator iOS 26.5; string-catalog compilation and `git diff --check` PASS. Fresh Sol audit: `ship`. Integrated commit: `17e7410`.
+- Honest boundary: physical microphone/Bluetooth routes, interruptions/reset recovery, A/V sync and hardware timing remain later device qualification; no physical-device claim is made.
+- Temp hygiene: superseded M5, Camera and M7 DerivedData/xcresult runs were removed only after their evidence was consumed; user files and active/final evidence were preserved.
+- Tracker total: 64/424 completed, 360 remaining. M7-002 remains ready but overlaps `CameraService`; wait for M2-024 integration before scheduling it.
