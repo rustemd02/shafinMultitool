@@ -14,8 +14,10 @@ export. Library rename and missing-preview outcomes are explicit, with a
 rename-duplicate state that retains the validated existing project. Generator
 validation, queueing, pause/cancel, background recovery, timeout, compilation,
 quota/malformed/persistence failures, and storyboard planning/validation/reorder
-are also explicit contract states. AR relocalization, reset, and world-map
-recovery are explicit rather than inferred from a generic error row.
+are also explicit contract states. Generator parse/compilation correction paths
+return through validation before acceptance, and compilation retains the
+validated script. AR relocalization, reset, and world-map recovery are explicit
+rather than inferred from a generic error row.
 
 Each state carries a typed owner and typed source vocabulary, explicit entry,
 action, recovery, exit, persistence, artifact relations, and typed transitions.
@@ -35,13 +37,15 @@ storyboard, keyboard, persistence, trace, and export owners are represented by
 No downstream artifact is implied by entering a later state. For example,
 generator success has a validated script and plan but a pending storyboard;
 `generator.success` reaches `storyboard.planning`, then
-`storyboard.validation`, and only a validated relation reaches the result. AR
+`storyboard.validation`, and only a validated relation reaches the result. Its
+projection-validation failure is distinct from editor draft validation, so a
+projection failure cannot claim an editor draft. AR
 recording is pending until its owner publishes media, and review requires a
 promoted/resolvable recording. Preflight, permission, playback, recovery, and
 recording share/Photos export-cancel/export-failure are explicit. The current
 share path is owned by
 `LegacySceneGeneratorCameraShell/UIActivityViewController`; Photos export is a
-separate future `PHPhotoLibrary` owner. Share and Photos failure/cancel outcomes
+separate future `PHPhotoLibrary` owner (M7-028). Share and Photos failure/cancel outcomes
 preserve the promoted source recording.
 `recording.released` retains project-owned media as an optional relation and
 project persistence; it is not encoded as artifact deletion. This preserves
@@ -58,9 +62,10 @@ active-recording→AR interruption/teardown edge. Recorder-backed states map to
 `RecordingLifecycleState`; cross-owner review/share/Photos/recovery edges use
 the explicit `.outer-navigation` classification, and the validator accepts
 only the closed allowlist. The illegal promoting→released and failed→ready
-edges are absent. The pre-artifact failure state is distinct from the
-recoverable-artifact failure state, so a recoverable recording is never marked
-`.missing`.
+edges are absent. A failed promotion uses the pre-artifact failure state and is
+never represented as a project-owned/promoted recording; its recovery path has
+no review/share/Photos edge until a later successful promotion establishes the
+required artifact.
 
 This is contract-only work. It adds no runtime reducer, route, persisted field,
 schema migration, UI styling, fake data, database behavior, or simulator/device
@@ -71,7 +76,7 @@ runtime ownership is a later task rather than claiming they already exist.
 
 | Check | Result |
 |---|---|
-| `xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5' -only-testing:shafinMultitoolTests/SceneJourneyContractTests -derivedDataPath /tmp/setos-m5-001-correction3-postcommit-20260904/DerivedData -resultBundlePath /tmp/setos-m5-001-correction3-postcommit-20260904/SceneJourneyContractTests.xcresult CODE_SIGNING_ALLOWED=NO` | PASS; 6/6 focused cases passed on iPhone 17e (simulator, OS 26.5), exit 0 |
+| `xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5' -only-testing:shafinMultitoolTests/SceneJourneyContractTests -derivedDataPath /tmp/setos-m5-001-correction4-20260904/DerivedData -resultBundlePath /tmp/setos-m5-001-correction4-20260904/SceneJourneyContractTests.xcresult CODE_SIGNING_ALLOWED=NO` | PASS; 6/6 focused cases passed on iPhone 17e (simulator, OS 26.5), exit 0 |
 | `git diff --check` | PASS after correction and evidence update |
 | canonical 96-ID set, graph reachability from both Library entries, typed source/owner/persistence/artifact mappings | PASS in `testProductionContractIsCompleteAndTyped` and `testExpectedOwnerPersistenceAndArtifactMappings` |
 | full success/current-share/Photos route, storyboard validation route, and generator/AR/recording failure/recovery/teardown traces | PASS in `testSuccessExportTraceUsesLegalTypedEdges` and `testFailureRecoveryAndTeardownTraces` |
