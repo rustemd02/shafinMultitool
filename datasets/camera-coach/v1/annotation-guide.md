@@ -187,8 +187,9 @@ a model score. Use `not_run` for a still label without an after state,
 | ABSTAIN | `insufficient_evidence` |
 
 For an episode, `episode.action_step.action_id` must be one of the acceptable
-actions and `outcome_verifier` must be the matching predicate. `correct` is
-valid only when the after timestamp is later than the before timestamp and the
+actions and `outcome_verifier` must be the matching predicate. All timestamps
+must satisfy `before.captured_at < action_step.performed_at <
+after.captured_at`. `correct` is valid only when that chronology holds and the
 matching label verification is `pass` with `before_after` measurement. Record
 the outcome as `correct`, `no_op`, `opposite`, `overshoot`, `track_loss`, or
 `incomparable`; failure or inconclusive verification cannot be relabeled as

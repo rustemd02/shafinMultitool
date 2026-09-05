@@ -167,7 +167,7 @@ def _validate_media(media: Any, errors: list[str]) -> set[str]:
         errors.append(_error("invalid_hash_algorithm", "media.hash_algorithm"))
     if media.get("storage") != "outside_git":
         errors.append(_error("raw_media_inside_git", "media.storage"))
-    return set(asset_ids)
+    return {asset_id for asset_id in asset_ids if isinstance(asset_id, str)}
 
 
 def _validate_capture(capture: Any, errors: list[str]) -> None:
@@ -227,8 +227,8 @@ def _validate_subject(subject: Any, errors: list[str]) -> None:
     if selected is not None and (not isinstance(selected, str) or selected not in candidate_ids):
         errors.append(_error("invalid_subject_reference", "subject.selected_subject_id"))
     status = subject.get("status")
-    if status == "selected" and selected is None:
-        errors.append(_error("invalid_subject_reference", "selected subject is required"))
+    if status == "selected" and (len(candidate_ids) != 1 or not isinstance(selected, str) or selected != candidate_ids[0]):
+        errors.append(_error("invalid_subject_reference", "selected subject requires exactly one matching candidate"))
     if status in {"ambiguous", "none", "abstain"} and selected is not None:
         errors.append(_error("invalid_subject_reference", "non-selected status cannot name a subject"))
     if status == "ambiguous" and len(candidate_ids) < 2:
@@ -291,7 +291,9 @@ def _validate_label(label: Any, errors: list[str]) -> None:
     if isinstance(abstention, dict):
         abstention_status = abstention.get("status")
         _check_enum(abstention_status, {"none", "abstain"}, "label.abstention.status", errors)
-        _check_list(abstention.get("reasons"), "label.abstention.reasons", errors)
+        reasons = _check_list(abstention.get("reasons"), "label.abstention.reasons", errors)
+        if abstention_status == "none" and reasons:
+            errors.append(_error("invalid_abstention", "abstention.status=none requires empty reasons"))
         for reason in abstention.get("reasons", []):
             _check_enum(reason, {"subject_unclear", "issue_unclear", "style_intent_unclear", "insufficient_visibility", "rights_or_privacy_blocker", "before_after_not_comparable", "other"}, "label.abstention.reasons", errors)
     if keep == "keep" and accepted != ["keep_current_setup"]:
@@ -340,6 +342,23 @@ def _validate_label(label: Any, errors: list[str]) -> None:
             or len(verifications) != 1
         ):
             errors.append(_error("invalid_abstention", "ABSTAIN needs exactly one insufficient-evidence/inconclusive/not_observed verification"))
+
+
+def _validate_subject_label_semantics(subject: Any, label: Any, errors: list[str]) -> None:
+    """Keep subject ABSTAIN and label ABSTAIN as one consistent safety outcome."""
+    if not isinstance(subject, dict) or not isinstance(label, dict):
+        return
+    subject_status = subject.get("status")
+    selected_subject_id = subject.get("selected_subject_id")
+    abstention = label.get("abstention")
+    abstention_status = abstention.get("status") if isinstance(abstention, dict) else None
+    label_status = label.get("selection_status")
+    label_abstain = label_status == "abstain" or abstention_status == "abstain"
+    subject_abstain = subject_status == "abstain"
+    if subject_abstain and selected_subject_id is not None:
+        errors.append(_error("invalid_subject_reference", "subject ABSTAIN requires selected_subject_id=null"))
+    if subject_abstain != label_abstain:
+        errors.append(_error("invalid_abstention", "subject ABSTAIN and label ABSTAIN must agree"))
 
 
 def _validate_review(review: Any, errors: list[str]) -> None:
@@ -468,14 +487,6 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
             errors.append(_error("invalid_timestamp", f"{path}.captured_at"))
     if isinstance(before, dict) and isinstance(after, dict) and before.get("asset_id") == after.get("asset_id"):
         errors.append(_error("invalid_episode", "before and after assets must differ"))
-    if (
-        isinstance(before, dict)
-        and isinstance(after, dict)
-        and DATE_RE.fullmatch(before.get("captured_at", ""))
-        and DATE_RE.fullmatch(after.get("captured_at", ""))
-        and after.get("captured_at") <= before.get("captured_at")
-    ):
-        errors.append(_error("invalid_episode_order", "after timestamp must be later than before timestamp"))
     action_step = episode.get("action_step")
     _require(action_step, {"action_id", "performed_at"}, "episode.action_step", errors)
     action = None
@@ -485,6 +496,20 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
             errors.append(_error("invalid_action_id", "episode.action_step.action_id must be acceptable"))
         if not DATE_RE.fullmatch(action_step.get("performed_at", "")):
             errors.append(_error("invalid_timestamp", "episode.action_step.performed_at"))
+    if (
+        isinstance(before, dict)
+        and isinstance(action_step, dict)
+        and isinstance(after, dict)
+        and DATE_RE.fullmatch(before.get("captured_at", ""))
+        and DATE_RE.fullmatch(action_step.get("performed_at", ""))
+        and DATE_RE.fullmatch(after.get("captured_at", ""))
+        and not (
+            before.get("captured_at")
+            < action_step.get("performed_at")
+            < after.get("captured_at")
+        )
+    ):
+        errors.append(_error("invalid_episode_order", "chronology requires before < action_step < after"))
     verifier = episode.get("outcome_verifier")
     if action in VERIFIER_BY_ACTION and verifier != VERIFIER_BY_ACTION[action]:
         errors.append(_error("invalid_action_verifier", "episode.outcome_verifier"))
@@ -528,8 +553,15 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
         errors.append(_error("synthetic_data_not_admitted", "fixture split requires a resolved synthetic_fixture source"))
     source_assets = set(source.get("asset_ids", []))
     record_source_assets = set(provenance.get("source_asset_ids", []))
+    media = record.get("media") if isinstance(record.get("media"), dict) else {}
+    media_asset_ids = {asset_id for asset_id in media.get("asset_ids", []) if isinstance(asset_id, str)}
+    # Temporal/episode records may use an aggregate primary asset not repeated
+    # in asset_ids; both fields still need independent authority resolution.
+    media_asset_refs = media_asset_ids | ({media.get("asset_id")} if isinstance(media.get("asset_id"), str) else set())
     if not record_source_assets.issubset(source_assets):
         errors.append(_error("missing_source_asset", "provenance.source_asset_ids"))
+    if not media_asset_refs.issubset(source_assets):
+        errors.append(_error("missing_source_asset", "media.asset_id/media.asset_ids"))
     capture = record.get("capture")
     if not isinstance(capture, dict):
         capture = {}
@@ -549,7 +581,8 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
         _check_id(rights.get("consent_record_id"), "rights.consent_record_id", errors)
         if rights.get("source_shoot_id") != source_id:
             errors.append(_error("provenance_mismatch", "rights source_shoot_id"))
-        if not record_source_assets.issubset(set(rights.get("asset_ids", []))):
+        rights_assets = set(rights.get("asset_ids", []))
+        if not record_source_assets.issubset(rights_assets) or not media_asset_refs.issubset(rights_assets):
             errors.append(_error("rights_scope_mismatch", "rights asset_ids"))
         if rights.get("disposition") != provenance.get("rights_disposition"):
             errors.append(_error("provenance_mismatch", "rights disposition"))
@@ -566,7 +599,8 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
             errors.append(_error("family_mismatch", "derivation family/source shoot"))
         if derivation.get("is_independent") is not True or derivation.get("derivation_kind") in NON_INDEPENDENT_DERIVATION_KINDS:
             errors.append(_error("non_independent_derivation", record.get("record_id", "")))
-        if set(record_source_assets) - set(derivation.get("output_asset_ids", [])):
+        derivation_outputs = set(derivation.get("output_asset_ids", []))
+        if not record_source_assets.issubset(derivation_outputs) or not media_asset_refs.issubset(derivation_outputs):
             errors.append(_error("provenance_mismatch", "derivation output assets"))
 
 
@@ -592,7 +626,8 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
     capture = record.get("capture") if isinstance(record.get("capture"), dict) else {}
     _validate_capture(record.get("capture"), errors)
     source_assets = _validate_provenance(record.get("provenance"), errors)
-    _validate_subject(record.get("subject"), errors)
+    subject = record.get("subject")
+    _validate_subject(subject, errors)
     style = record.get("style_intent")
     _require(style, {"style_id", "intentional", "basis"}, "style_intent", errors)
     if isinstance(style, dict):
@@ -600,9 +635,10 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
         if not isinstance(style.get("intentional"), bool):
             errors.append(_error("invalid_style_intent", "style_intent.intentional"))
         _check_enum(style.get("basis"), {"capture_brief", "annotator_observed", "not_available", "fixture"}, "style_intent.basis", errors)
-    _validate_label(record.get("label"), errors)
+    label = record.get("label")
+    _validate_label(label, errors)
+    _validate_subject_label_semantics(subject, label, errors)
     _validate_review(record.get("review"), errors)
-    label = record.get("label", {})
     accepted = set(label.get("acceptable_action_ids", [])) if isinstance(label, dict) else set()
     if record_type == "still":
         if capture.get("capture_mode") != "still":
@@ -640,7 +676,7 @@ def validate_split_isolation(records: list[dict[str, Any]]) -> list[str]:
             continue
         provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
         capture = record.get("capture") if isinstance(record.get("capture"), dict) else {}
-        families = [provenance.get("source_shoot_id"), capture.get("scene_family_id"), capture.get("take_family_id"), capture.get("time_family_id"), capture.get("location_family_id"), provenance.get("derivation_family_id")]
+        families = [provenance.get("source_shoot_id"), capture.get("scene_family_id"), capture.get("take_family_id"), capture.get("time_family_id"), capture.get("location_family_id"), capture.get("device_family_id"), provenance.get("derivation_family_id")]
         families += capture.get("person_family_ids", []) if isinstance(capture.get("person_family_ids"), list) else []
         for family in families:
             if family:
@@ -948,7 +984,7 @@ def self_test() -> None:
         invalid_passes += 1
     print(f"PASS M3-002 schemas matrix_classes={len(MATRIX_CLASSES)} actions={len(ACTION_IDS)} keep=1 abstain=1")
     print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes}")
-    print("PASS M3-004 temporal_sequence=1 episode_outcomes=correct capture_families=scene/take/time/derivation")
+    print("PASS M3-004 temporal_sequence=1 episode_outcomes=correct capture_families=scene/take/time/device/derivation")
     print("PASS M3-005 review_status=unreviewed vote_history=append_only adjudication_history=separate human_calibration=pending")
     print(f"PASS camera-coach self-test valid={len(valid_records)} invalid={invalid_passes}")
 

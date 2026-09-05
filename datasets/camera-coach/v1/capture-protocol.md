@@ -72,7 +72,9 @@ timestamps, frame ordinals, asset IDs, and a state timeline such as
 
 The sequence remains one record and one split. Never split frames into separate
 partitions, count each frame as an independent still, or use a later frame as a
-new source shoot. Include sequences that exercise subject acquisition,
+new source shoot. Device family is also a protected split key even when scene,
+take, time, location, and person families differ. Include sequences that
+exercise subject acquisition,
 tracking, motion, advice stability, device rotation, lens changes, lighting
 transitions, and scene cuts when those conditions are available.
 
@@ -83,8 +85,9 @@ from the same source context. The action must be one of the approved action IDs
 in the authority catalog and `label-schema.json`. Record the action-specific
 verifier and one explicit outcome. A `correct` episode additionally requires
 `after.captured_at` to be later than `before.captured_at` and the matching label
-verification to be `result=pass`, `measurement=before_after`; failure or
-inconclusive evidence cannot be called correct:
+verification to be `result=pass`, `measurement=before_after`. All episode
+chronology is strict: `before.captured_at < action_step.performed_at <
+after.captured_at`; failure or inconclusive evidence cannot be called correct:
 
 - `correct`: the named action moves the intended condition in the expected
   direction;
@@ -143,6 +146,15 @@ crossing and is run with its caller-supplied negative derivation manifest.
 
 ```text
 python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-family.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-negative-derivations.jsonl
+```
+
+The device-family isolation probe keeps every other protected family distinct
+while sharing only `device_family_id`; it is admitted with the positive
+caller-supplied manifests and must fail on that device family crossing (the
+synthetic fixture source/rights gates also remain fail-closed):
+
+```text
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-device.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl
 ```
 
 ## Auditable pilot manifest

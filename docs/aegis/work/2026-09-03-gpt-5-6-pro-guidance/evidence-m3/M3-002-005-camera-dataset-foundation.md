@@ -35,16 +35,18 @@ human calibration result, or model-quality claim.
   subject, issue, action, KEEP, ABSTAIN, style, verification, and review.
 - `tools/dataset/camera_coach_check.py` — stdlib-only narrow schema declaration,
   canonical-action parity, record, manifest, source-authority, rights,
-  derivation, family, split, temporal, episode, and verifier checks. Production
-  `--record` and batch admission require explicit source/rights/derivation
-  manifests; embedded synthetic manifests are used only by `--self-test`.
+  derivation, media-asset authority, subject/ABSTAIN semantics, family/device
+  split, temporal, episode chronology, and verifier checks. Production `--record`
+  and batch admission require explicit source/rights/derivation manifests;
+  embedded synthetic manifests are used only by `--self-test`.
 - `tools/dataset/tests/fixtures/camera-coach-fixtures.json` — explicitly
-  synthetic valid still/temporal/episode records and 20 declared negative
-  mutation cases, including source relabel, abstention, subject, temporal, and
-  episode safety probes.
+  synthetic valid still/temporal/episode records and 30 declared negative
+  mutation cases, including source relabel, media asset authority, abstention,
+  subject, temporal, and episode chronology/safety probes.
 - `tools/dataset/tests/fixtures/camera-coach-batch-*.jsonl` — explicitly
-  synthetic caller-supplied positive batch/manifests and a train/calibration
-  protected-family crossing batch/derivation fixture.
+  synthetic caller-supplied positive batch/manifests, train/calibration
+  protected-family crossing batch/derivation fixture, and device-family-only
+  crossing batch fixture.
 
 ## Verification
 
@@ -57,27 +59,53 @@ PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/m3-dataset-foundation/d
 
 $ python3 tools/dataset/camera_coach_check.py --self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=20
-PASS M3-004 temporal_sequence=1 episode_outcomes=correct capture_families=scene/take/time/derivation
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=30
+PASS M3-004 temporal_sequence=1 episode_outcomes=correct capture_families=scene/take/time/device/derivation
 PASS M3-005 review_status=unreviewed vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=20
+PASS camera-coach self-test valid=3 invalid=30
 
 $ python3 -c 'import json; from pathlib import Path; a=json.loads(Path("docs/implementation/camera-coach-contract-v2.json").read_text()); s=json.loads(Path("datasets/camera-coach/v1/label-schema.json").read_text()); assert set(a["approvedActionIDs"]) == set(s["$defs"]["actionId"]["enum"]); assert set(s["$defs"]["verificationActionId"]["enum"]) == set(a["approvedActionIDs"]) | {"abstain"}; print("PASS canonical_action_parity actions=26 verification_actions=27")'
 PASS canonical_action_parity actions=26 verification_actions=27
 
-The same self-test's 20 declared negative cases include eight hostile probes:
-inconsistent ABSTAIN, selected ambiguous subject, too-short/noncontiguous/
-non-increasing temporal records, non-later correct episode, failed correct
+$ python3 - <<'PY'
+import copy, json, sys
+from pathlib import Path
+sys.path.insert(0, "tools/dataset")
+import camera_coach_check as check
+fixture = json.loads(Path("tools/dataset/tests/fixtures/camera-coach-fixtures.json").read_text())
+valid = {item["record_id"]: item for item in fixture["valid_records"]}
+passed = []
+for case in fixture["invalid_cases"][-10:]:
+    record = copy.deepcopy(valid[case["base_record_id"]])
+    manifests = copy.deepcopy(fixture["manifests"])
+    check._apply_mutations(record, manifests, case["mutations"])
+    errors = check.validate_record(record, manifests, fixture_mode=True)
+    assert errors and any(case["declared_reason"] in error for error in errors)
+    passed.append(case["case_id"])
+print(f"PASS second_correction_hostile_probes={len(passed)} declared_failure_reasons={len({case['declared_reason'] for case in fixture['invalid_cases'][-10:]})}")
+PY
+PASS second_correction_hostile_probes=10 declared_failure_reasons=4
+
+The same self-test's 30 declared negative cases include hostile probes for
+foreign media primary/member assets, selected/ambiguous/none/abstain subject
+states, abstention reason/status and subject-label cross-semantics, temporal
+length/order/timestamps, all three episode timestamps, failed correct
 verification, and synthetic-source relabel with approved claimant rights.
 
 $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
-PASS tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl camera-coach-batch records=1 source_shoots=1 rights=1 derivations=1
+PASS tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl camera-coach-batch records=2 source_shoots=2 rights=2 derivations=2
 
 $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-family.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-negative-derivations.jsonl
 FAIL synthetic_source_not_admissible ... (2 records)
 FAIL rights_not_approved ... (2 records)
-FAIL family_cross_split ... (7 protected families)
+FAIL family_cross_split ... (8 protected families)
 exit=1 (expected negative)
+
+$ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-device.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl
+FAIL synthetic_source_not_admissible ... (2 records)
+FAIL rights_not_approved ... (2 records)
+FAIL family_cross_split: device-fixture-001
+exit=1 (expected negative; device is the only crossing family)
 
 $ python3 tools/dataset/camera_coach_check.py --record tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl
 input_error: explicit --source-shoots, --rights-manifest, and --derivation-manifest are required for admission
@@ -87,21 +115,20 @@ $ python3 -m py_compile tools/dataset/camera_coach_check.py && echo 'PASS py_com
 PASS py_compile camera_coach_check.py
 
 $ python3 <stdlib JSON/JSONL parse loop over datasets/camera-coach/v1 and tools/dataset/tests/fixtures>
-PASS parsed_files=14
+PASS parsed_files=15
 
 $ git diff --check
 PASS (no output); diff_check_exit=0
 ```
 
-The 20 declared negative fixtures cover missing source shoot, denied rights,
-unresolved rights, invalid subject reference, invalid action ID, invalid action
-verifier, family mismatch, missing rights record, missing source asset,
-non-independent derivation, burst-frame inflation, episode verifier mismatch,
-inconsistent selection ABSTAIN, selected ambiguous subject, too-short temporal
-sequence, noncontiguous temporal ordinals, non-increasing temporal timestamps,
-non-later episode after timestamp, correct episode with failed verification, and
-synthetic-source relabeled as owned with approved rights/train claimant fields.
-The self-test requires each case to fail with its declared reason. The hostile
+The 30 declared negative fixtures cover missing source shoot, denied/unresolved
+rights, invalid subject/action/verifier references, family mismatch, missing
+rights/source assets, non-independent derivation and burst-frame inflation,
+episode verifier/chronology/outcome failures, inconsistent selection ABSTAIN,
+selected/ambiguous/none/ABSTAIN subject states, abstention reason/status and
+subject-label cross-semantics, temporal length/order/timestamp failures, and
+synthetic-source relabeling with approved rights/train claimant fields. The
+self-test requires each case to fail with its declared reason. The hostile
 source case still fails because the resolved source entry remains
 `synthetic_fixture`; claimant fields cannot override source authority.
 
@@ -131,5 +158,5 @@ structural/referential gates required for this batch.
 
 ## Commit
 
-This receipt is included in the single local batch commit; the worker return
+This receipt is included in the local correction commit; the worker return
 reports its exact SHA.
