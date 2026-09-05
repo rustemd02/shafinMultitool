@@ -5616,7 +5616,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         do {
             try await recordingController.start(
                 requestedFPS: sourceFPS,
-                audioMode: audioPolicy.mode
+                audioMode: audioPolicy.mode,
+                trackTransform: Self.currentRecordingTrackTransform()
             )
         } catch {
             if let audioLease {
@@ -5659,6 +5660,29 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
+    }
+
+    /// M7-007: derives the recording track orientation metadata from the
+    /// current device orientation. Flat/unknown device postures fall back to
+    /// the portrait baseline of the capture shell; mirroring stays off for the
+    /// AR world-tracking capture path.
+    static func currentRecordingTrackTransform() -> RecordingTrackTransformMetadata {
+        let orientation: RecordingCaptureOrientation
+        switch UIDevice.current.orientation {
+        case .portraitUpsideDown:
+            orientation = .portraitUpsideDown
+        case .landscapeLeft:
+            orientation = .landscapeLeft
+        case .landscapeRight:
+            orientation = .landscapeRight
+        default:
+            orientation = .portrait
+        }
+        return RecordingTrackTransformMetadata(
+            captureOrientation: orientation,
+            isMirrored: false,
+            strategy: .preferredTransformMetadata
+        )
     }
 
     private func publishRecordingAudioFailure(

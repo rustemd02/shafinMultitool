@@ -173,6 +173,16 @@ final class RecordingPreflightTests: XCTestCase {
         XCTAssertTrue(available)
     }
 
+    /// M7-007: the production orientation derivation always produces valid
+    /// metadata for any device posture (flat/unknown falls back to portrait).
+    @MainActor
+    func testCurrentRecordingTrackTransformIsAlwaysValid() {
+        let transform = SceneGeneratorViewModel.currentRecordingTrackTransform()
+        XCTAssertTrue(RecordingCaptureOrientation.allCases.contains(transform.captureOrientation))
+        XCTAssertFalse(transform.isMirrored)
+        XCTAssertEqual(transform.strategy, .preferredTransformMetadata)
+    }
+
     /// M7-017: the budget model is a documented deterministic function.
     func testDiskBudgetModelIsConservativeAndMonotonic() {
         let base = RecordingDiskBudgetModel.requiredFreeBytes(
