@@ -1,7 +1,7 @@
 {
   "baseline_id": "camera-baseline-v0",
   "schema_version": 1,
-  "status": "partial_current_107_blocked_207",
+  "status": "partial_current_107_simulator_fail_closed_207_blocked",
   "captured_at": "2026-09-05T21:33:40+03:00",
   "hashing": {
     "file_sha256": "SHA-256 of exact file bytes",
@@ -31,13 +31,19 @@
       "source": "swift_still_image_replay"
     },
     "runtime_claim": "real_runtime_still_replay",
-    "claim_scope": "The 107-row receipt was emitted by the Swift production AnalysisPipeline fullRuntime replay path. It is not a release-quality or model-quality claim.",
+    "claim_scope": "The 107-row receipt is genuine Swift production AnalysisPipeline fullRuntime orchestration under the simulator. The simulator Vision path fail-closed with the observed error `Failed to create espresso context`; this receipt is therefore not evidence of successful Vision, DETR, NIMA, or neural-evidence inference, and is not a release-quality or model-quality claim.",
     "model_availability_note": "DETR and NIMA artifacts are present and their wrappers are in the source path. The compact_neural_evidence_net resource is not present in this checkout, so NeuralEvidenceInferenceService cannot provide an executed local neural-evidence outcome; this receipt does not claim that missing model executed.",
+    "simulator_inference_note": "Vision logged `Failed to create espresso context` during this simulator session. Treat the rows as an orchestration/schema receipt with fail-closed Vision behavior, not as successful Vision/model inference.",
     "rows": 214,
     "records": 107,
     "modes": {
       "live": 107,
       "pause": 107
+    },
+    "build": {
+      "configuration": "Debug",
+      "xcode": "26.6 (17F113)",
+      "simulator_sdk": "iPhoneSimulator26.5 (23F81a)"
     },
     "simulator": {
       "device_name": "iPhone 17e",
@@ -47,10 +53,19 @@
       "os_build": "23F77"
     },
     "result_bundle": {
-      "path": "/private/tmp/m4-001-fullruntime-107-r1.xcresult",
-      "tree_sha256": "544811e6305fc859423ff6c5fbf5987c9fb6d0242bf055f0fc39fd8f99265d01",
+      "portable_evidence_locator": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-001-camera-baseline-v0.md",
+      "nonportable_session_note": {
+        "path": "/private/tmp/m4-001-fullruntime-107-r1.xcresult",
+        "tree_sha256": "544811e6305fc859423ff6c5fbf5987c9fb6d0242bf055f0fc39fd8f99265d01"
+      },
       "result": "Passed",
       "test_name": "SemanticEvalStillImageBatchReplayTests.testExportSemanticEvalCandidateOutputsFromStillImages"
+    },
+    "replay_config": {
+      "portable_path": "docs/cameraanalysis/eval/camera-baseline-v0/replay-config-107.json",
+      "portable_sha256": "05852dd1721656616b9d1e7db7b776315e5726413ba7851f4fefe129f4bca518",
+      "executed_transient_sha256": "48b40a5fa27eb19182fd1933cfbeb7b742e252a4563de71f5054b2227a296e84",
+      "execution_contract": "The portable config was normalized to the repository root and a writable external output path before test execution; the absolute materialization was transient and removed."
     }
   },
   "datasets": {
@@ -169,7 +184,7 @@
       "id": "detr-resnet50-semantic-segmentation-f16p8",
       "wrapper_path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift",
       "artifact_path": "shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage",
-      "artifact_tree_sha256": "8ef98e8375d1e4abe14cb5db64c889af21152175d6178203b8a4e6eaeb1f0e4f",
+      "artifact_tree_sha256": "6a5d3f2f7431f4964674cef8e054ac74c66e4f326e057bf5f4b35f8bfd6e7696",
       "artifact_files": 3,
       "artifact_bytes": 43085928,
       "model_spec_sha256": "3d3666837fe990d3948308e417949864b5c2ab0dd9f21091c755c8effa005c40",
@@ -188,7 +203,7 @@
       "id": "nima-mobilenet-fp16",
       "wrapper_path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift",
       "artifact_path": "shafinMultitool/Multitool2Module/Models/CoreML/aesthetic_nima_mobilenet_fp16.mlpackage",
-      "artifact_tree_sha256": "4ee0d71da23f242abfba7a1164944511960fd7ed4b48eb5ed04f612eb0af5a65",
+      "artifact_tree_sha256": "cd1032aa55ad9bf3fb2d9e95606cf3cd74b32ff9848cef6d43f7b70a30c8f495",
       "artifact_files": 3,
       "artifact_bytes": 6499576,
       "model_spec_sha256": "e5d44425c132e7ed2be99310226b573ae1765c37a909c1a0fd08aff311fb9cfc",
@@ -231,12 +246,25 @@
         "sha256": "c1f81e9ce1740e058ea79def4d4d649b487c0b9243d220f97c53d3ae7d5299b4"
       }
     ],
-    "reproducibility": "Scoring the committed 107 candidate output twice produced byte-identical candidate_outputs, case_results, set_metrics, bucket_metrics, and summary artifacts."
+    "reproducibility": {
+      "candidate_id_convention": "The raw candidate filename stem is m4-001-fullruntime-107-r1, so the scorer-derived candidate_id is stable and matches the committed scored artifacts.",
+      "clean_replay_runs": 2,
+      "all_scored_artifacts_byte_identical_between_runs": true,
+      "all_scored_artifacts_byte_identical_to_committed": true,
+      "artifacts": [
+        "candidate_outputs.jsonl",
+        "case_results.jsonl",
+        "set_metrics.json",
+        "bucket_metrics.json",
+        "semantic_eval_summary.md"
+      ]
+    }
   },
   "outputs": {
     "current_107": {
       "status": "current_full_runtime_receipt",
-      "candidate_outputs_path": "docs/cameraanalysis/eval/camera-baseline-v0/fullruntime_candidate_outputs_107.jsonl",
+      "candidate_id": "m4-001-fullruntime-107-r1",
+      "candidate_outputs_path": "docs/cameraanalysis/eval/camera-baseline-v0/m4-001-fullruntime-107-r1.jsonl",
       "candidate_outputs_sha256": "baa132b46e60b88f98189fab72d961f79be859218c636fe9c64df04ac33305e2",
       "candidate_outputs_rows": 214,
       "scored_candidate_outputs_path": "docs/cameraanalysis/eval/camera-baseline-v0/scored_candidate_outputs_107.jsonl",
@@ -249,6 +277,8 @@
       "bucket_metrics_sha256": "948343c381303b70cbf770bff493d34b63d087d549e2037864b96ef69ea605d2",
       "summary_path": "docs/cameraanalysis/eval/camera-baseline-v0/semantic_eval_summary_107.md",
       "summary_sha256": "a636cde18082ba03ab68fd244b96b873065fb6cf711b58045763007339d14aa8",
+      "portable_replay_config_path": "docs/cameraanalysis/eval/camera-baseline-v0/replay-config-107.json",
+      "portable_replay_config_sha256": "05852dd1721656616b9d1e7db7b776315e5726413ba7851f4fefe129f4bca518",
       "metrics": {
         "record_count": 107,
         "pass_rate": 0.46729,

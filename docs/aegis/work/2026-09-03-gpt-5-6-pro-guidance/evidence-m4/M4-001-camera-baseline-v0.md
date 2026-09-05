@@ -1,6 +1,6 @@
 # M4-001 — Camera fullRuntime development baseline v0
 
-Status: **PARTIAL / 107 current rows exported; 207 current replay blocked by missing inputs**
+Status: **PARTIAL / 107 current orchestration rows exported under simulator fail-closed Vision; 207 current replay blocked by missing inputs**
 
 This receipt deliberately does not make a release-quality, model-quality, or
 holdout claim. It locks the current Swift replay evidence that can be proved
@@ -20,13 +20,17 @@ under [`docs/cameraanalysis/eval/camera-baseline-v0/`](../../../../cameraanalysi
 - Every exported row has `runtime_claim=real_runtime_still_replay` and
   `source=swift_still_image_replay`. There are 214 rows: 107 `live` and 107
   `pause`, covering the complete v1 label set.
+- This is genuine Swift fullRuntime orchestration, not successful Vision/model
+  inference. Vision fail-closed in the simulator with the observed
+  `Failed to create espresso context`; therefore the rows prove the production
+  orchestration, decoding, fail-closed path, and output contract only.
 - The run used the ordinary **iPhone 17e Simulator** only:
   `1F680A42-CEB3-43E8-9CED-52F874962A62`, iOS 26.5 (`23F77`). No physical
   device or iPhone 17 Pro was used.
 
-The claim is limited to the Swift production replay path. It does not prove
-that every model call succeeded on every frame, nor does it prove physical
-camera timing, ARKit, thermal behavior, or release readiness.
+The claim is limited to the Swift production replay path. It explicitly does
+not prove successful Vision, DETR, NIMA, or compact neural-evidence inference,
+nor physical camera timing, ARKit, thermal behavior, or release readiness.
 
 ## 107-row current receipt
 
@@ -64,13 +68,14 @@ Committed artifacts and SHA-256 values:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `fullruntime_candidate_outputs_107.jsonl` | `baa132b46e60b88f98189fab72d961f79be859218c636fe9c64df04ac33305e2` |
+| `m4-001-fullruntime-107-r1.jsonl` | `baa132b46e60b88f98189fab72d961f79be859218c636fe9c64df04ac33305e2` |
 | `scored_candidate_outputs_107.jsonl` | `aa0254c949ba5ad4e505dbb160d2ca8ee4344ea2e9993ebb32eb6d60e5c72990` |
 | `case_results_107.jsonl` | `36d41998affbf3fa8f9f404ef9973ca73ecf202cae9fd86c9233b9cbcf72d13b` |
 | `set_metrics_107.json` | `98416533db179f45073073f7e38f6b44b738b70768831ff7778fdb352803c862` |
 | `bucket_metrics_107.json` | `948343c381303b70cbf770bff493d34b63d087d549e2037864b96ef69ea605d2` |
 | `semantic_eval_summary_107.md` | `a636cde18082ba03ab68fd244b96b873065fb6cf711b58045763007339d14aa8` |
-| `manifest.json` | `2a3ea47474de33d4d5681e9e1dfd1197bd5639244c5e16e895f84455966bb2dc` |
+| `replay-config-107.json` | `05852dd1721656616b9d1e7db7b776315e5726413ba7851f4fefe129f4bca518` |
+| `manifest.json` | `4b7ed2fbac96eb908dbc0053cf5421cf295976ac05dd472784fbba377312087f` |
 
 ## 207-row status
 
@@ -93,19 +98,22 @@ relabelled as current evidence.
 ## DETR / NIMA provenance read
 
 No model wrappers or resources were changed by this task. The manifest records
-the exact package tree and component hashes.
+the exact package tree and component hashes. Each package tree digest is
+computed as SHA-256 over sorted entries
+`relative_path\0byte_length\0file_sha256\n` (UTF-8 path/ASCII metadata), as
+declared in the manifest.
 
 - DETR wrapper:
   `shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift`
   (`254eeff6…e0a13`); package tree digest
-  `8ef98e8375d1e4abe14cb5db64c889af21152175d6178203b8a4e6eaeb1f0e4f`;
+  `6a5d3f2f7431f4964674cef8e054ac74c66e4f326e057bf5f4b35f8bfd6e7696`;
   43,085,928 bytes. The embedded model specification identifies DETR,
   references the original paper and `facebook/detr-resnet-50-panoptic`, and
   contains an Apache 2.0 reference.
 - NIMA wrapper:
   `shafinMultitool/Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift`
   (`54f910…a404`); package tree digest
-  `4ee0d71da23f242abfba7a1164944511960fd7ed4b48eb5ed04f612eb0af5a65`;
+  `cd1032aa55ad9bf3fb2d9e95606cf3cd74b32ff9848cef6d43f7b70a30c8f495`;
   6,499,576 bytes. The embedded spec identifies a NIMA MobileNet v1 graph and
   CoreML6, but contains no authoritative upstream URL or license text.
 - `compact_neural_evidence_net` is not present in this checkout. The receipt
@@ -131,6 +139,25 @@ Evaluator source is pinned by the current commit and file hashes in
 
 Scoring the committed 107 candidate output twice produced byte-identical
 candidate outputs, case results, set metrics, bucket metrics, and summaries.
+
+## Portable replay configuration
+
+The committed normalized configuration is
+`docs/cameraanalysis/eval/camera-baseline-v0/replay-config-107.json` with SHA-256
+`05852dd1721656616b9d1e7db7b776315e5726413ba7851f4fefe129f4bca518`. It uses
+repository-relative label/image inputs and the explicit `<EXTERNAL_OUTPUT_PATH>`
+placeholder; it contains no checkout, worktree, home, or temporary-directory
+path. Before the Swift test, this config was materialized transiently by
+resolving the two inputs against the repository root and substituting a
+writable external output path. The exact executed transient config hash was
+`48b40a5fa27eb19182fd1933cfbeb7b742e252a4563de71f5054b2227a296e84`; the
+materialized file was removed after the run.
+
+Build receipt: configuration `Debug`; Xcode `26.6 (17F113)`;
+iPhoneSimulator SDK `26.5 (23F81a)`; ordinary iPhone 17e Simulator
+(`1F680A42-CEB3-43E8-9CED-52F874962A62`, OS build `23F77`). The portable
+evidence locator is this report; the local `.xcresult` path is retained in the
+manifest only as a nonportable session note.
 
 ## Exact commands and results
 
@@ -158,16 +185,49 @@ Canonical scoring command:
 python3 docs/cameraanalysis/eval/run_semantic_label_eval.py \
   --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl \
   --outputs <temporary-output-dir> \
-  --candidate docs/cameraanalysis/eval/camera-baseline-v0/fullruntime_candidate_outputs_107.jsonl \
+  --candidate docs/cameraanalysis/eval/camera-baseline-v0/m4-001-fullruntime-107-r1.jsonl \
   --images-dir shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images
 ```
 
 Result: successful; second run was byte-identical for all five generated
-report files. JSON manifest validation also passed with
-`python3 -m json.tool`.
+report files, and both clean replay directories matched the committed scored
+artifacts byte-for-byte. The raw filename stem `m4-001-fullruntime-107-r1`
+also now matches the scorer-derived `candidate_id`, so the documented command
+is reproducible without a machine-specific rename. JSON manifest validation
+also passed with `python3 -m json.tool`.
+
+Clean replay comparison result:
+
+```text
+candidate_outputs.jsonl: clean replay A/B cmp=0; vs committed cmp=0
+case_results.jsonl:      clean replay A/B cmp=0; vs committed cmp=0
+set_metrics.json:        clean replay A/B cmp=0; vs committed cmp=0
+bucket_metrics.json:     clean replay A/B cmp=0; vs committed cmp=0
+semantic_eval_summary.md: clean replay A/B cmp=0; vs committed cmp=0
+```
 
 No threshold tuning, holdout access, oracle projection, proxy relabelling,
 production source edits, or simulator target outside the allowed ordinary
 iPhone 17e were used. This M4-001 receipt remains incomplete for the full 207
 current dataset until the 65 source images are restored and the 35 hashless
-label records receive authoritative hashes.
+label records receive authoritative hashes. The simulator fail-closed Vision
+result is an explicit limitation: a future device-backed receipt must prove
+successful Vision and model inference separately.
+
+## Correction history retained
+
+The original baseline commit (`7fc77cd`) intentionally remains in history.
+This correction records, rather than erases, the issues found in its review:
+
+- the first current-HEAD 207 replay stopped at the missing `110.jpg` input and
+  produced no candidate output;
+- the original raw artifact name (`fullruntime_candidate_outputs_107.jsonl`)
+  made a fresh scorer run derive a different `candidate_id` than the committed
+  scored artifacts; the raw file is now renamed to the stable
+  `m4-001-fullruntime-107-r1.jsonl` convention;
+- the original DETR/NIMA aggregate digests omitted the declared byte-length
+  field. They are replaced by the exact
+  `relative_path\0byte_length\0file_sha256\n` digests recorded above;
+- the initial receipt did not distinguish fullRuntime orchestration from
+  successful simulator Vision/model inference. The corrected claim explicitly
+  records the observed `Failed to create espresso context` fail-closed result.
