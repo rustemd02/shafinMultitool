@@ -714,7 +714,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
          presentationLocale: Locale? = nil,
          permissionClient: any PermissionClient = PermissionCoordinator(client: SystemPermissionClient()),
          recordingController: SceneRecordingController? = nil,
-         audioSessionCoordinator: AudioSessionCoordinator = .shared) {
+         audioSessionCoordinator: AudioSessionCoordinator = .shared,
+         persistedProject: UnifiedSceneProject? = nil,
+         persistedWorldMap: ARWorldMap? = nil) {
         self.projectStore = projectStore
         self.permissionClient = permissionClient
         self.audioSessionCoordinator = audioSessionCoordinator
@@ -729,7 +731,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // available. RU remains the deterministic standalone/default surface,
         // preserving existing generator behavior before route composition.
         self.presentationLocale = presentationLocale ?? Locale(identifier: "ru")
-        let loadedProject = isNewProject ? nil : projectStore.loadUnifiedSceneProject(named: projectName)
+        let loadedProject: (UnifiedSceneProject, ARWorldMap?)?
+        if let persistedProject {
+            loadedProject = (persistedProject, persistedWorldMap)
+        } else if isNewProject {
+            loadedProject = nil
+        } else {
+            loadedProject = projectStore.loadUnifiedSceneProject(named: projectName)
+        }
         if let loadedProject {
             self.currentProject = loadedProject.0
             self.initialWorldMap = loadedProject.1
@@ -780,6 +789,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
 #endif
     }
+
+    /// Stable identity of the aggregate currently owned by this workspace.
+    /// Library routing supplies the already validated project so this value is
+    /// never re-derived from the mutable display name during open.
+    var projectID: UUID { currentProject.id }
     
     private func setupBindings() {
         $markedObjects

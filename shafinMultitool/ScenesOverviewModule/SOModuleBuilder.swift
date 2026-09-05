@@ -8,9 +8,9 @@
 import UIKit
 
 class SOModuleBuilder: UIViewController {
-    static func build() -> SOViewController {
-        let interactor = SOInteractor()
-        let router = SORouter()
+    static func build(projectStore: DBService = .shared) -> SOViewController {
+        let interactor = SOInteractor(projectStore: projectStore)
+        let router = SORouter(projectStore: projectStore)
         let presenter = SOPresenter(router: router, interactor: interactor)
         let viewController = SOViewController()
         viewController.presenter = presenter

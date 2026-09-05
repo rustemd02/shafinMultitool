@@ -46,6 +46,30 @@ struct UnifiedSceneProjectSummary: Identifiable, Codable, Equatable {
     let updatedAt: Date
 }
 
+/// Read-time classification for links owned by a persisted scene project.
+/// `optionalMissing` is a truthful empty/metadata-only projection; it is not a
+/// request to synthesize a fixture. `compatibleLegacy` preserves readable v0
+/// projects without rewriting them during open. Only `blocking` prevents the
+/// workspace from being constructed.
+enum UnifiedSceneProjectLinkStatus: String, Codable, Equatable, Sendable {
+    case healthy
+    case compatibleLegacy = "compatible-legacy"
+    case optionalMissing = "optional-missing"
+    case blocking
+}
+
+struct UnifiedSceneProjectOpenValidation: Equatable, Sendable {
+    let identity: UnifiedSceneProjectLinkStatus
+    let generator: UnifiedSceneProjectLinkStatus
+    let ar: UnifiedSceneProjectLinkStatus
+    let storyboard: UnifiedSceneProjectLinkStatus
+    let recording: UnifiedSceneProjectLinkStatus
+
+    var isOpenable: Bool {
+        [identity, generator, ar, storyboard, recording].allSatisfy { $0 != .blocking }
+    }
+}
+
 /// A project-owned pointer to one finalized recording.  The path is relative
 /// to Application Support and is resolved only by RecordingArtifactStore.
 struct SceneRecordingReference: Codable, Equatable, Sendable {
@@ -191,4 +215,194 @@ struct UnifiedSceneProject: Identifiable, Codable, Equatable {
         get { recordingReferences }
         set { recordingReferences = newValue }
     }
+
+    /// Validates only persisted identities and links needed to construct the
+    /// existing Generator/AR/Storyboard workspace. This remains a pure
+    /// read-time check: it never repairs or persists the aggregate.
+    func validateForOpening(
+        expectedID: UUID,
+        isLegacy: Bool,
+        recordingStatus: UnifiedSceneProjectLinkStatus
+    ) -> UnifiedSceneProjectOpenValidation {
+        let identityIsValid = expectedID == id &&
+            !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            createdAt.timeIntervalSinceReferenceDate.isFinite &&
+            updatedAt.timeIntervalSinceReferenceDate.isFinite &&
+            uniqueNonEmpty(markedObjects.map { $0.id.uuidString }) &&
+            uniqueNonEmpty(recordingReferences.map { $0.recordingID.uuidString }) &&
+            markedObjects.allSatisfy { marker in
+                !marker.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                    marker.worldPosition.isFinite
+            }
+        let identity: UnifiedSceneProjectLinkStatus = identityIsValid ? .healthy : .blocking
+
+        let scriptIsValid = parsedScript.map(validateScript) ?? true
+        let generator: UnifiedSceneProjectLinkStatus
+        if !scriptIsValid {
+            generator = .blocking
+        } else if parsedScript == nil {
+            generator = isLegacy ? .compatibleLegacy : .optionalMissing
+        } else {
+            generator = .healthy
+        }
+
+        let markedObjectLinksAreValid = validateMarkedObjectLinks()
+        let plannedSceneIsValid = plannedScene.map {
+            validatePlannedScene($0, script: parsedScript)
+        } ?? true
+        let ar: UnifiedSceneProjectLinkStatus
+        if !markedObjectLinksAreValid || !plannedSceneIsValid {
+            ar = .blocking
+        } else if plannedScene == nil && markedObjects.isEmpty {
+            ar = isLegacy ? .compatibleLegacy : .optionalMissing
+        } else {
+            ar = .healthy
+        }
+
+        let overlaysAreValid = validateVisualOverlays()
+        let storyboard: UnifiedSceneProjectLinkStatus
+        if !scriptIsValid || !plannedSceneIsValid || !overlaysAreValid {
+            storyboard = .blocking
+        } else if parsedScript == nil && plannedScene == nil && visualOverlays.isEmpty {
+            storyboard = isLegacy ? .compatibleLegacy : .optionalMissing
+        } else {
+            storyboard = .healthy
+        }
+
+        let recording: UnifiedSceneProjectLinkStatus
+        if !uniqueNonEmpty(recordingReferences.map { $0.recordingID.uuidString }) {
+            recording = .blocking
+        } else {
+            recording = recordingStatus
+        }
+
+        return UnifiedSceneProjectOpenValidation(
+            identity: identity,
+            generator: generator,
+            ar: ar,
+            storyboard: storyboard,
+            recording: recording
+        )
+    }
+
+    private func validateScript(_ script: SceneScript) -> Bool {
+        let actorIDs = script.actors.map(\.id)
+        let objectIDs = script.objects.map(\.id)
+        let beatIDs = script.beats.map(\.id)
+        guard uniqueNonEmpty(actorIDs),
+              uniqueNonEmpty(objectIDs),
+              uniqueNonEmpty(beatIDs),
+              Set(actorIDs).isDisjoint(with: Set(objectIDs)) else {
+            return false
+        }
+
+        let entityIDs = Set(actorIDs + objectIDs)
+        var actionIDs = Set<String>()
+        for beat in script.beats {
+            if let minDuration = beat.minDuration,
+               !minDuration.isFinite || minDuration < 0 {
+                return false
+            }
+            for action in beat.actions {
+                guard !action.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      actionIDs.insert(action.id).inserted,
+                      actorIDs.contains(action.actorId) else {
+                    return false
+                }
+                if let target = action.target, !entityIDs.contains(target) {
+                    return false
+                }
+                if let holdingObject = action.holdingObject, !objectIDs.contains(holdingObject) {
+                    return false
+                }
+            }
+            if let target = beat.camera?.target, !entityIDs.contains(target) {
+                return false
+            }
+        }
+
+        var relationIDs = Set<String>()
+        for relation in script.spatialRelations {
+            guard !relation.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  relationIDs.insert(relation.id).inserted,
+                  entityIDs.contains(relation.subject),
+                  entityIDs.contains(relation.object) else {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func validatePlannedScene(_ plan: PlannedScene, script: SceneScript?) -> Bool {
+        let actorIDs = Set(script?.actors.map(\.id) ?? [])
+        let objectIDs = Set(script?.objects.map(\.id) ?? [])
+        let beatIDs = Set(script?.beats.map(\.id) ?? [])
+        let entityIDs = actorIDs.union(objectIDs)
+        var placedIDs = Set<String>()
+
+        for actor in plan.placedActors {
+            guard !actor.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  placedIDs.insert(actor.id).inserted,
+                  !actor.actorId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  actor.initialPosition.isFinite,
+                  actor.initialRotation.isFinite,
+                  actor.path.allSatisfy(\.isFinite),
+                  actor.pathDurations.allSatisfy({ $0.isFinite && $0 >= 0 }),
+                  actor.pathCameras.allSatisfy({ $0?.target.map(entityIDs.contains) ?? true }),
+                  actor.pathBeatIDs.allSatisfy({ $0.map(beatIDs.contains) ?? true }) else {
+                return false
+            }
+            if script != nil && !actorIDs.contains(actor.actorId) {
+                return false
+            }
+        }
+
+        for object in plan.placedObjects {
+            guard !object.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  placedIDs.insert(object.id).inserted,
+                  !object.objectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  object.position.isFinite,
+                  object.rotation.isFinite else {
+                return false
+            }
+            if script != nil && !objectIDs.contains(object.objectId) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func validateMarkedObjectLinks() -> Bool {
+        let markedIDs = Set(markedObjects.map { $0.canonicalMarkedObjectID.lowercased() })
+        let referencedMarkedIDs = parsedScript?.objects.map(\.id).filter {
+            $0.lowercased().hasPrefix("object_marked_")
+        } ?? []
+        return referencedMarkedIDs.allSatisfy { markedIDs.contains($0.lowercased()) }
+    }
+
+    private func validateVisualOverlays() -> Bool {
+        var overlayIDs = Set<String>()
+        let beatIDs = Set(parsedScript?.beats.map(\.id) ?? [])
+        for overlay in visualOverlays {
+            guard !overlay.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  overlayIDs.insert(overlay.id).inserted,
+                  !overlay.sceneID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !overlay.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return false
+            }
+            if let beatID = overlay.beatID, !beatIDs.contains(beatID) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func uniqueNonEmpty(_ values: [String]) -> Bool {
+        values.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } &&
+            Set(values).count == values.count
+    }
+}
+
+private extension Position3D {
+    var isFinite: Bool { x.isFinite && y.isFinite && z.isFinite }
 }

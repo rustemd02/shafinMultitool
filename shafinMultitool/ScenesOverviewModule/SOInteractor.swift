@@ -31,28 +31,33 @@ protocol SOInteractorProtocol: AnyObject {
 class SOInteractor {
     weak var presenter: SOPresenterProtocol?
     private var sceneNames: [String] = []
+    private let projectStore: DBService
+
+    init(projectStore: DBService = .shared) {
+        self.projectStore = projectStore
+    }
 
 }
 
 extension SOInteractor: SOInteractorProtocol {
     func deleteScene(with title: String) {
-        DBService.shared.deleteUnifiedSceneProject(named: title) { deleted in
+        projectStore.deleteUnifiedSceneProject(named: title) { deleted in
             _ = deleted
             self.presenter?.updateUI()
         }
     }
 
     func getSceneNames() -> [String] {
-        DBService.shared.listUnifiedSceneProjects().map(\.name)
+        projectStore.listUnifiedSceneProjects().map(\.name)
     }
 
     func getSceneSummaries() -> [UnifiedSceneProjectSummary] {
-        DBService.shared.listUnifiedSceneProjects()
+        projectStore.listUnifiedSceneProjects()
     }
 
     func createScene(named title: String) -> SETLibraryCreateOutcome {
         do {
-            _ = try DBService.shared.createUnifiedSceneProject(named: title)
+            _ = try projectStore.createUnifiedSceneProject(named: title)
             return .created
         } catch let error as NSError where error.domain == "DBService" {
             switch error.code {
@@ -66,18 +71,18 @@ extension SOInteractor: SOInteractorProtocol {
     }
 
     func deleteScene(with title: String, completion: @escaping (Bool) -> Void) {
-        DBService.shared.deleteUnifiedSceneProject(named: title) { deleted in
+        projectStore.deleteUnifiedSceneProject(named: title) { deleted in
             completion(deleted)
             self.presenter?.updateUI()
         }
     }
 
     func getLibrarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
-        DBService.shared.loadLibrarySceneSnapshots()
+        projectStore.loadLibrarySceneSnapshots()
     }
 
     func createLibraryScene(named title: String) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
-        DBService.shared.createLibraryScene(named: title)
+        projectStore.createLibraryScene(named: title)
     }
 
     func renameLibraryScene(
@@ -85,7 +90,7 @@ extension SOInteractor: SOInteractorProtocol {
         to name: String,
         expectedUpdatedAt: Date
     ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
-        DBService.shared.renameUnifiedSceneProject(id: id, to: name, expectedUpdatedAt: expectedUpdatedAt)
+        projectStore.renameUnifiedSceneProject(id: id, to: name, expectedUpdatedAt: expectedUpdatedAt)
     }
 
     func deleteLibraryScene(
@@ -93,7 +98,7 @@ extension SOInteractor: SOInteractorProtocol {
         expectedUpdatedAt: Date,
         completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
     ) {
-        DBService.shared.deleteUnifiedSceneProject(id: id, expectedUpdatedAt: expectedUpdatedAt) { result in
+        projectStore.deleteUnifiedSceneProject(id: id, expectedUpdatedAt: expectedUpdatedAt) { result in
             completion(result)
             self.presenter?.updateUI()
         }

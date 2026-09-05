@@ -91,15 +91,6 @@ extension SOPresenter: SETLibrarySceneProviding {
     }
 
     func libraryOpenSceneResult(id: UUID) -> Result<Void, SETLibraryFailure> {
-        switch interactor.getLibrarySceneSnapshots() {
-        case .success(let snapshots):
-            guard let snapshot = snapshots.first(where: { $0.id == id }) else {
-                return .failure(.missingProject(id: id))
-            }
-            router.loadSceneWithName(title: snapshot.name, newScene: false)
-            return .success(())
-        case .failure(let failure):
-            return .failure(failure)
-        }
+        router.loadScene(id: id)
     }
 }

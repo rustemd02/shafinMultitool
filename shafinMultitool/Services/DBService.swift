@@ -16,6 +16,16 @@ enum DBServiceError: Error, Equatable {
     case staleSnapshot(storedUpdatedAt: Date)
 }
 
+/// Strict read result handed from Library routing to the existing workspace.
+/// The aggregate and optional world map are loaded once by stable UUID; the
+/// router never re-resolves the project by its mutable display name.
+struct UnifiedSceneProjectOpenRecord {
+    let project: UnifiedSceneProject
+    let worldMap: ARWorldMap?
+    let isLegacy: Bool
+    let validation: UnifiedSceneProjectOpenValidation
+}
+
 class DBService {
 
     private static let unifiedSceneProjectSchemaVersion = 1
@@ -288,6 +298,53 @@ class DBService {
             do {
                 let projects = try loadUnifiedSceneProjectsOnQueue()
                 return .success(projects.map { makeLibrarySnapshotOnQueue(for: $0) })
+            } catch {
+                return .failure(libraryFailure(for: error))
+            }
+        }
+    }
+
+    /// Strict, read-only open boundary for the production Library route.
+    /// Missing/malformed/future records return the existing typed failure. A
+    /// readable aggregate with a broken required downstream link is returned
+    /// with a blocking validation so the router can fail before constructing a
+    /// Generator/AR/Storyboard workspace.
+    func loadUnifiedSceneProjectForOpening(
+        id: UUID
+    ) -> Result<UnifiedSceneProjectOpenRecord, SETLibraryFailure> {
+        persistenceQueue.sync {
+            do {
+                try createUnifiedSceneProjectsDirectory()
+                let directory = try unifiedSceneProjectsDirectoryURL()
+                guard let projectURL = try findUnifiedProjectFileURL(id: id, in: directory) else {
+                    return .failure(.missingProject(id: id))
+                }
+
+                let stored = try loadUnifiedSceneProjectFile(projectURL)
+                let mapData = try? preservedWorldMapDataOnQueue(stored: stored, directory: directory)
+                let worldMap: ARWorldMap?
+                if let mapData {
+                    worldMap = try? NSKeyedUnarchiver.unarchivedObject(
+                        ofClass: ARWorldMap.self,
+                        from: mapData
+                    )
+                } else {
+                    worldMap = nil
+                }
+                let recordingStatus = recordingLinkStatusOnQueue(for: stored.project)
+                let validation = stored.project.validateForOpening(
+                    expectedID: id,
+                    isLegacy: stored.isLegacy,
+                    recordingStatus: recordingStatus
+                )
+                return .success(
+                    UnifiedSceneProjectOpenRecord(
+                        project: stored.project,
+                        worldMap: worldMap,
+                        isLegacy: stored.isLegacy,
+                        validation: validation
+                    )
+                )
             } catch {
                 return .failure(libraryFailure(for: error))
             }
@@ -874,6 +931,26 @@ class DBService {
             }
         }
         return hasCorruptArtifact ? .corrupt : .healthy
+    }
+
+    /// A declared recording reference is required once it is persisted. An
+    /// empty reference list is the optional-media case and never blocks open.
+    private func recordingLinkStatusOnQueue(
+        for project: UnifiedSceneProject
+    ) -> UnifiedSceneProjectLinkStatus {
+        guard !project.recordingReferences.isEmpty else { return .optionalMissing }
+        guard case .success(let artifactStore) = recordingArtifactStore else { return .blocking }
+
+        for reference in project.recordingReferences {
+            guard let url = artifactStore.resolve(reference, ownedBy: project.id),
+                  let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+                  let fileSize = attributes[.size] as? NSNumber,
+                  fileSize.int64Value > 0,
+                  isDecodableMovieOnQueue(at: url) else {
+                return .blocking
+            }
+        }
+        return .healthy
     }
 
     /// A non-empty path is not media evidence. The native AVFoundation asset
