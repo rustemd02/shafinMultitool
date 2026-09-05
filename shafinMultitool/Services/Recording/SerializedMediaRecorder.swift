@@ -338,6 +338,28 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         pendingFailure = nil
         acceptingFrames = true
         setStateOnQueue(.recording)
+
+        // M7-030: thermal posture is part of the bounded take diagnostics.
+        diagnostics?.emit(
+            .thermal(state: Self.thermalStateName(ProcessInfo.processInfo.thermalState)),
+            recordingID: configuration.id.rawValue
+        )
+    }
+
+#if DEBUG
+    static func thermalStateNameForTesting(_ state: ProcessInfo.ThermalState) -> String {
+        thermalStateName(state)
+    }
+#endif
+
+    private static func thermalStateName(_ state: ProcessInfo.ThermalState) -> String {
+        switch state {
+        case .nominal: return "nominal"
+        case .fair: return "fair"
+        case .serious: return "serious"
+        case .critical: return "critical"
+        @unknown default: return "unknown"
+        }
     }
 
     private func failStartOnQueue(_ failure: RecorderFailure,

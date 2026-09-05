@@ -30,6 +30,9 @@ struct RecordingDiagnosticsEvent: Codable, Equatable, Sendable {
                   withinReleaseCriterion: Bool)
         /// Recovery classified a journal record at cold launch.
         case recovery(outcome: String, recordingID: UUID?)
+        /// Device thermal posture observed at a recording boundary (M7-030).
+        /// Values: nominal / fair / serious / critical.
+        case thermal(state: String)
     }
 
     let schemaVersion: Int

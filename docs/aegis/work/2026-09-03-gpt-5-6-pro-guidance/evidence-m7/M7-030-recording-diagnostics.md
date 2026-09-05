@@ -44,3 +44,12 @@ redacted diagnostics owner for the recording engine:
 
 Package D focused run: **16/16 PASS** (xcresult
 `/private/tmp/m7-pkgD-tests-r3.xcresult`). `git diff --check` clean.
+
+
+## Acceptance addendum (coordinator integration, 2026-09-05)
+
+The acceptance audit flagged the missing thermal signal. Added: `.thermal(state:)`
+event kind emitted once per accepted take start from `ProcessInfo.processInfo.thermalState`
+(nominal/fair/serious/critical, unknown-safe). Test:
+`testThermalPostureIsEmittedAtStart`. Physical thermal *behavior under load*
+remains M13; the diagnostics schema and emission are closed here.

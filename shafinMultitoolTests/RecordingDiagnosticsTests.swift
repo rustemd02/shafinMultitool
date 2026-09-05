@@ -96,6 +96,37 @@ final class RecordingDiagnosticsTests: XCTestCase {
         }
     }
 
+    func testThermalPostureIsEmittedAtStart() async throws {
+        let diagnostics = RecordingDiagnosticsLog(capacity: 64)
+        let writer = RecordingDiagnosticsTestsWriter()
+        let recorder = SerializedMediaRecorder(
+            writerFactory: RecordingDiagnosticsWriterFactory(writer: writer),
+            audioDriverFactory: nil,
+            diagnostics: diagnostics
+        )
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()),
+            outputURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("diag-\(UUID().uuidString).mov"),
+            width: 320,
+            height: 240,
+            fps: 30,
+            audioMode: .disabled
+        )
+        try await recorder.prepare(configuration)
+        try await recorder.start()
+        _ = await recorder.stop(reason: .user)
+
+        let thermalEvents = diagnostics.exportedEvents().compactMap { event -> String? in
+            if case let .thermal(state) = event.kind { return state }
+            return nil
+        }
+        XCTAssertEqual(thermalEvents.count, 1)
+        XCTAssertTrue(["nominal", "fair", "serious", "critical"].contains(thermalEvents.first))
+        XCTAssertEqual(thermalEvents.first,
+                       SerializedMediaRecorder.thermalStateNameForTesting(ProcessInfo.processInfo.thermalState))
+    }
+
     func testStoragePressureAndDropPolicyAreEmitted() async throws {
         // ENOSPC-class append failure emits the typed storage-pressure event.
         let pressureDiagnostics = RecordingDiagnosticsLog(capacity: 64)
