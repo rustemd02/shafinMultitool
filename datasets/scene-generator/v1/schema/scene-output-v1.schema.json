@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://set-os.local/schemas/scene-output-v1.schema.json",
   "title": "SET OS Scene Generator output v1",
-  "description": "A structured generation result. Exactly one terminal branch is allowed: complete SceneScript or bounded clarification questions.",
+  "description": "A structured generation result. Exactly one terminal branch is allowed: complete SceneScript or one request-owned SceneClarificationPayload.",
   "oneOf": [
     {
       "type": "object",
@@ -24,15 +24,10 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "questions", "schema_version"],
+      "required": ["status", "clarification", "schema_version"],
       "properties": {
         "status": { "const": "clarification_required" },
-        "questions": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 8,
-          "items": { "$ref": "scene-contract-v1.schema.json#/$defs/clarification_question" }
-        },
+        "clarification": { "$ref": "scene-contract-v1.schema.json#/$defs/scene_clarification_payload" },
         "schema_version": { "const": "scene-script-v1" }
       }
     }

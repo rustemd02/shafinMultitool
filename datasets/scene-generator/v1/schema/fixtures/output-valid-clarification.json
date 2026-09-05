@@ -1,0 +1,21 @@
+{
+  "status": "clarification_required",
+  "schema_version": "scene-script-v1",
+  "clarification": {
+    "id": "123e4567-e89b-42d3-a456-426614174000:7:table:0",
+    "requestID": "123e4567-e89b-42d3-a456-426614174000",
+    "epoch": 7,
+    "prompt": "Какой именно стол имеется в виду?",
+    "targetReference": "table",
+    "options": [
+      {
+        "id": "object_marked_deadbeef",
+        "label": "стол · deadbeef"
+      }
+    ],
+    "allowsFreeText": true,
+    "maximumFreeTextCharacters": 160,
+    "observedDiagnostics": ["same_type_marker_conflict"],
+    "attempt": 0
+  }
+}

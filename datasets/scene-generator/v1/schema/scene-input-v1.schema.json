@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://set-os.local/schemas/scene-input-v1.schema.json",
   "title": "SET OS Scene Generator input v1",
-  "description": "The request envelope from the app. The script is retained verbatim; marked-object IDs are stable request references and are not positional hints.",
+  "description": "The request envelope from the app. The script is retained verbatim; marked-object IDs are stable request references and are not positional hints. Declared scene_boundaries use half-open UTF-8 byte offsets into script_text.",
   "type": "object",
   "additionalProperties": false,
   "required": [

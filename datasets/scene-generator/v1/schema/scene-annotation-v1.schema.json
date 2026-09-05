@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://set-os.local/schemas/scene-annotation-v1.schema.json",
   "title": "SET OS Scene Generator annotation record v1",
-  "description": "An append-only annotation record for SceneScript candidates, acceptable alternatives, clarification and forbidden-hallucination decisions. Rights disposition remains in M3-024 manifests.",
+  "description": "An append-only annotation record for SceneScript candidates, acceptable alternatives, clarification and forbidden-hallucination decisions. scene_boundaries use half-open UTF-8 byte offsets into source_text. Rights disposition remains in M3-024 manifests.",
   "type": "object",
   "additionalProperties": false,
   "required": [

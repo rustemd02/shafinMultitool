@@ -1,0 +1,43 @@
+{
+  "schema_version": "scene-annotation-v1",
+  "annotation_id": "ann_invalid_marked",
+  "sample_id": "scene_sample_invalid_marked",
+  "locale": "en",
+  "source_text": "A person waits at a table.",
+  "scene_boundaries": [
+    {"id": "scene_1", "start": 0, "end": 26}
+  ],
+  "marked_objects": [
+    {"id": "deadbeef", "name": "table", "aliases": []}
+  ],
+  "candidates": [
+    {
+      "candidate_id": "candidate_a",
+      "kind": "human",
+      "scene_script": {
+        "actors": [{"id": "actor_1", "type": "human"}],
+        "objects": [{"id": "object_marked_feedface", "type": "table", "relativePosition": "center"}],
+        "beats": [{
+          "id": "beat_1",
+          "actions": [{
+            "id": "action_1",
+            "actorId": "actor_1",
+            "type": "approach",
+            "target": "object_marked_feedface"
+          }]
+        }],
+        "spatialRelations": [],
+        "originalDescription": "A person waits at a table."
+      },
+      "validation": {"status": "valid", "issues": []}
+    }
+  ],
+  "acceptable_variants": [],
+  "forbidden_hallucinations": [],
+  "gold": {
+    "primary_candidate_id": "candidate_a",
+    "acceptable_variant_ids": []
+  },
+  "votes": [],
+  "review_history": []
+}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://set-os.local/schemas/scene-contract-v1.schema.json",
   "title": "SET OS Scene Generator shared contract definitions v1",
-  "description": "Shared definitions for the versioned Scene Generator transport, SceneScript projection, clarification and annotation records. Rights and raw-source storage are owned by the separate provenance manifest.",
+  "description": "Shared definitions for the versioned Scene Generator transport, SceneScript projection, request-owned clarification payload and annotation records. Rights and raw-source storage are owned by the separate provenance manifest.",
   "$defs": {
     "text": {
       "type": "string",
@@ -56,6 +56,12 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
     },
+    "clarification_payload_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\u0000]+$"
+    },
     "version": {
       "type": "string",
       "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
@@ -107,6 +113,61 @@
     "camera_movement": {
       "type": "string",
       "enum": ["static", "pan_left", "pan_right", "tilt_up", "tilt_down", "dolly_in", "dolly_out", "tracking", "crane_up", "crane_down"]
+    },
+    "scene_clarification_option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/clarification_payload_id" },
+        "label": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "scene_clarification_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "requestID", "epoch", "prompt", "options", "allowsFreeText",
+        "maximumFreeTextCharacters", "observedDiagnostics", "attempt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/clarification_payload_id" },
+        "requestID": { "$ref": "#/$defs/request_id" },
+        "epoch": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "prompt": { "$ref": "#/$defs/short_text" },
+        "targetReference": {
+          "anyOf": [
+            { "$ref": "#/$defs/short_text" },
+            { "type": "null" }
+          ]
+        },
+        "options": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/scene_clarification_option" }
+        },
+        "allowsFreeText": { "type": "boolean" },
+        "maximumFreeTextCharacters": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 160
+        },
+        "observedDiagnostics": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/short_text" }
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        }
+      }
     },
     "marked_object": {
       "type": "object",
@@ -257,6 +318,7 @@
     "scene_boundary": {
       "type": "object",
       "additionalProperties": false,
+      "$comment": "start and end are half-open UTF-8 byte offsets into the owning source_text; offsets must fall on UTF-8 code-point boundaries.",
       "required": ["id", "start", "end"],
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
@@ -273,50 +335,6 @@
         "maximum_scenes": { "type": "integer", "minimum": 1, "maximum": 20 },
         "allow_clarification": { "type": "boolean" }
       }
-    },
-    "clarification_option": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "label"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "label": { "$ref": "#/$defs/short_text" },
-        "entity_id": { "$ref": "#/$defs/entity_id" }
-      }
-    },
-    "clarification_question": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "field", "prompt_key", "candidate_entity_ids", "allows_free_text"],
-      "properties": {
-        "id": { "type": "string", "pattern": "^q[0-9]+$|^q_[a-z0-9][a-z0-9_-]{0,63}$" },
-        "field": {
-          "type": "string",
-          "enum": ["target_entity", "actor_identity", "marked_object", "scene_boundary", "action", "spatial_relation", "other"]
-        },
-        "prompt_key": { "type": "string", "pattern": "^scene\\.clarify\\.[a-z0-9_.-]+$" },
-        "candidate_entity_ids": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 32,
-          "uniqueItems": true,
-          "items": { "$ref": "#/$defs/entity_id" }
-        },
-        "allows_free_text": { "type": "boolean" },
-        "options": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 32,
-          "uniqueItems": true,
-          "items": { "$ref": "#/$defs/clarification_option" }
-        }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "allows_free_text": { "const": false } } },
-          "then": { "required": ["options"] }
-        }
-      ]
     },
     "validation_issue": {
       "type": "object",

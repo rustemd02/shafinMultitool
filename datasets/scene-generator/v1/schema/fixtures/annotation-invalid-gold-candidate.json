@@ -1,0 +1,44 @@
+{
+  "schema_version": "scene-annotation-v1",
+  "annotation_id": "ann_invalid_gold",
+  "sample_id": "scene_sample_invalid_gold",
+  "locale": "en",
+  "source_text": "A person waits.",
+  "scene_boundaries": [
+    {"id": "scene_1", "start": 0, "end": 15}
+  ],
+  "marked_objects": [],
+  "candidates": [
+    {
+      "candidate_id": "candidate_a",
+      "kind": "model",
+      "scene_script": {
+        "actors": [{"id": "actor_1", "type": "human"}],
+        "objects": [],
+        "beats": [{
+          "id": "beat_1",
+          "actions": [{"id": "action_1", "actorId": "actor_1", "type": "stand"}]
+        }],
+        "spatialRelations": [],
+        "originalDescription": "A person waits."
+      },
+      "validation": {
+        "status": "invalid",
+        "issues": [{
+          "code": "clarification_required",
+          "path": "scene_script",
+          "severity": "error",
+          "detail": "The candidate is not safe to use as gold."
+        }]
+      }
+    }
+  ],
+  "acceptable_variants": [],
+  "forbidden_hallucinations": [],
+  "gold": {
+    "primary_candidate_id": "candidate_a",
+    "acceptable_variant_ids": []
+  },
+  "votes": [],
+  "review_history": []
+}

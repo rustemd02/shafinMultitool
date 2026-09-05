@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Validate the versioned SET OS Scene Generator schema fixtures.
 
-The checker intentionally has no production/runtime imports.  JSON Schema is
-used when the already-installed ``jsonschema`` package is available; the
-semantic checks below remain stdlib-only and enforce the cross-record rules
-JSON Schema cannot express (references, ordered history and source ranges).
+The checker intentionally has no production/runtime imports. Draft 2020-12
+validation is mandatory; the semantic checks below enforce the cross-record
+rules JSON Schema cannot express (references, ordered history and source
+ranges).
 """
 
 from __future__ import annotations
@@ -45,8 +45,6 @@ BEAT_ID = re.compile(r"^beat_[a-z0-9][a-z0-9_-]{0,63}$")
 ACTION_ID = re.compile(r"^action_[a-z0-9][a-z0-9_-]{0,63}$")
 RELATION_ID = re.compile(r"^(rel|relation)_[a-z0-9][a-z0-9_-]{0,63}$")
 MARKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-PROMPT_KEY = re.compile(r"^scene\.clarify\.[a-z0-9_.-]+$")
-QUESTION_ID = re.compile(r"^q[0-9]+$|^q_[a-z0-9][a-z0-9_-]{0,63}$")
 
 ACTOR_TYPES = {"human", "tiger", "lion", "dog", "cat", "bird", "generic"}
 OBJECT_TYPES = {"table", "chair", "cabinet", "door", "couch", "bed", "window", "shelf", "tv", "phone", "generic"}
@@ -62,12 +60,14 @@ POSES = {"standing", "sitting", "crouching", "lying", "walking", "running"}
 RELATIONS = {"near", "in_front_of", "behind", "left_of", "right_of", "between", "pass_by", "inside", "outside"}
 SHOTS = {"wide", "medium", "close_up", "extreme_close_up", "over_shoulder", "two_shot"}
 MOVEMENTS = {"static", "pan_left", "pan_right", "tilt_up", "tilt_down", "dolly_in", "dolly_out", "tracking", "crane_up", "crane_down"}
-QUESTION_FIELDS = {"target_entity", "actor_identity", "marked_object", "scene_boundary", "action", "spatial_relation", "other"}
 ISSUE_CODES = {
     "malformed", "duplicate_id", "missing_actor", "dangling_target", "missing_marked_object", "invalid_action",
     "chronology_conflict", "hallucinated_entity", "dialogue_not_in_source", "clarification_required",
     "unsupported_action", "meaning_corruption",
 }
+MAX_INPUT_BYTES = 2 * 1024 * 1024
+MAX_CLARIFICATION_OPTIONS = 64
+MAX_CLARIFICATION_ATTEMPTS = 3
 
 
 class ContractError(Exception):
@@ -79,7 +79,19 @@ def load_json(path: Path) -> Any:
         raise ContractError(f"{path}: non-finite JSON constant {value}")
 
     try:
-        return json.loads(path.read_text(encoding="utf-8"), parse_constant=reject_constant)
+        size = path.stat().st_size
+    except OSError as exc:
+        raise ContractError(f"{path}: cannot stat input: {exc}") from exc
+    if size > MAX_INPUT_BYTES:
+        raise ContractError(f"{path}: input exceeds {MAX_INPUT_BYTES} bytes")
+    try:
+        raw = path.read_bytes()
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ContractError(f"{path}: input exceeds {MAX_INPUT_BYTES} bytes")
+        text = raw.decode("utf-8")
+        return json.loads(text, parse_constant=reject_constant)
+    except ContractError:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ContractError(f"{path}: invalid JSON: {exc}") from exc
 
@@ -310,7 +322,7 @@ def validate_scene_script(value: Any, path: str = "scene_script") -> tuple[set[s
     return actor_ids, object_ids
 
 
-def validate_scene_boundary(value: Any, path: str, source_length: int) -> str:
+def validate_scene_boundary(value: Any, path: str, source_bytes: bytes) -> str:
     boundary = expect_object(value, path)
     allowed = {"id", "start", "end"} | ({"heading"} if "heading" in boundary else set())
     required_keys(boundary, allowed, path)
@@ -318,8 +330,19 @@ def validate_scene_boundary(value: Any, path: str, source_length: int) -> str:
     for field in ("start", "end"):
         if isinstance(boundary[field], bool) or not isinstance(boundary[field], int):
             raise ContractError(f"{path}.{field}: expected integer")
-    if boundary["start"] < 0 or boundary["end"] <= boundary["start"] or boundary["end"] > source_length:
+    start = boundary["start"]
+    end = boundary["end"]
+    if start < 0 or end <= start or end > len(source_bytes):
         raise ContractError(f"{path}: range is outside source text")
+    # The persisted contract uses UTF-8 byte offsets. Reject a boundary that
+    # would split a multi-byte Cyrillic/emoji code point instead of silently
+    # creating an undecodable source slice.
+    for offset, label in ((start, "start"), (end, "end")):
+        try:
+            source_bytes[:offset].decode("utf-8")
+            source_bytes[offset:].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ContractError(f"{path}.{label}: not a UTF-8 code-point boundary") from exc
     if "heading" in boundary:
         short_text(boundary["heading"], f"{path}.heading")
     return boundary_id
@@ -333,8 +356,9 @@ def validate_boundaries(value: Any, path: str, source_text: str, *, required: bo
         raise ContractError(f"{path}: too many boundaries")
     ids: set[str] = set()
     previous_end = -1
+    source_bytes = source_text.encode("utf-8")
     for index, item in enumerate(boundaries):
-        boundary_id = validate_scene_boundary(item, f"{path}[{index}]", len(source_text))
+        boundary_id = validate_scene_boundary(item, f"{path}[{index}]", source_bytes)
         if boundary_id in ids:
             raise ContractError(f"{path}[{index}].id: duplicate {boundary_id}")
         ids.add(boundary_id)
@@ -346,7 +370,8 @@ def validate_boundaries(value: Any, path: str, source_text: str, *, required: bo
 
 def validate_input(value: Any) -> None:
     request = expect_object(value, "input")
-    required_keys(request, {"request_id", "client_build", "schema_version", "locale", "script_text", "marked_objects", "constraints", "previous_job_id", "consent_version"}, "input")
+    required = {"request_id", "client_build", "schema_version", "locale", "script_text", "marked_objects", "constraints", "previous_job_id", "consent_version"}
+    required_keys(request, required | ({"scene_boundaries"} if "scene_boundaries" in request else set()), "input")
     identifier(request["request_id"], "input.request_id", REQUEST_ID)
     short_text(request["client_build"], "input.client_build")
     if request["schema_version"] != "scene-script-v1":
@@ -373,59 +398,114 @@ def validate_input(value: Any) -> None:
         raise ContractError("input.consent_version: expected scene-processing-v1")
 
 
-def validate_option(value: Any, path: str, candidate_ids: set[str]) -> str:
+def validate_clarification_option(value: Any, path: str) -> str:
     option = expect_object(value, path)
-    allowed = {"id", "label"} | ({"entity_id"} if "entity_id" in option else set())
-    required_keys(option, allowed, path)
-    option_id = identifier(option["id"], f"{path}.id")
+    required_keys(option, {"id", "label"}, path)
+    option_id = non_empty_text(option["id"], f"{path}.id", maximum=512)
     short_text(option["label"], f"{path}.label")
-    if "entity_id" in option:
-        entity_id = identifier(option["entity_id"], f"{path}.entity_id", ENTITY_ID)
-        if entity_id not in candidate_ids:
-            raise ContractError(f"{path}.entity_id: not in candidate_entity_ids")
     return option_id
 
 
-def validate_question(value: Any, path: str) -> None:
-    question = expect_object(value, path)
-    allowed = {"id", "field", "prompt_key", "candidate_entity_ids", "allows_free_text"} | ({"options"} if "options" in question else set())
-    required_keys(question, {"id", "field", "prompt_key", "candidate_entity_ids", "allows_free_text"} | ({"options"} if "options" in question else set()), path)
-    identifier(question["id"], f"{path}.id", QUESTION_ID)
-    enum(question["field"], QUESTION_FIELDS, f"{path}.field")
-    if not isinstance(question["prompt_key"], str) or not PROMPT_KEY.fullmatch(question["prompt_key"]):
-        raise ContractError(f"{path}.prompt_key: invalid prompt key")
-    candidates = expect_array(question["candidate_entity_ids"], f"{path}.candidate_entity_ids")
-    if not candidates or len(candidates) > 32:
-        raise ContractError(f"{path}.candidate_entity_ids: expected 1..32 values")
-    candidate_ids = [identifier(item, f"{path}.candidate_entity_ids[{index}]", ENTITY_ID) for index, item in enumerate(candidates)]
-    unique(candidate_ids, f"{path}.candidate_entity_ids")
-    candidate_id_set = set(candidate_ids)
-    if not isinstance(question["allows_free_text"], bool):
-        raise ContractError(f"{path}.allows_free_text: expected boolean")
-    if "options" in question:
-        options = expect_array(question["options"], f"{path}.options")
-        if not options or len(options) > 32:
-            raise ContractError(f"{path}.options: expected 1..32 values")
-        option_ids = [validate_option(item, f"{path}.options[{index}]", candidate_id_set) for index, item in enumerate(options)]
-        unique(option_ids, f"{path}.options.id")
-    elif question["allows_free_text"] is False:
-        raise ContractError(f"{path}: non-free-text question requires options")
+def clarification_payload_id(request_id: str, epoch: int, target_reference: str | None, attempt: int) -> str:
+    return ":".join((request_id.lower(), str(epoch), target_reference or "parser", str(attempt)))
 
 
-def validate_clarification(value: Any, path: str = "clarification") -> None:
-    response = expect_object(value, path)
-    required_keys(response, {"status", "questions", "schema_version"}, path)
-    if response["status"] != "clarification_required":
-        raise ContractError(f"{path}.status: expected clarification_required")
-    if response["schema_version"] != "scene-script-v1":
-        raise ContractError(f"{path}.schema_version: expected scene-script-v1")
-    questions = expect_array(response["questions"], f"{path}.questions")
-    if not questions or len(questions) > 8:
-        raise ContractError(f"{path}.questions: expected 1..8 questions")
-    ids = [identifier(item.get("id"), f"{path}.questions[{index}].id", QUESTION_ID) if isinstance(item, dict) else "" for index, item in enumerate(questions)]
-    unique(ids, f"{path}.questions.id")
-    for index, question in enumerate(questions):
-        validate_question(question, f"{path}.questions[{index}]")
+def validate_clarification_payload(value: Any, path: str = "clarification") -> None:
+    payload = expect_object(value, path)
+    required = {
+        "id", "requestID", "epoch", "prompt", "options", "allowsFreeText",
+        "maximumFreeTextCharacters", "observedDiagnostics", "attempt",
+    }
+    allowed = required | ({"targetReference"} if "targetReference" in payload else set())
+    required_keys(payload, allowed, path)
+    payload_id = non_empty_text(payload["id"], f"{path}.id", maximum=512)
+    request_id = identifier(payload["requestID"], f"{path}.requestID", REQUEST_ID)
+    epoch = payload["epoch"]
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0 or epoch > 18_446_744_073_709_551_615:
+        raise ContractError(f"{path}.epoch: expected UInt-sized non-negative integer")
+    prompt = short_text(payload["prompt"], f"{path}.prompt")
+    target_reference = None
+    if "targetReference" in payload:
+        if payload["targetReference"] is not None:
+            target_reference = short_text(payload["targetReference"], f"{path}.targetReference")
+    options = expect_array(payload["options"], f"{path}.options")
+    if len(options) > MAX_CLARIFICATION_OPTIONS:
+        raise ContractError(f"{path}.options: expected at most {MAX_CLARIFICATION_OPTIONS} values")
+    option_ids = [
+        validate_clarification_option(item, f"{path}.options[{index}]")
+        for index, item in enumerate(options)
+    ]
+    unique(option_ids, f"{path}.options.id")
+    if not isinstance(payload["allowsFreeText"], bool):
+        raise ContractError(f"{path}.allowsFreeText: expected boolean")
+    maximum_free_text = payload["maximumFreeTextCharacters"]
+    if isinstance(maximum_free_text, bool) or not isinstance(maximum_free_text, int) or not 0 <= maximum_free_text <= 160:
+        raise ContractError(f"{path}.maximumFreeTextCharacters: expected integer in 0..160")
+    diagnostics = expect_array(payload["observedDiagnostics"], f"{path}.observedDiagnostics")
+    if len(diagnostics) > 64:
+        raise ContractError(f"{path}.observedDiagnostics: too many values")
+    for index, diagnostic in enumerate(diagnostics):
+        short_text(diagnostic, f"{path}.observedDiagnostics[{index}]")
+    attempt = payload["attempt"]
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or not 0 <= attempt <= MAX_CLARIFICATION_ATTEMPTS:
+        raise ContractError(f"{path}.attempt: expected integer in 0..{MAX_CLARIFICATION_ATTEMPTS}")
+    expected_id = clarification_payload_id(request_id, epoch, target_reference, attempt)
+    if payload_id != expected_id:
+        raise ContractError(f"{path}.id: must be stable request/epoch/target/attempt ID")
+    # The production builder enables free text only with observed options. A
+    # DEBUG-only empty payload is still representable when free text is false.
+    if payload["allowsFreeText"] and not options:
+        raise ContractError(f"{path}.allowsFreeText: requires at least one observed option")
+
+
+def validate_binding_snapshot(value: Any, path: str = "binding_snapshot") -> tuple[str, int, set[str]]:
+    """Validate the minimal test projection of M5-016's submitted snapshot.
+
+    The production payload intentionally does not duplicate the mutable
+    binding request. This sidecar lets the checker prove request/epoch fencing
+    and option membership without inventing a second runtime domain model.
+    """
+    snapshot = expect_object(value, path)
+    required_keys(snapshot, {"requestID", "epoch", "candidateIDs"}, path)
+    request_id = identifier(snapshot["requestID"], f"{path}.requestID", REQUEST_ID)
+    epoch = snapshot["epoch"]
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0 or epoch > 18_446_744_073_709_551_615:
+        raise ContractError(f"{path}.epoch: expected UInt-sized non-negative integer")
+    candidates = expect_array(snapshot["candidateIDs"], f"{path}.candidateIDs")
+    if len(candidates) > MAX_CLARIFICATION_OPTIONS:
+        raise ContractError(f"{path}.candidateIDs: too many values")
+    candidate_ids = [non_empty_text(item, f"{path}.candidateIDs[{index}]", maximum=512) for index, item in enumerate(candidates)]
+    unique(candidate_ids, f"{path}.candidateIDs")
+    return request_id, epoch, set(candidate_ids)
+
+
+def validate_clarification_case(value: Any, path: str = "clarification_case") -> None:
+    case = expect_object(value, path)
+    required_keys(case, {"payload", "binding_snapshot"}, path)
+    payload = expect_object(case["payload"], f"{path}.payload")
+    validate_clarification_payload(payload, f"{path}.payload")
+    validate_json_schema(SCHEMAS["clarification"], payload)
+    snapshot_request_id, snapshot_epoch, candidate_ids = validate_binding_snapshot(case["binding_snapshot"], f"{path}.binding_snapshot")
+    if payload["requestID"] != snapshot_request_id:
+        raise ContractError(f"{path}: stale requestID; payload is not from submitted binding snapshot")
+    if payload["epoch"] != snapshot_epoch:
+        raise ContractError(f"{path}: stale epoch; payload is not from submitted binding snapshot")
+    option_ids = {option["id"] for option in payload["options"]}
+    unknown_options = sorted(option_ids - candidate_ids)
+    if unknown_options:
+        raise ContractError(f"{path}.payload.options: unknown submitted candidate(s) {', '.join(unknown_options)}")
+
+
+def validate_marked_object_references(object_ids: set[str], marker_ids: list[str], path: str) -> None:
+    canonical_marker_ids = {
+        marker_id.lower()
+        if marker_id.lower().startswith("object_marked_")
+        else f"object_marked_{marker_id.lower()}"
+        for marker_id in marker_ids
+    }
+    for object_id in object_ids:
+        if object_id.lower().startswith("object_marked_") and object_id.lower() not in canonical_marker_ids:
+            raise ContractError(f"{path}: missing marked object {object_id}")
 
 
 def validate_output(value: Any, path: str = "output") -> None:
@@ -444,7 +524,10 @@ def validate_output(value: Any, path: str = "output") -> None:
         for index, warning in enumerate(warnings):
             short_text(warning, f"{path}.warnings[{index}]")
     elif status == "clarification_required":
-        validate_clarification(response, path)
+        required_keys(response, {"status", "clarification", "schema_version"}, path)
+        if response["schema_version"] != "scene-script-v1":
+            raise ContractError(f"{path}.schema_version: expected scene-script-v1")
+        validate_clarification_payload(response["clarification"], f"{path}.clarification")
     else:
         raise ContractError(f"{path}.status: expected complete or clarification_required")
 
@@ -492,7 +575,8 @@ def validate_annotation(value: Any, path: str = "annotation") -> None:
     if not candidates or len(candidates) > 32:
         raise ContractError(f"{path}.candidates: expected 1..32 candidates")
     candidate_ids: list[str] = []
-    candidate_scripts: list[tuple[str, set[str]]] = []
+    candidate_objects: dict[str, set[str]] = {}
+    valid_candidate_ids: set[str] = set()
     for index, item in enumerate(candidates):
         candidate_path = f"{path}.candidates[{index}]"
         candidate = expect_object(item, candidate_path)
@@ -501,19 +585,23 @@ def validate_annotation(value: Any, path: str = "annotation") -> None:
         candidate_ids.append(candidate_id)
         enum(candidate["kind"], {"human", "deterministic", "model"}, f"{candidate_path}.kind")
         _, object_ids = validate_scene_script(candidate["scene_script"], f"{candidate_path}.scene_script")
+        candidate_objects[candidate_id] = object_ids
         validation_status = validate_validation(candidate["validation"], f"{candidate_path}.validation")
         if validation_status == "valid":
-            candidate_scripts.append((candidate_id, object_ids))
+            valid_candidate_ids.add(candidate_id)
     unique(candidate_ids, f"{path}.candidates.candidate_id")
 
     variants = expect_array(annotation["acceptable_variants"], f"{path}.acceptable_variants")
     variant_ids: list[str] = []
+    variant_objects: dict[str, set[str]] = {}
     for index, item in enumerate(variants):
         variant_path = f"{path}.acceptable_variants[{index}]"
         variant = expect_object(item, variant_path)
         required_keys(variant, {"variant_id", "scene_script", "rationale"}, variant_path)
-        variant_ids.append(identifier(variant["variant_id"], f"{variant_path}.variant_id"))
-        validate_scene_script(variant["scene_script"], f"{variant_path}.scene_script")
+        variant_id = identifier(variant["variant_id"], f"{variant_path}.variant_id")
+        variant_ids.append(variant_id)
+        _, object_ids = validate_scene_script(variant["scene_script"], f"{variant_path}.scene_script")
+        variant_objects[variant_id] = object_ids
         short_text(variant["rationale"], f"{variant_path}.rationale")
     unique(variant_ids, f"{path}.acceptable_variants.variant_id")
 
@@ -538,6 +626,8 @@ def validate_annotation(value: Any, path: str = "annotation") -> None:
     primary = identifier(gold["primary_candidate_id"], f"{path}.gold.primary_candidate_id")
     if primary not in candidate_ids:
         raise ContractError(f"{path}.gold.primary_candidate_id: unknown candidate {primary}")
+    if primary not in valid_candidate_ids:
+        raise ContractError(f"{path}.gold.primary_candidate_id: candidate validation is not valid")
     acceptable_ids = expect_array(gold["acceptable_variant_ids"], f"{path}.gold.acceptable_variant_ids")
     acceptable = [identifier(item, f"{path}.gold.acceptable_variant_ids[{index}]") for index, item in enumerate(acceptable_ids)]
     unique(acceptable, f"{path}.gold.acceptable_variant_ids")
@@ -545,18 +635,12 @@ def validate_annotation(value: Any, path: str = "annotation") -> None:
     if unknown_variants:
         raise ContractError(f"{path}.gold.acceptable_variant_ids: unknown variants {', '.join(unknown_variants)}")
 
+    validate_marked_object_references(candidate_objects[primary], marker_ids, f"{path}.gold.primary_candidate_id={primary}")
+    for variant_id in acceptable:
+        validate_marked_object_references(variant_objects[variant_id], marker_ids, f"{path}.gold.acceptable_variant_ids={variant_id}")
+
     validate_append_only_history(annotation["votes"], f"{path}.votes", "vote", candidate_ids)
     validate_append_only_history(annotation["review_history"], f"{path}.review_history", "review", candidate_ids)
-
-    marker_suffixes = {marker_id.lower() for marker_id in marker_ids}
-    for candidate_id, object_ids in candidate_scripts:
-        for object_id in object_ids:
-            if not object_id.startswith("object_marked_"):
-                continue
-            suffix = object_id.removeprefix("object_marked_").lower()
-            if suffix not in marker_suffixes and object_id.lower() not in marker_suffixes:
-                raise ContractError(f"{path}.candidates[{candidate_id}]: missing marked object {object_id}")
-
 
 def validate_append_only_history(value: Any, path: str, kind: str, candidate_ids: list[str]) -> None:
     entries = expect_array(value, path)
@@ -608,11 +692,13 @@ def validate_append_only_history(value: Any, path: str, kind: str, candidate_ids
 
 
 def schema_validator(path: Path):
-    """Return an optional Draft 2020-12 validator with local refs resolved."""
+    """Build the mandatory Draft 2020-12 validator with local refs resolved."""
     try:
         from jsonschema import Draft202012Validator, FormatChecker
-    except ImportError:
-        return None
+    except ImportError as exc:
+        raise ContractError(
+            "Draft 2020-12 validator unavailable; refusing to validate"
+        ) from exc
     schema = load_json(path)
     shared = load_json(SHARED_SCHEMA)
     canonical_shared_uri = "https://set-os.local/schemas/scene-contract-v1.schema.json"
@@ -636,8 +722,6 @@ def schema_validator(path: Path):
 
 def validate_json_schema(path: Path, value: Any) -> None:
     validator = schema_validator(path)
-    if validator is None:
-        return
     errors = sorted(validator.iter_errors(value), key=lambda error: list(error.absolute_path))
     if errors:
         error = errors[0]
@@ -653,7 +737,10 @@ def validate(kind: str, value: Any) -> None:
     elif kind == "output":
         validate_output(value)
     elif kind == "clarification":
-        validate_clarification(value)
+        validate_clarification_payload(value)
+    elif kind == "clarification-case":
+        validate_clarification_case(value)
+        return
     elif kind == "annotation":
         validate_annotation(value)
     else:
@@ -668,22 +755,40 @@ VALID_FIXTURES = {
     "clarification": "clarification-valid.json",
     "annotation": "annotation-valid.json",
 }
-INVALID_FIXTURES = {
-    "script": "script-invalid-target.json",
-    "output": "output-invalid-target.json",
-    "annotation": "annotation-invalid-history.json",
-}
+INVALID_FIXTURES = (
+    ("script", "script-invalid-target.json"),
+    ("output", "output-invalid-target.json"),
+    ("annotation", "annotation-invalid-history.json"),
+    ("annotation", "annotation-invalid-gold-candidate.json"),
+    ("annotation", "annotation-invalid-marked-reference.json"),
+)
+VALID_CASE_FIXTURES = ("clarification-case-valid.json",)
+INVALID_CASE_FIXTURES = (
+    "clarification-case-invalid-stale-request.json",
+    "clarification-case-invalid-stale-epoch.json",
+    "clarification-case-invalid-unknown-option.json",
+)
 
 
 def self_test() -> None:
     for kind, filename in VALID_FIXTURES.items():
         validate(kind, load_json(FIXTURES / filename))
-    for kind, filename in INVALID_FIXTURES.items():
+    validate("input", load_json(FIXTURES / "input-valid-ru-emoji-boundaries.json"))
+    validate("output", load_json(FIXTURES / "output-valid-clarification.json"))
+    for filename in VALID_CASE_FIXTURES:
+        validate("clarification-case", load_json(FIXTURES / filename))
+    for kind, filename in INVALID_FIXTURES:
         try:
             validate(kind, load_json(FIXTURES / filename))
         except ContractError:
             continue
         raise ContractError(f"negative fixture unexpectedly passed: {filename}")
+    for filename in INVALID_CASE_FIXTURES:
+        try:
+            validate("clarification-case", load_json(FIXTURES / filename))
+        except ContractError:
+            continue
+        raise ContractError(f"negative clarification case unexpectedly passed: {filename}")
 
     complete = load_json(FIXTURES / VALID_FIXTURES["output"])
     changed = copy.deepcopy(complete)
@@ -694,13 +799,13 @@ def self_test() -> None:
         pass
     else:
         raise ContractError("mutation target reference unexpectedly passed")
-    print("PASS M3-023 self-test: 5 positive and 3 negative fixtures")
+    print("PASS M3-023 self-test: 8 positive, 8 negative fixtures, and target mutation")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
-    parser.add_argument("--kind", choices=sorted(SCHEMAS))
+    parser.add_argument("--kind", choices=sorted((*SCHEMAS, "clarification-case")))
     parser.add_argument("path", type=Path, nargs="?")
     args = parser.parse_args(argv)
     try:
@@ -710,6 +815,10 @@ def main(argv: list[str] | None = None) -> int:
         if not args.path:
             for kind, filename in VALID_FIXTURES.items():
                 validate(kind, load_json(FIXTURES / filename))
+            validate("input", load_json(FIXTURES / "input-valid-ru-emoji-boundaries.json"))
+            validate("output", load_json(FIXTURES / "output-valid-clarification.json"))
+            for filename in VALID_CASE_FIXTURES:
+                validate("clarification-case", load_json(FIXTURES / filename))
             print("PASS M3-023 positive fixture set")
             return 0
         if not args.kind:

@@ -1,25 +1,21 @@
 {
-  "status": "clarification_required",
-  "schema_version": "scene-script-v1",
-  "questions": [
+  "id": "123e4567-e89b-42d3-a456-426614174000:7:table:0",
+  "requestID": "123e4567-e89b-42d3-a456-426614174000",
+  "epoch": 7,
+  "prompt": "Какой именно стол имеется в виду?",
+  "targetReference": "table",
+  "options": [
     {
-      "id": "q1",
-      "field": "target_entity",
-      "prompt_key": "scene.clarify.target",
-      "candidate_entity_ids": ["actor_1", "object_marked_deadbeef"],
-      "allows_free_text": false,
-      "options": [
-        {
-          "id": "choose_actor",
-          "label": "Mara",
-          "entity_id": "actor_1"
-        },
-        {
-          "id": "choose_table",
-          "label": "Marked table",
-          "entity_id": "object_marked_deadbeef"
-        }
-      ]
+      "id": "object_marked_deadbeef",
+      "label": "стол · deadbeef"
+    },
+    {
+      "id": "object_detected_table_0.1000_0.2000_0.3000_0.4000_none_none_none",
+      "label": "стол · detected"
     }
-  ]
+  ],
+  "allowsFreeText": true,
+  "maximumFreeTextCharacters": 160,
+  "observedDiagnostics": ["same_type_marker_conflict"],
+  "attempt": 0
 }
