@@ -10,6 +10,7 @@ artifact is written by this check.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -111,15 +112,50 @@ def _activation_code(module: torch.nn.Module) -> str:
     raise AssertionError(f"unexpected MobileNetV3 activation: {type(module).__name__}")
 
 
+def _assert_conv_bn_activation(
+    module: torch.nn.Module,
+    expected_input: int,
+    expected_output: int,
+    expected_kernel: int,
+    expected_stride: int,
+    expected_activation: str,
+) -> None:
+    assert isinstance(module, torch.nn.Sequential)
+    assert len(module) == 3
+    conv, batch_norm, activation = module
+    assert isinstance(conv, torch.nn.Conv2d)
+    assert (conv.in_channels, conv.out_channels) == (expected_input, expected_output)
+    assert conv.kernel_size == (expected_kernel, expected_kernel)
+    assert conv.stride == (expected_stride, expected_stride)
+    assert conv.groups == 1
+    assert isinstance(batch_norm, torch.nn.BatchNorm2d)
+    assert batch_norm.num_features == expected_output
+    assert _activation_code(activation) == expected_activation
+
+
 def _assert_actual_backbone(
     backbone: torch.nn.Module,
     expected_schedule: tuple[tuple[int, int, int, int, int, bool, str], ...],
     expected_se_squeeze: tuple[int | None, ...],
-    family: str,
-    width_multiplier: float,
+    label: str,
+    expected_stem_input: int,
+    expected_stem_output: int,
+    expected_final_input: int,
+    expected_final_output: int,
 ) -> None:
-    assert backbone.family == family and backbone.width_multiplier == width_multiplier
-    blocks = [module for module in backbone.features if isinstance(module, _InvertedResidual)]
+    features = list(backbone.features)
+    assert len(features) == len(expected_schedule) + 4, label
+    _assert_conv_bn_activation(features[0], expected_stem_input, expected_stem_output, 3, 2, "HS")
+    final_conv, final_batch_norm, final_activation = features[-3:]
+    assert isinstance(final_conv, torch.nn.Conv2d)
+    assert (final_conv.in_channels, final_conv.out_channels) == (expected_final_input, expected_final_output)
+    assert final_conv.kernel_size == (1, 1)
+    assert final_conv.stride == (1, 1)
+    assert final_conv.groups == 1
+    assert isinstance(final_batch_norm, torch.nn.BatchNorm2d)
+    assert final_batch_norm.num_features == expected_final_output
+    assert _activation_code(final_activation) == "HS"
+    blocks = features[1:-3]
     assert len(blocks) == len(expected_schedule)
     assert len(expected_se_squeeze) == len(expected_schedule)
     for block, expected, expected_squeeze in zip(blocks, expected_schedule, expected_se_squeeze):
@@ -184,22 +220,117 @@ def _assert_mobilenet_schedules(candidate_a: torch.nn.Module, candidate_b: torch
         _EXPECTED_LARGE_075,
         _EXPECTED_LARGE_SE_SQUEEZE,
         "large",
-        0.75,
+        3,
+        16,
+        120,
+        720,
     )
     _assert_actual_backbone(
         candidate_a.subject_crop_backbone,
         _EXPECTED_SMALL_050,
         _EXPECTED_SMALL_SE_SQUEEZE,
         "small",
-        0.50,
+        3,
+        8,
+        48,
+        288,
     )
     _assert_actual_backbone(
         candidate_b.backbone,
         _EXPECTED_SMALL_050,
         _EXPECTED_SMALL_SE_SQUEEZE,
         "small",
-        0.50,
+        4,
+        8,
+        48,
+        288,
     )
+
+
+def _assert_scalar_mlp(scalar_mlp: torch.nn.Module) -> None:
+    layers = list(scalar_mlp.layers)
+    assert len(layers) == 4
+    first, first_activation, second, second_activation = layers
+    assert isinstance(first, torch.nn.Linear)
+    assert (first.in_features, first.out_features) == (80, 128)
+    assert isinstance(first_activation, torch.nn.Hardswish)
+    assert isinstance(second, torch.nn.Linear)
+    assert (second.in_features, second.out_features) == (128, 64)
+    assert isinstance(second_activation, torch.nn.Hardswish)
+
+
+def _assert_candidate_wiring(
+    candidate: torch.nn.Module,
+    contract: SETCompositionNetManifest,
+    expected_fusion_input: int,
+) -> None:
+    _assert_scalar_mlp(candidate.scalar_features)
+    fusion = list(candidate.fusion)
+    assert len(fusion) == 2
+    fusion_projection, fusion_activation = fusion
+    assert isinstance(fusion_projection, torch.nn.Linear)
+    assert (fusion_projection.in_features, fusion_projection.out_features) == (expected_fusion_input, 256)
+    assert isinstance(fusion_activation, torch.nn.Hardswish)
+
+    embedding = candidate.embedding_projection
+    assert isinstance(embedding, torch.nn.Linear)
+    assert (embedding.in_features, embedding.out_features) == (
+        256,
+        contract.output_head_shapes[contract.embedding_name],
+    )
+
+    expected_head_names = tuple(name for name in contract.output_head_names if name != contract.embedding_name)
+    assert tuple(candidate.heads) == expected_head_names
+    for name in expected_head_names:
+        head = candidate.heads[name]
+        assert isinstance(head, torch.nn.Linear)
+        assert (head.in_features, head.out_features) == (256, contract.output_head_shapes[name])
+
+
+def _assert_rejects(label: str, check: Callable[[], None]) -> None:
+    try:
+        check()
+    except AssertionError:
+        return
+    raise AssertionError(f"mutation guard escaped: {label}")
+
+
+def _assert_mutation_guards(
+    candidate_a: torch.nn.Module,
+    candidate_b: torch.nn.Module,
+    contract: SETCompositionNetManifest,
+) -> None:
+    stem = candidate_a.full_frame_backbone.features[0]
+    original_stem_activation = stem[-1]
+    stem[-1] = torch.nn.ReLU(inplace=True)
+    try:
+        _assert_rejects(
+            "candidate A stem Hardswish -> ReLU",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        stem[-1] = original_stem_activation
+
+    final_features = candidate_a.full_frame_backbone.features
+    original_final_activation = final_features[-1]
+    final_features[-1] = torch.nn.ReLU(inplace=True)
+    try:
+        _assert_rejects(
+            "candidate A final Hardswish -> ReLU",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        final_features[-1] = original_final_activation
+
+    original_fusion_projection = candidate_a.fusion[0]
+    candidate_a.fusion[0] = torch.nn.Linear(1072, 128)
+    try:
+        _assert_rejects(
+            "candidate A fusion 256 -> 128",
+            lambda: _assert_candidate_wiring(candidate_a, contract, 1072),
+        )
+    finally:
+        candidate_a.fusion[0] = original_fusion_projection
 
 
 def _assert_shapes(outputs: dict[str, torch.Tensor], contract: SETCompositionNetManifest) -> None:
@@ -306,6 +437,9 @@ def main() -> int:
     candidate_b = CandidateB(contract).eval()
 
     _assert_mobilenet_schedules(candidate_a, candidate_b)
+    _assert_candidate_wiring(candidate_a, contract, 1072)
+    _assert_candidate_wiring(candidate_b, contract, 352)
+    _assert_mutation_guards(candidate_a, candidate_b, contract)
     hash_a = _assert_deterministic(candidate_a, inputs, contract)
     hash_b = _assert_deterministic(candidate_b, inputs, contract)
     _assert_absent_roi_is_deterministic(candidate_a, absent_inputs)
@@ -346,7 +480,9 @@ def main() -> int:
         },
         "candidate_b_to_a_macs_ratio": ratio,
         "checks": [
-            "canonical MobileNetV3 Large-0.75 (15) and Small-0.50 (11) schedules",
+            "actual MobileNetV3 stem, Large-15/Small-11 blocks, and final projections",
+            "actual scalar MLP, 256D fusion, 256-to-embedding, and manifest head wiring",
+            "mutation guards for stem/final Hardswish and fusion output width",
             "all nine manifest-driven output heads and shapes",
             "repeated forward equality",
             "absent ROI/crop deterministic zero gate",

@@ -57,18 +57,23 @@ Environment and reproducibility:
   forward equality, absent ROI/crop zero-gating, missing-slot zero-fill,
   finite gradient traversal, and the B/A MAC gate. Its independent admission
   constants inspect the constructed Conv2d/Sequential modules directly for
-  canonical Large-15/Small-11 block count, channel schedule, kernel, stride,
-  activation, residual flag, SE presence, expanded-width squeeze channels, and
-  hard-sigmoid gate; the convenience `block_schedule` metadata is not trusted.
+  stem and final projection channels/kernels/strides/activations, canonical
+  Large-15/Small-11 block count and channel schedule, kernel, stride,
+  activation, residual flag, SE presence, expanded-width squeeze channels,
+  and hard-sigmoid gate. It also inspects the scalar MLP, exact fusion widths,
+  256D embedding projection, and every manifest head; the convenience
+  `block_schedule` and dimension metadata are not trusted. Deliberate
+  Hardswish-to-ReLU stem/final mutations and 256-to-128 fusion mutation probes
+  are required to fail the guards.
 
 Commands:
 
 ```text
 python3 -m py_compile ml/camera_coach/models/set_composition_net.py ml/camera_coach/models/check_candidates.py
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-final1.json
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-final2.json
-cmp -s /private/tmp/setos-m4-004-005-candidates-final1.json /private/tmp/setos-m4-004-005-candidates-final2.json
-python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-final.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-fix4-1.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-fix4-2.json
+cmp -s /private/tmp/setos-m4-004-005-candidates-fix4-1.json /private/tmp/setos-m4-004-005-candidates-fix4-2.json
+python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-fix4.json
 python3 -m py_compile ml/camera_coach/models/*.py
 git diff --check
 ```
