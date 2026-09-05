@@ -1,0 +1,50 @@
+{
+  "gate": "M7-GATE",
+  "scope": "source gate: recording and media lifecycle deterministic on simulator/contract level; physical qualification remains M13",
+  "audited_at": "2026-09-06T02:55+03:00",
+  "audited_by": "coordinator solo-handoff session (independent review pass over committed evidence, not implementer claims)",
+  "base_for_range": "02f03f6",
+  "dependencies": {
+    "M7-022": {
+      "verdict": "closed",
+      "evidence": "evidence-m7/M7-022-os-kill-recovery-fixtures.md + RecordingArtifactPromotionTests fault matrix (K1-K4) + RecordingRecoveryAndRetentionTests (K1 kill-before-journal)",
+      "physical_gap": "real SIGKILL on device stays M13"
+    },
+    "M7-029": {
+      "verdict": "closed",
+      "evidence": "evidence-m7/M7-029-file-protection-backup-policy.md + testTransientRootsAndPendingFilesAreExcludedFromBackup",
+      "physical_gap": "FileProtectionType/iCloud behavior on device stays M13"
+    },
+    "M7-031": {
+      "verdict": "closed",
+      "evidence": "evidence-m7/M7-031-lane-summary.txt; consolidated lane 205/205 PASS, 0 failures, 17 suites, durable xcresult /private/tmp/m7-031-lane.xcresult, log sha256 ef1fd1f8229d3a892235014ae3a361377adf270b",
+      "physical_gap": "none - lane explicitly makes no device claim"
+    },
+    "M7-032": {
+      "verdict": "closed",
+      "evidence": "docs/implementation/device-tests/recording-v1.md (locked 15-step script with locked device matrix and evidence fields)",
+      "physical_gap": "execution itself is M13 by definition"
+    },
+    "M6-013": {
+      "verdict": "closed",
+      "evidence": "evidence-m6/M6-013-ar-recording-integration.md + 53/53 ownership/controller/teardown/audio suites",
+      "physical_gap": "ARKit tracking/timing on device stays M13"
+    }
+  },
+  "canonical_surface_audit": {
+    "recording_owner": "SerializedMediaRecorder queue + SceneRecordingController state queue; single state machine; M1-010 canonical table asserted on every assignment",
+    "av_timebase": "RecordingMediaTimebase - first-admitted-video origin, strict per-stream monotonic admission with counted rejections, discontinuity accounting, bounded report",
+    "races": "start/stop/release joins, duplicate writer callbacks, late frames after stop fence, concurrent promotion, source-token fences",
+    "promotion_recovery": "atomic journal-before-rename promotion, fault points K1-K4 with convergence, cold-launch maintenance in DBService init, retention sweep wired",
+    "playback_photos_share": "playability gate before player, share existence gate, transactional Photos export owner with typed outcomes",
+    "deletion": "reversible staged project deletion with journal cleanup; orphan/retention dry-run-then-delete with re-verification",
+    "tests": "205/205 consolidated lane; every acceptance criterion maps to a named test"
+  },
+  "tasks_closed_in_milestone": ["M7-001","M7-002","M7-003","M7-004","M7-005","M7-006","M7-007","M7-008","M7-009","M7-010","M7-011","M7-012","M7-013","M7-014","M7-015","M7-016","M7-017","M7-018","M7-019","M7-020","M7-021","M7-022","M7-023","M7-024","M7-025","M7-026","M7-027","M7-028","M7-029","M7-030","M7-031","M7-032"],
+  "explicitly_not_claimed": [
+    "physical SIGKILL, ENOSPC, thermal, codec hardware, orientation uprightness, ARKit interruption, Photos/account behavior - all M13",
+    "App Store readiness - not claimed",
+    "release build/signing evidence - not part of M7"
+  ],
+  "verdict": "PASS (source scope; physical qualification explicitly deferred to M13)"
+}

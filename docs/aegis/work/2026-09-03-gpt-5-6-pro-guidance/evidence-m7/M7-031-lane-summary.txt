@@ -1,0 +1,35 @@
+M7-031 recording/media lifecycle regression lane (consolidated)
+================================================================
+Command: xcodebuild test-without-building -workspace shafinMultitool.xcworkspace
+  -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17e,OS=26.5'
+  -parallel-testing-enabled NO -derivedDataPath /private/tmp/store-dd
+  -resultBundlePath /private/tmp/m7-031-lane.xcresult
+Result: Passed, 205/205 tests, 0 failures, 0 skipped
+Suites (17):
+  SerializedMediaRecorderTests (recorder state machine, timebase, admission,
+    backpressure policy, finalization timeout)
+  AppleRecordingAdaptersTests (writer configuration, codec/pixel format,
+    orientation metadata, playback probe)
+  SceneRecordingControllerTests (controller lifecycle, owner tokens,
+    interruption stop, preflight rejection, configuration threading)
+  RecordingLifecycleTransitionTests (canonical transition table)
+  RecordingContractV1Tests (v1 contract validation)
+  RecordingStartTeardownRaceTests (start/teardown races)
+  RecordingArtifactPromotionTests (concurrent promotion, fault matrix K0-K4)
+  RecordingPreflightTests (one failure fixture per precondition, disk model)
+  PendingRecordingJournalTests (atomic journal contract)
+  RecordingRecoveryAndRetentionTests (cold recovery, kill fixture K1,
+    clock-controlled retention, attack-safe orphan cleanup, file policy)
+  RecordingDiagnosticsTests (bounded redacted diagnostics incl. thermal)
+  ScenePhotosExportServiceTests (transactional Photos export outcomes)
+  AudioSessionCoordinatorTests (serialized audio session)
+  DBServiceConcurrencyTests (persistence + deletion transactions)
+  ARSessionOwnershipTests (one ARSession owner)
+  SceneWorkspaceTeardownTests (owner-order teardown awaiting recorder)
+Coverage map (tracker requirement -> suites): state/race (recorder,
+  controller, start/teardown race), failure (append/timeout/ENOSPC),
+  promotion+recovery (journal, fault matrix, cold launch, retention,
+  orphans), export (probe, Photos outcomes).
+No physical-device claim is made anywhere in this lane.
+Durable xcresult: /private/tmp/m7-031-lane.xcresult
+Log sha256: ef1fd1f8229d3a892235014ae3a361377adf270b
