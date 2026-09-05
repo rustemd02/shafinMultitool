@@ -2,9 +2,10 @@
 
 Status: implementation and focused simulator verification complete on
 `codex/set-os-m5-004-005-011`. This receipt covers Library empty/loaded/failure
-state projections, persisted ordering/metadata, and operation-scoped retry
-identity. It does not claim rename-sheet UI, new media previews, camera/AR
-qualification, or any M5-006…M5-012 behavior.
+state projections, persisted ordering/metadata, operation-scoped retry
+identity, and the open-retry/localization correction. It does not claim
+rename-sheet UI, new media previews, camera/AR qualification, or any
+M5-006…M5-012 behavior.
 
 ## Contract implemented
 
@@ -22,10 +23,17 @@ qualification, or any M5-006…M5-012 behavior.
   Delete retry keeps UUID and expected timestamp; completion matching also
   fences on the captured timestamp. Selection and applicable drafts remain
   attached to their operation while recovery is shown.
+- An open failure captures the selected UUID; a successful open retry clears
+  that operation and returns the model to `.idle`, so the recovery panel and
+  retry action do not remain stale.
 - Load failures remain typed recovery state and never render the empty hero.
   Mutation failures retain already-loaded rows and render the existing failure
   panel; the failure panel exposes title/detail/retry identifiers and the
   retry action remains the only recovery action.
+- Preview and artifact-health accessibility phrases resolve through typed
+  `SETCopyKey` entries with RU/EN String Catalog values. The compact values
+  remain exactly the existing status phrases; no visible Package 3 copy or
+  media derivation changed.
 - Existing `SETLibrarySceneProviding → SOPresenter → SOInteractor → DBService`
   ownership and Package 3 SET visual components remain in place. DEBUG-only
   fixture IDs are deterministic projection metadata and never publish media.
@@ -39,7 +47,8 @@ qualification, or any M5-006…M5-012 behavior.
   summary list; strict typed-load behavior was already the production path.
 - `shafinMultitoolTests/SETLibraryModelTests.swift` — empty/load distinction,
   metadata/order projection, create retry isolation, rename identity/draft/
-  timestamp retention, and delete retry identity coverage.
+  timestamp retention, delete retry identity coverage, and open failure→retry
+  success recovery coverage.
 - `shafinMultitoolTests/DBServiceConcurrencyTests.swift` — real zero-project
   result, malformed-record load failure, and persisted duplicate-name/tie
   ordering coverage.
@@ -49,12 +58,16 @@ qualification, or any M5-006…M5-012 behavior.
   screenshot attachment names.
 - `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m5/M5-004-005-011-library-states.md`
   — this receipt.
+- `shafinMultitool/Multitool2Module/UI/DesignSystem/SETLocalization.swift` —
+  typed preview/artifact-health copy keys.
+- `shafinMultitool/Resources/Localizable.xcstrings` — exact RU/EN catalog
+  values for those keys.
 
 No `SOViewController.swift` edit was needed: its existing
 `viewWillAppear`/`updateUI` reloads already route the runtime model through the
 typed presenter contract. No routes, orientation forwarding, schema, lifecycle
-leases, artifact deletion, String Catalog, project file, Visual Policy, or
-`EXECUTION_STATE.md` changed.
+leases, artifact deletion, project file, Visual Policy, or `EXECUTION_STATE.md`
+changed.
 
 ## Verification
 
@@ -74,6 +87,26 @@ failed, 0 skipped:
 - `DBServiceConcurrencyTests`: 17/17.
 - `SETLibraryModelTests`: 17/17.
 - `SETLibraryInteractorOutcomeTests`: 2/2.
+
+Correction focused unit/integration command (with diagnostics disabled to
+avoid the simulator diagnostic subprocess hanging after a failed test):
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath /tmp/setos-m5-004-005-011-correction-dd -resultBundlePath /tmp/setos-m5-004-005-011-correction-unit-2.xcresult -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 -collect-test-diagnostics never -only-testing:shafinMultitoolTests/SETLibraryModelTests -only-testing:shafinMultitoolTests/SETLibraryInteractorOutcomeTests -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests
+```
+
+Result: `** TEST SUCCEEDED **`; xcresult summary reports 37/37 passed, 0
+failed, 0 skipped on iPhone 17 iOS 26.5:
+
+- `DBServiceConcurrencyTests`: 17/17.
+- `SETLibraryModelTests`: 18/18, including
+  `testOpenRetrySuccessReturnsToIdleAndClearsRetry`.
+- `SETLibraryInteractorOutcomeTests`: 2/2.
+
+The first correction run without `-collect-test-diagnostics never` reported
+36 passed and one failure in the pre-existing random-UUID delete-test setup;
+the failed test passed on its isolated rerun, and the final correction run
+above passed all 37 selected tests. No delete production code was changed.
 
 Production fixture UI command:
 
@@ -103,6 +136,15 @@ attachment. Required attachment stems are present:
 - `m5-library-persistence-failure-en-landscape`
 - `m5-library-persistence-failure-en-landscape-reduce-motion`
 
+Correction UI run used `/tmp/setos-m5-004-005-011-correction-ui.xcresult` and
+exported to `/tmp/setos-m5-004-005-011-correction-attachments-2`. Its xcresult
+summary reports 5/5 passed, 0 failed, 0 skipped on iPhone 17 iOS 26.5; the
+export again contains 16 PNG attachments plus `manifest.json`, all 1206×2622
+pixels (2622×1206 landscape presentation), with every required attachment stem
+present. The built `en.lproj/Localizable.strings` and `ru.lproj/Localizable.strings`
+contain all nine new `set.library.preview.*`/`set.library.artifact.*` keys with
+the preserved English/Russian values.
+
 The UI assertions cover empty-state/list exclusivity, one reachable empty
 create action, loaded title/count/list/row topology, persisted UUID and
 localized media-health announcement, duplicate-name identity, >=44pt empty,
@@ -111,8 +153,8 @@ row retention, RU/EN stable IDs, landscape orientation, XXL readability, and
 Reduce Motion/Transparency fixture overrides. No video attachment was added.
 
 `git diff --check` passed. Scope inspection from base `bd2dd09` contains only
-the six changed paths listed above; `SOViewController.swift` was inspected and
-did not need an edit.
+the eight changed paths listed above; `SOViewController.swift` was inspected
+and did not need an edit.
 
 ## Judgment calls
 
@@ -120,10 +162,10 @@ did not need an edit.
   area plus the typed recovery panel rather than the empty hero. This keeps
   “empty” reserved for `Result.success([])` without inventing a loading owner
   or a second recovery action.
-- Existing localizable keys did not include preview/artifact-health phrases,
-  and String Catalog edits were prohibited. The row’s accessibility value uses
-  compact RU/EN status terms in the existing Library copy helper while leaving
-  visible Package 3 copy unchanged.
+- Existing localizable keys did not include preview/artifact-health phrases.
+  The correction adds only typed `SETCopyKey` cases and their exact existing
+  RU/EN String Catalog values; the row still leaves visible Package 3 copy
+  unchanged.
 - Existing row IDs are preserved as positional `library_scene_row_N` IDs; the
   accessible row value additionally announces the persisted UUID, so duplicate
   names remain distinguishable without adding a parallel identifier owner.

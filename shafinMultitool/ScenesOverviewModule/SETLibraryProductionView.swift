@@ -459,6 +459,7 @@ final class SETLibraryModel: ObservableObject {
         switch controlling.libraryOpenSceneResult(id: id) {
         case .success:
             pendingRetry = nil
+            flow = .idle
         case .failure(let failure):
             pendingRetry = .open(id: id)
             flow = .failure(.open(failure))
@@ -717,35 +718,27 @@ enum SETLibraryLocalizedCopy {
         scene: SETLibraryModel.SceneRow,
         locale: Locale
     ) -> String {
-        "\(scene.id.uuidString) · \(previewStatus(scene.preview, locale: locale)) · " +
-            "\(artifactStatus(scene.artifactHealth, locale: locale)) · " +
+        "\(scene.id.uuidString) · \(previewStatus(scene.preview).localizedString(locale: locale)) · " +
+            "\(artifactStatus(scene.artifactHealth).localizedString(locale: locale)) · " +
             updatedLabel(for: scene.updatedAt, locale: locale)
     }
 
-    private static func previewStatus(
-        _ preview: SETLibraryPreviewMetadata,
-        locale: Locale
-    ) -> String {
-        let isRussian = locale.language.languageCode?.identifier == "ru"
+    private static func previewStatus(_ preview: SETLibraryPreviewMetadata) -> SETCopyKey {
         switch preview.kind {
-        case .storyboard: return isRussian ? "РАСКАДРОВКА" : "STORYBOARD"
-        case .screenplay: return isRussian ? "СЦЕНАРИЙ" : "SCREENPLAY"
-        case .metadataOnly: return isRussian ? "ТОЛЬКО МЕТАДАННЫЕ" : "METADATA ONLY"
-        case .unavailable: return isRussian ? "ПРЕВЬЮ НЕДОСТУПНО" : "PREVIEW UNAVAILABLE"
+        case .storyboard: return .libraryPreviewStoryboard
+        case .screenplay: return .libraryPreviewScreenplay
+        case .metadataOnly: return .libraryPreviewMetadataOnly
+        case .unavailable: return .libraryPreviewUnavailable
         }
     }
 
-    private static func artifactStatus(
-        _ health: SETLibraryArtifactHealth,
-        locale: Locale
-    ) -> String {
-        let isRussian = locale.language.languageCode?.identifier == "ru"
+    private static func artifactStatus(_ health: SETLibraryArtifactHealth) -> SETCopyKey {
         switch health {
-        case .none: return isRussian ? "МЕДИА НЕТ" : "NO MEDIA"
-        case .healthy: return isRussian ? "МЕДИА ГОТОВО" : "MEDIA READY"
-        case .missing: return isRussian ? "МЕДИА НЕ НАЙДЕНО" : "MEDIA MISSING"
-        case .corrupt: return isRussian ? "МЕДИА ПОВРЕЖДЕНО" : "MEDIA CORRUPT"
-        case .unavailable: return isRussian ? "СОСТОЯНИЕ МЕДИА НЕДОСТУПНО" : "MEDIA STATUS UNAVAILABLE"
+        case .none: return .libraryArtifactNone
+        case .healthy: return .libraryArtifactHealthy
+        case .missing: return .libraryArtifactMissing
+        case .corrupt: return .libraryArtifactCorrupt
+        case .unavailable: return .libraryArtifactUnavailable
         }
     }
 }

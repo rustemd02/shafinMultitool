@@ -9,9 +9,11 @@ final class SETLibraryModelTests: XCTestCase {
         var deleteResult = true
         var snapshotsResult: Result<[SETLibrarySceneSnapshot], SETLibraryFailure>?
         var renameResult: Result<SETLibrarySceneSnapshot, SETLibraryFailure>?
+        var openResult: Result<Void, SETLibraryFailure> = .success(())
         private(set) var createdNames: [String] = []
         private(set) var deletedNames: [String] = []
         private(set) var openedNames: [String] = []
+        private(set) var openRequests: [UUID] = []
         private(set) var snapshotCallCount = 0
         private(set) var renameRequests: [(id: UUID, name: String, expectedUpdatedAt: Date)] = []
         private(set) var deleteRequests: [(id: UUID, expectedUpdatedAt: Date)] = []
@@ -104,7 +106,9 @@ final class SETLibraryModelTests: XCTestCase {
         }
 
         func libraryOpenSceneResult(id: UUID) -> Result<Void, SETLibraryFailure> {
+            openRequests.append(id)
             guard let scene = summaries.first(where: { $0.id == id }) else { return .failure(.missingProject(id: id)) }
+            if case .failure(let failure) = openResult { return .failure(failure) }
             libraryOpenScene(named: scene.name)
             return .success(())
         }
@@ -240,6 +244,27 @@ final class SETLibraryModelTests: XCTestCase {
 
         XCTAssertTrue(provider.createdNames.isEmpty)
         XCTAssertEqual(model.flow, .failure(.create(.invalidName)))
+    }
+
+    func testOpenRetrySuccessReturnsToIdleAndClearsRetry() {
+        let provider = MockProvider()
+        let id = UUID()
+        provider.summaries = [makeSummary("СЦЕНА", id: id)]
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+        model.select(id)
+
+        provider.openResult = .failure(.persistence)
+        model.openSelectedScene()
+        XCTAssertEqual(model.flow, .failure(.open(.persistence)))
+
+        provider.openResult = .success(())
+        model.retry()
+        XCTAssertEqual(model.flow, .idle)
+        XCTAssertEqual(provider.openRequests, [id, id])
+
+        model.retry()
+        XCTAssertEqual(provider.openRequests, [id, id], "A successful open retry must clear the captured retry operation.")
     }
 
     func testLocalDuplicateEntersDuplicateFlowWithoutTouchingPersistence() {

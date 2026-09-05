@@ -2433,6 +2433,86 @@
         }
       }
     },
+    "set.library.artifact.corrupt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MEDIA CORRUPT"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "МЕДИА ПОВРЕЖДЕНО"
+          }
+        }
+      }
+    },
+    "set.library.artifact.healthy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MEDIA READY"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "МЕДИА ГОТОВО"
+          }
+        }
+      }
+    },
+    "set.library.artifact.missing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MEDIA MISSING"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "МЕДИА НЕ НАЙДЕНО"
+          }
+        }
+      }
+    },
+    "set.library.artifact.none": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "NO MEDIA"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "МЕДИА НЕТ"
+          }
+        }
+      }
+    },
+    "set.library.artifact.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MEDIA STATUS UNAVAILABLE"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "СОСТОЯНИЕ МЕДИА НЕДОСТУПНО"
+          }
+        }
+      }
+    },
     "set.library.marker": {
       "localizations": {
         "en": {
@@ -2493,6 +2573,70 @@
           "stringUnit": {
             "state": "translated",
             "value": "Обновлена: %@"
+          }
+        }
+      }
+    },
+    "set.library.preview.metadata_only": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "METADATA ONLY"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ТОЛЬКО МЕТАДАННЫЕ"
+          }
+        }
+      }
+    },
+    "set.library.preview.screenplay": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SCREENPLAY"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "СЦЕНАРИЙ"
+          }
+        }
+      }
+    },
+    "set.library.preview.storyboard": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "STORYBOARD"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "РАСКАДРОВКА"
+          }
+        }
+      }
+    },
+    "set.library.preview.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PREVIEW UNAVAILABLE"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ПРЕВЬЮ НЕДОСТУПНО"
           }
         }
       }
