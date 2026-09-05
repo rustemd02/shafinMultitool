@@ -130,7 +130,15 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                       overlayAnnotations: [OverlayAnnotationPresentation] = [],
                       debugSignals: DecisionTraceDebugSignals = .empty,
                       locale: Locale = Locale(identifier: "ru")) -> DecisionTracePresentation {
-        let actionRows = pauseActionRows(for: critique, locale: locale)
+        let linkedEvidence = validatedPauseLinkedEvidence(for: critique, locale: locale)
+        let explanation = linkedEvidence.flatMap {
+            DeterministicCritiqueSummaryBuilder().makeExplanation(for: $0, locale: locale)
+        }
+        let actionRows = pauseActionRows(
+            for: critique,
+            linkedEvidence: linkedEvidence,
+            locale: locale
+        )
         let limitations = limitationRows(
             fallbackUsed: critique.fallbackUsed,
             locale: locale
@@ -146,13 +154,10 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             id: "pause_\(critique.frameId)_\(critique.summaryId)",
             modeLabel: copy(.traceModePause, locale: locale),
             verdictLabel: verdictTitle(for: critique.verdict, locale: locale),
-            // Pause rows currently do not carry typed same-frame evidence
-            // provenance. Keep Why/evidence empty until that handoff is
-            // owned by the pause contract (M2-031).
             headline: verdictTitle(for: critique.verdict, locale: locale),
             confidence: .make(critique.verdictConfidence),
-            reasonLines: [],
-            evidenceRows: [],
+            reasonLines: pauseReasonLines(explanation: explanation, locale: locale),
+            evidenceRows: pauseEvidenceRows(for: critique, linkedEvidence: linkedEvidence, locale: locale),
             actionRows: actionRows,
             signalRows: signalRows(
                 overlayAnnotations: overlayAnnotations,
@@ -320,6 +325,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
     }
 
     private static func pauseActionRows(for critique: PauseCritiquePresentation,
+                                        linkedEvidence: CameraLinkedEvidenceProjection?,
                                         locale: Locale) -> [ActionRow] {
         let rows = critique.actions.sorted { lhs, rhs in
             if lhs.priority != rhs.priority {
@@ -333,7 +339,16 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 semanticActionId: action.semanticActionType.rawValue,
                 coarseActionId: action.actionType.rawValue,
                 detail: semanticActionTitle(action.semanticActionType, locale: locale),
-                linkedEvidenceIds: [],
+                linkedEvidenceIds: linkedEvidence.map { projection in
+                    guard projection.actionID == action.actionId,
+                          projection.actionType == action.actionType,
+                          projection.semanticActionType == action.semanticActionType,
+                          action.linkedIssueIds.count == 1,
+                          action.linkedIssueIds.first == projection.issueID else {
+                        return []
+                    }
+                    return [projection.issueID]
+                } ?? [],
                 confidence: .make(action.confidence),
                 targetDescription: regionDescription(action.targetRegion, locale: locale),
                 overlayHintId: action.overlayHintId,
@@ -360,6 +375,75 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 traceId: nil
             )
         ]
+    }
+
+    private static func pauseReasonLines(explanation: String?,
+                                         locale: Locale) -> [ReasonLine] {
+        guard let explanation else { return [] }
+        return [
+            ReasonLine(
+                id: "linked_evidence",
+                title: copy(.traceReasonWhy, locale: locale),
+                text: explanation
+            )
+        ]
+    }
+
+    private static func pauseEvidenceRows(
+        for critique: PauseCritiquePresentation,
+        linkedEvidence: CameraLinkedEvidenceProjection?,
+        locale: Locale
+    ) -> [EvidenceRow] {
+        guard let linkedEvidence,
+              let issue = critique.issues.first(where: {
+                  $0.issueId == linkedEvidence.issueID
+                      && $0.type == linkedEvidence.issueType
+              }) else {
+            return []
+        }
+        let title = issueTitle(issue.type, locale: locale)
+        return [
+            EvidenceRow(
+                id: "pause_evidence_\(issue.issueId)",
+                sourceId: issue.issueId,
+                kindLabel: copy(.traceKindIssue, locale: locale),
+                title: title,
+                text: title,
+                confidence: .make(issue.confidence),
+                severity: .make(issue.severity),
+                regionDescription: regionDescription(issue.affectedRegion, locale: locale),
+                traceId: issue.traceRefId
+            )
+        ]
+    }
+
+    private static func validatedPauseLinkedEvidence(
+        for critique: PauseCritiquePresentation,
+        locale: Locale
+    ) -> CameraLinkedEvidenceProjection? {
+        guard let projection = critique.linkedEvidence,
+              projection.frameID == critique.frameId,
+              let action = critique.actions.first(where: {
+                  $0.actionId == projection.actionID
+                      && $0.actionType == projection.actionType
+                      && $0.semanticActionType == projection.semanticActionType
+                      && $0.linkedIssueIds.count == 1
+                      && $0.linkedIssueIds.first == projection.issueID
+              }),
+              let issue = critique.issues.first(where: {
+                  $0.issueId == projection.issueID
+                      && $0.type == projection.issueType
+              }),
+              action.actionType != .leaveFrameAsIs,
+              action.semanticActionType != .keepCurrentSetup,
+              !issue.issueId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              DeterministicCritiqueSummaryBuilder().makeExplanation(
+                  for: projection,
+                  locale: locale
+              ) != nil else {
+            return nil
+        }
+        return projection
     }
 
     private static func liveActionRows(for hint: LiveHintPresentation,

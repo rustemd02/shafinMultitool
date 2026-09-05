@@ -33,6 +33,7 @@ final class PauseReasoningCoordinatorTests: XCTestCase {
             XCTAssertTrue(presentation.strengths.first?.rationale.contains("уточнение") == true)
             XCTAssertTrue(presentation.issues.first?.rationale.contains("уточнение") == true)
             XCTAssertTrue(presentation.actions.first?.expectedOutcome.contains("уточнение") == true)
+            XCTAssertEqual(presentation.linkedEvidence, request.pausePresentationDraft.linkedEvidence)
             XCTAssertEqual(diagnostics.fallbackReason, nil)
         default:
             XCTFail("Expected refined presentation")
@@ -291,6 +292,10 @@ final class PauseReasoningCoordinatorTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 120_000_000)
 
         XCTAssertEqual(pipeline.currentPauseCritique, request.pausePresentationDraft)
+        XCTAssertEqual(
+            pipeline.currentPauseCritique?.linkedEvidence,
+            request.pausePresentationDraft.linkedEvidence
+        )
         XCTAssertEqual(pipeline.testingPauseTraceBundle, deterministicTrace)
     }
 
@@ -818,6 +823,12 @@ private func makeRequest(providerConfigVersion: String,
         planConfidence: 0.70
     )
 
+    let linkedEvidence = DeterministicCritiqueSummaryBuilder().makeEvidenceProjection(
+        frameID: frameId,
+        action: action,
+        critique: critique
+    )
+
     let trace = makeDeterministicTraceBundle(frameId: frameId, mode: mode, critique: critique, plan: plan)
 
     let draft = PauseCritiquePresentation(
@@ -867,7 +878,8 @@ private func makeRequest(providerConfigVersion: String,
         noChangeRationale: nil,
         assumptions: [],
         traceRootIds: critique.traceRefs,
-        fallbackUsed: false
+        fallbackUsed: false,
+        linkedEvidence: linkedEvidence
     )
 
     return ReasoningRequest(

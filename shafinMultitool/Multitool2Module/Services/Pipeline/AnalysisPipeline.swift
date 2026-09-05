@@ -187,6 +187,41 @@ struct PauseCritiquePresentation: Equatable, Sendable {
     let assumptions: [String]
     let traceRootIds: [String]
     let fallbackUsed: Bool
+    /// Typed same-frame provenance for pause Why/evidence/marker surfaces.
+    /// A missing projection is an intentional fail-closed result.
+    let linkedEvidence: CameraLinkedEvidenceProjection?
+
+    init(frameId: String,
+         verdict: FrameVerdict,
+         verdictConfidence: Double,
+         summaryId: String,
+         shortVerdict: String,
+         whyGood: String?,
+         whyProblematic: String?,
+         strengths: [PauseStrengthRow],
+         issues: [PauseIssueRow],
+         actions: [PauseActionRow],
+         noChangeRationale: String?,
+         assumptions: [String],
+         traceRootIds: [String],
+         fallbackUsed: Bool,
+         linkedEvidence: CameraLinkedEvidenceProjection? = nil) {
+        self.frameId = frameId
+        self.verdict = verdict
+        self.verdictConfidence = verdictConfidence
+        self.summaryId = summaryId
+        self.shortVerdict = shortVerdict
+        self.whyGood = whyGood
+        self.whyProblematic = whyProblematic
+        self.strengths = strengths
+        self.issues = issues
+        self.actions = actions
+        self.noChangeRationale = noChangeRationale
+        self.assumptions = assumptions
+        self.traceRootIds = traceRootIds
+        self.fallbackUsed = fallbackUsed
+        self.linkedEvidence = linkedEvidence
+    }
 }
 
 enum SemanticEvalRuntimeClaim: String, Codable, Equatable, Sendable {
@@ -9037,8 +9072,57 @@ final class AnalysisPipeline: ObservableObject {
             noChangeRationale: noChangeRationale,
             assumptions: assumptions,
             traceRootIds: traceRootIds,
-            fallbackUsed: fallbackUsed
+            fallbackUsed: fallbackUsed,
+            linkedEvidence: makePauseLinkedEvidenceProjection(
+                critique: critique,
+                plan: plan,
+                actions: actions
+            )
         )
+    }
+
+    /// Keeps the pause explanation and marker on the same typed action/issue
+    /// identity as the accepted frame. The projection builder rejects
+    /// missing, summary-only, neural-only, or mismatched evidence.
+    private func makePauseLinkedEvidenceProjection(
+        critique: CritiqueReport,
+        plan: RecommendationPlan,
+        actions: [PauseActionRow]
+    ) -> CameraLinkedEvidenceProjection? {
+        let plannedActions = [plan.primaryAction].compactMap { $0 }
+            + plan.secondaryActions
+            + plan.deferredActions
+        let builder = DeterministicCritiqueSummaryBuilder()
+
+        for row in actions where row.actionType != .leaveFrameAsIs {
+            let source = plannedActions.first { action in
+                action.actionType == row.actionType
+                    && action.linkedIssueIds == row.linkedIssueIds
+            }
+            let action = RecommendationAction(
+                id: row.actionId,
+                actionType: row.actionType,
+                priority: row.priority,
+                targetRegion: row.targetRegion,
+                linkedIssueIds: row.linkedIssueIds,
+                expectedOutcome: row.expectedOutcome,
+                guardrail: source?.guardrail ?? ActionGuardrail(
+                    requiresStillCamera: true,
+                    minConfidence: 0,
+                    suppressWhenMoving: true
+                ),
+                overlayHint: source?.overlayHint
+            )
+            if let projection = builder.makeEvidenceProjection(
+                frameID: critique.frameId,
+                action: action,
+                semanticActionType: row.semanticActionType,
+                critique: critique
+            ) {
+                return projection
+            }
+        }
+        return nil
     }
 
     private func pauseVerdictConfidence(verdict: FrameVerdict,
@@ -11290,7 +11374,10 @@ final class AnalysisPipeline: ObservableObject {
             noChangeRationale: refined.noChangeRationale ?? current.noChangeRationale,
             assumptions: current.assumptions,
             traceRootIds: current.traceRootIds,
-            fallbackUsed: current.fallbackUsed
+            fallbackUsed: current.fallbackUsed,
+            // Text refinement cannot replace the accepted frame/action/evidence
+            // identity, even if a malformed presentation reaches this merge.
+            linkedEvidence: current.linkedEvidence
         )
     }
 

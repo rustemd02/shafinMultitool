@@ -900,7 +900,10 @@ actor PauseReasoningCoordinator {
             noChangeRationale: patch.noChangeRationaleOverride ?? draft.noChangeRationale,
             assumptions: draft.assumptions,
             traceRootIds: draft.traceRootIds,
-            fallbackUsed: draft.fallbackUsed
+            fallbackUsed: draft.fallbackUsed,
+            // Refinement may change bounded copy only; provenance remains the
+            // exact projection owned by the accepted pause draft.
+            linkedEvidence: draft.linkedEvidence
         )
     }
 }

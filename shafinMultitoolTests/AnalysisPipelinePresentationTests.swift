@@ -2505,6 +2505,61 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.actions.first?.semanticActionType, .simplifyBackground)
     }
 
+    func testPausePresentationKeepsActionIssueAndTraceOnOneFrameProjection() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let frameID = "pause-linked-projection"
+        let critique = makeMixedPauseCritique(
+            frameId: frameID,
+            verdictConfidence: 0.82
+        )
+        let action = RecommendationAction(
+            id: "act_simplify_background",
+            actionType: .reduceBackgroundDistractions,
+            priority: 1,
+            targetRegion: nil,
+            linkedIssueIds: ["iss_background"],
+            expectedOutcome: "Упростите фон.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.4,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: frameID,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: action,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.82
+        )
+
+        let presentation = pipeline.testingMakePauseCritiquePresentation(
+            critique: critique,
+            plan: plan
+        )
+
+        guard let projection = presentation.linkedEvidence else {
+            return XCTFail("observed issue evidence must produce a pause projection")
+        }
+        XCTAssertEqual(projection.frameID, frameID)
+        XCTAssertEqual(projection.actionID, presentation.actions.first?.actionId)
+        XCTAssertEqual(projection.actionID, action.id)
+        XCTAssertEqual(projection.issueID, "iss_background")
+        XCTAssertEqual(projection.issueType, .frameVisuallyOverloaded)
+
+        let trace = DecisionTracePresentation.pause(critique: presentation)
+        XCTAssertEqual(
+            trace.reasonLines.map(\.text),
+            [SETCopyKey.traceIssueOverloaded.localizedString(locale: Locale(identifier: "ru"))]
+        )
+        XCTAssertEqual(trace.evidenceRows.map(\.sourceId), ["iss_background"])
+        XCTAssertEqual(trace.actionRows.first?.linkedEvidenceIds, ["iss_background"])
+    }
+
     func testLiveActionConfidenceDoesNotUseOptimisticMaximum() {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(frameId: "live-confidence", verdict: .mixed)

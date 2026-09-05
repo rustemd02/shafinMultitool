@@ -225,6 +225,19 @@ final class CameraViewModel: ObservableObject {
         isPaused && acceptedPauseSnapshot?.displayImage != nil
     }
 
+    /// A background transition may preserve the review only after the
+    /// terminal pause result has been committed alongside the accepted image.
+    /// A display-ready frame that is still loading remains cancelable work.
+    private var isPauseReviewCommitted: Bool {
+        guard isPauseProjectionReady else { return false }
+        switch pausePresentationState {
+        case .success, .empty, .failure:
+            return true
+        case .idle, .loading, .resuming:
+            return false
+        }
+    }
+
     var isPauseCapturePending: Bool {
         !isPaused && pauseDisplayRenderTask != nil && pauseRequestToken != nil
     }
@@ -449,6 +462,12 @@ final class CameraViewModel: ObservableObject {
     /// interruption notification.
     func reportSceneInactive() {
         guard hasActiveCaptureOrPauseWork else { return }
+        // Keep a committed accepted frame/review intact across scene changes.
+        // The user resumes explicitly; no camera restart is attempted while
+        // the scene is inactive.
+        if isPauseReviewCommitted {
+            return
+        }
         cancelCoachingEpisode(reason: .background)
         if lifecycleState == .starting || lifecycleState == .running {
             cameraManager.reportSessionInterrupted()
@@ -522,12 +541,25 @@ final class CameraViewModel: ObservableObject {
                 || acceptedPauseSnapshot != nil
                 || pausePresentationState != .idle
         case .stopping:
-            return false
+            // Pause enters stopping before its terminal result is committed.
+            // Keep that in-flight review visible to the lifecycle boundary so
+            // a scene transition cancels/fails it instead of silently letting
+            // late output publish after backgrounding.
+            return isPaused
+                || isPauseCapturePending
+                || acceptedPauseSnapshot != nil
+                || pausePresentationState != .idle
         }
     }
 
     private func handleCameraFailure(_ error: CameraManagerError) {
         guard hasActiveCaptureOrPauseWork else { return }
+        // A display-ready pause is a committed review. Camera is already
+        // stopped at this boundary, so an interruption notification must not
+        // erase the accepted pixels or their review while the scene is away.
+        if isPauseReviewCommitted {
+            return
+        }
 
         cancelCoachingEpisode(reason: .routeExit)
 
@@ -621,6 +653,8 @@ final class CameraViewModel: ObservableObject {
                 acceptedPauseSnapshot = nil
                 acceptedPauseRequestToken = nil
                 pendingPauseAnalysis = nil
+                pauseCritique = nil
+                previewSuggestions = []
                 pauseFailureReason = nil
             }
             lensSwitchRequestedLens = nil
@@ -752,7 +786,9 @@ final class CameraViewModel: ObservableObject {
             isPaused = false
             pauseRequestToken = nil
             previewSuggestions = []
-            pauseCritique = nil
+            // Keep the accepted review recoverable while the same configured
+            // session attempts to restart. A successful start clears it at
+            // the restart commit boundary; failure leaves it inspectable.
             pausePresentationState = .resuming(snapshotID: snapshotID)
             analysisPipeline.clearPausePresentationState()
             start()

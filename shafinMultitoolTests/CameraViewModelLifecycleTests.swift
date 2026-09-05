@@ -580,6 +580,95 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(fixture.viewModel.takeNumber, 0)
     }
 
+    func testCommittedPauseSurvivesSceneInactiveUntilSuccessfulResume() async {
+        let resumeGate = CameraViewModelTestGate()
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: true, gate: resumeGate)
+        ])
+
+        await fixture.viewModel.startAndWait()
+        fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 4))
+        let evidenceReady = await waitUntil {
+            fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_4000"
+        }
+        XCTAssertTrue(evidenceReady)
+
+        fixture.viewModel.togglePause()
+        let committed = await waitUntil {
+            guard fixture.viewModel.isPauseProjectionReady else { return false }
+            switch fixture.viewModel.pausePresentationState {
+            case .success, .empty, .failure:
+                return true
+            case .idle, .loading, .resuming:
+                return false
+            }
+        }
+        XCTAssertTrue(committed)
+
+        let committedState = fixture.viewModel.pausePresentationState
+        let committedSnapshotID = fixture.viewModel.acceptedPauseSnapshot?.snapshotID
+        let committedTake = fixture.viewModel.takeNumber
+        let committedStopCount = fixture.runner.stopCount
+        let committedCritique = fixture.viewModel.pauseCritique
+        XCTAssertEqual(committedSnapshotID, "frame_4000")
+        XCTAssertNotNil(fixture.viewModel.acceptedPauseSnapshot?.displayImage)
+
+        fixture.viewModel.reportSceneInactive()
+
+        XCTAssertTrue(fixture.viewModel.isPaused)
+        XCTAssertEqual(fixture.viewModel.pausePresentationState, committedState)
+        XCTAssertEqual(fixture.viewModel.acceptedPauseSnapshot?.snapshotID, committedSnapshotID)
+        XCTAssertEqual(fixture.viewModel.takeNumber, committedTake)
+        XCTAssertEqual(fixture.runner.stopCount, committedStopCount)
+        XCTAssertEqual(fixture.viewModel.pauseCritique, committedCritique)
+        XCTAssertNotNil(fixture.viewModel.acceptedPauseSnapshot?.displayImage)
+
+        fixture.viewModel.togglePause()
+        XCTAssertFalse(fixture.viewModel.isPaused)
+        XCTAssertEqual(fixture.viewModel.pausePresentationState.snapshotID, committedSnapshotID)
+        XCTAssertEqual(fixture.viewModel.pauseCritique, committedCritique)
+        XCTAssertNotNil(fixture.viewModel.acceptedPauseSnapshot)
+
+        resumeGate.signal()
+        let resumed = await waitUntil {
+            fixture.viewModel.lifecycleState == .running
+                && fixture.viewModel.pausePresentationState == .idle
+                && fixture.viewModel.acceptedPauseSnapshot == nil
+        }
+        XCTAssertTrue(resumed)
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testPrecommitPauseIsCanceledOnSceneInactive() async {
+        let fixture = makeFixture(startPlans: [.init(succeeds: true)])
+        await fixture.viewModel.startAndWait()
+        fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 5))
+        let evidenceReady = await waitUntil {
+            fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_5000"
+        }
+        XCTAssertTrue(evidenceReady)
+
+        fixture.viewModel.togglePause()
+        XCTAssertEqual(fixture.viewModel.pausePresentationState.snapshotID, "frame_5000")
+        XCTAssertFalse(fixture.viewModel.isPaused)
+
+        // The accepted handoff is still rendering, so a scene transition must
+        // cancel it rather than permit a later pause terminal callback.
+        fixture.viewModel.reportSceneInactive()
+
+        let canceled = await waitUntil {
+            fixture.viewModel.lifecycleState == .failed(.sessionInterrupted)
+                && fixture.viewModel.pausePresentationState == .idle
+                && fixture.viewModel.acceptedPauseSnapshot == nil
+                && fixture.viewModel.pauseCritique == nil
+        }
+        XCTAssertTrue(canceled)
+        XCTAssertFalse(fixture.viewModel.isPaused)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
     func testSelectedTeleLensPresentationSurvivesPauseResumeUntilManagerReportsAgain() async {
         let resumeGate = CameraViewModelTestGate()
         let fixture = makeFixture(startPlans: [
