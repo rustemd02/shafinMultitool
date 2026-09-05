@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import copy
+import hashlib
+import os
 from pathlib import Path
+import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
@@ -254,10 +258,314 @@ def run() -> None:
             else:
                 raise AssertionError("non-boolean SSIM flag was accepted")
 
+        def split_entry(
+            record_id: str,
+            asset_ids: list[str],
+            suffix: str,
+            *,
+            bucket: str = "organic",
+            sequence_id: str | None = None,
+            derivation_family_id: str | None = None,
+            source_kind: str | None = None,
+        ) -> dict:
+            entry = {
+                "record_id": record_id,
+                "asset_ids": asset_ids,
+                "bucket": bucket,
+                "source_shoot_id": f"split-shoot-{suffix}",
+                "scene_family_id": f"split-scene-{suffix}",
+                "person_family_ids": [f"split-person-{suffix}"],
+                "location_family_id": f"split-location-{suffix}",
+                "time_family_id": f"split-time-{suffix}",
+                "derivation_family_id": derivation_family_id or f"split-derivation-{suffix}",
+                "rights_disposition": "fixture_only" if bucket == "synthetic" else "approved",
+                "review_status": "resolved_human_review",
+            }
+            if source_kind is not None:
+                entry["source_kind"] = source_kind
+            if sequence_id is not None:
+                entry["sequence_id"] = sequence_id
+            return entry
+
+        sequence_receipt = next(item for item in output["sequence_families"] if item["sequence_id"] == "sequence-fixture")
+        split_entries = [
+            split_entry("split-base", ["asset-base"], "base"),
+            split_entry("split-exact", ["asset-exact"], "exact"),
+            split_entry(
+                "split-sequence",
+                ["asset-seq-f0", "asset-seq-f1", "asset-seq-f2"],
+                "sequence",
+                sequence_id="sequence-fixture",
+                derivation_family_id=sequence_receipt["derivation_family_id"],
+            ),
+            split_entry("split-far", ["asset-far"], "far", bucket="synthetic", source_kind="synthetic_fixture"),
+        ]
+        split_manifest = root / "split-input.json"
+        split_manifest.write_text(
+            json.dumps(
+                {
+                    "manifest_type": "camera_split_input",
+                    "schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID,
+                    "manifest_version": AUDIT.SCHEMA_VERSION,
+                    "entries": split_entries,
+                }
+            ),
+            encoding="utf-8",
+        )
+        cluster_path = root / "clusters.json"
+        cluster_path.write_text(json.dumps(output, sort_keys=True), encoding="utf-8")
+        cli_outputs: dict[str, bytes] = {}
+        for hash_seed in ("1", "5"):
+            cli_output = root / f"split-cli-{hash_seed}.json"
+            cli_environment = os.environ.copy()
+            cli_environment["PYTHONHASHSEED"] = hash_seed
+            cli_result = subprocess.run(
+                [
+                    sys.executable,
+                    str(TOOL_PATH),
+                    "--split",
+                    "--split-manifest",
+                    str(split_manifest),
+                    "--cluster-output",
+                    str(cluster_path),
+                    "--seed",
+                    "1",
+                    "--train-ratio",
+                    "0.5",
+                    "--calibration-ratio",
+                    "0.25",
+                    "--locked-test-ratio",
+                    "0.25",
+                    "--output",
+                    str(cli_output),
+                ],
+                cwd=ROOT,
+                env=cli_environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            assert cli_result.returncode == 0, cli_result.stderr
+            cli_outputs[hash_seed] = cli_output.read_bytes()
+        assert cli_outputs["1"] == cli_outputs["5"], "CLI split output depends on PYTHONHASHSEED"
+        cli_sha256 = hashlib.sha256(cli_outputs["1"]).hexdigest()
+        split_records = AUDIT.load_split_manifest(split_manifest)
+        split_output = AUDIT.split_records(
+            split_records,
+            output,
+            seed=1,
+            train_ratio=0.5,
+            calibration_ratio=0.25,
+            locked_test_ratio=0.25,
+        )
+        reverse_split = AUDIT.split_records(
+            list(reversed(split_records)),
+            output,
+            seed=1,
+            train_ratio=0.5,
+            calibration_ratio=0.25,
+            locked_test_ratio=0.25,
+        )
+        assert split_output == reverse_split, "split output depends on input order"
+        assert split_output["cross_split_leak_count"] == 0
+        assert split_output["counts"]["family_counts"]["dedup_cluster"] == split_output["counts"]["dedup_cluster_count"]
+        assert {row["record_id"] for row in split_output["assignments"]} == {entry["record_id"] for entry in split_entries}
+        split_text = json.dumps(split_output)
+        assert all(token not in split_text for token in ("asset_id", "asset_ids", "path", "content_sha256"))
+        assert all(
+            len({row["split"] for row in split_output["assignments"] if row["bucket"] == bucket}) <= 3
+            for bucket in ("organic", "synthetic")
+        )
+        AUDIT.validate_split_output(json.loads(json.dumps(split_output)))
+
+        seed_five = AUDIT.split_records(
+            split_records,
+            output,
+            seed=5,
+            train_ratio=0.5,
+            calibration_ratio=0.25,
+            locked_test_ratio=0.25,
+        )
+        assert seed_five["cross_split_leak_count"] == 0
+        assert {row["record_id"]: row["split"] for row in seed_five["assignments"]} != {
+            row["record_id"]: row["split"] for row in split_output["assignments"]
+        }, "changed seed did not change this multi-component fixture"
+        assert {row["record_id"] for row in seed_five["assignments"]} == {row["record_id"] for row in split_output["assignments"]}
+        for bucket in ("organic", "synthetic"):
+            bucket_rows = [row for row in split_output["assignments"] if row["bucket"] == bucket]
+            assert len({row["split"] for row in bucket_rows}) <= 3
+
+        leakage_categories = ("source_shoot", "scene", "person", "location", "time", "derivation")
+        for category in leakage_categories:
+            left = split_entry(f"leak-{category}-left", ["asset-base"], f"leak-{category}-left")
+            right = split_entry(f"leak-{category}-right", ["asset-far"], f"leak-{category}-right")
+            field = {
+                "source_shoot": "source_shoot_id",
+                "scene": "scene_family_id",
+                "person": "person_family_ids",
+                "location": "location_family_id",
+                "time": "time_family_id",
+                "derivation": "derivation_family_id",
+            }[category]
+            right[field] = left[field]
+            leakage_path = root / f"leak-{category}.json"
+            leakage_path.write_text(
+                json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [left, right]}),
+                encoding="utf-8",
+            )
+            leakage_records = AUDIT.load_split_manifest(leakage_path)
+            leakage_output = AUDIT.split_records(
+                leakage_records,
+                output,
+                seed=1,
+                train_ratio=0.5,
+                calibration_ratio=0.5,
+                locked_test_ratio=0.0,
+            )
+            assert leakage_output["cross_split_leak_count"] == 0
+            component_for = {row["record_id"]: row["component_id"] for row in leakage_output["assignments"]}
+            assert component_for[left["record_id"]] == component_for[right["record_id"]]
+
+        dedup_left = split_entry("leak-dedup-left", ["asset-base"], "leak-dedup-left")
+        dedup_right = split_entry("leak-dedup-right", ["asset-exact"], "leak-dedup-right")
+        dedup_path = root / "leak-dedup-cluster.json"
+        dedup_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [dedup_left, dedup_right]}), encoding="utf-8")
+        dedup_output = AUDIT.split_records(AUDIT.load_split_manifest(dedup_path), output, train_ratio=0.5, calibration_ratio=0.5, locked_test_ratio=0.0)
+        dedup_components = {row["record_id"]: row["component_id"] for row in dedup_output["assignments"]}
+        assert dedup_components[dedup_left["record_id"]] == dedup_components[dedup_right["record_id"]]
+
+        sequence_entries = [
+            split_entry("leak-sequence-left", ["asset-seq-f0"], "leak-sequence-left", sequence_id="sequence-fixture", derivation_family_id=sequence_receipt["derivation_family_id"]),
+            split_entry("leak-sequence-right", ["asset-seq-f1"], "leak-sequence-right", sequence_id="sequence-fixture", derivation_family_id=sequence_receipt["derivation_family_id"]),
+        ]
+        sequence_path = root / "leak-sequence.json"
+        sequence_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": sequence_entries}), encoding="utf-8")
+        sequence_output = AUDIT.split_records(AUDIT.load_split_manifest(sequence_path), output, train_ratio=0.5, calibration_ratio=0.5, locked_test_ratio=0.0)
+        sequence_components = {row["record_id"]: row["component_id"] for row in sequence_output["assignments"]}
+        assert sequence_components[sequence_entries[0]["record_id"]] == sequence_components[sequence_entries[1]["record_id"]]
+
+        for mutation, expected in (
+            (lambda value: value.pop("source_shoot_id"), "missing_protected_id"),
+            (lambda value: value.__setitem__("rights_disposition", "unresolved"), "rights_not_admissible"),
+            (lambda value: value.__setitem__("review_status", "unreviewed"), "review_not_resolved"),
+            (lambda value: value.__setitem__("split", "train"), "preassigned_split_not_allowed"),
+        ):
+            mutated = copy.deepcopy(split_entries[0])
+            mutation(mutated)
+            mutation_path = root / f"bad-split-{expected}.json"
+            mutation_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [mutated]}), encoding="utf-8")
+            try:
+                AUDIT.load_split_manifest(mutation_path)
+            except AUDIT.AuditInputError as exc:
+                assert expected in str(exc), (expected, exc)
+            else:
+                raise AssertionError(f"split mutation {expected} was accepted")
+
+        duplicate_path = root / "duplicate-split-record.json"
+        duplicate_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [split_entries[0], copy.deepcopy(split_entries[0])]}), encoding="utf-8")
+        try:
+            AUDIT.load_split_manifest(duplicate_path)
+        except AUDIT.AuditInputError as exc:
+            assert "duplicate_record_id" in str(exc)
+        else:
+            raise AssertionError("duplicate split record ID was accepted")
+
+        bucket_conflict = copy.deepcopy(split_entries[0])
+        bucket_conflict["bucket"] = "organic"
+        bucket_conflict["source_kind"] = "synthetic_fixture"
+        bucket_path = root / "bucket-conflict.json"
+        bucket_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [bucket_conflict]}), encoding="utf-8")
+        try:
+            AUDIT.load_split_manifest(bucket_path)
+        except AUDIT.AuditInputError as exc:
+            assert "bucket_source_kind_conflict" in str(exc)
+        else:
+            raise AssertionError("bucket/source-kind conflict was accepted")
+
+        missing_cluster = copy.deepcopy(split_entries[0])
+        missing_cluster["asset_ids"] = ["asset-not-in-receipt"]
+        missing_cluster_path = root / "missing-cluster-asset.json"
+        missing_cluster_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [missing_cluster]}), encoding="utf-8")
+        try:
+            AUDIT.split_records(AUDIT.load_split_manifest(missing_cluster_path), output)
+        except AUDIT.AuditInputError as exc:
+            assert "asset_missing_from_cluster_receipt" in str(exc)
+        else:
+            raise AssertionError("asset absent from cluster receipt was accepted")
+
+        raw_path_entry = copy.deepcopy(split_entries[0])
+        raw_path_entry["media_path"] = "../outside.png"
+        raw_path_path = root / "raw-path-split.json"
+        raw_path_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [raw_path_entry]}), encoding="utf-8")
+        try:
+            AUDIT.load_split_manifest(raw_path_path)
+        except AUDIT.AuditInputError as exc:
+            assert "raw_media_reference_in_split_input" in str(exc)
+        else:
+            raise AssertionError("raw media path was accepted by split loader")
+
+        for bad_seed in (True, 1.5):
+            try:
+                AUDIT.split_records(split_records, output, seed=bad_seed)
+            except AUDIT.AuditInputError as exc:
+                assert "seed" in str(exc)
+            else:
+                raise AssertionError("invalid split seed was accepted")
+        try:
+            AUDIT.split_records(split_records, output, train_ratio=float("nan"))
+        except AUDIT.AuditInputError as exc:
+            assert "train_ratio" in str(exc)
+        else:
+            raise AssertionError("non-finite split ratio was accepted")
+
+        schema_extra = copy.deepcopy(split_output)
+        schema_extra["unexpected"] = True
+        try:
+            AUDIT.validate_split_output(schema_extra)
+        except AUDIT.AuditInputError as exc:
+            assert "split_schema_invalid" in str(exc)
+        else:
+            raise AssertionError("schema extra field was accepted")
+        schema_missing = copy.deepcopy(split_output)
+        del schema_missing["assignments"]
+        try:
+            AUDIT.validate_split_output(schema_missing)
+        except AUDIT.AuditInputError as exc:
+            assert "split_schema_invalid" in str(exc)
+        else:
+            raise AssertionError("schema missing field was accepted")
+        schema_wrong_type = copy.deepcopy(split_output)
+        schema_wrong_type["counts"]["component_count"] = True
+        try:
+            AUDIT.validate_split_output(schema_wrong_type)
+        except AUDIT.AuditInputError as exc:
+            assert "split_schema_invalid" in str(exc)
+        else:
+            raise AssertionError("schema bool-as-integer was accepted")
+        schema_nonfinite = copy.deepcopy(split_output)
+        schema_nonfinite["config"]["ratios"]["train"] = float("nan")
+        try:
+            AUDIT.validate_split_output(schema_nonfinite)
+        except AUDIT.AuditInputError as exc:
+            assert "non_finite_number" in str(exc)
+        else:
+            raise AssertionError("schema non-finite number was accepted")
+
+        print(
+            "M3-008 split seed=1 output_sha256=" + split_output["manifest_sha256"] +
+            " seed5_output_sha256=" + seed_five["manifest_sha256"] +
+            " cli_sha256=" + cli_sha256 +
+            " input_sha256=" + split_output["input"]["input_sha256"] +
+            " components=" + str(split_output["counts"]["component_count"]) +
+            " per_split=" + json.dumps(split_output["counts"]["per_split"], sort_keys=True, separators=(",", ":"))
+        )
+
     print(
         "PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated "
         "sequence_family input_order_independent malformed_rejected rights_required media_map_conflict "
-        "schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected"
+        "schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected "
+        "M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity "
+        "split_schema_negative_cases"
     )
 
 

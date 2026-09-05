@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shafin.example.invalid/schemas/camera-coach/v1/split-manifest-schema.json",
+  "schema_version": "v1.0.0",
+  "title": "Camera Coach protected split manifest",
+  "description": "Closed metadata-only M3-008 split receipt. Locked-test output contains only opaque record IDs and family hashes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "algorithm",
+    "config",
+    "input",
+    "components",
+    "assignments",
+    "counts",
+    "cross_split_leak_count",
+    "audit",
+    "manifest_sha256"
+  ],
+  "properties": {
+    "schema_id": {"const": "camera-split-manifest-v1"},
+    "schema_version": {"const": "v1.0.0"},
+    "algorithm": {"$ref": "#/$defs/algorithm"},
+    "config": {"$ref": "#/$defs/config"},
+    "input": {"$ref": "#/$defs/input"},
+    "components": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/component"}},
+    "assignments": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/assignment"}},
+    "counts": {"$ref": "#/$defs/counts"},
+    "cross_split_leak_count": {"type": "integer", "minimum": 0, "const": 0},
+    "audit": {"$ref": "#/$defs/audit"},
+    "manifest_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "family_hash": {"type": "string", "pattern": "^fh_[0-9a-f]{16}$"},
+    "component_id": {"type": "string", "pattern": "^csp_[0-9a-f]{16}$"},
+    "split": {"enum": ["train", "calibration", "locked_test"]},
+    "bucket": {"enum": ["organic", "synthetic"]},
+    "category": {"enum": ["source_shoot", "scene", "person", "location", "time", "derivation", "sequence", "take", "device", "dedup_cluster"]},
+    "algorithm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm_id", "assignment", "splits", "buckets", "protected_categories", "locked_test_disclosure"],
+      "properties": {
+        "algorithm_id": {"const": "camera-split-v1"},
+        "assignment": {"const": "seeded_largest_remainder_v1"},
+        "splits": {"const": ["train", "calibration", "locked_test"]},
+        "buckets": {"const": ["organic", "synthetic"]},
+        "protected_categories": {
+          "const": ["source_shoot", "scene", "person", "location", "time", "derivation", "sequence", "take", "device", "dedup_cluster"]
+        },
+        "locked_test_disclosure": {"const": "opaque_record_ids_and_family_hashes_only"}
+      }
+    },
+    "ratios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "calibration", "locked_test"],
+      "properties": {
+        "train": {"type": "number", "minimum": 0, "maximum": 1},
+        "calibration": {"type": "number", "minimum": 0, "maximum": 1},
+        "locked_test": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "split_targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "calibration", "locked_test"],
+      "properties": {
+        "train": {"type": "integer", "minimum": 0},
+        "calibration": {"type": "integer", "minimum": 0},
+        "locked_test": {"type": "integer", "minimum": 0}
+      }
+    },
+    "bucket_targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organic", "synthetic"],
+      "properties": {
+        "organic": {"$ref": "#/$defs/split_targets"},
+        "synthetic": {"$ref": "#/$defs/split_targets"}
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seed", "ratios", "bucket_target_component_counts", "config_sha256"],
+      "properties": {
+        "seed": {"type": "integer"},
+        "ratios": {"$ref": "#/$defs/ratios"},
+        "bucket_target_component_counts": {"$ref": "#/$defs/bucket_targets"},
+        "config_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["records_manifest_schema_id", "record_count", "cluster_count", "records_manifest_sha256", "clusters_receipt_sha256", "input_sha256"],
+      "properties": {
+        "records_manifest_schema_id": {"const": "camera-split-input-v1"},
+        "record_count": {"type": "integer", "minimum": 1},
+        "cluster_count": {"type": "integer", "minimum": 1},
+        "records_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "clusters_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "input_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "family_hash_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "hash"],
+      "properties": {
+        "category": {"$ref": "#/$defs/category"},
+        "hash": {"$ref": "#/$defs/family_hash"}
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_id", "split", "bucket", "record_ids", "record_count", "protected_family_hashes", "family_count", "dedup_cluster_count", "sequence_count"],
+      "properties": {
+        "component_id": {"$ref": "#/$defs/component_id"},
+        "split": {"$ref": "#/$defs/split"},
+        "bucket": {"$ref": "#/$defs/bucket"},
+        "record_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "record_count": {"type": "integer", "minimum": 1},
+        "protected_family_hashes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/family_hash_entry"}},
+        "family_count": {"type": "integer", "minimum": 0},
+        "dedup_cluster_count": {"type": "integer", "minimum": 0},
+        "sequence_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_id", "component_id", "split", "bucket"],
+      "properties": {
+        "record_id": {"$ref": "#/$defs/id"},
+        "component_id": {"$ref": "#/$defs/component_id"},
+        "split": {"$ref": "#/$defs/split"},
+        "bucket": {"$ref": "#/$defs/bucket"}
+      }
+    },
+    "bucket_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_count", "record_count"],
+      "properties": {
+        "component_count": {"type": "integer", "minimum": 0},
+        "record_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "per_split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_count", "record_count", "buckets"],
+      "properties": {
+        "component_count": {"type": "integer", "minimum": 0},
+        "record_count": {"type": "integer", "minimum": 0},
+        "buckets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["organic", "synthetic"],
+          "properties": {
+            "organic": {"$ref": "#/$defs/bucket_counts"},
+            "synthetic": {"$ref": "#/$defs/bucket_counts"}
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_count", "record_count", "family_counts", "dedup_cluster_count", "sequence_count", "per_split"],
+      "properties": {
+        "component_count": {"type": "integer", "minimum": 1},
+        "record_count": {"type": "integer", "minimum": 1},
+        "family_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_shoot", "scene", "person", "location", "time", "derivation", "sequence", "take", "device", "dedup_cluster"],
+          "properties": {
+            "source_shoot": {"type": "integer", "minimum": 0},
+            "scene": {"type": "integer", "minimum": 0},
+            "person": {"type": "integer", "minimum": 0},
+            "location": {"type": "integer", "minimum": 0},
+            "time": {"type": "integer", "minimum": 0},
+            "derivation": {"type": "integer", "minimum": 0},
+            "sequence": {"type": "integer", "minimum": 0},
+            "take": {"type": "integer", "minimum": 0},
+            "device": {"type": "integer", "minimum": 0},
+            "dedup_cluster": {"type": "integer", "minimum": 0}
+          }
+        },
+        "dedup_cluster_count": {"type": "integer", "minimum": 0},
+        "sequence_count": {"type": "integer", "minimum": 0},
+        "per_split": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["train", "calibration", "locked_test"],
+          "properties": {
+            "train": {"$ref": "#/$defs/per_split"},
+            "calibration": {"$ref": "#/$defs/per_split"},
+            "locked_test": {"$ref": "#/$defs/per_split"}
+          }
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "input_order_independent", "changed_seed_integrity", "locked_test_labels_exposed", "locked_test_content_exposed", "candidate_identity_leakage", "raw_media_copied_to_git"],
+      "properties": {
+        "status": {"const": "pass"},
+        "input_order_independent": {"const": true},
+        "changed_seed_integrity": {"const": true},
+        "locked_test_labels_exposed": {"const": false},
+        "locked_test_content_exposed": {"const": false},
+        "candidate_identity_leakage": {"const": false},
+        "raw_media_copied_to_git": {"const": false}
+      }
+    }
+  }
+}

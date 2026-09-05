@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Deterministic Camera Coach exact/near-duplicate audit (M3-007).
+"""Deterministic Camera Coach dedup audit and protected split tooling (M3-007/M3-008).
 
 The audit consumes a small external-media manifest. It never copies media and
 never writes source paths, labels, or candidate/model fields to the cluster
-receipt. The local ``embedding`` is intentionally a deterministic image
+or split receipt. The local ``embedding`` is intentionally a deterministic image
 descriptor, not a learned model; a model-backed descriptor is an upgrade
-boundary for a future versioned contract.
+boundary for a future versioned contract. Split inputs are metadata-only and
+assign indivisible protected-family components to train, calibration, and
+locked_test without exposing locked labels or content.
 """
 
 from __future__ import annotations
@@ -28,10 +30,28 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "datasets/camera-coach/v1/cluster-schema.json"
+SPLIT_SCHEMA_PATH = ROOT / "datasets/camera-coach/v1/split-manifest-schema.json"
 SCHEMA_ID = "camera-dedup-clusters-v1"
 INPUT_SCHEMA_ID = "camera-dedup-input-v1"
+SPLIT_INPUT_SCHEMA_ID = "camera-split-input-v1"
+SPLIT_SCHEMA_ID = "camera-split-manifest-v1"
 SCHEMA_VERSION = "v1.0.0"
 ALGORITHM_ID = "camera-dedup-v1"
+SPLIT_ALGORITHM_ID = "camera-split-v1"
+SPLITS = ("train", "calibration", "locked_test")
+BUCKETS = ("organic", "synthetic")
+PROTECTED_CATEGORIES = (
+    "source_shoot",
+    "scene",
+    "person",
+    "location",
+    "time",
+    "derivation",
+    "sequence",
+    "take",
+    "device",
+    "dedup_cluster",
+)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 PHASH_SIZE = 32
@@ -52,6 +72,20 @@ FORBIDDEN_FIELDS = {
 }
 ALLOWED_RIGHTS = {"approved", "fixture_only"}
 CAMERA_RECORD_SCHEMA_IDS = {"camera-label-v1", "camera-temporal-v1", "camera-episode-v1"}
+RESOLVED_REVIEW_STATUSES = {"dual_reviewed", "adjudicated", "resolved", "resolved_human_review", "approved", "reviewed"}
+SPLIT_PATH_FIELDS = {
+    "path",
+    "media_path",
+    "file",
+    "asset_path",
+    "raw_storage",
+    "storage",
+    "storage_path",
+    "uri",
+    "url",
+    "media_uri",
+    "asset_uri",
+}
 
 
 class AuditInputError(ValueError):
@@ -69,6 +103,21 @@ class MediaItem:
     frame_ordinals: tuple[int, ...] = ()
     derivation_family_ids: tuple[str, ...] = ()
     declared_sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class SplitRecord:
+    """Metadata-only record projection consumed by the M3-008 splitter."""
+
+    record_id: str
+    asset_ids: tuple[str, ...]
+    bucket: str
+    families: tuple[tuple[str, tuple[str, ...]], ...]
+    rights_disposition: str
+    review_status: str
+
+    def family_map(self) -> dict[str, tuple[str, ...]]:
+        return dict(self.families)
 
 
 @dataclass
@@ -321,7 +370,7 @@ def _validate_header(header: dict[str, Any], label: str) -> None:
     schema_id = header.get("schema_id")
     if schema_id is not None and (
         not isinstance(schema_id, str)
-        or schema_id not in ({INPUT_SCHEMA_ID} | CAMERA_RECORD_SCHEMA_IDS)
+        or schema_id not in ({INPUT_SCHEMA_ID, SPLIT_INPUT_SCHEMA_ID} | CAMERA_RECORD_SCHEMA_IDS)
     ):
         raise AuditInputError(f"invalid_schema_id: {label}.schema_id")
     version = header.get("manifest_version", header.get("schema_version"))
@@ -651,6 +700,615 @@ def load_manifest(path: Path, *, media_root: Path | None = None, media_manifest:
     return sorted(_resolve_sequence_families(frozen), key=lambda item: item.asset_id)
 
 
+def _split_no_media_paths(value: Any, path: str = "manifest") -> None:
+    """Reject raw-media references in the metadata-only split projection."""
+
+    if isinstance(value, dict):
+        for key, child in value.items():
+            lowered = key.lower() if isinstance(key, str) else ""
+            if lowered in SPLIT_PATH_FIELDS or lowered.endswith("_path"):
+                if lowered in {"raw_storage", "storage"} and child == "outside_git":
+                    _split_no_media_paths(child, f"{path}.{key}")
+                    continue
+                raise AuditInputError(f"raw_media_reference_in_split_input: {path}.{key}")
+            _split_no_media_paths(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _split_no_media_paths(child, f"{path}[{index}]")
+
+
+def _split_consistent_field(
+    entry: dict[str, Any],
+    key: str,
+    *nested: dict[str, Any] | None,
+) -> Any:
+    values = [entry[key]] if key in entry else []
+    values.extend(source[key] for source in nested if isinstance(source, dict) and key in source)
+    if not values:
+        return None
+    first = values[0]
+    if any(value != first for value in values[1:]):
+        raise AuditInputError(f"split_field_conflict: {key}")
+    return first
+
+
+def _split_id_values(value: Any, field_name: str, *, required: bool = True) -> tuple[str, ...]:
+    if value is None:
+        if required:
+            raise AuditInputError(f"missing_protected_id: {field_name}")
+        return ()
+    if isinstance(value, str):
+        return (_ensure_id(value, field_name),)
+    if not isinstance(value, list):
+        raise AuditInputError(f"invalid_id_list: {field_name}")
+    if not value and required:
+        raise AuditInputError(f"missing_protected_id: {field_name}")
+    result = tuple(sorted({_ensure_id(item, field_name) for item in value}))
+    if len(result) != len(value):
+        raise AuditInputError(f"duplicate_id: {field_name}")
+    return result
+
+
+def _split_asset_values(entry: dict[str, Any], provenance: dict[str, Any] | None, capture: dict[str, Any] | None) -> tuple[str, ...]:
+    values: list[Any] = []
+    for source in (entry, provenance, capture):
+        if not isinstance(source, dict):
+            continue
+        if "asset_id" in source:
+            values.append(source["asset_id"])
+        if "asset_ids" in source:
+            asset_ids = source["asset_ids"]
+            if not isinstance(asset_ids, list):
+                raise AuditInputError("invalid_asset_ids")
+            if len({item for item in asset_ids if isinstance(item, str)}) != len(asset_ids):
+                raise AuditInputError("duplicate_asset_id")
+            values.extend(asset_ids)
+        if "source_asset_ids" in source:
+            source_asset_ids = source["source_asset_ids"]
+            if not isinstance(source_asset_ids, list):
+                raise AuditInputError("invalid_source_asset_ids")
+            if len({item for item in source_asset_ids if isinstance(item, str)}) != len(source_asset_ids):
+                raise AuditInputError("duplicate_asset_id")
+            values.extend(source_asset_ids)
+    media = entry.get("media")
+    if isinstance(media, dict):
+        if "asset_id" in media:
+            values.append(media["asset_id"])
+        if "asset_ids" in media:
+            asset_ids = media["asset_ids"]
+            if not isinstance(asset_ids, list):
+                raise AuditInputError("invalid_asset_ids")
+            if len({item for item in asset_ids if isinstance(item, str)}) != len(asset_ids):
+                raise AuditInputError("duplicate_asset_id")
+            values.extend(asset_ids)
+    sequence = entry.get("sequence")
+    if isinstance(sequence, dict):
+        frames = sequence.get("frames")
+        if frames is not None:
+            if not isinstance(frames, list) or not frames:
+                raise AuditInputError("invalid_sequence_frames")
+            frame_asset_ids_seen: set[str] = set()
+            for frame in frames:
+                if not isinstance(frame, dict):
+                    raise AuditInputError("invalid_sequence_frame")
+                if "asset_id" in frame:
+                    frame_asset_id = _ensure_id(frame["asset_id"], "asset_id")
+                    if frame_asset_id in frame_asset_ids_seen:
+                        raise AuditInputError("duplicate_asset_id")
+                    frame_asset_ids_seen.add(frame_asset_id)
+                    values.append(frame_asset_id)
+                frame_asset_ids = frame.get("asset_ids")
+                if frame_asset_ids is not None:
+                    if not isinstance(frame_asset_ids, list):
+                        raise AuditInputError("invalid_frame_asset_ids")
+                    if len({item for item in frame_asset_ids if isinstance(item, str)}) != len(frame_asset_ids):
+                        raise AuditInputError("duplicate_asset_id")
+                    normalized_frame_assets = [_ensure_id(item, "asset_id") for item in frame_asset_ids]
+                    if frame_asset_ids_seen.intersection(normalized_frame_assets):
+                        raise AuditInputError("duplicate_asset_id")
+                    frame_asset_ids_seen.update(normalized_frame_assets)
+                    values.extend(normalized_frame_assets)
+                ordinal = frame.get("ordinal")
+                if ordinal is not None and (type(ordinal) is not int or ordinal < 0):
+                    raise AuditInputError("invalid_frame_ordinal")
+    if not values:
+        raise AuditInputError("missing_asset_id")
+    result = tuple(sorted({_ensure_id(value, "asset_id") for value in values}))
+    return result
+
+
+def _split_review_status(entry: dict[str, Any]) -> str:
+    review = entry.get("review")
+    if review is not None and not isinstance(review, dict):
+        raise AuditInputError("invalid_review")
+    status = _split_consistent_field(entry, "review_status", review)
+    nested_status = review.get("status") if isinstance(review, dict) else None
+    if status is not None and nested_status is not None and status != nested_status:
+        raise AuditInputError("review_status_conflict")
+    if status is None:
+        status = nested_status
+    if not isinstance(status, str) or status not in RESOLVED_REVIEW_STATUSES:
+        raise AuditInputError("review_not_resolved")
+    decisions: list[Any] = []
+    for source in (entry, review):
+        if isinstance(source, dict):
+            for key in ("decision", "outcome", "adjudication"):
+                if key in source:
+                    decisions.append(source[key])
+    for decision in decisions:
+        if not isinstance(decision, str) or decision not in {"accept", "accepted", "approved", "pass", "resolved"}:
+            raise AuditInputError("review_not_resolved")
+    return status
+
+
+def _split_record_entry(entry: dict[str, Any]) -> SplitRecord:
+    if not isinstance(entry, dict):
+        raise AuditInputError("invalid_split_record")
+    record_id = _ensure_id(entry.get("record_id"), "record_id")
+    if "split" in entry and entry["split"] not in (None, ""):
+        raise AuditInputError("preassigned_split_not_allowed")
+    provenance = entry.get("provenance")
+    capture = entry.get("capture")
+    sequence = entry.get("sequence")
+    if provenance is not None and not isinstance(provenance, dict):
+        raise AuditInputError("invalid_provenance")
+    if capture is not None and not isinstance(capture, dict):
+        raise AuditInputError("invalid_capture")
+    if sequence is not None and not isinstance(sequence, dict):
+        raise AuditInputError("invalid_sequence")
+
+    rights = _split_consistent_field(entry, "rights_disposition", provenance)
+    if rights is None:
+        raise AuditInputError("missing_rights_disposition")
+    if not isinstance(rights, str) or rights not in ALLOWED_RIGHTS:
+        raise AuditInputError("rights_not_admissible")
+    source_kind = _split_consistent_field(entry, "source_kind", provenance)
+    if source_kind is not None and not isinstance(source_kind, str):
+        raise AuditInputError("invalid_source_kind")
+    bucket = _split_consistent_field(entry, "bucket")
+    if bucket is None:
+        bucket = _split_consistent_field(entry, "source_bucket")
+    source_bucket = {
+        "synthetic_fixture": "synthetic",
+        "synthetic": "synthetic",
+        "fixture": "synthetic",
+        "organic": "organic",
+        "original": "organic",
+        "original_still": "organic",
+        "captured": "organic",
+    }
+    if bucket is None and isinstance(source_kind, str):
+        bucket = source_bucket.get(source_kind)
+    if not isinstance(bucket, str) or bucket not in BUCKETS:
+        raise AuditInputError("invalid_bucket")
+    if isinstance(source_kind, str) and source_kind in source_bucket and source_bucket[source_kind] != bucket:
+        raise AuditInputError("bucket_source_kind_conflict")
+
+    families: dict[str, tuple[str, ...]] = {}
+    family_sources = {
+        "source_shoot": ("source_shoot_id", (provenance, capture)),
+        "scene": ("scene_family_id", (capture,)),
+        "person": ("person_family_ids", (capture,)),
+        "location": ("location_family_id", (capture,)),
+        "time": ("time_family_id", (capture,)),
+        "derivation": ("derivation_family_id", (provenance,)),
+    }
+    for category, (field_name, nested_sources) in family_sources.items():
+        value = _split_consistent_field(entry, field_name, *nested_sources)
+        # M3-007 may derive the family for a temporal sequence; split_records
+        # resolves that one narrow omission against the cluster receipt.
+        required = category != "derivation" or sequence is None
+        families[category] = _split_id_values(value, field_name, required=required)
+    for category, field_name in (("take", "take_family_id"), ("device", "device_family_id")):
+        value = _split_consistent_field(entry, field_name, capture)
+        families[category] = _split_id_values(value, field_name, required=False)
+
+    sequence_id = _split_consistent_field(entry, "sequence_id", sequence, capture)
+    sequence_ids = _split_id_values(sequence_id, "sequence_id", required=False)
+    if sequence is not None:
+        sequence_ids = _split_id_values(sequence.get("sequence_id", sequence_id), "sequence.sequence_id")
+        sequence_family = sequence.get("derivation_family_id")
+        if sequence_family is not None:
+            sequence_family = _ensure_id(sequence_family, "sequence.derivation_family_id")
+            declared_derivation = families.get("derivation", ())
+            if declared_derivation and declared_derivation != (sequence_family,):
+                raise AuditInputError("sequence_derivation_family_conflict")
+            families["derivation"] = (sequence_family,)
+        frame_families: set[str] = set()
+        frame_ordinals: set[int] = set()
+        frames = sequence.get("frames")
+        if frames is not None:
+            for frame in frames:
+                frame_sequence_id = frame.get("sequence_id") if isinstance(frame, dict) else None
+                if frame_sequence_id is not None and frame_sequence_id != sequence_ids[0]:
+                    raise AuditInputError("asset_sequence_conflict")
+                frame_ordinal = frame.get("ordinal") if isinstance(frame, dict) else None
+                if frame_ordinal is not None:
+                    if type(frame_ordinal) is not int or frame_ordinal < 0 or frame_ordinal in frame_ordinals:
+                        raise AuditInputError("invalid_frame_ordinal")
+                    frame_ordinals.add(frame_ordinal)
+                frame_family = frame.get("derivation_family_id") if isinstance(frame, dict) else None
+                if frame_family is not None:
+                    frame_families.add(_ensure_id(frame_family, "frame.derivation_family_id"))
+            if len(frame_families) > 1:
+                raise AuditInputError("sequence_derivation_family_conflict")
+            if frame_families:
+                frame_family = next(iter(frame_families))
+                declared_derivation = families.get("derivation", ())
+                if declared_derivation and declared_derivation != (frame_family,):
+                    raise AuditInputError("sequence_derivation_family_conflict")
+                families["derivation"] = (frame_family,)
+    record_type = entry.get("record_type")
+    if record_type is not None and not isinstance(record_type, str):
+        raise AuditInputError("invalid_record_type")
+    is_temporal = sequence is not None or bool(sequence_ids) or record_type in {"temporal", "episode"}
+    if is_temporal and not sequence_ids:
+        raise AuditInputError("missing_sequence_id")
+    families["sequence"] = sequence_ids
+    assets = _split_asset_values(entry, provenance, capture)
+    return SplitRecord(
+        record_id=record_id,
+        asset_ids=assets,
+        bucket=bucket,
+        families=tuple((category, values) for category, values in sorted(families.items()) if values),
+        rights_disposition=rights,
+        review_status=_split_review_status(entry),
+    )
+
+
+def load_split_manifest(path: Path) -> list[SplitRecord]:
+    """Load a metadata-only, unassigned M3-008 record projection."""
+
+    path = Path(path)
+    payload = _read_json_or_jsonl(path)
+    _reject_forbidden(payload, str(path))
+    _split_no_media_paths(payload, str(path))
+    entries, header = _container_entries(payload, str(path))
+    _validate_header(header, str(path))
+    schema_id = header.get("schema_id")
+    if schema_id is not None and schema_id not in ({SPLIT_INPUT_SCHEMA_ID} | CAMERA_RECORD_SCHEMA_IDS):
+        raise AuditInputError(f"invalid_split_schema_id: {path}")
+    records: list[SplitRecord] = []
+    for entry in entries:
+        if entry.get("record_count") is not None and "record_id" not in entry:
+            _validate_header(entry, f"{path}:header")
+            continue
+        records.append(_split_record_entry(entry))
+    if not records:
+        raise AuditInputError("empty_split_manifest")
+    record_ids = [record.record_id for record in records]
+    if len(set(record_ids)) != len(record_ids):
+        raise AuditInputError("duplicate_record_id")
+    return sorted(records, key=lambda record: record.record_id)
+
+
+load_split_records = load_split_manifest
+
+
+def _canonical_split_records(records: Iterable[SplitRecord]) -> list[dict[str, Any]]:
+    return [
+        {
+            "record_id": record.record_id,
+            "asset_ids": list(record.asset_ids),
+            "bucket": record.bucket,
+            "families": {category: list(values) for category, values in record.families},
+            "rights_disposition": record.rights_disposition,
+            "review_status": record.review_status,
+        }
+        for record in sorted(records, key=lambda item: item.record_id)
+    ]
+
+
+def _cluster_receipt_index(cluster_output: dict[str, Any]) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+    validate_cluster_output(cluster_output)
+    if cluster_output.get("schema_id") != SCHEMA_ID:
+        raise AuditInputError("invalid_cluster_receipt_schema_id")
+    asset_to_cluster: dict[str, str] = {}
+    cluster_ids: set[str] = set()
+    for cluster in cluster_output["clusters"]:
+        cluster_id = cluster["cluster_id"]
+        if cluster_id in cluster_ids:
+            raise AuditInputError(f"duplicate_cluster_id: {cluster_id}")
+        cluster_ids.add(cluster_id)
+        asset_ids = list(cluster["asset_ids"])
+        member_ids = [member["asset_id"] for member in cluster["members"]]
+        if sorted(asset_ids) != sorted(member_ids) or len(set(asset_ids)) != len(asset_ids):
+            raise AuditInputError(f"cluster_membership_conflict: {cluster_id}")
+        for asset_id in asset_ids:
+            if asset_id in asset_to_cluster:
+                raise AuditInputError(f"asset_cluster_conflict: {asset_id}")
+            asset_to_cluster[asset_id] = cluster_id
+    sequence_index: dict[str, tuple[str, str]] = {}
+    for sequence in cluster_output["sequence_families"]:
+        sequence_id = sequence["sequence_id"]
+        if sequence_id in sequence_index:
+            raise AuditInputError(f"duplicate_sequence_family: {sequence_id}")
+        family_ids = sequence["derivation_family_ids"]
+        if len(family_ids) != 1 or sequence["derivation_family_id"] != family_ids[0]:
+            raise AuditInputError(f"sequence_derivation_family_conflict: {sequence_id}")
+        sequence_assets = sequence["asset_ids"]
+        if not sequence_assets or any(asset_id not in asset_to_cluster for asset_id in sequence_assets):
+            raise AuditInputError(f"sequence_asset_missing: {sequence_id}")
+        cluster_id = sequence["cluster_id"]
+        if any(asset_to_cluster[asset_id] != cluster_id for asset_id in sequence_assets):
+            raise AuditInputError(f"sequence_family_split: {sequence_id}")
+        sequence_index[sequence_id] = (cluster_id, family_ids[0])
+    return asset_to_cluster, sequence_index
+
+
+def _split_family_hash(category: str, value: str) -> str:
+    return "fh_" + hashlib.sha256(f"{SPLIT_ALGORITHM_ID}|{category}|{value}".encode("utf-8")).hexdigest()[:16]
+
+
+def _split_component_id(record_ids: Iterable[str]) -> str:
+    canonical = "|".join(sorted(record_ids))
+    return "csp_" + hashlib.sha256(f"{SPLIT_ALGORITHM_ID}|{canonical}".encode("utf-8")).hexdigest()[:16]
+
+
+def _split_targets(count: int, ratios: dict[str, float]) -> dict[str, int]:
+    bases = {split: math.floor(count * ratios[split]) for split in SPLITS}
+    remainder = count - sum(bases.values())
+    fractions = sorted(
+        ((count * ratios[split] - bases[split], index, split) for index, split in enumerate(SPLITS)),
+        key=lambda item: (-item[0], item[1]),
+    )
+    for _, _, split in fractions[:remainder]:
+        bases[split] += 1
+    return bases
+
+
+def split_records(
+    records: list[SplitRecord],
+    cluster_output: dict[str, Any],
+    *,
+    seed: int = 0,
+    train_ratio: float = 0.8,
+    calibration_ratio: float = 0.1,
+    locked_test_ratio: float = 0.1,
+) -> dict[str, Any]:
+    """Assign indivisible protected-family components deterministically."""
+
+    seed = _ensure_exact_int(seed, "seed")
+    ratio_values = {
+        "train": _ensure_finite_number(train_ratio, "train_ratio"),
+        "calibration": _ensure_finite_number(calibration_ratio, "calibration_ratio"),
+        "locked_test": _ensure_finite_number(locked_test_ratio, "locked_test_ratio"),
+    }
+    if any(value < 0.0 or value > 1.0 for value in ratio_values.values()):
+        raise AuditInputError("invalid_split_ratio")
+    if not math.isclose(sum(ratio_values.values()), 1.0, rel_tol=0.0, abs_tol=1e-9):
+        raise AuditInputError("split_ratios_must_sum_to_one")
+    if not isinstance(records, list) or not records:
+        raise AuditInputError("empty_split_manifest")
+    if any(not isinstance(record, SplitRecord) for record in records):
+        raise AuditInputError("invalid_split_record_type")
+    records = sorted(records, key=lambda record: record.record_id)
+    if len({record.record_id for record in records}) != len(records):
+        raise AuditInputError("duplicate_record_id")
+    asset_to_cluster, sequence_index = _cluster_receipt_index(cluster_output)
+    record_families: list[dict[str, tuple[str, ...]]] = []
+    record_clusters: list[tuple[str, ...]] = []
+    for record in records:
+        family_map = record.family_map()
+        for category in ("source_shoot", "scene", "person", "location", "time"):
+            if not family_map.get(category):
+                raise AuditInputError(f"missing_protected_id: {category}")
+        asset_clusters: set[str] = set()
+        for asset_id in record.asset_ids:
+            cluster_id = asset_to_cluster.get(asset_id)
+            if cluster_id is None:
+                raise AuditInputError(f"asset_missing_from_cluster_receipt: {asset_id}")
+            asset_clusters.add(cluster_id)
+        sequence_ids = family_map.get("sequence", ())
+        resolved_families = dict(family_map)
+        for sequence_id in sequence_ids:
+            sequence = sequence_index.get(sequence_id)
+            if sequence is None:
+                raise AuditInputError(f"sequence_missing_from_cluster_receipt: {sequence_id}")
+            sequence_cluster, sequence_family = sequence
+            if sequence_cluster not in asset_clusters:
+                raise AuditInputError(f"sequence_asset_cluster_conflict: {sequence_id}")
+            declared_derivation = resolved_families.get("derivation", ())
+            if declared_derivation and declared_derivation != (sequence_family,):
+                raise AuditInputError(f"sequence_derivation_family_conflict: {sequence_id}")
+            resolved_families["derivation"] = (sequence_family,)
+        if not resolved_families.get("derivation"):
+            raise AuditInputError("missing_protected_id: derivation_family_id")
+        record_families.append(resolved_families)
+        record_clusters.append(tuple(sorted(asset_clusters)))
+
+    union_find = _UnionFind(len(records))
+    family_owner: dict[tuple[str, str], int] = {}
+    for index, (families, cluster_ids) in enumerate(zip(record_families, record_clusters)):
+        keys = [
+            (category, value)
+            for category, values in families.items()
+            for value in values
+            if category in PROTECTED_CATEGORIES
+        ]
+        keys.extend(("dedup_cluster", cluster_id) for cluster_id in cluster_ids)
+        for key in keys:
+            previous = family_owner.get(key)
+            if previous is not None:
+                union_find.union(index, previous)
+            else:
+                family_owner[key] = index
+
+    grouped: dict[int, list[int]] = {}
+    for index in range(len(records)):
+        grouped.setdefault(union_find.find(index), []).append(index)
+    components: list[dict[str, Any]] = []
+    for indexes in grouped.values():
+        indexes.sort()
+        buckets = {records[index].bucket for index in indexes}
+        if len(buckets) != 1:
+            raise AuditInputError("bucket_component_conflict")
+        bucket = next(iter(buckets))
+        component_families: dict[str, set[str]] = {category: set() for category in PROTECTED_CATEGORIES}
+        cluster_ids: set[str] = set()
+        sequence_ids: set[str] = set()
+        for index in indexes:
+            for category, values in record_families[index].items():
+                component_families.setdefault(category, set()).update(values)
+            cluster_ids.update(record_clusters[index])
+            sequence_ids.update(record_families[index].get("sequence", ()))
+        component_families["dedup_cluster"].update(cluster_ids)
+        record_ids = tuple(sorted(records[index].record_id for index in indexes))
+        family_hashes = [
+            {"category": category, "hash": _split_family_hash(category, value)}
+            for category in PROTECTED_CATEGORIES
+            for value in sorted(component_families.get(category, set()))
+        ]
+        components.append(
+            {
+                "component_id": _split_component_id(record_ids),
+                "bucket": bucket,
+                "record_ids": list(record_ids),
+                "record_count": len(record_ids),
+                "protected_family_hashes": family_hashes,
+                "family_count": len(family_hashes),
+                "dedup_cluster_count": len(cluster_ids),
+                "sequence_count": len(sequence_ids),
+                "_indexes": indexes,
+            }
+        )
+    components.sort(key=lambda component: component["component_id"])
+    ratios = {split: float(ratio_values[split]) for split in SPLITS}
+    targets = {bucket: _split_targets(sum(component["bucket"] == bucket for component in components), ratios) for bucket in BUCKETS}
+    assigned: dict[str, str] = {}
+    for bucket in BUCKETS:
+        bucket_components = [component for component in components if component["bucket"] == bucket]
+        bucket_components.sort(
+            key=lambda component: (
+                hashlib.sha256(
+                    f"{SPLIT_ALGORITHM_ID}|{seed}|{bucket}|{component['component_id']}".encode("utf-8")
+                ).hexdigest(),
+                component["component_id"],
+            )
+        )
+        offset = 0
+        for split in SPLITS:
+            for component in bucket_components[offset : offset + targets[bucket][split]]:
+                assigned[component["component_id"]] = split
+            offset += targets[bucket][split]
+
+    for component in components:
+        split = assigned[component["component_id"]]
+        component["split"] = split
+        component.pop("_indexes")
+    assignment_rows: list[dict[str, str]] = []
+    for component in components:
+        for record_id in component["record_ids"]:
+            assignment_rows.append(
+                {
+                    "record_id": record_id,
+                    "component_id": component["component_id"],
+                    "split": component["split"],
+                    "bucket": component["bucket"],
+                }
+            )
+    assignment_rows.sort(key=lambda row: row["record_id"])
+
+    split_family_owners: dict[tuple[str, str], set[str]] = {}
+    for index, families in enumerate(record_families):
+        component_id = next(
+            component["component_id"]
+            for component in components
+            if records[index].record_id in component["record_ids"]
+        )
+        split = assigned[component_id]
+        for category, values in families.items():
+            for value in values:
+                split_family_owners.setdefault((category, value), set()).add(split)
+        for cluster_id in record_clusters[index]:
+            split_family_owners.setdefault(("dedup_cluster", cluster_id), set()).add(split)
+    cross_split_leak_count = sum(len(splits) > 1 for splits in split_family_owners.values())
+    if cross_split_leak_count:
+        raise AuditInputError("cross_split_leak_detected")
+
+    per_split: dict[str, dict[str, Any]] = {}
+    for split in SPLITS:
+        split_components = [component for component in components if component["split"] == split]
+        per_split[split] = {
+            "component_count": len(split_components),
+            "record_count": sum(component["record_count"] for component in split_components),
+            "buckets": {
+                bucket: {
+                    "component_count": sum(component["bucket"] == bucket for component in split_components),
+                    "record_count": sum(component["record_count"] for component in split_components if component["bucket"] == bucket),
+                }
+                for bucket in BUCKETS
+            },
+        }
+    family_counts = {
+        category: len({value for families in record_families for value in families.get(category, ())})
+        for category in PROTECTED_CATEGORIES
+    }
+    family_counts["dedup_cluster"] = len({cluster_id for cluster_ids in record_clusters for cluster_id in cluster_ids})
+    config = {
+        "seed": seed,
+        "ratios": ratios,
+        "bucket_target_component_counts": targets,
+    }
+    config_sha256 = _json_digest(config)
+    canonical_records = _canonical_split_records(records)
+    records_manifest_sha256 = _json_digest(canonical_records)
+    clusters_receipt_sha256 = _json_digest(cluster_output)
+    input_sha256 = _json_digest(
+        {
+            "records_manifest_sha256": records_manifest_sha256,
+            "clusters_receipt_sha256": clusters_receipt_sha256,
+        }
+    )
+    output = {
+        "schema_id": SPLIT_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION,
+        "algorithm": {
+            "algorithm_id": SPLIT_ALGORITHM_ID,
+            "assignment": "seeded_largest_remainder_v1",
+            "splits": list(SPLITS),
+            "buckets": list(BUCKETS),
+            "protected_categories": list(PROTECTED_CATEGORIES),
+            "locked_test_disclosure": "opaque_record_ids_and_family_hashes_only",
+        },
+        "config": {**config, "config_sha256": config_sha256},
+        "input": {
+            "records_manifest_schema_id": SPLIT_INPUT_SCHEMA_ID,
+            "record_count": len(records),
+            "cluster_count": len(cluster_output["clusters"]),
+            "records_manifest_sha256": records_manifest_sha256,
+            "clusters_receipt_sha256": clusters_receipt_sha256,
+            "input_sha256": input_sha256,
+        },
+        "components": components,
+        "assignments": assignment_rows,
+        "counts": {
+            "component_count": len(components),
+            "record_count": len(records),
+            "family_counts": family_counts,
+            "dedup_cluster_count": len({cluster_id for cluster_ids in record_clusters for cluster_id in cluster_ids}),
+            "sequence_count": len({sequence_id for families in record_families for sequence_id in families.get("sequence", ())}),
+            "per_split": per_split,
+        },
+        "cross_split_leak_count": cross_split_leak_count,
+        "audit": {
+            "status": "pass",
+            "input_order_independent": True,
+            "changed_seed_integrity": True,
+            "locked_test_labels_exposed": False,
+            "locked_test_content_exposed": False,
+            "candidate_identity_leakage": False,
+            "raw_media_copied_to_git": False,
+        },
+    }
+    output["manifest_sha256"] = _json_digest(output)
+    validate_split_output(output)
+    return output
+
+
+build_split_manifest = split_records
+
+
 def _feature(item: MediaItem) -> _Feature:
     actual_sha = sha256_file(item.path)
     if item.declared_sha256 is not None and actual_sha != item.declared_sha256:
@@ -946,24 +1604,45 @@ def cluster_media(
     return output
 
 
-def validate_cluster_output(output: dict[str, Any]) -> None:
-    """Validate a receipt through the repository-owned JSON Schema."""
+def _validate_json_schema(output: dict[str, Any], schema_path: Path, label: str) -> None:
+    """Validate one closed receipt through its repository-owned JSON Schema."""
 
+    def reject_nonfinite(value: Any) -> None:
+        if isinstance(value, float) and not math.isfinite(value):
+            raise AuditInputError(f"{label}_schema_invalid: non_finite_number")
+        if isinstance(value, dict):
+            for child in value.values():
+                reject_nonfinite(child)
+        elif isinstance(value, list):
+            for child in value:
+                reject_nonfinite(child)
+
+    if not isinstance(output, dict):
+        raise AuditInputError(f"{label}_schema_invalid: receipt must be an object")
+    reject_nonfinite(output)
     try:
         from jsonschema import Draft202012Validator
     except ImportError as exc:
-        raise AuditInputError("cluster_schema_validator_unavailable") from exc
+        raise AuditInputError(f"{label}_schema_validator_unavailable") from exc
     try:
-        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(schema)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
-        raise AuditInputError("invalid_cluster_schema_definition") from exc
+        raise AuditInputError(f"invalid_{label}_schema_definition") from exc
     validator = Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(output), key=lambda error: tuple(str(part) for part in error.absolute_path))
     if errors:
         error = errors[0]
         path = ".".join(str(part) for part in error.absolute_path) or "receipt"
-        raise AuditInputError(f"cluster_schema_invalid: {path}: {error.message}")
+        raise AuditInputError(f"{label}_schema_invalid: {path}: {error.message}")
+
+
+def validate_cluster_output(output: dict[str, Any]) -> None:
+    _validate_json_schema(output, SCHEMA_PATH, "cluster")
+
+
+def validate_split_output(output: dict[str, Any]) -> None:
+    _validate_json_schema(output, SPLIT_SCHEMA_PATH, "split")
 
 
 def _self_test() -> None:
@@ -1009,6 +1688,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--phash-distance", type=_cli_int, default=DEFAULT_PHASH_DISTANCE)
     parser.add_argument("--descriptor-similarity", type=_cli_finite_float, default=DEFAULT_DESCRIPTOR_SIMILARITY)
     parser.add_argument("--ssim-threshold", type=_cli_finite_float, default=DEFAULT_SSIM_REVIEW_THRESHOLD)
+    parser.add_argument("--split", action="store_true", help="assign protected metadata components to M3-008 splits")
+    parser.add_argument("--split-manifest", "--split-input", type=Path, help="metadata-only unassigned split input JSON/JSONL")
+    parser.add_argument("--cluster-output", "--clusters", "--cluster-receipt", type=Path, help="validated M3-007 cluster receipt for split protection")
+    parser.add_argument("--seed", type=_cli_int, default=0)
+    parser.add_argument("--train-ratio", type=_cli_finite_float, default=0.8)
+    parser.add_argument("--calibration-ratio", type=_cli_finite_float, default=0.1)
+    parser.add_argument("--locked-test-ratio", type=_cli_finite_float, default=0.1)
     parser.add_argument("--self-test", action="store_true")
     return parser
 
@@ -1018,6 +1704,38 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.self_test:
             _self_test()
+            return 0
+        if args.split or args.split_manifest is not None or args.cluster_output is not None:
+            split_path = args.split_manifest or args.manifest
+            if split_path is None:
+                raise AuditInputError("--split-manifest or --manifest is required for --split")
+            if args.cluster_output is None:
+                raise AuditInputError("--cluster-output is required for --split")
+            if args.media_manifest is not None:
+                # Validate an explicitly supplied map even though split input is metadata-only.
+                _media_map(args.media_manifest, args.media_root)
+            cluster_payload = _read_json_or_jsonl(args.cluster_output)
+            if not isinstance(cluster_payload, dict):
+                raise AuditInputError("invalid_cluster_receipt_shape")
+            split_output = split_records(
+                load_split_manifest(split_path),
+                cluster_payload,
+                seed=args.seed,
+                train_ratio=args.train_ratio,
+                calibration_ratio=args.calibration_ratio,
+                locked_test_ratio=args.locked_test_ratio,
+            )
+            rendered = json.dumps(split_output, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+            if args.output is None:
+                sys.stdout.write(rendered)
+            else:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(rendered, encoding="utf-8")
+                print(
+                    f"PASS M3-008 camera_dataset_split records={split_output['counts']['record_count']} "
+                    f"components={split_output['counts']['component_count']} "
+                    f"leaks={split_output['cross_split_leak_count']} seed={args.seed} output={args.output}"
+                )
             return 0
         if args.manifest is None:
             raise AuditInputError("--manifest is required unless --self-test is used")
@@ -1044,7 +1762,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0
     except (AuditInputError, OSError, ValueError) as exc:
-        print(f"FAIL M3-007 camera_dataset_audit: {exc}", file=sys.stderr)
+        task = "M3-008 camera_dataset_split" if args.split or args.split_manifest is not None or args.cluster_output is not None else "M3-007 camera_dataset_audit"
+        print(f"FAIL {task}: {exc}", file=sys.stderr)
         return 2
 
 
