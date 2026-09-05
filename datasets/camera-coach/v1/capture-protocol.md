@@ -29,7 +29,9 @@ to `quarantine`. A release owner, not the capture operator, assigns the split.
 
 Each pilot and later collection plan records observed coverage across all seven
 matrix classes. The table is a coverage requirement, not a claim that the
-requirement has already been met.
+requirement has already been met. Action IDs come only from the approved
+`approvedActionIDs` catalog in `docs/implementation/camera-coach-contract-v2.json`;
+legacy aliases are not admissible dataset labels.
 
 | Matrix class | Include deliberate variation |
 |---|---|
@@ -77,9 +79,12 @@ transitions, and scene cuts when those conditions are available.
 ## Before/after episode capture
 
 An episode contains exactly a before asset, one named action, and an after asset
-from the same source context. The action must be one of the closed action IDs in
-`label-schema.json`. Record the action-specific verifier and one explicit
-outcome:
+from the same source context. The action must be one of the approved action IDs
+in the authority catalog and `label-schema.json`. Record the action-specific
+verifier and one explicit outcome. A `correct` episode additionally requires
+`after.captured_at` to be later than `before.captured_at` and the matching label
+verification to be `result=pass`, `measurement=before_after`; failure or
+inconclusive evidence cannot be called correct:
 
 - `correct`: the named action moves the intended condition in the expected
   direction;
@@ -105,9 +110,40 @@ resolve:
    `derivation-manifest.jsonl`;
 4. all family fields against the source-shoot entry.
 
-Only `approved` rights with the requested allowed use are eligible. Missing,
+The resolved source-shoot entry is authoritative for `source_kind`; a record
+claiming a different kind is invalid. A resolved `synthetic_fixture` source is
+never eligible for train, calibration, or holdout, regardless of claimant
+fields or a relabeled rights disposition. Only `approved` rights with the
+requested allowed use are eligible. Missing,
 `denied`, `unresolved`, `pending`, `withdrawn`, or `fixture_only` rights are
 not eligible for a release split. They remain quarantine/audit evidence only.
+
+## Operational batch admission
+
+Admission reads a caller-supplied record collection and three caller-supplied
+JSON/JSONL manifests. It never falls back to the embedded synthetic fixture
+manifests. A single `--record` invocation likewise requires all three explicit
+manifest arguments; `--fixture-mode` is an explicit test-only opt-in for the
+synthetic `fixture` split.
+
+Positive synthetic fixture-path smoke check (the flag is intentionally
+explicit):
+
+```text
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
+```
+
+The checker must print `PASS ... camera-coach-batch` only when every record
+resolves source/rights/derivation references and no source, scene, take, time,
+location, person, device, or derivation family crosses train, calibration, or
+holdout. A protected-family crossing is a hard failure even if each record is
+otherwise structurally valid. The negative fixture
+`camera-coach-batch-negative-family.jsonl` exercises a train/calibration
+crossing and is run with its caller-supplied negative derivation manifest.
+
+```text
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-family.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-negative-derivations.jsonl
+```
 
 ## Auditable pilot manifest
 

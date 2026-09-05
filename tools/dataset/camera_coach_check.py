@@ -16,6 +16,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 CAMERA_DIR = ROOT / "datasets/camera-coach/v1"
 FIXTURE_PATH = ROOT / "tools/dataset/tests/fixtures/camera-coach-fixtures.json"
+AUTHORITY_PATH = ROOT / "docs/implementation/camera-coach-contract-v2.json"
 SCHEMA_FILES = ("label-schema.json", "temporal-schema.json", "episode-schema.json")
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 RECORD_ID_RE = re.compile(r"^cam-[a-z0-9][a-z0-9._-]*$")
@@ -38,30 +39,33 @@ RIGHTS_DISPOSITIONS = {"approved", "denied", "unresolved", "pending", "withdrawn
 SOURCE_KINDS = {"owned", "licensed", "consented", "public", "runtime_export", "synthetic_fixture"}
 NON_INDEPENDENT_DERIVATION_KINDS = {"burst_frame", "crop", "resize", "color_variant", "temporal_frame", "episode_view"}
 RIGHTS_USES = {"train", "calibration", "holdout", "fixture"}
-ACTION_IDS = {
-    "move_frame_left", "move_frame_right", "move_frame_up", "move_frame_down", "increase_subject_size",
-    "reduce_background_distractions", "change_angle", "improve_front_light", "level_horizon", "leave_frame_as_is",
-    "step_back", "step_closer", "lower_camera", "raise_camera", "rotate_subject_toward_light",
-    "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right",
-    "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance",
-    "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background",
-    "wait_for_background_clearance", "keep_current_setup",
-}
+
+
+def _load_canonical_action_ids() -> set[str]:
+    """Load the approved action catalog from the read-only contract authority."""
+    authority = json.loads(AUTHORITY_PATH.read_text(encoding="utf-8"))
+    actions = authority.get("approvedActionIDs") if isinstance(authority, dict) else None
+    if not isinstance(actions, list) or not actions or any(not isinstance(action, str) for action in actions):
+        raise ValueError(f"canonical action catalog missing from {AUTHORITY_PATH}")
+    if len(set(actions)) != len(actions):
+        raise ValueError(f"canonical action catalog contains duplicates: {AUTHORITY_PATH}")
+    return set(actions)
+
+
+# This is derived state, not a second action-catalog owner. Schema parity is
+# checked against the same authority in validate_schema_files().
+ACTION_IDS = _load_canonical_action_ids()
 VERIFIER_BY_ACTION = {
-    "move_frame_left": "framing_left_improves",
-    "move_frame_right": "framing_right_improves",
-    "move_frame_up": "headroom_or_upper_boundary_improves",
-    "move_frame_down": "lower_frame_context_improves",
-    "increase_subject_size": "subject_prominence_increases",
-    "reduce_background_distractions": "background_competition_decreases",
-    "change_angle": "background_or_perspective_improves",
-    "improve_front_light": "subject_exposure_improves",
+    "shift_frame_left": "framing_left_improves",
+    "shift_frame_right": "framing_right_improves",
+    "shift_frame_up": "headroom_or_upper_boundary_improves",
+    "shift_frame_down": "lower_frame_context_improves",
     "level_horizon": "horizon_tilt_decreases",
-    "leave_frame_as_is": "frame_remains_acceptable",
     "step_back": "framing_breathing_room_increases",
     "step_closer": "subject_prominence_increases",
     "lower_camera": "perspective_height_improves",
     "raise_camera": "perspective_height_improves",
+    "change_camera_angle": "background_or_perspective_improves",
     "rotate_subject_toward_light": "subject_light_direction_improves",
     "move_subject_left": "subject_position_improves_left",
     "move_subject_right": "subject_position_improves_right",
@@ -225,7 +229,7 @@ def _validate_subject(subject: Any, errors: list[str]) -> None:
     status = subject.get("status")
     if status == "selected" and selected is None:
         errors.append(_error("invalid_subject_reference", "selected subject is required"))
-    if status in {"none", "abstain"} and selected is not None:
+    if status in {"ambiguous", "none", "abstain"} and selected is not None:
         errors.append(_error("invalid_subject_reference", "non-selected status cannot name a subject"))
     if status == "ambiguous" and len(candidate_ids) < 2:
         errors.append(_error("invalid_subject_reference", "ambiguous subject needs at least two candidates"))
@@ -292,8 +296,10 @@ def _validate_label(label: Any, errors: list[str]) -> None:
             _check_enum(reason, {"subject_unclear", "issue_unclear", "style_intent_unclear", "insufficient_visibility", "rights_or_privacy_blocker", "before_after_not_comparable", "other"}, "label.abstention.reasons", errors)
     if keep == "keep" and accepted != ["keep_current_setup"]:
         errors.append(_error("invalid_keep_label", "KEEP requires keep_current_setup only"))
-    if keep != "keep" and set(accepted) & {"keep_current_setup", "leave_frame_as_is"}:
+    if keep != "keep" and "keep_current_setup" in accepted:
         errors.append(_error("invalid_keep_label", "no-change actions require KEEP"))
+    if status == "abstain" and (abstention_status != "abstain" or keep != "uncertain"):
+        errors.append(_error("invalid_abstention", "selection_status=abstain requires abstention.status=abstain and uncertain KEEP"))
     if abstention_status == "abstain" and (status != "abstain" or keep != "uncertain" or not abstention.get("reasons")):
         errors.append(_error("invalid_abstention", "ABSTAIN requires uncertain/no-action label and a reason"))
     verifications = _check_list(label.get("verification"), "label.verification", errors, nonempty=True)
@@ -318,11 +324,22 @@ def _validate_label(label: Any, errors: list[str]) -> None:
         seen_actions.add(action)
         _check_enum(verification.get("result"), {"pass", "fail", "inconclusive", "not_run"}, f"{path}.result", errors)
         _check_enum(verification.get("measurement"), {"single_frame", "before_after", "temporal_timeline", "not_observed"}, f"{path}.measurement", errors)
-    expected_actions = set(accepted) if abstention_status != "abstain" else {"abstain"}
+    is_abstention = status == "abstain" or abstention_status == "abstain"
+    expected_actions = {"abstain"} if is_abstention else set(accepted)
     if not expected_actions.issubset(seen_actions):
         errors.append(_error("missing_action_verification", "every accepted action needs a verifier"))
-    if abstention_status == "abstain" and "abstain" not in seen_actions:
-        errors.append(_error("missing_action_verification", "ABSTAIN needs insufficient_evidence verifier"))
+    if is_abstention:
+        abstain_verifications = [item for item in verifications if isinstance(item, dict) and item.get("action_id") == "abstain"]
+        if (
+            abstention_status != "abstain"
+            or status != "abstain"
+            or len(abstain_verifications) != 1
+            or abstain_verifications[0].get("verifier_id") != "insufficient_evidence"
+            or abstain_verifications[0].get("result") != "inconclusive"
+            or abstain_verifications[0].get("measurement") != "not_observed"
+            or len(verifications) != 1
+        ):
+            errors.append(_error("invalid_abstention", "ABSTAIN needs exactly one insufficient-evidence/inconclusive/not_observed verification"))
 
 
 def _validate_review(review: Any, errors: list[str]) -> None:
@@ -380,6 +397,8 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
         return
     _check_id(sequence.get("sequence_id"), "sequence.sequence_id", errors)
     frames = _check_list(sequence.get("frames"), "sequence.frames", errors, nonempty=True)
+    if len(frames) < 2:
+        errors.append(_error("invalid_sequence_length", "temporal sequence requires at least two frames"))
     frame_assets: list[str] = []
     ordinals: list[int] = []
     timestamps: list[int] = []
@@ -429,7 +448,7 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
             last_end = end
 
 
-def _validate_episode(episode: Any, accepted: set[str], media_assets: set[str], source_assets: set[str], errors: list[str]) -> None:
+def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any], media_assets: set[str], source_assets: set[str], errors: list[str]) -> None:
     _require(episode, {"episode_id", "before", "action_step", "after", "outcome", "outcome_verifier", "subject_continuity"}, "episode", errors)
     if not isinstance(episode, dict):
         return
@@ -449,6 +468,14 @@ def _validate_episode(episode: Any, accepted: set[str], media_assets: set[str], 
             errors.append(_error("invalid_timestamp", f"{path}.captured_at"))
     if isinstance(before, dict) and isinstance(after, dict) and before.get("asset_id") == after.get("asset_id"):
         errors.append(_error("invalid_episode", "before and after assets must differ"))
+    if (
+        isinstance(before, dict)
+        and isinstance(after, dict)
+        and DATE_RE.fullmatch(before.get("captured_at", ""))
+        and DATE_RE.fullmatch(after.get("captured_at", ""))
+        and after.get("captured_at") <= before.get("captured_at")
+    ):
+        errors.append(_error("invalid_episode_order", "after timestamp must be later than before timestamp"))
     action_step = episode.get("action_step")
     _require(action_step, {"action_id", "performed_at"}, "episode.action_step", errors)
     action = None
@@ -466,23 +493,46 @@ def _validate_episode(episode: Any, accepted: set[str], media_assets: set[str], 
     _check_enum(episode.get("subject_continuity"), {"same", "changed", "lost", "unknown"}, "episode.subject_continuity", errors)
     if isinstance(before, dict) and isinstance(after, dict) and {before.get("asset_id"), after.get("asset_id")} - media_assets:
         errors.append(_error("episode_asset_mismatch", "before/after assets must be in media.asset_ids"))
+    matching = [
+        item for item in verifications
+        if isinstance(item, dict) and item.get("action_id") == action and item.get("verifier_id") == verifier
+    ]
+    if episode.get("outcome") == "correct":
+        if not any(item.get("result") == "pass" and item.get("measurement") == "before_after" for item in matching):
+            errors.append(_error("invalid_episode_outcome", "correct requires matching action verification pass/before_after"))
+    elif any(item.get("result") == "pass" and item.get("measurement") == "before_after" for item in matching):
+        errors.append(_error("contradictory_episode_outcome", "non-correct outcome cannot have a matching pass/before_after verification"))
 
 
 def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, list[dict[str, Any]]], errors: list[str], *, fixture_mode: bool) -> None:
-    source_by_id = {entry.get("source_shoot_id"): entry for entry in manifests["source_shoots"]}
-    rights_by_id = {entry.get("rights_record_id"): entry for entry in manifests["rights"]}
-    derivation_by_record = {entry.get("record_id"): entry for entry in manifests["derivations"]}
-    provenance = record.get("provenance", {})
+    source_by_id = {entry.get("source_shoot_id"): entry for entry in manifests.get("source_shoots", [])}
+    rights_by_id = {entry.get("rights_record_id"): entry for entry in manifests.get("rights", [])}
+    derivation_by_record = {entry.get("record_id"): entry for entry in manifests.get("derivations", [])}
+    provenance = record.get("provenance")
+    if not isinstance(provenance, dict):
+        return
     source_id = provenance.get("source_shoot_id")
     source = source_by_id.get(source_id)
     if source is None:
         errors.append(_error("missing_source_shoot", str(source_id)))
         return
+    source_kind = source.get("source_kind")
+    if provenance.get("source_kind") != source_kind:
+        errors.append(_error("source_authority_mismatch", "provenance.source_kind must equal resolved source-shoot source_kind"))
+    split = record.get("split")
+    # Admission is based on the resolved source authority. A claimant cannot
+    # relabel a synthetic source as owned/licensed to bypass release gates.
+    if source_kind == "synthetic_fixture" and split not in {"fixture", "quarantine"}:
+        errors.append(_error("synthetic_source_not_admissible", "resolved source_shoot source_kind is synthetic_fixture"))
+    if split == "fixture" and (not fixture_mode or source_kind != "synthetic_fixture"):
+        errors.append(_error("synthetic_data_not_admitted", "fixture split requires a resolved synthetic_fixture source"))
     source_assets = set(source.get("asset_ids", []))
     record_source_assets = set(provenance.get("source_asset_ids", []))
     if not record_source_assets.issubset(source_assets):
         errors.append(_error("missing_source_asset", "provenance.source_asset_ids"))
-    capture = record.get("capture", {})
+    capture = record.get("capture")
+    if not isinstance(capture, dict):
+        capture = {}
     for field in ("scene_family_id", "take_family_id", "time_family_id", "location_family_id", "device_family_id"):
         if capture.get(field) != source.get(field):
             errors.append(_error("family_mismatch", f"capture.{field}"))
@@ -503,7 +553,6 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
             errors.append(_error("rights_scope_mismatch", "rights asset_ids"))
         if rights.get("disposition") != provenance.get("rights_disposition"):
             errors.append(_error("provenance_mismatch", "rights disposition"))
-        split = record.get("split")
         allowed = set(rights.get("allowed_uses", []))
         if split in {"train", "calibration", "holdout"} and (rights.get("disposition") != "approved" or split not in allowed):
             errors.append(_error("rights_not_approved", f"{split} requires approved rights and allowed use"))
@@ -540,6 +589,7 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
     _check_enum(record.get("matrix_class"), MATRIX_CLASSES, "record.matrix_class", errors)
     _check_enum(record.get("split"), SPLITS, "record.split", errors)
     media_assets = _validate_media(record.get("media"), errors)
+    capture = record.get("capture") if isinstance(record.get("capture"), dict) else {}
     _validate_capture(record.get("capture"), errors)
     source_assets = _validate_provenance(record.get("provenance"), errors)
     _validate_subject(record.get("subject"), errors)
@@ -555,12 +605,12 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
     label = record.get("label", {})
     accepted = set(label.get("acceptable_action_ids", [])) if isinstance(label, dict) else set()
     if record_type == "still":
-        if record.get("capture", {}).get("capture_mode") != "still":
+        if capture.get("capture_mode") != "still":
             errors.append(_error("capture_context_mismatch", "still capture_mode"))
         if "sequence" in record or "episode" in record:
             errors.append(_error("unexpected_record_extension", "still record"))
     elif record_type == "temporal":
-        if record.get("capture", {}).get("capture_mode") != "temporal_sequence":
+        if capture.get("capture_mode") != "temporal_sequence":
             errors.append(_error("capture_context_mismatch", "temporal capture_mode"))
         if "sequence" not in record:
             errors.append(_error("missing_sequence", "temporal.sequence"))
@@ -569,19 +619,15 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
         if "episode" in record:
             errors.append(_error("unexpected_record_extension", "temporal record"))
     elif record_type == "episode":
-        if record.get("capture", {}).get("capture_mode") != "before_after_episode":
+        if capture.get("capture_mode") != "before_after_episode":
             errors.append(_error("capture_context_mismatch", "episode capture_mode"))
         if "episode" not in record:
             errors.append(_error("missing_episode", "episode.episode"))
         else:
-            _validate_episode(record.get("episode"), accepted, media_assets, source_assets, errors)
+            verifications = label.get("verification", []) if isinstance(label, dict) else []
+            _validate_episode(record.get("episode"), accepted, verifications, media_assets, source_assets, errors)
         if "sequence" in record:
             errors.append(_error("unexpected_record_extension", "episode record"))
-    source_kind = record.get("provenance", {}).get("source_kind")
-    if source_kind == "synthetic_fixture" and record.get("split") not in {"fixture", "quarantine"}:
-        errors.append(_error("synthetic_data_not_admitted", "synthetic_fixture cannot enter release splits"))
-    if record.get("split") == "fixture" and (not fixture_mode or source_kind != "synthetic_fixture"):
-        errors.append(_error("synthetic_data_not_admitted", "fixture split requires synthetic_fixture source"))
     _validate_manifest_references(record, manifests, errors, fixture_mode=fixture_mode)
     return errors
 
@@ -590,8 +636,12 @@ def validate_split_isolation(records: list[dict[str, Any]]) -> list[str]:
     errors: list[str] = []
     family_splits: dict[str, set[str]] = {}
     for record in records:
-        families = [record.get("provenance", {}).get("source_shoot_id"), record.get("capture", {}).get("scene_family_id"), record.get("capture", {}).get("take_family_id"), record.get("capture", {}).get("time_family_id"), record.get("capture", {}).get("location_family_id"), record.get("provenance", {}).get("derivation_family_id")]
-        families += record.get("capture", {}).get("person_family_ids", [])
+        if not isinstance(record, dict):
+            continue
+        provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
+        capture = record.get("capture") if isinstance(record.get("capture"), dict) else {}
+        families = [provenance.get("source_shoot_id"), capture.get("scene_family_id"), capture.get("take_family_id"), capture.get("time_family_id"), capture.get("location_family_id"), provenance.get("derivation_family_id")]
+        families += capture.get("person_family_ids", []) if isinstance(capture.get("person_family_ids"), list) else []
         for family in families:
             if family:
                 family_splits.setdefault(family, set()).add(record.get("split"))
@@ -625,6 +675,7 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         for asset_id in assets:
             _check_id(asset_id, f"{path}.asset_ids", errors)
         source_assets[source_id] = asset_set
+        _check_enum(entry.get("source_kind"), SOURCE_KINDS, f"{path}.source_kind", errors)
         if entry.get("storage") != "outside_git":
             errors.append(_error("raw_media_inside_git", path))
     rights_ids: set[str] = set()
@@ -712,6 +763,49 @@ def _validate_manifest_header(path: Path, expected_type: str) -> list[str]:
     return errors
 
 
+def _read_collection(path: Path) -> list[dict[str, Any]]:
+    """Read a JSON array/object or JSONL collection without using fixture state."""
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return []
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = []
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                payload.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}:{line_number}: {exc}") from exc
+    if isinstance(payload, dict):
+        if isinstance(payload.get("records"), list):
+            payload = payload["records"]
+        elif isinstance(payload.get("valid_records"), list):
+            # This supports extracting a caller-selected record collection from
+            # the synthetic fixture while deliberately ignoring its manifests.
+            payload = payload["valid_records"]
+        else:
+            payload = [payload]
+    if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+        raise ValueError(f"{path} must contain a JSON object collection")
+    return payload
+
+
+def _load_external_manifests(source_path: Path, rights_path: Path, derivation_path: Path) -> dict[str, list[dict[str, Any]]]:
+    """Load only caller-supplied manifests for production/batch admission."""
+    collections = {
+        "source_shoots": _read_collection(source_path),
+        "rights": _read_collection(rights_path),
+        "derivations": _read_collection(derivation_path),
+    }
+    manifests: dict[str, list[dict[str, Any]]] = {}
+    for name, entries in collections.items():
+        manifests[name] = [entry for entry in entries if entry.get("template_only") is not True]
+    return manifests
+
+
 def validate_schema_files() -> list[str]:
     errors: list[str] = []
     for filename in SCHEMA_FILES:
@@ -735,7 +829,12 @@ def validate_schema_files() -> list[str]:
                 errors.append(_error("schema_matrix_class_mismatch", filename))
             actions = set(schema.get("$defs", {}).get("actionId", {}).get("enum", []))
             if actions != ACTION_IDS:
-                errors.append(_error("schema_action_catalog_mismatch", filename))
+                errors.append(_error("canonical_action_drift", "label-schema actionId enum differs from camera-coach-contract-v2 approvedActionIDs"))
+            verification_actions = set(schema.get("$defs", {}).get("verificationActionId", {}).get("enum", []))
+            if verification_actions != ACTION_IDS | {"abstain"}:
+                errors.append(_error("canonical_action_drift", "label-schema verificationActionId enum differs from approved actions plus abstain"))
+            if set(VERIFIER_BY_ACTION) != ACTION_IDS:
+                errors.append(_error("action_verifier_catalog_mismatch", "every approved action needs one verifier predicate"))
         if schema.get("title", "").startswith("Camera Coach") is False:
             errors.append(_error("invalid_schema_title", filename))
     return errors
@@ -781,6 +880,19 @@ def _apply_mutations(record: dict[str, Any], manifests: dict[str, list[dict[str,
         else:
             raise ValueError(f"unknown fixture mutation target: {target}")
         _set_path(target_object, mutation["path"], mutation.get("value"), remove=mutation.get("operation") == "remove")
+
+
+def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict[str, Any]]], *, fixture_mode: bool = False) -> list[str]:
+    """Validate an externally supplied collection and isolate all families."""
+    errors = _validate_fixture_manifests(manifests)
+    for record in records:
+        errors.extend(validate_record(record, manifests, fixture_mode=fixture_mode))
+    errors.extend(validate_split_isolation(records))
+    record_ids = {record.get("record_id") for record in records}
+    for entry in manifests.get("derivations", []):
+        if entry.get("record_id") not in record_ids:
+            errors.append(_error("orphan_derivation_record", str(entry.get("record_id"))))
+    return errors
 
 
 def self_test() -> None:
@@ -845,14 +957,34 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--record", type=Path)
+    parser.add_argument("--batch-records", type=Path, help="caller-supplied JSON/JSONL record collection")
+    parser.add_argument("--source-shoots", type=Path, help="caller-supplied source-shoot manifest JSON/JSONL")
+    parser.add_argument("--rights-manifest", type=Path, help="caller-supplied rights manifest JSON/JSONL")
+    parser.add_argument("--derivation-manifest", type=Path, help="caller-supplied derivation manifest JSON/JSONL")
+    parser.add_argument("--fixture-mode", action="store_true", help="explicitly admit synthetic_fixture records only for fixture tests")
     args = parser.parse_args(argv)
-    if args.self_test or args.record is None:
+    manifest_paths = (args.source_shoots, args.rights_manifest, args.derivation_manifest)
+    has_all_manifests = all(path is not None for path in manifest_paths)
+    if args.self_test:
         self_test()
         return 0
+    if args.record is None and args.batch_records is None:
+        self_test()
+        return 0
+    if args.record is not None and args.batch_records is not None:
+        print(_error("input_error", "--record and --batch-records are mutually exclusive"), file=sys.stderr)
+        return 1
+    if not has_all_manifests:
+        print(_error("input_error", "explicit --source-shoots, --rights-manifest, and --derivation-manifest are required for admission"), file=sys.stderr)
+        return 1
     try:
-        record = _read_json(args.record)
-        fixture = _load_fixture()
-        errors = validate_record(record, fixture["manifests"], fixture_mode=False)
+        manifests = _load_external_manifests(args.source_shoots, args.rights_manifest, args.derivation_manifest)
+        if args.batch_records is not None:
+            records = _read_collection(args.batch_records)
+            errors = validate_batch(records, manifests, fixture_mode=args.fixture_mode)
+        else:
+            record = _read_json(args.record)
+            errors = validate_record(record, manifests, fixture_mode=args.fixture_mode)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(_error("input_error", str(exc)), file=sys.stderr)
         return 1
@@ -860,7 +992,14 @@ def main(argv: list[str] | None = None) -> int:
         for error in errors:
             print(f"FAIL {error}", file=sys.stderr)
         return 1
-    print(f"PASS {args.record} camera-coach-record")
+    if args.batch_records is not None:
+        print(
+            f"PASS {args.batch_records} camera-coach-batch "
+            f"records={len(records)} source_shoots={len(manifests['source_shoots'])} "
+            f"rights={len(manifests['rights'])} derivations={len(manifests['derivations'])}"
+        )
+    else:
+        print(f"PASS {args.record} camera-coach-record")
     return 0
 
 

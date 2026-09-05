@@ -3,9 +3,10 @@
 Status: operational draft; `schema_version=v1.0.0`.
 
 This guide describes human labels for the three record types in this
-directory. It is a rubric, not a taste poll. Annotators write only the closed
-IDs in `label-schema.json`; free-form advice, model output, locked labels, and
-candidate identity are not part of this contract.
+directory. It is a rubric, not a taste poll. Annotators write only the
+approved IDs from `docs/implementation/camera-coach-contract-v2.json` as
+mirrored by `label-schema.json`; legacy aliases, free-form advice, model
+output, locked labels, and candidate identity are not part of this contract.
 
 ## 0. Eligibility before looking at the label
 
@@ -23,6 +24,10 @@ to serve. Choose the smallest stable reference that can be checked again:
 - `ambiguous`: two or more plausible candidates, no forced winner;
 - `none`: no meaningful subject (for example, an interior or landscape test);
 - `abstain`: subject cannot be referenced safely.
+
+For `ambiguous`, `none`, or `abstain`, leave `selected_subject_id` null. For
+`selected`, the ID must resolve to exactly one candidate; never use a guessed
+or unresolved reference as a selected subject.
 
 Candidate `kind` is `face`, `person`, `object`, `group`, `scene`, or `unknown`.
 The reference is an asset-local stable ID, not a guessed name. Do not select a
@@ -85,19 +90,18 @@ is required when two or more alternatives are genuinely acceptable.
 
 The v1 closed action catalog is:
 
-- camera: `move_frame_left`, `move_frame_right`, `move_frame_up`,
-  `move_frame_down`, `step_back`, `step_closer`, `increase_subject_size`,
-  `lower_camera`, `raise_camera`, `change_angle`, `level_horizon`;
+- camera: `shift_frame_left`, `shift_frame_right`, `shift_frame_up`,
+  `shift_frame_down`, `step_back`, `step_closer`, `lower_camera`,
+  `raise_camera`, `change_camera_angle`, `level_horizon`;
 - subject: `rotate_subject_toward_light`, `move_subject_left`,
   `move_subject_right`, `move_subject_away_from_background`;
 - object/prop: `move_object_left`, `move_object_right`,
   `move_object_forward`, `move_object_back`, `remove_distracting_object`,
   `reposition_prop_for_balance`;
-- light: `improve_front_light`, `add_front_fill_light`, `add_background_light`,
+- light: `add_front_fill_light`, `add_background_light`,
   `remove_background_hotspot`;
-- cleanup/timing: `reduce_background_distractions`, `simplify_background`,
-  `wait_for_background_clearance`;
-- no-change: `leave_frame_as_is` / `keep_current_setup` only for a KEEP label.
+- cleanup/timing: `simplify_background`, `wait_for_background_clearance`;
+- no-change: `keep_current_setup` only for a KEEP label.
 
 Do not list opposing moves as both acceptable actions. Do not make an action
 acceptable merely because it is available in the UI. An action that would
@@ -121,8 +125,8 @@ corrective action is needed. Encode:
 }
 ```
 
-`leave_frame_as_is` is the transport-compatible no-change action and may be
-listed only when the same no-change decision is explicit. KEEP does not mean
+`keep_current_setup` is the only approved no-change action and may be listed
+only when the same no-change decision is explicit. KEEP does not mean
 the frame is universally beautiful or that a model is accurate. A frame can
 have strengths and still be KEEP; any visible major issue requires a corrective
 action or ABSTAIN.
@@ -158,14 +162,14 @@ a model score. Use `not_run` for a still label without an after state,
 
 | Action | Verifier |
 |---|---|
-| `move_frame_left` | `framing_left_improves` |
-| `move_frame_right` | `framing_right_improves` |
-| `move_frame_up` | `headroom_or_upper_boundary_improves` |
-| `move_frame_down` | `lower_frame_context_improves` |
+| `shift_frame_left` | `framing_left_improves` |
+| `shift_frame_right` | `framing_right_improves` |
+| `shift_frame_up` | `headroom_or_upper_boundary_improves` |
+| `shift_frame_down` | `lower_frame_context_improves` |
 | `step_back` | `framing_breathing_room_increases` |
-| `step_closer`, `increase_subject_size` | `subject_prominence_increases` |
+| `step_closer` | `subject_prominence_increases` |
 | `lower_camera`, `raise_camera` | `perspective_height_improves` |
-| `change_angle` | `background_or_perspective_improves` |
+| `change_camera_angle` | `background_or_perspective_improves` |
 | `level_horizon` | `horizon_tilt_decreases` |
 | `rotate_subject_toward_light` | `subject_light_direction_improves` |
 | `move_subject_left` | `subject_position_improves_left` |
@@ -175,17 +179,20 @@ a model score. Use `not_run` for a still label without an after state,
 | `move_object_right` | `object_position_improves_right` |
 | `move_object_forward` | `object_depth_relation_improves_forward` |
 | `move_object_back` | `object_depth_relation_improves_back` |
-| `remove_distracting_object`, `reduce_background_distractions`, `simplify_background`, `remove_background_hotspot` | `background_competition_decreases` |
+| `remove_distracting_object`, `simplify_background`, `remove_background_hotspot` | `background_competition_decreases` |
 | `reposition_prop_for_balance` | `object_balance_improves` |
-| `improve_front_light`, `add_front_fill_light` | `subject_exposure_improves` |
+| `add_front_fill_light` | `subject_exposure_improves` |
 | `wait_for_background_clearance` | `transient_blocker_clears` |
-| `keep_current_setup`, `leave_frame_as_is` | `frame_remains_acceptable` |
+| `keep_current_setup` | `frame_remains_acceptable` |
 | ABSTAIN | `insufficient_evidence` |
 
 For an episode, `episode.action_step.action_id` must be one of the acceptable
-actions and `outcome_verifier` must be the matching predicate. Record the
-outcome as `correct`, `no_op`, `opposite`, `overshoot`, `track_loss`, or
-`incomparable`; do not infer a quality metric from the outcome alone.
+actions and `outcome_verifier` must be the matching predicate. `correct` is
+valid only when the after timestamp is later than the before timestamp and the
+matching label verification is `pass` with `before_after` measurement. Record
+the outcome as `correct`, `no_op`, `opposite`, `overshoot`, `track_loss`, or
+`incomparable`; failure or inconclusive verification cannot be relabeled as
+correct, and no outcome implies a model-quality metric.
 
 ## 8. Temporal records
 

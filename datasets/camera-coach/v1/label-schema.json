@@ -156,9 +156,9 @@
     },
     "actionId": {
       "enum": [
-        "move_frame_left", "move_frame_right", "move_frame_up", "move_frame_down", "increase_subject_size",
-        "reduce_background_distractions", "change_angle", "improve_front_light", "level_horizon", "leave_frame_as_is",
-        "step_back", "step_closer", "lower_camera", "raise_camera", "rotate_subject_toward_light",
+        "shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down",
+        "step_back", "step_closer", "lower_camera", "raise_camera", "change_camera_angle", "level_horizon",
+        "rotate_subject_toward_light",
         "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right",
         "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance",
         "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background",
@@ -167,9 +167,9 @@
     },
     "verificationActionId": {
       "enum": [
-        "move_frame_left", "move_frame_right", "move_frame_up", "move_frame_down", "increase_subject_size",
-        "reduce_background_distractions", "change_angle", "improve_front_light", "level_horizon", "leave_frame_as_is",
-        "step_back", "step_closer", "lower_camera", "raise_camera", "rotate_subject_toward_light",
+        "shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down",
+        "step_back", "step_closer", "lower_camera", "raise_camera", "change_camera_angle", "level_horizon",
+        "rotate_subject_toward_light",
         "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right",
         "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance",
         "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background",
