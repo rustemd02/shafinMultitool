@@ -1,5 +1,6 @@
 import CoreVideo
 import AVFoundation
+import ARKit
 import Foundation
 import XCTest
 @testable import shafinMultitool
@@ -61,6 +62,90 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertNotNil(secondResult)
         _ = await controller.releaseAndWait()
         XCTAssertNil(controller.recordingSourceToken)
+    }
+
+    func testSecondCoordinatorCannotBorrowActiveFirstCoordinatorSourceToken() async throws {
+        let (controller, box, temporaryDirectory) = try makeController()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let viewModel = SceneGeneratorViewModel(recordingController: controller)
+        let firstRuntime = RecordingCoordinatorRuntime()
+        let firstCoordinator = ARSceneContainer.Coordinator(
+            viewModel: viewModel,
+            capabilityProvider: RecordingCoordinatorCapabilities(),
+            sessionRuntime: firstRuntime
+        )
+        firstCoordinator.attachSession(runtime: firstRuntime)
+        firstCoordinator.updateSessionState(
+            for: firstRuntime,
+            request: ARWorldTrackingConfigurationRequest(depthRequested: false, initialWorldMap: nil),
+            isGenerating: false,
+            shouldForwardCapturedImage: true,
+            isSceneGenerated: false,
+            isARSessionReady: false,
+            isARSessionInterrupted: false,
+            isARSessionRecovering: false,
+            force: true
+        )
+
+        let pixelBuffer = try makePixelBuffer(width: 320, height: 240)
+        controller.enqueueVideo(pixelBuffer, at: 1)
+        try await controller.start(requestedFPS: 30, audioMode: .disabled)
+        let activeToken = try XCTUnwrap(controller.recordingSourceToken)
+        XCTAssertEqual(activeToken.source, .arWorkspace)
+
+        let secondRuntime = RecordingCoordinatorRuntime()
+        let secondCoordinator = ARSceneContainer.Coordinator(
+            viewModel: viewModel,
+            capabilityProvider: RecordingCoordinatorCapabilities(),
+            sessionRuntime: secondRuntime
+        )
+        secondCoordinator.attachSession(runtime: secondRuntime)
+        secondCoordinator.updateSessionState(
+            for: secondRuntime,
+            request: ARWorldTrackingConfigurationRequest(depthRequested: false, initialWorldMap: nil),
+            isGenerating: false,
+            shouldForwardCapturedImage: true,
+            isSceneGenerated: false,
+            isARSessionReady: false,
+            isARSessionInterrupted: false,
+            isARSessionRecovering: false,
+            force: true
+        )
+
+        secondCoordinator.testingForwardRecordingFrame(pixelBuffer, at: 2)
+        XCTAssertEqual(box.recorder(at: 0)?.enqueuedTimestamps, [1])
+        XCTAssertEqual(controller.recordingSourceToken, activeToken)
+
+        _ = await controller.stop(reason: .routeExit)
+        _ = await controller.releaseAndWait()
+    }
+
+    func testCameraServiceStopPreservesReplacementClaimMadeDuringUnlockedCleanup() {
+        let cameraService = CameraService.makeTestingInstance()
+        let oldToken = RecordingOwnerToken(
+            source: .cameraCoach,
+            ownerID: UUID(),
+            recordingID: RecordingID(rawValue: UUID()),
+            generation: 1
+        )
+        let replacementToken = RecordingOwnerToken(
+            source: .cameraCoach,
+            ownerID: UUID(),
+            recordingID: RecordingID(rawValue: UUID()),
+            generation: 2
+        )
+
+        XCTAssertTrue(cameraService.claimRecordingSource(oldToken))
+        cameraService.beforeIdleSourceClearForTesting = {
+            XCTAssertTrue(cameraService.releaseRecordingSource(oldToken))
+            XCTAssertTrue(cameraService.claimRecordingSource(replacementToken))
+        }
+        cameraService.stopRecording()
+        cameraService.beforeIdleSourceClearForTesting = nil
+
+        XCTAssertEqual(cameraService.recordingSourceToken, replacementToken)
+        XCTAssertTrue(cameraService.releaseRecordingSource(replacementToken))
     }
 
     func testConcurrentStopsShareOneFinalizationResult() async throws {
@@ -733,6 +818,27 @@ final class SceneRecordingControllerTests: XCTestCase {
         }
         return pixelBuffer
     }
+}
+
+private final class RecordingCoordinatorRuntime: ARSessionRuntime {
+    private let identity = NSObject()
+    var sessionIdentifier: ObjectIdentifier { ObjectIdentifier(identity) }
+    var videoFormatFramesPerSecond: Int? { 60 }
+    weak var delegate: ARSessionDelegate?
+
+    func run(_ configuration: ARConfiguration, options: ARSession.RunOptions) {}
+
+    func pause() {}
+}
+
+private struct RecordingCoordinatorCapabilities: ARWorldTrackingCapabilityProviding {
+    let evidence = ARWorldTrackingCapabilityEvidence(
+        supportsWorldTracking: true,
+        supportsHorizontalPlaneDetection: true,
+        supportsGravityAlignment: true,
+        supportsSmoothedSceneDepth: false,
+        supportsSceneDepth: false
+    )
 }
 
 private final class SceneRecordingTestAudioSessionPlatform: AudioSessionPlatform, @unchecked Sendable {

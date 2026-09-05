@@ -142,6 +142,10 @@ final class SceneRecordingController: @unchecked Sendable {
         withState { activeSourceOwnerToken }
     }
 
+    var recordingSourceOwnerID: UUID {
+        withState { sourceOwnerID }
+    }
+
     /// ARSceneContainer supplies its coordinator identity before the first
     /// take. Changing an owner while a take is active is rejected so stale
     /// callbacks cannot inherit a newer producer's token.

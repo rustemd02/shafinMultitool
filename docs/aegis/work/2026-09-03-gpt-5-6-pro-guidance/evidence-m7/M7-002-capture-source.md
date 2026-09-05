@@ -71,6 +71,24 @@ active source after release. Existing `ARSessionOwnershipTests` and
 `CameraManagerLifecycleTests` remain regression coverage for the adjacent
 ownership/lifecycle boundaries.
 
+## FIX-FIRST correction evidence
+
+The coordinator handoff now treats the source-owner assignment result as
+authoritative: `ARSceneContainer` retains a recording controller only when its
+owner binding succeeds. The production AR callback and its deterministic test
+seam share one forwarding boundary that requires the coordinator owner UUID to
+match the controller binding; an active token must additionally be the AR
+workspace token for that same owner. A second coordinator attached to the same
+view-model/context therefore cannot borrow the first coordinator's token. The
+two-coordinator case is covered by
+`testSecondCoordinatorCannotBorrowActiveFirstCoordinatorSourceToken`.
+
+`CameraService.stopRecording()` now captures the stopped token and performs
+compare-and-clear while holding `recorderLock`. The bounded interleaving test
+`testCameraServiceStopPreservesReplacementClaimMadeDuringUnlockedCleanup`
+releases the old claim and installs a replacement during the cleanup hook; the
+replacement remains active and is not erased by the old stop path.
+
 ## Verification record
 
 Executed from this worktree on the simulator-only hardware boundary:
@@ -95,6 +113,15 @@ result bundle is `/private/tmp/setos-m7-002-final2-20260905.xcresult`.
 `git diff --check` passed with exit status 0. A prior identical target briefly
 returned simulator `SBMainWorkspace Busy` before any test executed; rerun after
 the allowed iPhone Air boot completed passed without source changes.
+
+The correction precheck ran the focused recording/ownership set: **21/21
+passed**, 0 failures, 0 skipped. The final correction run added the M6-004 route
+and teardown integration suites (`CommercialShellRoutingTests`,
+`CommercialShellLaunchCompositionTests`, `CameraViewModelLifecycleTests`, and
+`SceneWorkspaceTeardownTests`) to the prior set: **151/151 passed**, 0 failures,
+0 skipped. Its retained result bundle is
+`/private/tmp/setos-m7-002-correction-final-20260905.xcresult`.
+`git diff --check` passed after the correction edits.
 
 This lane did not use, boot, target, shut down, or erase an iPhone 17 Pro,
 physical iPhone 13, or any physical device. Simulator evidence does not qualify

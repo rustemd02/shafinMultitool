@@ -48,6 +48,14 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var isPreparingRecorder = false
     private var preparationIdentity: UUID?
 
+#if DEBUG
+    var beforeIdleSourceClearForTesting: (() -> Void)?
+
+    static func makeTestingInstance() -> CameraService {
+        CameraService()
+    }
+#endif
+
     var recorderState: RecorderState {
         recorderLock.lock()
         defer { recorderLock.unlock() }
@@ -430,13 +438,20 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             if shouldReleasePreparedResources {
                 isPreparingRecorder = true
             }
+            let stoppedSourceToken = storedRecordingSourceToken
             recorderLock.unlock()
             guard let detachedResources else {
-                storedRecordingSourceToken = nil
+#if DEBUG
+                beforeIdleSourceClearForTesting?()
+#endif
+                recorderLock.lock()
+                if storedRecordingSourceToken == stoppedSourceToken {
+                    storedRecordingSourceToken = nil
+                }
+                recorderLock.unlock()
                 completion?()
                 return
             }
-            let stoppedSourceToken = storedRecordingSourceToken
             Task { [weak self] in
                 guard let self else { return }
                 await self.stopDetachedResources(detachedResources)

@@ -470,8 +470,8 @@ struct ARSceneContainer: UIViewRepresentable {
                 refreshOrientation(for: arView)
             }
             let recordingController = viewModel.sceneRecordingController
-            self.recordingController = recordingController
-            _ = recordingController?.setRecordingSourceOwnerID(recordingSourceOwnerID)
+            let hasRecordingSourceBinding = recordingController?.setRecordingSourceOwnerID(recordingSourceOwnerID) == true
+            self.recordingController = hasRecordingSourceBinding ? recordingController : nil
             self.shouldForwardCapturedImage = shouldForwardCapturedImage && !isGenerating
             self.isSceneGenerated = isSceneGenerated
             updateCoachingOverlay(
@@ -733,12 +733,7 @@ struct ARSceneContainer: UIViewRepresentable {
             let capturedImage = frame.capturedImage
             let sessionIdentifier = ObjectIdentifier(session)
             guard acceptsSessionCallback(sessionIdentifier: sessionIdentifier, generation: generation) else { return }
-            let currentRecordingController = recordingController
-            currentRecordingController?.enqueueVideo(
-                capturedImage,
-                at: timestamp,
-                ownerToken: currentRecordingController?.recordingSourceToken
-            )
+            forwardRecordingFrame(capturedImage, at: timestamp)
             let cameraTransform = frame.camera.transform
             Task { @MainActor [weak self, weak viewModel, cameraTransform, timestamp, generation, sessionIdentifier] in
                 guard let self,
@@ -786,6 +781,32 @@ struct ARSceneContainer: UIViewRepresentable {
                 )
                 self.completeFrameTask(timestamp: timestamp)
             }
+        }
+
+        /// Test-only entry point that exercises the same production recording
+        /// forwarding boundary without fabricating an ARFrame.
+        func testingForwardRecordingFrame(_ pixelBuffer: CVPixelBuffer,
+                                          at timestamp: TimeInterval) {
+            forwardRecordingFrame(pixelBuffer, at: timestamp)
+        }
+
+        private func forwardRecordingFrame(_ pixelBuffer: CVPixelBuffer,
+                                           at timestamp: TimeInterval) {
+            guard let currentRecordingController = recordingController,
+                  currentRecordingController.recordingSourceOwnerID == recordingSourceOwnerID else {
+                return
+            }
+
+            let ownerToken = currentRecordingController.recordingSourceToken
+            if let ownerToken {
+                guard ownerToken.source == .arWorkspace,
+                      ownerToken.ownerID == recordingSourceOwnerID else { return }
+            }
+            currentRecordingController.enqueueVideo(
+                pixelBuffer,
+                at: timestamp,
+                ownerToken: ownerToken
+            )
         }
         
         func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
