@@ -612,3 +612,124 @@ device; this batch does not claim them.
 
 The parent coordinator must inspect this batch diff, integrate the local commit,
 and retain the result bundles for the M2 gate. No M2-GATE claim is made here.
+
+## Final correction — automatic verification, exact provenance, and duplicate PTS
+
+This section supersedes the preceding evidence wherever it described a direct
+typed-fixture handoff as decisive automatic-verification evidence, or described
+sample ordering without the complete PTS/session tuple. The current correction
+keeps the production owner in `CameraViewModel`: a generation-fenced transition
+to `.readyForVerification` obtains the coordinator's immutable before/after pair,
+calls the existing `ActionVerifier` once for that episode token, and retains the
+result while unrelated live frames arrive. New baseline/cancel/release boundaries
+clear the result. The pair carries exact `CMSampleBuffer` PTS and
+`CameraManager` session generation through `FrameContext`, accepted evidence,
+`UserMovementEvidence`, coordinator baseline/current state, and the verifier.
+Known samples order by PTS within the same session/capture epoch; callback
+`Date` remains wall-clock freshness/expiry only. Equal known PTS is accepted only
+for the same immutable buffer/provenance; a conflicting retransmission is
+rejected without replacing the stored snapshot.
+
+The decisive closed-loop tests deliver synthetic `CMSampleBuffer` instances to
+the real `CameraManager.captureOutput` callback, then use the real
+`RealtimeScheduler`, `AnalysisPipeline`, and `CameraViewModel` publication path.
+The only deterministic seam is the DEBUG Vision provider at the earliest ML
+boundary. No direct evidence-store, event, verifier, or presentation publisher
+is used by these decisive tests. A late pre-cut sample is sent through the same
+capture callback after scene-cut cancellation; state, token, baseline, accepted
+evidence, live presentation, scene identity, and pipeline provenance remain
+unchanged before fresh post-cut samples establish a new baseline/token.
+
+### Focused automatic-verification and provenance run
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-auto-dd \
+  -resultBundlePath /private/tmp/m2-camera-auto-scenecut2.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathAutomaticallyVerifiesCorrectiveEpisode \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testKnownSamplePTSAndSessionGenerationRejectLateOlderEvidence \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testEqualKnownPTSRejectsConflictingEvidenceWithoutMutation \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testEqualKnownPTSAcceptsOnlyIdempotentRetransmissionWithoutReplacement
+```
+
+Result: exit `0`; Air summary reports `totalTestCount: 5`,
+`passedTests: 5`, `failedTests: 0`, `skippedTests: 0`, `result: Passed` in
+`/private/tmp/m2-camera-auto-scenecut2.xcresult`. The automatic path classified
+the corrective episode as `.improved` without a testing apply/verify call and
+retained it after an unrelated live sample. The scene-cut path rejected the
+late older-PTS sample and admitted a fresh post-cut baseline/token in the same
+capture/session. The store tests prove conflicting equal-PTS non-replacement
+and idempotent equal-PTS retention.
+
+The three-test automatic/store subset also passed `3/3` in
+`/private/tmp/m2-camera-auto-focused2.xcresult`; the lifecycle-order repair plus
+both real capture-path tests passed `3/3` in
+`/private/tmp/m2-camera-auto-coordinator-fix2.xcresult`.
+
+### Current-head regression selections on Air
+
+The broader affected selection (Camera lifecycle, evidence store, coordinator,
+verifier, and retained production-owner/scene tests) passed `72/72`,
+`0` failed, `0` skipped in
+`/private/tmp/m2-camera-auto-regression-final.xcresult`. The historical
+comparable selection was rerun with the three newly added duplicate-PTS tests
+excluded and passed `53/53`, `0` failed, `0` skipped in
+`/private/tmp/m2-camera-auto-regression53-final.xcresult`.
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-auto-regression53-dd \
+  -resultBundlePath /private/tmp/m2-camera-auto-regression53-final.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests \
+  -skip-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testKnownSamplePTSAndSessionGenerationRejectLateOlderEvidence \
+  -skip-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testEqualKnownPTSRejectsConflictingEvidenceWithoutMutation \
+  -skip-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testEqualKnownPTSAcceptsOnlyIdempotentRetransmissionWithoutReplacement \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests \
+  -only-testing:shafinMultitoolTests/ActionVerifierTests \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionOwnersAdvanceSubjectSelectionThroughStabilizedEpisode \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionSceneIdentityIgnoresNoiseAndLocalMotionButRotatesOnMaterialCut \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testTypedSceneCutCoordinatorFixtureRetainsTerminalState
+```
+
+### Current-head Release boundary
+
+The production Release app was compiled on the allowed iPhone Air simulator with
+bounded DerivedData:
+
+```text
+xcodebuild build -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -configuration Release \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-auto-release-app-dd \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Result: exit `0`; product:
+`/private/tmp/m2-camera-auto-release-app-dd/Build/Products/Release-iphonesimulator/shafinMultitool.app`.
+`strings` and `nm -gU` audits returned no matches for
+`SHAFIN_CAMERA_PRODUCTION_FIXTURE`, `testingPublishLivePresentation`,
+`testingLiveSceneIdentity`, `testingResetLiveSceneIdentity`, or
+`previewGeometryForTesting`. A Release `build-for-testing` of the entire test
+bundle is not a valid artifact for this repository because the tests use
+`@testable` and DEBUG-only test seams; those attempts failed at test compilation
+with the expected excluded-symbol errors, while the production Release app
+compile above succeeded.
+
+The prior Air production-UI bundle remains `10/10` passed at
+`/private/tmp/m2-camera-second-correction-ui-rebinding.xcresult`. A fresh
+current-tree UI attempt was interrupted by the host's Xcode simulator worker
+launch/debugger-store failure before a result bundle could be saved; no product
+failure is inferred from that infrastructure interruption. No iPhone 17 Pro or
+physical device was targeted.
+
+`git diff --check` passed after this update. Changed paths remain within the
+M2 correction scope; no Release fixture behavior, routes, teardown, or
+accessibility IDs changed.

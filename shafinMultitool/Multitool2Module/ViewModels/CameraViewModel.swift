@@ -260,6 +260,10 @@ final class CameraViewModel: ObservableObject {
     /// Camera Coach owns the episode lifetime; presentation views only observe
     /// this projection and cannot restart an episode during recomposition.
     private var coachingEpisodeCoordinator = CoachingEpisodeCoordinator()
+    /// Generation/token fence for the one automatic verifier handoff. A ready
+    /// event may be replayed by Combine, but one immutable pair is verified
+    /// only once for its episode identity.
+    private var automaticallyVerifiedEpisodeToken: CoachingEpisodeToken?
 
     private let cameraManager: CameraManager
     private let analysisPipeline: AnalysisPipeline
@@ -632,6 +636,7 @@ final class CameraViewModel: ObservableObject {
         motionEventLedger.reset()
         coachingEpisodeCoordinator.resetForRetry()
         coachingEpisodeState = .idle
+        automaticallyVerifiedEpisodeToken = nil
     }
 
     private func cancelPendingPauseRenderIfNeeded() {
@@ -1030,8 +1035,38 @@ final class CameraViewModel: ObservableObject {
         // baseline may reset a cancelled/expired episode. Frame events never
         // reopen a terminal state and never replace the frozen advice.
         let previousPhase = coachingEpisodeCoordinator.phase
+        let previousToken = coachingEpisodeCoordinator.episodeToken
         let nextState = coachingEpisodeCoordinator.consume(event)
         coachingEpisodeState = nextState
+
+        if case .baseline = event,
+           previousToken != nextState.token {
+            // A fresh baseline owns a new immutable pair. Any result from the
+            // prior token is stale even if a live hint arrives in the same
+            // main-actor turn.
+            verificationResult = nil
+            automaticallyVerifiedEpisodeToken = nil
+        }
+
+        if previousPhase != .readyForVerification,
+           nextState.phase == .readyForVerification,
+           let token = nextState.token,
+           token.generation != 0,
+           automaticallyVerifiedEpisodeToken != token,
+           let input = coachingEpisodeCoordinator.verificationInput,
+           input.token == token {
+            // The ViewModel is the production presentation owner. Verify the
+            // coordinator's immutable before/after pair exactly once after
+            // the generation-fenced ready transition; no test/manual seam is
+            // involved in this path.
+            automaticallyVerifiedEpisodeToken = token
+            _ = applyVerificationResult(ActionVerifier.verify(input))
+        }
+
+        if nextState.phase == .cancelled || nextState.phase == .expired {
+            verificationResult = nil
+            automaticallyVerifiedEpisodeToken = nil
+        }
 
         let wasActive = previousPhase == .awaitingMovement
             || previousPhase == .collectingStableAfterFrames
@@ -1058,12 +1093,14 @@ final class CameraViewModel: ObservableObject {
         analysisPipeline.cancelCoachingEpisode(reason: reason)
         coachingEpisodeState = coachingEpisodeCoordinator.cancel(reason: reason)
         verificationResult = nil
+        automaticallyVerifiedEpisodeToken = nil
     }
 
     private func resetCoachingEpisodeForNewCapture() {
         coachingEpisodeCoordinator.resetForRetry()
         coachingEpisodeState = .idle
         verificationResult = nil
+        automaticallyVerifiedEpisodeToken = nil
     }
 
     private func applyLiveHint(_ hint: LiveHintPresentation?) {
@@ -1074,7 +1111,6 @@ final class CameraViewModel: ObservableObject {
             verificationResult = nil
             return
         }
-        verificationResult = nil
         liveHint = hint
         guard let hint else {
             plannerDecision = nil

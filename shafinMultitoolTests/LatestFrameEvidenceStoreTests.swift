@@ -300,6 +300,97 @@ final class LatestFrameEvidenceStoreTests: XCTestCase {
         XCTAssertEqual(store.snapshot()?.sessionGeneration, 8)
     }
 
+    func testEqualKnownPTSRejectsConflictingEvidenceWithoutMutation() {
+        let store = LatestFrameEvidenceStore()
+        let currentPixelBuffer = makePixelBuffer()
+        let conflictingPixelBuffer = makePixelBuffer()
+        let timestamp = CMTime(value: 25, timescale: 10)
+
+        XCTAssertTrue(store.publish(
+            pixelBuffer: currentPixelBuffer,
+            orientation: .right,
+            sourceFrameId: "equal-pts-frame",
+            capturedAt: Date(timeIntervalSince1970: 125),
+            isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            lensGeneration: 3,
+            samplePresentationTimestamp: timestamp,
+            sessionGeneration: 9
+        ))
+
+        // Same session/capture/PTS is not enough to establish identity. A
+        // different buffer must be rejected even when its callback arrives
+        // later, and the accepted envelope must remain byte-source stable.
+        XCTAssertFalse(store.publish(
+            pixelBuffer: conflictingPixelBuffer,
+            orientation: .right,
+            sourceFrameId: "equal-pts-frame",
+            capturedAt: Date(timeIntervalSince1970: 126),
+            isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            lensGeneration: 3,
+            samplePresentationTimestamp: timestamp,
+            sessionGeneration: 9
+        ))
+
+        let snapshot = store.snapshot()
+        XCTAssertEqual(snapshot?.sourceFrameId, "equal-pts-frame")
+        XCTAssertEqual(snapshot?.capturedAt, Date(timeIntervalSince1970: 125))
+        XCTAssertEqual(snapshot?.sessionGeneration, 9)
+        XCTAssertEqual(snapshot?.lensGeneration, 3)
+        XCTAssertEqual(
+            ObjectIdentifier(snapshot!.pixelBuffer as AnyObject),
+            ObjectIdentifier(currentPixelBuffer as AnyObject)
+        )
+        XCTAssertNotEqual(
+            ObjectIdentifier(snapshot!.pixelBuffer as AnyObject),
+            ObjectIdentifier(conflictingPixelBuffer as AnyObject)
+        )
+    }
+
+    func testEqualKnownPTSAcceptsOnlyIdempotentRetransmissionWithoutReplacement() {
+        let store = LatestFrameEvidenceStore()
+        let pixelBuffer = makePixelBuffer()
+        let timestamp = CMTime(value: 35, timescale: 10)
+
+        XCTAssertTrue(store.publish(
+            pixelBuffer: pixelBuffer,
+            orientation: .right,
+            sourceFrameId: "equal-pts-identical",
+            capturedAt: Date(timeIntervalSince1970: 135),
+            isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            lensGeneration: 3,
+            samplePresentationTimestamp: timestamp,
+            sessionGeneration: 9
+        ))
+
+        // The exact same buffer and provenance are an idempotent retry. It is
+        // accepted as a no-op, so callback Date cannot refresh the envelope.
+        XCTAssertTrue(store.publish(
+            pixelBuffer: pixelBuffer,
+            orientation: .right,
+            sourceFrameId: "equal-pts-identical",
+            capturedAt: Date(timeIntervalSince1970: 136),
+            isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            lensGeneration: 3,
+            samplePresentationTimestamp: timestamp,
+            sessionGeneration: 9
+        ))
+
+        let snapshot = store.snapshot()
+        XCTAssertEqual(snapshot?.sourceFrameId, "equal-pts-identical")
+        XCTAssertEqual(snapshot?.capturedAt, Date(timeIntervalSince1970: 135))
+        XCTAssertEqual(snapshot?.sessionGeneration, 9)
+        XCTAssertEqual(snapshot?.lensGeneration, 3)
+        XCTAssertEqual(
+            ObjectIdentifier(snapshot!.pixelBuffer as AnyObject),
+            ObjectIdentifier(pixelBuffer as AnyObject)
+        )
+        XCTAssertEqual(CMTimeCompare(snapshot!.samplePresentationTimestamp, timestamp), 0)
+    }
+
     func testMismatchedPreviewGeometryIsUnavailableAtImmutableBoundary() {
         let geometry = CameraPreviewGeometry(
             destinationSize: CGSize(width: 390, height: 844),

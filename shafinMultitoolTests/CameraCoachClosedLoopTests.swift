@@ -467,7 +467,10 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             viewModel.coachingEpisodeState.phase == .awaitingMovement
                 && viewModel.coachingEpisodeState.baseline?.frameID == baselineFrames.last?.snapshot.frameId
         }
-        XCTAssertTrue(baselineAccepted)
+        XCTAssertTrue(
+            baselineAccepted,
+            "the production scene-cut fixture must establish its initial baseline"
+        )
         guard case let .baseline(baselineObservation) = pipeline.currentCoachingEpisodeEvent else {
             return XCTFail("production pipeline must retain the accepted baseline event")
         }
@@ -487,7 +490,10 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             viewModel.coachingEpisodeState.phase == .cancelled
                 && viewModel.coachingEpisodeState.cancellationReason == .sceneCut
         }
-        XCTAssertTrue(sceneCutConsumed)
+        XCTAssertTrue(
+            sceneCutConsumed,
+            "the production scene-cut fixture must enter the cancelled phase"
+        )
 
         let terminalState = viewModel.coachingEpisodeState
         let staleFrame = makeFrame(
@@ -541,7 +547,10 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             viewModel.coachingEpisodeState.phase == .awaitingMovement
                 && viewModel.coachingEpisodeState.baseline?.frameID == freshBaselineFrames[2].snapshot.frameId
         }
-        XCTAssertTrue(retryAccepted)
+        XCTAssertTrue(
+            retryAccepted,
+            "the production scene-cut fixture must establish a fresh baseline after retry"
+        )
         XCTAssertNotEqual(viewModel.coachingEpisodeState.token, firstToken)
         XCTAssertEqual(viewModel.coachingEpisodeState.cancellationReason, nil)
 
@@ -613,6 +622,101 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         XCTAssertEqual(abstention.pipeline.testingDirectFrameAcceptanceCount, 0)
 
         await abstention.viewModel.releaseAndWait()
+    }
+
+    func testProductionCapturePathAutomaticallyVerifiesCorrectiveEpisode() async throws {
+        let visionSequence = CaptureVisionSequence()
+        let harness = makeCapturePathHarness(visionResult: { _, _ in
+            visionSequence.nextResult()
+        }, neuralEnabled: false)
+        await harness.viewModel.startAndWait()
+        harness.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
+
+        // Ten identical capture samples establish the visible corrective
+        // marker/baseline through the real CameraManager callback and
+        // RealtimeScheduler cadence. The following two samples move the
+        // tracked subject left (the requested shift_frame_right action), and
+        // the last two are stable after-frames.
+        for index in 0..<14 {
+            try await deliverCaptureSample(
+                through: harness,
+                timestamp: CMTime(value: Int64(1_000 + index * 100), timescale: 1_000),
+                lumaValues: Self.supportedCaptureLuma
+            )
+        }
+
+        let verified = await waitUntil {
+            harness.viewModel.coachingEpisodeState.phase == .readyForVerification
+                && harness.viewModel.verificationResult != nil
+        }
+        XCTAssertTrue(
+            verified,
+            "the ready episode must invoke ActionVerifier from CameraViewModel without a manual seam"
+        )
+        let result = try XCTUnwrap(
+            harness.viewModel.verificationResult,
+            "the production owner must retain the automatic verification result"
+        )
+        let baseline = try XCTUnwrap(
+            harness.viewModel.coachingEpisodeState.baseline,
+            "automatic verification must retain the immutable production baseline"
+        )
+        let baselineEvidence = try XCTUnwrap(baseline.frame.evidence)
+        XCTAssertTrue(
+            baseline.samplePresentationTimestamp.isNumeric,
+            "the baseline must retain the synthetic CMSampleBuffer PTS"
+        )
+        XCTAssertEqual(
+            CMTimeCompare(
+                baseline.samplePresentationTimestamp,
+                baselineEvidence.samplePresentationTimestamp
+            ),
+            0,
+            "baseline metadata and its frame evidence must carry the same sample PTS"
+        )
+        XCTAssertEqual(
+            baseline.sessionGeneration,
+            harness.manager.sessionGenerationForTesting,
+            "the baseline must retain CameraManager's capture session generation"
+        )
+        XCTAssertEqual(
+            baselineEvidence.sessionGeneration,
+            harness.manager.sessionGenerationForTesting,
+            "the accepted frame evidence must retain CameraManager's session generation"
+        )
+        XCTAssertEqual(result.decision, .comparable(outcome: .improved))
+        XCTAssertEqual(result.token, harness.viewModel.coachingEpisodeState.token)
+        XCTAssertEqual(
+            result.afterFrameID,
+            harness.viewModel.coachingEpisodeState.lastFrameID,
+            "the result must belong to the same immutable ready pair"
+        )
+
+        // A later unrelated live frame may update the live pipeline, but it
+        // cannot erase feedback owned by this completed episode token.
+        try await deliverCaptureSample(
+            through: harness,
+            timestamp: CMTime(value: 2_500, timescale: 1_000),
+            lumaValues: Self.supportedCaptureLuma
+        )
+        let unrelatedEvidence = try XCTUnwrap(harness.pipeline.testingLatestFrameEvidence)
+        XCTAssertEqual(
+            CMTimeCompare(
+                unrelatedEvidence.samplePresentationTimestamp,
+                CMTime(value: 2_500, timescale: 1_000)
+            ),
+            0,
+            "the final real capture callback must retain its exact sample PTS"
+        )
+        XCTAssertEqual(
+            unrelatedEvidence.sessionGeneration,
+            harness.manager.sessionGenerationForTesting,
+            "the final accepted frame must retain the active CameraManager session"
+        )
+        XCTAssertEqual(harness.viewModel.verificationResult, result)
+        XCTAssertEqual(harness.viewModel.coachingEpisodeState.phase, .readyForVerification)
+
+        await harness.viewModel.releaseAndWait()
     }
 
     func testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries() async throws {
@@ -1014,6 +1118,29 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         let viewModel: CameraViewModel
     }
 
+    private final class CaptureVisionSequence {
+        private let lock = NSLock()
+        private var sampleIndex = 0
+
+        func nextResult() -> VisionTrackingResult {
+            lock.lock()
+            sampleIndex += 1
+            let index = sampleIndex
+            lock.unlock()
+
+            let subjectX: CGFloat
+            switch index {
+            case 1...10:
+                subjectX = 0.60
+            case 11:
+                subjectX = 0.50
+            default:
+                subjectX = 0.40
+            }
+            return CameraCoachClosedLoopTests.captureVisionResult(subjectX: subjectX)
+        }
+    }
+
     private static let capturePreviewGeometry = CameraPreviewGeometry(
         destinationSize: CGSize(width: 390, height: 844),
         imageOrientation: .down,
@@ -1029,19 +1156,23 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         208, 48, 208, 48
     ]
 
-    private static let supportedCaptureVisionResult = VisionTrackingResult(
+    private nonisolated static func captureVisionResult(subjectX: CGFloat) -> VisionTrackingResult {
+        VisionTrackingResult(
         subjects: [
             TrackedSubject(
-                boundingBox: CGRect(x: 0.60, y: 0.20, width: 0.40, height: 0.40),
+                boundingBox: CGRect(x: subjectX, y: 0.20, width: 0.40, height: 0.40),
                 confidence: 1.0,
                 isFace: true
             )
         ],
-        saliencyCenter: CGPoint(x: 0.80, y: 0.50),
-        saliencyRegion: CGRect(x: 0.60, y: 0.20, width: 0.40, height: 0.40),
+        saliencyCenter: CGPoint(x: subjectX + 0.20, y: 0.50),
+        saliencyRegion: CGRect(x: subjectX, y: 0.20, width: 0.40, height: 0.40),
         faceCount: 1,
         personCount: 1
-    )
+        )
+    }
+
+    private static let supportedCaptureVisionResult = captureVisionResult(subjectX: 0.60)
 
     private static let emptyCaptureVisionResult = VisionTrackingResult(
         subjects: [],

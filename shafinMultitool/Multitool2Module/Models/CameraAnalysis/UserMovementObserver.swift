@@ -7,6 +7,7 @@
 //  frame streak state. Neither uses elapsed time as a success signal.
 //
 
+import CoreMedia
 import Foundation
 
 /// The action families for which Camera Coach can observe a feature change.
@@ -174,6 +175,13 @@ extension UserMovementSubjectBinding: Equatable {
 struct UserMovementEvidence: Equatable, Sendable {
     let capturedAt: Date
     let evaluatedAt: Date
+    /// Exact sample presentation time copied from the capture buffer. This is
+    /// the ordering source inside one known camera session/capture epoch;
+    /// `capturedAt` remains callback-arrival freshness only.
+    let samplePresentationTimestamp: CMTime
+    /// CameraManager lifecycle/session epoch that produced this sample.
+    /// `nil` is retained only for legacy synthetic evidence.
+    let sessionGeneration: UInt64?
     /// Shared pipeline capture generation; this is the same generation
     /// SubjectTracker stores in SubjectTrackIdentity.generation.
     let lensGeneration: UInt64
@@ -190,6 +198,8 @@ struct UserMovementEvidence: Equatable, Sendable {
 
     init(capturedAt: Date,
          evaluatedAt: Date? = nil,
+         samplePresentationTimestamp: CMTime = .invalid,
+         sessionGeneration: UInt64? = nil,
          lensGeneration: UInt64,
          subjectTrackID: String?,
          subjectBinding: UserMovementSubjectBinding? = nil,
@@ -201,6 +211,8 @@ struct UserMovementEvidence: Equatable, Sendable {
          sourceAvailability: [UserMovementActionFamily: Bool] = [:]) {
         self.capturedAt = capturedAt
         self.evaluatedAt = evaluatedAt ?? capturedAt
+        self.samplePresentationTimestamp = samplePresentationTimestamp
+        self.sessionGeneration = sessionGeneration
         self.lensGeneration = lensGeneration
         self.subjectTrackID = subjectTrackID
         self.subjectBinding = subjectBinding
@@ -210,6 +222,23 @@ struct UserMovementEvidence: Equatable, Sendable {
         self.featureMeasuredAt = featureMeasuredAt
         self.featureConfidence = featureConfidence
         self.sourceAvailability = sourceAvailability
+    }
+
+    /// A production provenance tuple is complete only when all three
+    /// ordering components are present. Partial metadata is invalid rather
+    /// than silently falling back to callback arrival time.
+    var hasKnownSampleProvenance: Bool {
+        lensGeneration != 0
+            && sessionGeneration != nil
+            && samplePresentationTimestamp.isNumeric
+    }
+
+    var hasPartialSampleProvenance: Bool {
+        sessionGeneration != nil || samplePresentationTimestamp.isNumeric
+    }
+
+    var hasValidSampleProvenanceShape: Bool {
+        !hasPartialSampleProvenance || hasKnownSampleProvenance
     }
 }
 
@@ -370,6 +399,8 @@ struct UserMovementFrame: Equatable, Sendable {
             evidence: UserMovementEvidence(
                 capturedAt: envelope.capturedAt,
                 evaluatedAt: asOf,
+                samplePresentationTimestamp: envelope.samplePresentationTimestamp,
+                sessionGeneration: envelope.sessionGeneration,
                 lensGeneration: envelope.lensGeneration,
                 subjectTrackID: subjectBinding?.identity.trackID,
                 subjectBinding: subjectBinding,
@@ -668,6 +699,23 @@ enum UserMovementObserver {
               previousEvidence.lensGeneration == currentEvidence.lensGeneration else {
             return "lens_generation"
         }
+        guard previousEvidence.hasValidSampleProvenanceShape,
+              currentEvidence.hasValidSampleProvenanceShape else {
+            return "provenance_missing"
+        }
+        if previousEvidence.hasKnownSampleProvenance || currentEvidence.hasKnownSampleProvenance {
+            guard previousEvidence.hasKnownSampleProvenance,
+                  currentEvidence.hasKnownSampleProvenance,
+                  previousEvidence.sessionGeneration == currentEvidence.sessionGeneration else {
+                return "session_generation"
+            }
+            guard CMTimeCompare(
+                currentEvidence.samplePresentationTimestamp,
+                previousEvidence.samplePresentationTimestamp
+            ) > 0 else {
+                return "sample_pts"
+            }
+        }
         let requiresSubjectBinding = family == .subjectDisplacement
             || family == .scaleDistance
             || family == .lightExposure
@@ -705,7 +753,8 @@ enum UserMovementObserver {
         }
         guard previousEvidence.capturedAt.timeIntervalSinceReferenceDate.isFinite,
               currentEvidence.capturedAt.timeIntervalSinceReferenceDate.isFinite,
-              previousEvidence.capturedAt <= currentEvidence.capturedAt else {
+              (previousEvidence.hasKnownSampleProvenance
+                  || previousEvidence.capturedAt <= currentEvidence.capturedAt) else {
             return "evidence_time"
         }
 

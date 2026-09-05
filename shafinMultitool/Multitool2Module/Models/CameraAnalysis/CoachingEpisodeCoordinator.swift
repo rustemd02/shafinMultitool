@@ -8,6 +8,7 @@
 //  during recomposition or rotation.
 //
 
+import CoreMedia
 import Foundation
 
 /// The only phases an episode can expose to a production consumer.
@@ -86,6 +87,10 @@ struct CoachingEpisodeBaseline: Equatable, Sendable {
     let subjectIdentity: SubjectTrackIdentity?
     let frameID: String
     let capturedAt: Date
+    /// Exact sample provenance frozen with the baseline. Callback arrival
+    /// time remains a freshness/expiry signal, never the frame ordering key.
+    let samplePresentationTimestamp: CMTime
+    let sessionGeneration: UInt64?
     let orientation: CameraCoachOrientation
     let lensID: String?
     let captureGeneration: UInt64
@@ -96,6 +101,38 @@ struct CoachingEpisodeBaseline: Equatable, Sendable {
     let geometryContext: ActionVerificationGeometryContext?
     /// Frozen exposure-settling evidence, when supplied by the capture owner.
     let exposureState: ActionVerificationExposureState?
+
+    init(advice: StabilizedAdvice,
+         actionID: String,
+         frame: UserMovementFrame,
+         lifecycle: SubjectTrackLifecycleContext,
+         subjectIdentity: SubjectTrackIdentity?,
+         frameID: String,
+         capturedAt: Date,
+         samplePresentationTimestamp: CMTime = .invalid,
+         sessionGeneration: UInt64? = nil,
+         orientation: CameraCoachOrientation,
+         lensID: String?,
+         captureGeneration: UInt64,
+         subjectRegion: NormalizedRect?,
+         geometryContext: ActionVerificationGeometryContext?,
+         exposureState: ActionVerificationExposureState?) {
+        self.advice = advice
+        self.actionID = actionID
+        self.frame = frame
+        self.lifecycle = lifecycle
+        self.subjectIdentity = subjectIdentity
+        self.frameID = frameID
+        self.capturedAt = capturedAt
+        self.samplePresentationTimestamp = samplePresentationTimestamp
+        self.sessionGeneration = sessionGeneration
+        self.orientation = orientation
+        self.lensID = lensID
+        self.captureGeneration = captureGeneration
+        self.subjectRegion = subjectRegion
+        self.geometryContext = geometryContext
+        self.exposureState = exposureState
+    }
 }
 
 extension UserMovementActionFamily {
@@ -140,6 +177,7 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
               let evidence = frame.evidence,
               evidence.lensGeneration != 0,
               evidence.lensGeneration == lifecycle.generation,
+              evidence.hasValidSampleProvenanceShape,
               evidence.orientation == lifecycle.orientation,
               evidence.capturedAt <= evidence.evaluatedAt,
               actionFamily == .stability || (isStable && frame.motionIsStill) else {
@@ -256,6 +294,7 @@ struct CoachingEpisodeFrameEvidence: Equatable, Sendable {
               lifecycle.generation != 0,
               let evidence = frame.evidence,
               evidence.lensGeneration == lifecycle.generation,
+              evidence.hasValidSampleProvenanceShape,
               evidence.orientation == lifecycle.orientation,
               evidence.capturedAt.timeIntervalSinceReferenceDate.isFinite,
               evidence.evaluatedAt.timeIntervalSinceReferenceDate.isFinite,
@@ -442,6 +481,8 @@ struct CoachingEpisodeCoordinator {
                 : nil,
             frameID: observation.frame.frameID,
             capturedAt: capturedAt,
+            samplePresentationTimestamp: observation.frame.evidence?.samplePresentationTimestamp ?? .invalid,
+            sessionGeneration: observation.frame.evidence?.sessionGeneration,
             orientation: observation.lifecycle.orientation,
             lensID: observation.lifecycle.lensID,
             captureGeneration: observation.lifecycle.generation,
@@ -518,26 +559,50 @@ struct CoachingEpisodeCoordinator {
             return state
         }
 
-        let capturedAt = frameEvidence.frame.evidence?.capturedAt
-        guard let capturedAt, capturedAt.timeIntervalSinceReferenceDate.isFinite else {
-            return cancel(reason: .invalidObservation)
-        }
-        if capturedAt.timeIntervalSince(baseline.capturedAt) >= configuration.maxDuration {
-            return expire(at: capturedAt)
-        }
-        guard capturedAt > previous.frame.evidence!.capturedAt else {
-            return cancel(reason: .outOfOrder)
-        }
-
-        if let currentActionID = frameEvidence.currentActionID,
-           currentActionID != baseline.actionID {
-            return cancel(reason: .actionChanged)
-        }
+        // Lifecycle changes are owned by the typed track guard. Evaluate this
+        // boundary before the frame-provenance checks so a real capture/lens
+        // transition keeps its canonical cancellation reason instead of being
+        // flattened into a generic invalid-observation result.
         if let invalidation = lifecycleGuard?.validate(
             frameEvidence.lifecycle,
             frameID: frameID
         ) {
             return cancel(reason: Self.reason(for: invalidation.cause))
+        }
+
+        guard let evidence = frameEvidence.frame.evidence,
+              evidence.lensGeneration == baseline.captureGeneration,
+              evidence.hasValidSampleProvenanceShape,
+              evidence.orientation == baseline.orientation,
+              evidence.capturedAt.timeIntervalSinceReferenceDate.isFinite,
+              evidence.evaluatedAt.timeIntervalSinceReferenceDate.isFinite,
+              evidence.capturedAt <= evidence.evaluatedAt else {
+            return cancel(reason: .invalidObservation)
+        }
+        let capturedAt = evidence.capturedAt
+        if capturedAt.timeIntervalSince(baseline.capturedAt) >= configuration.maxDuration {
+            return expire(at: capturedAt)
+        }
+        let previousEvidence = previous.frame.evidence!
+        if previousEvidence.hasKnownSampleProvenance || evidence.hasKnownSampleProvenance {
+            guard previousEvidence.hasKnownSampleProvenance,
+                  evidence.hasKnownSampleProvenance,
+                  previousEvidence.sessionGeneration == evidence.sessionGeneration,
+                  CMTimeCompare(
+                      evidence.samplePresentationTimestamp,
+                      previousEvidence.samplePresentationTimestamp
+                  ) > 0 else {
+                return cancel(reason: .outOfOrder)
+            }
+        } else {
+            guard capturedAt > previousEvidence.capturedAt else {
+                return cancel(reason: .outOfOrder)
+            }
+        }
+
+        if let currentActionID = frameEvidence.currentActionID,
+           currentActionID != baseline.actionID {
+            return cancel(reason: .actionChanged)
         }
 
         guard frameEvidence.lifecycle.generation == baseline.captureGeneration,
@@ -558,8 +623,7 @@ struct CoachingEpisodeCoordinator {
             }
         }
 
-        guard let evidence = frameEvidence.frame.evidence,
-              evidence.lensGeneration == baseline.captureGeneration,
+        guard evidence.lensGeneration == baseline.captureGeneration,
               evidence.orientation == baseline.orientation,
               evidence.capturedAt <= evidence.evaluatedAt else {
             return cancel(reason: .staleEvidence)
@@ -725,7 +789,8 @@ struct CoachingEpisodeCoordinator {
         switch reason {
         case "evidence_missing", "feature_missing", "feature_confidence",
              "stale_evidence", "uncalibrated", "evidence_time",
-             "orientation_changed", "lens_generation":
+             "orientation_changed", "lens_generation", "provenance_missing",
+             "session_generation", "sample_pts":
             return true
         default:
             return false

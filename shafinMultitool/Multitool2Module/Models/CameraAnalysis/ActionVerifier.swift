@@ -5,6 +5,7 @@
 //  M2-025 VerificationOwner: pure before/after action verification.
 //
 
+import CoreMedia
 import Foundation
 
 /// Verifies one immutable episode pair after `CoachingEpisodeCoordinator` has
@@ -49,8 +50,27 @@ enum ActionVerifier {
               afterEvidence.capturedAt <= afterEvidence.evaluatedAt else {
             return result(input, decision: .incomparable(reason: .evidenceTimeInvalid))
         }
-        guard afterEvidence.capturedAt > beforeEvidence.capturedAt else {
-            return result(input, decision: .incomparable(reason: .outOfOrder))
+        guard beforeEvidence.hasValidSampleProvenanceShape,
+              afterEvidence.hasValidSampleProvenanceShape else {
+            return result(input, decision: .incomparable(reason: .evidenceMissing))
+        }
+        if beforeEvidence.hasKnownSampleProvenance || afterEvidence.hasKnownSampleProvenance {
+            guard beforeEvidence.hasKnownSampleProvenance,
+                  afterEvidence.hasKnownSampleProvenance,
+                  beforeEvidence.sessionGeneration == afterEvidence.sessionGeneration,
+                  CMTimeCompare(
+                      afterEvidence.samplePresentationTimestamp,
+                      beforeEvidence.samplePresentationTimestamp
+                  ) > 0 else {
+                return result(input, decision: .incomparable(reason: .outOfOrder))
+            }
+        } else {
+            // Legacy synthetic evidence has no sample PTS/session epoch. It
+            // keeps the historical Date ordering explicitly, but can never
+            // overtake a known production tuple above.
+            guard afterEvidence.capturedAt > beforeEvidence.capturedAt else {
+                return result(input, decision: .incomparable(reason: .outOfOrder))
+            }
         }
 
         // Extract the observer-owned finite measurement before applying the

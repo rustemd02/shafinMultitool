@@ -188,15 +188,16 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
 
         lock.lock()
         if let currentSnapshot {
-            guard Self.accepts(
-                sessionGeneration: snapshot.sessionGeneration,
-                captureGeneration: snapshot.lensGeneration,
-                samplePresentationTimestamp: snapshot.samplePresentationTimestamp,
-                capturedAt: snapshot.capturedAt,
-                over: currentSnapshot
-            ) else {
+            guard Self.accepts(incoming: snapshot, over: currentSnapshot) else {
                 lock.unlock()
                 return false
+            }
+            // A retransmitted sample is already represented by the exact same
+            // immutable buffer/provenance. Keep the original envelope rather
+            // than refreshing callback Date or replacing adapter state.
+            if Self.isIdempotentDuplicate(incoming: snapshot, current: currentSnapshot) {
+                lock.unlock()
+                return true
             }
         }
         currentSnapshot = snapshot
@@ -210,10 +211,32 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
     internal func accepts(sessionGeneration: UInt64?,
                           captureGeneration: UInt64,
                           samplePresentationTimestamp: CMTime,
-                          capturedAt: Date = Date()) -> Bool {
+                          capturedAt: Date = Date(),
+                          sourceFrameId: String? = nil,
+                          pixelBuffer: CVPixelBuffer? = nil,
+                          orientation: CGImagePropertyOrientation? = nil,
+                          lensID: String? = nil,
+                          previewGeometry: CameraPreviewGeometry? = nil,
+                          isStable: Bool? = nil) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         guard let currentSnapshot else { return true }
+        if let sourceFrameId,
+           let pixelBuffer,
+           Self.isIdempotentDuplicate(
+               sourceFrameId: sourceFrameId,
+               pixelBuffer: pixelBuffer,
+               orientation: orientation,
+               isStable: isStable,
+               lensID: lensID,
+               previewGeometry: previewGeometry,
+               captureGeneration: captureGeneration,
+               samplePresentationTimestamp: samplePresentationTimestamp,
+               sessionGeneration: sessionGeneration,
+               current: currentSnapshot
+           ) {
+            return true
+        }
         return Self.accepts(
             sessionGeneration: sessionGeneration,
             captureGeneration: captureGeneration,
@@ -223,11 +246,23 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
         )
     }
 
+    private static func accepts(incoming: Snapshot, over current: Snapshot) -> Bool {
+        accepts(
+            sessionGeneration: incoming.sessionGeneration,
+            captureGeneration: incoming.lensGeneration,
+            samplePresentationTimestamp: incoming.samplePresentationTimestamp,
+            capturedAt: incoming.capturedAt,
+            over: current,
+            idempotentDuplicate: isIdempotentDuplicate(incoming: incoming, current: current)
+        )
+    }
+
     private static func accepts(sessionGeneration incomingSessionGeneration: UInt64?,
                                 captureGeneration incomingCaptureGeneration: UInt64,
                                 samplePresentationTimestamp incomingTimestamp: CMTime,
                                 capturedAt incomingCapturedAt: Date,
-                                over current: Snapshot) -> Bool {
+                                over current: Snapshot,
+                                idempotentDuplicate: Bool = false) -> Bool {
         // Preserve the existing Date fallback only for fully legacy values.
         // CameraManager captureOutput always supplies a known session and
         // numeric PTS, so callback arrival time can never make old pixels
@@ -261,7 +296,11 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
 
         if current.samplePresentationTimestamp.isNumeric {
             guard incomingTimestamp.isNumeric else { return false }
-            return CMTimeCompare(incomingTimestamp, current.samplePresentationTimestamp) >= 0
+            let ordering = CMTimeCompare(incomingTimestamp, current.samplePresentationTimestamp)
+            if ordering == 0 {
+                return idempotentDuplicate
+            }
+            return ordering > 0
         }
         if incomingTimestamp.isNumeric {
             return true
@@ -269,6 +308,51 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
 
         guard legacyOrdering else { return false }
         return incomingCapturedAt >= current.capturedAt
+    }
+
+    private static func isIdempotentDuplicate(incoming: Snapshot,
+                                              current: Snapshot) -> Bool {
+        isIdempotentDuplicate(
+            sourceFrameId: incoming.sourceFrameId,
+            pixelBuffer: incoming.pixelBuffer,
+            orientation: incoming.orientation,
+            isStable: incoming.isStable,
+            lensID: incoming.lensID,
+            previewGeometry: incoming.previewGeometry,
+            captureGeneration: incoming.lensGeneration,
+            samplePresentationTimestamp: incoming.samplePresentationTimestamp,
+            sessionGeneration: incoming.sessionGeneration,
+            current: current
+        )
+    }
+
+    private static func isIdempotentDuplicate(sourceFrameId: String,
+                                              pixelBuffer: CVPixelBuffer,
+                                              orientation: CGImagePropertyOrientation?,
+                                              isStable: Bool?,
+                                              lensID: String?,
+                                              previewGeometry: CameraPreviewGeometry?,
+                                              captureGeneration: UInt64,
+                                              samplePresentationTimestamp: CMTime,
+                                              sessionGeneration: UInt64?,
+                                              current: Snapshot) -> Bool {
+        guard sourceFrameId.trimmingCharacters(in: .whitespacesAndNewlines) == current.sourceFrameId,
+              ObjectIdentifier(pixelBuffer as AnyObject)
+                  == ObjectIdentifier(current.pixelBuffer as AnyObject),
+              orientation.map({ $0 == current.orientation }) ?? false,
+              isStable.map({ $0 == current.isStable }) ?? false,
+              lensID == current.lensID,
+              previewGeometry == current.previewGeometry,
+              captureGeneration == current.lensGeneration,
+              sessionGeneration == current.sessionGeneration,
+              samplePresentationTimestamp.isNumeric,
+              current.samplePresentationTimestamp.isNumeric else {
+            return false
+        }
+        return CMTimeCompare(
+            samplePresentationTimestamp,
+            current.samplePresentationTimestamp
+        ) == 0
     }
 
     internal func snapshot() -> Snapshot? {

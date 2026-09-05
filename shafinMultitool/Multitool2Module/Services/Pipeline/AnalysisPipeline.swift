@@ -4313,7 +4313,16 @@ final class AnalysisPipeline: ObservableObject {
     private func isCurrentLiveEvidence(_ evidence: LatestFrameEvidenceStore.Snapshot,
                                        generation: UInt64) -> Bool {
         guard isFrameWorkActive(generation),
-              latestFrameEvidenceStore.snapshot()?.sourceFrameId == evidence.sourceFrameId else {
+              let latest = latestFrameEvidenceStore.snapshot(),
+              latest.sourceFrameId == evidence.sourceFrameId,
+              latest.lensGeneration == evidence.lensGeneration,
+              latest.sessionGeneration == evidence.sessionGeneration,
+              latest.samplePresentationTimestamp.isNumeric == evidence.samplePresentationTimestamp.isNumeric,
+              (!latest.samplePresentationTimestamp.isNumeric
+                  || CMTimeCompare(
+                      latest.samplePresentationTimestamp,
+                      evidence.samplePresentationTimestamp
+                  ) == 0) else {
             return false
         }
         let ageMilliseconds = Date().timeIntervalSince(evidence.capturedAt) * 1000.0
@@ -4331,7 +4340,13 @@ final class AnalysisPipeline: ObservableObject {
             sessionGeneration: context.sessionGeneration,
             captureGeneration: context.captureGeneration,
             samplePresentationTimestamp: context.samplePresentationTimestamp,
-            capturedAt: context.capturedAt
+            capturedAt: context.capturedAt,
+            sourceFrameId: makeSourceFrameId(from: context.timestamp),
+            pixelBuffer: context.pixelBuffer,
+            orientation: context.orientation,
+            lensID: context.lensID,
+            previewGeometry: context.previewGeometry,
+            isStable: context.isStable
         )
     }
 
