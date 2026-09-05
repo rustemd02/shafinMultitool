@@ -101,6 +101,77 @@ SPLIT_CONTENT_FIELDS = {
     "pixels",
     "image",
 }
+SPLIT_HEADER_FIELDS = {
+    "manifest_type",
+    "schema_id",
+    "schema_version",
+    "manifest_version",
+    "record_count",
+    "entries",
+}
+SPLIT_RECORD_FIELDS = {
+    "record_id",
+    "record_type",
+    "split",
+    "bucket",
+    "source_bucket",
+    "source_kind",
+    "rights_disposition",
+    "source_shoot_id",
+    "scene_family_id",
+    "person_family_ids",
+    "location_family_id",
+    "time_family_id",
+    "derivation_family_id",
+    "take_family_id",
+    "device_family_id",
+    "sequence_id",
+    "asset_id",
+    "asset_ids",
+    "source_asset_ids",
+    "media",
+    "provenance",
+    "capture",
+    "sequence",
+    "review",
+    # Kept in the allowlist so _split_review_status can reject the legacy
+    # status-only projection with its specific admission error.
+    "review_status",
+}
+SPLIT_PROVENANCE_FIELDS = {
+    "source_shoot_id",
+    "derivation_family_id",
+    "rights_disposition",
+    "source_kind",
+    "asset_id",
+    "asset_ids",
+    "source_asset_ids",
+}
+SPLIT_CAPTURE_FIELDS = {
+    "source_shoot_id",
+    "scene_family_id",
+    "person_family_ids",
+    "location_family_id",
+    "time_family_id",
+    "take_family_id",
+    "device_family_id",
+    "sequence_id",
+    "asset_id",
+    "asset_ids",
+    "source_asset_ids",
+}
+SPLIT_MEDIA_FIELDS = {"asset_id", "asset_ids"}
+SPLIT_SEQUENCE_FIELDS = {"sequence_id", "derivation_family_id", "frames"}
+SPLIT_FRAME_FIELDS = {"asset_id", "asset_ids", "sequence_id", "ordinal", "derivation_family_id"}
+SPLIT_REVIEW_FIELDS = {"status", "vote_history", "adjudication_history"}
+SPLIT_VOTE_FIELDS = {"vote_id", "annotator_id", "submitted_at", "decision"}
+SPLIT_ADJUDICATION_FIELDS = {
+    "adjudication_id",
+    "adjudicator_id",
+    "occurred_at",
+    "based_on_vote_ids",
+    "outcome",
+}
 
 
 class AuditInputError(ValueError):
@@ -749,6 +820,76 @@ def _split_no_content_payloads(value: Any, path: str = "manifest") -> None:
             _split_no_content_payloads(child, f"{path}[{index}]")
 
 
+def _split_allowlist(value: Any, allowed: set[str], path: str) -> None:
+    if not isinstance(value, dict):
+        raise AuditInputError(f"invalid_split_object: {path}")
+    unknown = sorted((key for key in value if key not in allowed), key=str)
+    if unknown:
+        raise AuditInputError(f"unknown_split_field: {path}.{unknown[0]}")
+
+
+def _split_validate_record_topology(record: Any, path: str) -> None:
+    _split_allowlist(record, SPLIT_RECORD_FIELDS, path)
+    for field_name, allowed in (
+        ("provenance", SPLIT_PROVENANCE_FIELDS),
+        ("capture", SPLIT_CAPTURE_FIELDS),
+        ("media", SPLIT_MEDIA_FIELDS),
+        ("sequence", SPLIT_SEQUENCE_FIELDS),
+        ("review", SPLIT_REVIEW_FIELDS),
+    ):
+        value = record.get(field_name)
+        if value is None:
+            continue
+        _split_allowlist(value, allowed, f"{path}.{field_name}")
+    sequence = record.get("sequence")
+    if isinstance(sequence, dict) and "frames" in sequence:
+        frames = sequence["frames"]
+        if not isinstance(frames, list):
+            raise AuditInputError(f"invalid_split_list: {path}.sequence.frames")
+        for index, frame in enumerate(frames):
+            _split_allowlist(frame, SPLIT_FRAME_FIELDS, f"{path}.sequence.frames[{index}]")
+    review = record.get("review")
+    if isinstance(review, dict):
+        for field_name, allowed in (
+            ("vote_history", SPLIT_VOTE_FIELDS),
+            ("adjudication_history", SPLIT_ADJUDICATION_FIELDS),
+        ):
+            history = review.get(field_name)
+            if history is None:
+                continue
+            if not isinstance(history, list):
+                raise AuditInputError(f"invalid_split_list: {path}.review.{field_name}")
+            for index, item in enumerate(history):
+                _split_allowlist(item, allowed, f"{path}.review.{field_name}[{index}]")
+
+
+def _split_validate_record_list(entries: Any, path: str) -> None:
+    if not isinstance(entries, list):
+        raise AuditInputError(f"invalid_split_list: {path}")
+    for index, entry in enumerate(entries):
+        _split_validate_record_topology(entry, f"{path}[{index}]")
+
+
+def _split_validate_topology(payload: Any) -> None:
+    """Validate the complete metadata-only split input object topology."""
+
+    if isinstance(payload, dict):
+        _split_allowlist(payload, SPLIT_HEADER_FIELDS, "manifest")
+        if "entries" not in payload:
+            raise AuditInputError("missing_split_manifest_entries")
+        _split_validate_record_list(payload["entries"], "manifest.entries")
+        return
+    if isinstance(payload, list):
+        if not payload or not isinstance(payload[0], dict) or "record_id" in payload[0]:
+            raise AuditInputError("missing_split_manifest_header")
+        _split_allowlist(payload[0], SPLIT_HEADER_FIELDS, "manifest[0]")
+        if "entries" in payload[0]:
+            _split_validate_record_list(payload[0]["entries"], "manifest[0].entries")
+        _split_validate_record_list(payload[1:], "manifest")
+        return
+    raise AuditInputError("invalid_split_manifest_topology")
+
+
 def _split_consistent_field(
     entry: dict[str, Any],
     key: str,
@@ -1012,6 +1153,7 @@ def load_split_manifest(path: Path) -> list[SplitRecord]:
     _split_no_content_payloads(payload, str(path))
     _reject_forbidden(payload, str(path))
     _split_no_media_paths(payload, str(path))
+    _split_validate_topology(payload)
     entries, header = _container_entries(payload, str(path))
     if isinstance(payload, list):
         if not payload or not isinstance(payload[0], dict) or "record_id" in payload[0]:
@@ -1747,7 +1889,7 @@ def _validate_split_semantics(output: dict[str, Any]) -> None:
         raise AuditInputError("split_receipt_drift: component_order")
     component_by_id: dict[str, dict[str, Any]] = {}
     record_owner: dict[str, str] = {}
-    family_owner: dict[tuple[str, str], set[str]] = {}
+    family_owner: dict[tuple[str, str], set[tuple[str, str, str]]] = {}
     for component in components:
         component_id = component["component_id"]
         if component_id in component_by_id:
@@ -1791,7 +1933,16 @@ def _validate_split_semantics(output: dict[str, Any]) -> None:
                 raise AuditInputError(f"split_receipt_drift: duplicate_record_id:{record_id}")
             record_owner[record_id] = component_id
         for family_pair in family_pairs:
-            family_owner.setdefault(family_pair, set()).add(component["split"])
+            family_owner.setdefault(family_pair, set()).add(
+                (component_id, component["bucket"], component["split"])
+            )
+
+    for (category, family_hash), owners in family_owner.items():
+        component_bucket_owners = {(component_id, bucket) for component_id, bucket, _ in owners}
+        if len(component_bucket_owners) != 1:
+            raise AuditInputError(
+                f"split_receipt_drift: family_owner:{category}:{family_hash}"
+            )
 
     assignments = output["assignments"]
     assignment_by_record: dict[str, dict[str, Any]] = {}
@@ -1862,7 +2013,9 @@ def _validate_split_semantics(output: dict[str, Any]) -> None:
         if counts["per_split"][split] != expected:
             raise AuditInputError(f"split_receipt_drift: per_split:{split}")
 
-    cross_split_leak_count = sum(len(splits) > 1 for splits in family_owner.values())
+    cross_split_leak_count = sum(
+        len({split for _, _, split in owners}) > 1 for owners in family_owner.values()
+    )
     if output["cross_split_leak_count"] != cross_split_leak_count or cross_split_leak_count != 0:
         raise AuditInputError("split_receipt_drift: cross_split_leak_count")
 

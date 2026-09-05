@@ -442,6 +442,66 @@ def run() -> None:
             else:
                 raise AssertionError(f"split input field {forbidden_field} was accepted")
 
+        unknown_topology_cases = []
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["annotation"] = "must-not-enter"
+        unknown_topology_cases.append(("record", unknown_entry, "annotation"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["provenance"] = {"ground_truth": "must-not-enter"}
+        unknown_topology_cases.append(("provenance", unknown_entry, "ground_truth"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["capture"] = {"target": "must-not-enter"}
+        unknown_topology_cases.append(("capture", unknown_entry, "target"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["media"] = {"caption": "must-not-enter"}
+        unknown_topology_cases.append(("media", unknown_entry, "caption"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["sequence"] = {"sequence_id": "sequence-fixture", "caption": "must-not-enter"}
+        unknown_topology_cases.append(("sequence", unknown_entry, "caption"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["sequence"] = {
+            "sequence_id": "sequence-fixture",
+            "frames": [{"asset_id": "asset-seq-f0", "raw_bytes": "must-not-enter"}],
+        }
+        unknown_topology_cases.append(("frame", unknown_entry, "raw_bytes"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["review"]["annotation"] = "must-not-enter"
+        unknown_topology_cases.append(("review", unknown_entry, "annotation"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["review"]["vote_history"][0]["image_base64"] = "must-not-enter"
+        unknown_topology_cases.append(("vote", unknown_entry, "image_base64"))
+        unknown_entry = copy.deepcopy(split_entries[0])
+        unknown_entry["review"]["adjudication_history"] = [{
+            "adjudication_id": "adjudication-unknown",
+            "adjudicator_id": "adjudicator-unknown",
+            "occurred_at": "2026-09-05T00:00:02Z",
+            "based_on_vote_ids": ["vote-base-a", "vote-base-b"],
+            "outcome": "accepted",
+            "target": "must-not-enter",
+        }]
+        unknown_topology_cases.append(("adjudication", unknown_entry, "target"))
+        for object_name, unknown_entry, unknown_field in unknown_topology_cases:
+            unknown_path = root / f"unknown-{object_name}.json"
+            unknown_path.write_text(json.dumps(split_document([unknown_entry])), encoding="utf-8")
+            try:
+                AUDIT.load_split_manifest(unknown_path)
+            except AUDIT.AuditInputError as exc:
+                assert "unknown_split_field" in str(exc), (object_name, unknown_field, exc)
+                assert unknown_field in str(exc), (object_name, unknown_field, exc)
+            else:
+                raise AssertionError(f"unknown {object_name} field {unknown_field} was accepted")
+        unknown_header = split_document([split_entries[0]])
+        unknown_header["image_base64"] = "must-not-enter"
+        unknown_header_path = root / "unknown-header.json"
+        unknown_header_path.write_text(json.dumps(unknown_header), encoding="utf-8")
+        try:
+            AUDIT.load_split_manifest(unknown_header_path)
+        except AUDIT.AuditInputError as exc:
+            assert "unknown_split_field" in str(exc)
+            assert "image_base64" in str(exc)
+        else:
+            raise AssertionError("unknown split header field was accepted")
+
         seed_five = AUDIT.split_records(
             split_records,
             output,
@@ -866,9 +926,39 @@ def run() -> None:
         try:
             AUDIT.validate_split_output(tampered_family)
         except AUDIT.AuditInputError as exc:
-            assert "cross_split_leak_count" in str(exc)
+            assert "family_owner" in str(exc)
         else:
             raise AssertionError("cross-split family-hash tamper was accepted after hash recompute")
+
+        tampered_bucket_family = copy.deepcopy(split_output)
+        organic_train = next(
+            component
+            for component in tampered_bucket_family["components"]
+            if component["bucket"] == "organic" and component["split"] == "train"
+        )
+        synthetic_train = next(
+            component
+            for component in tampered_bucket_family["components"]
+            if component["bucket"] == "synthetic" and component["split"] == "train"
+        )
+        replacement = next(
+            family["hash"]
+            for family in organic_train["protected_family_hashes"]
+            if family["category"] == "source_shoot"
+        )
+        for family in synthetic_train["protected_family_hashes"]:
+            if family["category"] == "source_shoot":
+                family["hash"] = replacement
+        tampered_bucket_family["counts"]["family_counts"]["source_shoot"] -= 1
+        tampered_bucket_family["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_bucket_family.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_bucket_family)
+        except AUDIT.AuditInputError as exc:
+            assert "family_owner" in str(exc)
+        else:
+            raise AssertionError("same-split cross-bucket family-hash tamper was accepted")
 
         print(
             "M3-008 split seed=1 output_sha256=" + split_output["manifest_sha256"] +
@@ -884,7 +974,8 @@ def run() -> None:
         "sequence_family input_order_independent malformed_rejected rights_required media_map_conflict "
         "schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected "
         "M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity "
-        "split_schema_negative_cases review_history_contract seeded_assignment_receipt_tamper"
+        "split_schema_negative_cases closed_input_topology review_history_contract "
+        "seeded_assignment_receipt_tamper family_hash_owner_tamper"
     )
 
 

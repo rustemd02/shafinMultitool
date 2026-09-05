@@ -17,7 +17,9 @@ in Git.
   status-only or unresolved review, preassigned splits, duplicate IDs,
   malformed or missing protected IDs, conflicting family declarations,
   raw-media/content/label payloads, candidate/model fields, and assets absent
-  from the cluster receipt.
+  from the cluster receipt. A closed per-object allowlist also rejects unknown
+  container/header, record, provenance, capture, media, sequence/frame,
+  review, vote, or adjudication keys.
 - Protected connected components union source shoot, scene, person, location,
   time, derivation, optional take/device, sequence, and dedup-cluster families.
   Components are assigned independently within explicit `organic` and
@@ -28,7 +30,9 @@ in Git.
   target counts supplied as the assignment function input. Input records are
   sorted before all hashes and output rows; changing a seed may change
   assignments but cannot create a leak. Indivisible component targets are
-  reported separately per bucket.
+  reported separately per bucket. Semantic receipt validation requires every
+  `(protected category, family hash)` to have exactly one component and one
+  bucket owner, in addition to zero cross-split ownership.
 - [`datasets/camera-coach/v1/split-manifest-schema.json`](../datasets/camera-coach/v1/split-manifest-schema.json)
   is a closed Draft 2020-12 schema. The existing repository `jsonschema`
   dependency is reused through one generic validator owner. Receipts expose
@@ -53,12 +57,17 @@ fixtures cover valid dual review, valid adjudication, conflicting votes,
 rejected adjudication, incomplete scope, and bare status. Receipt tamper cases
 cover retained/recomputed hashes, count drift, membership drift, cross-split
 family-hash drift, and moving a whole component after recomputing all counts and
-hashes; the last case is rejected by recomputing the seeded assignment.
+hashes; the last case is rejected by recomputing the seeded assignment. Unknown
+metadata fixtures cover every supported nested object plus container/header
+fields, including `annotation`, `ground_truth`, `target`, `caption`,
+`raw_bytes`, and `image_base64`. Family-hash tamper fixtures cover duplicate
+ownership across components within one bucket, and duplicate ownership across
+organic and synthetic buckets.
 
 ```text
 $ python3 tools/dataset/tests/fixtures/camera_dataset_audit_fixture.py
 M3-008 split seed=1 output_sha256=b0c52f5a6c5fe08bd66b0eed98430b8b08c693f7c251a0aa581998f45b4ff4d3 seed5_output_sha256=8e4377350c2e0c6f54ca5fba3bd237507c95623c1d04a0e49b18d2a502adf73a cli_sha256=75e9c497aeece496bf1e1f9a42c562dbf1fdf560a56dc33d4535cfc794c93015 input_sha256=d52529431d2e2c6c2514ae30989c1cdbe499da45baa5e744b0513d25682edbc2 components=3 per_split={"calibration":{"buckets":{"organic":{"component_count":1,"record_count":2},"synthetic":{"component_count":0,"record_count":0}},"component_count":1,"record_count":2},"locked_test":{"buckets":{"organic":{"component_count":0,"record_count":0},"synthetic":{"component_count":0,"record_count":0}},"component_count":0,"record_count":0},"train":{"buckets":{"organic":{"component_count":1,"record_count":1},"synthetic":{"component_count":1,"record_count":1}},"component_count":2,"record_count":2}}
-PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated sequence_family input_order_independent malformed_rejected rights_required media_map_conflict schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity split_schema_negative_cases review_history_contract seeded_assignment_receipt_tamper
+PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated sequence_family input_order_independent malformed_rejected rights_required media_map_conflict schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity split_schema_negative_cases closed_input_topology review_history_contract seeded_assignment_receipt_tamper family_hash_owner_tamper
 ```
 
 The fixture's CLI subprocess runs the same seed and ratios with
