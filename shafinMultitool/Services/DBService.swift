@@ -124,7 +124,21 @@ class DBService {
             self.recordingArtifactStore = .success(recordingArtifactStore)
         } else {
             do {
-                self.recordingArtifactStore = .success(try RecordingArtifactStore(fileManager: fileManager))
+                let store = try RecordingArtifactStore(fileManager: fileManager)
+                self.recordingArtifactStore = .success(store)
+                // M7-021: the persistence owner is the first cold-launch
+                // consumer of the shared recordings root, so pending/finalizing
+                // promotions converge here — before any workspace can observe
+                // a half-promoted take. Best-effort: classification failures
+                // are logged and leave the journal for the next launch.
+                do {
+                    let outcomes = try store.recoverPendingRecordings()
+                    for outcome in outcomes {
+                        print("Recording recovery: \(outcome)")
+                    }
+                } catch {
+                    print("Recording recovery deferred to next launch: \(error)")
+                }
             } catch {
                 self.recordingArtifactStore = .failure(error)
             }
@@ -685,6 +699,13 @@ class DBService {
             // reached only after the authoritative project/map mutations have
             // completed. The artifact owner restores partial unlink failures.
             try artifactStage?.commit()
+
+            // M7-025: after the owned media is committed gone, any leftover
+            // promotion journal records for this project can never recover
+            // and must not linger for a later cold launch. Removal is
+            // best-effort per record; a failure here cannot resurrect the
+            // deleted project.
+            artifactStore.removeProjectJournalRecords(projectID: stored.project.id)
             return .success(())
         } catch {
             var rollbackFailed = false

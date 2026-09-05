@@ -19,6 +19,9 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     private let outputChecker: any RecordingOutputChecking
     private let maxConsecutiveDroppedFrames: Int
     private let finalizationTimeout: TimeInterval
+    /// M7-030: bounded redacted diagnostics sink. Called only from the
+    /// recorder queue; the sink is responsible for its own thread safety.
+    private let diagnostics: (any RecordingDiagnosticsEmitting)?
 
     // All properties below are queue-confined. Do not access them from a
     // callback or caller without first dispatching to `queue`.
@@ -48,7 +51,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
          outputChecker: any RecordingOutputChecking = LocalRecordingOutputChecker(),
          queueLabel: String = "com.shafinMultitool.serializedMediaRecorder",
          maxConsecutiveDroppedFrames: Int = 900,
-         finalizationTimeout: TimeInterval = 10) {
+         finalizationTimeout: TimeInterval = 10,
+         diagnostics: (any RecordingDiagnosticsEmitting)? = nil) {
         self.writerFactory = writerFactory
         self.audioDriverFactory = audioDriverFactory
         self.outputChecker = outputChecker
@@ -60,6 +64,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         // M7-013: the writer must deliver its finish callback within this
         // bound or the take fails typed and its resources are closed.
         self.finalizationTimeout = max(0.05, finalizationTimeout)
+        // M7-030: bounded redacted diagnostics sink (nil = silent).
+        self.diagnostics = diagnostics
     }
 
     var state: RecorderState {
@@ -409,6 +415,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         case .storagePressure:
             // M7-018: ENOSPC-class failure — typed, terminates safely, and
             // never touches existing project media.
+            diagnostics?.emit(.storagePressure, recordingID: currentConfiguration?.id.rawValue)
             markAppendFailureOnQueue(.insufficientStorage)
             return
         case .dropped:
@@ -416,6 +423,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             // never blocked (submission is nonblocking); continuous writer
             // pressure beyond the policy limit fails the take explicitly.
             if timebase.recordDroppedVideo() >= maxConsecutiveDroppedFrames {
+                diagnostics?.emit(.dropPolicyFired, recordingID: currentConfiguration?.id.rawValue)
                 markAppendFailureOnQueue(.videoAppendFailed)
             }
             return
@@ -660,6 +668,20 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         pendingFailure = nil
         lastStopResult = result
 
+        // M7-030: terminal outcome diagnostics (typed, no content).
+        switch result {
+        case .finalized:
+            diagnostics?.emit(
+                .stopCompleted(outcome: "finalized", failure: nil),
+                recordingID: currentConfiguration?.id.rawValue
+            )
+        case let .failed(failure, _):
+            diagnostics?.emit(
+                .stopCompleted(outcome: "failed", failure: String(describing: failure)),
+                recordingID: currentConfiguration?.id.rawValue
+            )
+        }
+
         if releaseRequested {
             setStateOnQueue(.released)
         } else {
@@ -792,6 +814,11 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             "SerializedMediaRecorder illegal lifecycle transition \(from) -> \(to)"
         )
         stateStorage = newState
+        // M7-030: bounded redacted lifecycle diagnostics.
+        diagnostics?.emit(
+            .stateChanged(from: from.rawValue, to: to.rawValue),
+            recordingID: currentConfiguration?.id.rawValue
+        )
     }
 }
 

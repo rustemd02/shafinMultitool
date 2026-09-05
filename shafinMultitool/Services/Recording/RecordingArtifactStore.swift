@@ -203,6 +203,44 @@ final class RecordingArtifactStore: @unchecked Sendable {
             at: pendingDirectoryURL,
             withIntermediateDirectories: true
         )
+        Self.applyTransientStoragePolicy(to: pendingDirectoryURL)
+        Self.applyTransientStoragePolicy(to: journal.journalDirectoryURL)
+    }
+
+    // MARK: - M7-029 file protection / backup policy
+
+    /// M7-029: transient recording roots (Pending artifacts, promotion
+    /// journal) are excluded from backups so crash-recovery temp data never
+    /// reaches iCloud. Completed project media intentionally keeps the
+    /// platform default protection and stays included in backups — it is user
+    /// data. Pending files use `.completeUntilFirstUserAuthentication` where
+    /// the platform supports per-file protection so a background finalization
+    /// can finish after a locked-device kill.
+    static func applyTransientStoragePolicy(to directoryURL: URL) {
+        var resourceValues = URLResourceValues()
+        resourceValues.isExcludedFromBackup = true
+        var mutableURL = directoryURL
+        try? mutableURL.setResourceValues(resourceValues)
+
+        #if os(iOS) && !targetEnvironment(simulator)
+        var attributes: [FileAttributeKey: Any] = [:]
+        attributes[.protectionKey] = FileProtectionType.completeUntilFirstUserAuthentication
+        try? FileManager.default.setAttributes(attributes, ofItemAtPath: directoryURL.path)
+        #endif
+    }
+
+    /// M7-029: applied to every newly created pending artifact path so the
+    /// file itself is excluded from backups regardless of directory
+    /// inheritance. Paths outside the owned Pending root are ignored.
+    func applyPendingArtifactPolicy(to pendingFileURL: URL) {
+        let standardized = pendingFileURL.standardizedFileURL
+        guard isInside(standardized, root: pendingDirectoryURL.standardizedFileURL) else {
+            return
+        }
+        var resourceValues = URLResourceValues()
+        resourceValues.isExcludedFromBackup = true
+        var mutableURL = pendingFileURL
+        try? mutableURL.setResourceValues(resourceValues)
     }
 
     func makePendingURL() throws -> URL {
@@ -404,6 +442,340 @@ final class RecordingArtifactStore: @unchecked Sendable {
         // lives inside the finish helper).
         try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
         return reference
+    }
+
+    // MARK: - M7-021 cold-launch recovery
+
+    /// M7-021: recovery classification for one journaled recording at cold
+    /// launch. Existing project media is never a mutation target: recovery
+    /// only completes its own promotion, removes tombstones, or reports.
+    enum RecordingRecoveryOutcome: Equatable, Sendable {
+        /// The promotion was resumable and completed now.
+        case completed(SceneRecordingReference)
+        /// The destination already holds this take (crash after commit); the
+        /// journal tombstone was removed.
+        case alreadyPromoted(recordingID: UUID)
+        /// The journal record is undecodable; surfaced for user-honest
+        /// reporting, never silently deleted.
+        case corruptRecord(recordingID: UUID)
+        /// Source and destination are both gone; the tombstone was removed.
+        case missingArtifact(recordingID: UUID)
+        /// The retry budget is exhausted or the record is already failed; the
+        /// pending file (if any) is preserved for user-visible recovery.
+        case failedEntry(recordingID: UUID)
+    }
+
+    /// M7-021: classifies and converges every journal record after a cold
+    /// launch. Order is deterministic (by recording ID); each record is
+    /// processed independently so one corrupt entry cannot block the rest.
+    /// `mediaMetadata` restores duration/audio truth for recovered
+    /// references; the production probe reads the actual asset.
+    @discardableResult
+    func recoverPendingRecordings(
+        maxRetryCount: Int = PendingRecordingJournalEntry.maxRetryCount,
+        mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))? = AppleRecordingMediaMetadataProbe.probe
+    ) throws -> [RecordingRecoveryOutcome] {
+        var outcomes: [RecordingRecoveryOutcome] = []
+
+        for result in try journal.allEntries() {
+            switch result {
+            case let .failure(.journalCorrupt(recordingID)):
+                outcomes.append(.corruptRecord(recordingID: recordingID))
+                continue
+            case let .failure(.fileSystemFailure):
+                continue
+            case let .success(entry):
+                outcomes.append(try recoverEntry(
+                    entry,
+                    maxRetryCount: maxRetryCount,
+                    mediaMetadata: mediaMetadata
+                ))
+            }
+        }
+        return outcomes
+    }
+
+    private func recoverEntry(
+        _ entry: PendingRecordingJournalEntry,
+        maxRetryCount: Int,
+        mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))?
+    ) throws -> RecordingRecoveryOutcome {
+        guard entry.state != .failed else {
+            return .failedEntry(recordingID: entry.recordingID)
+        }
+
+        let projectID = entry.projectID
+        let destinationURL = projectsDirectoryURL
+            .appendingPathComponent(projectID.uuidString, isDirectory: true)
+            .appendingPathComponent("\(entry.recordingID.uuidString).mov")
+        let destinationInformation = try? destinationURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        let destinationIsRegular = destinationInformation?.isRegularFile == true
+
+        // The committed-destination case: the promotion crashed after the
+        // move (or the record outlived a completed take). Converge by
+        // removing the tombstone and reporting once.
+        if destinationIsRegular {
+            try journal.remove(recordingID: entry.recordingID)
+            return .alreadyPromoted(recordingID: entry.recordingID)
+        }
+        if entry.state == .promoted {
+            // A promoted record without a destination means the bytes are
+            // gone; report honestly instead of resurrecting a fake take.
+            try journal.remove(recordingID: entry.recordingID)
+            return .missingArtifact(recordingID: entry.recordingID)
+        }
+
+        let sourceURL = applicationSupportDirectoryURL
+            .appendingPathComponent(entry.sourceTempPath)
+        let sourceInformation = try? sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        let sourceIsRegular = sourceInformation?.isRegularFile == true
+        guard sourceIsRegular else {
+            // Neither bytes are reachable: nothing to recover.
+            try journal.remove(recordingID: entry.recordingID)
+            return .missingArtifact(recordingID: entry.recordingID)
+        }
+
+        guard entry.retryCount < maxRetryCount else {
+            try journal.record(entry.updating(state: .failed, at: Date()))
+            return .failedEntry(recordingID: entry.recordingID)
+        }
+
+        // Resumable promotion. Retry accounting happens here (cold recovery
+        // owns the budget), one increment per recovery attempt.
+        try journal.record(entry.updating(
+            state: .promoting,
+            retryCount: entry.retryCount + 1,
+            at: Date()
+        ))
+        let metadata = mediaMetadata?(sourceURL)
+        let artifact = RecordingArtifact(
+            id: RecordingID(rawValue: entry.recordingID),
+            localURL: sourceURL,
+            duration: metadata?.duration,
+            hasAudio: metadata?.hasAudio ?? false
+        )
+        do {
+            let reference = try promoteFinalizedArtifact(artifact, projectID: projectID)
+            return .completed(reference)
+        } catch {
+            // The promotion failed again; the record keeps its incremented
+            // retry count and the pending file is preserved.
+            throw error
+        }
+    }
+
+    // MARK: - M7-023 retention policy
+
+    /// One retention candidate: a transient file eligible for deletion.
+    struct RecordingRetentionCandidate: Equatable, Sendable {
+        enum Reason: Equatable, Sendable {
+            /// A pending artifact with no live journal record, older than the
+            /// retention window.
+            case expiredPending
+            /// A failed journal entry whose pending file aged out.
+            case expiredFailedEntry
+        }
+
+        let recordingID: UUID
+        let url: URL
+        let reason: Reason
+    }
+
+    /// M7-023: dry-run retention inventory. Completed project-owned media is
+    /// NEVER a candidate; only transient Pending artifacts (with no live
+    /// journal record, or behind a failed entry) past the retention window
+    /// are proposed. The caller deletes via ``applyRetention``.
+    func retentionInventory(now: Date,
+                            pendingMaxAge: TimeInterval) throws -> [RecordingRetentionCandidate] {
+        let pendingFD = try openOptionalDirectory(at: pendingDirectoryURL.path)
+        guard let pendingFD else { return [] }
+        defer { close(pendingFD) }
+
+        var candidates: [RecordingRetentionCandidate] = []
+        for entry in try projectEntries(in: pendingFD) {
+            guard isRegular(entry.information) else { continue }
+            guard let recordingID = recordingIDOfPendingName(entry.name) else { continue }
+
+            let journalRecord = try journal.entry(for: recordingID)
+            if let journalRecord, journalRecord.state != .failed {
+                // A live promotion intent is never retention-deleted.
+                continue
+            }
+
+            let modifiedAt = Date(timeIntervalSince1970: TimeInterval(entry.information.st_mtimespec.tv_sec))
+            guard now.timeIntervalSince(modifiedAt) >= pendingMaxAge else { continue }
+
+            candidates.append(RecordingRetentionCandidate(
+                recordingID: recordingID,
+                url: pendingDirectoryURL.appendingPathComponent(entry.name),
+                reason: journalRecord?.state == .failed ? .expiredFailedEntry : .expiredPending
+            ))
+        }
+        return candidates
+    }
+
+    /// M7-023: deletes exactly the proposed candidates. Every candidate is
+    /// re-verified before its unlink (regular file under the owned Pending
+    /// root, valid name, still no live journal record), so a stale inventory
+    /// cannot delete something that became live in between. Returns the
+    /// recording IDs actually removed.
+    @discardableResult
+    func applyRetention(removing candidates: [RecordingRetentionCandidate]) throws -> [UUID] {
+        let pendingFD = try openDirectory(at: pendingDirectoryURL.path)
+        defer { close(pendingFD) }
+
+        var removed: [UUID] = []
+        for candidate in candidates {
+            guard isInside(candidate.url.standardizedFileURL,
+                           root: pendingDirectoryURL.standardizedFileURL),
+                  let name = candidate.url.pathComponents.last,
+                  recordingIDOfPendingName(name) == candidate.recordingID else {
+                continue
+            }
+            guard let information = statEntry(at: pendingFD, name: name),
+                  isRegular(information) else {
+                continue
+            }
+            if let journalRecord = try journal.entry(for: candidate.recordingID),
+               journalRecord.state != .failed {
+                continue
+            }
+
+            let result = name.withCString { namePointer in
+                unlinkat(pendingFD, namePointer, 0)
+            }
+            guard result == 0 else {
+                if errno == ENOENT { continue }
+                throw RecordingArtifactStoreError.fileSystemFailure
+            }
+            if candidate.reason == .expiredFailedEntry {
+                try journal.remove(recordingID: candidate.recordingID)
+            }
+            removed.append(candidate.recordingID)
+        }
+        return removed
+    }
+
+    // MARK: - M7-024 orphan cleanup
+
+    /// One orphan-cleanup candidate or a skipped (reported) entry.
+    struct RecordingOrphanCandidate: Equatable, Sendable {
+        enum Classification: Equatable, Sendable {
+            /// Regular, validly named, no journal reference — deletable.
+            case orphan
+            /// Not deletable: directory, symlink, foreign name, or a live
+            /// journal reference. The reason is reported, the entry is never
+            /// followed or deleted.
+            case skipped(reason: String)
+        }
+
+        let name: String
+        let recordingID: UUID?
+        let classification: Classification
+    }
+
+    /// M7-024: dry-run orphan inventory over the owned Pending root. Only
+    /// regular files with a valid `<UUID>.mov` name and **no journal
+    /// reference** are classified orphan; everything else is reported as
+    /// skipped with its reason. Directories are never traversed and symlinks
+    /// are never followed (fstatat AT_SYMLINK_NOFOLLOW).
+    func orphanInventory() throws -> [RecordingOrphanCandidate] {
+        let pendingFD = try openOptionalDirectory(at: pendingDirectoryURL.path)
+        guard let pendingFD else { return [] }
+        defer { close(pendingFD) }
+
+        var inventory: [RecordingOrphanCandidate] = []
+        for entry in try projectEntries(in: pendingFD) {
+            if entry.information.st_mode & S_IFMT == S_IFDIR {
+                inventory.append(RecordingOrphanCandidate(
+                    name: entry.name, recordingID: nil,
+                    classification: .skipped(reason: "directory")
+                ))
+                continue
+            }
+            if entry.information.st_mode & S_IFMT == S_IFLNK {
+                inventory.append(RecordingOrphanCandidate(
+                    name: entry.name, recordingID: nil,
+                    classification: .skipped(reason: "symlink")
+                ))
+                continue
+            }
+            guard let recordingID = recordingIDOfPendingName(entry.name) else {
+                inventory.append(RecordingOrphanCandidate(
+                    name: entry.name, recordingID: nil,
+                    classification: .skipped(reason: "foreignName")
+                ))
+                continue
+            }
+            if isRegular(entry.information) {
+                if try journal.entry(for: recordingID) != nil {
+                    inventory.append(RecordingOrphanCandidate(
+                        name: entry.name, recordingID: recordingID,
+                        classification: .skipped(reason: "journalReference")
+                    ))
+                } else {
+                    inventory.append(RecordingOrphanCandidate(
+                        name: entry.name, recordingID: recordingID,
+                        classification: .orphan
+                    ))
+                }
+                continue
+            }
+            inventory.append(RecordingOrphanCandidate(
+                name: entry.name, recordingID: recordingID,
+                classification: .skipped(reason: "irregularFile")
+            ))
+        }
+        return inventory
+    }
+
+    /// M7-024: deletes exactly the proposed orphans after re-verifying each
+    /// one (regular, valid name, still no journal record) through the pending
+    /// directory descriptor — path traversal is structurally impossible
+    /// because names come from readdir and unlinks are dirfd-relative.
+    @discardableResult
+    func removeOrphans(_ inventory: [RecordingOrphanCandidate]) throws -> [UUID] {
+        let pendingFD = try openDirectory(at: pendingDirectoryURL.path)
+        defer { close(pendingFD) }
+
+        var removed: [UUID] = []
+        for candidate in inventory where candidate.classification == .orphan {
+            guard let recordingID = candidate.recordingID,
+                  recordingIDOfPendingName(candidate.name) == recordingID else { continue }
+            guard let information = statEntry(at: pendingFD, name: candidate.name),
+                  isRegular(information) else { continue }
+            if try journal.entry(for: recordingID) != nil { continue }
+
+            let result = candidate.name.withCString { namePointer in
+                unlinkat(pendingFD, namePointer, 0)
+            }
+            guard result == 0 else {
+                if errno == ENOENT { continue }
+                throw RecordingArtifactStoreError.fileSystemFailure
+            }
+            removed.append(recordingID)
+        }
+        return removed
+    }
+
+    /// M7-025: removes leftover journal records bound to a deleted project.
+    /// Called by the project-deletion transaction after its artifact commit;
+    /// a record for a deleted project can never recover, so it must not
+    /// linger. Removal is best-effort per record.
+    func removeProjectJournalRecords(projectID: UUID) {
+        guard let entries = try? journal.allEntries() else { return }
+        for result in entries {
+            guard case let .success(entry) = result,
+                  entry.projectID == projectID else { continue }
+            try? journal.remove(recordingID: entry.recordingID)
+        }
+    }
+
+    private func recordingIDOfPendingName(_ name: String) -> UUID? {
+        guard name.hasSuffix(".mov") else { return nil }
+        let uuidString = String(name.dropLast(4))
+        guard let uuid = UUID(uuidString: uuidString) else { return nil }
+        return uuid.uuidString == uuidString ? uuid : nil
     }
 
     /// Writes (or resumes) the atomic `.promoting` record before the move.

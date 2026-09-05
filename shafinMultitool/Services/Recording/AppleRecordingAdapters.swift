@@ -153,6 +153,26 @@ func copyAudioSampleBufferToHostTime(
     return copiedSampleBuffer
 }
 
+/// M7-021: reads duration/audio truth from a finalized movie for recovery.
+/// Returns nil for unreadable assets so recovery classifies honestly instead
+/// of inventing metadata.
+enum AppleRecordingMediaMetadataProbe {
+    static func probe(_ url: URL) -> (duration: TimeInterval?, hasAudio: Bool) {
+        let asset = AVURLAsset(url: url)
+        let assetDuration = asset.duration
+        let duration: TimeInterval?
+        if assetDuration.isNumeric,
+           assetDuration.seconds.isFinite,
+           assetDuration.seconds >= 0 {
+            duration = assetDuration.seconds
+        } else {
+            duration = nil
+        }
+        let hasAudio = !asset.tracks(withMediaType: .audio).isEmpty
+        return (duration, hasAudio)
+    }
+}
+
 /// M7-018: answers whether a writer/append error is storage exhaustion
 /// (ENOSPC-class). POSIX ENOSPC (28) and Cocoa's out-of-space codes both map
 /// here so disk exhaustion can be typed instead of reported as a generic
