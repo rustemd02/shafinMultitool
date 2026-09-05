@@ -114,6 +114,54 @@ final class SceneParserServiceTests: XCTestCase {
         let passByAction = result.script.actions.first { $0.type == .passBy && $0.target == foundObject?.id }
         XCTAssertNotNil(passByAction, "Должно быть действие passBy")
     }
+
+    func testSameNameMarkedObjectsAreCollisionSafeAndTypedAmbiguous() async throws {
+        let markerA = makeMarker(
+            id: "00000000-0000-0000-0000-0000000000a1",
+            name: "стул",
+            position: Position3D(x: -1, y: 0, z: -1)
+        )
+        let markerB = makeMarker(
+            id: "00000000-0000-0000-0000-0000000000b2",
+            name: "стул",
+            position: Position3D(x: 1, y: 0, z: -1)
+        )
+
+        // The stateful parser path previously trapped while constructing its
+        // object-name dictionary. Completion proves the duplicate names stay
+        // explicit and collision-safe through parser context projection.
+        let parsed = await parser.parse(
+            "Человек подходит к одному из стульев.",
+            markedObjects: [markerA, markerB],
+            state: SceneChunkState()
+        )
+        XCTAssertGreaterThanOrEqual(parsed.script.objects.count, 2)
+        XCTAssertNil(parser.lastChunkState?.knownObjects["стул"])
+
+        let resolver = SceneAnchorExtractor()
+        let request = resolver.makeObjectBindingRequestSnapshot(
+            requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            epoch: 1,
+            description: "Человек подходит к одному из стульев.",
+            markedObjects: [markerA, markerB],
+            detectedObjects: []
+        )
+        let bindingResult = resolver.resolveObjectBindings(
+            scriptObjects: [
+                SceneObject(
+                    id: "object_parser_same_name",
+                    type: .chair,
+                    name: "стул",
+                    relativePosition: .center
+                )
+            ],
+            request: request
+        )
+        XCTAssertEqual(
+            bindingResult.resolution(for: "object_parser_same_name")?.state,
+            .ambiguous
+        )
+    }
     
     func testDiagnosticsConfidence() async throws {
         let goodDescription = "2 актёра идут навстречу друг другу, проходят мимо стола"
@@ -187,5 +235,16 @@ final class SceneParserServiceTests: XCTestCase {
         XCTAssertEqual(result.script.locationName, "OFFICE")
         XCTAssertEqual(result.script.interiorExterior, "interior")
         XCTAssertEqual(result.script.timeOfDay, "night")
+    }
+
+    private func makeMarker(id: String, name: String, position: Position3D) -> MarkedObject {
+        var payload = try! JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(MarkedObject(name: name, position: position))
+        ) as! [String: Any]
+        payload["id"] = id
+        return try! JSONDecoder().decode(
+            MarkedObject.self,
+            from: JSONSerialization.data(withJSONObject: payload)
+        )
     }
 }

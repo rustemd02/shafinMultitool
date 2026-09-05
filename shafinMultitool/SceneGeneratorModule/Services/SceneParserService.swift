@@ -159,6 +159,47 @@ final class SceneParserService {
         await parseAsync(description, markedObjects: markedObjects, state: nil)
     }
 
+    /// Returns the immutable parser outputs needed by a generator request in
+    /// one value. The ViewModel must not read mutable parser side channels
+    /// after awaiting this operation: a later request may have replaced them.
+    func parseAsyncForGeneration(
+        _ description: String,
+        markedObjects: [MarkedObject] = []
+    ) async -> (
+        result: ParsingResult,
+        runtimeTrace: SceneRuntimeTrace?,
+        chunkState: SceneChunkState?,
+        visualOverlays: [SceneVisualOverlay]
+    ) {
+        let bundleResult = await parseBundleAsync(description, markedObjects: markedObjects)
+        let script = bundleResult.activeSceneScript
+            ?? SceneScript(
+                actors: [],
+                objects: [],
+                beats: [],
+                spatialRelations: [],
+                originalDescription: description
+            )
+        let runtimeTrace = makeRuntimeTrace(from: bundleResult)
+        let chunkState: SceneChunkState?
+        if let activeSceneID = bundleResult.activeSceneId,
+           let stitchState = bundleResult.documentState.stitchStates.first(where: { $0.sceneID == activeSceneID }) {
+            chunkState = makeChunkState(from: stitchState, fallbackLocationName: nil)
+        } else if let stitchState = bundleResult.documentState.stitchStates.last {
+            chunkState = makeChunkState(from: stitchState, fallbackLocationName: nil)
+        } else if let activeSceneScript = bundleResult.activeSceneScript {
+            chunkState = makeChunkState(from: activeSceneScript, fallbackLocationName: nil)
+        } else {
+            chunkState = nil
+        }
+        return (
+            result: ParsingResult(script: script, diagnostics: bundleResult.diagnostics),
+            runtimeTrace: runtimeTrace,
+            chunkState: chunkState,
+            visualOverlays: bundleResult.visualOverlays
+        )
+    }
+
     func parseAsync(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) async -> ParsingResult {
         if state == nil {
             let bundleResult = await parseBundleAsync(description, markedObjects: markedObjects)
@@ -296,15 +337,40 @@ final class SceneParserService {
         llmParser.releaseModelResources(reason: reason)
     }
 
+    /// Builds a fail-closed lookup for parser context. A normalized name is
+    /// useful only when it identifies one explicit object; collisions are
+    /// omitted so the downstream binding owner can report ambiguity instead
+    /// of inheriting a dictionary's overwrite/ordering policy.
+    private func collisionSafeObjectLookup(_ pairs: [(String, String)]) -> [String: String] {
+        var lookup: [String: String] = [:]
+        var ambiguous: Set<String> = []
+
+        for (rawName, reference) in pairs {
+            let trimmedName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = rawName == reference
+                ? trimmedName.lowercased()
+                : (MarkedObjectMatcher.normalizedAlias(trimmedName) ?? trimmedName.lowercased())
+            guard !key.isEmpty, !reference.isEmpty, !ambiguous.contains(key) else { continue }
+            if let existing = lookup[key], existing != reference {
+                lookup.removeValue(forKey: key)
+                ambiguous.insert(key)
+            } else {
+                lookup[key] = reference
+            }
+        }
+        return lookup
+    }
+
     private func makeChunkState(from script: SceneScript, fallbackLocationName: String?) -> SceneChunkState {
         let knownActors = Dictionary(uniqueKeysWithValues: script.actors.map { actor in
             let key = actor.name?.lowercased() ?? actor.id
             return (key, actor.id)
         })
-        let knownObjects = Dictionary(uniqueKeysWithValues: script.objects.map { object in
-            let key = object.name?.lowercased() ?? object.id
-            return (key, object.id)
-        })
+        let knownObjects = collisionSafeObjectLookup(
+            script.objects.map { object in
+                (object.name ?? object.id, object.id)
+            }
+        )
         var actorPoses: [String: ActorPose] = [:]
         var heldObjects: [String: String] = [:]
 
@@ -344,15 +410,17 @@ final class SceneParserService {
         let knownActors = Dictionary(uniqueKeysWithValues: stitchState.actors.map { actor in
             ((actor.name?.lowercased() ?? actor.ref), actor.ref)
         })
-        let knownObjects = Dictionary(uniqueKeysWithValues: stitchState.objects.map { object in
-            ((object.name?.lowercased() ?? object.ref), object.ref)
-        })
+        let knownObjects = collisionSafeObjectLookup(
+            stitchState.objects.map { object in
+                (object.name ?? object.ref, object.ref)
+            } + stitchState.registry.objectAliasMap.map { ($0.key, $0.value) }
+        )
         return SceneChunkState(
             sceneID: stitchState.sceneID,
             sceneHeading: stitchState.metadata.sceneHeading,
             locationName: stitchState.metadata.locationName ?? fallbackLocationName,
             knownActors: knownActors.merging(stitchState.registry.actorAliasMap) { current, _ in current },
-            knownObjects: knownObjects.merging(stitchState.registry.objectAliasMap) { current, _ in current },
+            knownObjects: knownObjects,
             actorAliases: stitchState.registry.actorAliasMap,
             objectAliases: stitchState.registry.objectAliasMap,
             speakerAliasMap: stitchState.registry.speakerAliasMap,

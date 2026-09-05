@@ -214,8 +214,8 @@ struct SceneObjectBindingResolution: Codable, Equatable, Identifiable {
         Self(reference: reference, state: .bound, binding: binding, candidateIDs: [binding.canonicalID], diagnostic: nil)
     }
 
-    static func missing(reference: String, diagnostic: String) -> Self {
-        Self(reference: reference, state: .missing, binding: nil, candidateIDs: [], diagnostic: diagnostic)
+    static func missing(reference: String, candidateIDs: [String] = [], diagnostic: String) -> Self {
+        Self(reference: reference, state: .missing, binding: nil, candidateIDs: candidateIDs, diagnostic: diagnostic)
     }
 
     static func ambiguous(reference: String, candidateIDs: [String], diagnostic: String) -> Self {
@@ -254,6 +254,11 @@ struct SceneObjectBindingResult: Codable, Equatable {
 
 /// Класс для сопоставления текста с размеченными объектами
 final class MarkedObjectMatcher {
+
+    /// World-space distance below which a marker and a detector observation
+    /// may be treated as the same physical object. Missing/invalid positions
+    /// never satisfy this threshold and therefore remain ambiguous.
+    static let markedDetectionConvergenceTolerance: Float = 0.20
     
     private let lemmatizer: Lemmatizer
     
@@ -321,7 +326,7 @@ final class MarkedObjectMatcher {
                 markerID: marker.id
             )
         }
-        let detectedCandidates = detectedObjects.map(ObjectDetectionBridge.makeBindingCandidate)
+        let detectedCandidates = detectedObjects.compactMap(ObjectDetectionBridge.makeBindingCandidate)
         return SceneObjectBindingRequestSnapshot(
             requestID: requestID,
             epoch: epoch,
@@ -393,12 +398,21 @@ final class MarkedObjectMatcher {
         func choose(
             reference: String,
             candidates values: [SceneObjectBinding],
+            objectType: SceneObject.ObjectType,
             reason: String
         ) -> SceneObjectBindingResolution {
-            let unique = Dictionary(grouping: values, by: { $0.canonicalID.lowercased() })
+            let uniqueAll = Dictionary(grouping: values, by: { $0.canonicalID.lowercased() })
                 .values
                 .compactMap { $0.sorted(by: SceneObjectBinding.stableOrdering).first }
                 .sorted(by: SceneObjectBinding.stableOrdering)
+            let unique = uniqueAll.filter { $0.objectType == objectType }
+            guard !unique.isEmpty else {
+                return .missing(
+                    reference: reference,
+                    candidateIDs: candidateIDs(uniqueAll),
+                    diagnostic: "type_mismatch"
+                )
+            }
             let ids = candidateIDs(unique)
             guard !ids.isEmpty else {
                 return .missing(reference: reference, diagnostic: reason)
@@ -414,15 +428,33 @@ final class MarkedObjectMatcher {
                 return .bound(reference: reference, binding: submissionBinding(only, reference: reference))
             }
 
-            // A manual marker is the explicit source of truth when a detector
-            // reports the same logical type/alias.  Multiple markers remain
-            // ambiguous even if detections also exist.
+            // A marker owns identity only after one marker and one detector
+            // have supplied finite, colocated world positions. A shared type
+            // or alias alone is not evidence of one physical object.
             let marked = unique.filter { $0.source == .marked }
             let detected = unique.filter { $0.source == .detected }
-            if marked.count == 1, !detected.isEmpty {
-                return .bound(reference: reference, binding: submissionBinding(marked[0], reference: reference))
+            if marked.count == 1, detected.count == 1,
+               let markerPosition = marked[0].worldPosition,
+               let detectionPosition = detected[0].worldPosition {
+                let distance = markerPosition.distance(to: detectionPosition)
+                if distance.isFinite, distance <= Self.markedDetectionConvergenceTolerance {
+                    let marker = marked[0]
+                    let observation = detected[0]
+                    let converged = SceneObjectBinding(
+                        canonicalID: marker.canonicalID,
+                        source: .marked,
+                        confidence: max(marker.confidence, observation.confidence),
+                        name: marker.name,
+                        aliases: marker.aliases + observation.aliases,
+                        objectType: marker.objectType,
+                        worldPosition: marker.worldPosition,
+                        markerID: marker.markerID,
+                        detectionID: observation.detectionID
+                    )
+                    return .bound(reference: reference, binding: converged)
+                }
             }
-            return .ambiguous(reference: reference, candidateIDs: ids, diagnostic: reason)
+            return .ambiguous(reference: reference, candidateIDs: ids, diagnostic: "marked_detected_not_colocated")
         }
 
         func virtualBinding(reference: String, object: SceneObject) -> SceneObjectBindingResolution {
@@ -458,6 +490,13 @@ final class MarkedObjectMatcher {
                 )
             }
             if let explicit = candidateByID[referenceKey] {
+                guard explicit.objectType == object.type else {
+                    return .missing(
+                        reference: reference,
+                        candidateIDs: [explicit.canonicalID],
+                        diagnostic: "type_mismatch"
+                    )
+                }
                 return .bound(reference: reference, binding: submissionBinding(explicit, reference: reference))
             }
             let explicitReference = referenceKey.hasPrefix("object_marked_")
@@ -478,6 +517,13 @@ final class MarkedObjectMatcher {
                     )
                 }
                 if let mappedCandidate = candidateByID[mappedKey] {
+                    guard mappedCandidate.objectType == object.type else {
+                        return .missing(
+                            reference: reference,
+                            candidateIDs: [mappedCandidate.canonicalID],
+                            diagnostic: "type_mismatch"
+                        )
+                    }
                     return .bound(reference: reference, binding: submissionBinding(mappedCandidate, reference: reference))
                 }
                 if mappedKey.hasPrefix("object_marked_") || mappedKey.hasPrefix("object_detected_") {
@@ -500,7 +546,12 @@ final class MarkedObjectMatcher {
                     )
                 }
                 if let aliasMatches = aliasCandidates[normalizedName], !aliasMatches.isEmpty {
-                    return choose(reference: reference, candidates: aliasMatches, reason: "alias_ambiguous")
+                    return choose(
+                        reference: reference,
+                        candidates: aliasMatches,
+                        objectType: object.type,
+                        reason: "alias_ambiguous"
+                    )
                 }
             }
 
@@ -512,13 +563,23 @@ final class MarkedObjectMatcher {
             if !mentionedMatches.isEmpty {
                 let typeFiltered = mentionedMatches.filter { $0.objectType == object.type }
                 if !typeFiltered.isEmpty {
-                    return choose(reference: reference, candidates: typeFiltered, reason: "mentioned_alias_ambiguous")
+                    return choose(
+                        reference: reference,
+                        candidates: typeFiltered,
+                        objectType: object.type,
+                        reason: "mentioned_alias_ambiguous"
+                    )
                 }
             }
 
             let typeMatches = candidates.filter { $0.objectType == object.type }
             if !typeMatches.isEmpty {
-                return choose(reference: reference, candidates: typeMatches, reason: "same_type_ambiguous")
+                return choose(
+                    reference: reference,
+                    candidates: typeMatches,
+                    objectType: object.type,
+                    reason: "same_type_ambiguous"
+                )
             }
 
             guard !reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

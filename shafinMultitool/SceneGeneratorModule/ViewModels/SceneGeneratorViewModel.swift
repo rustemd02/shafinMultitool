@@ -735,6 +735,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var debugFixtureID: String?
     private var storyboardDebugMutationDelay: TimeInterval = 0
     private var generationDebugDelay: TimeInterval = 0
+    private var testingParserResultOverride: ((String, [MarkedObject]) async -> ParsingResult)?
     private(set) var testingGenerationOwnerCount = 0
     private(set) var testingGenerationStateTrace: [SceneGenerationRequestState] = [.idle]
 #endif
@@ -1869,12 +1870,38 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         await Task.yield()
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
-        let result = await parserService.parseAsync(submittedDescription, markedObjects: markedObjects)
+        let parserOutput: (
+            result: ParsingResult,
+            runtimeTrace: SceneRuntimeTrace?,
+            chunkState: SceneChunkState?,
+            visualOverlays: [SceneVisualOverlay]
+        )
+#if DEBUG
+        if let testingParserResultOverride {
+            parserOutput = (
+                result: await testingParserResultOverride(submittedDescription, markedObjects),
+                runtimeTrace: nil,
+                chunkState: nil,
+                visualOverlays: []
+            )
+        } else {
+            parserOutput = await parserService.parseAsyncForGeneration(
+                submittedDescription,
+                markedObjects: markedObjects
+            )
+        }
+#else
+        parserOutput = await parserService.parseAsyncForGeneration(
+            submittedDescription,
+            markedObjects: markedObjects
+        )
+#endif
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
         parserService.releaseLocalModelResources(reason: "scene_generation_parse_complete")
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] parser finished and LLM resources requested for release")
+        let result = parserOutput.result
         let script = result.script
-        let runtimeTrace = parserService.lastRuntimeTrace
+        let runtimeTrace = parserOutput.runtimeTrace
 
         logParsedScriptDetails(script, diagnostics: result.diagnostics, generationID: generationID)
         print("🔍 [VIEWMODEL] Результат парсинга:")
@@ -1964,18 +1991,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return
         }
 
-        let parserAliasBindings: [String: String] = {
-            guard let bundleResult = parserService.lastBundleResult else { return [:] }
-            let bundlePlan = bundleResult.documentState.bundlePlan
-            guard bundlePlan.scenes.indices.contains(bundlePlan.activeSceneIndex) else { return [:] }
-            return bundlePlan.scenes[bundlePlan.activeSceneIndex].plan.referenceBindings.aliasToObjectRef
-        }()
-        let bindingAliasPairs = Array(bindingRequestSnapshot.aliasToObjectRef.map { ($0.key, $0.value) })
-            + Array(parserAliasBindings.map { ($0.key, $0.value) })
-        let requestForBinding = bindingRequestSnapshot.withAliasBindingPairs(bindingAliasPairs)
         let resolvedObjectBindings = objectBindingExtractor.resolveObjectBindings(
             scriptObjects: script.objects,
-            request: requestForBinding
+            request: bindingRequestSnapshot
         )
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
         objectBindingResult = resolvedObjectBindings
@@ -2073,8 +2091,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         removePlacedSceneEntities(reason: "generation_commit \(generationID)")
         parsedScript = updatedScript
         parsingResult = result
-        sceneChunkState = parserService.lastChunkState
-        visualOverlays = parserService.lastBundleResult?.visualOverlays ?? []
+        sceneChunkState = parserOutput.chunkState
+        visualOverlays = parserOutput.visualOverlays
         plannedScene = plannedWithBindingSources
         beatTimelineItems = buildBeatTimelineItems(for: plannedWithBindingSources, script: updatedScript)
         refreshStoryboardBeatItems()
@@ -3970,33 +3988,54 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return false
         }
 
-        if isPlaying {
-            stopScene()
-        } else {
-            cancelAllAnimations()
-            resetPlaybackUIState(clearTimeline: true)
-        }
-
-        let editBindingResult = makeObjectBindingResult(
-            scriptObjects: script.objects,
-            markedObjects: markedObjects,
-            detectedObjects: detectedObjects
-        )
-        guard editBindingResult.resolutions.allSatisfy(\.isBound) else {
+        let scriptObjectIDs = script.objects.map(\.id)
+        let acceptedBindingResult: SceneObjectBindingResult? = {
+            guard let result = objectBindingResult,
+                  let currentRequestID = generationRequestState.requestID,
+                  let currentEpoch = generationRequestState.epoch,
+                  result.requestID == currentRequestID,
+                  result.epoch == currentEpoch,
+                  result.request.description == sceneDescription,
+                  scriptObjectIDs.count == Set(scriptObjectIDs).count,
+                  result.resolutions.count == scriptObjectIDs.count,
+                  Set(result.resolutions.map(\.reference)) == Set(scriptObjectIDs),
+                  result.resolutions.allSatisfy(\.isBound) else {
+                return nil
+            }
+            return result
+        }()
+        let existingPlannedScene = plannedScene
+        let existingPlacedObjects = existingPlannedScene?.placedObjects ?? []
+        let existingObjectIDs = existingPlacedObjects.map(\.objectId)
+        let canReuseExistingObjects: Bool = {
+            guard !script.objects.isEmpty else { return true }
+            guard existingObjectIDs.count == scriptObjectIDs.count,
+                  existingObjectIDs.count == Set(existingObjectIDs).count,
+                  Set(existingObjectIDs) == Set(scriptObjectIDs) else {
+                return false
+            }
+            let existingTypes = Dictionary(uniqueKeysWithValues: existingPlacedObjects.map { ($0.objectId, $0.type) })
+            return script.objects.allSatisfy { existingTypes[$0.id] == $0.type }
+        }()
+        let staleBindingResult = objectBindingResult != nil && acceptedBindingResult == nil
+        guard !staleBindingResult && (acceptedBindingResult != nil || canReuseExistingObjects) else {
             let message = localizedCopy(.generatorClarification)
             storyboardValidationMessage = message
             errorMessage = message
-            diagnosticsLog("[STORYBOARD_EDIT] object binding clarification required; edit not committed")
+            diagnosticsLog("[STORYBOARD_EDIT] accepted binding/planned object identity unavailable; edit not committed")
             return false
         }
 
+        let editedObjects = acceptedBindingResult.map {
+            matchObjectsWithMarkedAndDetected(script.objects, bindingResult: $0)
+        } ?? script.objects
         let editedScript = SceneScript(
             sceneHeading: script.sceneHeading,
             locationName: script.locationName,
             interiorExterior: script.interiorExterior,
             timeOfDay: script.timeOfDay,
             actors: script.actors,
-            objects: matchObjectsWithMarkedAndDetected(script.objects, bindingResult: editBindingResult),
+            objects: editedObjects,
             beats: beats,
             spatialRelations: script.spatialRelations,
             originalDescription: script.originalDescription
@@ -4010,10 +4049,32 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             availablePlanes: detectedPlanes,
             markedObjects: []
         )
-        let plannedWithBindingSources = applyBindingSources(
-            to: planned,
-            bindingResult: editBindingResult
-        )
+        let plannedWithBindingSources: PlannedScene
+        if let acceptedBindingResult {
+            plannedWithBindingSources = applyBindingSources(
+                to: planned,
+                bindingResult: acceptedBindingResult
+            )
+        } else if let existingPlannedScene {
+            // Beat edits do not own object identity. Preserve the accepted
+            // planned objects when the immutable request binding is absent.
+            plannedWithBindingSources = PlannedScene(
+                placedActors: planned.placedActors,
+                placedObjects: existingPlannedScene.placedObjects
+            )
+        } else {
+            plannedWithBindingSources = planned
+        }
+
+        // Validation and pure replanning complete before playback/model state
+        // is touched. A rejected binding therefore leaves the current scene
+        // and animations unchanged.
+        if isPlaying {
+            stopScene()
+        } else {
+            cancelAllAnimations()
+            resetPlaybackUIState(clearTimeline: true)
+        }
 
         parsedScript = editedScript
         if let parsingResult {
@@ -4817,29 +4878,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             }
             return updatedObject
         }
-    }
-
-    private func makeObjectBindingResult(
-        scriptObjects: [SceneObject],
-        markedObjects: [MarkedObject],
-        detectedObjects: [DetectedObject]
-    ) -> SceneObjectBindingResult {
-        let requestID = generationRequestState.requestID ?? UUID()
-        let epoch = generationRequestState.epoch ?? generationEpoch
-        let snapshot = objectBindingExtractor.makeObjectBindingRequestSnapshot(
-            requestID: requestID,
-            epoch: epoch,
-            description: sceneDescription,
-            markedObjects: markedObjects,
-            detectedObjects: detectedObjects,
-            aliasToObjectRef: MarkedObjectMatcher.uniqueAliasBindings(
-                markedObjects.map { ($0.name, $0.canonicalMarkedObjectID) }
-            )
-        )
-        return objectBindingExtractor.resolveObjectBindings(
-            scriptObjects: scriptObjects,
-            request: snapshot
-        )
     }
 
     /// Reattaches source metadata after planning.  SpatialPlanner uses the
@@ -6150,6 +6188,15 @@ extension SceneGeneratorViewModel {
 
     func testingSetGenerationDelay(_ delay: TimeInterval) {
         generationDebugDelay = max(0, delay)
+    }
+
+    /// Test-only injection at the parser boundary. The production path still
+    /// uses SceneParserService; tests can return a deterministic immutable
+    /// parse result without publishing through the binding seam.
+    func testingSetParserResultOverride(
+        _ override: ((String, [MarkedObject]) async -> ParsingResult)?
+    ) {
+        testingParserResultOverride = override
     }
 
     func testingResetGenerationStateTrace() {
