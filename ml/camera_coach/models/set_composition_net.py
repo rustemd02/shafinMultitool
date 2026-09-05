@@ -265,11 +265,14 @@ class _ConvBNActivation(nn.Sequential):
 
 
 class _SqueezeExcitation(nn.Module):
-    def __init__(self, channels: int, squeeze_factor: int = 4):
+    def __init__(self, input_channels: int, feature_channels: int, squeeze_factor: int = 4):
         super().__init__()
-        squeeze_channels = _make_divisible(channels / squeeze_factor, 8)
-        self.reduce = nn.Conv2d(channels, squeeze_channels, kernel_size=1)
-        self.expand = nn.Conv2d(squeeze_channels, channels, kernel_size=1)
+        squeeze_channels = _make_divisible(input_channels / squeeze_factor, 8)
+        self.input_channels = input_channels
+        self.feature_channels = feature_channels
+        self.squeeze_channels = squeeze_channels
+        self.reduce = nn.Conv2d(feature_channels, squeeze_channels, kernel_size=1)
+        self.expand = nn.Conv2d(squeeze_channels, feature_channels, kernel_size=1)
 
     def forward(self, x: Tensor) -> Tensor:
         scale = x.mean(dim=(2, 3), keepdim=True)
@@ -309,7 +312,9 @@ class _InvertedResidual(nn.Module):
             nn.ReLU(inplace=True) if activation == "RE" else nn.Hardswish(inplace=True),
         ))
         if use_se:
-            layers.append(_SqueezeExcitation(expanded_channels))
+            # SET's frozen candidate specification derives the SE bottleneck
+            # from the block input channels, never the expanded width.
+            layers.append(_SqueezeExcitation(in_channels, expanded_channels))
         layers.extend(
             [
                 nn.Conv2d(expanded_channels, out_channels, kernel_size=1, bias=False),
@@ -324,35 +329,37 @@ class _InvertedResidual(nn.Module):
 
 
 _LARGE_CONFIG = (
-    # expansion, output, kernel, stride, squeeze-excitation, activation
-    (1.0, 16, 3, 1, False, "RE"),
-    (4.0, 24, 3, 2, False, "RE"),
-    (3.0, 24, 3, 1, False, "RE"),
-    (3.0, 40, 5, 2, True, "RE"),
-    (3.0, 40, 5, 1, True, "RE"),
-    (3.0, 40, 5, 1, True, "RE"),
-    (6.0, 80, 3, 2, False, "HS"),
-    (2.5, 80, 3, 1, False, "HS"),
-    (2.5, 80, 3, 1, False, "HS"),
-    (6.0, 112, 3, 1, True, "HS"),
-    (6.0, 112, 3, 1, True, "HS"),
-    (6.0, 160, 5, 2, True, "HS"),
-    (6.0, 160, 5, 1, True, "HS"),
-    (6.0, 160, 5, 1, True, "HS"),
+    # kernel, expansion, raw output, squeeze-excitation, activation, stride
+    (3, 1.0, 16, False, "RE", 1),
+    (3, 4.0, 24, False, "RE", 2),
+    (3, 3.0, 24, False, "RE", 1),
+    (5, 3.0, 40, True, "RE", 2),
+    (5, 3.0, 40, True, "RE", 1),
+    (5, 3.0, 40, True, "RE", 1),
+    (3, 6.0, 80, False, "HS", 2),
+    (3, 2.5, 80, False, "HS", 1),
+    (3, 2.5, 80, False, "HS", 1),
+    (3, 2.5, 80, False, "HS", 1),
+    (3, 6.0, 112, True, "HS", 1),
+    (3, 6.0, 112, True, "HS", 1),
+    (5, 6.0, 160, True, "HS", 2),
+    (5, 6.0, 160, True, "HS", 1),
+    (5, 6.0, 160, True, "HS", 1),
 )
 
 _SMALL_CONFIG = (
-    (1.0, 16, 3, 2, True, "RE"),
-    (4.5, 24, 3, 2, False, "RE"),
-    (3.67, 24, 3, 1, False, "RE"),
-    (4.0, 40, 5, 2, True, "HS"),
-    (6.0, 40, 5, 1, True, "HS"),
-    (6.0, 40, 5, 1, True, "HS"),
-    (3.0, 48, 5, 1, True, "HS"),
-    (3.0, 48, 5, 1, True, "HS"),
-    (6.0, 96, 5, 2, True, "HS"),
-    (6.0, 96, 5, 1, True, "HS"),
-    (6.0, 96, 5, 1, True, "HS"),
+    # kernel, expansion, raw output, squeeze-excitation, activation, stride
+    (3, 1.0, 16, True, "RE", 2),
+    (3, 4.5, 24, False, "RE", 2),
+    (3, 3.67, 24, False, "RE", 1),
+    (5, 4.0, 40, True, "HS", 2),
+    (5, 6.0, 40, True, "HS", 1),
+    (5, 6.0, 40, True, "HS", 1),
+    (5, 3.0, 48, True, "HS", 1),
+    (5, 3.0, 48, True, "HS", 1),
+    (5, 6.0, 96, True, "HS", 2),
+    (5, 6.0, 96, True, "HS", 1),
+    (5, 6.0, 96, True, "HS", 1),
 )
 
 
@@ -365,16 +372,24 @@ class _MobileNetV3Backbone(nn.Module):
             raise ValueError(f"unsupported MobileNetV3 family: {family}")
         if width_multiplier <= 0:
             raise ValueError("width_multiplier must be positive")
+        model_input_channels = input_channels
         config = _LARGE_CONFIG if family == "large" else _SMALL_CONFIG
         stem_channels = _make_divisible(16 * width_multiplier)
         blocks: list[nn.Module] = []
+        raw_input = 16
         current = stem_channels
-        for expansion, raw_out, kernel, stride, use_se, activation in config:
+        block_schedule: list[tuple[int, int, int, int, int, bool, str]] = []
+        for kernel, expansion, raw_out, use_se, activation, stride in config:
+            block_input_channels = _make_divisible(raw_input * width_multiplier)
             out_channels = _make_divisible(raw_out * width_multiplier)
-            expanded = _make_divisible(current * expansion)
+            expanded = _make_divisible(raw_input * expansion * width_multiplier)
+            if block_input_channels != current:
+                raise ContractError(
+                    f"{family} MobileNetV3 schedule lost channel continuity at raw input {raw_input}"
+                )
             blocks.append(
                 _InvertedResidual(
-                    current,
+                    block_input_channels,
                     expanded,
                     out_channels,
                     kernel,
@@ -384,13 +399,16 @@ class _MobileNetV3Backbone(nn.Module):
                 )
             )
             current = out_channels
+            block_schedule.append((block_input_channels, expanded, out_channels, kernel, stride, use_se, activation))
+            raw_input = raw_out
         final_channels = _make_divisible((960 if family == "large" else 576) * width_multiplier)
         self.family = family
         self.width_multiplier = width_multiplier
-        self.input_channels = input_channels
+        self.input_channels = model_input_channels
         self.output_dim = final_channels
+        self.block_schedule = tuple(block_schedule)
         self.features = nn.Sequential(
-            _ConvBNActivation(input_channels, stem_channels, 3, 2, "HS"),
+            _ConvBNActivation(model_input_channels, stem_channels, 3, 2, "HS"),
             *blocks,
             nn.Conv2d(current, final_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(final_channels),

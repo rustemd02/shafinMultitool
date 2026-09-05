@@ -30,6 +30,40 @@ from .set_composition_net import (
 
 SEED = 20260905
 
+# Independent admission expectations for the canonical MobileNetV3 schedules.
+# These are intentionally not read back from the implementation table: a
+# missing/reordered block or recursive channel scaling must fail this check.
+_EXPECTED_LARGE_075 = (
+    (16, 16, 16, 3, 1, False, "RE"),
+    (16, 48, 24, 3, 2, False, "RE"),
+    (24, 56, 24, 3, 1, False, "RE"),
+    (24, 56, 32, 5, 2, True, "RE"),
+    (32, 88, 32, 5, 1, True, "RE"),
+    (32, 88, 32, 5, 1, True, "RE"),
+    (32, 184, 64, 3, 2, False, "HS"),
+    (64, 152, 64, 3, 1, False, "HS"),
+    (64, 152, 64, 3, 1, False, "HS"),
+    (64, 152, 64, 3, 1, False, "HS"),
+    (64, 360, 88, 3, 1, True, "HS"),
+    (88, 504, 88, 3, 1, True, "HS"),
+    (88, 504, 120, 5, 2, True, "HS"),
+    (120, 720, 120, 5, 1, True, "HS"),
+    (120, 720, 120, 5, 1, True, "HS"),
+)
+_EXPECTED_SMALL_050 = (
+    (8, 8, 8, 3, 2, True, "RE"),
+    (8, 40, 16, 3, 2, False, "RE"),
+    (16, 48, 16, 3, 1, False, "RE"),
+    (16, 48, 24, 5, 2, True, "HS"),
+    (24, 120, 24, 5, 1, True, "HS"),
+    (24, 120, 24, 5, 1, True, "HS"),
+    (24, 64, 24, 5, 1, True, "HS"),
+    (24, 72, 24, 5, 1, True, "HS"),
+    (24, 144, 48, 5, 2, True, "HS"),
+    (48, 288, 48, 5, 1, True, "HS"),
+    (48, 288, 48, 5, 1, True, "HS"),
+)
+
 
 def _tensor_hash(value: torch.Tensor) -> str:
     values = value.detach().to(device="cpu", dtype=torch.float32).contiguous().flatten().tolist()
@@ -63,6 +97,20 @@ def _make_inputs(contract: SETCompositionNetManifest, *, absent_roi: bool = Fals
     scalar[feature_names.index("lens_category")] = 0.5
     missing = torch.zeros(contract.scalar_feature_count, dtype=torch.float32)
     return SETCompositionNetInputs(full, crop, roi, mask, scalar, missing)
+
+
+def _assert_mobilenet_schedules(candidate_a: torch.nn.Module, candidate_b: torch.nn.Module) -> None:
+    large = candidate_a.full_frame_backbone
+    crop = candidate_a.subject_crop_backbone
+    ablation = candidate_b.backbone
+    assert large.family == "large" and large.width_multiplier == 0.75
+    assert crop.family == "small" and crop.width_multiplier == 0.50
+    assert ablation.family == "small" and ablation.width_multiplier == 0.50
+    assert len(large.block_schedule) == 15
+    assert len(crop.block_schedule) == len(ablation.block_schedule) == 11
+    assert tuple(large.block_schedule) == _EXPECTED_LARGE_075
+    assert tuple(crop.block_schedule) == _EXPECTED_SMALL_050
+    assert tuple(ablation.block_schedule) == _EXPECTED_SMALL_050
 
 
 def _assert_shapes(outputs: dict[str, torch.Tensor], contract: SETCompositionNetManifest) -> None:
@@ -168,6 +216,7 @@ def main() -> int:
     torch.manual_seed(SEED)
     candidate_b = CandidateB(contract).eval()
 
+    _assert_mobilenet_schedules(candidate_a, candidate_b)
     hash_a = _assert_deterministic(candidate_a, inputs, contract)
     hash_b = _assert_deterministic(candidate_b, inputs, contract)
     _assert_absent_roi_is_deterministic(candidate_a, absent_inputs)
@@ -208,6 +257,7 @@ def main() -> int:
         },
         "candidate_b_to_a_macs_ratio": ratio,
         "checks": [
+            "canonical MobileNetV3 Large-0.75 (15) and Small-0.50 (11) schedules",
             "all nine manifest-driven output heads and shapes",
             "repeated forward equality",
             "absent ROI/crop deterministic zero gate",

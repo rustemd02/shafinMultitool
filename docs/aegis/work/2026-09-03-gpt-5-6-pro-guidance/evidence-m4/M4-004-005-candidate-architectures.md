@@ -9,9 +9,13 @@ at construction time and rejects v1 input/output shape or order drift.
 ## Implementation
 
 `ml/camera_coach/models/set_composition_net.py` contains the smallest native
-`torch.nn` MobileNetV3-style blocks needed for this comparison (depthwise
-inverted residuals, squeeze-excitation, ReLU/h-swish, and global average
-pooling). `torchvision` is not required and no weights are downloaded.
+`torch.nn` MobileNetV3-style blocks needed for this comparison (canonical
+fixed Large-15/Small-11 depthwise inverted-residual schedules,
+squeeze-excitation, ReLU/h-swish, and global average pooling). Width is
+applied independently to each fixed raw input/expansion/output channel. The
+SE bottleneck derives from the scaled block input channels while its gate
+operates on the expanded feature channels. `torchvision` is not required and
+no weights are downloaded.
 
 The common `SETCompositionNetInputs` boundary accepts logical HWC/BHWC tensors
 (and BCHW as an explicit PyTorch adapter), preserves `float32`, validates
@@ -41,7 +45,8 @@ Environment and reproducibility:
   `192×192×3`, ROI mask `320×320×1`, 40 scalars and 40-value missing mask.
 - The check exercises all nine output heads and exact manifest shapes, repeated
   forward equality, absent ROI/crop zero-gating, missing-slot zero-fill,
-  finite gradient traversal, and the B/A MAC gate.
+  finite gradient traversal, canonical block counts/schedules, and the B/A MAC
+  gate.
 
 Commands:
 
@@ -61,10 +66,10 @@ features, nine heads, all synthetic hashes, and all mutation probes rejected.
 
 | Measurement | Candidate A | Candidate B |
 |---|---:|---:|
-| Parameters | 2,383,069 | 427,349 |
-| Conv2d + Linear MACs (batch 1) | 317,852,928 | 42,139,072 |
-| B / A MAC ratio | — | `0.1325741193109286` |
-| Deterministic output receipt hash | `34ec92c42e90a82873727beff6076303d6d7c034ec7fc9648208326f6aed7f17` | `afd2669884cec9e70996fe2573ad8fd53d4ec26efe5be0f48c7f627a42f90a6f` |
+| Parameters | 1,529,069 | 322,309 |
+| Conv2d + Linear MACs (batch 1) | 296,298,656 | 39,156,928 |
+| B / A MAC ratio | — | `0.13215357952889265` |
+| Deterministic output receipt hash | `4b129bc7ee9e0c30e14282c70cf6f933c76efd82b484894abd434298a4e8579d` | `81058ac35c4df0f2fc0d78d4d9f90aa33e44d1f889708bbcee7cc2ecf9b957cd` |
 
 The measured ratio is `13.26%`, satisfying the required `B ≤ 70% of A`
 threshold. The counter includes convolution multiply-accumulates and linear
