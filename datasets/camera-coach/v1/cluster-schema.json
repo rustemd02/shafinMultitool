@@ -160,7 +160,7 @@
       "properties": {
         "sequence_id": {"$ref": "#/$defs/id"},
         "cluster_id": {"type": "string", "pattern": "^cdc_[0-9a-f]{16}$"},
-        "derivation_family_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "derivation_family_id": {"$ref": "#/$defs/id"},
         "derivation_family_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
         "asset_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
       }

@@ -67,12 +67,12 @@ def _write_fixture_images(root: Path) -> dict[str, str]:
 
 def _manifest(paths: dict[str, str]) -> dict:
     entries = [
-        {"asset_id": "asset-base", "path": paths["asset-base"], "record_id": "cam-base", "derivation_family_id": "family-base"},
-        {"asset_id": "asset-exact", "path": paths["asset-exact"], "record_id": "cam-exact", "derivation_family_id": "family-exact"},
-        {"asset_id": "asset-crop", "path": paths["asset-crop"], "record_id": "cam-crop", "derivation_family_id": "family-crop"},
-        {"asset_id": "asset-color", "path": paths["asset-color"], "record_id": "cam-color", "derivation_family_id": "family-color"},
-        {"asset_id": "asset-near", "path": paths["asset-near"], "record_id": "cam-near", "derivation_family_id": "family-near"},
-        {"asset_id": "asset-far", "path": paths["asset-far"], "record_id": "cam-far", "derivation_family_id": "family-far"},
+        {"asset_id": "asset-base", "path": paths["asset-base"], "record_id": "cam-base", "derivation_family_id": "family-base", "rights_disposition": "fixture_only"},
+        {"asset_id": "asset-exact", "path": paths["asset-exact"], "record_id": "cam-exact", "derivation_family_id": "family-exact", "rights_disposition": "fixture_only"},
+        {"asset_id": "asset-crop", "path": paths["asset-crop"], "record_id": "cam-crop", "derivation_family_id": "family-crop", "rights_disposition": "fixture_only"},
+        {"asset_id": "asset-color", "path": paths["asset-color"], "record_id": "cam-color", "derivation_family_id": "family-color", "rights_disposition": "fixture_only"},
+        {"asset_id": "asset-near", "path": paths["asset-near"], "record_id": "cam-near", "derivation_family_id": "family-near", "rights_disposition": "fixture_only"},
+        {"asset_id": "asset-far", "path": paths["asset-far"], "record_id": "cam-far", "derivation_family_id": "family-far", "rights_disposition": "fixture_only"},
     ]
     for ordinal in range(3):
         asset_id = f"asset-seq-f{ordinal}"
@@ -83,7 +83,7 @@ def _manifest(paths: dict[str, str]) -> dict:
                 "record_id": "cam-seq",
                 "sequence_id": "sequence-fixture",
                 "frame_ordinal": ordinal,
-                "derivation_family_id": "family-sequence",
+                "rights_disposition": "fixture_only",
             }
         )
     return {
@@ -125,13 +125,18 @@ def run() -> None:
         assert by_asset["asset-far"]["cluster_id"] not in {by_asset[asset]["cluster_id"] for asset in target_assets}
         sequence = next(item for item in output["sequence_families"] if item["sequence_id"] == "sequence-fixture")
         assert len({by_asset[asset]["cluster_id"] for asset in sequence["asset_ids"]}) == 1
-        assert sequence["derivation_family_id"] == "family-sequence"
+        assert sequence["derivation_family_id"] == AUDIT._derived_sequence_family("sequence-fixture")
+        sequence_family = sequence["derivation_family_id"]
+        for asset_id in sequence["asset_ids"]:
+            member_by_asset = {member["asset_id"]: member for member in by_asset[asset_id]["members"]}
+            assert member_by_asset[asset_id]["derivation_family_ids"] == [sequence_family]
         assert output["ssim_review"]["enabled"] is True
         assert output["ssim_review"]["admission_oracle"] is False
         assert output["ssim_review"]["pairs"]
+        assert len(AUDIT.perceptual_hash(root / "asset-base.png")) == 16
 
         bad_manifest = root / "bad.json"
-        bad_manifest.write_text(json.dumps({"schema_id": AUDIT.INPUT_SCHEMA_ID, "entries": [{"asset_id": "asset-missing", "path": "missing.png"}]}), encoding="utf-8")
+        bad_manifest.write_text(json.dumps({"schema_id": AUDIT.INPUT_SCHEMA_ID, "entries": [{"asset_id": "asset-missing", "path": "missing.png", "rights_disposition": "fixture_only"}]}), encoding="utf-8")
         try:
             AUDIT.load_manifest(bad_manifest, media_root=root)
         except AUDIT.AuditInputError as exc:
@@ -142,7 +147,7 @@ def run() -> None:
         unreadable = root / "unreadable.bin"
         unreadable.write_bytes(b"not an image")
         unreadable_manifest = root / "unreadable.json"
-        unreadable_manifest.write_text(json.dumps({"entries": [{"asset_id": "asset-bad", "path": unreadable.name}]}), encoding="utf-8")
+        unreadable_manifest.write_text(json.dumps({"entries": [{"asset_id": "asset-bad", "path": unreadable.name, "rights_disposition": "fixture_only"}]}), encoding="utf-8")
         try:
             AUDIT.cluster_media(AUDIT.load_manifest(unreadable_manifest, media_root=root))
         except AUDIT.AuditInputError as exc:
@@ -150,9 +155,109 @@ def run() -> None:
         else:
             raise AssertionError("unreadable media was accepted")
 
+        missing_rights = root / "missing-rights.json"
+        missing_rights.write_text(json.dumps({"entries": [{"asset_id": "asset-no-rights", "path": paths["asset-base"]}]}), encoding="utf-8")
+        try:
+            AUDIT.load_manifest(missing_rights, media_root=root)
+        except AUDIT.AuditInputError as exc:
+            assert "missing_rights_disposition" in str(exc)
+        else:
+            raise AssertionError("missing rights disposition was accepted")
+
+        conflicting_sequence = root / "conflicting-sequence.json"
+        conflicting_sequence.write_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {"asset_id": "asset-seq-f0", "path": paths["asset-seq-f0"], "record_id": "cam-seq", "sequence_id": "sequence-conflict", "frame_ordinal": 0, "derivation_family_id": "family-a", "rights_disposition": "fixture_only"},
+                        {"asset_id": "asset-seq-f1", "path": paths["asset-seq-f1"], "record_id": "cam-seq", "sequence_id": "sequence-conflict", "frame_ordinal": 1, "derivation_family_id": "family-b", "rights_disposition": "fixture_only"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        try:
+            AUDIT.load_manifest(conflicting_sequence, media_root=root)
+        except AUDIT.AuditInputError as exc:
+            assert "sequence_derivation_family_conflict" in str(exc)
+        else:
+            raise AssertionError("conflicting sequence families were accepted")
+
+        media_map_main = root / "media-map-main.json"
+        media_map_main.write_text(
+            json.dumps(
+                {
+                    "schema_id": AUDIT.INPUT_SCHEMA_ID,
+                    "entries": [{"asset_id": "asset-base", "record_id": "cam-base", "derivation_family_id": "family-base", "rights_disposition": "fixture_only"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        wrong_digest = "0" * 64
+        map_rows = [
+            {"asset_id": "asset-base", "path": paths["asset-base"], "sha256": wrong_digest},
+            {"asset_id": "asset-base", "path": paths["asset-base"]},
+        ]
+        map_errors = []
+        for rows in (map_rows, list(reversed(map_rows))):
+            media_map = root / f"media-map-{len(map_errors)}.json"
+            media_map.write_text(json.dumps({"schema_id": AUDIT.INPUT_SCHEMA_ID, "entries": rows}), encoding="utf-8")
+            try:
+                AUDIT.load_manifest(media_map_main, media_root=root, media_manifest=media_map)
+            except AUDIT.AuditInputError as exc:
+                map_errors.append(str(exc))
+            else:
+                raise AssertionError("conflicting media-map rows were accepted")
+        assert map_errors[0] == map_errors[1]
+
+        leaking_map = root / "leaking-map.json"
+        leaking_map.write_text(
+            json.dumps({"schema_id": AUDIT.INPUT_SCHEMA_ID, "entries": [{"asset_id": "asset-base", "path": paths["asset-base"], "candidate": "must-not-pass"}]}),
+            encoding="utf-8",
+        )
+        try:
+            AUDIT.load_manifest(media_map_main, media_root=root, media_manifest=leaking_map)
+        except AUDIT.AuditInputError as exc:
+            assert "candidate_identity_leakage" in str(exc)
+        else:
+            raise AssertionError("candidate/model identity leaked through media map")
+
+        hostile_ppm = root / "hostile.ppm"
+        # The header is tiny; Pillow must reject it before attempting a pixel allocation.
+        hostile_ppm.write_bytes(b"P6\n100000000 100000000\n255\n")
+        try:
+            AUDIT._load_image(hostile_ppm)
+        except AUDIT.AuditInputError as exc:
+            assert "decompression_bomb" in str(exc)
+        else:
+            raise AssertionError("hostile decompression-bomb header was accepted")
+
+        for bad_value in (True, 1.5):
+            try:
+                AUDIT.cluster_media(items, phash_distance=bad_value)
+            except AUDIT.AuditInputError as exc:
+                assert "phash_distance" in str(exc)
+            else:
+                raise AssertionError("non-integer pHash distance was accepted")
+        for bad_value in (float("nan"), float("inf"), float("-inf")):
+            try:
+                AUDIT.cluster_media(items, descriptor_similarity=bad_value)
+            except AUDIT.AuditInputError as exc:
+                assert "descriptor_similarity" in str(exc)
+            else:
+                raise AssertionError("non-finite descriptor threshold was accepted")
+        for bad_value in (1, None, "true"):
+            try:
+                AUDIT.cluster_media(items, ssim_review=bad_value)
+            except AUDIT.AuditInputError as exc:
+                assert "ssim_review" in str(exc)
+            else:
+                raise AssertionError("non-boolean SSIM flag was accepted")
+
     print(
         "PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated "
-        "sequence_family input_order_independent malformed_rejected schema_round_trip ssim_review_only"
+        "sequence_family input_order_independent malformed_rejected rights_required media_map_conflict "
+        "schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected"
     )
 
 

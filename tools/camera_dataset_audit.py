@@ -11,7 +11,7 @@ boundary for a future versioned contract.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import hashlib
 import json
 import math
@@ -21,6 +21,7 @@ import struct
 import sys
 from tempfile import TemporaryDirectory
 from typing import Any, Iterable
+import warnings
 
 from PIL import Image, ImageDraw
 
@@ -33,9 +34,9 @@ SCHEMA_VERSION = "v1.0.0"
 ALGORITHM_ID = "camera-dedup-v1"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
-CLUSTER_ID_RE = re.compile(r"^cdc_[0-9a-f]{16}$")
 PHASH_SIZE = 32
 PHASH_LOW_FREQUENCY_SIZE = 8
+PHASH_BITS = PHASH_LOW_FREQUENCY_SIZE * PHASH_LOW_FREQUENCY_SIZE
 DESCRIPTOR_SIZE = 8
 DEFAULT_PHASH_DISTANCE = 14
 MIN_DESCRIPTOR_FOR_PHASH = 0.55
@@ -142,15 +143,19 @@ def sha256_file(path: Path) -> str:
 
 def _load_image(path: Path) -> Image.Image:
     try:
-        with Image.open(path) as opened:
-            opened.verify()
-        with Image.open(path) as opened:
-            opened.load()
-            if opened.width < 1 or opened.height < 1:
-                raise AuditInputError(f"invalid_media_dimensions: {path}")
-            return opened.convert("RGB")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(path) as opened:
+                opened.verify()
+            with Image.open(path) as opened:
+                opened.load()
+                if opened.width < 1 or opened.height < 1:
+                    raise AuditInputError(f"invalid_media_dimensions: {path}")
+                return opened.convert("RGB")
     except AuditInputError:
         raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise AuditInputError(f"decompression_bomb: {path}") from exc
     except (OSError, ValueError) as exc:
         raise AuditInputError(f"unreadable_media: {path}") from exc
 
@@ -178,10 +183,14 @@ def perceptual_hash(image: Image.Image | Path) -> str:
             scale_u = 1 / math.sqrt(PHASH_SIZE) if u == 0 else math.sqrt(2 / PHASH_SIZE)
             scale_v = 1 / math.sqrt(PHASH_SIZE) if v == 0 else math.sqrt(2 / PHASH_SIZE)
             coefficients.append(total * scale_u * scale_v)
-    body = coefficients[1:]
-    median = sorted(body)[len(body) // 2]
-    bits = sum((value > median) << index for index, value in enumerate(body))
-    return f"{bits:016x}"
+    # Exclude the DC coefficient from the threshold, but retain its bit so the
+    # emitted hash has exactly 64 bits rather than a padded 63-bit body.
+    median = sorted(coefficients[1:])[len(coefficients[1:]) // 2]
+    bits = sum((value > median) << index for index, value in enumerate(coefficients))
+    result = f"{bits:0{PHASH_BITS // 4}x}"
+    if len(result) != PHASH_BITS // 4:
+        raise AuditInputError("invalid_perceptual_hash_length")
+    return result
 
 
 def local_embedding(image: Image.Image | Path) -> tuple[float, ...]:
@@ -368,7 +377,9 @@ def _resolve_path(raw_path: str, media_root: Path | None) -> Path:
     return resolved
 
 
-def _metadata(entry: dict[str, Any]) -> tuple[str | None, str | None, str | None, int | None, str | None]:
+def _metadata(
+    entry: dict[str, Any], *, require_rights: bool = True
+) -> tuple[str | None, str | None, str | None, int | None, str | None]:
     record_id = entry.get("record_id")
     if record_id is not None:
         record_id = _ensure_id(record_id, "record_id")
@@ -378,12 +389,20 @@ def _metadata(entry: dict[str, Any]) -> tuple[str | None, str | None, str | None
     if provenance is not None:
         if not isinstance(provenance, dict):
             raise AuditInputError("invalid_provenance")
-        family = provenance.get("derivation_family_id", family)
-        rights = provenance.get("rights_disposition", rights)
-        if family is None:
+        provenance_family = provenance.get("derivation_family_id")
+        provenance_rights = provenance.get("rights_disposition")
+        if family is not None and provenance_family is not None and family != provenance_family:
+            raise AuditInputError("derivation_family_conflict")
+        if rights is not None and provenance_rights is not None and rights != provenance_rights:
+            raise AuditInputError("rights_disposition_conflict")
+        family = provenance_family or family
+        rights = provenance_rights or rights
+        if family is None and require_rights and entry.get("sequence") is None and entry.get("sequence_id") is None:
             raise AuditInputError("missing_derivation_family_id")
     if family is not None:
         family = _ensure_id(family, "derivation_family_id")
+    if rights is None and require_rights:
+        raise AuditInputError("missing_rights_disposition")
     if rights is not None and (not isinstance(rights, str) or rights not in ALLOWED_RIGHTS):
         raise AuditInputError("rights_not_admissible")
     sequence = entry.get("sequence")
@@ -443,6 +462,7 @@ def _media_map(path: Path | None, media_root: Path | None) -> dict[str, dict[str
     if path is None:
         return {}
     payload = _read_json_or_jsonl(path)
+    _reject_forbidden(payload, str(path))
     entries, header = _container_entries(payload, str(path))
     _validate_header(header, str(path))
     if isinstance(payload, dict) and not any(key in payload for key in ("entries", "assets", "records")):
@@ -453,15 +473,62 @@ def _media_map(path: Path | None, media_root: Path | None) -> dict[str, dict[str
             }
     result: dict[str, dict[str, Any]] = {}
     for entry in entries:
+        if entry.get("record_count") is not None and not any(
+            key in entry for key in ("asset_id", "asset_ids", "media", "path", "media_path", "file", "asset_path")
+        ):
+            _validate_header(entry, f"{path}:header")
+            continue
         asset_id = _ensure_id(entry.get("asset_id"), "media_map.asset_id")
         raw_path, declared = _extract_path(entry, {})
         if raw_path is None:
             raise AuditInputError(f"missing_media_path: {asset_id}")
         resolved = _resolve_path(raw_path, media_root)
-        if asset_id in result and result[asset_id]["path"] != str(resolved):
-            raise AuditInputError(f"asset_path_conflict: {asset_id}")
-        result[asset_id] = {"path": str(resolved), "content_sha256": declared}
+        candidate = {"path": str(resolved), "content_sha256": declared}
+        existing = result.get(asset_id)
+        if existing is not None:
+            if existing["path"] != candidate["path"]:
+                raise AuditInputError(f"asset_path_conflict: {asset_id}")
+            if existing.get("content_sha256") != candidate["content_sha256"]:
+                raise AuditInputError(f"asset_sha256_conflict: {asset_id}")
+            continue
+        result[asset_id] = candidate
     return result
+
+
+def _derived_sequence_family(sequence_id: str) -> str:
+    return "derivation-family-" + hashlib.sha256(("sequence|" + sequence_id).encode("utf-8")).hexdigest()[:16]
+
+
+def _resolve_sequence_families(items: list[MediaItem]) -> list[MediaItem]:
+    """Require one family per sequence, deriving one when the input omits it."""
+
+    sequences: dict[str, list[int]] = {}
+    resolved: list[MediaItem] = []
+    for index, item in enumerate(items):
+        if len(item.derivation_family_ids) > 1:
+            raise AuditInputError(f"asset_derivation_family_conflict: {item.asset_id}")
+        if len(item.sequence_ids) > 1:
+            raise AuditInputError(f"asset_sequence_conflict: {item.asset_id}")
+        resolved.append(item)
+        for sequence_id in item.sequence_ids:
+            sequences.setdefault(sequence_id, []).append(index)
+    for sequence_id, indexes in sorted(sequences.items()):
+        family_ids = {
+            family
+            for index in indexes
+            for family in resolved[index].derivation_family_ids
+        }
+        if len(family_ids) > 1:
+            raise AuditInputError(f"sequence_derivation_family_conflict: {sequence_id}")
+        family_id = next(iter(family_ids), _derived_sequence_family(sequence_id))
+        for index in indexes:
+            item = resolved[index]
+            if family_id not in item.derivation_family_ids:
+                resolved[index] = replace(
+                    item,
+                    derivation_family_ids=tuple(sorted((*item.derivation_family_ids, family_id))),
+                )
+    return resolved
 
 
 def load_manifest(path: Path, *, media_root: Path | None = None, media_manifest: Path | None = None) -> list[MediaItem]:
@@ -484,6 +551,12 @@ def load_manifest(path: Path, *, media_root: Path | None = None, media_manifest:
         asset_id = entry.get("asset_id")
         raw_path, declared = _extract_path(entry, media_map)
         if isinstance(sequence, dict):
+            sequence_family = sequence.get("derivation_family_id")
+            if sequence_family is not None:
+                sequence_family = _ensure_id(sequence_family, "sequence.derivation_family_id")
+                if family is not None and family != sequence_family:
+                    raise AuditInputError("sequence_derivation_family_conflict")
+                family = sequence_family
             # Temporal frame paths/digests are authoritative; record.media may
             # describe the sequence as a whole and must not be copied to each frame.
             add_one = []
@@ -533,6 +606,12 @@ def load_manifest(path: Path, *, media_root: Path | None = None, media_manifest:
                 frame_ordinal = frame.get("ordinal")
                 if type(frame_ordinal) is not int or frame_ordinal < 0:
                     raise AuditInputError("invalid_frame_ordinal")
+                _, frame_family, frame_sequence_id, _, _ = _metadata(frame, require_rights=False)
+                if frame_family is not None and family is not None and frame_family != family:
+                    raise AuditInputError("sequence_derivation_family_conflict")
+                if frame_sequence_id is not None and frame_sequence_id != seq_id:
+                    raise AuditInputError("asset_sequence_conflict")
+                frame_family = frame_family or family
                 frame_path, frame_declared = _extract_path(frame, media_map)
                 if frame_path is None:
                     mapped = media_map.get(frame_asset) if isinstance(frame_asset, str) else None
@@ -544,7 +623,7 @@ def load_manifest(path: Path, *, media_root: Path | None = None, media_manifest:
                     raw_path=frame_path,
                     declared_sha256=frame_declared,
                     record_id=record_id,
-                    family=family,
+                    family=frame_family,
                     sequence_id=seq_id,
                     ordinal=frame_ordinal,
                     media_root=None if frame_asset in media_map else media_root,
@@ -559,11 +638,6 @@ def load_manifest(path: Path, *, media_root: Path | None = None, media_manifest:
     if not items:
         raise AuditInputError("empty_media_manifest")
     frozen = [item.freeze() for item in items.values()]
-    for item in frozen:
-        if len(item.derivation_family_ids) > 1:
-            raise AuditInputError(f"asset_derivation_family_conflict: {item.asset_id}")
-        if len(item.sequence_ids) > 1:
-            raise AuditInputError(f"asset_sequence_conflict: {item.asset_id}")
     sequence_ordinals: dict[str, set[int]] = {}
     for item in frozen:
         for sequence_id in item.sequence_ids:
@@ -574,7 +648,7 @@ def load_manifest(path: Path, *, media_root: Path | None = None, media_manifest:
             continue
         if len(ordinals) != len(sequence_items):
             raise AuditInputError(f"duplicate_frame_ordinal: {sequence_id}")
-    return sorted(frozen, key=lambda item: item.asset_id)
+    return sorted(_resolve_sequence_families(frozen), key=lambda item: item.asset_id)
 
 
 def _feature(item: MediaItem) -> _Feature:
@@ -615,6 +689,30 @@ def _edge_evidence(
     }
 
 
+def _ensure_exact_bool(value: Any, field_name: str) -> bool:
+    if type(value) is not bool:
+        raise AuditInputError(f"invalid_boolean: {field_name}")
+    return value
+
+
+def _ensure_exact_int(value: Any, field_name: str) -> int:
+    if type(value) is not int:
+        raise AuditInputError(f"invalid_integer: {field_name}")
+    return value
+
+
+def _ensure_finite_number(value: Any, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise AuditInputError(f"invalid_number: {field_name}")
+    try:
+        result = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise AuditInputError(f"non_finite_number: {field_name}") from exc
+    if not math.isfinite(result):
+        raise AuditInputError(f"non_finite_number: {field_name}")
+    return result
+
+
 def _cluster_id(items: Iterable[MediaItem], features: dict[str, _Feature]) -> str:
     members = sorted(f"{item.asset_id}:{features[item.asset_id].sha256}" for item in items)
     return "cdc_" + hashlib.sha256((ALGORITHM_ID + "|" + "|".join(members)).encode("utf-8")).hexdigest()[:16]
@@ -646,6 +744,10 @@ def cluster_media(
 ) -> dict[str, Any]:
     """Build a stable cluster receipt from validated external image refs."""
 
+    ssim_review = _ensure_exact_bool(ssim_review, "ssim_review")
+    phash_distance = _ensure_exact_int(phash_distance, "phash_distance")
+    descriptor_similarity = _ensure_finite_number(descriptor_similarity, "descriptor_similarity")
+    ssim_threshold = _ensure_finite_number(ssim_threshold, "ssim_threshold")
     if not items:
         raise AuditInputError("empty_media_manifest")
     if phash_distance < 0 or phash_distance > 64:
@@ -654,7 +756,7 @@ def cluster_media(
         raise AuditInputError("invalid_descriptor_similarity")
     if not -1.0 <= ssim_threshold <= 1.0:
         raise AuditInputError("invalid_ssim_threshold")
-    items = sorted(items, key=lambda item: item.asset_id)
+    items = _resolve_sequence_families(sorted(items, key=lambda item: item.asset_id))
     if len({item.asset_id for item in items}) != len(items):
         raise AuditInputError("duplicate_asset_id")
     features = {item.asset_id: _feature(item) for item in items}
@@ -758,8 +860,8 @@ def cluster_media(
     for sequence_id, sequence_items in sorted(sequences.items()):
         asset_ids = sorted({item.asset_id for item in sequence_items})
         family_ids = sorted({family for item in sequence_items for family in item.derivation_family_ids})
-        if not family_ids:
-            family_ids = ["derivation-family-" + hashlib.sha256(("sequence|" + sequence_id).encode("utf-8")).hexdigest()[:16]]
+        if len(family_ids) != 1:
+            raise AuditInputError(f"sequence_derivation_family_conflict: {sequence_id}")
         cluster_ids = {cluster_by_asset[asset_id] for asset_id in asset_ids}
         if len(cluster_ids) != 1:
             raise AuditInputError(f"sequence_family_split: {sequence_id}")
@@ -845,75 +947,23 @@ def cluster_media(
 
 
 def validate_cluster_output(output: dict[str, Any]) -> None:
-    """Validate the closed cluster receipt without requiring jsonschema."""
+    """Validate a receipt through the repository-owned JSON Schema."""
 
-    if not isinstance(output, dict) or output.get("schema_id") != SCHEMA_ID or output.get("schema_version") != SCHEMA_VERSION:
-        raise AuditInputError("invalid_cluster_schema")
-    for required in ("algorithm", "input", "clusters", "sequence_families", "ssim_review", "audit"):
-        if required not in output:
-            raise AuditInputError(f"cluster_missing_field: {required}")
-    algorithm = output["algorithm"]
-    if not isinstance(algorithm, dict) or algorithm.get("algorithm_id") != ALGORITHM_ID:
-        raise AuditInputError("invalid_cluster_algorithm")
-    algorithm_ssim = algorithm.get("ssim_review")
-    if not isinstance(algorithm_ssim, dict) or algorithm_ssim.get("admission_oracle") is not False:
-        raise AuditInputError("ssim_cannot_be_admission_oracle")
-    output_ssim = output["ssim_review"]
-    if not isinstance(output_ssim, dict) or output_ssim.get("admission_oracle") is not False:
-        raise AuditInputError("ssim_cannot_be_admission_oracle")
-    clusters = output["clusters"]
-    if not isinstance(clusters, list):
-        raise AuditInputError("invalid_clusters")
-    seen_assets: set[str] = set()
-    seen_cluster_ids: set[str] = set()
-    allowed_kinds = {"singleton", "exact_duplicate", "near_duplicate", "sequence_family"}
-    for cluster in clusters:
-        if not isinstance(cluster, dict) or not CLUSTER_ID_RE.fullmatch(cluster.get("cluster_id", "")):
-            raise AuditInputError("invalid_cluster_id")
-        if cluster["cluster_id"] in seen_cluster_ids:
-            raise AuditInputError("duplicate_cluster_id")
-        seen_cluster_ids.add(cluster["cluster_id"])
-        if cluster.get("cluster_kind") not in allowed_kinds:
-            raise AuditInputError("invalid_cluster_kind")
-        asset_ids = cluster.get("asset_ids")
-        members = cluster.get("members")
-        if not isinstance(asset_ids, list) or not asset_ids or not isinstance(members, list) or len(asset_ids) != len(members):
-            raise AuditInputError("invalid_cluster_members")
-        if asset_ids != sorted(asset_ids) or len(set(asset_ids)) != len(asset_ids):
-            raise AuditInputError("unstable_cluster_member_order")
-        for asset_id, member in zip(asset_ids, members):
-            _ensure_id(asset_id, "cluster.asset_id")
-            if asset_id in seen_assets:
-                raise AuditInputError("asset_in_multiple_clusters")
-            seen_assets.add(asset_id)
-            if not isinstance(member, dict) or member.get("asset_id") != asset_id:
-                raise AuditInputError("invalid_cluster_member")
-            _ensure_sha(member.get("content_sha256"), "cluster.member.content_sha256")
-            if not isinstance(member.get("perceptual_hash"), str) or not re.fullmatch(r"[0-9a-f]{16}", member["perceptual_hash"]):
-                raise AuditInputError("invalid_perceptual_hash")
-            _ensure_sha(member.get("local_embedding_sha256"), "cluster.member.local_embedding_sha256")
-        if cluster["cluster_kind"] == "exact_duplicate":
-            if len({member["content_sha256"] for member in members}) != 1:
-                raise AuditInputError("exact_cluster_sha_mismatch")
-    sequences = output["sequence_families"]
-    if not isinstance(sequences, list):
-        raise AuditInputError("invalid_sequence_families")
-    sequence_assets: set[str] = set()
-    for sequence in sequences:
-        if not isinstance(sequence, dict):
-            raise AuditInputError("invalid_sequence_family")
-        _ensure_id(sequence.get("sequence_id"), "sequence.sequence_id")
-        if sequence.get("cluster_id") not in seen_cluster_ids:
-            raise AuditInputError("sequence_cluster_missing")
-        asset_ids = sequence.get("asset_ids")
-        if not isinstance(asset_ids, list) or asset_ids != sorted(asset_ids) or not asset_ids:
-            raise AuditInputError("invalid_sequence_assets")
-        for asset_id in asset_ids:
-            if asset_id not in seen_assets:
-                raise AuditInputError("sequence_asset_missing")
-            if asset_id in sequence_assets:
-                raise AuditInputError("asset_in_multiple_sequences")
-            sequence_assets.add(asset_id)
+    try:
+        from jsonschema import Draft202012Validator
+    except ImportError as exc:
+        raise AuditInputError("cluster_schema_validator_unavailable") from exc
+    try:
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        Draft202012Validator.check_schema(schema)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise AuditInputError("invalid_cluster_schema_definition") from exc
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(output), key=lambda error: tuple(str(part) for part in error.absolute_path))
+    if errors:
+        error = errors[0]
+        path = ".".join(str(part) for part in error.absolute_path) or "receipt"
+        raise AuditInputError(f"cluster_schema_invalid: {path}: {error.message}")
 
 
 def _self_test() -> None:
@@ -932,6 +982,23 @@ def _self_test() -> None:
     print("PASS M3-007 camera_dataset_audit self-test")
 
 
+def _cli_int(value: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("expected an integer") from exc
+
+
+def _cli_finite_float(value: str) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("expected a finite number") from exc
+    if not math.isfinite(result):
+        raise argparse.ArgumentTypeError("expected a finite number")
+    return result
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", "--records", "--input-manifest", "--asset-manifest", required=False, type=Path, help="camera audit input JSON/JSONL")
@@ -939,9 +1006,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--media-manifest", "--media-map", type=Path, help="asset_id to external path JSON/JSONL")
     parser.add_argument("--output", "-o", type=Path, help="cluster receipt path; stdout when omitted")
     parser.add_argument("--ssim-review", "--ssim", action="store_true", help="add SSIM review signals without changing admission")
-    parser.add_argument("--phash-distance", type=int, default=DEFAULT_PHASH_DISTANCE)
-    parser.add_argument("--descriptor-similarity", type=float, default=DEFAULT_DESCRIPTOR_SIMILARITY)
-    parser.add_argument("--ssim-threshold", type=float, default=DEFAULT_SSIM_REVIEW_THRESHOLD)
+    parser.add_argument("--phash-distance", type=_cli_int, default=DEFAULT_PHASH_DISTANCE)
+    parser.add_argument("--descriptor-similarity", type=_cli_finite_float, default=DEFAULT_DESCRIPTOR_SIMILARITY)
+    parser.add_argument("--ssim-threshold", type=_cli_finite_float, default=DEFAULT_SSIM_REVIEW_THRESHOLD)
     parser.add_argument("--self-test", action="store_true")
     return parser
 
