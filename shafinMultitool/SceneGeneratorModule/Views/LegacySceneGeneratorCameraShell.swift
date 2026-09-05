@@ -1095,6 +1095,15 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
                     return
                 }
 
+                // M7-026: missing/corrupt media must surface localized
+                // recovery instead of an empty player.
+                let probe = AVURLAssetPlaybackProbe()
+                guard await probe.isPlayableMovie(at: artifact.localURL) else {
+                    await viewModel.releaseRecordingPlaybackLease(ownerID: ownerID)
+                    self.viewModel.errorMessage = self.viewModel.localizedCopy(.generatorErrorRecorder)
+                    return
+                }
+
                 let player = AVPlayer(url: artifact.localURL)
                 let playerViewController = AVPlayerViewController()
                 playerViewController.player = player

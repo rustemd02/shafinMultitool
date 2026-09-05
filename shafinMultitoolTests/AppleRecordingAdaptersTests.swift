@@ -569,6 +569,55 @@ final class AppleRecordingAdaptersTests: XCTestCase {
         XCTAssertEqual(Int(naturalSize.height), configuration.height)
     }
 
+    // MARK: - M7-026 playback probe
+
+    func testPlaybackProbeAcceptsRealMovieAndRejectsMissingAndCorruptFiles() async throws {
+        let probe = AVURLAssetPlaybackProbe()
+
+        // A real written movie is playable and has a video track.
+        let movieURL = temporaryDirectoryURL.appendingPathComponent("probe-movie.mov")
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()),
+            outputURL: movieURL,
+            width: 320,
+            height: 240,
+            fps: 30,
+            audioMode: .disabled
+        )
+        let writer = try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)
+        XCTAssertTrue(writer.start())
+        let pixelBuffer = try makePixelBuffer(
+            width: configuration.width,
+            height: configuration.height,
+            pixelFormat: RecordingPixelFormat.yPlanar420VideoRange
+        )
+        XCTAssertEqual(
+            writer.appendVideo(RecordingVideoFrame(
+                recordingID: configuration.id,
+                generation: 1,
+                timestamp: 10.0,
+                payload: AppleRecordingVideoFramePayload(pixelBuffer: pixelBuffer)
+            )),
+            .appended
+        )
+        let finishExpectation = expectation(description: "writer finished")
+        writer.finishWriting { _ in finishExpectation.fulfill() }
+        await fulfillment(of: [finishExpectation], timeout: 10)
+        let moviePlayable = await probe.isPlayableMovie(at: movieURL)
+        XCTAssertTrue(moviePlayable)
+
+        // A garbage file is not a playable movie.
+        let garbageURL = temporaryDirectoryURL.appendingPathComponent("garbage.mov")
+        try Data("not a movie".utf8).write(to: garbageURL)
+        let garbagePlayable = await probe.isPlayableMovie(at: garbageURL)
+        XCTAssertFalse(garbagePlayable)
+
+        // A missing file fails closed.
+        let missingURL = temporaryDirectoryURL.appendingPathComponent("missing.mov")
+        let missingPlayable = await probe.isPlayableMovie(at: missingURL)
+        XCTAssertFalse(missingPlayable)
+    }
+
     private func makePixelBuffer(
         width: Int,
         height: Int,

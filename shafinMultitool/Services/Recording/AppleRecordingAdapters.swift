@@ -153,6 +153,23 @@ func copyAudioSampleBufferToHostTime(
     return copiedSampleBuffer
 }
 
+/// M7-026: answers whether a local movie is playable before a player is
+/// presented. Missing, unreadable, or undecodable files fail closed so the
+/// shell can surface localized recovery instead of an empty player.
+protocol RecordingPlaybackProbing: Sendable {
+    func isPlayableMovie(at url: URL) async -> Bool
+}
+
+struct AVURLAssetPlaybackProbe: RecordingPlaybackProbing {
+    func isPlayableMovie(at url: URL) async -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        let asset = AVURLAsset(url: url)
+        guard (try? await asset.load(.isPlayable)) == true else { return false }
+        let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+        return !tracks.isEmpty
+    }
+}
+
 /// M7-021: reads duration/audio truth from a finalized movie for recovery.
 /// Returns nil for unreadable assets so recovery classifies honestly instead
 /// of inventing metadata.
