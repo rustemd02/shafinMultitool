@@ -1,0 +1,5 @@
+{
+  "source_manifest": "copyrighted-admitted-source.jsonl",
+  "rights_manifest": "copyrighted-admitted-rights.jsonl",
+  "expected_error_contains": "must be excluded"
+}

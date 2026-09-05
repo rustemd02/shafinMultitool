@@ -1,0 +1,5 @@
+{
+  "source_manifest": "missing-rights-link-source.jsonl",
+  "rights_manifest": "missing-rights-link-rights.jsonl",
+  "expected_error_contains": "links missing rights record"
+}

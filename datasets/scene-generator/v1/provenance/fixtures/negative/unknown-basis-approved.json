@@ -1,0 +1,5 @@
+{
+  "source_manifest": "unknown-basis-approved-source.jsonl",
+  "rights_manifest": "unknown-basis-approved-rights.jsonl",
+  "expected_error_contains": "unknown lawful basis"
+}
