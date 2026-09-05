@@ -51,7 +51,7 @@
             "bounds": { "const": ["x + width <= 1.0", "y + height <= 1.0"] },
             "missing_value": { "const": [0.0, 0.0, 0.0, 0.0] }
           },
-          "additionalProperties": true
+          "additionalProperties": false
         },
         "roi_mask": {
           "$ref": "#/$defs/binaryTensor",
@@ -91,13 +91,13 @@
                 "fill_value": { "const": 0.0 },
                 "semantics": { "type": "string", "minLength": 1 }
               },
-              "additionalProperties": true
+              "additionalProperties": false
             }
           },
-          "additionalProperties": true
+          "additionalProperties": false
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "preprocessing": {
       "type": "object",
@@ -124,7 +124,7 @@
             "per_channel_offset": { "const": [0.0, 0.0, 0.0] },
             "per_channel_scale": { "const": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098] }
           },
-          "additionalProperties": true
+          "additionalProperties": false
         },
         "subject_crop": {
           "type": "object",
@@ -135,10 +135,10 @@
             "clipping": { "type": "string", "pattern": "derive raw padded square bounds first.*clip padded square to oriented full-frame bounds.*intersection without shifting" },
             "missing_crop": { "const": "zero-filled 192x192x3 tensor" }
           },
-          "additionalProperties": true
+          "additionalProperties": false
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "categorical_features": {
       "type": "object",
@@ -147,7 +147,7 @@
         "orientation_category": { "$ref": "#/$defs/orientationCatalog" },
         "lens_category": { "$ref": "#/$defs/lensCatalog" }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "feature_normalization": {
       "type": "object",
@@ -167,7 +167,8 @@
           "properties": {
             "formula": { "const": "clip(raw, 0.0, 1.0)" },
             "value_range": { "const": [0.0, 1.0] }
-          }
+          },
+          "additionalProperties": false
         },
         "signed_unit_interval": {
           "type": "object",
@@ -175,7 +176,8 @@
           "properties": {
             "formula": { "const": "clip(raw, -1.0, 1.0)" },
             "value_range": { "const": [-1.0, 1.0] }
-          }
+          },
+          "additionalProperties": false
         },
         "count_0_to_8": {
           "type": "object",
@@ -183,7 +185,8 @@
           "properties": {
             "formula": { "const": "clip(raw, 0.0, 8.0) / 8.0" },
             "value_range": { "const": [0.0, 1.0] }
-          }
+          },
+          "additionalProperties": false
         },
         "angle_degrees_to_unit": {
           "type": "object",
@@ -191,7 +194,8 @@
           "properties": {
             "formula": { "const": "clip(raw_degrees / 180.0, -1.0, 1.0)" },
             "value_range": { "const": [-1.0, 1.0] }
-          }
+          },
+          "additionalProperties": false
         },
         "categorical_index": {
           "type": "object",
@@ -199,7 +203,8 @@
           "properties": {
             "formula": { "const": "index / (category_count - 1)" },
             "value_range": { "const": [0.0, 1.0] }
-          }
+          },
+          "additionalProperties": false
         },
         "aspect_ratio": {
           "type": "object",
@@ -207,7 +212,8 @@
           "properties": {
             "formula": { "const": "clip(raw_width / raw_height, 0.0, 4.0) / 4.0" },
             "value_range": { "const": [0.0, 1.0] }
-          }
+          },
+          "additionalProperties": false
         },
         "feature_to_normalization": {
           "type": "object",
@@ -255,7 +261,7 @@
           }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "outputs": {
       "type": "object",
@@ -263,35 +269,39 @@
       "properties": {
         "head_order": {
           "type": "array",
+          "const": ["scene_class_logits", "subjectness_roi_agreement_logits", "issue_logits", "action_utility_logits", "good_frame_probability", "abstention_probability", "risk_probability", "continuous_target_deltas", "embedding"],
           "minItems": 9,
+          "maxItems": 9,
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         },
         "heads": {
           "type": "array",
           "minItems": 9,
-          "items": {
-            "oneOf": [
-              { "$ref": "#/$defs/headScene" },
-              { "$ref": "#/$defs/headSubjectness" },
-              { "$ref": "#/$defs/headIssues" },
-              { "$ref": "#/$defs/headActions" },
-              { "$ref": "#/$defs/headGoodFrame" },
-              { "$ref": "#/$defs/headAbstention" },
-              { "$ref": "#/$defs/headRisk" },
-              { "$ref": "#/$defs/headDeltas" },
-              { "$ref": "#/$defs/headEmbedding" }
-            ]
-          }
+          "maxItems": 9,
+          "prefixItems": [
+            { "$ref": "#/$defs/headScene" },
+            { "$ref": "#/$defs/headSubjectness" },
+            { "$ref": "#/$defs/headIssues" },
+            { "$ref": "#/$defs/headActions" },
+            { "$ref": "#/$defs/headGoodFrame" },
+            { "$ref": "#/$defs/headAbstention" },
+            { "$ref": "#/$defs/headRisk" },
+            { "$ref": "#/$defs/headDeltas" },
+            { "$ref": "#/$defs/headEmbedding" }
+          ],
+          "items": false
         },
         "forbidden_outputs": {
           "type": "array",
+          "const": ["generated_text", "arbitrary_object_name"],
           "minItems": 2,
+          "maxItems": 2,
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   },
   "$defs": {
@@ -304,7 +314,7 @@
         "channel_order": { "const": ["R", "G", "B"] },
         "value_range": { "const": [0.0, 1.0] }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "binaryTensor": {
       "type": "object",
@@ -317,7 +327,7 @@
         "rasterization": { "type": "string", "minLength": 1 },
         "missing_value": { "const": 0.0 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "orientationCatalog": {
       "type": "object",
@@ -328,7 +338,7 @@
         "allowed_normalized_values": { "const": [0.0, 0.3333333333333333, 0.6666666666666666, 1.0] },
         "index_semantics": { "type": "string", "minLength": 1 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "lensCatalog": {
       "type": "object",
@@ -339,7 +349,7 @@
         "allowed_normalized_values": { "const": [0.0, 0.5, 1.0] },
         "index_semantics": { "type": "string", "minLength": 1 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "headBase": {
       "type": "object",
@@ -349,17 +359,115 @@
         "dtype": { "const": "float32" },
         "shape": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 1, "maxItems": 1 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
-    "headScene": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "scene_class_logits" }, "shape": { "const": [8] } } }] },
-    "headSubjectness": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "subjectness_roi_agreement_logits" }, "shape": { "const": [3] } } }] },
-    "headIssues": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "issue_logits" }, "shape": { "const": [8] } } }] },
-    "headActions": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "action_utility_logits" }, "shape": { "const": [26] } } }] },
-    "headGoodFrame": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "good_frame_probability" }, "shape": { "const": [1] }, "value_range": { "const": [0.0, 1.0] } }, "required": ["value_range"] }] },
-    "headAbstention": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "abstention_probability" }, "shape": { "const": [1] }, "value_range": { "const": [0.0, 1.0] } }, "required": ["value_range"] }] },
-    "headRisk": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "risk_probability" }, "shape": { "const": [1] }, "value_range": { "const": [0.0, 1.0] } }, "required": ["value_range"] }] },
-    "headDeltas": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "continuous_target_deltas" }, "shape": { "const": [5] }, "value_range": { "const": [-1.0, 1.0] } }, "required": ["value_range"] }] },
-    "headEmbedding": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "embedding" }, "shape": { "const": [128] } } }] }
+    "headScene": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_semantics"],
+      "properties": {
+        "name": { "const": "scene_class_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [8] },
+        "ordered_names": { "const": ["dialogue_closeup", "single_character_medium", "two_character_frame", "object_insert", "establishing_like_frame", "moody_backlit_subject", "unknown", "out_of_domain"] },
+        "value_semantics": { "const": "unbounded logits" }
+      },
+      "additionalProperties": false
+    },
+    "headSubjectness": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_semantics"],
+      "properties": {
+        "name": { "const": "subjectness_roi_agreement_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [3] },
+        "ordered_names": { "const": ["subjectness", "roi_agreement", "ambiguity"] },
+        "value_semantics": { "const": "unbounded logits" }
+      },
+      "additionalProperties": false
+    },
+    "headIssues": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_semantics"],
+      "properties": {
+        "name": { "const": "issue_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [8] },
+        "ordered_names": { "const": ["subject_too_close_to_edge", "subject_not_prominent_enough", "background_competes_with_subject", "insufficient_look_space", "backlight_hides_subject", "scene_has_no_clear_focus", "frame_visually_overloaded", "horizon_distracts"] },
+        "value_semantics": { "const": "bounded operational issue catalog logits" }
+      },
+      "additionalProperties": false
+    },
+    "headActions": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "catalog_version", "catalog_source", "value_semantics"],
+      "properties": {
+        "name": { "const": "action_utility_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [26] },
+        "ordered_names": { "const": ["shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down", "step_back", "step_closer", "lower_camera", "raise_camera", "change_camera_angle", "level_horizon", "rotate_subject_toward_light", "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right", "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance", "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background", "wait_for_background_clearance", "keep_current_setup"] },
+        "catalog_version": { "const": 2 },
+        "catalog_source": { "const": "CameraCoachContractV2.production.approvedActionIDs" },
+        "value_semantics": { "const": "bounded CameraCoachContractV2 approved SemanticActionType utility logits" }
+      },
+      "additionalProperties": false
+    },
+    "headGoodFrame": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_range"],
+      "properties": {
+        "name": { "const": "good_frame_probability" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [1] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": false
+    },
+    "headAbstention": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_range"],
+      "properties": {
+        "name": { "const": "abstention_probability" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [1] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": false
+    },
+    "headRisk": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_range"],
+      "properties": {
+        "name": { "const": "risk_probability" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [1] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": false
+    },
+    "headDeltas": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_range", "value_semantics"],
+      "properties": {
+        "name": { "const": "continuous_target_deltas" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [5] },
+        "ordered_names": { "const": ["delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta"] },
+        "value_range": { "const": [-1.0, 1.0] },
+        "value_semantics": { "const": "bounded normalized target deltas" }
+      },
+      "additionalProperties": false
+    },
+    "headEmbedding": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_semantics"],
+      "properties": {
+        "name": { "const": "embedding" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [128] },
+        "value_semantics": { "const": "internal visual-semantic embedding only" }
+      },
+      "additionalProperties": false
+    }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

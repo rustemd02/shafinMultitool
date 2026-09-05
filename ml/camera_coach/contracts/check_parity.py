@@ -120,6 +120,23 @@ def load_json(path: Path) -> dict:
     return value
 
 
+def assert_exact_keys(value: object, expected: set[str], label: str) -> dict:
+    assert isinstance(value, dict), f"{label} must be an object"
+    assert set(value) == expected, (label, sorted(value), sorted(expected))
+    return value
+
+
+def assert_closed_schema_object(value: object, expected: set[str], label: str) -> dict:
+    node = assert_exact_keys(value, {"type", "required", "properties", "additionalProperties"}, label)
+    assert node["type"] == "object"
+    assert node["additionalProperties"] is False
+    assert isinstance(node["required"], list)
+    assert len(node["required"]) == len(expected)
+    assert set(node["required"]) == expected
+    assert_exact_keys(node["properties"], expected, f"{label}.properties")
+    return node
+
+
 def packed_hash(values: list[float]) -> str:
     packed = struct.pack(f"<{len(values)}f", *values)
     return hashlib.sha256(packed).hexdigest()
@@ -300,7 +317,7 @@ def validate_scalar_features(manifest: dict, scalar: object, missing: object,
 
 
 def validate_manifest(manifest: dict, schema: dict) -> None:
-    required = {
+    manifest_required_order = [
         "contract_id",
         "contract_version",
         "input_contract_version",
@@ -313,8 +330,23 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
         "categorical_features",
         "feature_normalization",
         "outputs",
+    ]
+    manifest_keys = set(manifest_required_order)
+    manifest = assert_exact_keys(manifest, manifest_keys, "manifest")
+    schema = assert_exact_keys(
+        schema,
+        {"$schema", "$id", "title", "type", "required", "properties", "$defs", "additionalProperties"},
+        "schema",
+    )
+    assert schema["type"] == "object"
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == manifest_required_order
+    assert_exact_keys(schema["properties"], manifest_keys, "schema.properties")
+    assert set(schema["$defs"]) == {
+        "rgbTensor", "binaryTensor", "orientationCatalog", "lensCatalog", "headBase",
+        "headScene", "headSubjectness", "headIssues", "headActions", "headGoodFrame",
+        "headAbstention", "headRisk", "headDeltas", "headEmbedding",
     }
-    assert required <= manifest.keys()
     assert schema["properties"]["contract_id"]["const"] == manifest["contract_id"]
     assert schema["properties"]["contract_version"]["const"] == manifest["contract_version"]
     assert schema["properties"]["input_contract_version"]["const"] == manifest["input_contract_version"]
@@ -323,10 +355,16 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert schema["properties"]["output_contract_version"]["const"] == manifest["output_contract_version"]
 
     assert manifest["tensor_layout"] == "HWC"
-    inputs = manifest["inputs"]
+    input_keys = {
+        "full_frame_rgb", "subject_crop_rgb", "roi_normalized_xywh", "roi_mask", "scalar_features"
+    }
+    inputs = assert_exact_keys(manifest["inputs"], input_keys, "inputs")
 
     def tensor(name: str, shape: list[int], *, binary: bool = False) -> dict:
-        value = inputs[name]
+        expected_keys = {"dtype", "shape", "value_range", "values", "rasterization", "missing_value"} if binary else {
+            "dtype", "shape", "channel_order", "value_range"
+        }
+        value = assert_exact_keys(inputs[name], expected_keys, f"inputs.{name}")
         assert value["dtype"] == "float32"
         assert value["shape"] == shape
         assert value["value_range"] == [0.0, 1.0]
@@ -341,7 +379,11 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     tensor("subject_crop_rgb", [192, 192, 3])
     tensor("roi_mask", [320, 320, 1], binary=True)
 
-    roi = inputs["roi_normalized_xywh"]
+    roi = assert_exact_keys(
+        inputs["roi_normalized_xywh"],
+        {"dtype", "shape", "ordered_names", "coordinate_space", "origin", "axis_direction", "value_range", "bounds", "missing_value"},
+        "inputs.roi_normalized_xywh",
+    )
     assert roi["dtype"] == "float32"
     assert roi["shape"] == [4]
     assert roi["ordered_names"] == ["x", "y", "width", "height"]
@@ -352,19 +394,41 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert roi["bounds"] == ["x + width <= 1.0", "y + height <= 1.0"]
     assert roi["missing_value"] == [0.0, 0.0, 0.0, 0.0]
 
-    scalar = inputs["scalar_features"]
+    scalar = assert_exact_keys(
+        inputs["scalar_features"],
+        {"dtype", "shape", "count", "ordered_names", "missing_mask"},
+        "inputs.scalar_features",
+    )
     names = scalar["ordered_names"]
     assert scalar["dtype"] == "float32"
     assert scalar["shape"] == [40]
     assert scalar["count"] == len(names) == 40
-    missing_mask = scalar["missing_mask"]
+    missing_mask = assert_exact_keys(
+        scalar["missing_mask"],
+        {"dtype", "shape", "ordered_names", "values", "fill_value", "semantics"},
+        "inputs.scalar_features.missing_mask",
+    )
     assert missing_mask["dtype"] == "float32"
     assert missing_mask["shape"] == [len(names)]
     assert missing_mask["ordered_names"] == "same_as_scalar_features"
     assert missing_mask["values"] == [0.0, 1.0]
     assert missing_mask["fill_value"] == 0.0
 
-    categorical = manifest["categorical_features"]
+    categorical = assert_exact_keys(
+        manifest["categorical_features"],
+        {"orientation_category", "lens_category"},
+        "categorical_features",
+    )
+    assert_exact_keys(
+        categorical["orientation_category"],
+        {"count", "ordered_names", "allowed_normalized_values", "index_semantics"},
+        "categorical_features.orientation_category",
+    )
+    assert_exact_keys(
+        categorical["lens_category"],
+        {"count", "ordered_names", "allowed_normalized_values", "index_semantics"},
+        "categorical_features.lens_category",
+    )
     assert categorical["orientation_category"]["count"] == 4
     assert categorical["orientation_category"]["ordered_names"] == [
         "up", "right", "down", "left"
@@ -380,15 +444,43 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert len(categorical["orientation_category"]["allowed_normalized_values"]) == categorical["orientation_category"]["count"]
     assert len(categorical["lens_category"]["allowed_normalized_values"]) == categorical["lens_category"]["count"]
 
-    normalization = manifest["feature_normalization"]
-    feature_to_normalization = normalization["feature_to_normalization"]
+    normalization = assert_exact_keys(
+        manifest["feature_normalization"],
+        {"unit_interval", "signed_unit_interval", "count_0_to_8", "angle_degrees_to_unit", "categorical_index", "aspect_ratio", "feature_to_normalization"},
+        "feature_normalization",
+    )
+    for normalization_name in EXPECTED_SCALAR_NORMALIZATION:
+        assert_exact_keys(
+            normalization[normalization_name],
+            {"formula", "value_range"},
+            f"feature_normalization.{normalization_name}",
+        )
+    feature_to_normalization = assert_exact_keys(
+        normalization["feature_to_normalization"],
+        set(names),
+        "feature_normalization.feature_to_normalization",
+    )
     assert list(feature_to_normalization) == names
     assert feature_to_normalization == EXPECTED_FEATURE_TO_NORMALIZATION
     assert list(EXPECTED_FEATURE_TO_NORMALIZATION) == names
     for normalization_name, expected_spec in EXPECTED_SCALAR_NORMALIZATION.items():
         assert normalization[normalization_name]["formula"] == expected_spec["formula"]
         assert normalization[normalization_name]["value_range"] == expected_spec["value_range"]
-    preprocessing = manifest["preprocessing"]
+    preprocessing = assert_exact_keys(
+        manifest["preprocessing"],
+        {"source_color_space", "source_pixel_format", "model_channel_order", "alpha", "orientation", "mirroring", "resize_interpolation", "resize_geometry", "normalization", "subject_crop"},
+        "preprocessing",
+    )
+    assert_exact_keys(
+        preprocessing["normalization"],
+        {"source_dtype", "target_dtype", "source_range", "formula", "denominator", "value_range", "per_channel_offset", "per_channel_scale"},
+        "preprocessing.normalization",
+    )
+    assert_exact_keys(
+        preprocessing["subject_crop"],
+        {"recipe_version", "square_side", "clipping", "missing_crop"},
+        "preprocessing.subject_crop",
+    )
     assert preprocessing["source_color_space"] == "sRGB"
     assert preprocessing["source_pixel_format"] == "32BGRA"
     assert preprocessing["model_channel_order"] == ["R", "G", "B"]
@@ -407,9 +499,15 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert "intersection without shifting" in preprocessing["subject_crop"]["clipping"]
     assert preprocessing["subject_crop"]["missing_crop"] == "zero-filled 192x192x3 tensor"
 
-    outputs = manifest["outputs"]
+    outputs = assert_exact_keys(
+        manifest["outputs"],
+        {"head_order", "heads", "forbidden_outputs"},
+        "outputs",
+    )
     head_order = outputs["head_order"]
     heads = outputs["heads"]
+    assert isinstance(head_order, list)
+    assert isinstance(heads, list)
     expected_shapes = {
         "scene_class_logits": 8,
         "subjectness_roi_agreement_logits": 3,
@@ -422,11 +520,25 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
         "embedding": 128,
     }
     assert head_order == list(expected_shapes)
+    assert len(head_order) == len(heads) == 9
     assert [head["name"] for head in heads] == head_order
     assert len(set(head_order)) == len(head_order) == 9
-    assert "generated_text" in outputs["forbidden_outputs"]
-    assert "arbitrary_object_name" in outputs["forbidden_outputs"]
-    for head in heads:
+    assert outputs["forbidden_outputs"] == ["generated_text", "arbitrary_object_name"]
+    head_key_sets = {
+        "scene_class_logits": {"name", "dtype", "shape", "ordered_names", "value_semantics"},
+        "subjectness_roi_agreement_logits": {"name", "dtype", "shape", "ordered_names", "value_semantics"},
+        "issue_logits": {"name", "dtype", "shape", "ordered_names", "value_semantics"},
+        "action_utility_logits": {"name", "dtype", "shape", "ordered_names", "catalog_version", "catalog_source", "value_semantics"},
+        "good_frame_probability": {"name", "dtype", "shape", "value_range"},
+        "abstention_probability": {"name", "dtype", "shape", "value_range"},
+        "risk_probability": {"name", "dtype", "shape", "value_range"},
+        "continuous_target_deltas": {"name", "dtype", "shape", "ordered_names", "value_range", "value_semantics"},
+        "embedding": {"name", "dtype", "shape", "value_semantics"},
+    }
+    for index, head in enumerate(heads):
+        assert isinstance(head, dict)
+        assert head.get("name") in head_key_sets
+        head = assert_exact_keys(head, head_key_sets[head["name"]], f"outputs.heads[{index}]")
         name = head["name"]
         assert head["dtype"] == "float32"
         assert head["shape"] == [expected_shapes[name]]
@@ -446,7 +558,26 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     # Validate nested schema constants as well as the manifest's top-level
     # version constants. A paired manifest/schema edit must still fail if the
     # runtime's frozen version, shape, range, or catalog is unchanged.
-    schema_inputs = schema["properties"]["inputs"]["properties"]
+    schema_inputs_node = assert_closed_schema_object(schema["properties"]["inputs"], input_keys, "schema.inputs")
+    schema_inputs = schema_inputs_node["properties"]
+    assert_closed_schema_object(
+        schema_inputs["roi_normalized_xywh"],
+        {"dtype", "shape", "ordered_names", "coordinate_space", "origin", "axis_direction", "value_range", "bounds", "missing_value"},
+        "schema.inputs.roi_normalized_xywh",
+    )
+    schema_scalar_node = assert_closed_schema_object(
+        schema_inputs["scalar_features"],
+        {"dtype", "shape", "count", "ordered_names", "missing_mask"},
+        "schema.inputs.scalar_features",
+    )
+    assert_closed_schema_object(
+        schema_scalar_node["properties"]["missing_mask"],
+        {"dtype", "shape", "ordered_names", "values", "fill_value", "semantics"},
+        "schema.inputs.scalar_features.missing_mask",
+    )
+    assert_closed_schema_object(schema["$defs"]["rgbTensor"], {"dtype", "shape", "channel_order", "value_range"}, "schema.$defs.rgbTensor")
+    assert_closed_schema_object(schema["$defs"]["binaryTensor"], {"dtype", "shape", "value_range", "values", "rasterization", "missing_value"}, "schema.$defs.binaryTensor")
+    assert_closed_schema_object(schema["$defs"]["headBase"], {"name", "dtype", "shape"}, "schema.$defs.headBase")
     for input_name, expected_shape in {
         "full_frame_rgb": [320, 320, 3],
         "subject_crop_rgb": [192, 192, 3],
@@ -475,7 +606,22 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert schema_inputs["scalar_features"]["properties"]["missing_mask"]["properties"]["values"]["const"] == [0.0, 1.0]
     assert schema_inputs["scalar_features"]["properties"]["missing_mask"]["properties"]["fill_value"]["const"] == 0.0
 
-    schema_preprocessing = schema["properties"]["preprocessing"]["properties"]
+    schema_preprocessing_node = assert_closed_schema_object(
+        schema["properties"]["preprocessing"],
+        {"source_color_space", "source_pixel_format", "model_channel_order", "alpha", "orientation", "mirroring", "resize_interpolation", "resize_geometry", "normalization", "subject_crop"},
+        "schema.preprocessing",
+    )
+    schema_preprocessing = schema_preprocessing_node["properties"]
+    assert_closed_schema_object(
+        schema_preprocessing["normalization"],
+        {"source_dtype", "target_dtype", "source_range", "formula", "denominator", "value_range", "per_channel_offset", "per_channel_scale"},
+        "schema.preprocessing.normalization",
+    )
+    assert_closed_schema_object(
+        schema_preprocessing["subject_crop"],
+        {"recipe_version", "square_side", "clipping", "missing_crop"},
+        "schema.preprocessing.subject_crop",
+    )
     assert schema_preprocessing["source_color_space"]["const"] == preprocessing["source_color_space"]
     assert schema_preprocessing["source_pixel_format"]["const"] == preprocessing["source_pixel_format"]
     assert schema_preprocessing["model_channel_order"]["const"] == preprocessing["model_channel_order"]
@@ -508,6 +654,21 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert schema_crop["clipping"]["pattern"] == "derive raw padded square bounds first.*clip padded square to oriented full-frame bounds.*intersection without shifting"
     assert schema_crop["missing_crop"]["const"] == preprocessing["subject_crop"]["missing_crop"]
 
+    assert_closed_schema_object(
+        schema["properties"]["categorical_features"],
+        {"orientation_category", "lens_category"},
+        "schema.categorical_features",
+    )
+    assert_closed_schema_object(
+        schema["$defs"]["orientationCatalog"],
+        {"count", "ordered_names", "allowed_normalized_values", "index_semantics"},
+        "schema.$defs.orientationCatalog",
+    )
+    assert_closed_schema_object(
+        schema["$defs"]["lensCatalog"],
+        {"count", "ordered_names", "allowed_normalized_values", "index_semantics"},
+        "schema.$defs.lensCatalog",
+    )
     schema_orientation = schema["$defs"]["orientationCatalog"]["properties"]
     schema_lens = schema["$defs"]["lensCatalog"]["properties"]
     assert schema_orientation["count"]["const"] == categorical["orientation_category"]["count"]
@@ -517,11 +678,55 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert schema_lens["ordered_names"]["const"] == categorical["lens_category"]["ordered_names"]
     assert schema_lens["allowed_normalized_values"]["const"] == categorical["lens_category"]["allowed_normalized_values"]
 
-    schema_ranges = schema["properties"]["feature_normalization"]["properties"]
+    schema_feature_node = assert_closed_schema_object(
+        schema["properties"]["feature_normalization"],
+        {"unit_interval", "signed_unit_interval", "count_0_to_8", "angle_degrees_to_unit", "categorical_index", "aspect_ratio", "feature_to_normalization"},
+        "schema.feature_normalization",
+    )
+    schema_ranges = schema_feature_node["properties"]
     for normalization_name, expected_spec in EXPECTED_SCALAR_NORMALIZATION.items():
+        assert_closed_schema_object(
+            schema_ranges[normalization_name],
+            {"formula", "value_range"},
+            f"schema.feature_normalization.{normalization_name}",
+        )
         assert schema_ranges[normalization_name]["properties"]["formula"]["const"] == expected_spec["formula"]
         assert schema_ranges[normalization_name]["properties"]["value_range"]["const"] == expected_spec["value_range"]
+    assert_exact_keys(
+        schema_ranges["feature_to_normalization"],
+        {"type", "const"},
+        "schema.feature_normalization.feature_to_normalization",
+    )
     assert schema_ranges["feature_to_normalization"]["const"] == EXPECTED_FEATURE_TO_NORMALIZATION
+
+    schema_outputs_node = assert_closed_schema_object(
+        schema["properties"]["outputs"],
+        {"head_order", "heads", "forbidden_outputs"},
+        "schema.outputs",
+    )
+    schema_outputs = schema_outputs_node["properties"]
+    assert_exact_keys(
+        schema_outputs["head_order"],
+        {"type", "const", "minItems", "maxItems", "uniqueItems", "items"},
+        "schema.outputs.head_order",
+    )
+    assert_exact_keys(
+        schema_outputs["heads"],
+        {"type", "minItems", "maxItems", "prefixItems", "items"},
+        "schema.outputs.heads",
+    )
+    assert_exact_keys(
+        schema_outputs["forbidden_outputs"],
+        {"type", "const", "minItems", "maxItems", "uniqueItems", "items"},
+        "schema.outputs.forbidden_outputs",
+    )
+    assert schema_outputs["head_order"]["const"] == head_order
+    assert schema_outputs["head_order"]["minItems"] == 9
+    assert schema_outputs["head_order"]["maxItems"] == 9
+    assert schema_outputs["heads"]["minItems"] == 9
+    assert schema_outputs["heads"]["maxItems"] == 9
+    assert schema_outputs["heads"]["items"] is False
+    assert schema_outputs["forbidden_outputs"]["const"] == outputs["forbidden_outputs"]
 
     schema_head_defs = {
         "scene_class_logits": "headScene",
@@ -534,17 +739,18 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
         "continuous_target_deltas": "headDeltas",
         "embedding": "headEmbedding",
     }
-    schema_head_properties = {
-        definition: schema["$defs"][definition]["allOf"][1]["properties"]
-        for definition in schema_head_defs.values()
-    }
-    for head_name, expected_shape in expected_shapes.items():
-        head_properties = schema_head_properties[schema_head_defs[head_name]]
-        assert head_properties["name"]["const"] == head_name
-        assert head_properties["shape"]["const"] == [expected_shape]
-        if head_name in {"good_frame_probability", "abstention_probability", "risk_probability", "continuous_target_deltas"}:
-            expected_range = [0.0, 1.0] if head_name != "continuous_target_deltas" else [-1.0, 1.0]
-            assert head_properties["value_range"]["const"] == expected_range
+    expected_prefix_refs = [{"$ref": f"#/$defs/{definition}"} for definition in schema_head_defs.values()]
+    assert schema_outputs["heads"]["prefixItems"] == expected_prefix_refs
+    for head_name, definition in schema_head_defs.items():
+        schema_head = assert_closed_schema_object(
+            schema["$defs"][definition],
+            head_key_sets[head_name],
+            f"schema.$defs.{definition}",
+        )
+        schema_head_properties = schema_head["properties"]
+        manifest_head = next(head for head in heads if head["name"] == head_name)
+        for key, value in manifest_head.items():
+            assert schema_head_properties[key]["const"] == value
 
     # The Swift runtime intentionally has no build-time codegen dependency.
     # Keep the checked manifest canonical by comparing its ordered catalogs to
@@ -797,10 +1003,55 @@ def validate_mutation_guards(manifest: dict, schema: dict,
     )
 
     schema_embedding_short = deepcopy(schema)
-    schema_embedding_short["$defs"]["headEmbedding"]["allOf"][1]["properties"]["shape"]["const"] = [64]
+    schema_embedding_short["$defs"]["headEmbedding"]["properties"]["shape"]["const"] = [64]
     assert_rejected(
         "schema embedding dimension 64",
         lambda: validate_manifest(manifest, schema_embedding_short),
+    )
+
+    extra_depth_map = deepcopy(manifest)
+    extra_depth_map["inputs"]["depth_map"] = {"dtype": "float32"}
+    assert_rejected(
+        "extra depth_map input",
+        lambda: validate_manifest(extra_depth_map, schema),
+    )
+
+    extra_category = deepcopy(manifest)
+    extra_category["categorical_features"]["depth_category"] = {}
+    assert_rejected(
+        "extra categorical feature",
+        lambda: validate_manifest(extra_category, schema),
+    )
+
+    extra_normalization = deepcopy(manifest)
+    extra_normalization["feature_normalization"]["depth_map"] = {}
+    assert_rejected(
+        "extra normalization entry",
+        lambda: validate_manifest(extra_normalization, schema),
+    )
+
+    duplicate_head = deepcopy(manifest)
+    duplicate_head["outputs"]["heads"][8] = deepcopy(duplicate_head["outputs"]["heads"][0])
+    assert_rejected(
+        "duplicate output head",
+        lambda: validate_manifest(duplicate_head, schema),
+    )
+
+    tenth_head = deepcopy(manifest)
+    tenth_head["outputs"]["heads"].append(deepcopy(tenth_head["outputs"]["heads"][-1]))
+    assert_rejected(
+        "tenth output head",
+        lambda: validate_manifest(tenth_head, schema),
+    )
+
+    reordered_heads = deepcopy(manifest)
+    reordered_heads["outputs"]["heads"][0], reordered_heads["outputs"]["heads"][1] = (
+        reordered_heads["outputs"]["heads"][1],
+        reordered_heads["outputs"]["heads"][0],
+    )
+    assert_rejected(
+        "reordered output heads",
+        lambda: validate_manifest(reordered_heads, schema),
     )
 
     rgb_formula_manifest = deepcopy(manifest)
@@ -884,6 +1135,12 @@ def validate_mutation_guards(manifest: dict, schema: dict,
         "removed_scene_head",
         "manifest_embedding_64",
         "schema_embedding_64",
+        "extra_depth_map_input",
+        "extra_categorical_feature",
+        "extra_normalization_entry",
+        "duplicate_output_head",
+        "tenth_output_head",
+        "reordered_output_heads",
         "paired_rgb_formula_drift",
         "paired_rgb_scale_drift",
         "paired_rgb_type_drift",

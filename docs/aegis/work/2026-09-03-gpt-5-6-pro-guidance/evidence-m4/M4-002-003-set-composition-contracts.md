@@ -46,19 +46,23 @@ from `CameraCoachContractV2.production.approvedActionIDs`, i.e. the ordered
 `SemanticActionType` v2 catalog. Legacy `ActionTypeV1` IDs such as
 `move_frame_*` and `change_angle` remain only in the explicit migration table;
 they are not model output heads. Generated text and arbitrary object names are
-forbidden.
+forbidden. The JSON Schema closes each contract-owned object, fixes the
+forbidden-output catalog, and encodes the nine heads with `prefixItems`, exact
+`minItems`/`maxItems`, and per-position name/shape/semantic constraints in the
+same order as the manifest.
 
 `SETCompositionNetRuntimeSchema` and `SETCompositionNetOutputHeads` reject
 missing, extra, wrong-sized, non-finite, out-of-range, or version-mismatched
 payloads. The Swift/Python checks compare the manifest with nested schema
 shapes, ranges, normalization formulas, RGB type/scale, the exact 40-feature
-normalization map (including `person_count → count_0_to_8`), catalogs, and all
-five runtime version constants. Focused negative coverage includes
-feature-specific range and categorical-value rejection, missing-fill and ROI
-scalar drift, non-zero absent-ROI crops, embedding dimension 64, risk 99,
-removed heads, ROI/mask mismatch, paired formula/scale/type drift, paired
-version drift, paired signed-range drift, and strict-v1 detection for each
-metadata field.
+normalization map (including `person_count → count_0_to_8`), catalogs, exact
+object key sets, and all five runtime version constants. Focused negative
+coverage includes feature-specific range and categorical-value rejection,
+missing-fill and ROI scalar drift, non-zero absent-ROI crops, embedding
+dimension 64, risk 99, removed heads, ROI/mask mismatch, extra `depth_map`
+input, extra category/normalization entries, duplicate/tenth/reordered heads,
+paired formula/scale/type drift, paired version drift, paired signed-range
+drift, and strict-v1 detection for each metadata field.
 Unavailable/failed states remain explicit and scoreless.
 
 ## Deterministic synthetic parity
@@ -89,16 +93,18 @@ values):
 ## Verification evidence
 
 - Stdlib JSON parsing: `python3 -m json.tool` on the manifest, schema, and both
-  fixtures — 4 files, exit 0.
+  fixtures — 4 files, exit 0. `python3 -m py_compile
+  ml/camera_coach/contracts/check_parity.py` — exit 0.
 - Deterministic parity/mutation checker, twice sequentially:
   `python3 ml/camera_coach/contracts/check_parity.py` — both receipts report
   `status=pass`, 40 scalar features, 9 heads, center and both edge crop hashes,
-  output hash above, absent-ROI zero hashes, and all 14 mutation checks
-  rejected (including embedding 64, risk 99, removed head, paired RGB
+  output hash above, absent-ROI zero hashes, and all 20 mutation checks
+  rejected (including embedding 64, risk 99, removed head, extra input and
+  category/normalization entries, duplicate/tenth/reordered heads, paired RGB
   formula/scale/type drift, `person_count` mapping drift, paired version and
   signed-range drift, and unsupported categorical scalar). Receipts were
-  byte-identical (`cmp -s`) at `/private/tmp/setos-m4-third-parity1.json` and
-  `/private/tmp/setos-m4-third-parity2.json`.
+  byte-identical (`cmp -s`) at `/private/tmp/setos-m4-final-parity1.json` and
+  `/private/tmp/setos-m4-final-parity2.json`.
 - Focused Swift tests on ordinary iPhone 17 simulator (UUID
   `1F708A11-8262-4E09-9F3A-46C86381911D`, iOS 26.5), sequential xcodebuild,
   diagnostics disabled:
@@ -113,6 +119,9 @@ values):
   center, top-left and bottom-right edge-clipped fixtures plus an absent-ROI
   zero crop; the schema class covered negative trust-boundary cases. The build
   emitted only the existing non-fatal `Circle.rcproject` processing warning.
+- The final correction changed no Swift source; the focused simulator result
+  above therefore remains the applicable 21-test runtime receipt and was not
+  rerun solely for schema/checker-only edits.
 - `git diff --check` — exit 0.
 
 ## Judgment calls and bounded gaps
