@@ -23,6 +23,7 @@ from .set_composition_net import (
     CandidateA,
     CandidateB,
     _InvertedResidual,
+    _ScalarFeatureMLP,
     _SqueezeExcitation,
     SETCompositionNetInputs,
     SETCompositionNetManifest,
@@ -107,11 +108,62 @@ def _make_inputs(contract: SETCompositionNetManifest, *, absent_roi: bool = Fals
 
 
 def _activation_code(module: torch.nn.Module) -> str:
-    if isinstance(module, torch.nn.ReLU):
+    if type(module) is torch.nn.ReLU:
+        assert module.inplace is True
         return "RE"
-    if isinstance(module, torch.nn.Hardswish):
+    if type(module) is torch.nn.Hardswish:
+        assert module.inplace is True
         return "HS"
     raise AssertionError(f"unexpected MobileNetV3 activation: {type(module).__name__}")
+
+
+def _assert_batch_norm(module: torch.nn.Module, expected_features: int) -> None:
+    assert type(module) is torch.nn.BatchNorm2d
+    assert module.num_features == expected_features
+    assert module.eps == _EXPECTED_BATCH_NORM_EPS
+    assert module.momentum == _EXPECTED_BATCH_NORM_MOMENTUM
+    assert module.affine is True
+    assert module.track_running_stats is True
+    assert module.weight is not None and module.bias is not None
+    assert module.running_mean is not None and module.running_var is not None
+
+
+def _assert_conv(
+    module: torch.nn.Module,
+    expected_input: int,
+    expected_output: int,
+    expected_kernel: int,
+    expected_stride: int,
+    expected_padding: int,
+    expected_dilation: int,
+    expected_groups: int,
+    expected_bias: bool,
+) -> None:
+    assert type(module) is torch.nn.Conv2d
+    assert (module.in_channels, module.out_channels) == (expected_input, expected_output)
+    assert module.kernel_size == (expected_kernel, expected_kernel)
+    assert module.stride == (expected_stride, expected_stride)
+    assert module.padding == (expected_padding, expected_padding)
+    assert module.dilation == (expected_dilation, expected_dilation)
+    assert module.groups == expected_groups
+    assert (module.bias is not None) is expected_bias
+
+
+def _assert_linear(module: torch.nn.Module, expected_input: int, expected_output: int, expected_bias: bool) -> None:
+    assert type(module) is torch.nn.Linear
+    assert (module.in_features, module.out_features) == (expected_input, expected_output)
+    assert (module.bias is not None) is expected_bias
+
+
+def _assert_activation(module: torch.nn.Module, expected_activation: str) -> None:
+    if expected_activation in {"RE", "HS"}:
+        assert _activation_code(module) == expected_activation
+        return
+    if expected_activation == "HARD_SIGMOID":
+        assert type(module) is torch.nn.Hardsigmoid
+        assert module.inplace is False
+        return
+    raise AssertionError(f"unexpected expected activation: {expected_activation}")
 
 
 def _assert_conv_bn_activation(
@@ -126,30 +178,34 @@ def _assert_conv_bn_activation(
     assert isinstance(module, torch.nn.Sequential)
     assert len(module) == 3
     conv, batch_norm, activation = module
-    assert isinstance(conv, torch.nn.Conv2d)
-    assert (conv.in_channels, conv.out_channels) == (expected_input, expected_output)
-    assert conv.kernel_size == (expected_kernel, expected_kernel)
-    assert conv.stride == (expected_stride, expected_stride)
-    assert conv.groups == expected_groups
+    _assert_conv(
+        conv,
+        expected_input,
+        expected_output,
+        expected_kernel,
+        expected_stride,
+        (expected_kernel - 1) // 2,
+        1,
+        expected_groups,
+        False,
+    )
     _assert_batch_norm(batch_norm, expected_output)
-    assert _activation_code(activation) == expected_activation
-
-
-def _assert_batch_norm(module: torch.nn.Module, expected_features: int) -> None:
-    assert isinstance(module, torch.nn.BatchNorm2d)
-    assert module.num_features == expected_features
-    assert module.eps == _EXPECTED_BATCH_NORM_EPS
-    assert module.momentum == _EXPECTED_BATCH_NORM_MOMENTUM
+    _assert_activation(activation, expected_activation)
 
 
 def _assert_projection_conv(module: torch.nn.Module, expected_input: int, expected_output: int) -> None:
-    assert isinstance(module, torch.nn.Conv2d)
-    assert (module.in_channels, module.out_channels) == (expected_input, expected_output)
-    assert module.kernel_size == (1, 1)
-    assert module.stride == (1, 1)
-    assert module.groups == 1
-    assert module.padding == (0, 0)
-    assert module.bias is None
+    _assert_conv(module, expected_input, expected_output, 1, 1, 0, 1, 1, False)
+
+
+def _assert_squeeze_excitation(module: torch.nn.Module, expected_feature: int, expected_squeeze: int) -> None:
+    assert type(module) is _SqueezeExcitation
+    assert tuple(module._modules) == ("reduce", "expand", "gate")
+    assert module.feature_channels == expected_feature
+    assert module.squeeze_channels == expected_squeeze
+    reduce, expand, gate = list(module.children())
+    _assert_conv(reduce, expected_feature, expected_squeeze, 1, 1, 0, 1, 1, True)
+    _assert_conv(expand, expected_squeeze, expected_feature, 1, 1, 0, 1, 1, True)
+    _assert_activation(gate, "HARD_SIGMOID")
 
 
 def _assert_actual_backbone(
@@ -166,25 +222,21 @@ def _assert_actual_backbone(
     assert len(features) == len(expected_schedule) + 4, label
     _assert_conv_bn_activation(features[0], expected_stem_input, expected_stem_output, 3, 2, "HS")
     final_conv, final_batch_norm, final_activation = features[-3:]
-    assert isinstance(final_conv, torch.nn.Conv2d)
-    assert (final_conv.in_channels, final_conv.out_channels) == (expected_final_input, expected_final_output)
-    assert final_conv.kernel_size == (1, 1)
-    assert final_conv.stride == (1, 1)
-    assert final_conv.groups == 1
+    _assert_conv(final_conv, expected_final_input, expected_final_output, 1, 1, 0, 1, 1, False)
     _assert_batch_norm(final_batch_norm, expected_final_output)
-    assert _activation_code(final_activation) == "HS"
+    _assert_activation(final_activation, "HS")
     blocks = features[1:-3]
     assert len(blocks) == len(expected_schedule)
     assert len(expected_se_squeeze) == len(expected_schedule)
     for block, expected, expected_squeeze in zip(blocks, expected_schedule, expected_se_squeeze):
+        assert type(block) is _InvertedResidual
         expected_input, expected_expanded, expected_output, expected_kernel, expected_stride, expected_se, expected_activation = expected
         children = list(block.block)
-        depthwise = next(
-            child for child in children
-            if isinstance(child, torch.nn.Sequential)
-            and isinstance(child[0], torch.nn.Conv2d)
-            and child[0].groups == child[0].in_channels
-        )
+        has_expansion = expected_expanded != expected_input
+        expected_child_count = 3 + int(has_expansion) + int(expected_se)
+        assert len(children) == expected_child_count
+        depthwise_index = 1 if has_expansion else 0
+        depthwise = children[depthwise_index]
         depthwise_conv = depthwise[0]
         _assert_conv_bn_activation(
             depthwise,
@@ -195,36 +247,25 @@ def _assert_actual_backbone(
             expected_activation,
             expected_groups=expected_expanded,
         )
-        output_conv = children[-2]
-        _assert_projection_conv(output_conv, expected_expanded, expected_output)
-        assert len(children) >= 3
-        _assert_batch_norm(children[-1], expected_output)
-        actual_input = depthwise_conv.in_channels
-        if expected_expanded != expected_input:
+        if has_expansion:
             expansion = children[0]
             _assert_conv_bn_activation(expansion, expected_input, expected_expanded, 1, 1, expected_activation)
             expansion_conv = expansion[0]
             actual_input = expansion_conv.in_channels
         else:
             assert children[0] is depthwise
-            assert not (
-                isinstance(children[0], torch.nn.Sequential)
-                and isinstance(children[0][0], torch.nn.Conv2d)
-                and children[0][0].groups == 1
-            )
+            actual_input = depthwise_conv.in_channels
+        projection_index = depthwise_index + 1 + int(expected_se)
+        output_conv = children[projection_index]
+        _assert_projection_conv(output_conv, expected_expanded, expected_output)
+        _assert_batch_norm(children[projection_index + 1], expected_output)
         assert (actual_input, depthwise_conv.in_channels, output_conv.out_channels) == (
             expected_input, expected_expanded, expected_output
         )
         assert output_conv.in_channels == depthwise_conv.out_channels == expected_expanded
-        actual_se = next((child for child in children if isinstance(child, _SqueezeExcitation)), None)
-        assert (actual_se is not None) == expected_se
-        if actual_se is not None:
+        if expected_se:
             assert expected_squeeze is not None
-            assert actual_se.reduce.in_channels == expected_expanded
-            assert actual_se.reduce.out_channels == expected_squeeze
-            assert actual_se.expand.in_channels == expected_squeeze
-            assert actual_se.expand.out_channels == expected_expanded
-            assert isinstance(actual_se.gate, torch.nn.Hardsigmoid)
+            _assert_squeeze_excitation(children[depthwise_index + 1], expected_expanded, expected_squeeze)
         else:
             assert expected_squeeze is None
         actual_stride = depthwise_conv.stride[0]
@@ -269,15 +310,14 @@ def _assert_mobilenet_schedules(candidate_a: torch.nn.Module, candidate_b: torch
 
 
 def _assert_scalar_mlp(scalar_mlp: torch.nn.Module) -> None:
+    assert type(scalar_mlp) is _ScalarFeatureMLP
     layers = list(scalar_mlp.layers)
     assert len(layers) == 4
     first, first_activation, second, second_activation = layers
-    assert isinstance(first, torch.nn.Linear)
-    assert (first.in_features, first.out_features) == (80, 128)
-    assert isinstance(first_activation, torch.nn.Hardswish)
-    assert isinstance(second, torch.nn.Linear)
-    assert (second.in_features, second.out_features) == (128, 64)
-    assert isinstance(second_activation, torch.nn.Hardswish)
+    _assert_linear(first, 80, 128, True)
+    _assert_activation(first_activation, "HS")
+    _assert_linear(second, 128, 64, True)
+    _assert_activation(second_activation, "HS")
 
 
 def _assert_candidate_wiring(
@@ -289,23 +329,59 @@ def _assert_candidate_wiring(
     fusion = list(candidate.fusion)
     assert len(fusion) == 2
     fusion_projection, fusion_activation = fusion
-    assert isinstance(fusion_projection, torch.nn.Linear)
-    assert (fusion_projection.in_features, fusion_projection.out_features) == (expected_fusion_input, 256)
-    assert isinstance(fusion_activation, torch.nn.Hardswish)
+    _assert_linear(fusion_projection, expected_fusion_input, 256, True)
+    _assert_activation(fusion_activation, "HS")
 
     embedding = candidate.embedding_projection
-    assert isinstance(embedding, torch.nn.Linear)
-    assert (embedding.in_features, embedding.out_features) == (
-        256,
-        contract.output_head_shapes[contract.embedding_name],
-    )
+    expected_embedding_output = contract.output_head_shapes[contract.embedding_name]
+    _assert_linear(embedding, 256, expected_embedding_output, True)
 
     expected_head_names = tuple(name for name in contract.output_head_names if name != contract.embedding_name)
     assert tuple(candidate.heads) == expected_head_names
     for name in expected_head_names:
         head = candidate.heads[name]
-        assert isinstance(head, torch.nn.Linear)
-        assert (head.in_features, head.out_features) == (256, contract.output_head_shapes[name])
+        _assert_linear(head, 256, contract.output_head_shapes[name], True)
+
+    routed_modules = [fusion_projection, embedding, *candidate.heads.values()]
+    assert len(routed_modules) == 1 + len(contract.output_head_names)
+    assert len({id(module) for module in routed_modules}) == len(routed_modules)
+
+
+def _assert_forward_routing(
+    candidate: torch.nn.Module,
+    inputs: SETCompositionNetInputs,
+    contract: SETCompositionNetManifest,
+    expected_fusion_input: int,
+) -> None:
+    routed = [("fusion", candidate.fusion[0]), ("embedding", candidate.embedding_projection)]
+    routed.extend((name, candidate.heads[name]) for name in contract.output_head_names if name != contract.embedding_name)
+    calls: dict[str, list[tuple[tuple[int, ...], tuple[int, ...]]]] = {name: [] for name, _ in routed}
+    handles = []
+
+    def record(name: str) -> Callable[[torch.nn.Module, tuple[torch.Tensor, ...], torch.Tensor], None]:
+        def hook(_module: torch.nn.Module, args: tuple[torch.Tensor, ...], output: torch.Tensor) -> None:
+            assert len(args) == 1
+            calls[name].append((tuple(args[0].shape), tuple(output.shape)))
+
+        return hook
+
+    for name, module in routed:
+        handles.append(module.register_forward_hook(record(name)))
+    try:
+        candidate.eval()
+        with torch.no_grad():
+            outputs = candidate(inputs)
+    finally:
+        for handle in handles:
+            handle.remove()
+
+    assert tuple(outputs) == contract.output_head_names
+    assert calls["fusion"] == [((1, expected_fusion_input), (1, 256))]
+    assert calls["embedding"] == [((1, 256), (1, contract.output_head_shapes[contract.embedding_name]))]
+    for name in contract.output_head_names:
+        if name == contract.embedding_name:
+            continue
+        assert calls[name] == [((1, 256), (1, contract.output_head_shapes[name]))]
 
 
 def _assert_rejects(label: str, check: Callable[[], None]) -> None:
@@ -332,6 +408,24 @@ def _assert_mutation_guards(
     finally:
         stem[-1] = original_stem_activation
 
+    stem_conv = stem[0]
+    mutated_stem_conv = torch.nn.Conv2d(
+        stem_conv.in_channels,
+        stem_conv.out_channels,
+        kernel_size=3,
+        stride=2,
+        padding=0,
+        bias=False,
+    )
+    stem[0] = mutated_stem_conv
+    try:
+        _assert_rejects(
+            "candidate A stem padding mutation",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        stem[0] = stem_conv
+
     final_features = candidate_a.full_frame_backbone.features
     original_final_activation = final_features[-1]
     final_features[-1] = torch.nn.ReLU(inplace=True)
@@ -353,6 +447,27 @@ def _assert_mutation_guards(
     finally:
         candidate_a.fusion[0] = original_fusion_projection
 
+    fusion_bias = candidate_a.fusion[0]
+    original_fusion_bias = fusion_bias.bias
+    fusion_bias.bias = None
+    try:
+        _assert_rejects(
+            "candidate A fusion bias removal",
+            lambda: _assert_candidate_wiring(candidate_a, contract, 1072),
+        )
+    finally:
+        fusion_bias.bias = original_fusion_bias
+
+    original_risk_head = candidate_a.heads["risk_probability"]
+    candidate_a.heads["risk_probability"] = candidate_a.heads["good_frame_probability"]
+    try:
+        _assert_rejects(
+            "candidate A aliased probability heads",
+            lambda: _assert_candidate_wiring(candidate_a, contract, 1072),
+        )
+    finally:
+        candidate_a.heads["risk_probability"] = original_risk_head
+
     block = candidate_a.full_frame_backbone.features[1]
     projection_conv = block.block[-2]
     mutated_projection = torch.nn.Conv2d(
@@ -370,6 +485,59 @@ def _assert_mutation_guards(
         )
     finally:
         block.block[-2] = projection_conv
+
+    mutated_projection = torch.nn.Conv2d(
+        projection_conv.in_channels,
+        projection_conv.out_channels,
+        kernel_size=1,
+        dilation=2,
+        padding=0,
+        bias=False,
+    )
+    block.block[-2] = mutated_projection
+    try:
+        _assert_rejects(
+            "candidate A projection dilation mutation",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        block.block[-2] = projection_conv
+
+    se_block = next(
+        candidate_block for candidate_block in candidate_a.full_frame_backbone.features[1:-3]
+        if any(type(child) is _SqueezeExcitation for child in candidate_block.block)
+    )
+    se_index = next(index for index, child in enumerate(se_block.block) if type(child) is _SqueezeExcitation)
+    se = se_block.block[se_index]
+    original_se_reduce = se.reduce
+    se.reduce = torch.nn.Conv2d(
+        original_se_reduce.in_channels,
+        original_se_reduce.out_channels,
+        kernel_size=3,
+        padding=1,
+        bias=True,
+    )
+    try:
+        _assert_rejects(
+            "candidate A SE reduce kernel mutation",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        se.reduce = original_se_reduce
+
+    projection_index = se_index + 1
+    original_se = se_block.block[se_index]
+    original_projection = se_block.block[projection_index]
+    se_block.block[se_index] = original_projection
+    se_block.block[projection_index] = original_se
+    try:
+        _assert_rejects(
+            "candidate A SE/projection order mutation",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        se_block.block[se_index] = original_se
+        se_block.block[projection_index] = original_projection
 
     depthwise = next(
         child for child in block.block
@@ -398,6 +566,16 @@ def _assert_mutation_guards(
         block.block[-1] = projection_batch_norm
 
     stem_batch_norm = candidate_a.full_frame_backbone.features[0][1]
+    original_stem_affine = stem_batch_norm.affine
+    stem_batch_norm.affine = False
+    try:
+        _assert_rejects(
+            "candidate A stem BatchNorm affine mutation",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        stem_batch_norm.affine = original_stem_affine
+
     original_stem_eps = stem_batch_norm.eps
     stem_batch_norm.eps = 1e-5
     try:
@@ -527,6 +705,8 @@ def main() -> int:
     _assert_candidate_wiring(candidate_a, contract, 1072)
     _assert_candidate_wiring(candidate_b, contract, 352)
     _assert_mutation_guards(candidate_a, candidate_b, contract)
+    _assert_forward_routing(candidate_a, inputs, contract, 1072)
+    _assert_forward_routing(candidate_b, inputs, contract, 352)
     hash_a = _assert_deterministic(candidate_a, inputs, contract)
     hash_b = _assert_deterministic(candidate_b, inputs, contract)
     _assert_absent_roi_is_deterministic(candidate_a, absent_inputs)
@@ -569,9 +749,11 @@ def main() -> int:
         "checks": [
             "actual MobileNetV3 stem, Large-15/Small-11 blocks, and final projections",
             "actual scalar MLP, 256D fusion, 256-to-embedding, and manifest head wiring",
+            "actual fusion/embedding/all-nine-head forward routing and distinct module identity",
             "actual BatchNorm topology/settings plus removal and settings mutation guards",
             "actual 1x1 projection topology plus 1x1-to-3x3 mutation guard",
-            "mutation guards for stem/final Hardswish and fusion output width",
+            "actual Conv/BN/activation/SE/Linear signatures and identity/routing checks",
+            "bounded mutation matrix for representative field, topology, and alias escapes",
             "all nine manifest-driven output heads and shapes",
             "repeated forward equality",
             "absent ROI/crop deterministic zero gate",
