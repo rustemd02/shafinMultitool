@@ -163,11 +163,13 @@ final class ARSessionOwnershipTests: XCTestCase {
             )
         )
 
+        let releaseGeneration = owner.sessionGeneration
         owner.releaseSession()
         owner.releaseSession()
 
         XCTAssertTrue(owner.isReleased)
         XCTAssertEqual(owner.releaseCount, 1)
+        XCTAssertEqual(owner.sessionGeneration, releaseGeneration + 1)
         XCTAssertEqual(runtime.pauseCount, 1)
         XCTAssertNil(runtime.delegate)
         XCTAssertFalse(

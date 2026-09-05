@@ -76,6 +76,48 @@ final class CommercialShellRoutingTests: XCTestCase {
         ])
     }
 
+    func testMutualExclusionFenceWaitsForPreviousOwnerRelease() async throws {
+        let cameraReleaseGate = CommercialTestGate()
+        let sceneReleaseGate = CommercialTestGate()
+        let (shell, factory) = makeShell(plans: [
+            .camera: [CommercialRoutePlan(gate: cameraReleaseGate)],
+            .scenes: [CommercialRoutePlan(gate: sceneReleaseGate)]
+        ])
+        let cameraRoute = try XCTUnwrap(factory.route(for: .camera))
+
+        shell.select(.scenes)
+        await cameraRoute.deactivationStarted.wait()
+
+        // AR construction is fenced by the Camera Coach release boundary.
+        XCTAssertEqual(factory.constructedSections, [.camera])
+        cameraReleaseGate.open()
+        await shell.waitForTransition()
+
+        let sceneRoute = try XCTUnwrap(factory.route(for: .scenes))
+        XCTAssertEqual(factory.constructedSections, [.camera, .scenes])
+
+        shell.select(.camera)
+        await sceneRoute.deactivationStarted.wait()
+
+        // Camera construction is fenced by the Scene/AR release boundary.
+        XCTAssertEqual(factory.constructedSections, [.camera, .scenes])
+        sceneReleaseGate.open()
+        await shell.waitForTransition()
+
+        XCTAssertEqual(factory.constructedSections, [.camera, .scenes, .camera])
+        XCTAssertEqual(shell.selectedSection, .camera)
+        XCTAssertEqual(shell.children.count, 1)
+        XCTAssertEqual(factory.events, [
+            .constructed(.camera, 1),
+            .deactivationStarted(.camera, 1),
+            .deactivationFinished(.camera, 1),
+            .constructed(.scenes, 2),
+            .deactivationStarted(.scenes, 2),
+            .deactivationFinished(.scenes, 2),
+            .constructed(.camera, 3)
+        ])
+    }
+
     func testBlockedDeactivationRetainsChildAndSelection() async throws {
         let deactivationGate = CommercialTestGate()
         let (shell, factory) = makeShell(plans: [

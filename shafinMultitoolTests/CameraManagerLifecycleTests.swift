@@ -480,9 +480,11 @@ final class CameraManagerLifecycleTests: XCTestCase {
         XCTAssertEqual(manager.sessionGenerationForTesting, 1)
         XCTAssertEqual(manager.lifecycleState, .running)
 
+        let releaseGeneration = manager.sessionGenerationForTesting
         await manager.releaseAndWait()
-        XCTAssertEqual(manager.sessionGenerationForTesting, 2)
+        XCTAssertEqual(manager.sessionGenerationForTesting, releaseGeneration + 1)
         XCTAssertEqual(manager.lifecycleState, .idle)
+        XCTAssertEqual(manager.configurationState, .unconfigured)
     }
 
     func testSequentialDoubleStopStopsRunnerOnceAndStaysIdle() async throws {

@@ -103,7 +103,12 @@ final class CommercialCameraCoachRoute: CommercialViewControllerRoute {
         cameraViewModel: CameraViewModel,
         entryFlowModel: CameraCoachEntryFlowModel? = nil
     ) {
-        self.stopAndWait = { await cameraViewModel.stopAndWait() }
+        // A route handoff must release the complete Camera Coach owner before
+        // the shell constructs a Scene route. `releaseAndWait()` joins the
+        // ViewModel's shared stop → pipeline release → AVCapture release
+        // operation; stopping frame delivery alone leaves the AVCapture
+        // configuration owner alive beside the incoming ARSession.
+        self.stopAndWait = { await cameraViewModel.releaseAndWait() }
         self.sceneBackgroundHandler = { [weak cameraViewModel] in
             cameraViewModel?.reportSceneInactive()
         }
