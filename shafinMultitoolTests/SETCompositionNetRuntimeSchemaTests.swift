@@ -739,6 +739,8 @@ final class SETCompositionNetParityTests: XCTestCase {
         XCTAssertEqual(fixture.fixtureVersion, "setcompositionnet.training_preprocessing_parity.v1")
         XCTAssertEqual(fixture.contractVersion, SETCompositionNetContract.contractVersion)
         XCTAssertEqual(fixture.sourceGenerator, "lcg_bgra_u8.v1")
+        XCTAssertEqual(fixture.sourceDimensionFormula.width, "2 + (index * 5 % 7)")
+        XCTAssertEqual(fixture.sourceDimensionFormula.height, "2 + (index * 5 % 8)")
         XCTAssertGreaterThanOrEqual(fixture.caseCount, 50)
         XCTAssertEqual(fixture.expectedCaseImageDigests.count, fixture.caseCount)
 
@@ -747,8 +749,22 @@ final class SETCompositionNetParityTests: XCTestCase {
         var orientations: Set<String> = []
         var mirroredCount = 0
         var absentCount = 0
+        var widths: Set<Int> = []
+        var heights: Set<Int> = []
+        var dimensionPairs: Set<String> = []
+        var aspectRatios: Set<String> = []
+        var minAspectRatio = Double.infinity
+        var maxAspectRatio = -Double.infinity
         for index in 0..<fixture.caseCount {
             let parityCase = try makeTrainingParityCase(index: index, seed: fixture.seed)
+            widths.insert(parityCase.width)
+            heights.insert(parityCase.height)
+            dimensionPairs.insert("\(parityCase.width)x\(parityCase.height)")
+            let divisor = greatestCommonDivisor(parityCase.width, parityCase.height)
+            aspectRatios.insert("\(parityCase.width / divisor)/\(parityCase.height / divisor)")
+            let aspectRatio = Double(parityCase.width) / Double(parityCase.height)
+            minAspectRatio = min(minAspectRatio, aspectRatio)
+            maxAspectRatio = max(maxAspectRatio, aspectRatio)
             guard let tensors = preprocessor.setCompositionNetRGBTensors(
                 from: parityCase.source,
                 orientation: parityCase.orientation,
@@ -780,6 +796,20 @@ final class SETCompositionNetParityTests: XCTestCase {
         XCTAssertEqual(orientations, Set(fixture.orientationOrder))
         XCTAssertGreaterThan(mirroredCount, 0)
         XCTAssertGreaterThan(absentCount, 0)
+        XCTAssertEqual(widths.count, fixture.sourceDimensionSummary.uniqueWidths)
+        XCTAssertEqual(heights.count, fixture.sourceDimensionSummary.uniqueHeights)
+        XCTAssertEqual(dimensionPairs.count, fixture.sourceDimensionSummary.uniqueDimensionPairs)
+        XCTAssertEqual(aspectRatios.count, fixture.sourceDimensionSummary.uniqueAspectRatios)
+        XCTAssertEqual(widths.min(), fixture.sourceDimensionSummary.widthMin)
+        XCTAssertEqual(widths.max(), fixture.sourceDimensionSummary.widthMax)
+        XCTAssertEqual(heights.min(), fixture.sourceDimensionSummary.heightMin)
+        XCTAssertEqual(heights.max(), fixture.sourceDimensionSummary.heightMax)
+        XCTAssertEqual(minAspectRatio, fixture.sourceDimensionSummary.aspectRatioMin, accuracy: 0.000001)
+        XCTAssertEqual(maxAspectRatio, fixture.sourceDimensionSummary.aspectRatioMax, accuracy: 0.000001)
+        XCTAssertGreaterThanOrEqual(widths.count, 4)
+        XCTAssertGreaterThanOrEqual(heights.count, 4)
+        XCTAssertGreaterThanOrEqual(dimensionPairs.count, 20)
+        XCTAssertGreaterThanOrEqual(aspectRatios.count, 10)
     }
 
     private struct TrainingPreprocessingParityFixture: Decodable {
@@ -788,6 +818,8 @@ final class SETCompositionNetParityTests: XCTestCase {
         let seed: UInt64
         let caseCount: Int
         let sourceGenerator: String
+        let sourceDimensionFormula: SourceDimensionFormula
+        let sourceDimensionSummary: SourceDimensionSummary
         let orientationOrder: [String]
         let expectedSwiftImageDigest: String
         let expectedCaseImageDigests: [String]
@@ -798,9 +830,42 @@ final class SETCompositionNetParityTests: XCTestCase {
             case seed
             case caseCount = "case_count"
             case sourceGenerator = "source_generator"
+            case sourceDimensionFormula = "source_dimension_formula"
+            case sourceDimensionSummary = "source_dimension_summary"
             case orientationOrder = "orientation_order"
             case expectedSwiftImageDigest = "expected_swift_image_digest"
             case expectedCaseImageDigests = "expected_case_image_digests"
+        }
+    }
+
+    private struct SourceDimensionFormula: Decodable {
+        let width: String
+        let height: String
+    }
+
+    private struct SourceDimensionSummary: Decodable {
+        let widthMin: Int
+        let widthMax: Int
+        let uniqueWidths: Int
+        let heightMin: Int
+        let heightMax: Int
+        let uniqueHeights: Int
+        let uniqueDimensionPairs: Int
+        let uniqueAspectRatios: Int
+        let aspectRatioMin: Double
+        let aspectRatioMax: Double
+
+        private enum CodingKeys: String, CodingKey {
+            case widthMin = "width_min"
+            case widthMax = "width_max"
+            case uniqueWidths = "unique_widths"
+            case heightMin = "height_min"
+            case heightMax = "height_max"
+            case uniqueHeights = "unique_heights"
+            case uniqueDimensionPairs = "unique_dimension_pairs"
+            case uniqueAspectRatios = "unique_aspect_ratios"
+            case aspectRatioMin = "aspect_ratio_min"
+            case aspectRatioMax = "aspect_ratio_max"
         }
     }
 
@@ -809,10 +874,12 @@ final class SETCompositionNetParityTests: XCTestCase {
         let roi: SETCompositionNetROI
         let orientation: CGImagePropertyOrientation
         let orientationName: String
+        let width: Int
+        let height: Int
     }
 
     private func makeTrainingParityCase(index: Int, seed: UInt64) throws -> TrainingParityCase {
-        let width = 2 + (index * 7 % 7)
+        let width = 2 + (index * 5 % 7)
         let height = 2 + (index * 5 % 8)
         var state = UInt32(truncatingIfNeeded: seed &+ UInt64(index * 7919))
         var pixels: [UInt8] = []
@@ -872,8 +939,21 @@ final class SETCompositionNetParityTests: XCTestCase {
             source: sourceBuffer,
             roi: roi,
             orientation: trainingParityOrientation(named: orientationName),
-            orientationName: orientationName
+            orientationName: orientationName,
+            width: width,
+            height: height
         )
+    }
+
+    private func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+        var a = abs(lhs)
+        var b = abs(rhs)
+        while b != 0 {
+            let remainder = a % b
+            a = b
+            b = remainder
+        }
+        return a
     }
 
     private func trainingParityOrientation(named name: String) -> CGImagePropertyOrientation {

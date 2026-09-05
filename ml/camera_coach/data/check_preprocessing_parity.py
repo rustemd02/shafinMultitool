@@ -25,6 +25,10 @@ SCHEMA_PATH = ROOT / "contracts" / "set_composition_net_v1.schema.json"
 INPUT_FIXTURE_PATH = ROOT / "contracts" / "fixtures" / "set_composition_net_v1_parity.json"
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "preprocessing_parity.json"
 TOLERANCE = 1e-6
+SOURCE_DIMENSION_FORMULA = {
+    "width": "2 + (index * 5 % 7)",
+    "height": "2 + (index * 5 % 8)",
+}
 
 
 def _lcg(state: int) -> tuple[int, int]:
@@ -34,7 +38,7 @@ def _lcg(state: int) -> tuple[int, int]:
 
 def _case(index: int, seed: int, feature_names: tuple[str, ...], normalization: dict) -> dict:
     state = (seed + index * 7919) & 0xFFFFFFFF
-    width = 2 + (index * 7 % 7)
+    width = 2 + (index * 5 % 7)
     height = 2 + (index * 5 % 8)
     pixels: list[int] = []
     for _ in range(width * height * 4):
@@ -257,6 +261,7 @@ def main() -> int:
     assert fixture["fixture_version"] == "setcompositionnet.training_preprocessing_parity.v1"
     assert fixture["contract_version"] == manifest["contract_version"]
     assert fixture["case_count"] >= 50
+    assert fixture["source_dimension_formula"] == SOURCE_DIMENSION_FORMULA
     expected_case_image_digests = fixture["expected_case_image_digests"]
     assert len(expected_case_image_digests) == fixture["case_count"]
     contract = SETCompositionNetManifest.load(MANIFEST_PATH)
@@ -267,8 +272,23 @@ def main() -> int:
     orientation_counts = {name: 0 for name in fixture["orientation_order"]}
     absent_count = 0
     mirrored_count = 0
+    source_widths: set[int] = set()
+    source_heights: set[int] = set()
+    source_dimension_pairs: set[tuple[int, int]] = set()
+    source_aspect_ratios: set[tuple[int, int]] = set()
+    min_aspect_ratio = math.inf
+    max_aspect_ratio = -math.inf
     for index in range(fixture["case_count"]):
         case = _case(index, fixture["seed"], feature_names, normalization)
+        width, height = int(case["width"]), int(case["height"])
+        source_widths.add(width)
+        source_heights.add(height)
+        source_dimension_pairs.add((width, height))
+        divisor = math.gcd(width, height)
+        source_aspect_ratios.add((width // divisor, height // divisor))
+        aspect_ratio = width / height
+        min_aspect_ratio = min(min_aspect_ratio, aspect_ratio)
+        max_aspect_ratio = max(max_aspect_ratio, aspect_ratio)
         expected = _reference(case)
         actual = preprocess_frame(
             case["pixels"],
@@ -325,6 +345,35 @@ def main() -> int:
     )
     assert absent_count > 0 and mirrored_count > 0
     assert all(value > 0 for value in orientation_counts.values())
+    source_dimension_summary = {
+        "width_min": min(source_widths),
+        "width_max": max(source_widths),
+        "unique_widths": len(source_widths),
+        "height_min": min(source_heights),
+        "height_max": max(source_heights),
+        "unique_heights": len(source_heights),
+        "unique_dimension_pairs": len(source_dimension_pairs),
+        "unique_aspect_ratios": len(source_aspect_ratios),
+        "aspect_ratio_min": min_aspect_ratio,
+        "aspect_ratio_max": max_aspect_ratio,
+    }
+    expected_dimension_summary = fixture["source_dimension_summary"]
+    for key in (
+        "width_min", "width_max", "unique_widths", "height_min", "height_max",
+        "unique_heights", "unique_dimension_pairs", "unique_aspect_ratios",
+    ):
+        assert source_dimension_summary[key] == expected_dimension_summary[key], (
+            key, expected_dimension_summary[key], source_dimension_summary[key]
+        )
+    for key in ("aspect_ratio_min", "aspect_ratio_max"):
+        assert math.isclose(
+            source_dimension_summary[key], expected_dimension_summary[key],
+            rel_tol=0.0, abs_tol=TOLERANCE,
+        ), (key, expected_dimension_summary[key], source_dimension_summary[key])
+    assert source_dimension_summary["unique_widths"] >= 4
+    assert source_dimension_summary["unique_heights"] >= 4
+    assert source_dimension_summary["unique_dimension_pairs"] >= 20
+    assert source_dimension_summary["unique_aspect_ratios"] >= 10
     report = {
         "status": "pass",
         "contract_version": manifest["contract_version"],
@@ -337,6 +386,8 @@ def main() -> int:
         "swift_image_digest": actual_swift_image_digest,
         "case_image_digest_count": len(expected_case_image_digests),
         "source": fixture["source_generator"],
+        "source_dimension_formula": fixture["source_dimension_formula"],
+        "source_dimension_summary": source_dimension_summary,
     }
     print(json.dumps(report, sort_keys=True, separators=(",", ":")))
     return 0
