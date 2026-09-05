@@ -26,6 +26,8 @@ class SORouter: SORouterProtocol {
     private let projectStore: DBService
 #if DEBUG
     private(set) var testingLastOpenedProjectID: UUID?
+    var testingAfterProjectLeaseAcquired: (() -> Void)?
+    var testingAfterWorkspaceConstructed: ((SceneGeneratorViewModel) -> Void)?
 #endif
 
     init(projectStore: DBService = .shared) {
@@ -59,20 +61,41 @@ class SORouter: SORouterProtocol {
 #if DEBUG
         testingLastOpenedProjectID = nil
 #endif
+
+        // Own the project before reading or validating it. Deletion consults
+        // this same registry, so no delete can slip between validation and VM
+        // construction and leave a workspace backed by a vanished aggregate.
+        guard let projectLeaseToken = projectStore.acquireProjectLease(id: id) else {
+            return .failure(.inUse)
+        }
+#if DEBUG
+        testingAfterProjectLeaseAcquired?()
+#endif
+
+        func fail(_ failure: SETLibraryFailure) -> Result<Void, SETLibraryFailure> {
+            projectStore.releaseProjectLease(id: id, token: projectLeaseToken)
+            return .failure(failure)
+        }
+
         switch projectStore.loadUnifiedSceneProjectForOpening(id: id) {
         case .failure(let failure):
-            return .failure(failure)
+            return fail(failure)
         case .success(let record):
             guard record.validation.isOpenable else {
-                return .failure(.persistence)
+                return fail(.persistence)
             }
 
-            return pushWorkspace(for: record)
+            let result = pushWorkspace(for: record, projectLeaseToken: projectLeaseToken)
+            if case .failure = result {
+                projectStore.releaseProjectLease(id: id, token: projectLeaseToken)
+            }
+            return result
         }
     }
 
     private func pushWorkspace(
-        for record: UnifiedSceneProjectOpenRecord
+        for record: UnifiedSceneProjectOpenRecord,
+        projectLeaseToken: UUID
     ) -> Result<Void, SETLibraryFailure> {
 
         #if DEBUG
@@ -104,11 +127,14 @@ class SORouter: SORouterProtocol {
                 projectStore: projectStore,
                 presentationLocale: localeOverride,
                 persistedProject: record.project,
-                persistedWorldMap: record.worldMap
+                persistedWorldMap: record.worldMap,
+                projectLeaseToken: projectLeaseToken,
+                projectLeaseRegistry: projectStore.projectLeaseRegistry
             )
         }
 #if DEBUG
         testingLastOpenedProjectID = MainActor.assumeIsolated { viewModel.projectID }
+        testingAfterWorkspaceConstructed?(viewModel)
 #endif
         var rootView = AnyView(SceneGeneratorView(viewModel: viewModel))
         if let localeOverride {

@@ -676,6 +676,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var generationTask: Task<Void, Never>?
     /// M1-016: active workspace deletion lease; non-nil while this VM owns the project.
     private var projectLeaseToken: UUID?
+    /// The registry is supplied by the persistence owner when Library opens a
+    /// project, so the transferred token is released through the same lease
+    /// authority that guarded the read/validation boundary.
+    private let projectLeaseRegistry: ProjectLifecycleRegistry
     private var generationEpoch: UInt = 0
     private var teardownTask: Task<SceneWorkspaceTeardownResult, Never>?
     private var teardownTaskID: UUID?
@@ -716,8 +720,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
          recordingController: SceneRecordingController? = nil,
          audioSessionCoordinator: AudioSessionCoordinator = .shared,
          persistedProject: UnifiedSceneProject? = nil,
-         persistedWorldMap: ARWorldMap? = nil) {
+         persistedWorldMap: ARWorldMap? = nil,
+         projectLeaseToken: UUID? = nil,
+         projectLeaseRegistry: ProjectLifecycleRegistry = .shared) {
         self.projectStore = projectStore
+        self.projectLeaseRegistry = projectLeaseRegistry
         self.permissionClient = permissionClient
         self.audioSessionCoordinator = audioSessionCoordinator
         if let recordingController {
@@ -749,8 +756,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // M1-016 ProjectLifecycleOwner: the workspace holds the deletion lease
         // for as long as it can mutate this project. A nil token means another
         // owner already held it; deletion stays blocked by that owner.
-        projectLeaseToken = ProjectLifecycleRegistry.shared.acquire(projectID: currentProject.id)
-        if projectLeaseToken == nil {
+        if let projectLeaseToken {
+            self.projectLeaseToken = projectLeaseToken
+        } else {
+            self.projectLeaseToken = projectLeaseRegistry.acquire(projectID: currentProject.id)
+        }
+        if self.projectLeaseToken == nil {
             print("Project lease unavailable for \(currentProject.name); deletion stays blocked by the active owner")
         }
         self.sceneTitle = currentProject.name
@@ -1216,13 +1227,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// newer lease.
     private func releaseProjectLeaseIfNeeded() {
         guard let projectLeaseToken else { return }
-        ProjectLifecycleRegistry.shared.release(projectID: currentProject.id, token: projectLeaseToken)
+        projectLeaseRegistry.release(projectID: currentProject.id, token: projectLeaseToken)
         self.projectLeaseToken = nil
     }
 
     deinit {
         if let projectLeaseToken {
-            ProjectLifecycleRegistry.shared.release(projectID: currentProject.id, token: projectLeaseToken)
+            projectLeaseRegistry.release(projectID: currentProject.id, token: projectLeaseToken)
         }
     }
 

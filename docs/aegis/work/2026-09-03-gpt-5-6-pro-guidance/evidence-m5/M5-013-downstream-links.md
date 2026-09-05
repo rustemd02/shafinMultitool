@@ -27,13 +27,18 @@ device was targeted.
 
 | Check | Result |
 | --- | --- |
-| `xcodebuild ... build-for-testing` with `-destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'` | passed |
-| `xcodebuild test ... -only-testing:shafinMultitoolTests/SceneProjectOpenTests` | 6 tests, 0 failures |
-| Targeted regression: `SceneProjectSchemaMigrationTests`, `DBServiceConcurrencyTests`, `SETLibraryModelTests`, `RecordingArtifactPromotionTests` | 53 tests, 0 failures |
+| `xcodebuild ... build-for-testing` with `-destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5'` (`/private/tmp/setos-m5-013-correction-dd`) | passed |
+| `xcodebuild test ... -only-testing:shafinMultitoolTests/SceneProjectOpenTests` | 10 tests, 0 failures (`/private/tmp/setos-m5-013-correction-open-final-verified.xcresult`) |
+| Targeted regression: `SceneProjectSchemaMigrationTests`, `DBServiceConcurrencyTests`, `SETLibraryModelTests`, `RecordingArtifactPromotionTests` | 53 tests, 0 failures (`/private/tmp/setos-m5-013-correction-regression-verified.xcresult`) |
 | `git diff --check` | passed |
 
 The focused open tests cover current healthy UUID preservation, compatible
 legacy byte preservation, missing/corrupt/future project recovery, optional
 media absence, foreign/missing required recording artifacts, malformed
-downstream identity, immutable-ID retry, and the actual
-`SOModuleBuilder`/presenter/router boundary.
+downstream identity, malformed path-duration topology (including the
+two-point/zero-duration crash shape), duplicate and missing scripted entity
+bindings, immutable-ID retry, and the actual `SOModuleBuilder`/presenter/router
+boundary. The barrier-controlled open/delete case acquires the custom
+registry lease before the delete attempt, observes typed `.inUse`, verifies
+the exact UUID and bytes remain readable, then calls the existing VM teardown
+to release the transferred token.

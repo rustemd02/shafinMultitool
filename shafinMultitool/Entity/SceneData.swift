@@ -340,6 +340,21 @@ struct UnifiedSceneProject: Identifiable, Codable, Equatable {
         let entityIDs = actorIDs.union(objectIDs)
         var placedIDs = Set<String>()
 
+        // A persisted plan is a binding from every scripted entity to one
+        // concrete placement.  If a script is present, accepting duplicate or
+        // missing bindings would make downstream Generator/Storyboard lookup
+        // ambiguous (or silently omit a scripted entity).
+        if script != nil {
+            let plannedActorIDs = plan.placedActors.map(\.actorId)
+            let plannedObjectIDs = plan.placedObjects.map(\.objectId)
+            guard uniqueNonEmpty(plannedActorIDs),
+                  uniqueNonEmpty(plannedObjectIDs),
+                  Set(plannedActorIDs) == actorIDs,
+                  Set(plannedObjectIDs) == objectIDs else {
+                return false
+            }
+        }
+
         for actor in plan.placedActors {
             guard !actor.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   placedIDs.insert(actor.id).inserted,
@@ -347,6 +362,7 @@ struct UnifiedSceneProject: Identifiable, Codable, Equatable {
                   actor.initialPosition.isFinite,
                   actor.initialRotation.isFinite,
                   actor.path.allSatisfy(\.isFinite),
+                  actor.pathDurations.count == max(actor.path.count - 1, 0),
                   actor.pathDurations.allSatisfy({ $0.isFinite && $0 >= 0 }),
                   actor.pathCameras.allSatisfy({ $0?.target.map(entityIDs.contains) ?? true }),
                   actor.pathBeatIDs.allSatisfy({ $0.map(beatIDs.contains) ?? true }) else {

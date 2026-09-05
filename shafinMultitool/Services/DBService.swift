@@ -131,6 +131,20 @@ class DBService {
         }
     }
 
+    /// M1-016: Library routing acquires the same registry consulted by
+    /// deletion, then transfers the token into the workspace owner. Keeping
+    /// the registry behind the persistence owner also makes injected stores
+    /// use one lease authority in production-boundary tests.
+    var projectLeaseRegistry: ProjectLifecycleRegistry { projectLeases }
+
+    func acquireProjectLease(id: UUID) -> UUID? {
+        projectLeases.acquire(projectID: id)
+    }
+
+    func releaseProjectLease(id: UUID, token: UUID) {
+        projectLeases.release(projectID: id, token: token)
+    }
+
     func fetchSettingsButtonValues() -> SettingsValues {
         let width = UserDefaults.standard.integer(forKey: "resolutionWidth")
         let height = UserDefaults.standard.integer(forKey: "resolutionHeight")
