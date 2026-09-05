@@ -1,0 +1,5 @@
+{
+  "source_manifest": "count-mismatch-source.jsonl",
+  "rights_manifest": "count-mismatch-rights.jsonl",
+  "expected_error_contains": "record_count"
+}

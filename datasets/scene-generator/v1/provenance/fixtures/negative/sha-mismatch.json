@@ -1,0 +1,5 @@
+{
+  "source_manifest": "sha-mismatch-source.jsonl",
+  "rights_manifest": "sha-mismatch-rights.jsonl",
+  "expected_error_contains": "disagree on content_sha256"
+}

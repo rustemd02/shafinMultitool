@@ -1,0 +1,5 @@
+{
+  "source_manifest": "synthetic-orphan-parent-source.jsonl",
+  "rights_manifest": "synthetic-orphan-parent-rights.jsonl",
+  "expected_error_contains": "undeclared lineage parent"
+}

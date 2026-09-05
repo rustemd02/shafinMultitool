@@ -1,0 +1,5 @@
+{
+  "source_manifest": "production-empty-source.jsonl",
+  "rights_manifest": "production-empty-rights.jsonl",
+  "expected_error_contains": "zero records"
+}

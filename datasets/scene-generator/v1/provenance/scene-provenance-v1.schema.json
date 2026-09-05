@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/scene-provenance-v1.schema.json",
+  "title": "SET OS Scene Generator provenance and rights contract v1",
+  "description": "Closed JSON Lines headers and entries for source, derivation, author consent, license, public-domain, synthetic, and copyright-risk coverage. Raw text and rights-uncleared material remain outside Git.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/source_manifest_header" },
+    { "$ref": "#/$defs/rights_manifest_header" },
+    { "$ref": "#/$defs/source_entry" },
+    { "$ref": "#/$defs/rights_entry" }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,127}$",
+      "maxLength": 128
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "maxLength": 32
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "maxLength": 20
+    },
+    "short_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\u0000]*$"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["ru", "en"]
+    },
+    "source_kind": {
+      "type": "string",
+      "enum": [
+        "owner_authored",
+        "licensed",
+        "public_domain",
+        "synthetic",
+        "copyrighted_screenplay_excerpt",
+        "unknown"
+      ]
+    },
+    "lawful_basis": {
+      "type": "string",
+      "enum": ["owner_authored", "licensed", "public_domain", "synthetic", "unknown"]
+    },
+    "copyright_risk": {
+      "type": "string",
+      "enum": ["none", "low", "medium", "high", "unknown"]
+    },
+    "admission_status": {
+      "type": "string",
+      "enum": ["admitted", "quarantined", "excluded"]
+    },
+    "rights_status": {
+      "type": "string",
+      "enum": ["approved", "pending", "quarantined", "denied", "withdrawn", "unknown"]
+    },
+    "allowed_use": {
+      "type": "string",
+      "enum": ["train", "validation", "calibration", "holdout", "fixture"]
+    },
+    "nullable_short_text": {
+      "anyOf": [
+        { "$ref": "#/$defs/short_text" },
+        { "type": "null" }
+      ]
+    },
+    "nullable_generator_id": {
+      "anyOf": [
+        { "$ref": "#/$defs/identifier" },
+        { "type": "null" }
+      ]
+    },
+    "nullable_version": {
+      "anyOf": [
+        { "$ref": "#/$defs/version" },
+        { "type": "null" }
+      ]
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parent_record_ids",
+        "derivation_kind",
+        "method_ref",
+        "lineage_evidence_ref",
+        "generator_id",
+        "generator_version"
+      ],
+      "properties": {
+        "parent_record_ids": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "derivation_kind": {
+          "type": "string",
+          "enum": ["original", "synthetic_generation", "translation", "paraphrase", "annotation_projection"]
+        },
+        "method_ref": { "$ref": "#/$defs/short_text" },
+        "lineage_evidence_ref": { "$ref": "#/$defs/short_text" },
+        "generator_id": { "$ref": "#/$defs/nullable_generator_id" },
+        "generator_version": { "$ref": "#/$defs/nullable_version" }
+      }
+    },
+    "use_list": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/allowed_use" }
+    },
+    "author_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author_id", "attestation_ref"],
+      "properties": {
+        "author_id": { "$ref": "#/$defs/identifier" },
+        "attestation_ref": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "license_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["license_id", "licensor_id", "license_ref", "allowed_uses", "expires_at"],
+      "properties": {
+        "license_id": { "$ref": "#/$defs/identifier" },
+        "licensor_id": { "$ref": "#/$defs/identifier" },
+        "license_ref": { "$ref": "#/$defs/short_text" },
+        "allowed_uses": { "$ref": "#/$defs/use_list" },
+        "expires_at": {
+          "anyOf": [
+            { "$ref": "#/$defs/timestamp" },
+            { "const": "perpetual" }
+          ]
+        }
+      }
+    },
+    "consent_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["consent_id", "consent_ref", "allowed_uses", "recorded_at", "status"],
+      "properties": {
+        "consent_id": { "$ref": "#/$defs/identifier" },
+        "consent_ref": { "$ref": "#/$defs/short_text" },
+        "allowed_uses": { "$ref": "#/$defs/use_list" },
+        "recorded_at": { "$ref": "#/$defs/timestamp" },
+        "status": { "type": "string", "enum": ["granted", "withdrawn"] }
+      }
+    },
+    "public_domain_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "jurisdiction", "evidence_ref", "verified_at", "allowed_uses"],
+      "properties": {
+        "basis": { "$ref": "#/$defs/short_text" },
+        "jurisdiction": { "$ref": "#/$defs/short_text" },
+        "evidence_ref": { "$ref": "#/$defs/short_text" },
+        "verified_at": { "$ref": "#/$defs/timestamp" },
+        "allowed_uses": { "$ref": "#/$defs/use_list" }
+      }
+    },
+    "synthetic_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generator_id",
+        "generator_version",
+        "prompt_or_seed_ref",
+        "lineage_evidence_ref",
+        "lineage_complete",
+        "parent_record_ids",
+        "allowed_uses"
+      ],
+      "properties": {
+        "generator_id": { "$ref": "#/$defs/identifier" },
+        "generator_version": { "$ref": "#/$defs/version" },
+        "prompt_or_seed_ref": { "$ref": "#/$defs/short_text" },
+        "lineage_evidence_ref": { "$ref": "#/$defs/short_text" },
+        "lineage_complete": { "const": true },
+        "parent_record_ids": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "allowed_uses": { "$ref": "#/$defs/use_list" }
+      }
+    },
+    "nullable_author_evidence": {
+      "anyOf": [
+        { "$ref": "#/$defs/author_evidence" },
+        { "type": "null" }
+      ]
+    },
+    "nullable_license_evidence": {
+      "anyOf": [
+        { "$ref": "#/$defs/license_evidence" },
+        { "type": "null" }
+      ]
+    },
+    "nullable_consent_evidence": {
+      "anyOf": [
+        { "$ref": "#/$defs/consent_evidence" },
+        { "type": "null" }
+      ]
+    },
+    "nullable_public_domain_evidence": {
+      "anyOf": [
+        { "$ref": "#/$defs/public_domain_evidence" },
+        { "type": "null" }
+      ]
+    },
+    "nullable_synthetic_evidence": {
+      "anyOf": [
+        { "$ref": "#/$defs/synthetic_evidence" },
+        { "type": "null" }
+      ]
+    },
+    "manifest_header_common": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_type",
+        "schema_id",
+        "manifest_version",
+        "manifest_id",
+        "manifest_sha256",
+        "entry_schema",
+        "record_count",
+        "hash_algorithm",
+        "raw_text_location",
+        "rights_uncleared_location",
+        "template_only",
+        "admission_rule"
+      ],
+      "properties": {
+        "manifest_type": { "type": "string" },
+        "schema_id": { "type": "string" },
+        "manifest_version": { "$ref": "#/$defs/version" },
+        "manifest_id": { "$ref": "#/$defs/identifier" },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "entry_schema": { "$ref": "#/$defs/short_text" },
+        "record_count": { "type": "integer", "minimum": 0, "maximum": 4095 },
+        "hash_algorithm": { "const": "sha256" },
+        "raw_text_location": { "const": "outside_git" },
+        "rights_uncleared_location": { "const": "outside_git" },
+        "template_only": { "type": "boolean" },
+        "admission_rule": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "source_manifest_header": {
+      "allOf": [
+        { "$ref": "#/$defs/manifest_header_common" },
+        {
+          "properties": {
+            "manifest_type": { "const": "source_manifest" },
+            "schema_id": { "const": "scene-source-manifest-v1" },
+            "entry_schema": { "const": "scene-source-entry-v1" },
+            "manifest_id": { "const": "scene-source-manifest" }
+          }
+        }
+      ]
+    },
+    "rights_manifest_header": {
+      "allOf": [
+        { "$ref": "#/$defs/manifest_header_common" },
+        {
+          "properties": {
+            "manifest_type": { "const": "rights_manifest" },
+            "schema_id": { "const": "scene-rights-manifest-v1" },
+            "entry_schema": { "const": "scene-rights-entry-v1" },
+            "manifest_id": { "const": "scene-rights-manifest" }
+          }
+        }
+      ]
+    },
+    "source_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_type",
+        "schema_id",
+        "manifest_version",
+        "record_id",
+        "source_id",
+        "source_family_id",
+        "derivation_family_id",
+        "language",
+        "source_kind",
+        "lawful_basis",
+        "content_sha256",
+        "source_sha256",
+        "raw_text_location",
+        "source_reference",
+        "lineage",
+        "copyright_risk",
+        "admission_status",
+        "quarantine_reason",
+        "rights_record_id"
+      ],
+      "properties": {
+        "manifest_type": { "const": "source_entry" },
+        "schema_id": { "const": "scene-source-entry-v1" },
+        "manifest_version": { "$ref": "#/$defs/version" },
+        "record_id": { "$ref": "#/$defs/identifier" },
+        "source_id": { "$ref": "#/$defs/identifier" },
+        "source_family_id": { "$ref": "#/$defs/identifier" },
+        "derivation_family_id": { "$ref": "#/$defs/identifier" },
+        "language": { "$ref": "#/$defs/language" },
+        "source_kind": { "$ref": "#/$defs/source_kind" },
+        "lawful_basis": { "$ref": "#/$defs/lawful_basis" },
+        "content_sha256": { "$ref": "#/$defs/sha256" },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "raw_text_location": { "const": "outside_git" },
+        "source_reference": { "$ref": "#/$defs/short_text" },
+        "lineage": { "$ref": "#/$defs/lineage" },
+        "copyright_risk": { "$ref": "#/$defs/copyright_risk" },
+        "admission_status": { "$ref": "#/$defs/admission_status" },
+        "quarantine_reason": { "$ref": "#/$defs/nullable_short_text" },
+        "rights_record_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "rights_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_type",
+        "schema_id",
+        "manifest_version",
+        "rights_record_id",
+        "record_id",
+        "source_id",
+        "source_family_id",
+        "derivation_family_id",
+        "language",
+        "source_kind",
+        "lawful_basis",
+        "content_sha256",
+        "source_sha256",
+        "lineage",
+        "copyright_risk",
+        "rights_status",
+        "admission_status",
+        "allowed_uses",
+        "author_evidence",
+        "license_evidence",
+        "consent_evidence",
+        "public_domain_evidence",
+        "synthetic_evidence",
+        "quarantine_reason",
+        "recorded_at"
+      ],
+      "properties": {
+        "manifest_type": { "const": "rights_entry" },
+        "schema_id": { "const": "scene-rights-entry-v1" },
+        "manifest_version": { "$ref": "#/$defs/version" },
+        "rights_record_id": { "$ref": "#/$defs/identifier" },
+        "record_id": { "$ref": "#/$defs/identifier" },
+        "source_id": { "$ref": "#/$defs/identifier" },
+        "source_family_id": { "$ref": "#/$defs/identifier" },
+        "derivation_family_id": { "$ref": "#/$defs/identifier" },
+        "language": { "$ref": "#/$defs/language" },
+        "source_kind": { "$ref": "#/$defs/source_kind" },
+        "lawful_basis": { "$ref": "#/$defs/lawful_basis" },
+        "content_sha256": { "$ref": "#/$defs/sha256" },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "lineage": { "$ref": "#/$defs/lineage" },
+        "copyright_risk": { "$ref": "#/$defs/copyright_risk" },
+        "rights_status": { "$ref": "#/$defs/rights_status" },
+        "admission_status": { "$ref": "#/$defs/admission_status" },
+        "allowed_uses": { "$ref": "#/$defs/use_list" },
+        "author_evidence": { "$ref": "#/$defs/nullable_author_evidence" },
+        "license_evidence": { "$ref": "#/$defs/nullable_license_evidence" },
+        "consent_evidence": { "$ref": "#/$defs/nullable_consent_evidence" },
+        "public_domain_evidence": { "$ref": "#/$defs/nullable_public_domain_evidence" },
+        "synthetic_evidence": { "$ref": "#/$defs/nullable_synthetic_evidence" },
+        "quarantine_reason": { "$ref": "#/$defs/nullable_short_text" },
+        "recorded_at": { "$ref": "#/$defs/timestamp" }
+      }
+    }
+  }
+}
