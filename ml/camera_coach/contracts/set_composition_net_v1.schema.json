@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "setcompositionnet.output.v1.schema.json",
+  "$id": "setcompositionnet.v1.schema.json",
   "title": "SETCompositionNet-v1 contract manifest",
   "type": "object",
   "required": [
@@ -10,8 +10,11 @@
     "preprocessing_version",
     "feature_version",
     "output_contract_version",
+    "tensor_layout",
     "inputs",
     "preprocessing",
+    "categorical_features",
+    "feature_normalization",
     "outputs"
   ],
   "properties": {
@@ -24,20 +27,237 @@
     "tensor_layout": { "const": "HWC" },
     "inputs": {
       "type": "object",
-      "required": [
-        "full_frame_rgb",
-        "subject_crop_rgb",
-        "roi_normalized_xywh",
-        "roi_mask",
-        "scalar_features"
-      ]
+      "required": ["full_frame_rgb", "subject_crop_rgb", "roi_normalized_xywh", "roi_mask", "scalar_features"],
+      "properties": {
+        "full_frame_rgb": {
+          "$ref": "#/$defs/rgbTensor",
+          "properties": { "shape": { "const": [320, 320, 3] } }
+        },
+        "subject_crop_rgb": {
+          "$ref": "#/$defs/rgbTensor",
+          "properties": { "shape": { "const": [192, 192, 3] } }
+        },
+        "roi_normalized_xywh": {
+          "type": "object",
+          "required": ["dtype", "shape", "ordered_names", "coordinate_space", "origin", "axis_direction", "value_range", "bounds", "missing_value"],
+          "properties": {
+            "dtype": { "const": "float32" },
+            "shape": { "const": [4] },
+            "ordered_names": { "const": ["x", "y", "width", "height"] },
+            "coordinate_space": { "const": "oriented_full_frame" },
+            "origin": { "const": "top_left" },
+            "axis_direction": { "const": ["right", "down"] },
+            "value_range": { "const": [0.0, 1.0] },
+            "bounds": { "const": ["x + width <= 1.0", "y + height <= 1.0"] },
+            "missing_value": { "const": [0.0, 0.0, 0.0, 0.0] }
+          },
+          "additionalProperties": true
+        },
+        "roi_mask": {
+          "$ref": "#/$defs/binaryTensor",
+          "properties": { "shape": { "const": [320, 320, 1] } }
+        },
+        "scalar_features": {
+          "type": "object",
+          "required": ["dtype", "shape", "count", "ordered_names", "missing_mask"],
+          "properties": {
+            "dtype": { "const": "float32" },
+            "shape": { "const": [40] },
+            "count": { "const": 40 },
+            "ordered_names": {
+              "type": "array",
+              "const": [
+                "subject_bbox_x", "subject_bbox_y", "subject_bbox_width", "subject_bbox_height",
+                "subject_area_ratio", "subject_edge_pressure_left", "subject_edge_pressure_right",
+                "subject_edge_pressure_top", "subject_edge_pressure_bottom", "person_count",
+                "face_count", "group_count", "person_confidence", "face_confidence", "group_confidence",
+                "saliency_left_right_balance", "saliency_top_bottom_balance", "saliency_subject_mean",
+                "saliency_background_mean", "saliency_subject_background_delta", "horizon_angle",
+                "horizon_confidence", "subject_mean_luma", "background_mean_luma", "subject_luma_delta",
+                "subject_clipped_ratio", "background_hotspot_ratio", "motion_shake", "motion_stability",
+                "focus_readability", "focus_confidence", "orientation_category", "mirroring_flag",
+                "lens_category", "format_aspect_ratio", "roi_present", "roi_area_ratio",
+                "roi_mask_coverage", "subject_separation", "camera_exposure_bias"
+              ]
+            },
+            "missing_mask": {
+              "type": "object",
+              "required": ["dtype", "shape", "ordered_names", "values", "fill_value", "semantics"],
+              "properties": {
+                "dtype": { "const": "float32" },
+                "shape": { "const": [40] },
+                "ordered_names": { "const": "same_as_scalar_features" },
+                "values": { "const": [0.0, 1.0] },
+                "fill_value": { "const": 0.0 },
+                "semantics": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
     },
-    "preprocessing": { "type": "object" },
-    "feature_normalization": { "type": "object" },
+    "preprocessing": {
+      "type": "object",
+      "required": ["source_color_space", "source_pixel_format", "model_channel_order", "alpha", "orientation", "mirroring", "resize_interpolation", "resize_geometry", "normalization", "subject_crop"],
+      "properties": {
+        "source_color_space": { "const": "sRGB" },
+        "source_pixel_format": { "const": "32BGRA" },
+        "model_channel_order": { "const": ["R", "G", "B"] },
+        "alpha": { "const": "discard" },
+        "orientation": { "type": "string", "pattern": "^apply the ImageIO orientation exactly once" },
+        "mirroring": { "type": "string", "pattern": "no additional mirror" },
+        "resize_interpolation": { "const": "bilinear" },
+        "resize_geometry": { "const": "independent_scale_to_target" },
+        "normalization": {
+          "type": "object",
+          "required": ["formula", "value_range", "per_channel_offset", "per_channel_scale"],
+          "properties": {
+            "formula": { "const": "float8_channel / 255.0" },
+            "value_range": { "const": [0.0, 1.0] },
+            "per_channel_offset": { "const": [0.0, 0.0, 0.0] },
+            "per_channel_scale": { "const": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098] }
+          },
+          "additionalProperties": true
+        },
+        "subject_crop": {
+          "type": "object",
+          "required": ["recipe_version", "square_side", "clipping", "missing_crop"],
+          "properties": {
+            "recipe_version": { "const": "square_expand_1.25.v1" },
+            "square_side": { "const": "1.25 * max(roi.width_pixels, roi.height_pixels)" },
+            "clipping": { "type": "string", "pattern": "clip padded square to oriented full-frame bounds" },
+            "missing_crop": { "const": "zero-filled 192x192x3 tensor" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "categorical_features": {
+      "type": "object",
+      "required": ["orientation_category", "lens_category"],
+      "properties": {
+        "orientation_category": { "$ref": "#/$defs/orientationCatalog" },
+        "lens_category": { "$ref": "#/$defs/lensCatalog" }
+      },
+      "additionalProperties": true
+    },
+    "feature_normalization": {
+      "type": "object",
+      "required": ["feature_to_normalization"],
+      "properties": {
+        "feature_to_normalization": {
+          "type": "object",
+          "minProperties": 40,
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
     "outputs": {
       "type": "object",
-      "required": ["head_order", "heads", "forbidden_outputs"]
+      "required": ["head_order", "heads", "forbidden_outputs"],
+      "properties": {
+        "head_order": {
+          "type": "array",
+          "minItems": 9,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "heads": {
+          "type": "array",
+          "minItems": 9,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/headScene" },
+              { "$ref": "#/$defs/headSubjectness" },
+              { "$ref": "#/$defs/headIssues" },
+              { "$ref": "#/$defs/headActions" },
+              { "$ref": "#/$defs/headGoodFrame" },
+              { "$ref": "#/$defs/headAbstention" },
+              { "$ref": "#/$defs/headRisk" },
+              { "$ref": "#/$defs/headDeltas" },
+              { "$ref": "#/$defs/headEmbedding" }
+            ]
+          }
+        },
+        "forbidden_outputs": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
     }
+  },
+  "$defs": {
+    "rgbTensor": {
+      "type": "object",
+      "required": ["dtype", "shape", "channel_order", "value_range"],
+      "properties": {
+        "dtype": { "const": "float32" },
+        "shape": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 3, "maxItems": 3 },
+        "channel_order": { "const": ["R", "G", "B"] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": true
+    },
+    "binaryTensor": {
+      "type": "object",
+      "required": ["dtype", "shape", "value_range", "values", "rasterization", "missing_value"],
+      "properties": {
+        "dtype": { "const": "float32" },
+        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "value_range": { "const": [0.0, 1.0] },
+        "values": { "const": [0.0, 1.0] },
+        "rasterization": { "type": "string", "minLength": 1 },
+        "missing_value": { "const": 0.0 }
+      },
+      "additionalProperties": true
+    },
+    "orientationCatalog": {
+      "type": "object",
+      "required": ["count", "ordered_names", "index_semantics"],
+      "properties": {
+        "count": { "const": 8 },
+        "ordered_names": { "const": ["up", "up_mirrored", "down", "down_mirrored", "left_mirrored", "right", "right_mirrored", "left"] },
+        "index_semantics": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "lensCatalog": {
+      "type": "object",
+      "required": ["count", "ordered_names", "index_semantics"],
+      "properties": {
+        "count": { "const": 3 },
+        "ordered_names": { "const": ["ultra_wide", "wide", "tele"] },
+        "index_semantics": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "headBase": {
+      "type": "object",
+      "required": ["name", "dtype", "shape"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "dtype": { "const": "float32" },
+        "shape": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 1, "maxItems": 1 }
+      },
+      "additionalProperties": true
+    },
+    "headScene": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "scene_class_logits" }, "shape": { "const": [8] } } }] },
+    "headSubjectness": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "subjectness_roi_agreement_logits" }, "shape": { "const": [3] } } }] },
+    "headIssues": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "issue_logits" }, "shape": { "const": [8] } } }] },
+    "headActions": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "action_utility_logits" }, "shape": { "const": [26] } } }] },
+    "headGoodFrame": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "good_frame_probability" }, "shape": { "const": [1] }, "value_range": { "const": [0.0, 1.0] } }, "required": ["value_range"] }] },
+    "headAbstention": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "abstention_probability" }, "shape": { "const": [1] }, "value_range": { "const": [0.0, 1.0] } }, "required": ["value_range"] }] },
+    "headRisk": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "risk_probability" }, "shape": { "const": [1] }, "value_range": { "const": [0.0, 1.0] } }, "required": ["value_range"] }] },
+    "headDeltas": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "continuous_target_deltas" }, "shape": { "const": [5] }, "value_range": { "const": [-1.0, 1.0] } }, "required": ["value_range"] }] },
+    "headEmbedding": { "allOf": [{ "$ref": "#/$defs/headBase" }, { "properties": { "name": { "const": "embedding" }, "shape": { "const": [128] } } }] }
   },
   "additionalProperties": true
 }

@@ -1151,6 +1151,7 @@ enum SETCompositionNetContract {
     static let roiMaskWidth = 320
     static let roiMaskHeight = 320
     static let scalarFeatureCount = 40
+    static let scalarMissingFillValue = 0.0
     static let embeddingDimension = 128
 
     static let featureNames = [
@@ -1167,6 +1168,23 @@ enum SETCompositionNetContract {
         "subject_separation", "camera_exposure_bias"
     ]
 
+    /// Categorical values are indexed by these frozen catalogs. The values
+    /// intentionally mirror ImageIO's EXIF orientation order and
+    /// CameraLens.rawValue order; the manifest/checker reject reordering.
+    static let orientationCategoryNames = [
+        "up", "up_mirrored", "down", "down_mirrored",
+        "left_mirrored", "right", "right_mirrored", "left"
+    ]
+    static let lensCategoryNames = ["ultra_wide", "wide", "tele"]
+    static let signedFeatureNames = [
+        "saliency_left_right_balance",
+        "saliency_top_bottom_balance",
+        "saliency_subject_background_delta",
+        "horizon_angle",
+        "subject_luma_delta",
+        "camera_exposure_bias"
+    ]
+
     static let sceneClassNames = [
         "dialogue_closeup", "single_character_medium", "two_character_frame",
         "object_insert", "establishing_like_frame", "moody_backlit_subject",
@@ -1174,7 +1192,10 @@ enum SETCompositionNetContract {
     ]
     static let subjectnessROIAgreementNames = ["subjectness", "roi_agreement", "ambiguity"]
     static let issueNames = IssueTypeV1.allCases.map(\.rawValue)
-    static let actionUtilityNames = ActionTypeV1.allCases.map(\.rawValue)
+    /// Action utility is indexed by the approved v2 semantic catalog. The
+    /// legacy ActionTypeV1 transport IDs remain only in its explicit
+    /// CameraCoachContractV2 migration table and cannot become model heads.
+    static let actionUtilityNames = CameraCoachContractV2.production.approvedActionIDs
     static let targetDeltaNames = [
         "delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta"
     ]
@@ -1336,8 +1357,17 @@ struct SETCompositionNetInputTensors: Equatable, Sendable {
         }
         if scalarFeatures.contains(where: { !$0.isFinite }) {
             errors.append("compositionNet.scalarFeatures must be finite")
-        } else if scalarFeatures.contains(where: { $0 < -1 || $0 > 1 }) {
-            errors.append("compositionNet.scalarFeatures must be normalized within [-1, 1]")
+        } else if scalarFeatures.count == SETCompositionNetContract.scalarFeatureCount {
+            let signedFeatures = Set(SETCompositionNetContract.signedFeatureNames)
+            for (index, value) in scalarFeatures.enumerated() {
+                let name = SETCompositionNetContract.featureNames[index]
+                let lowerBound = signedFeatures.contains(name) ? -1.0 : 0.0
+                if value < lowerBound || value > 1.0 {
+                    errors.append(
+                        "compositionNet scalar feature \(name) must be normalized within [\(lowerBound), 1]"
+                    )
+                }
+            }
         }
         if missingFeatureMask.contains(where: { !$0.isFinite || ($0 != 0 && $0 != 1) }) {
             errors.append("compositionNet.missingFeatureMask values must be finite 0/1")
@@ -1346,6 +1376,33 @@ struct SETCompositionNetInputTensors: Equatable, Sendable {
             errors.append("compositionNet.roiMask values must be finite 0/1")
         }
         errors.append(contentsOf: roi.validate())
+        if scalarFeatures.count == SETCompositionNetContract.scalarFeatureCount,
+           missingFeatureMask.count == SETCompositionNetContract.scalarFeatureCount {
+            let scalarIndexes = Dictionary(
+                uniqueKeysWithValues: SETCompositionNetContract.featureNames.enumerated().map { ($1, $0) }
+            )
+            let expectedROIValues: [String: Double] = [
+                "roi_present": roi.present ? 1.0 : 0.0,
+                "roi_area_ratio": roi.present ? roi.width * roi.height : 0.0,
+                "roi_mask_coverage": roi.present
+                    ? SETCompositionNetContract.roiMask(for: roi).reduce(0.0, +)
+                        / Double(SETCompositionNetContract.roiMaskWidth * SETCompositionNetContract.roiMaskHeight)
+                    : 0.0
+            ]
+            for (name, expected) in expectedROIValues {
+                guard let index = scalarIndexes[name], missingFeatureMask[index] == 0 else { continue }
+                if abs(scalarFeatures[index] - expected) > 0.000001 {
+                    errors.append("compositionNet scalar feature \(name) is inconsistent with ROI/mask")
+                }
+            }
+            for index in 0..<SETCompositionNetContract.scalarFeatureCount
+            where missingFeatureMask[index] == 1.0
+                && scalarFeatures[index] != SETCompositionNetContract.scalarMissingFillValue {
+                errors.append(
+                    "compositionNet missing scalar \(SETCompositionNetContract.featureNames[index]) must use fill value 0.0"
+                )
+            }
+        }
         if roiMask.count == maskCount && roiMask != SETCompositionNetContract.roiMask(for: roi) {
             errors.append("compositionNet.roiMask does not match normalized ROI rasterization")
         }

@@ -1,82 +1,110 @@
 # M4-002 / M4-003 — SETCompositionNet-v1 contracts
 
-Task: Freeze the SETCompositionNet-v1 input/preprocessing/ROI/scalar-mask
-contract and the bounded multi-task output-head shape, then validate the same
-versioned shapes at the existing Swift runtime boundary.
+This correction is contract/parity work only. It does not add a model asset,
+training path, planner behavior, provider enablement, quality claim, or
+production availability change.
 
-Owner boundary: `ml/camera_coach/contracts/**`, the existing camera-analysis
-domain/runtime schema, and the existing `MetalPreprocessor` utility. No model,
-training, dataset, planner, provider, or production enablement change is part
-of this batch.
+## Frozen authority
 
-## Frozen contract
+`ml/camera_coach/contracts/set_composition_net_v1.json` is the checked
+machine-readable authority. Its explicit versions are:
 
-`set_composition_net_v1.json` is the machine-readable authority. It defines:
+- contract: `setcompositionnet.v1`
+- input: `setcompositionnet.input.v1`
+- preprocessing: `setcompositionnet.preprocessing.v1`
+- scalar features: `setcompositionnet.features.v1`
+- output: `setcompositionnet.output.v1`
 
-- sRGB 32BGRA transport converted to logical RGB HWC, alpha discarded, ImageIO
-  orientation applied exactly once, mirrored orientations honored without a
-  second mirror, bilinear/independent resize, and channel normalization by
-  `byte / 255.0`;
-- full-frame `320×320×3`, subject crop `192×192×3`, normalized top-left ROI
-  `xywh`, pixel-center ROI mask `320×320×1`, and a fixed ordered 40-value
-  scalar vector with an equally indexed 0/1 missing-feature mask;
-- nine ordered output heads: scene classes (8), subjectness/ROI agreement (3),
-  issues (8), action utility (10), good-frame probability (1), abstention
-  probability (1), risk probability (1), target deltas (5, bounded `[-1, 1]`),
-  and an internal embedding (128). Generated text and arbitrary object-name
-  outputs are forbidden.
+The input is HWC logical RGB: full frame `320×320×3`, subject crop
+`192×192×3`, normalized top-left `xywh` ROI, pixel-center `320×320×1` ROI
+mask, and 40 ordered scalar values with an equally indexed 0/1 missing mask.
+Missing scalars use the explicit fill value `0.0`; signed features and all
+other feature-specific ranges are enumerated in `feature_to_normalization`.
+ROI, mask, and the `roi_present` / `roi_area_ratio` / `roi_mask_coverage`
+scalars are cross-checked at the Swift and Python boundaries.
 
-Swift `SETCompositionNetContract` keeps the runtime catalog in the same order;
-the stdlib parity checker mechanically compares those declarations and the
-existing `IssueTypeV1` / `ActionTypeV1` enum order to the manifest. The runtime
-schema retains the pre-M4 H06 constructor for the active legacy boundary, while
-strict v1 input/output validation rejects absent tensors, wrong shapes,
-non-finite values, stale versions, unsupported heads, and ROI-mask drift.
+Preprocessing freezes sRGB 32BGRA transport, alpha discard, RGB order,
+`byte / 255.0`, ImageIO orientation exactly once, no extra mirror, bilinear
+sampling, independent resize, and a `1.25×` square ROI expansion clipped to
+oriented full-frame bounds before resize. `MetalPreprocessor` exposes a
+SET-specific logical RGB tensor seam using those rules. The shared legacy
+`resizedPixelBuffer` implementation remains unchanged for existing camera and
+CoreML callers.
+
+The nine ordered output heads are scene class (8), subjectness/ROI agreement
+(3), issue labels (8), bounded action utility (26), good-frame probability
+(1), abstention probability (1), risk probability (1), continuous target
+deltas (5, `[-1, 1]`), and internal embedding (128). Action utility derives
+from `CameraCoachContractV2.production.approvedActionIDs`, i.e. the ordered
+`SemanticActionType` v2 catalog. Legacy `ActionTypeV1` IDs such as
+`move_frame_*` and `change_angle` remain only in the explicit migration table;
+they are not model output heads. Generated text and arbitrary object names are
+forbidden.
+
+`SETCompositionNetRuntimeSchema` and `SETCompositionNetOutputHeads` reject
+missing, extra, wrong-sized, non-finite, out-of-range, or version-mismatched
+payloads. The correction adds focused negative coverage for scalar ranges,
+missing-fill and ROI scalar drift, embedding dimension 64, risk 99, removed
+heads, ROI/mask mismatch, and stale versions. Unavailable/failed states remain
+explicit and scoreless.
 
 ## Deterministic synthetic parity
 
-The fixtures use a 4×4 synthetic RGB byte pattern and deterministic scalar/head
-values only; they are not dataset or quality evidence. SHA-256 is over
-little-endian float32 values. The declared tolerances are pixel `1e-6` and
-scalar `1e-6`.
+The fixtures are a small deterministic 4×4 RGB byte pattern and synthetic
+scalar/head values; they are not dataset or quality evidence. Hashes are
+SHA-256 over little-endian float32 values. Declared pixel/scalar tolerances are
+`1e-6` / `1e-6`.
 
 Input hashes:
 
 | Tensor | SHA-256 |
 |---|---|
 | full frame RGB | `5ddc2c5c5c2dff60f1a2f3adcaaa9f7ff76ce6c4b140ff316a1edcb5f47a62f0` |
-| subject crop RGB | `c95a927a6b5d1d1a902201b29cb37684d5bc02f4edd9f4cf01f3fe40d6b56067` |
+| center subject crop RGB | `c95a927a6b5d1d1a902201b29cb37684d5bc02f4edd9f4cf01f3fe40d6b56067` |
+| top-left edge-clipped crop | `49fe6bf5661eedfda2f2443cd97c2c89dc6e8414430a04713d7472a9f9492788` |
+| bottom-right edge-clipped crop | `4e48b33dabbe3c774bfaeb08687293c30d617e09ad14314523bc0606e79d804f` |
 | ROI mask | `260802a4865f20a83e157c82bd3f07ab6a0eb13ff759db5c7cac65c54fa3e0bd` |
-| scalar features | `ffdd8c80ebfbc563858d2a9c704701f9038b694f1c3e8ad8fa0457f65eb3c281` |
+| scalar features | `b88d7c69932c3005c15018867013523b994651f75ace444d64cdc3de52b79292` |
 | missing-feature mask | `f70651d882c736a535bf6daca943049ddf7e824bd6cc6289a6d83066ad03817e` |
 
-Flattened output-head hash:
-`10f1f28b3d14542d2a4253d8c7ba71e1986579ee9eb20d76a5f5ff19e9bc567e`.
+Flattened output-head hash (including 26 action values and 128 embedding
+values):
+`357c2ef83b1bfd7f04f06d888e67507698152e2fd8942dbc3a5743b42019928d`.
 
 ## Verification evidence
 
-- JSON parsing and manifest self-consistency: `python3 -m json.tool` on all
-  four JSON artifacts — exit 0.
-- Deterministic Python checker, run twice sequentially:
-  `python3 ml/camera_coach/contracts/check_parity.py` — both receipts reported
-  `status=pass`, 40 scalar features, 9 output heads, the hashes above, and
-  byte-identical normalized output.
-- Swift command (ordinary iPhone 17, iOS 26.5):
-  `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F708A11-8262-4E09-9F3A-46C86381911D' -derivedDataPath /private/tmp/setos-m4-002-003-deriveddata-final5 -resultBundlePath /private/tmp/setos-m4-002-003-final5.xcresult -only-testing:shafinMultitoolTests/SETCompositionNetRuntimeSchemaTests -only-testing:shafinMultitoolTests/SETCompositionNetParityTests -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO` — 17 selected tests, 0 skipped, all passed. Result: `/private/tmp/setos-m4-002-003-final5.xcresult`.
-- `git diff --check` — exit 0; final path inspection is limited to the owned
-  contract, runtime/preprocessor, focused test, and evidence paths.
+- Stdlib JSON parsing: `python3 -m json.tool` on the manifest, schema, and both
+  fixtures — 4 files, exit 0.
+- Deterministic parity/mutation checker, twice sequentially:
+  `python3 ml/camera_coach/contracts/check_parity.py` — both receipts report
+  `status=pass`, 40 scalar features, 9 heads, center and both edge crop hashes,
+  output hash above, and all five mutation checks rejected. Receipts were
+  byte-identical (`cmp -s`) at `/private/tmp/setos-m4-fix-parity3.json` and
+  `/private/tmp/setos-m4-fix-parity4.json`.
+- Focused Swift tests on ordinary iPhone 17 simulator (UUID
+  `1F708A11-8262-4E09-9F3A-46C86381911D`, iOS 26.5), sequential xcodebuild,
+  diagnostics disabled:
 
-## Judgment calls and gaps
+  ```text
+  xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F708A11-8262-4E09-9F3A-46C86381911D' -derivedDataPath /private/tmp/setos-m4-fix-final-dd2 -resultBundlePath /private/tmp/setos-m4-fix-final2.xcresult -only-testing:shafinMultitoolTests/SETCompositionNetRuntimeSchemaTests -only-testing:shafinMultitoolTests/SETCompositionNetParityTests -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO
+  ```
 
-- The legacy H06 schema remains as a compatibility seam for the existing M2
-  provider; it is not treated as a v1 output and no malformed v1 payload is
-  coerced into it. Retirement trigger: a later provider/model integration
-  emits and consumes the strict v1 tensors and heads with its own focused
-  verification.
-- The current CoreML provider still calls its pre-M4 `256×256` / `160×160`
-  preprocessing path and is outside this owned file set. This batch adds the
-  exact `320×320` / `192×192` contract preprocessor seam and does not rebind or
-  enable that provider. Provider integration, model metadata, and production
-  availability remain a later M4 boundary.
-- No training, model asset, dataset, holdout, metric, candidate-quality, or
-  planner behavior claim is made here.
+  Result: `** TEST SUCCEEDED **`; 20 selected tests, 0 skipped. The parity
+  class exercised the production `setCompositionNetRGBTensors` path for center
+  and edge-clipped ROI fixtures; the schema class covered negative trust-boundary
+  cases.
+- `git diff --check` — exit 0.
+
+## Judgment calls and bounded gaps
+
+- A SET-specific logical RGB tensor API was added so fixture hashes exercise
+  production preprocessing without altering shared legacy pixel-buffer callers.
+  The existing CoreML provider still owns its pre-M4 `256×256` / `160×160`
+  path and remains outside this correction; no provider was rebound or enabled.
+- The v2 action head is intentionally the existing
+  `CameraCoachContractV2` / `SemanticActionType` catalog and migration source,
+  not the legacy 10-ID transport catalog. Future architecture/training work
+  must consume these shapes and preserve the version checks.
+- No training, model download, dataset/holdout inspection, metric, candidate
+  quality, planner, Visual Policy, UI, route, or production enablement claim is
+  made here.

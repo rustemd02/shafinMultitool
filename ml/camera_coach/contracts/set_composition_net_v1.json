@@ -89,6 +89,7 @@
         "shape": [40],
         "ordered_names": "same_as_scalar_features",
         "values": [0.0, 1.0],
+        "fill_value": 0.0,
         "semantics": "one means the equally indexed scalar feature is missing"
       }
     }
@@ -113,6 +114,27 @@
       "square_side": "1.25 * max(roi.width_pixels, roi.height_pixels)",
       "clipping": "clip padded square to oriented full-frame bounds before resize",
       "missing_crop": "zero-filled 192x192x3 tensor"
+    }
+  },
+  "categorical_features": {
+    "orientation_category": {
+      "count": 8,
+      "ordered_names": [
+        "up",
+        "up_mirrored",
+        "down",
+        "down_mirrored",
+        "left_mirrored",
+        "right",
+        "right_mirrored",
+        "left"
+      ],
+      "index_semantics": "ImageIO CGImagePropertyOrientation raw-value order 1 through 8"
+    },
+    "lens_category": {
+      "count": 3,
+      "ordered_names": ["ultra_wide", "wide", "tele"],
+      "index_semantics": "CameraLens.rawValue order"
     }
   },
   "feature_normalization": {
@@ -238,20 +260,38 @@
       {
         "name": "action_utility_logits",
         "dtype": "float32",
-        "shape": [10],
+        "shape": [26],
         "ordered_names": [
-          "move_frame_left",
-          "move_frame_right",
-          "move_frame_up",
-          "move_frame_down",
-          "increase_subject_size",
-          "reduce_background_distractions",
-          "change_angle",
-          "improve_front_light",
+          "shift_frame_left",
+          "shift_frame_right",
+          "shift_frame_up",
+          "shift_frame_down",
+          "step_back",
+          "step_closer",
+          "lower_camera",
+          "raise_camera",
+          "change_camera_angle",
           "level_horizon",
-          "leave_frame_as_is"
+          "rotate_subject_toward_light",
+          "move_subject_left",
+          "move_subject_right",
+          "move_subject_away_from_background",
+          "move_object_left",
+          "move_object_right",
+          "move_object_forward",
+          "move_object_back",
+          "remove_distracting_object",
+          "reposition_prop_for_balance",
+          "add_front_fill_light",
+          "add_background_light",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance",
+          "keep_current_setup"
         ],
-        "value_semantics": "bounded ActionTypeV1 utility logits"
+        "catalog_version": 2,
+        "catalog_source": "CameraCoachContractV2.production.approvedActionIDs",
+        "value_semantics": "bounded CameraCoachContractV2 approved SemanticActionType utility logits"
       },
       {
         "name": "good_frame_probability",

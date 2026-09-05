@@ -228,13 +228,33 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
 
     private func makeV1Tensors(
         roi: SETCompositionNetROI = SETCompositionNetROI(x: 0.3, y: 0.3, width: 0.3, height: 0.4),
+        inputContractVersion: String = SETCompositionNetContract.inputContractVersion,
+        preprocessingVersion: String = SETCompositionNetContract.preprocessingVersion,
+        featureVersion: String = SETCompositionNetContract.featureVersion,
         fullFrameRGB: [Double]? = nil,
         subjectCropRGB: [Double]? = nil,
         roiMask: [Double]? = nil,
         scalarFeatures: [Double]? = nil,
         missingFeatureMask: [Double]? = nil
     ) -> SETCompositionNetInputTensors {
-        SETCompositionNetInputTensors(
+        let defaultROI = SETCompositionNetContract.roiMask(for: roi)
+        var defaultScalars = Array(
+            repeating: 0.25,
+            count: SETCompositionNetContract.scalarFeatureCount
+        )
+        let scalarIndexes = Dictionary(
+            uniqueKeysWithValues: SETCompositionNetContract.featureNames.enumerated().map { ($1, $0) }
+        )
+        defaultScalars[scalarIndexes["roi_present"]!] = roi.present ? 1.0 : 0.0
+        defaultScalars[scalarIndexes["roi_area_ratio"]!] = roi.present ? roi.width * roi.height : 0.0
+        defaultScalars[scalarIndexes["roi_mask_coverage"]!] = roi.present
+            ? defaultROI.reduce(0.0, +) / Double(defaultROI.count)
+            : 0.0
+
+        return SETCompositionNetInputTensors(
+            inputContractVersion: inputContractVersion,
+            preprocessingVersion: preprocessingVersion,
+            featureVersion: featureVersion,
             fullFrameRGB: fullFrameRGB ?? Array(
                 repeating: 0.25,
                 count: SETCompositionNetContract.fullFrameWidth
@@ -246,11 +266,8 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
                     * SETCompositionNetContract.subjectCropHeight * 3
             ),
             roi: roi,
-            roiMask: roiMask ?? SETCompositionNetContract.roiMask(for: roi),
-            scalarFeatures: scalarFeatures ?? Array(
-                repeating: 0.25,
-                count: SETCompositionNetContract.scalarFeatureCount
-            ),
+            roiMask: roiMask ?? defaultROI,
+            scalarFeatures: scalarFeatures ?? defaultScalars,
             missingFeatureMask: missingFeatureMask ?? Array(
                 repeating: 0,
                 count: SETCompositionNetContract.scalarFeatureCount
@@ -298,6 +315,12 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
             "valid v1 output must validate: \(output.validate(request: request, generation: 5))"
         )
         XCTAssertEqual(heads.tensors.count, 9)
+        XCTAssertEqual(
+            SETCompositionNetContract.actionUtilityNames,
+            SemanticActionType.allCases.map(\.rawValue)
+        )
+        XCTAssertFalse(SETCompositionNetContract.actionUtilityNames.contains { $0.hasPrefix("move_frame_") })
+        XCTAssertFalse(SETCompositionNetContract.actionUtilityNames.contains("change_angle"))
         XCTAssertFalse(heads.tensors.keys.contains("generated_text"))
         XCTAssertFalse(heads.tensors.keys.contains("arbitrary_object_name"))
     }
@@ -321,6 +344,25 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
         XCTAssertTrue(errors.contains { $0.contains("roiMask") })
         XCTAssertTrue(errors.contains { $0.contains("scalarFeatures") })
         XCTAssertTrue(errors.contains { $0.contains("finite") })
+    }
+
+    func testV1InputRejectsVersionMismatches() {
+        let request = makeRequest()
+        let staleTensors = makeV1Tensors(
+            inputContractVersion: "setcompositionnet.input.v0",
+            preprocessingVersion: "setcompositionnet.preprocessing.v0",
+            featureVersion: "setcompositionnet.features.v0"
+        )
+        let input = SETCompositionNetInput(
+            request: request,
+            descriptor: v1Descriptor,
+            generation: 5,
+            tensors: staleTensors
+        )
+        let errors = input.validate()
+        XCTAssertTrue(errors.contains { $0.contains("inputContractVersion") })
+        XCTAssertTrue(errors.contains { $0.contains("preprocessingVersion") })
+        XCTAssertTrue(errors.contains { $0.contains("featureVersion") })
     }
 
     func testV1InputRejectsInvalidROIAndNonZeroMissingMask() {
@@ -354,6 +396,47 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
         XCTAssertTrue(missingInput.validate().contains { $0.contains("roiMask") })
     }
 
+    func testV1InputRejectsFeatureRangeMissingFillAndROIScalarDrift() {
+        let request = makeRequest()
+        let roi = SETCompositionNetROI(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+
+        var outOfRangeScalars = makeV1Tensors(roi: roi).scalarFeatures
+        outOfRangeScalars[15] = 2.0 // signed saliency balance is bounded [-1, 1]
+        let outOfRange = SETCompositionNetInput(
+            request: request,
+            descriptor: v1Descriptor,
+            generation: 5,
+            tensors: makeV1Tensors(roi: roi, scalarFeatures: outOfRangeScalars)
+        )
+        XCTAssertTrue(outOfRange.validate().contains { $0.contains("saliency_left_right_balance") })
+
+        var nonZeroMissingScalars = makeV1Tensors(roi: roi).scalarFeatures
+        var missingMask = Array(repeating: 0.0, count: SETCompositionNetContract.scalarFeatureCount)
+        missingMask[4] = 1.0
+        nonZeroMissingScalars[4] = 0.25
+        let nonZeroMissing = SETCompositionNetInput(
+            request: request,
+            descriptor: v1Descriptor,
+            generation: 5,
+            tensors: makeV1Tensors(
+                roi: roi,
+                scalarFeatures: nonZeroMissingScalars,
+                missingFeatureMask: missingMask
+            )
+        )
+        XCTAssertTrue(nonZeroMissing.validate().contains { $0.contains("fill value") })
+
+        var driftedScalars = makeV1Tensors(roi: roi).scalarFeatures
+        driftedScalars[36] = 0.1
+        let roiDrift = SETCompositionNetInput(
+            request: request,
+            descriptor: v1Descriptor,
+            generation: 5,
+            tensors: makeV1Tensors(roi: roi, scalarFeatures: driftedScalars)
+        )
+        XCTAssertTrue(roiDrift.validate().contains { $0.contains("roi_area_ratio") })
+    }
+
     func testV1OutputRejectsMissingWrongSizedNonFiniteUnsupportedAndVersionedHeads() {
         let request = makeRequest()
         var raw = makeV1Heads().tensors
@@ -374,6 +457,21 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
         XCTAssertTrue(errors.contains { $0.contains("finite") })
         XCTAssertTrue(errors.contains { $0.contains("outputContractVersion") })
         XCTAssertTrue(errors.contains { $0.contains("continuous_target_deltas") && $0.contains("[-1, 1]") })
+    }
+
+    func testV1OutputRejectsEmbedding64AndRisk99Mutations() {
+        let request = makeRequest()
+        var raw = makeV1Heads().tensors
+        raw["embedding"] = Array(repeating: 0.1, count: 64)
+        raw["risk_probability"] = [99.0]
+        let output = SETCompositionNetOutput.availableV1(
+            request: request,
+            generation: 5,
+            heads: makeV1Heads(tensors: raw)
+        )
+        let errors = output.validate(request: request, generation: 5)
+        XCTAssertTrue(errors.contains { $0.contains("embedding") && $0.contains("128 values") })
+        XCTAssertTrue(errors.contains { $0.contains("risk_probability") && $0.contains("[0, 1]") })
     }
 
     // MARK: - Explicit unavailable / failed states
@@ -449,19 +547,33 @@ final class SETCompositionNetParityTests: XCTestCase {
     }
 
     func testSyntheticPythonSwiftParityFixtureHashes() {
-        let source = (0..<48).map { Double($0) / 255.0 }
-        let full = bilinearResize(source, sourceWidth: 4, sourceHeight: 4, targetWidth: 320, targetHeight: 320)
+        guard let sourceBuffer = makeSyntheticSourceBuffer() else {
+            return XCTFail("synthetic source buffer must be created")
+        }
         let roi = SETCompositionNetROI(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
-        let crop = squareCrop(source, sourceWidth: 4, sourceHeight: 4, roi: roi, targetWidth: 192, targetHeight: 192)
-        let scalar = (0..<40).map { Double($0) / 39.0 }
+        let preprocessor = MetalPreprocessor()
+        guard let tensors = preprocessor.setCompositionNetRGBTensors(
+            from: sourceBuffer,
+            orientation: .up,
+            roi: roi
+        ) else {
+            return XCTFail("SETCompositionNet production tensors must be created")
+        }
+        var scalar = (0..<40).map { Double($0) / 39.0 }
+        scalar[5] = 0.0
+        scalar[17] = 0.0
+        scalar[31] = 0.0
+        scalar[35] = 1.0
+        scalar[36] = 0.25
+        scalar[37] = 0.25
         let missing = (0..<40).map { [5, 17, 31].contains($0) ? 1.0 : 0.0 }
 
         XCTAssertEqual(
-            sha256Float32(full),
+            sha256Float32(tensors.fullFrameRGB),
             "5ddc2c5c5c2dff60f1a2f3adcaaa9f7ff76ce6c4b140ff316a1edcb5f47a62f0"
         )
         XCTAssertEqual(
-            sha256Float32(crop),
+            sha256Float32(tensors.subjectCropRGB),
             "c95a927a6b5d1d1a902201b29cb37684d5bc02f4edd9f4cf01f3fe40d6b56067"
         )
         XCTAssertEqual(
@@ -470,112 +582,73 @@ final class SETCompositionNetParityTests: XCTestCase {
         )
         XCTAssertEqual(
             sha256Float32(scalar),
-            "ffdd8c80ebfbc563858d2a9c704701f9038b694f1c3e8ad8fa0457f65eb3c281"
+            "b88d7c69932c3005c15018867013523b994651f75ace444d64cdc3de52b79292"
         )
         XCTAssertEqual(
             sha256Float32(missing),
             "f70651d882c736a535bf6daca943049ddf7e824bd6cc6289a6d83066ad03817e"
         )
 
-        XCTAssertEqual(full[(160 * 320 + 160) * 3], 0.0886029411764706, accuracy: 0.000001)
-        XCTAssertEqual(crop[(96 * 192 + 96) * 3], 0.0886182598039216, accuracy: 0.000001)
+        XCTAssertEqual(tensors.fullFrameRGB.count, 320 * 320 * 3)
+        XCTAssertEqual(tensors.subjectCropRGB.count, 192 * 192 * 3)
+        XCTAssertEqual(tensors.fullFrameRGB[(160 * 320 + 160) * 3], 0.0886029411764706, accuracy: 0.000001)
+        XCTAssertEqual(tensors.subjectCropRGB[(96 * 192 + 96) * 3], 0.0886182598039216, accuracy: 0.000001)
+
+        let edgeCases: [(String, SETCompositionNetROI, String)] = [
+            (
+                "top_left_padded_square_clip",
+                SETCompositionNetROI(x: 0.0, y: 0.0, width: 0.2, height: 0.2),
+                "49fe6bf5661eedfda2f2443cd97c2c89dc6e8414430a04713d7472a9f9492788"
+            ),
+            (
+                "bottom_right_padded_square_clip",
+                SETCompositionNetROI(x: 0.8, y: 0.8, width: 0.2, height: 0.2),
+                "4e48b33dabbe3c774bfaeb08687293c30d617e09ad14314523bc0606e79d804f"
+            )
+        ]
+        for (fixtureID, edgeROI, expectedHash) in edgeCases {
+            guard let edgeTensors = preprocessor.setCompositionNetRGBTensors(
+                from: sourceBuffer,
+                orientation: .up,
+                roi: edgeROI
+            ) else {
+                return XCTFail("SETCompositionNet production edge fixture must be created: \(fixtureID)")
+            }
+            XCTAssertEqual(sha256Float32(edgeTensors.subjectCropRGB), expectedHash, fixtureID)
+        }
     }
 
-    private func bilinearResize(_ source: [Double],
-                                sourceWidth: Int,
-                                sourceHeight: Int,
-                                targetWidth: Int,
-                                targetHeight: Int) -> [Double] {
-        var output: [Double] = []
-        output.reserveCapacity(targetWidth * targetHeight * 3)
-        for targetY in 0..<targetHeight {
-            let sourceY = max(
-                0.0,
-                min(
-                    Double(sourceHeight - 1),
-                    (Double(targetY) + 0.5) * Double(sourceHeight) / Double(targetHeight) - 0.5
-                )
-            )
-            let y0 = Int(sourceY)
-            let y1 = min(y0 + 1, sourceHeight - 1)
-            let yWeight = sourceY - Double(y0)
-            for targetX in 0..<targetWidth {
-                let sourceX = max(
-                    0.0,
-                    min(
-                        Double(sourceWidth - 1),
-                        (Double(targetX) + 0.5) * Double(sourceWidth) / Double(targetWidth) - 0.5
-                    )
-                )
-                let x0 = Int(sourceX)
-                let x1 = min(x0 + 1, sourceWidth - 1)
-                let xWeight = sourceX - Double(x0)
-                for channel in 0..<3 {
-                    let topLeft = source[(y0 * sourceWidth + x0) * 3 + channel]
-                    let topRight = source[(y0 * sourceWidth + x1) * 3 + channel]
-                    let bottomLeft = source[(y1 * sourceWidth + x0) * 3 + channel]
-                    let bottomRight = source[(y1 * sourceWidth + x1) * 3 + channel]
-                    let top = (1.0 - xWeight) * topLeft + xWeight * topRight
-                    let bottom = (1.0 - xWeight) * bottomLeft + xWeight * bottomRight
-                    output.append((1.0 - yWeight) * top + yWeight * bottom)
-                }
+    private func makeSyntheticSourceBuffer() -> CVPixelBuffer? {
+        var sourceBuffer: CVPixelBuffer?
+        guard CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            4,
+            4,
+            kCVPixelFormatType_32BGRA,
+            nil,
+            &sourceBuffer
+        ) == kCVReturnSuccess,
+        let sourceBuffer,
+        CVPixelBufferLockBaseAddress(sourceBuffer, []) == kCVReturnSuccess else {
+            return nil
+        }
+        defer { CVPixelBufferUnlockBaseAddress(sourceBuffer, []) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(sourceBuffer) else {
+            return nil
+        }
+        let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(sourceBuffer)
+        for row in 0..<4 {
+            for column in 0..<4 {
+                let pixel = row * bytesPerRow + column * 4
+                let sourceOffset = (row * 4 + column) * 3
+                bytes[pixel] = UInt8(sourceOffset + 2)       // B
+                bytes[pixel + 1] = UInt8(sourceOffset + 1)   // G
+                bytes[pixel + 2] = UInt8(sourceOffset)       // R
+                bytes[pixel + 3] = 255                       // alpha, discarded
             }
         }
-        return output
-    }
-
-    private func squareCrop(_ source: [Double],
-                            sourceWidth: Int,
-                            sourceHeight: Int,
-                            roi: SETCompositionNetROI,
-                            targetWidth: Int,
-                            targetHeight: Int) -> [Double] {
-        let rawX = roi.x * Double(sourceWidth)
-        let rawY = roi.y * Double(sourceHeight)
-        let rawWidth = roi.width * Double(sourceWidth)
-        let rawHeight = roi.height * Double(sourceHeight)
-        let side = max(rawWidth, rawHeight) * 1.25
-        let left = max(0.0, rawX + rawWidth / 2.0 - side / 2.0)
-        let top = max(0.0, rawY + rawHeight / 2.0 - side / 2.0)
-        let right = min(Double(sourceWidth), left + side)
-        let bottom = min(Double(sourceHeight), top + side)
-
-        var output: [Double] = []
-        output.reserveCapacity(targetWidth * targetHeight * 3)
-        for targetY in 0..<targetHeight {
-            let sourceY = max(
-                0.0,
-                min(
-                    Double(sourceHeight - 1),
-                    top + (Double(targetY) + 0.5) * (bottom - top) / Double(targetHeight) - 0.5
-                )
-            )
-            let y0 = Int(sourceY)
-            let y1 = min(y0 + 1, sourceHeight - 1)
-            let yWeight = sourceY - Double(y0)
-            for targetX in 0..<targetWidth {
-                let sourceX = max(
-                    0.0,
-                    min(
-                        Double(sourceWidth - 1),
-                        left + (Double(targetX) + 0.5) * (right - left) / Double(targetWidth) - 0.5
-                    )
-                )
-                let x0 = Int(sourceX)
-                let x1 = min(x0 + 1, sourceWidth - 1)
-                let xWeight = sourceX - Double(x0)
-                for channel in 0..<3 {
-                    let topLeft = source[(y0 * sourceWidth + x0) * 3 + channel]
-                    let topRight = source[(y0 * sourceWidth + x1) * 3 + channel]
-                    let bottomLeft = source[(y1 * sourceWidth + x0) * 3 + channel]
-                    let bottomRight = source[(y1 * sourceWidth + x1) * 3 + channel]
-                    let topValue = (1.0 - xWeight) * topLeft + xWeight * topRight
-                    let bottomValue = (1.0 - xWeight) * bottomLeft + xWeight * bottomRight
-                    output.append((1.0 - yWeight) * topValue + yWeight * bottomValue)
-                }
-            }
-        }
-        return output
+        return sourceBuffer
     }
 
     private func sha256Float32(_ values: [Double]) -> String {

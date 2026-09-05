@@ -20,7 +20,7 @@
     "scene_class_logits": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
     "subjectness_roi_agreement_logits": [0.1, 0.2, 0.3],
     "issue_logits": [-0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3],
-    "action_utility_logits": [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1],
+    "action_utility_logits": [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.2, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26],
     "good_frame_probability": [0.8],
     "abstention_probability": [0.1],
     "risk_probability": [0.05],
@@ -45,6 +45,6 @@
     ]
   },
   "expected": {
-    "flattened_float32_sha256": "10f1f28b3d14542d2a4253d8c7ba71e1986579ee9eb20d76a5f5ff19e9bc567e"
+    "flattened_float32_sha256": "357c2ef83b1bfd7f04f06d888e67507698152e2fd8942dbc3a5743b42019928d"
   }
 }
