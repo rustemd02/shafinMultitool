@@ -997,31 +997,31 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
 
 def validate_split_isolation(records: list[dict[str, Any]]) -> list[str]:
     errors: list[str] = []
-    family_splits: dict[str, set[str]] = {}
+    family_splits: dict[tuple[str, str], set[str]] = {}
     for record in records:
         if not isinstance(record, dict):
             continue
         provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
         capture = record.get("capture") if isinstance(record.get("capture"), dict) else {}
         families = [
-            value
-            for value in (
-                provenance.get("source_shoot_id"),
-                capture.get("scene_family_id"),
-                capture.get("take_family_id"),
-                capture.get("time_family_id"),
-                capture.get("location_family_id"),
-                capture.get("device_family_id"),
-                provenance.get("derivation_family_id"),
+            (category, value)
+            for category, value in (
+                ("source_shoot_id", provenance.get("source_shoot_id")),
+                ("scene_family_id", capture.get("scene_family_id")),
+                ("take_family_id", capture.get("take_family_id")),
+                ("time_family_id", capture.get("time_family_id")),
+                ("location_family_id", capture.get("location_family_id")),
+                ("device_family_id", capture.get("device_family_id")),
+                ("derivation_family_id", provenance.get("derivation_family_id")),
             )
             if isinstance(value, str)
         ]
-        families += _string_values(capture.get("person_family_ids"))
+        families += [("person_family_id", value) for value in _string_values(capture.get("person_family_ids"))]
         split = record.get("split")
-        for family in families:
+        for category, family in families:
             if family and isinstance(split, str):
-                family_splits.setdefault(family, set()).add(split)
-    for family, splits in family_splits.items():
+                family_splits.setdefault((category, family), set()).add(split)
+    for (_, family), splits in family_splits.items():
         admitted = splits & {"train", "calibration", "holdout"}
         if len(admitted) > 1:
             errors.append(_error("family_cross_split", family))
@@ -1494,6 +1494,15 @@ def self_test() -> None:
     }
     assert not validate_record(select_subject, manifests, fixture_mode=True)
     assert not validate_split_isolation(valid_records)
+    namespace_overlap = copy.deepcopy(valid_records[:2])
+    namespace_overlap[0]["split"] = "train"
+    namespace_overlap[1]["split"] = "holdout"
+    namespace_overlap[0]["capture"]["scene_family_id"] = "shared-id"
+    namespace_overlap[1]["capture"]["device_family_id"] = "shared-id"
+    assert not validate_split_isolation(namespace_overlap)
+    same_category_overlap = copy.deepcopy(namespace_overlap)
+    same_category_overlap[1]["capture"]["scene_family_id"] = "shared-id"
+    assert validate_split_isolation(same_category_overlap) == ["family_cross_split: shared-id"]
     invalid_passes = 0
     for case in fixture["invalid_cases"]:
         base = next(record for record in valid_records if record["record_id"] == case["base_record_id"])
@@ -1511,7 +1520,7 @@ def self_test() -> None:
     assert invalid_passes == len(fixture["invalid_cases"]), (invalid_passes, len(fixture["invalid_cases"]))
     print(f"PASS M3-002 schemas matrix_classes={len(MATRIX_CLASSES)} actions={len(ACTION_IDS)} keep=1 abstain=1")
     print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes}")
-    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation")
+    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected")
     print("PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending")
     print(f"PASS camera-coach self-test valid={len(valid_records)} invalid={invalid_passes}")
 
