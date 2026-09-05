@@ -32,6 +32,28 @@ final class CameraCoachProductionUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    func testNoisyFrameOcclusionSignalKeepsAdviceOnSafeEdgeInBothOrientations() {
+        let cases: [(UIDeviceOrientation, String)] = [
+            (.portrait, "camera-noisy-frame-portrait"),
+            (.landscapeLeft, "camera-noisy-frame-landscape")
+        ]
+
+        for (orientation, attachmentName) in cases {
+            let app = launch(
+                fixture: "camera.noisy-frame",
+                locale: "en",
+                orientation: orientation,
+                runtimeSignal: "noisy-frame"
+            )
+            assertRoot("camera.noisy-frame", in: app)
+            assertStableCameraIdentifiers(in: app)
+            attachScreenshot(app, named: attachmentName)
+            app.terminate()
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     func testProductionLiveStateMatrix() {
         let fixtures = [
             "camera.seeking",
@@ -165,7 +187,8 @@ final class CameraCoachProductionUITests: XCTestCase {
         locale: String,
         orientation: UIDeviceOrientation,
         reduceMotion: Bool = false,
-        dynamicType: Bool = false
+        dynamicType: Bool = false,
+        runtimeSignal: String? = nil
     ) -> XCUIApplication {
         XCUIDevice.shared.orientation = orientation
         let app = XCUIApplication()
@@ -178,6 +201,9 @@ final class CameraCoachProductionUITests: XCTestCase {
         }
         if dynamicType {
             app.launchArguments += ["-SHAFIN_SET_DYNAMIC_TYPE", "xxl"]
+        }
+        if let runtimeSignal {
+            app.launchArguments += ["-SHAFIN_CAMERA_RUNTIME_SIGNAL", runtimeSignal]
         }
         app.launch()
         return app

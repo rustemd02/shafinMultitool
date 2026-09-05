@@ -18,13 +18,19 @@ enum CameraAnalysisFailure: String, Equatable, Sendable {
 enum CameraAnalysisRuntimeSignal {
     static let failureNotification = Notification.Name("CameraAnalysisDidFail")
     static let failureUserInfoKey = "failure"
+    static let generationUserInfoKey = "generation"
 
     static func publishFailure(_ failure: CameraAnalysisFailure,
+                               generation: UInt64? = nil,
                                notificationCenter: NotificationCenter = .default) {
+        var userInfo: [AnyHashable: Any] = [failureUserInfoKey: failure]
+        if let generation {
+            userInfo[generationUserInfoKey] = generation
+        }
         notificationCenter.post(
             name: failureNotification,
             object: nil,
-            userInfo: [failureUserInfoKey: failure]
+            userInfo: userInfo
         )
     }
 }

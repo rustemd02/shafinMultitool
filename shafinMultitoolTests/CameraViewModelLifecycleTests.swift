@@ -226,6 +226,74 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         await fixture.viewModel.releaseAndWait()
     }
 
+    func testPipelineTerminalFailurePublishesOnceAndClearsViewModelProjection() async {
+        let fixture = makeFixture(startPlans: [.init(succeeds: true)])
+        await fixture.viewModel.startAndWait()
+
+        fixture.viewModel.liveHint = LiveHintPresentation(
+            id: "producer-failure-hint",
+            frameId: "producer-failure-frame",
+            text: "Move the frame.",
+            confidence: 0.8,
+            actionType: .moveFrameLeft,
+            actionId: "producer-failure-action",
+            linkedIssueIds: [],
+            summaryId: nil,
+            traceRootIds: [],
+            targetRegion: NormalizedRect(x: 0.7, y: 0.2, width: 0.2, height: 0.3),
+            overlayHint: OverlayHint(
+                id: "producer-failure-arrow",
+                kind: .arrow,
+                targetRegion: NormalizedRect(x: 0.7, y: 0.2, width: 0.2, height: 0.3),
+                direction: .left
+            ),
+            isFallback: false,
+            expandedVerdict: nil
+        )
+        fixture.viewModel.overlayAnnotations = [
+            OverlayAnnotationPresentation(
+                id: "producer-failure-annotation",
+                kind: .regionHighlight,
+                direction: nil,
+                targetRegion: NormalizedRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                emphasis: 1
+            )
+        ]
+
+        let failureNotification = expectation(description: "one terminal failure notification")
+        failureNotification.expectedFulfillmentCount = 1
+        var notificationCount = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: CameraAnalysisRuntimeSignal.failureNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            notificationCount += 1
+            failureNotification.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let generation = fixture.pipeline.testingLifecycleGeneration
+        let staleGeneration = generation == 0 ? UInt64.max : generation - 1
+        fixture.pipeline.testingPublishAnalysisRuntimeFailure(
+            .failed,
+            generation: staleGeneration
+        )
+        XCTAssertEqual(notificationCount, 0)
+
+        fixture.pipeline.testingPublishAnalysisRuntimeFailure(.failed)
+        fixture.pipeline.testingPublishAnalysisRuntimeFailure(.failed)
+        await fulfillment(of: [failureNotification], timeout: 1)
+
+        XCTAssertEqual(notificationCount, 1)
+        XCTAssertEqual(fixture.viewModel.analysisStatus, .failed)
+        XCTAssertEqual(fixture.viewModel.analysisFailure, .failed)
+        XCTAssertNil(fixture.viewModel.liveHint)
+        XCTAssertTrue(fixture.viewModel.overlayAnnotations.isEmpty)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
     func testInterruptionClearsProjectionReleasesOnceAndRetryWaitsForCleanup() async {
         let fixture = makeFixture(startPlans: [
             .init(succeeds: true),

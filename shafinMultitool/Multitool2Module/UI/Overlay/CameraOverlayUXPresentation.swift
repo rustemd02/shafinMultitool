@@ -205,10 +205,18 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
 
         let mappedOverlayHint: OverlayHint?
         if shouldShowSpatialAdvice, liveHint.actionType != nil {
-            mappedOverlayHint = safeOverlayHint(from: liveHint.overlayHint)
+            let targetRegion = context.episodeState.baseline == nil
+                ? liveHint.overlayHint?.targetRegion
+                : frozenTargetRegion(for: context.episodeState, liveHint: liveHint)
+            mappedOverlayHint = safeOverlayHint(
+                from: liveHint.overlayHint,
+                targetRegion: targetRegion
+            )
         } else {
             mappedOverlayHint = nil
         }
+
+        let episodeEventID = context.episodeState.token.map { $0.rawValue.uuidString }
 
         return CameraOverlayUXPresentation(
             state: mapped.state,
@@ -216,13 +224,18 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             observation: mapped.observation,
             actionInstruction: mapped.actionInstruction,
             explanation: mapped.explanation,
-            supportingObservation: mapped.supportingObservation,
+            supportingObservation: mapped.supportingObservation
+                ?? ecoCopy(for: context.performance.mode, locale: locale),
             showsWhy: mapped.showsWhy,
             isFallback: liveHint.isFallback,
             liveHintID: liveHint.id,
             targetRegion: mappedOverlayHint?.targetRegion,
             overlayHint: mappedOverlayHint,
-            eventID: liveHint.id,
+            // A live hint ID is reusable across frames/episodes. Marker
+            // animation identity belongs to the unique domain episode token;
+            // without it, the presentation fails closed instead of replaying a
+            // decorative mark during re-render or rotation.
+            eventID: episodeEventID,
             effectivePerformanceMode: context.performance.mode,
             analysisStatus: context.analysisStatus
         )
@@ -348,7 +361,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             observation: copy.localizedString(locale: locale),
             actionInstruction: nil,
             explanation: nil,
-            supportingObservation: nil,
+            supportingObservation: ecoCopy(for: context.performance.mode, locale: locale),
             showsWhy: false,
             isFallback: false,
             liveHintID: nil,
@@ -371,7 +384,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             observation: SETCopyKey.cameraSeeking.localizedString(locale: locale),
             actionInstruction: nil,
             explanation: nil,
-            supportingObservation: nil,
+            supportingObservation: ecoCopy(for: effectivePerformanceMode, locale: locale),
             showsWhy: false,
             isFallback: false,
             liveHintID: nil,
@@ -394,7 +407,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             observation: SETCopyKey.cameraFallback.localizedString(locale: locale),
             actionInstruction: nil,
             explanation: nil,
-            supportingObservation: nil,
+            supportingObservation: ecoCopy(for: effectivePerformanceMode, locale: locale),
             showsWhy: false,
             isFallback: true,
             liveHintID: nil,
@@ -495,9 +508,10 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         return text
     }
 
-    private static func safeOverlayHint(from hint: OverlayHint?) -> OverlayHint? {
+    private static func safeOverlayHint(from hint: OverlayHint?,
+                                        targetRegion: NormalizedRect?) -> OverlayHint? {
         guard let hint, isUsableIdentifier(hint.id) else { return nil }
-        let targetRegion = safeRegion(from: hint.targetRegion)
+        let targetRegion = safeRegion(from: targetRegion)
 
         switch hint.kind {
         case .arrow:
@@ -524,6 +538,36 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     private static func safeRegion(from region: NormalizedRect?) -> NormalizedRect? {
         guard let region, !region.isDegenerate else { return nil }
         return region
+    }
+
+    private static func ecoCopy(for mode: CameraEffectivePerformanceMode,
+                                locale: Locale) -> String? {
+        mode == .eco ? SETCopyKey.cameraEco.localizedString(locale: locale) : nil
+    }
+
+    /// Baseline geometry is frozen by the episode owner. Directional actions
+    /// use the M2-004 subject destination; other subject-bound marks stay on
+    /// the accepted subject region. No mutable per-frame rectangle is allowed
+    /// to replace this geometry once a token exists.
+    private static func frozenTargetRegion(
+        for episodeState: CoachingEpisodeState,
+        liveHint: LiveHintPresentation
+    ) -> NormalizedRect? {
+        guard let baseline = episodeState.baseline,
+              let subjectRegion = baseline.subjectRegion else {
+            return nil
+        }
+        if let semanticAction = SemanticActionType(rawValue: baseline.actionID),
+           let targetRegion = semanticAction.subjectTargetRegion(from: subjectRegion) {
+            return targetRegion
+        }
+        if let legacyAction = ActionTypeV1(rawValue: baseline.actionID) {
+            if let targetRegion = legacyAction.subjectTargetRegion(from: subjectRegion) {
+                return targetRegion
+            }
+        }
+        guard liveHint.overlayHint?.kind == .regionHighlight else { return nil }
+        return subjectRegion
     }
 
 }

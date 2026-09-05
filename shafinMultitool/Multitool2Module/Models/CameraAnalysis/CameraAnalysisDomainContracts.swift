@@ -3988,6 +3988,96 @@ extension SemanticDirection {
             return (centerX, centerY)
         }
     }
+
+    /// The compact destination region for a subject-displacement marker. The
+    /// region is placed in the free edge band in the same direction as the
+    /// M2-004 subject target point; it is never manufactured inside the
+    /// subject rectangle. A subject already touching that edge has no honest
+    /// destination geometry and therefore returns nil.
+    func subjectTargetRegion(from subjectFrame: NormalizedRect,
+                             maximumExtent: Double = 0.12) -> NormalizedRect? {
+        guard !subjectFrame.isDegenerate,
+              subjectFrame.x >= 0,
+              subjectFrame.y >= 0,
+              subjectFrame.x + subjectFrame.width <= 1,
+              subjectFrame.y + subjectFrame.height <= 1 else {
+            return nil
+        }
+
+        let extent = min(0.16, max(0.06, maximumExtent.isFinite ? maximumExtent : 0.12))
+        let crossExtent = min(0.18, max(0.06, subjectFrame.height * 0.65))
+        let centerY = subjectFrame.y + subjectFrame.height * 0.5
+        let centerX = subjectFrame.x + subjectFrame.width * 0.5
+
+        switch self {
+        case .left, .right:
+            let freeWidth: Double = self == .left
+                ? subjectFrame.x
+                : 1.0 - (subjectFrame.x + subjectFrame.width)
+            guard freeWidth > 0.02 else { return nil }
+            let width = min(extent, freeWidth * 0.80)
+            let x = self == .left ? 0 : 1.0 - width
+            let y = min(1.0 - crossExtent, max(0, centerY - crossExtent * 0.5))
+            return NormalizedRect(x: x, y: y, width: width, height: crossExtent)
+        case .up, .down:
+            let freeHeight: Double = self == .up
+                ? subjectFrame.y
+                : 1.0 - (subjectFrame.y + subjectFrame.height)
+            guard freeHeight > 0.02 else { return nil }
+            let height = min(extent, freeHeight * 0.80)
+            let x = min(1.0 - crossExtent, max(0, centerX - crossExtent * 0.5))
+            let y = self == .up ? 0 : 1.0 - height
+            return NormalizedRect(x: x, y: y, width: crossExtent, height: height)
+        case .forward, .back, .none:
+            return nil
+        }
+    }
+}
+
+extension SemanticActionType {
+    /// Camera-framed semantic actions are expressed to the operator as the
+    /// subject's resulting displacement. This is the only direction mapping
+    /// used to derive live marker geometry.
+    var subjectDisplacementDirection: SemanticDirection? {
+        switch self {
+        case .shiftFrameLeft:
+            return SemanticDirection.left.subjectDisplacement(actionFrame: .moveCamera)
+        case .shiftFrameRight:
+            return SemanticDirection.right.subjectDisplacement(actionFrame: .moveCamera)
+        case .shiftFrameUp:
+            return SemanticDirection.up.subjectDisplacement(actionFrame: .moveCamera)
+        case .shiftFrameDown:
+            return SemanticDirection.down.subjectDisplacement(actionFrame: .moveCamera)
+        default:
+            return nil
+        }
+    }
+
+    func subjectTargetRegion(from subjectFrame: NormalizedRect) -> NormalizedRect? {
+        subjectDisplacementDirection?.subjectTargetRegion(from: subjectFrame)
+    }
+}
+
+extension ActionTypeV1 {
+    /// Legacy V1 action IDs are migrated to the same M2-004 semantic direction
+    /// before a production RecommendationAction receives a target region.
+    var subjectDisplacementSemanticAction: SemanticActionType? {
+        switch self {
+        case .moveFrameLeft: return .shiftFrameLeft
+        case .moveFrameRight: return .shiftFrameRight
+        case .moveFrameUp: return .shiftFrameUp
+        case .moveFrameDown: return .shiftFrameDown
+        default: return nil
+        }
+    }
+
+    var subjectDisplacementDirection: SemanticDirection? {
+        subjectDisplacementSemanticAction?.subjectDisplacementDirection
+    }
+
+    func subjectTargetRegion(from subjectFrame: NormalizedRect) -> NormalizedRect? {
+        subjectDisplacementSemanticAction?.subjectTargetRegion(from: subjectFrame)
+    }
 }
 
 extension SemanticTipDefinition {

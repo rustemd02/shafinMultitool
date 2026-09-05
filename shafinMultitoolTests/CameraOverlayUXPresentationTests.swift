@@ -461,6 +461,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             .lensSwitching
         )
 
+        let limitedLocale = Locale(identifier: "en")
         let limited = CameraOverlayUXPresentation.make(
             liveHint: hint,
             context: CameraOverlayUXContext(
@@ -473,12 +474,16 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
                     ),
                     thermalTier: .constrained
                 )
-            )
+            ),
+            locale: limitedLocale
         )
         XCTAssertEqual(limited.state, CameraOverlayUXPresentation.State.liveSeeking)
         XCTAssertTrue(limited.showsECO)
         XCTAssertTrue(limited.isLimited)
         XCTAssertNil(limited.overlayHint)
+        let ecoCopy = SETCopyKey.cameraEco.localizedString(locale: limitedLocale)
+        XCTAssertEqual(limited.supportingObservation, ecoCopy)
+        XCTAssertTrue(limited.accessibilityLabel.contains(ecoCopy))
 
         let failed = CameraOverlayUXPresentation.make(
             liveHint: hint,
@@ -554,12 +559,130 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         XCTAssertTrue(safe.contains(fallback!.frame))
     }
 
+    func testProductionPlannerCarriesSubjectDestinationInsteadOfAffectedRegion() {
+        let subject = NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40)
+        let snapshot = FrameFeatureSnapshot(
+            frameId: "production-target-frame",
+            mode: .live,
+            capturedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            sources: FeatureSourceStatus(
+                vision: SourceState(available: true, freshnessMs: 12, confidence: 0.94),
+                horizon: SourceState(available: true, freshnessMs: 12, confidence: 0.90),
+                lighting: SourceState(available: true, freshnessMs: 12, confidence: 0.90),
+                detr: SourceState(available: true, freshnessMs: 12, confidence: 0.90),
+                aesthetic: SourceState(available: true, freshnessMs: 12, confidence: 0.90)
+            ),
+            composition: .init(
+                horizontalOffset: 0.34,
+                verticalOffset: 0,
+                subjectAreaRatio: 0.12,
+                saliencyLeftRightBalance: 0.34,
+                saliencyTopBottomBalance: 0
+            ),
+            subjectSignals: .init(
+                faceDetected: true,
+                personDetected: true,
+                personCount: 1,
+                faceRegion: subject,
+                primaryCandidateRegion: subject,
+                primaryCandidateConfidence: 0.94,
+                primaryCandidateSource: .vision
+            ),
+            horizon: .init(angleDegrees: 0, confidence: 0.90),
+            lighting: .init(exposureBiasHint: 0, backlightIndex: 0, keyToFillRatio: 1),
+            motion: .init(state: .still, shakeLevel: 0.02),
+            aesthetics: .init(score: 0.70, scoreConfidence: 0.80),
+            objects: .init(totalCount: 1, topKLabels: ["person"]),
+            technicalFlags: []
+        )
+        let issue = FrameIssue(
+            id: "production-subject-edge",
+            type: .subjectTooCloseToEdge,
+            severity: 0.92,
+            confidence: 0.94,
+            rationale: "Subject edge pressure.",
+            evidence: [EvidenceRef(source: .snapshot, key: "subject", value: "accepted", confidence: 0.94)],
+            affectedRegion: subject,
+            suggestedFixTypes: [.reframing]
+        )
+        let critique = CritiqueReport(
+            frameId: snapshot.frameId,
+            mode: .live,
+            verdict: .needsFix,
+            verdictConfidence: 0.94,
+            strengths: [],
+            issues: [issue],
+            summary: .init(id: "production-target-summary", shortVerdict: "Кадр требует правки."),
+            traceRefs: ["production-target-trace"],
+            fallbackUsed: false
+        )
+
+        let plan = RecommendationPlanner().makePlan(snapshot: snapshot, critique: critique)
+
+        XCTAssertEqual(plan.primaryAction?.actionType, .moveFrameRight)
+        XCTAssertEqual(
+            plan.primaryAction?.targetRegion,
+            SemanticActionType.shiftFrameRight.subjectTargetRegion(from: subject)
+        )
+        XCTAssertNotEqual(plan.primaryAction?.targetRegion, issue.affectedRegion)
+        XCTAssertFalse(overlaps(plan.primaryAction?.targetRegion, subject))
+    }
+
+    func testEpisodeTokenOwnsMarkerIdentityAndFrozenTargetGeometry() {
+        let subject = NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40)
+        let target = SemanticActionType.shiftFrameLeft.subjectTargetRegion(from: subject)
+        let firstToken = CoachingEpisodeToken(
+            rawValue: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
+            generation: 7
+        )
+        let secondToken = CoachingEpisodeToken(
+            rawValue: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!,
+            generation: 7
+        )
+        let firstState = makeEpisodeState(token: firstToken, subjectRegion: subject)
+        let secondState = makeEpisodeState(token: secondToken, subjectRegion: subject)
+        let context = CameraOverlayUXContext(
+            episodeState: firstState,
+            hasSpatialEvidence: true
+        )
+        let changedHint = makeLiveHint(
+            targetRegion: NormalizedRect(x: 0.72, y: 0.10, width: 0.20, height: 0.30),
+            overlayHint: OverlayHint(
+                id: "episode-arrow",
+                kind: .arrow,
+                targetRegion: NormalizedRect(x: 0.72, y: 0.10, width: 0.20, height: 0.30),
+                direction: .left
+            )
+        )
+
+        let rerendered = CameraOverlayUXPresentation.make(
+            liveHint: changedHint,
+            context: context,
+            locale: Locale(identifier: "en")
+        )
+        let newEpisode = CameraOverlayUXPresentation.make(
+            liveHint: changedHint,
+            context: CameraOverlayUXContext(episodeState: secondState, hasSpatialEvidence: true),
+            locale: Locale(identifier: "en")
+        )
+
+        let expectedPoint = SemanticActionType.shiftFrameLeft.subjectDisplacementDirection!
+            .subjectTargetPoint(from: subject)
+        XCTAssertEqual(firstState.baseline?.advice.targetPoint?.x, expectedPoint.x)
+        XCTAssertEqual(firstState.baseline?.advice.targetPoint?.y, expectedPoint.y)
+        XCTAssertEqual(rerendered.markerEventID, firstToken.rawValue.uuidString)
+        XCTAssertEqual(rerendered.targetRegion, target)
+        XCTAssertEqual(rerendered.overlayHint?.targetRegion, target)
+        XCTAssertNotEqual(newEpisode.markerEventID, rerendered.markerEventID)
+    }
+
     private func makeLiveHint(
         id: String = "hint-1",
         frameId: String = "frame-1",
         text: String = "Сигнал кадра.",
         confidence: Double = 0.86,
         actionType: ActionTypeV1? = .moveFrameLeft,
+        targetRegion: NormalizedRect? = NormalizedRect(x: 0.62, y: 0.2, width: 0.24, height: 0.44),
         overlayHint: OverlayHint? = nil,
         semanticActionType: SemanticActionType? = nil,
         technicalIssueType: TechnicalQualityIssueType? = nil,
@@ -580,7 +703,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             linkedIssueIds: ["issue-1"],
             summaryId: "summary-1",
             traceRootIds: ["trace-1"],
-            targetRegion: NormalizedRect(x: 0.62, y: 0.2, width: 0.24, height: 0.44),
+            targetRegion: targetRegion,
             overlayHint: overlayHint,
             isFallback: false,
             expandedVerdict: expandedVerdict,
@@ -589,10 +712,60 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         )
     }
 
+    private func makeEpisodeState(
+        token: CoachingEpisodeToken,
+        subjectRegion: NormalizedRect
+    ) -> CoachingEpisodeState {
+        let frameID = "episode-frame"
+        let baseline = CoachingEpisodeBaseline(
+            advice: StabilizedAdvice(
+                decision: .correct,
+                actionID: ActionTypeV1.moveFrameLeft.rawValue,
+                frameID: frameID,
+                targetX: 1.0,
+                targetY: subjectRegion.y + subjectRegion.height / 2
+            ),
+            actionID: ActionTypeV1.moveFrameLeft.rawValue,
+            frame: UserMovementFrame(
+                frameID: frameID,
+                subjectRegion: subjectRegion,
+                meanLuma: 0.5,
+                motionIsStill: true
+            ),
+            lifecycle: .initial(generation: token.generation, orientation: .portrait, lensID: "wide"),
+            subjectIdentity: nil,
+            frameID: frameID,
+            capturedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            orientation: .portrait,
+            lensID: "wide",
+            captureGeneration: token.generation,
+            subjectRegion: subjectRegion,
+            geometryContext: nil,
+            exposureState: nil
+        )
+        return CoachingEpisodeState(
+            phase: .awaitingMovement,
+            token: token,
+            baseline: baseline,
+            movementFrames: 0,
+            stableAfterFrames: 0,
+            lastFrameID: frameID,
+            cancellationReason: nil
+        )
+    }
+
     private func containsCyrillic(_ text: String) -> Bool {
         text.unicodeScalars.contains { scalar in
             (0x0400...0x04FF).contains(scalar.value)
         }
+    }
+
+    private func overlaps(_ lhs: NormalizedRect?, _ rhs: NormalizedRect) -> Bool {
+        guard let lhs else { return false }
+        return lhs.x < rhs.x + rhs.width
+            && rhs.x < lhs.x + lhs.width
+            && lhs.y < rhs.y + rhs.height
+            && rhs.y < lhs.y + lhs.height
     }
 
 }

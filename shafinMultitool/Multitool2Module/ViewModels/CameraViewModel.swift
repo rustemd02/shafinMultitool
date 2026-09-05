@@ -118,6 +118,11 @@ final class CameraViewModel: ObservableObject {
         let critique: PauseCritiquePresentation?
     }
 
+    private struct RuntimeAnalysisFailureEvent {
+        let failure: CameraAnalysisFailure
+        let generation: UInt64?
+    }
+
     private final class FailedStartRollbackOperation {
         let generation: UInt64
         let task: Task<Void, Never>
@@ -185,6 +190,36 @@ final class CameraViewModel: ObservableObject {
     @Published private(set) var takeNumber: Int = 0
     @Published private(set) var subjectRegions: [NormalizedRect] = []
     @Published private(set) var coachingEpisodeState: CoachingEpisodeState = .idle
+
+    /// The episode token and baseline geometry are the only runtime marker
+    /// identity/geometry inputs. A transient live hint or current detector
+    /// rectangle cannot replace them once an episode has started.
+    var coachingEpisodeEventID: String? {
+        coachingEpisodeState.token?.rawValue.uuidString
+    }
+
+    var coachingEpisodeSubjectRegion: NormalizedRect? {
+        coachingEpisodeState.baseline?.subjectRegion
+    }
+
+    var coachingEpisodeTargetRegion: NormalizedRect? {
+        guard let baseline = coachingEpisodeState.baseline,
+              let subjectRegion = baseline.subjectRegion else {
+            return nil
+        }
+        if let semanticAction = SemanticActionType(rawValue: baseline.actionID) {
+            return semanticAction.subjectTargetRegion(from: subjectRegion)
+        }
+        if let legacyAction = ActionTypeV1(rawValue: baseline.actionID) {
+            if let targetRegion = legacyAction.subjectTargetRegion(from: subjectRegion) {
+                return targetRegion
+            }
+        }
+        if UserMovementObserver.actionFamily(for: baseline.actionID)?.requiresSubjectBinding == true {
+            return subjectRegion
+        }
+        return nil
+    }
 
     var isPauseProjectionReady: Bool {
         isPaused && acceptedPauseSnapshot?.displayImage != nil
@@ -298,13 +333,17 @@ final class CameraViewModel: ObservableObject {
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: CameraAnalysisRuntimeSignal.failureNotification)
-            .compactMap { notification in
-                notification.userInfo?[CameraAnalysisRuntimeSignal.failureUserInfoKey]
-                    as? CameraAnalysisFailure
+            .compactMap { notification -> RuntimeAnalysisFailureEvent? in
+                guard let failure = notification.userInfo?[CameraAnalysisRuntimeSignal.failureUserInfoKey]
+                    as? CameraAnalysisFailure else { return nil }
+                return RuntimeAnalysisFailureEvent(
+                    failure: failure,
+                    generation: notification.userInfo?[CameraAnalysisRuntimeSignal.generationUserInfoKey] as? UInt64
+                )
             }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] failure in
-                self?.reportAnalysisFailure(failure)
+            .sink { [weak self] (event: RuntimeAnalysisFailureEvent) in
+                self?.reportAnalysisFailure(event.failure, generation: event.generation)
             }
             .store(in: &cancellables)
     }
@@ -683,7 +722,14 @@ final class CameraViewModel: ObservableObject {
 
     /// Analyzer failure is an explicit owner signal. The presentation becomes
     /// honest fallback immediately and all stale marker/copy is removed.
-    func reportAnalysisFailure(_ failure: CameraAnalysisFailure = .failed) {
+    func reportAnalysisFailure(_ failure: CameraAnalysisFailure = .failed,
+                               generation: UInt64? = nil) {
+        if let generation {
+            guard lifecycleState == .starting || lifecycleState == .running,
+                  analysisPipeline.acceptsRuntimeSignal(generation: generation) else {
+                return
+            }
+        }
         analysisFailure = failure
         analysisStatus = .failed
         plannerDecision = nil

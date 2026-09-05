@@ -1746,7 +1746,17 @@ struct RecommendationPlanner {
         }
 
         let expectedOutcome = expectedOutcome(for: actionType)
-        let targetRegion = issue.affectedRegion
+        let targetRegion: NormalizedRect?
+        if actionType.subjectDisplacementSemanticAction != nil {
+            // `affectedRegion` identifies the subject that needs correction;
+            // the marker must point to the M2-004 subject destination instead
+            // of reusing that subject rectangle as its target. Missing subject
+            // geometry remains unavailable and therefore fails closed.
+            targetRegion = snapshot.subjectSignals.primaryCandidateRegion
+                .flatMap { actionType.subjectTargetRegion(from: $0) }
+        } else {
+            targetRegion = issue.affectedRegion
+        }
         let overlayHint = overlayHint(actionType: actionType, actionRank: rank, targetRegion: targetRegion)
         let actionId = "act_\(snapshot.mode.rawValue)_\(rank)_\(actionType.rawValue)_\(issue.type.rawValue)"
         let guardrail = ActionGuardrail(
@@ -3576,6 +3586,10 @@ final class AnalysisPipeline: ObservableObject {
     private var releaseInProgress = false
     private var releaseTask: Task<Void, Never>?
     private weak var registrationManager: CameraManager?
+    /// One terminal analyzer publication is allowed per live lifecycle
+    /// generation. A late provider callback cannot re-emit after release or
+    /// produce a notification storm while the same failure is still active.
+    @MainActor private var lastPublishedAnalysisFailureGeneration: UInt64?
 
     private var features = CoachingFeatures()
     private var debugData = DebugData()
@@ -4145,6 +4159,13 @@ final class AnalysisPipeline: ObservableObject {
         lifecycleLock.lock()
         defer { lifecycleLock.unlock() }
         return acceptsFrameWork && lifecycleGeneration == generation
+    }
+
+    /// Runtime failure consumers use the same lifecycle fence as frame work;
+    /// stale provider callbacks must not cross into CameraViewModel after a
+    /// release or capture re-registration.
+    func acceptsRuntimeSignal(generation: UInt64) -> Bool {
+        isFrameWorkActive(generation)
     }
 
     private func isCurrentLiveEvidence(_ evidence: LatestFrameEvidenceStore.Snapshot,
@@ -4787,6 +4808,9 @@ final class AnalysisPipeline: ObservableObject {
             liveNeuralOutcome = nil
         }
         guard isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
+        if liveNeuralOutcome?.kind == .failed {
+            return
+        }
         let presentationNow = Date()
         if currentSuggestion != nil, presentationNow <= suggestionExpiry {
             // Keep the legacy fallback stable while it is alive; liveHint decides whether it is visible.
@@ -6199,10 +6223,10 @@ final class AnalysisPipeline: ObservableObject {
                 probability: min(legacyAction.guardrail.minConfidence, plan.planConfidence),
                 priorityBand: legacyAction.priority,
                 targetPoint: migratedFamily == .subjectDisplacement
-                    ? snapshot.subjectSignals.primaryCandidateRegion.map {
-                        let centerX = $0.x + ($0.width * 0.5)
-                        let centerY = $0.y + ($0.height * 0.5)
-                        return (x: centerX, y: centerY)
+                    ? snapshot.subjectSignals.primaryCandidateRegion.flatMap { subjectRegion in
+                        semanticAction.subjectDisplacementDirection.map { direction in
+                            direction.subjectTargetPoint(from: subjectRegion)
+                        }
                     }
                     : nil
             )
@@ -6633,6 +6657,48 @@ final class AnalysisPipeline: ObservableObject {
         liveEpisodeOrientation = nil
         liveEpisodeSource = nil
     }
+
+    /// Canonical live analyzer terminal boundary. Only the provider outcome
+    /// can enter this path; performance/ECO remains owned by the governor and
+    /// scheduler. The lifecycle generation is checked immediately before the
+    /// one-shot publication and all stale live presentation is cleared first.
+    @MainActor
+    private func publishAnalysisRuntimeFailureIfNeeded(
+        _ failure: CameraAnalysisFailure,
+        generation: UInt64
+    ) {
+        guard isFrameWorkActive(generation),
+              lastPublishedAnalysisFailureGeneration != generation else {
+            return
+        }
+        lastPublishedAnalysisFailureGeneration = generation
+        currentSuggestion = nil
+        currentLiveHint = nil
+        currentDemoOverlayAnnotations = []
+        currentLiveFusionTraceBundle = nil
+        liveHintShownAt = .distantPast
+        liveHintExpiresAt = .distantPast
+        currentOverlayAnnotations = []
+        clearLiveCoachingEpisodeObservation(reason: "analysis_failure")
+        guard isFrameWorkActive(generation) else { return }
+        CameraAnalysisRuntimeSignal.publishFailure(failure, generation: generation)
+    }
+
+#if DEBUG
+    /// Test-only entry through the same lifecycle-fenced producer used by a
+    /// real terminal neural outcome. It exists to prove producer → ViewModel
+    /// projection without posting the notification from a test or a view.
+    @MainActor
+    func testingPublishAnalysisRuntimeFailure(
+        _ failure: CameraAnalysisFailure = .failed,
+        generation: UInt64? = nil
+    ) {
+        publishAnalysisRuntimeFailureIfNeeded(
+            failure,
+            generation: generation ?? currentGeneration()
+        )
+    }
+#endif
 
     private func coachingEpisodeCancellationReason(
         for reason: String
@@ -11690,6 +11756,10 @@ final class AnalysisPipeline: ObservableObject {
             )
         case .subjectTooCloseToEdge, .insufficientLookSpace:
             let direction = overlayDirectionForComposition(features.composition)
+            let actionType = actionTypeForComposition(features.composition)
+            let targetRegion = issue.affectedRegion.flatMap {
+                actionType.subjectTargetRegion(from: $0)
+            }
             return OverlayAnnotationPresentation(
                 id: annotationId(
                     mode: mode,
@@ -11697,12 +11767,12 @@ final class AnalysisPipeline: ObservableObject {
                     isLegacy: false,
                     kind: .arrow,
                     direction: direction,
-                    targetRegion: issue.affectedRegion,
+                    targetRegion: targetRegion,
                     actionKey: actionKey
                 ),
                 kind: .arrow,
                 direction: direction,
-                targetRegion: issue.affectedRegion,
+                targetRegion: targetRegion,
                 emphasis: max(issue.severity, issue.confidence)
             )
         default:
@@ -12203,6 +12273,13 @@ final class AnalysisPipeline: ObservableObject {
             frameId: snapshot.frameId,
             generation: generation
         )
+        if case .live = mode,
+           outcome.kind == .failed,
+           let generation {
+            await MainActor.run { [weak self] in
+                self?.publishAnalysisRuntimeFailureIfNeeded(.failed, generation: generation)
+            }
+        }
         return NeuralEvidenceRecordedOutcome(outcome)
     }
 
