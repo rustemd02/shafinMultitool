@@ -79,6 +79,15 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         }
     }
 
+    /// M7-016: audio/video synchronization measurement over the session
+    /// timeline (first/last PTS deltas and monotonicity faults). The release
+    /// criterion is absolute sync error ≤ 80 ms at start and end with no
+    /// monotonicity fault; physical content-marker validation stays external.
+    func syncReport() async -> RecordingSyncReport {
+        let report = await timebaseReport()
+        return RecordingMediaTimebase.syncReport(from: report)
+    }
+
     func stateSnapshot() async -> RecorderStateSnapshot {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
@@ -397,6 +406,11 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         case .failed:
             markAppendFailureOnQueue(.videoAppendFailed)
             return
+        case .storagePressure:
+            // M7-018: ENOSPC-class failure — typed, terminates safely, and
+            // never touches existing project media.
+            markAppendFailureOnQueue(.insufficientStorage)
+            return
         case .dropped:
             // M7-011: bounded backpressure accounting. The capture queue is
             // never blocked (submission is nonblocking); continuous writer
@@ -446,6 +460,9 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         switch writer.appendAudio(frame) {
         case .failed:
             markAppendFailureOnQueue(.audioAppendFailed)
+            return
+        case .storagePressure:
+            markAppendFailureOnQueue(.insufficientStorage)
             return
         case .dropped:
             // M7-011: audio backpressure is counted but does not fail the
@@ -814,6 +831,8 @@ private struct RecordingMediaTimebase {
     /// Last timestamps actually persisted by the writer.
     private(set) var lastVideoTimestamp: TimeInterval?
     private(set) var lastAudioTimestamp: TimeInterval?
+    /// M7-016: first admitted audio sample for the start-delta measurement.
+    private(set) var firstAudioTimestamp: TimeInterval?
     private(set) var acceptedVideoCount = 0
     private(set) var acceptedAudioCount = 0
     private(set) var rejectedInvalidTimestampCount = 0
@@ -884,8 +903,31 @@ private struct RecordingMediaTimebase {
             rejectedStaleSourceCount: rejectedStaleSourceCount,
             droppedVideoCount: droppedVideoCount,
             droppedAudioCount: droppedAudioCount,
+            firstAudioTimestamp: firstAudioTimestamp,
             lastVideoTimestamp: lastVideoTimestamp,
             lastAudioTimestamp: lastAudioTimestamp
+        )
+    }
+
+    /// M7-016: derives the synchronization measurement from a timebase
+    /// report. Pure so the release criterion is table-testable.
+    static func syncReport(from report: RecordingTimebaseReport) -> RecordingSyncReport {
+        let startDelta = report.firstAudioTimestamp.map { $0 - (report.videoOrigin ?? $0) }
+        let endDelta: TimeInterval?
+        if let lastAudio = report.lastAudioTimestamp, let lastVideo = report.lastVideoTimestamp {
+            endDelta = lastAudio - lastVideo
+        } else {
+            endDelta = nil
+        }
+        let monotonicityFaults = report.rejectedInvalidTimestampCount
+            + report.rejectedNonMonotonicVideoCount
+            + report.rejectedNonMonotonicAudioCount
+            + report.rejectedBeforeOriginAudioCount
+        return RecordingSyncReport(
+            startDeltaSeconds: startDelta,
+            endDeltaSeconds: endDelta,
+            monotonicityFaultCount: monotonicityFaults,
+            discontinuityCount: report.discontinuityCount
         )
     }
 
@@ -955,6 +997,9 @@ private struct RecordingMediaTimebase {
     }
 
     mutating func commitAudio(timestamp: TimeInterval) {
+        if firstAudioTimestamp == nil {
+            firstAudioTimestamp = timestamp
+        }
         lastAudioTimestamp = timestamp
         acceptedAudioCount += 1
         consecutiveDroppedAudioCount = 0

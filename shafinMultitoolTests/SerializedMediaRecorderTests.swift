@@ -1133,6 +1133,106 @@ final class SerializedMediaRecorderTests: XCTestCase {
         XCTAssertEqual(stateAfterLateCallback, .failed)
     }
 
+    // MARK: - M7-016 A/V sync measurement
+
+    func testSyncReportMeasuresStartAndEndDeltasAgainstTheEightyMillisecondCriterion() async throws {
+        let fixture = makeFixture(audioMode: .required)
+        try await fixture.recorder.prepare(makeConfiguration(audioMode: .required))
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 100.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 100.5))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 100.03))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 100.53))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        let report = await fixture.recorder.syncReport()
+        XCTAssertEqual(report.startDeltaSeconds!, 0.03, accuracy: 1e-9)
+        XCTAssertEqual(report.endDeltaSeconds!, 0.03, accuracy: 1e-9)
+        XCTAssertEqual(report.monotonicityFaultCount, 0)
+        XCTAssertTrue(report.satisfiesReleaseCriterion())
+        XCTAssertFalse(report.satisfiesReleaseCriterion(maxAbsoluteErrorSeconds: 0.01))
+    }
+
+    func testSyncReportRejectsTimelineBeyondEightyMilliseconds() async throws {
+        let fixture = makeFixture(audioMode: .required)
+        try await fixture.recorder.prepare(makeConfiguration(audioMode: .required))
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 10.0))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 10.2))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        let report = await fixture.recorder.syncReport()
+        XCTAssertEqual(report.startDeltaSeconds!, 0.2, accuracy: 1e-9)
+        XCTAssertFalse(report.satisfiesReleaseCriterion())
+    }
+
+    func testSyncReportFailsOnMonotonicityFaultsEvenWithSmallDeltas() async throws {
+        let fixture = makeFixture(audioMode: .required)
+        try await fixture.recorder.prepare(makeConfiguration(audioMode: .required))
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 10.0))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 10.01))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 10.005))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        let report = await fixture.recorder.syncReport()
+        XCTAssertGreaterThan(report.monotonicityFaultCount, 0)
+        XCTAssertFalse(report.satisfiesReleaseCriterion())
+    }
+
+    func testVideoOnlyTakeSatisfiesSyncCriterionWithoutAudioEvidence() async throws {
+        let fixture = makeFixture()
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        let report = await fixture.recorder.syncReport()
+        XCTAssertNil(report.startDeltaSeconds)
+        XCTAssertNil(report.endDeltaSeconds)
+        XCTAssertTrue(report.satisfiesReleaseCriterion())
+    }
+
+    // MARK: - M7-018 disk exhaustion
+
+    func testStoragePressureAppendFailsTypedWithoutRecoverableArtifactAndLeavesNoFrames() async throws {
+        let fixture = makeFixture()
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+        fixture.writer.videoAppendResult = .storagePressure
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+        let stateAfterPressure = await fixture.recorder.state
+        XCTAssertEqual(stateAfterPressure, .failed)
+
+        let result = await fixture.recorder.stop(reason: .user)
+        switch result {
+        case .finalized:
+            XCTFail("A storage-pressure take must not finalize")
+        case let .failed(failure, recoverableArtifact):
+            XCTAssertEqual(failure, .insufficientStorage)
+            XCTAssertNil(recoverableArtifact)
+        }
+        XCTAssertEqual(fixture.writer.videoAppendCount, 1)
+    }
+
     private func makeConfiguration(
         id: RecordingID = RecordingID(rawValue: UUID()),
         audioMode: RecordingAudioMode = .disabled

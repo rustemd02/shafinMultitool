@@ -153,6 +153,23 @@ func copyAudioSampleBufferToHostTime(
     return copiedSampleBuffer
 }
 
+/// M7-018: answers whether a writer/append error is storage exhaustion
+/// (ENOSPC-class). POSIX ENOSPC (28) and Cocoa's out-of-space codes both map
+/// here so disk exhaustion can be typed instead of reported as a generic
+/// append failure.
+func isStoragePressureError(_ error: (any Error)?) -> Bool {
+    guard let error else { return false }
+    let nsError = error as NSError
+    switch nsError.domain {
+    case NSPOSIXErrorDomain:
+        return nsError.code == Int(ENOSPC)
+    case NSCocoaErrorDomain:
+        return nsError.code == NSFileWriteOutOfSpaceError
+    default:
+        return false
+    }
+}
+
 struct AVAssetWriterRecordingWriterFactory: RecordingWriterFactory {
     let codecSupport: any RecordingCodecSupportChecking
 
@@ -306,15 +323,26 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
         return true
     }
 
+    private func dispositionForWriterFailure() -> RecordingAppendDisposition {
+        // M7-018: a failed writer is inspected for storage exhaustion so a
+        // full disk produces the typed ENOSPC-class disposition.
+        if writer.status == .failed, isStoragePressureError(writer.error) {
+            return .storagePressure
+        }
+        return .failed
+    }
+
     func appendVideo(_ frame: RecordingVideoFrame) -> RecordingAppendDisposition {
         lock.lock()
         defer { lock.unlock() }
 
         guard started,
               !finishRequested,
-              !discarded,
-              writer.status == .writing else {
+              !discarded else {
             return .failed
+        }
+        guard writer.status == .writing else {
+            return dispositionForWriterFailure()
         }
         guard let payload = frame.payload as? AppleRecordingVideoFramePayload else {
             return .failed
@@ -342,11 +370,13 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
             presentationTime = .zero
         }
 
-        guard sessionStarted,
-              pixelBufferAdaptor.append(payload.pixelBuffer, withPresentationTime: presentationTime) else {
+        guard sessionStarted else {
             return .failed
         }
-        return .appended
+        if pixelBufferAdaptor.append(payload.pixelBuffer, withPresentationTime: presentationTime) {
+            return .appended
+        }
+        return dispositionForWriterFailure()
     }
 
     func appendAudio(_ frame: RecordingAudioFrame) -> RecordingAppendDisposition {
@@ -355,9 +385,11 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
 
         guard started,
               !finishRequested,
-              !discarded,
-              writer.status == .writing else {
+              !discarded else {
             return .failed
+        }
+        guard writer.status == .writing else {
+            return dispositionForWriterFailure()
         }
         guard let payload = frame.payload as? AppleRecordingAudioFramePayload,
               let audioInput,
@@ -387,7 +419,10 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
         ) else {
             return .failed
         }
-        return audioInput.append(sampleBuffer) ? .appended : .failed
+        if audioInput.append(sampleBuffer) {
+            return .appended
+        }
+        return dispositionForWriterFailure()
     }
 
     func markVideoInputAsFinished() {

@@ -17,6 +17,10 @@ enum RecordingAppendDisposition: Sendable, Equatable {
     case appended
     case dropped
     case failed
+    /// M7-018: the writer could not accept the sample because storage is
+    /// exhausted (ENOSPC-class failure). The take fails typed and no
+    /// previously stored project media is ever touched.
+    case storagePressure
 }
 
 /// Native pixel format FourCC value used by the serialized capture path. The
@@ -385,8 +389,40 @@ struct RecordingTimebaseReport: Sendable, Equatable {
     /// M7-011: writer backpressure drops per stream.
     let droppedVideoCount: Int
     let droppedAudioCount: Int
+    /// M7-016: host timestamp of the first admitted audio sample of the take.
+    let firstAudioTimestamp: TimeInterval?
     let lastVideoTimestamp: TimeInterval?
     let lastAudioTimestamp: TimeInterval?
+}
+
+/// M7-016: audio/video synchronization measurement over first/last session
+/// timestamps. Deltas are session-relative seconds: a positive start delta
+/// means audio begins after video. No sample payloads are involved.
+struct RecordingSyncReport: Sendable, Equatable {
+    /// Absolute sync error at the start of the take:
+    /// `firstAudio - firstVideo` (nil without audio).
+    let startDeltaSeconds: TimeInterval?
+    /// Absolute sync error at the end of the take:
+    /// `lastAudio - lastVideo` (nil without audio).
+    let endDeltaSeconds: TimeInterval?
+    /// Monotonicity faults: non-monotonic, invalid-timestamp, and pre-origin
+    /// audio rejections observed during the take.
+    let monotonicityFaultCount: Int
+    /// Forward-gap discontinuities tolerated during the take.
+    let discontinuityCount: Int
+
+    /// Release criterion (M7-016): absolute sync error ≤ 80 ms at start and
+    /// end, with no monotonicity fault. A video-only take has nothing to
+    /// measure and satisfies the criterion only when no timeline fault
+    /// occurred.
+    func satisfiesReleaseCriterion(maxAbsoluteErrorSeconds: TimeInterval = 0.080) -> Bool {
+        guard monotonicityFaultCount == 0 else { return false }
+        guard let start = startDeltaSeconds, let end = endDeltaSeconds else {
+            return startDeltaSeconds == nil && endDeltaSeconds == nil
+        }
+        return abs(start) <= maxAbsoluteErrorSeconds
+            && abs(end) <= maxAbsoluteErrorSeconds
+    }
 }
 
 enum RecordingAudioDriverError: Error, Sendable, Equatable {

@@ -118,6 +118,62 @@ final class RecordingArtifactPromotionTests: XCTestCase {
         }
     }
 
+    // MARK: - M7-020 promotion fault matrix (crash-point convergence)
+
+    /// Drives the deterministic crash point, then verifies the state after
+    /// the "crash" and that a retried promotion converges to exactly one
+    /// valid reference with no duplicate file and no leftover journal record.
+    private func attemptAndRecover(faultPoint: RecordingArtifactStore.PromotionFaultPoint) throws {
+        let artifact = try makePendingArtifact()
+        let projectID = UUID()
+
+        store.testPromotionFaultPoint = faultPoint
+        XCTAssertThrowsError(try store.promoteFinalizedArtifact(artifact, projectID: projectID)) { error in
+            XCTAssertTrue(
+                error is PendingRecordingJournalError,
+                "the injected crash must surface as a typed failure, got \(error)"
+            )
+        }
+
+        // After every crash point the pending/destination pair is never
+        // duplicated: exactly one of them (or the committed destination)
+        // holds the bytes, and existing project media is untouched.
+        let destinationURL = store.projectsDirectoryURL
+            .appendingPathComponent(projectID.uuidString, isDirectory: true)
+            .appendingPathComponent("\(artifact.id.rawValue.uuidString).mov")
+
+        let reference = try store.promoteFinalizedArtifact(artifact, projectID: projectID)
+        XCTAssertEqual(reference.recordingID, artifact.id.rawValue)
+
+        XCTAssertEqual(store.resolve(reference)?.standardizedFileURL, destinationURL.standardizedFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destinationURL.path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: artifact.localURL.path),
+            "recovery must consume the pending source exactly once"
+        )
+        XCTAssertNil(
+            try store.journal.entry(for: artifact.id.rawValue),
+            "a converged promotion must leave no journal record behind"
+        )
+        store.testPromotionFaultPoint = nil
+    }
+
+    func testPromotionRecoversFromCrashBeforeJournalWrite() throws {
+        try attemptAndRecover(faultPoint: .beforeJournalWrite)
+    }
+
+    func testPromotionRecoversFromCrashAfterJournalWrite() throws {
+        try attemptAndRecover(faultPoint: .afterJournalWrite)
+    }
+
+    func testPromotionRecoversFromCrashAfterRename() throws {
+        try attemptAndRecover(faultPoint: .afterRename)
+    }
+
+    func testPromotionRecoversFromCrashAfterJournalRemoval() throws {
+        try attemptAndRecover(faultPoint: .afterJournalRemoval)
+    }
+
     // MARK: - Helpers
 
     private func makePendingArtifact() throws -> RecordingArtifact {

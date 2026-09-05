@@ -83,6 +83,9 @@ final class RecordingArtifactStore: @unchecked Sendable {
     let recordingsDirectoryURL: URL
     let pendingDirectoryURL: URL
     let projectsDirectoryURL: URL
+    /// M7-019: durable pending-artifact journal owner, scoped to this store's
+    /// recordings root.
+    let journal: PendingRecordingJournal
 
     var recordingRootURL: URL { recordingsDirectoryURL }
 
@@ -93,6 +96,18 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// is deliberately owned by the artifact boundary so tests can exercise a
     /// partial unlink without replacing the real filesystem owner.
     var testArtifactCommitFailureAfterUnlinks: Int?
+
+    /// M7-020/M7-022: deterministic promotion crash points. Each point throws
+    /// exactly once (self-clearing) so tests can drive every crash state and
+    /// then verify recovery converges.
+    enum PromotionFaultPoint: Equatable {
+        case beforeJournalWrite
+        case afterJournalWrite
+        case afterRename
+        case afterJournalRemoval
+    }
+
+    var testPromotionFaultPoint: PromotionFaultPoint?
 #endif
 
     fileprivate struct StagedArtifactEntry {
@@ -179,6 +194,10 @@ final class RecordingArtifactStore: @unchecked Sendable {
             .appendingPathComponent("Pending", isDirectory: true)
         projectsDirectoryURL = recordingsDirectoryURL
             .appendingPathComponent("Projects", isDirectory: true)
+        journal = PendingRecordingJournal(
+            fileManager: fileManager,
+            recordingsDirectoryURL: recordingsDirectoryURL
+        )
 
         try fileManager.createDirectory(
             at: pendingDirectoryURL,
@@ -242,6 +261,11 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// Moves a finalized Pending artifact into project-owned storage. A
     /// pre-existing valid destination is treated as the same idempotent take;
     /// no existing destination is ever overwritten.
+    ///
+    /// M7-019/M7-020: the move is journaled atomically BEFORE the rename and
+    /// the record is removed only after the move committed, so every crash
+    /// point converges on recovery to one valid reference or one recoverable
+    /// pending state — never a duplicate reference or an orphan file.
     func promoteFinalizedArtifact(
         _ artifact: RecordingArtifact,
         projectID: UUID
@@ -263,6 +287,16 @@ final class RecordingArtifactStore: @unchecked Sendable {
               !sourceName.contains("/") else {
             throw RecordingArtifactStoreError.pendingSourceOutsideRoot
         }
+
+        // M7-019: journal the promotion intent before touching anything.
+        // A resumable `.promoting` entry from a crashed attempt keeps its
+        // retry history; corruption fails closed before any file moves.
+        try beginPromotionJournalEntry(
+            recordingID: artifact.id.rawValue,
+            projectID: projectID,
+            sourceName: sourceName,
+            destinationRelativePath: reference.relativePath
+        )
 
         let destinationName = "\(artifact.id.rawValue.uuidString).mov"
         let applicationSupportFD = try openDirectory(at: applicationSupportDirectoryURL.path)
@@ -288,6 +322,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
             guard isRegular(destination) else {
                 throw RecordingArtifactStoreError.destinationConflict
             }
+            try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
             return reference
         } else if destinationError != ENOENT {
             throw RecordingArtifactStoreError.fileSystemFailure
@@ -304,6 +339,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
                 // transaction idempotently instead of a transient failure.
                 if let committed = statEntry(at: projectFD, name: destinationName),
                    isRegular(committed) {
+                    try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
                     return reference
                 }
                 throw RecordingArtifactStoreError.pendingSourceMissing
@@ -330,6 +366,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
             if renameError == EEXIST {
                 let destinationAfterRace = statEntry(at: projectFD, name: destinationName)
                 if let destinationAfterRace, isRegular(destinationAfterRace) {
+                    try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
                     return reference
                 }
                 throw RecordingArtifactStoreError.destinationConflict
@@ -340,6 +377,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
                 // that window is the committed take, so report it idempotently.
                 if let committed = statEntry(at: projectFD, name: destinationName),
                    isRegular(committed) {
+                    try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
                     return reference
                 }
                 throw RecordingArtifactStoreError.pendingSourceMissing
@@ -361,8 +399,88 @@ final class RecordingArtifactStore: @unchecked Sendable {
             throw RecordingArtifactStoreError.fileSystemFailure
         }
 
+        // The move committed; the journal record is the crash-recovery
+        // tombstone and must be removed only now (`.afterRename` fault point
+        // lives inside the finish helper).
+        try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
         return reference
     }
+
+    /// Writes (or resumes) the atomic `.promoting` record before the move.
+    private func beginPromotionJournalEntry(recordingID: UUID,
+                                            projectID: UUID,
+                                            sourceName: String,
+                                            destinationRelativePath: String) throws {
+#if DEBUG
+        try consumePromotionFault(.beforeJournalWrite)
+#endif
+        let now = Date()
+        let sourceTempPath = "Recordings/Pending/\(sourceName)"
+        let entry: PendingRecordingJournalEntry
+        if let existing = try journal.entry(for: recordingID) {
+            guard existing.recordingID == recordingID,
+                  existing.projectID == projectID,
+                  existing.destinationRelativePath == destinationRelativePath else {
+                // A different transaction owns this record identity; never
+                // overwrite another take's journal entry.
+                throw PendingRecordingJournalError.journalCorrupt(recordingID: recordingID)
+            }
+            // Same transaction re-entry (concurrent idempotent callers or an
+            // in-process retry). The bounded retry budget is owned by cold
+            // recovery (M7-021), not by the hot promotion path, so concurrent
+            // promotions of one take cannot exhaust it.
+            entry = existing.updating(state: .promoting, at: now)
+        } else {
+            let sourceURL = pendingDirectoryURL
+                .appendingPathComponent(sourceName, isDirectory: false)
+            let expectedSize: Int64?
+            if let attributes = try? fileManager.attributesOfItem(atPath: sourceURL.path),
+               let size = attributes[.size] as? NSNumber {
+                expectedSize = size.int64Value
+            } else {
+                expectedSize = nil
+            }
+            entry = PendingRecordingJournalEntry(
+                recordingID: recordingID,
+                projectID: projectID,
+                sourceTempPath: sourceTempPath,
+                destinationRelativePath: destinationRelativePath,
+                expectedFileSize: expectedSize,
+                expectedSHA256: nil,
+                state: .promoting,
+                retryCount: 0,
+                createdAt: now,
+                updatedAt: now
+            )
+        }
+        try journal.record(entry)
+#if DEBUG
+        try consumePromotionFault(.afterJournalWrite)
+#endif
+    }
+
+    /// Removes the promotion record after a committed (or already committed)
+    /// move. A removal failure leaves the record with a regular committed
+    /// destination — recovery (M7-021) converges without duplicating.
+    private func finishPromotionJournalEntry(recordingID: UUID) throws {
+#if DEBUG
+        try consumePromotionFault(.afterRename)
+#endif
+        try journal.remove(recordingID: recordingID)
+#if DEBUG
+        try consumePromotionFault(.afterJournalRemoval)
+#endif
+    }
+
+#if DEBUG
+    /// Throws once at the configured fault point, then clears so subsequent
+    /// calls (the recovery pass) run the real code.
+    private func consumePromotionFault(_ point: PromotionFaultPoint) throws {
+        guard testPromotionFaultPoint == point else { return }
+        testPromotionFaultPoint = nil
+        throw PendingRecordingJournalError.fileSystemFailure
+    }
+#endif
 
     /// Resolves only references whose path remains below Recordings and whose
     /// final filesystem object is a regular, non-symlink file.
