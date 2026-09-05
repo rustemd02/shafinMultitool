@@ -391,6 +391,11 @@ def validate_input(value: Any) -> None:
         raise ContractError("input.constraints.maximum_scenes: expected integer in 1..20")
     if not isinstance(constraints["allow_clarification"], bool):
         raise ContractError("input.constraints.allow_clarification: expected boolean")
+    if "scene_boundaries" in request and len(request["scene_boundaries"]) > constraints["maximum_scenes"]:
+        raise ContractError(
+            "input.scene_boundaries: number of declared boundaries cannot exceed "
+            "constraints.maximum_scenes"
+        )
     previous = request["previous_job_id"]
     if previous is not None:
         identifier(previous, "input.previous_job_id", REQUEST_ID)
@@ -635,7 +640,12 @@ def validate_annotation(value: Any, path: str = "annotation") -> None:
     if unknown_variants:
         raise ContractError(f"{path}.gold.acceptable_variant_ids: unknown variants {', '.join(unknown_variants)}")
 
-    validate_marked_object_references(candidate_objects[primary], marker_ids, f"{path}.gold.primary_candidate_id={primary}")
+    for candidate_id in sorted(valid_candidate_ids):
+        validate_marked_object_references(
+            candidate_objects[candidate_id],
+            marker_ids,
+            f"{path}.candidates.candidate_id={candidate_id}",
+        )
     for variant_id in acceptable:
         validate_marked_object_references(variant_objects[variant_id], marker_ids, f"{path}.gold.acceptable_variant_ids={variant_id}")
 
@@ -761,6 +771,8 @@ INVALID_FIXTURES = (
     ("annotation", "annotation-invalid-history.json"),
     ("annotation", "annotation-invalid-gold-candidate.json"),
     ("annotation", "annotation-invalid-marked-reference.json"),
+    ("annotation", "annotation-invalid-secondary-marked-reference.json"),
+    ("input", "input-invalid-boundary-count.json"),
 )
 VALID_CASE_FIXTURES = ("clarification-case-valid.json",)
 INVALID_CASE_FIXTURES = (
@@ -799,7 +811,7 @@ def self_test() -> None:
         pass
     else:
         raise ContractError("mutation target reference unexpectedly passed")
-    print("PASS M3-023 self-test: 8 positive, 8 negative fixtures, and target mutation")
+    print("PASS M3-023 self-test: 8 positive, 10 negative fixtures, and target mutation")
 
 
 def main(argv: list[str] | None = None) -> int:

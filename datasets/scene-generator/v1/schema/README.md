@@ -49,9 +49,12 @@ enforces the invariants that JSON Schema cannot express across sibling arrays:
   the submitted binding snapshot, rejecting stale requests/epochs and unknown
   options;
 - annotation gold IDs resolve to candidates/variants, validation status agrees
-  with its issue list, the primary candidate is validation-valid, all gold
-  marked-object references resolve to declared markers, and vote/review
-  histories have unique, strictly increasing append-only sequence numbers;
+  with its issue list, the primary candidate is validation-valid, every
+  validation-valid candidate and all gold marked-object references resolve to
+  declared markers, and vote/review histories have unique, strictly
+  increasing append-only sequence numbers;
+- declared input scene boundaries are valid UTF-8 byte ranges and their count
+  cannot exceed `constraints.maximum_scenes`;
 - JSON source text is UTF-8 and never contains NUL; raw rights disposition is
   not invented here and is owned by M3-024 provenance manifests.
 

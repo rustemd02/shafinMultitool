@@ -34,11 +34,12 @@ it with a stdlib semantic checker. It rejects dangling actor/object/camera/
 relation/holding references, duplicate IDs, invalid marker bindings, malformed
 ranges, stale clarification request UUID/epoch, unknown options outside the
 submitted binding snapshot, contradictory validation statuses, gold candidates
-that are not validation-valid, unresolved gold marked-object references, and
-non-monotonic provenance history. Every input file is size-bounded before it is
-read; an unavailable `jsonschema` validator fails closed. Rights/license/source
-ownership is intentionally left to M3-024; this schema does not invent a rights
-disposition.
+that are not validation-valid, unresolved `object_marked_*` references in
+every validation-valid candidate and gold-listed variant, input boundary sets
+that exceed `constraints.maximum_scenes`, and non-monotonic provenance history.
+Every input file is size-bounded before it is read; an unavailable `jsonschema`
+validator fails closed. Rights/license/source ownership is intentionally left
+to M3-024; this schema does not invent a rights disposition.
 
 ## Fixtures
 
@@ -74,6 +75,10 @@ Negative fixtures:
    match the submitted snapshot.
 8. `clarification-case-invalid-unknown-option.json` — option is not present in
    the submitted snapshot.
+9. `annotation-invalid-secondary-marked-reference.json` — a secondary
+   validation-valid candidate references an undeclared marked object.
+10. `input-invalid-boundary-count.json` — two valid boundaries exceed a
+    `maximum_scenes` constraint of one.
 
 ## Verification
 
@@ -81,7 +86,7 @@ Commands run from repository root:
 
 ```text
 python3 datasets/scene-generator/v1/schema/validate_scene_schema.py --self-test
-PASS M3-023 self-test: 8 positive, 8 negative fixtures, and target mutation
+PASS M3-023 self-test: 8 positive, 10 negative fixtures, and target mutation
 
 python3 datasets/scene-generator/v1/schema/validate_scene_schema.py
 PASS M3-023 positive fixture set
@@ -112,7 +117,7 @@ applicable to this dataset/schema-only task.
 - `datasets/scene-generator/v1/schema/scene-clarification-v1.schema.json`
 - `datasets/scene-generator/v1/schema/scene-annotation-v1.schema.json`
 - `datasets/scene-generator/v1/schema/validate_scene_schema.py`
-- sixteen JSON fixtures in `datasets/scene-generator/v1/schema/fixtures/`
+- eighteen JSON fixtures in `datasets/scene-generator/v1/schema/fixtures/`
 - this evidence report
 
 ## Known limits and handoff
