@@ -4602,11 +4602,282 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
         XCTAssertNil(viewModel.parsedScript)
         XCTAssertNil(viewModel.plannedScene)
+        XCTAssertTrue(viewModel.showInputSheet)
+        XCTAssertFalse(viewModel.canSubmitScene)
+        XCTAssertEqual(viewModel.clarificationRequest?.requestID, viewModel.generationRequestState.requestID)
+        XCTAssertEqual(viewModel.clarificationRequest?.epoch, viewModel.generationRequestState.epoch)
+        XCTAssertEqual(viewModel.clarificationRequest?.options.count, 2)
+        XCTAssertTrue(viewModel.clarificationRequest?.options.allSatisfy { !$0.id.isEmpty } == true)
         XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
         XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 0)
         let after = DBService.shared.loadUnifiedSceneProject(named: projectName)?.0
         XCTAssertEqual(after?.parsedScript, before?.parsedScript)
         XCTAssertEqual(after?.plannedScene, before?.plannedScene)
+    }
+
+    @MainActor
+    func testClarificationAnswerResumesSameRequestOnceAndCommits() async throws {
+        let projectName = "binding-clarification-answer-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        addTeardownBlock { @MainActor in
+            _ = await viewModel.teardownAndWait()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in
+                    continuation.resume()
+                }
+            }
+        }
+
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        let markers = [
+            makeMarkedObject(
+                idSeed: "000000c1-0000-0000-0000-000000000c01",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: -1, y: 0, z: -1)
+            ),
+            makeMarkedObject(
+                idSeed: "000000c2-0000-0000-0000-000000000c02",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: 1, y: 0, z: -1)
+            ),
+        ]
+        viewModel.markedObjects = markers
+        viewModel.sceneDescription = "Человек подходит к одному из стульев."
+        let script = SceneScript(
+            actors: [SceneActor(id: "actor_1", type: .human, name: "Человек")],
+            objects: [
+                SceneObject(
+                    id: "object_chair",
+                    type: .chair,
+                    name: "стул",
+                    relativePosition: .center
+                )
+            ],
+            beats: [
+                SceneBeat(
+                    id: "beat_1",
+                    actions: [
+                        SceneAction(
+                            id: "action_1",
+                            actorId: "actor_1",
+                            type: .stand
+                        )
+                    ]
+                )
+            ],
+            spatialRelations: [],
+            originalDescription: viewModel.sceneDescription
+        )
+        var parserCallCount = 0
+        viewModel.testingSetParserResultOverride { _, _ in
+            parserCallCount += 1
+            return ParsingResult(script: script, diagnostics: .empty)
+        }
+
+        await viewModel.generateScene()
+
+        let clarification = try XCTUnwrap(viewModel.clarificationRequest)
+        let requestID = try XCTUnwrap(viewModel.generationRequestState.requestID)
+        let epoch = try XCTUnwrap(viewModel.generationRequestState.epoch)
+        XCTAssertEqual(parserCallCount, 1)
+        XCTAssertEqual(viewModel.testingGenerationOwnerCount, 1)
+
+        let answer = await viewModel.submitClarificationAnswer(
+            .choice(clarification.options[0].id),
+            for: clarification
+        )
+
+        XCTAssertEqual(answer, .accepted)
+        XCTAssertEqual(parserCallCount, 2)
+        XCTAssertEqual(viewModel.testingGenerationOwnerCount, 1)
+        XCTAssertEqual(viewModel.generationRequestState.phase, .success)
+        XCTAssertEqual(viewModel.generationRequestState.requestID, requestID)
+        XCTAssertEqual(viewModel.generationRequestState.epoch, epoch)
+        XCTAssertNil(viewModel.clarificationRequest)
+        XCTAssertNotNil(viewModel.plannedScene)
+        XCTAssertEqual(viewModel.testingGenerationStateTrace.filter { $0.phase == .validating }.count, 2)
+    }
+
+    @MainActor
+    func testClarificationCancelReturnsDraftAndClearsRequest() async throws {
+        let projectName = "binding-clarification-cancel-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        addTeardownBlock { @MainActor in
+            _ = await viewModel.teardownAndWait()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in
+                    continuation.resume()
+                }
+            }
+        }
+
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.markedObjects = [
+            makeMarkedObject(
+                idSeed: "000000d1-0000-0000-0000-000000000d01",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: -1, y: 0, z: -1)
+            ),
+            makeMarkedObject(
+                idSeed: "000000d2-0000-0000-0000-000000000d02",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: 1, y: 0, z: -1)
+            ),
+        ]
+        viewModel.sceneDescription = "Человек подходит к одному из стульев."
+        viewModel.testingSetParserResultOverride { _, _ in
+            ParsingResult(
+                script: SceneScript(
+                    actors: [SceneActor(id: "actor_1", type: .human, name: "Человек")],
+                    objects: [SceneObject(id: "object_chair", type: .chair, name: "стул", relativePosition: .center)],
+                    beats: [],
+                    spatialRelations: [],
+                    originalDescription: "Человек подходит к одному из стульев."
+                ),
+                diagnostics: .empty
+            )
+        }
+
+        await viewModel.generateScene()
+        XCTAssertNotNil(viewModel.clarificationRequest)
+        let draft = viewModel.sceneDescription
+
+        await viewModel.cancelGeneration()
+
+        XCTAssertEqual(viewModel.sceneDescription, draft)
+        XCTAssertEqual(viewModel.generationRequestState.phase, .input)
+        XCTAssertNil(viewModel.clarificationRequest)
+        XCTAssertNil(viewModel.clarificationFeedback)
+        XCTAssertNil(viewModel.objectBindingResult)
+        XCTAssertFalse(viewModel.isGenerating)
+
+        // A second request proves teardown retires an active clarification,
+        // not just an already-cancelled draft.
+        await viewModel.generateScene()
+        XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
+        XCTAssertNotNil(viewModel.clarificationRequest)
+        _ = await viewModel.teardownAndWait()
+        XCTAssertEqual(viewModel.generationRequestState.phase, .idle)
+        XCTAssertNil(viewModel.clarificationRequest)
+    }
+
+    @MainActor
+    func testClarificationRejectsStaleRepeatedAndBoundedInvalidAnswers() async throws {
+        let projectName = "binding-clarification-rejections-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        addTeardownBlock { @MainActor in
+            _ = await viewModel.teardownAndWait()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in
+                    continuation.resume()
+                }
+            }
+        }
+
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.markedObjects = [
+            makeMarkedObject(
+                idSeed: "000000e1-0000-0000-0000-000000000e01",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: -1, y: 0, z: -1)
+            ),
+            makeMarkedObject(
+                idSeed: "000000e2-0000-0000-0000-000000000e02",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: 1, y: 0, z: -1)
+            ),
+        ]
+        viewModel.sceneDescription = "Человек подходит к одному из стульев."
+        var parserCallCount = 0
+        viewModel.testingSetParserResultOverride { _, _ in
+            parserCallCount += 1
+            return ParsingResult(
+                script: SceneScript(
+                    actors: [],
+                    objects: [SceneObject(id: "object_chair", type: .chair, name: "стул", relativePosition: .center)],
+                    beats: [],
+                    spatialRelations: [],
+                    originalDescription: "Человек подходит к одному из стульев."
+                ),
+                diagnostics: .empty
+            )
+        }
+
+        await viewModel.generateScene()
+        let clarification = try XCTUnwrap(viewModel.clarificationRequest)
+        let requestID = try XCTUnwrap(clarification.requestID)
+        let epoch = clarification.epoch
+        let staleRequest = await viewModel.submitClarificationAnswer(
+            .choice(clarification.options[0].id),
+            requestID: UUID(),
+            epoch: epoch,
+            clarificationID: clarification.id
+        )
+        XCTAssertEqual(staleRequest, .rejected(.staleRequest))
+        XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
+        XCTAssertEqual(parserCallCount, 1)
+
+        let staleEpoch = await viewModel.submitClarificationAnswer(
+            .choice(clarification.options[0].id),
+            requestID: requestID,
+            epoch: epoch &+ 1,
+            clarificationID: clarification.id
+        )
+        XCTAssertEqual(staleEpoch, .rejected(.staleRequest))
+
+        let invalid = await viewModel.submitClarificationAnswer(
+            .choice("not-an-observed-candidate"),
+            for: clarification
+        )
+        XCTAssertEqual(invalid, .rejected(.invalidAnswer))
+        let repeated = await viewModel.submitClarificationAnswer(
+            .choice("not-an-observed-candidate"),
+            requestID: requestID,
+            epoch: epoch,
+            clarificationID: viewModel.clarificationRequest?.id
+        )
+        XCTAssertEqual(repeated, .rejected(.repeatedAnswer))
+        _ = await viewModel.submitClarificationAnswer(.choice("invalid-two"), requestID: requestID, epoch: epoch)
+        _ = await viewModel.submitClarificationAnswer(.choice("invalid-three"), requestID: requestID, epoch: epoch)
+        let exhausted = await viewModel.submitClarificationAnswer(.choice("invalid-four"), requestID: requestID, epoch: epoch)
+
+        XCTAssertEqual(exhausted, .rejected(.retryLimitReached))
+        XCTAssertEqual(viewModel.clarificationAttemptsRemaining, 0)
+        XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
+        XCTAssertEqual(parserCallCount, 1)
+
+        viewModel.sceneDescription += " Новая попытка."
+        await viewModel.generateScene()
+        let newClarification = try XCTUnwrap(viewModel.clarificationRequest)
+        XCTAssertNotEqual(newClarification.requestID, clarification.requestID)
+        let staleAfterNewRequest = await viewModel.submitClarificationAnswer(
+            .choice(clarification.options[0].id),
+            for: clarification
+        )
+        XCTAssertEqual(staleAfterNewRequest, .rejected(.staleRequest))
+        XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
+        XCTAssertEqual(parserCallCount, 2)
     }
 
     private func resolveBindings(

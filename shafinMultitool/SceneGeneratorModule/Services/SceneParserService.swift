@@ -226,6 +226,31 @@ final class SceneParserService {
         trace?.clarificationMessage
     }
 
+    /// Builds the one immutable clarification surface consumed by the
+    /// generator owner.  Keeping construction beside the parser diagnostics
+    /// prevents the ViewModel from deriving new guesses from raw text.
+    func clarificationPayload(
+        requestID: UUID,
+        epoch: UInt,
+        trace: SceneRuntimeTrace?,
+        bindingResult: SceneObjectBindingResult?,
+        markedObjects: [MarkedObject],
+        detectedObjects: [DetectedObject],
+        prompt: String,
+        attempt: Int = 0
+    ) -> SceneClarificationPayload? {
+        SceneClarificationPayload.make(
+            requestID: requestID,
+            epoch: epoch,
+            prompt: prompt,
+            trace: trace,
+            bindingResult: bindingResult,
+            markedObjects: markedObjects,
+            detectedObjects: detectedObjects,
+            attempt: attempt
+        )
+    }
+
     func parseBundle(
         _ description: String,
         markedObjects: [MarkedObject] = [],

@@ -15,6 +15,7 @@ struct SceneInputSheet: View {
     @ObservedObject var viewModel: SceneGeneratorViewModel
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isTextFieldFocused: Bool
+    @State private var clarificationText = ""
 
     var body: some View {
         ZStack {
@@ -43,6 +44,11 @@ struct SceneInputSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: SETSpacing.x4) {
                     if !viewModel.markedObjects.isEmpty { markedObjectsSection }
+                    if viewModel.generationRequestState.phase == .clarification,
+                       let clarification = viewModel.clarificationRequest {
+                        clarificationSection(clarification)
+                            .id(clarification.id)
+                    }
                     textInputSection
                     if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
                     Spacer(minLength: SETSpacing.x4)
@@ -58,6 +64,10 @@ struct SceneInputSheet: View {
             generateButton
         }
         .scrollDismissesKeyboard(.interactively)
+        .onDisappear {
+            guard viewModel.generationRequestState.phase == .clarification || viewModel.isGenerating else { return }
+            Task { await viewModel.cancelGeneration() }
+        }
     }
 
     // MARK: - Header
@@ -74,7 +84,14 @@ struct SceneInputSheet: View {
             Spacer(minLength: SETSpacing.x3)
 
             Button {
-                dismiss()
+                if viewModel.generationRequestState.phase == .clarification || viewModel.isGenerating {
+                    Task {
+                        await viewModel.cancelGeneration()
+                        dismiss()
+                    }
+                } else {
+                    dismiss()
+                }
             } label: {
                 Text(SETCopyKey.libraryCancel.localizedTextKey)
                     .font(SETTypography.uiBodyFont(weight: .semibold))
@@ -85,6 +102,102 @@ struct SceneInputSheet: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("generator_input_cancel")
+        }
+    }
+
+    // MARK: - Clarification
+
+    private func clarificationSection(_ clarification: SceneClarificationPayload) -> some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Text(clarification.prompt)
+                .font(SETTypography.scaledFont(.screenplay, size: SETTypographySize.body, relativeTo: .body))
+                .foregroundStyle(.setTextPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("generator_clarification_prompt")
+
+            ForEach(clarification.options) { option in
+                Button {
+                    Task {
+                        _ = await viewModel.submitClarificationAnswer(
+                            .choice(option.id),
+                            for: clarification
+                        )
+                    }
+                } label: {
+                    HStack(spacing: SETSpacing.x2) {
+                        Text(option.label)
+                            .font(SETTypography.uiBodyFont(weight: .semibold))
+                            .foregroundStyle(.setTextPrimary)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: SETSpacing.x2)
+                    }
+                    .padding(.horizontal, SETSpacing.x3)
+                    .frame(minHeight: SETComponentMetric.minimumHitTarget)
+                    .background(Color.setSurfaceSolid)
+                    .overlay {
+                        Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.isGenerating || viewModel.clarificationAttemptsRemaining == 0)
+                .opacity(viewModel.isGenerating || viewModel.clarificationAttemptsRemaining == 0 ? 0.45 : 1)
+                .accessibilityLabel(option.accessibilityLabel)
+                .accessibilityIdentifier("generator_clarification_option_\(option.id)")
+            }
+
+            if clarification.allowsFreeText {
+                HStack(spacing: SETSpacing.x2) {
+                    TextField("", text: $clarificationText)
+                        .font(SETTypography.uiBodyFont(weight: .regular))
+                        .foregroundStyle(.setTextPrimary)
+                        .textFieldStyle(.plain)
+                        .submitLabel(.send)
+                        .onSubmit { submitClarificationText(clarification) }
+                        .accessibilityLabel(Text(clarification.prompt))
+                        .accessibilityIdentifier("generator_clarification_text")
+
+                    Button(SETCopyKey.generatorAction.localizedTextKey) {
+                        submitClarificationText(clarification)
+                    }
+                    .font(SETTypography.uiBodyFont(weight: .semibold))
+                    .foregroundStyle(.setTextPrimary)
+                    .underline()
+                    .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                           minHeight: SETComponentMetric.minimumHitTarget)
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isGenerating || viewModel.clarificationAttemptsRemaining == 0)
+                    .accessibilityIdentifier("generator_clarification_submit")
+                }
+                .padding(.horizontal, SETSpacing.x3)
+                .frame(minHeight: SETComponentMetric.minimumHitTarget)
+                .background(Color.setSurfaceSolid)
+                .overlay {
+                    Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+                }
+            }
+
+            if let feedback = viewModel.clarificationFeedback {
+                Text(feedback)
+                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                    .foregroundStyle(.setTextPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("generator_clarification_feedback")
+            }
+        }
+        .padding(SETSpacing.x3)
+        .background(Color.setSurfaceSolid)
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
+    }
+
+    private func submitClarificationText(_ clarification: SceneClarificationPayload) {
+        isTextFieldFocused = false
+        Task {
+            _ = await viewModel.submitClarificationAnswer(
+                .freeText(clarificationText),
+                for: clarification
+            )
         }
     }
 

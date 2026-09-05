@@ -329,6 +329,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Missing/ambiguous entries remain typed and are never replaced by a
     /// guessed placeholder or array-position match.
     @Published private(set) var objectBindingResult: SceneObjectBindingResult?
+
+    /// Structured question for the active request.  The payload is immutable
+    /// and carries the same request identity as `generationRequestState`.
+    @Published private(set) var clarificationRequest: SceneClarificationPayload?
+
+    /// Bounded answer feedback stays local to the current clarification and
+    /// never becomes a parser or project error.
+    @Published private(set) var clarificationFeedback: String?
     
     /// The request-owned generator state. Compatibility projections below are
     /// updated only by the state owner so a stale task cannot contradict them.
@@ -706,6 +714,37 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var pendingRecordingArtifacts: [RecordingArtifact] = []
     private var projectSnapshotTask: Task<Result<Void, SceneWorkspaceTeardownFailure>, Never>?
     private var generationTask: Task<Void, Never>?
+
+    private struct PendingClarificationGeneration {
+        let generationID: String
+        let requestID: UUID
+        let generationToken: UInt
+        let submittedDescription: String
+        let cameraTransform: simd_float4x4
+        let markedObjects: [MarkedObject]
+        let detectedObjects: [DetectedObject]
+        let detectedPlanes: [ScenePlaneSnapshot]
+        let bindingRequestSnapshot: SceneObjectBindingRequestSnapshot
+
+        func withBindingRequest(_ request: SceneObjectBindingRequestSnapshot) -> Self {
+            Self(
+                generationID: generationID,
+                requestID: requestID,
+                generationToken: generationToken,
+                submittedDescription: submittedDescription,
+                cameraTransform: cameraTransform,
+                markedObjects: markedObjects,
+                detectedObjects: detectedObjects,
+                detectedPlanes: detectedPlanes,
+                bindingRequestSnapshot: request
+            )
+        }
+    }
+
+    private var pendingClarificationGeneration: PendingClarificationGeneration?
+    private var clarificationAnswerKeys = Set<String>()
+    private var clarificationAttemptCount = 0
+    private static let maximumClarificationAttempts = 3
     /// M1-016: active workspace deletion lease; non-nil while this VM owns the project.
     private var projectLeaseToken: UUID?
     /// The registry is supplied by the persistence owner when Library opens a
@@ -856,6 +895,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             .dropFirst()
             .sink { [weak self] description in
                 guard let self else { return }
+                if clarificationRequest != nil {
+                    clearClarificationProjection()
+                    objectBindingResult = nil
+                }
                 updateGenerationInputState(for: description)
                 sceneChunkState = nil
                 refreshIdleStatusMessage()
@@ -1220,6 +1263,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func performTeardown() async -> SceneWorkspaceTeardownResult {
         clearHintPresentation()
+        clearClarificationProjection()
         suppressAutomaticPersistence = true
         objectBindingResult = nil
 
@@ -1401,6 +1445,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             && !isWorkspaceReleased
             && !isSceneMutationBlocked
             && !isMarkingMode
+            && generationRequestState.phase != .clarification
+    }
+
+    var clarificationAttemptsRemaining: Int {
+        max(0, Self.maximumClarificationAttempts - clarificationAttemptCount)
     }
 
     /// UI-facing projection of the same trust-boundary checks used by
@@ -1651,7 +1700,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 ? .retryableFailure(requestID: requestID, epoch: epoch, failure: failure)
                 : .terminalFailure(requestID: requestID, epoch: epoch, failure: failure)
         }
-        return publishGenerationState(
+        let published = publishGenerationState(
             next,
             expectedRequestID: expectedRequestID,
             expectedEpoch: expectedEpoch,
@@ -1659,6 +1708,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             error: message,
             validation: validation
         )
+        if published {
+            clearClarificationProjection()
+        }
+        return published
     }
 
     @discardableResult
@@ -1696,6 +1749,321 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         )
     }
 
+    private func clearClarificationProjection() {
+        clarificationRequest = nil
+        clarificationFeedback = nil
+        pendingClarificationGeneration = nil
+        clarificationAnswerKeys.removeAll()
+        clarificationAttemptCount = 0
+    }
+
+    /// Publishes a structured question only from parser/binding observations.
+    /// If there is no bounded candidate, the request is failed closed instead
+    /// of showing an answer surface that cannot safely resume generation.
+    @discardableResult
+    private func publishClarification(
+        trace: SceneRuntimeTrace? = nil,
+        bindingResult: SceneObjectBindingResult? = nil,
+        requestID: UUID,
+        generationToken: UInt,
+        message: String
+    ) -> Bool {
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return false }
+        let marked = pendingClarificationGeneration?.markedObjects ?? markedObjects
+        let detected = pendingClarificationGeneration?.detectedObjects ?? detectedObjects
+        guard let payload = parserService.clarificationPayload(
+            requestID: requestID,
+            epoch: generationToken,
+            trace: trace,
+            bindingResult: bindingResult,
+            markedObjects: marked,
+            detectedObjects: detected,
+            prompt: message,
+            attempt: clarificationAttemptCount
+        ) else {
+            let fallback = localizedCopy(.generatorErrorParseEmpty)
+            _ = publishGenerationFailure(
+                .parse,
+                retryable: false,
+                message: fallback,
+                expectedRequestID: requestID,
+                expectedEpoch: generationToken
+            )
+            diagnosticsLog("[GENERATION] clarification rejected: no observed candidates")
+            return false
+        }
+        guard publishGenerationState(
+            .clarification(
+                requestID: requestID,
+                epoch: generationToken,
+                message: message
+            ),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken,
+            status: localizedCopy(.generatorClarification),
+            clearError: true,
+            clearValidation: true
+        ) else { return false }
+        clarificationRequest = payload
+        clarificationFeedback = nil
+        // UIKit can invoke generation without opening the sheet first.  The
+        // ViewModel owns this presentation edge so SwiftUI recomposition does
+        // not lose the question.
+        showInputSheet = true
+        return true
+    }
+
+    @discardableResult
+    private func publishAcceptedGenerationAttempt(
+        requestID: UUID,
+        generationToken: UInt
+    ) -> Bool {
+        publishGenerationState(
+            .accepted(requestID: requestID, epoch: generationToken),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken
+        ) && publishGenerationState(
+            .queued(requestID: requestID, epoch: generationToken),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken
+        ) && publishGenerationState(
+            .leader(requestID: requestID, epoch: generationToken),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken
+        ) && publishGenerationState(
+            .generating(requestID: requestID, epoch: generationToken, stage: .reading),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken,
+            status: localizedCopy(.generatorStatusAnalyzing)
+        )
+    }
+
+    private func parserMarkedObjects(
+        for selectedCandidateID: String?,
+        context: PendingClarificationGeneration
+    ) -> [MarkedObject] {
+        guard let selectedCandidateID else { return context.markedObjects }
+        let selected = context.markedObjects.filter {
+            $0.canonicalMarkedObjectID.caseInsensitiveCompare(selectedCandidateID) == .orderedSame
+        }
+        // Detection-only answers cannot be represented in the parser's
+        // marked-object input.  Keep the original parser evidence and let the
+        // explicit binding alias below remain the identity gate.
+        return selected.isEmpty ? context.markedObjects : selected
+    }
+
+    private func bindingRequest(
+        for selectedCandidateID: String,
+        context: PendingClarificationGeneration
+    ) -> SceneObjectBindingRequestSnapshot {
+        let request = context.bindingRequestSnapshot
+        guard let candidate = request.candidates.first(where: {
+            $0.canonicalID.caseInsensitiveCompare(selectedCandidateID) == .orderedSame
+        }) else {
+            return request
+        }
+        var aliases = request.aliasToObjectRef
+        for rawAlias in candidate.aliases + [candidate.name, candidate.objectType.rawValue] {
+            guard let alias = MarkedObjectMatcher.normalizedAlias(rawAlias) else { continue }
+            aliases[alias] = candidate.canonicalID
+        }
+        return request.withAliasBindings(aliases)
+    }
+
+    private func clarificationAnswerEvaluation(
+        _ answer: SceneClarificationAnswer,
+        payload: SceneClarificationPayload,
+        context: PendingClarificationGeneration
+    ) -> (candidateID: String?, fingerprint: String)? {
+        let raw = answer.rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        let normalized = MarkedObjectMatcher.normalizedAlias(raw) ?? raw.lowercased()
+        let answerKind = answer.isFreeText ? "text" : "choice"
+        let fingerprint = [
+            context.requestID.uuidString.lowercased(),
+            String(context.generationToken),
+            payload.targetReference ?? "parser",
+            answerKind,
+            normalized
+        ].joined(separator: "|")
+
+        if !answer.isFreeText {
+            guard let option = payload.options.first(where: { $0.id == raw }) else {
+                return (nil, fingerprint)
+            }
+            return (option.id, fingerprint)
+        }
+
+        guard payload.allowsFreeText,
+              raw.count <= payload.maximumFreeTextCharacters else {
+            return (nil, fingerprint)
+        }
+        let optionIDs = Set(payload.options.map(\.id))
+        let candidates = context.bindingRequestSnapshot.candidates.filter {
+            optionIDs.contains($0.canonicalID)
+        }
+        let matches = candidates.filter { candidate in
+            let aliases = candidate.aliases + [candidate.name, candidate.objectType.rawValue]
+            return aliases.contains { alias in
+                (MarkedObjectMatcher.normalizedAlias(alias) ?? alias.lowercased()) == normalized
+            }
+        }
+        guard matches.count == 1 else { return (nil, fingerprint) }
+        return (matches[0].canonicalID, fingerprint)
+    }
+
+    private func recordClarificationRejection(
+        _ rejection: SceneClarificationRejection,
+        payload: SceneClarificationPayload
+    ) {
+        guard rejection == .invalidAnswer || rejection == .unresolvedAnswer else { return }
+        clarificationAttemptCount += 1
+        clarificationRequest = payload.withAttempt(clarificationAttemptCount)
+        clarificationFeedback = localizedCopy(.generatorInputInvalid)
+    }
+
+    /// Submits an answer for the exact request UUID/epoch shown by the sheet.
+    /// All validation and reparsing stays on the ViewModel owner so a stale
+    /// SwiftUI action cannot create a second scene request.
+    func submitClarificationAnswer(
+        _ answer: SceneClarificationAnswer,
+        requestID: UUID,
+        epoch: UInt,
+        clarificationID: String? = nil
+    ) async -> SceneClarificationSubmissionResult {
+        if let generationTask {
+            await generationTask.value
+            if generationEpoch == epoch {
+                self.generationTask = nil
+            }
+        }
+        guard !isWorkspaceReleased else { return .rejected(.workspaceUnavailable) }
+        guard generationRequestState.phase == .clarification else {
+            return .rejected(.noActiveRequest)
+        }
+        guard generationRequestState.requestID == requestID,
+              generationRequestState.epoch == epoch,
+              let payload = clarificationRequest,
+              payload.requestID == requestID,
+              payload.epoch == epoch,
+              clarificationID == nil || clarificationID == payload.id,
+              let context = pendingClarificationGeneration,
+              context.requestID == requestID,
+              context.generationToken == epoch else {
+            return .rejected(.staleRequest)
+        }
+        guard clarificationAttemptCount < Self.maximumClarificationAttempts else {
+            return .rejected(.retryLimitReached)
+        }
+        guard let evaluation = clarificationAnswerEvaluation(answer, payload: payload, context: context) else {
+            recordClarificationRejection(.invalidAnswer, payload: payload)
+            return .rejected(.invalidAnswer)
+        }
+        if clarificationAnswerKeys.contains(evaluation.fingerprint) {
+            return .rejected(.repeatedAnswer)
+        }
+        clarificationAnswerKeys.insert(evaluation.fingerprint)
+        guard let candidateID = evaluation.candidateID else {
+            recordClarificationRejection(.invalidAnswer, payload: payload)
+            return .rejected(.invalidAnswer)
+        }
+
+        clarificationAttemptCount += 1
+        let selectedRequest = bindingRequest(for: candidateID, context: context)
+        let resumedContext = context.withBindingRequest(selectedRequest)
+        pendingClarificationGeneration = resumedContext
+        clarificationRequest = nil
+        clarificationFeedback = nil
+
+        guard publishGenerationState(
+            .validating(requestID: requestID, epoch: epoch),
+            expectedRequestID: requestID,
+            expectedEpoch: epoch,
+            status: localizedCopy(.generatorStatusAnalyzing),
+            clearError: true,
+            clearValidation: true
+        ), publishAcceptedGenerationAttempt(
+            requestID: requestID,
+            generationToken: epoch
+        ) else {
+            return .rejected(.requestFailed)
+        }
+
+        await startGenerationTask(
+            resumedContext,
+            parserMarkedObjects: parserMarkedObjects(for: candidateID, context: resumedContext)
+        )
+        guard generationRequestState.requestID == requestID,
+              generationRequestState.epoch == epoch else {
+            return .rejected(.staleRequest)
+        }
+        if generationRequestState.phase == .success {
+            clearClarificationProjection()
+            return .accepted
+        }
+        if generationRequestState.phase == .clarification,
+           let nextPayload = clarificationRequest {
+            clarificationFeedback = localizedCopy(.generatorInputInvalid)
+            // Keep the newly published payload and its attempt count.  The
+            // same answer fingerprint remains rejected if submitted again.
+            clarificationRequest = nextPayload
+            return .rejected(.unresolvedAnswer)
+        }
+        return .rejected(.requestFailed)
+    }
+
+    func submitClarificationAnswer(
+        _ answer: SceneClarificationAnswer,
+        for clarification: SceneClarificationPayload
+    ) async -> SceneClarificationSubmissionResult {
+        await submitClarificationAnswer(
+            answer,
+            requestID: clarification.requestID,
+            epoch: clarification.epoch,
+            clarificationID: clarification.id
+        )
+    }
+
+    /// Cancels either active generation work or a pending clarification and
+    /// returns the same draft to editable input.  The epoch is retired before
+    /// the owner task is joined, fencing late parser completions.
+    func cancelGeneration() async {
+        let state = generationRequestState
+        guard state.isExecutionInFlight || state.phase == .clarification else { return }
+        let requestID = state.requestID
+        let epoch = state.epoch
+        if state.isExecutionInFlight,
+           let requestID,
+           let epoch {
+            _ = publishGenerationState(
+                .cancelling(requestID: requestID, epoch: epoch),
+                expectedRequestID: requestID,
+                expectedEpoch: epoch
+            )
+        }
+        generationEpoch &+= 1
+        generationTask?.cancel()
+        if let generationTask {
+            await generationTask.value
+            self.generationTask = nil
+        }
+        guard !isWorkspaceReleased else {
+            clearClarificationProjection()
+            return
+        }
+        if generationRequestState.phase == .cancelling
+            || (generationRequestState.phase == .clarification
+                && generationRequestState.requestID == requestID
+                && generationRequestState.epoch == epoch) {
+            _ = publishGenerationState(.input())
+        }
+        clearClarificationProjection()
+        objectBindingResult = nil
+        if state.isExecutionInFlight || state.phase == .clarification {
+            statusMessage = localizedCopy(.generatorCancelled)
+        }
+    }
+
     /// Генерирует сцену из текстового описания
     func generateScene() async {
         if let generationTask {
@@ -1711,6 +2079,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // A submit always starts from the editable draft, including after a
         // terminal/retryable result. This clears the previous request identity
         // before issuing the next epoch.
+        clearClarificationProjection()
         enterGenerationInputState()
         if let issue = sceneDescriptionValidationIssue {
             let message = localizedInputValidationCopy(for: issue)
@@ -1782,50 +2151,60 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             )
         )
 
-        // These seams are request-owned even though the current local parser
-        // has no separate queue/leader backend yet.
-        guard publishGenerationState(
-            .accepted(requestID: requestID, epoch: generationToken),
-            expectedRequestID: requestID,
-            expectedEpoch: generationToken
-        ), publishGenerationState(
-            .queued(requestID: requestID, epoch: generationToken),
-            expectedRequestID: requestID,
-            expectedEpoch: generationToken
-        ), publishGenerationState(
-            .leader(requestID: requestID, epoch: generationToken),
-            expectedRequestID: requestID,
-            expectedEpoch: generationToken
-        ), publishGenerationState(
-            .generating(requestID: requestID, epoch: generationToken, stage: .reading),
-            expectedRequestID: requestID,
-            expectedEpoch: generationToken,
-            status: localizedCopy(.generatorStatusAnalyzing)
+        let context = PendingClarificationGeneration(
+            generationID: generationID,
+            requestID: requestID,
+            generationToken: generationToken,
+            submittedDescription: submittedDescription,
+            cameraTransform: cameraTransform,
+            markedObjects: submittedMarkedObjects,
+            detectedObjects: submittedDetectedObjects,
+            detectedPlanes: submittedDetectedPlanes,
+            bindingRequestSnapshot: bindingRequestSnapshot
+        )
+        pendingClarificationGeneration = context
+        clarificationAttemptCount = 0
+        clarificationAnswerKeys.removeAll()
+
+        guard publishAcceptedGenerationAttempt(
+            requestID: requestID,
+            generationToken: generationToken
         ) else {
             return
         }
 
-        #if DEBUG
+#if DEBUG
         testingGenerationOwnerCount += 1
-        #endif
+#endif
+        await startGenerationTask(context, parserMarkedObjects: submittedMarkedObjects)
+    }
 
+    /// Reuses the already accepted request identity for a clarification
+    /// continuation.  This is the only owner that can start parser work after
+    /// a question; it never increments `testingGenerationOwnerCount` or
+    /// allocates another request UUID.
+    private func startGenerationTask(
+        _ context: PendingClarificationGeneration,
+        parserMarkedObjects: [MarkedObject]
+    ) async {
+        guard generationIsCurrent(context.generationToken, requestID: context.requestID) else { return }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.performGeneration(
-                generationID: generationID,
-                requestID: requestID,
-                generationToken: generationToken,
-                submittedDescription: submittedDescription,
-                cameraTransform: cameraTransform,
-                markedObjects: submittedMarkedObjects,
-                detectedObjects: submittedDetectedObjects,
-                detectedPlanes: submittedDetectedPlanes,
-                bindingRequestSnapshot: bindingRequestSnapshot
+                generationID: context.generationID,
+                requestID: context.requestID,
+                generationToken: context.generationToken,
+                submittedDescription: context.submittedDescription,
+                cameraTransform: context.cameraTransform,
+                markedObjects: parserMarkedObjects,
+                detectedObjects: context.detectedObjects,
+                detectedPlanes: context.detectedPlanes,
+                bindingRequestSnapshot: context.bindingRequestSnapshot
             )
         }
         generationTask = task
         await task.value
-        if generationEpoch == generationToken {
+        if generationEpoch == context.generationToken {
             generationTask = nil
         }
     }
@@ -1896,7 +2275,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             markedObjects: markedObjects
         )
 #endif
-        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID),
+              generationRequestState.phase == .generating else { return }
         parserService.releaseLocalModelResources(reason: "scene_generation_parse_complete")
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] parser finished and LLM resources requested for release")
         let result = parserOutput.result
@@ -1931,16 +2311,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         if runtimeTrace?.route == .needsClarification {
             let clarification = parserService.clarificationMessage(for: runtimeTrace)
                 ?? localizedCopy(.generatorClarification)
-            guard publishGenerationState(
-                .clarification(
-                    requestID: requestID,
-                    epoch: generationToken,
-                    message: clarification
-                ),
-                expectedRequestID: requestID,
-                expectedEpoch: generationToken,
-                status: localizedCopy(.generatorClarification),
-                error: clarification
+            guard publishClarification(
+                trace: runtimeTrace,
+                requestID: requestID,
+                generationToken: generationToken,
+                message: clarification
             ) else { return }
             SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] awaiting clarification")
             SceneGeneratorDiagnosticsLogger.shared.flush()
@@ -2114,6 +2489,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                   clearError: true,
                   clearValidation: true
               ) else { return }
+        clearClarificationProjection()
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] complete actors=\(plannedWithBindingSources.placedActors.count), objects=\(plannedWithBindingSources.placedObjects.count)")
@@ -2153,12 +2529,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             .sorted()
             .joined(separator: ",")
         diagnosticsLog("[GENERATION] object binding clarification required: \(detail)")
-        _ = publishGenerationState(
-            .clarification(requestID: requestID, epoch: generationToken, message: message),
-            expectedRequestID: requestID,
-            expectedEpoch: generationToken,
-            status: message,
-            error: message
+        _ = publishClarification(
+            bindingResult: result,
+            requestID: requestID,
+            generationToken: generationToken,
+            message: message
         )
         return true
     }
@@ -2401,6 +2776,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         isPlaying = false
         isHintsEnabled = false
         clearHintPresentation()
+        clearClarificationProjection()
         resetPlaybackUIState(clearTimeline: true)
         if !generationRequestState.isExecutionInFlight {
             _ = publishGenerationState(.idle)
@@ -2412,6 +2788,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Показывает sheet ввода
     func showInput() {
+        if generationRequestState.phase == .clarification,
+           clarificationRequest != nil {
+            showInputSheet = true
+            return
+        }
         let issue = sceneDescriptionValidationIssue
         enterGenerationInputState(clearValidation: issue == nil || issue == .empty)
         if let issue, issue != .empty {
@@ -6212,13 +6593,41 @@ extension SceneGeneratorViewModel {
               generationRequestState.phase == .generating else {
             return false
         }
-        return publishGenerationState(
+        let hasObservedCandidates = !(pendingClarificationGeneration?.markedObjects ?? markedObjects).isEmpty
+            || !(pendingClarificationGeneration?.detectedObjects ?? detectedObjects).isEmpty
+        if hasObservedCandidates,
+           publishClarification(
+               requestID: requestID,
+               generationToken: epoch,
+               message: message
+           ) {
+            return true
+        }
+        // This seam predates the structured production payload and is used by
+        // state-machine tests without observed candidates.  Keep that test
+        // hook typed while production remains fail-closed for an unanswerable
+        // clarification.
+        guard publishGenerationState(
             .clarification(requestID: requestID, epoch: epoch, message: message),
             expectedRequestID: requestID,
             expectedEpoch: epoch,
             status: localizedCopy(.generatorClarification),
-            error: message
+            clearError: true
+        ) else { return false }
+        clarificationRequest = SceneClarificationPayload(
+            id: "testing:\(requestID.uuidString.lowercased()):\(epoch)",
+            requestID: requestID,
+            epoch: epoch,
+            prompt: message,
+            targetReference: nil,
+            options: [],
+            allowsFreeText: false,
+            maximumFreeTextCharacters: 0,
+            observedDiagnostics: ["testing"],
+            attempt: 0
         )
+        showInputSheet = true
+        return true
     }
 
     /// Test-only seam for the same unresolved-binding gate used by
