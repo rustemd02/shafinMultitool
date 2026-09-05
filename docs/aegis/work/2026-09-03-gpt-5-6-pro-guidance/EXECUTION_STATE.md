@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last accepted task head: `7460cbe` (M5-013; no push)
+- Last accepted task head: `c4e770a` (M2-030; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-030 evidence-linked explanations; M2-034 Camera permission UI; M7-002 canonical capture source
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-029, M2-032, M3-001, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M5-013, M6-001, M6-002, M6-003, M6-004, M7-001, M7-003, M7-004, M12-033]
-- In-progress: [M2-030, M2-034, M7-002]
+- Current task: M2-034 Camera permission UI; M7-002 canonical capture source
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-030, M2-032, M3-001, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M5-013, M6-001, M6-002, M6-003, M6-004, M7-001, M7-003, M7-004, M12-033]
+- In-progress: [M2-034, M7-002]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -470,3 +470,9 @@
 ### 2026-09-05T06:02+03:00 — M2-034 STARTED
 - The dependency-ready Camera permission slice closes first entry, request, denied, restricted, unavailable, Settings return and foreground recheck through the existing EntryFlow/PermissionClient owners. Repeated callbacks must not skip intro, duplicate a prompt or start Camera more than once.
 - A dedicated Luna worktree owns only the current CameraCoachEntryFlowModel/View, PermissionClient seam, exact RU+EN recovery copy, focused existing entry tests and deterministic DEBUG launch-state evidence. Routes, permission truth, accessibility IDs and the accepted production Camera surface remain unchanged; no parallel permission state machine.
+
+### 2026-09-05T06:19+03:00 — M2-030 CLOSED
+- Camera explanations and Decision Trace now consume only a typed same-frame, action-linked issue-evidence projection produced by the accepted analysis pipeline. Opaque IDs, stale/unlinked, neural-only, summary-only evidence and arbitrary free-form assumptions fail closed and cannot create a Why surface or evidence row.
+- Explicit `semanticActionType` is authoritative over coarse action type, so object and framing actions cannot contradict each other. RU+EN text is deterministic and issue/action-specific; WAIT/SELECT_SUBJECT/ABSTAIN and pause without proven provenance omit Why. M2-031 retains immutable pause ownership.
+- Fresh Sol first returned `fix-first` because the initial builder still trusted sanitized free text/opaque IDs, ignored semantic action and rendered raw assumptions. Correction `c4e770a` closed every finding; final fresh Sol verdict `SHIP`.
+- Independent worker evidence on ordinary iPhone 17e simulator iOS 26.5: 50/50 focused Camera/Trace/domain/pipeline tests PASS, 0 failed/skipped across `/private/tmp/setos-m2-030-explanations-camera-run4.xcresult`, `...trace-run7.xcresult`, `...domain-run6.xcresult` and `...pipeline-run8.xcresult`. Root pre-correction integration passed 27/27 at `/private/tmp/setos-root-m2-030.xcresult`; final typed correction was independently reviewed against the four passing worker bundles. Tracker total: 87/424 completed, 337 remaining.
