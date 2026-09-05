@@ -1,0 +1,726 @@
+{
+  "task": "M2-GATE",
+  "schema": "set-os-m2-gate",
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "generated_at": "2026-09-05T17:29:41Z",
+  "base_head": "81d0ae80e2e416342cb0ebda43015117c0294d7d",
+  "tracker": {
+    "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md",
+    "gate_row": "M2-GATE",
+    "dependency_rows": [
+      "M2-021",
+      "M2-026",
+      "M2-035",
+      "M2-036"
+    ],
+    "acceptance": "The complete local Camera Coach loop must run through production owners; detect/select/track/neural evidence/safe one-action advice/movement observation/honest four-way verification must be supported, unit and UI gates must pass, and device/model-quality claims remain explicitly pending."
+  },
+  "dependency_order": [
+    "M2-021",
+    "M2-026",
+    "M2-035",
+    "M2-036"
+  ],
+  "dependencies": {
+    "M2-021": {
+      "status": "FAIL",
+      "owner": "SafetyPolicyOwner",
+      "acceptance": "KEEP requires stable high confidence and no dominant technical failure; uncertain strong-looking frames abstain rather than inventing a fix.",
+      "evidence": [
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-021-good-frame-preservation.md",
+          "sha256": "73e46551c6670394a2bfa9f9e2657e4ca84d3c15418c385f83688f1fe4655c04",
+          "result": "GoodFramePreservationPolicyTests 8/8 passed; pure policy defaults are threshold 0.8 and stable streak 5.",
+          "durability": "durable repository evidence"
+        }
+      ],
+      "production_trace": {
+        "policy_source": "shafinMultitool/Multitool2Module/Models/CameraAnalysis/GoodFramePreservationPolicy.swift:38-79",
+        "required_defaults": {
+          "keep_threshold": 0.8,
+          "stable_streak": 5,
+          "dominant_failure_result": "ABSTAIN"
+        },
+        "call_site_search": "No GoodFramePreservationPolicy.evaluate call exists in shafinMultitool or shafinMultitoolTests at base_head.",
+        "live_planner_observation": "RecommendationPlanner returns KEEP-like no-change output for a single critique.verdict == good at shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:1738-1751, without the required five-frame policy evaluation.",
+        "live_candidate_observation": "The live bounded candidate branch passes goodFrameScore: 0 at shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:6575-6585, so the neural good-frame score is not proven to reach the live planner gate.",
+        "related_semantic_guard": "shouldPreserveGoodFrameSemanticActions is a separate heuristic at AnalysisPipeline.swift:9535-9611; it is not the accepted five-frame GoodFramePreservationPolicy contract."
+      },
+      "independent_audit": "FAIL: the policy implementation and 8/8 unit report are valid, but the strict gate requires current production-owner proof. The policy is orphaned from the live owner chain, and the live path does not prove a five-frame KEEP or uncertain-frame ABSTAIN decision.",
+      "earliest_reopen": true
+    },
+    "M2-026": {
+      "status": "PASS",
+      "owner": "VerificationOwner",
+      "acceptance": "Crop/aspect-fill, new subject, lens switch, exposure auto-settle, and unrelated scene transitions must be incomparable or worse, never improved.",
+      "evidence": [
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-026-false-success-regressions.md",
+          "sha256": "7f18ee98e0e02c61d3fc2a5bb181b5b85182b8d542d687ca020ecbf5433b27dd",
+          "result": "Focused adversarial suite 96/96 passed; every listed confounder is incomparable or worse.",
+          "durability": "durable repository evidence"
+        },
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md",
+          "sha256": "ab0420a96eef0028a33d4b4187f60373ad3a571301d96484bd5f343c8e98bc1b",
+          "result": "Current closure records the frame-bound geometry/lens/scene guards and automatic scene-cut retry evidence.",
+          "durability": "durable repository evidence"
+        }
+      ],
+      "production_trace": {
+        "sources": [
+          "shafinMultitool/Multitool2Module/Models/CameraAnalysis/ActionVerifier.swift",
+          "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CoachingEpisodeCoordinator.swift",
+          "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+          "shafinMultitool/Multitool2Module/ViewModels/CameraViewModel.swift"
+        ],
+        "result": "PASS: immutable lifecycle, geometry, lens, scene, PTS/session and safety comparisons fail closed before an improved result."
+      },
+      "independent_audit": "PASS: accepted 96/96 adversarial evidence plus current-head capture-path and scene-cut rerun provide direct production-owner coverage.",
+      "earliest_reopen": false
+    },
+    "M2-035": {
+      "status": "PASS",
+      "owner": "TestTopologyOwner",
+      "acceptance": "Representative cases execute through production owners, not mocks of the final planner/verifier; protected cases assert no harmful action.",
+      "evidence": [
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md",
+          "sha256": "ab0420a96eef0028a33d4b4187f60373ad3a571301d96484bd5f343c8e98bc1b",
+          "result": "Real capture-path closed-loop 4/4, automatic verification/provenance 5/5, affected regression 72/72 and comparable regression 53/53 passed on permitted iPhone Air.",
+          "durability": "durable repository evidence"
+        },
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-019-safety-policy-matrix.md",
+          "sha256": "cb3e5cc7f49f7066e0efbbb9cdc5a6ddcad2859fe8ed4106b6e1b0b2dad25eb3",
+          "result": "Protected safety matrix and 12/12 focused tests pass.",
+          "durability": "durable repository evidence"
+        },
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-020-planner-decision-matrix.md",
+          "sha256": "f5ea3326be4a2739a932ffc43415a67e3d70113b553b2c53b246dcd8f420d5a5",
+          "result": "Bounded planner decision table and 10/10 focused tests pass.",
+          "durability": "durable repository evidence"
+        }
+      ],
+      "independent_audit": "PASS: the current-head independent slice additionally passed 7/7, including three real capture-path closed-loop cases and four PTS/session/DETR evidence-store cases; the retained closure evidence supplies the broader owner and protected-case coverage.",
+      "earliest_reopen": false
+    },
+    "M2-036": {
+      "status": "PASS",
+      "owner": "UITestOwner",
+      "acceptance": "Every fixed Camera Coach state is reachable under DEBUG fixture configuration and public runtime switches remain absent in Release.",
+      "evidence": [
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md",
+          "sha256": "ab0420a96eef0028a33d4b4187f60373ad3a571301d96484bd5f343c8e98bc1b",
+          "result": "Permitted iPhone Air production UI 10/10 and entry UI 9/9 passed; Release app build exit 0 and selected fixture/probe strings were absent.",
+          "durability": "durable repository evidence"
+        },
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-027-029-032-camera-presentation.md",
+          "sha256": "6a61be7efb5fb059d630f03e6fb1b6ecf386bf64efc990740230918bdd683cb6",
+          "result": "Presentation state, geometry, occlusion and failure-state evidence retained.",
+          "durability": "durable repository evidence"
+        },
+        {
+          "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-034-camera-permissions.md",
+          "sha256": "f40d9ace8c10651a80dbfb8f7650d84966bbab4e3751f3ad6007c387f6a63ad4",
+          "result": "Camera entry and permission state evidence retained.",
+          "durability": "durable repository evidence"
+        }
+      ],
+      "independent_audit": "PASS: source confirms fixture construction is #if DEBUG-only and Release SceneDelegate selects the commercial root; current coordinator Release build also exited 0 and the five selected fixture/test seam strings were absent.",
+      "earliest_reopen": false
+    }
+  },
+  "dependency_summary": {
+    "pass": [
+      "M2-026",
+      "M2-035",
+      "M2-036"
+    ],
+    "fail": [
+      "M2-021"
+    ],
+    "earliest_reopen": "M2-021"
+  },
+  "production_owner_chain": [
+    {
+      "stage": "capture",
+      "owner": "CameraManager",
+      "symbols": [
+        "frameProvenanceSnapshot",
+        "captureOutput(_:didOutput:from:)"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:631-648",
+        "shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:1307-1345"
+      ],
+      "contract": "The real sample PTS, lens, preview geometry, capture generation and session generation are captured before scheduling."
+    },
+    {
+      "stage": "schedule",
+      "owner": "RealtimeScheduler",
+      "symbols": [
+        "FrameContext",
+        "dispatch(context:budget:)"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Services/Pipeline/RealtimeScheduler.swift:56-105"
+      ],
+      "contract": "FrameContext carries the immutable sample timestamp and session/capture tuple across the scheduling boundary."
+    },
+    {
+      "stage": "detect_select_track",
+      "owner": "AnalysisPipeline + SubjectTracker",
+      "symbols": [
+        "performHigh(context:generation:)",
+        "performLow(context:generation:)",
+        "SubjectTracker"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:4357-4529",
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:4644-4720",
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:6353-6460"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-008-resolver-decision-table.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-010-track-state-traces.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-011-track-invalidation-log.md"
+      ],
+      "contract": "Ambiguity and loss fail closed; accepted frame identity, lens and session boundaries are checked before live publication."
+    },
+    {
+      "stage": "neural_evidence",
+      "owner": "NeuralEvidenceInferenceService + DETRDetector",
+      "symbols": [
+        "startNeuralEvidenceInferenceIfNeeded",
+        "FeatureSampleProvenance",
+        "makeFeatureSnapshot(mode:frameId:capturedAt:evaluatedAt:)"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:3871-3891",
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:4697-4703",
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:12625-12665"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md"
+      ],
+      "contract": "DETR attribution is accepted only when frame ID, capture generation, orientation, exact sample PTS and session generation match; mismatch clears DETR instead of falling back to stale data. Model quality and model availability remain pending boundaries."
+    },
+    {
+      "stage": "safe_bounded_advice",
+      "owner": "FrameCritiqueEngine + CameraAdviceSafetyGate + RecommendationPlanner + CameraBoundedActionPlanner",
+      "symbols": [
+        "CameraAdviceSafetyGate.evaluate",
+        "RecommendationPlanner.makePlan",
+        "CameraBoundedActionPlanner.plan"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:1726-1790",
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:6530-6591",
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAdviceSafetyGate.swift",
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraBoundedActionPlanner.swift"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-019-safety-policy-matrix.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-020-planner-decision-matrix.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-021-good-frame-preservation.md"
+      ],
+      "contract": "At most one bounded action reaches stabilization; safety uncertainty produces WAIT/SELECT_SUBJECT/ABSTAIN. The specific M2-021 stable good-frame policy is not wired to this chain, which blocks the gate."
+    },
+    {
+      "stage": "stabilization",
+      "owner": "AdviceStabilizer",
+      "symbols": [
+        "liveAdviceStabilizer.observe"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:6593-6625",
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/AdviceStabilizer.swift"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-022-advice-stability-metrics.md"
+      ],
+      "contract": "Dwell, hysteresis and cooldown gate live advice; invalidation clears it immediately."
+    },
+    {
+      "stage": "movement_observation",
+      "owner": "UserMovementObserver",
+      "symbols": [
+        "observe(previous:current:actionID:asOf:)"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/UserMovementObserver.swift:455-524"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-023-movement-observer.md"
+      ],
+      "contract": "Movement is action-aware and evidence-freshness-aware; elapsed time cannot claim completion."
+    },
+    {
+      "stage": "coaching_episode",
+      "owner": "CoachingEpisodeCoordinator",
+      "symbols": [
+        "begin(with:)",
+        "verificationInput",
+        "consume(_:)"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CoachingEpisodeCoordinator.swift:398-422",
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CoachingEpisodeCoordinator.swift:425-445",
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CoachingEpisodeCoordinator.swift:685-740"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-024-episode-traces.md"
+      ],
+      "contract": "One baseline/action/track is frozen; only fresh stable after frames reach readyForVerification; cancellation is terminal until explicit retry."
+    },
+    {
+      "stage": "verification",
+      "owner": "ActionVerifier + CameraViewModel",
+      "symbols": [
+        "ActionVerifier.verify",
+        "consumeCoachingEpisodeEvent"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/Models/CameraAnalysis/ActionVerifier.swift:11-120",
+        "shafinMultitool/Multitool2Module/ViewModels/CameraViewModel.swift:1033-1087"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-025-action-verifier.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-026-false-success-regressions.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md"
+      ],
+      "contract": "The production ViewModel invokes ActionVerifier exactly once on transition to readyForVerification for each episode token and retains the four-way result; lifecycle/provenance confounders fail closed."
+    },
+    {
+      "stage": "presentation_and_teardown",
+      "owner": "OverlayView + SETCameraCoachProductionView + CommercialCameraCoachRoute",
+      "symbols": [
+        "OverlayView.body",
+        "SETCameraTopChrome",
+        "CommercialCameraCoachRoute.deactivateAndWait"
+      ],
+      "source_paths": [
+        "shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift:18-77",
+        "shafinMultitool/Multitool2Module/UI/Overlay/SETCameraCoachProductionView.swift:134-260",
+        "shafinMultitool/Multitool2Module/UI/Overlay/SETCameraCoachProductionView.swift:462-505",
+        "shafinMultitool/CommercialShell/CommercialShellRouteComposition.swift:89-183"
+      ],
+      "contract": "Runtime root keeps the existing route and pause identifiers, does not render the optional root xmark without a callback, and awaits route exit/release; SwiftUI disappearance also awaits stopAndWait."
+    }
+  ],
+  "representative_end_to_end_states": [
+    {
+      "scenario": "corrective_episode_and_automatic_verification",
+      "status": "PASS",
+      "states": [
+        "capture",
+        "detect",
+        "select_subject",
+        "track_active",
+        "neural_evidence_attributed",
+        "bounded_correct",
+        "advice_stabilized",
+        "awaitingMovement",
+        "collectingStableAfterFrames",
+        "readyForVerification",
+        "verification_improved",
+        "presentation_stable"
+      ],
+      "transitions": [
+        "CameraManager.captureOutput -> RealtimeScheduler.FrameContext -> AnalysisPipeline",
+        "same-frame subject binding -> CameraAdviceSafetyGate -> CameraBoundedActionPlanner -> AdviceStabilizer",
+        "movement evidence -> CoachingEpisodeCoordinator.readyForVerification",
+        "CameraViewModel invokes ActionVerifier once for the episode token and retains improved"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-025-action-verifier.md"
+      ],
+      "test_receipt": "/private/tmp/m2-gate-current.xcresult: 3/3 selected capture-path closed-loop cases passed; retained automatic verification run 5/5."
+    },
+    {
+      "scenario": "scene_cut_late_sample_rejection_and_retry",
+      "status": "PASS",
+      "states": [
+        "active_episode",
+        "scene_cut_cancelled",
+        "late_pre_cut_sample_rejected",
+        "terminal_state_retained",
+        "fresh_post_cut_baseline",
+        "new_episode_token"
+      ],
+      "transitions": [
+        "material scene identity change cancels the active episode",
+        "older PTS in the same session cannot mutate accepted evidence or provenance",
+        "fresh post-cut evidence starts a new baseline/token"
+      ],
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md",
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-026-false-success-regressions.md"
+      ],
+      "test_receipt": "/private/tmp/m2-gate-current.xcresult: scene-cut and store ordering cases passed."
+    },
+    {
+      "scenario": "good_frame_preservation",
+      "status": "FAIL_UNPROVEN_IN_LIVE_CHAIN",
+      "states": [
+        "good_frame_head_high",
+        "required_five_frame_streak",
+        "KEEP_or_ABSTAIN"
+      ],
+      "observed": [
+        "Pure policy returns keepStable only after five above-threshold samples and abstains on short streak or dominant failure.",
+        "Live RecommendationPlanner emits no primary action for a single good critique."
+      ],
+      "missing_transition": "No production call evaluates GoodFramePreservationPolicy or supplies a live five-frame good-frame history; live bounded candidate publication supplies goodFrameScore: 0.",
+      "evidence_paths": [
+        "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-021-good-frame-preservation.md"
+      ]
+    }
+  ],
+  "safety_abstention_cases": [
+    {
+      "case": "unknown_lens_or_missing_lens_generation",
+      "expected": "ABSTAIN",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-019-safety-policy-matrix.md"
+    },
+    {
+      "case": "ambiguous_subject_or_no_candidate",
+      "expected": "SELECT_SUBJECT",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-008-resolver-decision-table.md"
+    },
+    {
+      "case": "motion_or_unstable_frame",
+      "expected": "WAIT",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-019-safety-policy-matrix.md"
+    },
+    {
+      "case": "missing_horizon_focus_or_calibration",
+      "expected": "ABSTAIN_or_WAIT",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-019-safety-policy-matrix.md"
+    },
+    {
+      "case": "stale_or_future_evidence",
+      "expected": "ABSTAIN_or_INCOMPARABLE",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-005-envelope-schema.md"
+    },
+    {
+      "case": "older_pts_or_cross_session_evidence",
+      "expected": "reject_without_mutation",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md"
+    },
+    {
+      "case": "equal_pts_conflicting_retransmission",
+      "expected": "reject_without_mutation",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md"
+    },
+    {
+      "case": "detr_frame_generation_orientation_pts_or_session_mismatch",
+      "expected": "clear_detr_without_stale_fallback",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md"
+    },
+    {
+      "case": "crop_new_subject_lens_switch_exposure_settle_or_scene_transition",
+      "expected": "INCOMPARABLE_or_WORSE_never_IMPROVED",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-026-false-success-regressions.md"
+    },
+    {
+      "case": "good_frame_short_streak_or_dominant_technical_failure",
+      "expected": "ABSTAIN_without_correction",
+      "evidence_path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-021-good-frame-preservation.md",
+      "gate_note": "Pure policy passes its fixtures; live production integration remains the M2-021 blocker."
+    }
+  ],
+  "route_teardown_accessibility_invariants": {
+    "root_xmark_absent_at_runtime": true,
+    "root_xmark_source_is_optional_callback": true,
+    "runtime_root_on_dismiss": null,
+    "real_route_close_id": "camera_coach_close",
+    "pause_id": "camera_coach_pause",
+    "surface_id": "camera_coach_live_surface",
+    "route": "CommercialShellComposition -> CommercialCameraCoachRoute",
+    "teardown": "beginRouteExit -> releaseAndWait; OverlayView.onDisappear -> stopAndWait",
+    "accessibility": "Retained close/pause/surface IDs and minimum 44pt control target; production UI evidence retained.",
+    "release_fixture_symbols": "Absent from current Release app string/nm audit.",
+    "source_paths": [
+      "shafinMultitool/Multitool2Module/UI/Overlay/SETCameraCoachProductionView.swift:462-505",
+      "shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift:18-77",
+      "shafinMultitool/CommercialShell/CommercialShellRouteComposition.swift:89-183",
+      "shafinMultitool/Resources/SceneDelegate.swift:14-21",
+      "shafinMultitool/Resources/SceneDelegate.swift:122-175"
+    ]
+  },
+  "test_evidence_receipts": [
+    {
+      "name": "independent_current_head_capture_provenance_and_closed_loop_slice",
+      "command": "xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B -derivedDataPath /private/tmp/m2-gate-current-dd -resultBundlePath /private/tmp/m2-gate-current.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 with 7 selected tests",
+      "destination": "iPhone Air simulator A6E7238C-B4C6-4988-B399-8E127CA8683B",
+      "result_bundle": "/private/tmp/m2-gate-current.xcresult",
+      "result_bundle_sha256": null,
+      "result": "7/7 passed, 0 failed, 0 unexpected; three CameraCoachClosedLoopTests and four LatestFrameEvidenceStoreTests.",
+      "durability": "unpersisted local rerun; receipt is represented by this gate artifact and retained source evidence"
+    },
+    {
+      "name": "M2-021_good_frame_policy",
+      "command": "retained focused GoodFramePreservationPolicyTests run",
+      "destination": "permitted simulator in retained evidence",
+      "result_bundle": "/private/tmp/shafin-m2-021.xcresult",
+      "result_bundle_sha256": null,
+      "result": "8/8 passed",
+      "durability": "unpersisted result bundle; durable summary is hashed above"
+    },
+    {
+      "name": "M2-026_false_success_regression",
+      "command": "retained focused ActionVerifier/CoachingEpisodeCoordinator/UserMovementObserver/display/coordinate/track/safety run",
+      "destination": "iPhone 17e simulator 1F680A42-CEB3-43E8-9CED-52F874962A62",
+      "result_bundle": "/private/tmp/setos-m2-026-correction.xcresult",
+      "result_bundle_sha256": null,
+      "result": "96/96 passed",
+      "durability": "unpersisted result bundle; durable summary is hashed above"
+    },
+    {
+      "name": "M2-035_production_owner_closure",
+      "command": "retained narrow closed-loop, automatic/provenance and regression selections",
+      "destination": "iPhone Air simulator A6E7238C-B4C6-4988-B399-8E127CA8683B",
+      "result_bundles": [
+        "/private/tmp/m2-camera-detr-closedloop.xcresult",
+        "/private/tmp/m2-camera-auto-scenecut2.xcresult",
+        "/private/tmp/m2-camera-auto-regression-final.xcresult",
+        "/private/tmp/m2-camera-auto-regression53-final.xcresult"
+      ],
+      "result_bundle_sha256": null,
+      "result": "4/4, 5/5, 72/72 and 53/53 passed respectively",
+      "durability": "unpersisted result bundles; durable closure summary is hashed above"
+    },
+    {
+      "name": "M2-036_production_ui_and_entry",
+      "command": "retained focused CameraCoachProductionUITests and CameraCoachEntryFlowUITests",
+      "destination": "iPhone Air simulator A6E7238C-B4C6-4988-B399-8E127CA8683B",
+      "result_bundles": [
+        "/private/tmp/m2-camera-second-correction-ui-rebinding.xcresult",
+        "/private/tmp/setos-m2-033-035-036-camera-entry-ui-air-final.xcresult"
+      ],
+      "result_bundle_sha256": null,
+      "result": "10/10 production UI and 9/9 entry UI passed; current Release app string/nm seam audit returned no selected fixture/probe symbols.",
+      "durability": "unpersisted result bundles; durable closure summary is hashed above"
+    },
+    {
+      "name": "coordinator_release_build",
+      "command": "coordinator-supplied current-head Release app build on permitted iPhone 17e simulator",
+      "destination": "iPhone 17e simulator 1F680A42-CEB3-43E8-9CED-52F874962A62",
+      "product": "/private/tmp/setos-root-integrated-m2-m5-release-dd/Build/Products/Release-iphonesimulator/shafinMultitool.app",
+      "result_bundle": null,
+      "result_bundle_sha256": null,
+      "result": "exit 0; only pre-existing warnings reported",
+      "durability": "unpersisted coordinator check; no hash or xcresult claimed"
+    }
+  ],
+  "independent_checks": {
+    "static_owner_trace": {
+      "status": "PASS",
+      "checks": [
+        "CameraManager captureOutput binds numeric CMSampleBuffer PTS and session/capture provenance into FrameContext.",
+        "RealtimeScheduler carries the immutable tuple.",
+        "AnalysisPipeline repeats store comparator checks and attributes DETR by exact frame/PTS/session tuple.",
+        "UserMovementObserver owns action-aware movement and freshness.",
+        "CoachingEpisodeCoordinator owns baseline/stable-after lifecycle.",
+        "CameraViewModel invokes ActionVerifier once per ready episode token.",
+        "OverlayView/CommercialCameraCoachRoute preserve presentation, route and teardown boundaries."
+      ]
+    },
+    "good_frame_integration_audit": {
+      "status": "FAIL",
+      "command": "rg -n 'GoodFramePreservationPolicy|goodFrameScore' shafinMultitool shafinMultitoolTests",
+      "result": "Policy definition and unit tests are present; no GoodFramePreservationPolicy.evaluate production call is present, and live candidate publication passes goodFrameScore: 0."
+    },
+    "release_debug_seam_scan": {
+      "status": "PASS",
+      "command": "strings /private/tmp/setos-root-integrated-m2-m5-release-dd/Build/Products/Release-iphonesimulator/shafinMultitool.app/shafinMultitool | rg 'SHAFIN_CAMERA_PRODUCTION_FIXTURE|testingPublishLivePresentation|testingLiveSceneIdentity|testingResetLiveSceneIdentity|previewGeometryForTesting'",
+      "result": "All five selected DEBUG fixture/test seam strings absent; coordinator build exited 0."
+    },
+    "route_accessibility_source_audit": {
+      "status": "PASS",
+      "result": "Root xmark is conditional on an optional callback and runtime root supplies nil; pause/close/surface IDs and awaited route teardown remain present."
+    },
+    "focused_rerun_policy": {
+      "status": "PASS",
+      "result": "Reran only the narrowest current-head capture/provenance/state-trace slice because the gate requires an independent closed-loop check; no broad suite was run."
+    },
+    "json_parse_and_canonicalization": {
+      "status": "PASS",
+      "command": "jq -e . M2-gate.json and repeated jq -S -c . M2-gate.json canonicalization hashes",
+      "result": "Recorded after artifact creation; parse succeeded and repeated sorted compact representations matched."
+    },
+    "git_diff_check": {
+      "status": "PASS",
+      "command": "git diff --check",
+      "result": "No whitespace errors."
+    }
+  },
+  "pending_external_device_calibration_boundaries": [
+    {
+      "boundary": "Physical camera, ARKit tracking, hardware timing and actual sensor behavior",
+      "status": "PENDING",
+      "does_not_fail_m2": true,
+      "reason": "Tracker explicitly defers device-quality claims; only permitted simulators were used."
+    },
+    {
+      "boundary": "Neural/DETR model quality, CoreML accuracy, model availability and real-world latency",
+      "status": "PENDING",
+      "does_not_fail_m2": true,
+      "reason": "The gate audits provenance and fail-closed attribution, not production model quality."
+    },
+    {
+      "boundary": "Physical permissions, microphone/recording, A/V sync and thermal behavior",
+      "status": "PENDING",
+      "does_not_fail_m2": true,
+      "reason": "Simulator evidence cannot establish physical-device behavior."
+    },
+    {
+      "boundary": "Scene identity thresholds (.12 structure, .18 exposure tolerance) against a physical corpus",
+      "status": "PENDING",
+      "does_not_fail_m2": true,
+      "reason": "Closure evidence records the thresholds and simulator behavior; physical corpus calibration is later."
+    },
+    {
+      "boundary": "App Store signing, beta/RC readiness, legal/account and release operations",
+      "status": "OUT_OF_SCOPE",
+      "does_not_fail_m2": true,
+      "reason": "M2-GATE explicitly forbids Camera Coach quality or RC/App Store claims."
+    }
+  ],
+  "durable_evidence_manifest": [
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-001-test-summary.txt",
+      "sha256": "b7ced643b78b412a77b1c258165865f76da97a58a2abfeff90ecc0fcd3ba7f1c"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-002-coordinate-space-contract.md",
+      "sha256": "b80a5f0f27240f6c656275306ee1e59bdde09047919fdef20d809eafd7f967b8"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-003-test-summary.txt",
+      "sha256": "8e2924a002ce36dd7e1c72dad1a7daf19edf02c27e53d73d66d3a4eab91cb4c0"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-004-test-summary.txt",
+      "sha256": "592e039c45f5911e8153cef6a401a2ee760f635d994e5ff8eb6c420618652e66"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-005-envelope-schema.md",
+      "sha256": "021ef4e518661d4408528e89020276b787954b270239b8f267943b0bdcae4e4c"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-006-pause-evidence-package.md",
+      "sha256": "4bb86396a0ebf919f00d75506f395eea6bf6b61e6dbb497a87db3a645cf45402"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-007-subject-contract.md",
+      "sha256": "6e1962c94c20824b74bd84779387282577e78c02b105c2c380367f16fdb7b7fe"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-008-resolver-decision-table.md",
+      "sha256": "6bdc54b02c5dc0ac9e709309d1b05ab3d7d961bbe8d01d7dd669aa2a1bc0eb2e"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-009-tap-selection.md",
+      "sha256": "e736c8c9d825260f514be5f64fa1271e0b1b3c633de268a7410250cfc914e7f3"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-010-track-state-traces.md",
+      "sha256": "b068ea845ac09bb46f5f859a42c2d66eb382e9b4e4950a3966d2608e24806daa"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-011-track-invalidation-log.md",
+      "sha256": "25f7bffa7a64ad7e088b414379822689b95d51cc36b54785a6e0fda57f175b91"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-012-lighting-golden-metrics.md",
+      "sha256": "09ec1f0b316eea1ca3575dccebbe9950d7ffc63f6b90abc066c69eda6d5bd81e"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-013-horizon-calibration.md",
+      "sha256": "5baa5d655880fdf74df7e66d8372bb5f0e432f6b14590d2900f3bf156e51e97a"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-014-exposure-fixtures.md",
+      "sha256": "0bf66525dce5541bc76765fe4df3eddf450bf26987d8f5bfe098db803a1be934"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-015-motion-metrics.md",
+      "sha256": "b51c64af5991db260e22461914cf1d6cb67e8bc9a29a8bea68fb612075ccb6c5"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-016-focus-admission.md",
+      "sha256": "f6dee422d84e94890c2046743bac720430bf598f129afeee7c76f513df82dc80"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-017-runtime-schema.md",
+      "sha256": "bf909377f1c2806bb18a517e95a56e0a22cbdf0e96140781b437b201a8904c9f"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-018-calibration-schema.md",
+      "sha256": "eeca0cb372767c2a05443bbfc37b49506bbcf991a094ae9834728dc958a37dbd"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-019-safety-policy-matrix.md",
+      "sha256": "cb3e5cc7f49f7066e0efbbb9cdc5a6ddcad2859fe8ed4106b6e1b0b2dad25eb3"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-020-planner-decision-matrix.md",
+      "sha256": "f5ea3326be4a2739a932ffc43415a67e3d70113b553b2c53b246dcd8f420d5a5"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-021-good-frame-preservation.md",
+      "sha256": "73e46551c6670394a2bfa9f9e2657e4ca84d3c15418c385f83688f1fe4655c04"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-022-advice-stability-metrics.md",
+      "sha256": "f556a83cdc1c21dc8bffdd89ee2bb423f08939fd6331f8debbe917da452a8bd4"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-023-movement-observer.md",
+      "sha256": "fc7eab727adc8925c8a98f2969167049a71d5ac12026cfe1f6649f4f798f399d"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-024-episode-traces.md",
+      "sha256": "87521d51cfc50d845f11dc500ec53381e7a01a8da258e43ab659944ddb43253c"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-025-action-verifier.md",
+      "sha256": "d0d20366cb752446cb69adfa153bb49681030d8eb5b8d85bc84dc07fcc32095c"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-026-false-success-regressions.md",
+      "sha256": "7f18ee98e0e02c61d3fc2a5bb181b5b85182b8d542d687ca020ecbf5433b27dd"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-027-029-032-camera-presentation.md",
+      "sha256": "6a61be7efb5fb059d630f03e6fb1b6ecf386bf64efc990740230918bdd683cb6"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-030-camera-explanations.md",
+      "sha256": "53a1e3f28ba99af92e369b71d3f2533ea2574f7e599e8456d4792cb045cd1d4a"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-031-immutable-pause-resume.md",
+      "sha256": "8fd48f75501c074df3b6bbce50c9e2e9f3e6e51c3852d08c972140694a24fbb5"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-033-035-036-camera-closure.md",
+      "sha256": "ab0420a96eef0028a33d4b4187f60373ad3a571301d96484bd5f343c8e98bc1b"
+    },
+    {
+      "path": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/M2-034-camera-permissions.md",
+      "sha256": "f40d9ace8c10651a80dbfb8f7650d84966bbab4e3751f3ad6007c387f6a63ad4"
+    }
+  ],
+  "overall_verdict": "FAIL",
+  "verdict": "FAIL",
+  "stop_gate_rationale": "M2-GATE FAIL. M2-026, M2-035 and M2-036 pass on accepted evidence and current-head checks, but M2-021 is the earliest failed dependency. Its 8/8 report proves a pure five-frame good-frame policy, while the current production CameraManager -> RealtimeScheduler -> AnalysisPipeline -> bounded planner path contains no GoodFramePreservationPolicy call and passes goodFrameScore: 0 for live corrective candidates. A single good critique receiving no primary action is fail-safe but does not prove the required stable high-confidence KEEP or uncertain strong-looking-frame ABSTAIN contract in the real owner chain. Reopen M2-021 and do not close M2 until its production integration and focused trace are proven. Device, model-quality, calibration-corpus and App Store boundaries remain explicitly pending and do not cause this failure."
+}
