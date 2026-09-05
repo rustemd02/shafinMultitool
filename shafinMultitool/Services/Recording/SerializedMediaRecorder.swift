@@ -29,9 +29,10 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     private var activeSourceOwnerToken: RecordingOwnerToken?
     private var latestSourceGeneration: UInt64 = 0
     private var acceptingFrames = false
-    private var firstVideoTimestamp: TimeInterval?
-    private var lastVideoTimestamp: TimeInterval?
-    private var acceptedVideoCount = 0
+    /// M7-006: the single monotonic media timebase of the active take. Video
+    /// and audio admission, derived duration and the sync report all read this
+    /// structure; no other timestamp state exists.
+    private var timebase = RecordingMediaTimebase()
     private var pendingFailure: RecorderFailure?
     private var finishInFlight = false
     private var releaseRequested = false
@@ -54,6 +55,17 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     var state: RecorderState {
         get async {
             await stateSnapshot().state
+        }
+    }
+
+    /// M7-006: bounded timebase report for diagnostics and the A/V sync
+    /// measurement. The report is a queue-consistent snapshot; it never
+    /// contains payloads, paths, or user content.
+    func timebaseReport() async -> RecordingTimebaseReport {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                continuation.resume(returning: timebase.report())
+            }
         }
     }
 
@@ -211,7 +223,10 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         do {
             newWriter = try writerFactory.makeWriter(for: configuration)
         } catch let error as RecordingWriterError {
-            if error == .inputRejected {
+            // M7-005: input rejections (including an unsupported codec or
+            // pixel format) are configuration failures the caller can fix;
+            // anything else is a writer-creation fault.
+            if error == .inputRejected || error == .unsupportedVideoCodec {
                 throw RecorderFailure.writerInputRejected
             }
             throw RecorderFailure.writerCreationFailed
@@ -223,9 +238,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         writer = newWriter
         audioDriver = nil
         audioStarted = false
-        acceptedVideoCount = 0
-        firstVideoTimestamp = nil
-        lastVideoTimestamp = nil
+        timebase = RecordingMediaTimebase()
         pendingFailure = nil
         finishInFlight = false
         releaseRequested = false
@@ -326,6 +339,15 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             return
         }
 
+        // M7-006: timestamp admission happens before any writer call. A
+        // faulted sample is rejected and counted; it can never fail the take.
+        switch timebase.admitVideo(timestamp: frame.timestamp) {
+        case .reject:
+            return
+        case .accept:
+            break
+        }
+
         switch writer.appendVideo(frame) {
         case .failed:
             markAppendFailureOnQueue(.videoAppendFailed)
@@ -336,13 +358,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             break
         }
 
-        acceptedVideoCount += 1
-        if frame.timestamp.isFinite {
-            if firstVideoTimestamp == nil {
-                firstVideoTimestamp = frame.timestamp
-            }
-            lastVideoTimestamp = frame.timestamp
-        }
+        timebase.commitVideo(timestamp: frame.timestamp)
     }
 
     private func appendAudioOnQueue(_ frame: RecordingAudioFrame) {
@@ -356,14 +372,26 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             return
         }
 
+        // M7-006: audio follows the same monotonic policy on the session
+        // timeline established by the first admitted video sample.
+        switch timebase.admitAudio(timestamp: frame.timestamp) {
+        case .reject:
+            return
+        case .accept:
+            break
+        }
+
         switch writer.appendAudio(frame) {
         case .failed:
             markAppendFailureOnQueue(.audioAppendFailed)
             return
-        case .dropped, .appended:
+        case .dropped:
             return
+        case .appended:
+            break
         }
 
+        timebase.commitAudio(timestamp: frame.timestamp)
     }
 
     private func canAccept(_ recordingID: RecordingID,
@@ -502,7 +530,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         let failure: RecorderFailure?
         if let pendingFailure {
             failure = pendingFailure
-        } else if acceptedVideoCount == 0 {
+        } else if timebase.acceptedVideoCount == 0 {
             failure = .noVideoFrames
         } else {
             failure = finishFailure
@@ -511,7 +539,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         let result: RecordingStopResult
         if let failure {
             let recoverableArtifact: RecordingArtifact?
-            if acceptedVideoCount == 0 {
+            if timebase.acceptedVideoCount == 0 {
                 recoverableArtifact = nil
             } else if finishFailure != nil {
                 recoverableArtifact = finishFailureArtifact
@@ -550,7 +578,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
     private func makeArtifactOnQueue(using finishMetadata: RecordingWriterFinish?) -> RecordingArtifact? {
-        guard acceptedVideoCount > 0,
+        guard timebase.acceptedVideoCount > 0,
               let configuration = currentConfiguration else {
             return nil
         }
@@ -566,13 +594,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
     private func derivedDurationOnQueue() -> TimeInterval? {
-        guard let firstVideoTimestamp,
-              let lastVideoTimestamp,
-              firstVideoTimestamp.isFinite,
-              lastVideoTimestamp.isFinite else {
-            return nil
-        }
-        return max(0, lastVideoTimestamp - firstVideoTimestamp)
+        timebase.derivedDuration()
     }
 
     private func terminalFailureResultOnQueue(_ failure: RecorderFailure) -> RecordingStopResult {
@@ -672,5 +694,139 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             "SerializedMediaRecorder illegal lifecycle transition \(from) -> \(to)"
         )
         stateStorage = newState
+    }
+}
+
+/// M7-006: the one monotonic media timebase for a recording take.
+///
+/// Timestamp conversion (v1, fixed):
+/// 1. Producers deliver host seconds. The audio driver converts capture-clock
+///    sample buffers to the host clock (`CMSyncConvertTime`) before enqueue;
+///    video frames carry the capture session's host-retimed timestamps.
+/// 2. The first admitted video sample establishes the session origin
+///    (`RecordingTimeOrigin.firstAcceptedVideoOrigin`).
+/// 3. The Apple adapter converts admitted host seconds to `CMTime` at a 600
+///    timescale and subtracts its own copy of the first appended timestamp, so
+///    the written file's presentation timestamps are session-relative and
+///    start at zero. Audio timing entries are normalized with the same origin,
+///    which keeps both streams on one session timeline.
+///
+/// Stream policy is `RecordingStreamTimePolicy.strictPerStreamMonotonic`:
+/// a sample whose timestamp is not strictly greater than its stream's last
+/// committed timestamp is rejected and counted, never appended. Forward gaps
+/// larger than ``maxForwardGapSeconds`` are tolerated as counted
+/// discontinuities so one stalled producer cannot end the take; backwards
+/// motion is never tolerated. Admission and commit are separate so a sample
+/// rejected by the writer (backpressure) cannot pin the timeline.
+private struct RecordingMediaTimebase {
+    /// A forward gap above this threshold is recorded as a discontinuity
+    /// instead of a normal sample. Chosen well above any expected encoder
+    /// backpressure stall so only real timeline breaks are counted.
+    static let maxForwardGapSeconds: TimeInterval = 2.0
+
+    private(set) var videoOrigin: TimeInterval?
+    /// Admission fence: the last timestamp admitted to the writer. It advances
+    /// even when the writer later drops the sample under backpressure, so the
+    /// file's presentation timestamps stay strictly increasing.
+    private var lastAdmittedVideoTimestamp: TimeInterval?
+    private var lastAdmittedAudioTimestamp: TimeInterval?
+    /// Last timestamps actually persisted by the writer.
+    private(set) var lastVideoTimestamp: TimeInterval?
+    private(set) var lastAudioTimestamp: TimeInterval?
+    private(set) var acceptedVideoCount = 0
+    private(set) var acceptedAudioCount = 0
+    private(set) var rejectedInvalidTimestampCount = 0
+    private(set) var rejectedNonMonotonicVideoCount = 0
+    private(set) var rejectedNonMonotonicAudioCount = 0
+    private(set) var rejectedBeforeOriginAudioCount = 0
+    private(set) var discontinuityCount = 0
+
+    enum Admission {
+        case accept
+        case reject
+    }
+
+    func report() -> RecordingTimebaseReport {
+        RecordingTimebaseReport(
+            videoOrigin: videoOrigin,
+            acceptedVideoCount: acceptedVideoCount,
+            acceptedAudioCount: acceptedAudioCount,
+            rejectedInvalidTimestampCount: rejectedInvalidTimestampCount,
+            rejectedNonMonotonicVideoCount: rejectedNonMonotonicVideoCount,
+            rejectedNonMonotonicAudioCount: rejectedNonMonotonicAudioCount,
+            rejectedBeforeOriginAudioCount: rejectedBeforeOriginAudioCount,
+            discontinuityCount: discontinuityCount,
+            lastVideoTimestamp: lastVideoTimestamp,
+            lastAudioTimestamp: lastAudioTimestamp
+        )
+    }
+
+    /// Derived artifact duration: session length from the first to the last
+    /// committed video timestamp (pre-existing behavior, now single-sourced).
+    func derivedDuration() -> TimeInterval? {
+        guard let origin = videoOrigin,
+              let last = lastVideoTimestamp,
+              origin.isFinite,
+              last.isFinite else {
+            return nil
+        }
+        return max(0, last - origin)
+    }
+
+    mutating func admitVideo(timestamp: TimeInterval) -> Admission {
+        guard timestamp.isFinite else {
+            rejectedInvalidTimestampCount += 1
+            return .reject
+        }
+        if let last = lastAdmittedVideoTimestamp {
+            guard timestamp > last else {
+                rejectedNonMonotonicVideoCount += 1
+                return .reject
+            }
+            if timestamp - last > Self.maxForwardGapSeconds {
+                discontinuityCount += 1
+            }
+        }
+        lastAdmittedVideoTimestamp = timestamp
+        return .accept
+    }
+
+    mutating func commitVideo(timestamp: TimeInterval) {
+        if videoOrigin == nil {
+            videoOrigin = timestamp
+        }
+        lastVideoTimestamp = timestamp
+        acceptedVideoCount += 1
+    }
+
+    mutating func admitAudio(timestamp: TimeInterval) -> Admission {
+        guard timestamp.isFinite else {
+            rejectedInvalidTimestampCount += 1
+            return .reject
+        }
+        guard let origin = videoOrigin else {
+            rejectedBeforeOriginAudioCount += 1
+            return .reject
+        }
+        if timestamp < origin {
+            rejectedBeforeOriginAudioCount += 1
+            return .reject
+        }
+        if let last = lastAdmittedAudioTimestamp {
+            guard timestamp > last else {
+                rejectedNonMonotonicAudioCount += 1
+                return .reject
+            }
+            if timestamp - last > Self.maxForwardGapSeconds {
+                discontinuityCount += 1
+            }
+        }
+        lastAdmittedAudioTimestamp = timestamp
+        return .accept
+    }
+
+    mutating func commitAudio(timestamp: TimeInterval) {
+        lastAudioTimestamp = timestamp
+        acceptedAudioCount += 1
     }
 }

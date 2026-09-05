@@ -254,11 +254,15 @@ final class SceneRecordingController: @unchecked Sendable {
 
     /// Starts a fresh take. When no explicit buffer is supplied, the most
     /// recent buffer observed by `enqueueVideo` is used. Dimensions always
-    /// come from that actual CVPixelBuffer.
+    /// come from that actual CVPixelBuffer. `videoCodec` defaults to the v1
+    /// baseline; `trackTransform` defaults to the identity metadata of takes
+    /// recorded before orientation wiring exists.
     func start(firstPixelBuffer: CVPixelBuffer? = nil,
                requestedFPS: Int,
                audioMode: RecordingAudioMode,
-               timestamp: TimeInterval? = nil) async throws {
+               timestamp: TimeInterval? = nil,
+               videoCodec: RecordingQuickTimeCodec = .h264,
+               trackTransform: RecordingTrackTransformMetadata? = nil) async throws {
         let explicitPayload = firstPixelBuffer.map(AppleRecordingVideoFramePayload.init(pixelBuffer:))
         let decision: StartDecision = withState {
             switch lifecycle {
@@ -294,7 +298,9 @@ final class SceneRecordingController: @unchecked Sendable {
                         initialPayload: initialPayload,
                         initialTimestamp: initialTimestamp,
                         requestedFPS: requestedFPS,
-                        audioMode: audioMode
+                        audioMode: audioMode,
+                        videoCodec: videoCodec,
+                        trackTransform: trackTransform
                     )
                 }
                 startTask = task
@@ -395,7 +401,9 @@ final class SceneRecordingController: @unchecked Sendable {
     private func performStart(initialPayload: AppleRecordingVideoFramePayload,
                               initialTimestamp: TimeInterval,
                               requestedFPS: Int,
-                              audioMode: RecordingAudioMode) async throws {
+                              audioMode: RecordingAudioMode,
+                              videoCodec: RecordingQuickTimeCodec,
+                              trackTransform: RecordingTrackTransformMetadata?) async throws {
         do {
             let width = CVPixelBufferGetWidth(initialPayload.pixelBuffer)
             let height = CVPixelBufferGetHeight(initialPayload.pixelBuffer)
@@ -404,13 +412,19 @@ final class SceneRecordingController: @unchecked Sendable {
             }
 
             let outputURL = try artifactStore.makePendingURL()
+            // M7-005: the writer is built from the active capture format —
+            // dimensions come from the actual buffer and the pixel format from
+            // that buffer's native FourCC, not from a requested preset.
             let configuration = RecordingConfiguration(
                 id: RecordingID(rawValue: UUID()),
                 outputURL: outputURL,
                 width: width,
                 height: height,
                 fps: max(1, requestedFPS),
-                audioMode: audioMode
+                audioMode: audioMode,
+                pixelFormatFourCC: CVPixelBufferGetPixelFormatType(initialPayload.pixelBuffer),
+                videoCodec: videoCodec,
+                trackTransform: trackTransform
             )
             let sourceToken = RecordingOwnerToken(
                 source: .arWorkspace,

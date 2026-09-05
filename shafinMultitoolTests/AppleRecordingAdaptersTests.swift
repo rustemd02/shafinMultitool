@@ -351,6 +351,224 @@ final class AppleRecordingAdaptersTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: firstURL.path))
     }
 
+    // MARK: - M7-005 writer configuration
+
+    private struct RejectingCodecSupportChecker: RecordingCodecSupportChecking {
+        let supported: Set<RecordingQuickTimeCodec>
+
+        func isSupported(_ codec: RecordingQuickTimeCodec) -> Bool {
+            supported.contains(codec)
+        }
+    }
+
+    private final class AlwaysMissingOutputChecker: RecordingOutputChecking {
+        func exists(at url: URL) -> Bool { false }
+    }
+
+    func testWriterFactoryRejectsUnsupportedCodecBeforeCreatingAnyWriter() throws {
+        let outputURL = temporaryDirectoryURL.appendingPathComponent("unsupported-codec.mov")
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()),
+            outputURL: outputURL,
+            width: 320,
+            height: 240,
+            fps: 30,
+            audioMode: .disabled,
+            videoCodec: .hevc
+        )
+        let factory = AVAssetWriterRecordingWriterFactory(
+            codecSupport: RejectingCodecSupportChecker(supported: [.h264])
+        )
+
+        XCTAssertThrowsError(try factory.makeWriter(for: configuration)) { error in
+            XCTAssertEqual(error as? RecordingWriterError, .unsupportedVideoCodec)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+    }
+
+    func testWriterFactoryRejectsExplicitZeroPixelFormat() throws {
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()),
+            outputURL: temporaryDirectoryURL.appendingPathComponent("zero-fourcc.mov"),
+            width: 320,
+            height: 240,
+            fps: 30,
+            audioMode: .disabled,
+            pixelFormatFourCC: 0
+        )
+
+        XCTAssertThrowsError(try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)) { error in
+            XCTAssertEqual(error as? RecordingWriterError, .inputRejected)
+        }
+    }
+
+    func testSerializedRecorderRejectsUnsupportedCodecAsTypedInputFailure() async throws {
+        let outputURL = temporaryDirectoryURL.appendingPathComponent("recorder-unsupported.mov")
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()),
+            outputURL: outputURL,
+            width: 320,
+            height: 240,
+            fps: 30,
+            audioMode: .disabled,
+            videoCodec: .hevc
+        )
+        let recorder = SerializedMediaRecorder(
+            writerFactory: AVAssetWriterRecordingWriterFactory(
+                codecSupport: RejectingCodecSupportChecker(supported: [.h264])
+            ),
+            audioDriverFactory: nil,
+            outputChecker: AlwaysMissingOutputChecker()
+        )
+
+        do {
+            try await recorder.prepare(configuration)
+            XCTFail("Prepare with an unsupported codec must fail")
+        } catch let failure as RecorderFailure {
+            XCTAssertEqual(failure, .writerInputRejected)
+        }
+        let snapshot = await recorder.stateSnapshot()
+        XCTAssertEqual(snapshot.state, .idle)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outputURL.path))
+    }
+
+    func testWrittenAssetCarriesSelectedCodecAndPixelFormat() async throws {
+        let outputURL = temporaryDirectoryURL.appendingPathComponent("hevc-420.mov")
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()),
+            outputURL: outputURL,
+            width: 320,
+            height: 240,
+            fps: 30,
+            audioMode: .disabled,
+            pixelFormatFourCC: RecordingPixelFormat.yPlanar420VideoRange,
+            videoCodec: .hevc
+        )
+        let writer = try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)
+        XCTAssertTrue(writer.start())
+
+        for index in 0..<3 {
+            let pixelBuffer = try makePixelBuffer(
+                width: configuration.width,
+                height: configuration.height,
+                pixelFormat: RecordingPixelFormat.yPlanar420VideoRange
+            )
+            XCTAssertEqual(
+                writer.appendVideo(RecordingVideoFrame(
+                    recordingID: configuration.id,
+                    generation: 1,
+                    timestamp: 10.0 + (Double(index) / Double(configuration.fps)),
+                    payload: AppleRecordingVideoFramePayload(pixelBuffer: pixelBuffer)
+                )),
+                .appended
+            )
+        }
+
+        let finishExpectation = expectation(description: "writer finished")
+        var finishResult: Result<RecordingWriterFinish, RecordingWriterError>?
+        writer.finishWriting { result in
+            finishResult = result
+            finishExpectation.fulfill()
+        }
+        await fulfillment(of: [finishExpectation], timeout: 10)
+
+        guard case .success = finishResult else {
+            XCTFail("Writer did not finish successfully: \(String(describing: finishResult))")
+            return
+        }
+
+        let asset = AVAsset(url: outputURL)
+        let videoTrack = try await asset.loadTracks(withMediaType: .video).first
+        let formatDescriptions = try await videoTrack?.load(.formatDescriptions) ?? []
+        XCTAssertEqual(formatDescriptions.count, 1)
+        if let formatDescription = formatDescriptions.first {
+            let subType = CMFormatDescriptionGetMediaSubType(formatDescription)
+            XCTAssertEqual(subType, kCMVideoCodecType_HEVC)
+        }
+    }
+
+    // MARK: - M7-007 orientation metadata
+
+    func testTrackTransformMapperProducesDeterministicMetadataMatrices() {
+        func matrix(_ orientation: RecordingCaptureOrientation, mirrored: Bool) -> CGAffineTransform {
+            AppleRecordingTrackTransformMapper.transform(for: RecordingTrackTransformMetadata(
+                captureOrientation: orientation,
+                isMirrored: mirrored,
+                strategy: .preferredTransformMetadata
+            ))
+        }
+
+        // Portrait capture is the identity baseline; the fixed conventions are
+        // landscapeLeft -90°, landscapeRight +90°, upside-down 180°, and a
+        // horizontal flip composed under mirroring.
+        XCTAssertEqual(matrix(.portrait, mirrored: false), .identity)
+        let upsideDown = matrix(.portraitUpsideDown, mirrored: false)
+        XCTAssertEqual(upsideDown.a, -1, accuracy: 1e-9)
+        XCTAssertEqual(upsideDown.d, -1, accuracy: 1e-9)
+        let landscapeLeft = matrix(.landscapeLeft, mirrored: false)
+        XCTAssertEqual(landscapeLeft.b, -1, accuracy: 1e-9)
+        XCTAssertEqual(landscapeLeft.c, 1, accuracy: 1e-9)
+        let landscapeRight = matrix(.landscapeRight, mirrored: false)
+        XCTAssertEqual(landscapeRight.b, 1, accuracy: 1e-9)
+        XCTAssertEqual(landscapeRight.c, -1, accuracy: 1e-9)
+        let mirroredPortrait = matrix(.portrait, mirrored: true)
+        XCTAssertEqual(mirroredPortrait.a, -1, accuracy: 1e-9)
+        XCTAssertEqual(mirroredPortrait.d, 1, accuracy: 1e-9)
+    }
+
+    func testWrittenAssetTrackCarriesOrientationTransformWithoutRotatingDimensions() async throws {
+        let outputURL = temporaryDirectoryURL.appendingPathComponent("landscape-transform.mov")
+        let transformMetadata = RecordingTrackTransformMetadata(
+            captureOrientation: .landscapeLeft,
+            isMirrored: false,
+            strategy: .preferredTransformMetadata
+        )
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()),
+            outputURL: outputURL,
+            width: 640,
+            height: 480,
+            fps: 30,
+            audioMode: .disabled,
+            trackTransform: transformMetadata
+        )
+        let writer = try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)
+        XCTAssertTrue(writer.start())
+
+        let pixelBuffer = try makePixelBuffer(
+            width: configuration.width,
+            height: configuration.height,
+            pixelFormat: RecordingPixelFormat.yPlanar420VideoRange
+        )
+        XCTAssertEqual(
+            writer.appendVideo(RecordingVideoFrame(
+                recordingID: configuration.id,
+                generation: 1,
+                timestamp: 10.0,
+                payload: AppleRecordingVideoFramePayload(pixelBuffer: pixelBuffer)
+            )),
+            .appended
+        )
+
+        let finishExpectation = expectation(description: "writer finished")
+        writer.finishWriting { _ in finishExpectation.fulfill() }
+        await fulfillment(of: [finishExpectation], timeout: 10)
+
+        let asset = AVAsset(url: outputURL)
+        let videoTrack = try await asset.loadTracks(withMediaType: .video).first
+        let trackTransform = try await videoTrack?.load(.preferredTransform) ?? .identity
+        let expected = AppleRecordingTrackTransformMapper.transform(for: transformMetadata)
+        XCTAssertEqual(trackTransform.a, expected.a, accuracy: 1e-6)
+        XCTAssertEqual(trackTransform.b, expected.b, accuracy: 1e-6)
+        XCTAssertEqual(trackTransform.c, expected.c, accuracy: 1e-6)
+        XCTAssertEqual(trackTransform.d, expected.d, accuracy: 1e-6)
+        // Metadata-only orientation: the encoded natural track size keeps the
+        // source pixel dimensions; the transform conveys the rotation.
+        let naturalSize = try await videoTrack?.load(.naturalSize) ?? .zero
+        XCTAssertEqual(Int(naturalSize.width), configuration.width)
+        XCTAssertEqual(Int(naturalSize.height), configuration.height)
+    }
+
     private func makePixelBuffer(
         width: Int,
         height: Int,

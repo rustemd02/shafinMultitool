@@ -408,6 +408,11 @@ final class SerializedMediaRecorderTests: XCTestCase {
         XCTAssertEqual(fixture.writer.audioAppendCount, 1)
     }
 
+    /// M7-006 note: concurrent same-stream submission no longer guarantees
+    /// that every submitted sample reaches the writer — samples arriving in a
+    /// non-monotonic order are rejected and counted by design. The invariants
+    /// that must still hold are queue confinement, append/finish ordering,
+    /// and exact agreement between admission counts and writer appends.
     func testConcurrentAppendSubmissionsStayOnOneRecorderQueueAndFinishAfterAppends() async throws {
         let fixture = makeFixture(audioMode: .required)
         let configuration = makeConfiguration(audioMode: .required)
@@ -422,12 +427,18 @@ final class SerializedMediaRecorderTests: XCTestCase {
         let result = await fixture.recorder.stop(reason: .user)
 
         assertFinalized(result, hasAudio: true)
-        XCTAssertEqual(fixture.writer.videoAppendCount, 32)
-        XCTAssertEqual(fixture.writer.audioAppendCount, 32)
+        let report = await fixture.recorder.timebaseReport()
+        let admittedTotal = report.acceptedVideoCount + report.acceptedAudioCount
+        XCTAssertGreaterThanOrEqual(report.acceptedVideoCount, 1)
+        XCTAssertGreaterThanOrEqual(report.acceptedAudioCount, 1)
+        XCTAssertLessThanOrEqual(report.acceptedVideoCount, 32)
+        XCTAssertLessThanOrEqual(report.acceptedAudioCount, 32)
+        XCTAssertEqual(fixture.writer.videoAppendCount, report.acceptedVideoCount)
+        XCTAssertEqual(fixture.writer.audioAppendCount, report.acceptedAudioCount)
         XCTAssertEqual(fixture.writer.maximumConcurrentAppendCalls, 1)
 
         let queueTokens = fixture.writer.appendQueueTokens.compactMap { $0 }
-        XCTAssertEqual(queueTokens.count, 64)
+        XCTAssertEqual(queueTokens.count, admittedTotal)
         XCTAssertEqual(Set(queueTokens).count, 1)
 
         let events = fixture.writer.events
@@ -436,7 +447,7 @@ final class SerializedMediaRecorderTests: XCTestCase {
             XCTFail("Writer lifecycle events were incomplete: \(events)")
             return
         }
-        XCTAssertEqual(firstMarkerIndex, 64)
+        XCTAssertEqual(firstMarkerIndex, admittedTotal)
         XCTAssertEqual(events[firstMarkerIndex...finishIndex], ["mark-video", "mark-audio", "finish"])
         XCTAssertTrue(events[..<firstMarkerIndex].allSatisfy { $0 == "video" || $0 == "audio" })
     }
@@ -914,6 +925,113 @@ final class SerializedMediaRecorderTests: XCTestCase {
                 continuation.resume()
             }
         }
+    }
+
+    // MARK: - M7-006 master timebase
+
+    func testFirstAdmittedVideoSampleEstablishesSessionOrigin() async throws {
+        let fixture = makeFixture(audioMode: .required)
+        try await fixture.recorder.prepare(makeConfiguration(audioMode: .required))
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 500.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 500.1))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 500.05))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        let report = await fixture.recorder.timebaseReport()
+        XCTAssertEqual(report.videoOrigin, 500.0)
+        XCTAssertEqual(report.acceptedVideoCount, 2)
+        XCTAssertEqual(report.acceptedAudioCount, 1)
+        XCTAssertEqual(report.lastVideoTimestamp, 500.1)
+        XCTAssertEqual(report.lastAudioTimestamp, 500.05)
+        XCTAssertEqual(report.rejectedInvalidTimestampCount, 0)
+        XCTAssertEqual(report.rejectedNonMonotonicVideoCount, 0)
+        XCTAssertEqual(report.discontinuityCount, 0)
+    }
+
+    func testNonMonotonicVideoSampleIsRejectedAndCountedWithoutFailingTheTake() async throws {
+        let fixture = makeFixture()
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 10.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 9.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 10.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 10.5))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        XCTAssertEqual(fixture.writer.videoAppendCount, 2)
+        let report = await fixture.recorder.timebaseReport()
+        XCTAssertEqual(report.acceptedVideoCount, 2)
+        XCTAssertEqual(report.rejectedNonMonotonicVideoCount, 2)
+    }
+
+    func testNonFiniteVideoTimestampIsRejectedAndCountedNeverAppended() async throws {
+        let fixture = makeFixture()
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: .infinity))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: .nan))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        XCTAssertEqual(fixture.writer.videoAppendCount, 1)
+        let report = await fixture.recorder.timebaseReport()
+        XCTAssertEqual(report.rejectedInvalidTimestampCount, 2)
+        XCTAssertEqual(report.videoOrigin, 1.0)
+    }
+
+    func testAudioBeforeOriginAndOutOfOrderAudioIsRejectedAndCounted() async throws {
+        let fixture = makeFixture(audioMode: .required)
+        try await fixture.recorder.prepare(makeConfiguration(audioMode: .required))
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 5.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 10.0))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 9.9))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 10.2))
+        fixture.recorder.enqueueAudio(RecordingAudioFrame(fence: fence, timestamp: 10.1))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        XCTAssertEqual(fixture.writer.audioAppendCount, 1)
+        let report = await fixture.recorder.timebaseReport()
+        XCTAssertEqual(report.acceptedAudioCount, 1)
+        XCTAssertEqual(report.rejectedBeforeOriginAudioCount, 2)
+        XCTAssertEqual(report.rejectedNonMonotonicAudioCount, 1)
+    }
+
+    func testLargeForwardGapIsCountedAsDiscontinuityWhileStayingMonotonic() async throws {
+        let fixture = makeFixture()
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 9.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 9.5))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        XCTAssertEqual(fixture.writer.videoAppendCount, 3)
+        let report = await fixture.recorder.timebaseReport()
+        XCTAssertEqual(report.acceptedVideoCount, 3)
+        XCTAssertEqual(report.discontinuityCount, 1)
+        XCTAssertEqual(report.lastVideoTimestamp! - report.videoOrigin!, 8.5, accuracy: 1e-9)
     }
 
     private func makeConfiguration(

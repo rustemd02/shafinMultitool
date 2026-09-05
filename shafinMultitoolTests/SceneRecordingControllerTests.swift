@@ -64,6 +64,39 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertNil(controller.recordingSourceToken)
     }
 
+    /// M7-005/M7-007: the writer configuration is built from the active
+    /// capture format (buffer pixel format, selected codec) and the supplied
+    /// orientation metadata, not from a requested preset.
+    func testStartThreadsActiveCaptureFormatAndOrientationMetadataIntoConfiguration() async throws {
+        let (controller, box, temporaryDirectory) = try makeController()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let pixelBuffer = try makePixelBuffer(width: 640, height: 480)
+        controller.enqueueVideo(pixelBuffer, at: 0)
+        try await controller.start(
+            requestedFPS: 60,
+            audioMode: .disabled,
+            videoCodec: .hevc,
+            trackTransform: RecordingTrackTransformMetadata(
+                captureOrientation: .landscapeLeft,
+                isMirrored: false,
+                strategy: .preferredTransformMetadata
+            )
+        )
+        let recorder = try XCTUnwrap(box.recorder(at: 0))
+        let configuration = try XCTUnwrap(recorder.configuration)
+
+        XCTAssertEqual(configuration.videoCodec, .hevc)
+        XCTAssertEqual(configuration.pixelFormatFourCC, kCVPixelFormatType_32BGRA)
+        XCTAssertEqual(configuration.trackTransform?.captureOrientation, .landscapeLeft)
+        XCTAssertEqual(configuration.trackTransform?.isMirrored, false)
+        XCTAssertEqual(configuration.trackTransform?.strategy, .preferredTransformMetadata)
+        XCTAssertEqual(configuration.fps, 60)
+
+        _ = await controller.stop(reason: .user)
+        _ = await controller.releaseAndWait()
+    }
+
     func testCoordinatorRebindPreservesActiveSourceAndForeignCoordinatorCannotBorrowToken() async throws {
         let (controller, box, temporaryDirectory) = try makeController()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }

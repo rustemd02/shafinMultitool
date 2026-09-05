@@ -3,6 +3,47 @@ import CoreMedia
 import CoreVideo
 import Foundation
 
+/// M7-005: production codec-availability check. Both v1 codecs use platform
+/// encoders that exist on every supported deployment target (iOS 17.2);
+/// hardware-encode behavior per physical device stays an external
+/// qualification concern and is deliberately not claimed here.
+struct AppleRecordingCodecSupportChecker: RecordingCodecSupportChecking {
+    func isSupported(_ codec: RecordingQuickTimeCodec) -> Bool {
+        switch codec {
+        case .h264:
+            AVVideoCodecType.h264 != nil
+        case .hevc:
+            AVVideoCodecType.hevc != nil
+        }
+    }
+}
+
+/// M7-007: maps the frozen orientation/mirroring metadata onto the
+/// CGAffineTransform written into the QuickTime track. Pixels are never
+/// rotated; the player applies this transform at display time.
+///
+/// Convention (v1): portrait capture is the identity baseline;
+/// `landscapeLeft` rotates the track -90° (counter-clockwise), `landscapeRight`
+/// +90° (clockwise), and `portraitUpsideDown` 180°. A mirrored capture composes
+/// a horizontal flip before the orientation rotation.
+enum AppleRecordingTrackTransformMapper {
+    static func transform(for metadata: RecordingTrackTransformMetadata) -> CGAffineTransform {
+        let rotation: CGAffineTransform
+        switch metadata.captureOrientation {
+        case .portrait:
+            rotation = .identity
+        case .portraitUpsideDown:
+            rotation = CGAffineTransform(rotationAngle: .pi)
+        case .landscapeLeft:
+            rotation = CGAffineTransform(rotationAngle: -.pi / 2)
+        case .landscapeRight:
+            rotation = CGAffineTransform(rotationAngle: .pi / 2)
+        }
+        guard metadata.isMirrored else { return rotation }
+        return rotation.scaledBy(x: -1, y: 1)
+    }
+}
+
 /// Core Video buffers are retained by the frame value and consumed only by the
 /// serialized writer queue. Core Media sample buffers are copied by the audio
 /// driver before this wrapper crosses the capture/recorder queue boundary.
@@ -113,10 +154,24 @@ func copyAudioSampleBufferToHostTime(
 }
 
 struct AVAssetWriterRecordingWriterFactory: RecordingWriterFactory {
+    let codecSupport: any RecordingCodecSupportChecking
+
+    init(codecSupport: any RecordingCodecSupportChecking = AppleRecordingCodecSupportChecker()) {
+        self.codecSupport = codecSupport
+    }
+
     func makeWriter(for configuration: RecordingConfiguration) throws -> any RecordingWriter {
         guard configuration.width > 0,
               configuration.height > 0,
               configuration.fps > 0 else {
+            throw RecordingWriterError.inputRejected
+        }
+        // M7-005: an unsupported codec or an explicitly zero pixel format
+        // fails before any writer is created; there is no implicit fallback.
+        guard codecSupport.isSupported(configuration.videoCodec) else {
+            throw RecordingWriterError.unsupportedVideoCodec
+        }
+        guard configuration.pixelFormatFourCC != 0 else {
             throw RecordingWriterError.inputRejected
         }
 
@@ -160,8 +215,18 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
             throw RecordingWriterError.inputRejected
         }
 
+        // M7-005: video settings are derived from the selected capture format
+        // (codec, dimensions, FPS, pixel format); audio keeps the fixed v1
+        // AAC 48 kHz mono format. Invalid combinations never reach recording.
+        let codecType: AVVideoCodecType
+        switch configuration.videoCodec {
+        case .h264:
+            codecType = .h264
+        case .hevc:
+            codecType = .hevc
+        }
         let videoSettings: [String: Any] = [
-            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoCodecKey: codecType,
             AVVideoWidthKey: configuration.width,
             AVVideoHeightKey: configuration.height,
             AVVideoCompressionPropertiesKey: [
@@ -171,11 +236,22 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
         ]
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         videoInput.expectsMediaDataInRealTime = true
+        // M7-007: orientation/mirroring travels as track metadata so frames
+        // keep their native dimensions and are never rotated per sample.
+        if let trackTransform = configuration.trackTransform {
+            videoInput.transform = AppleRecordingTrackTransformMapper.transform(for: trackTransform)
+        }
 
-        let pixelBufferAttributes: [String: Any] = [
+        var pixelBufferAttributes: [String: Any] = [
             kCVPixelBufferWidthKey as String: configuration.width,
             kCVPixelBufferHeightKey as String: configuration.height,
         ]
+        // M7-005: an explicitly provided capture pixel format pins the
+        // adaptor to the active capture format; `nil` keeps the platform
+        // default for direct constructions.
+        if let pixelFormatFourCC = configuration.pixelFormatFourCC {
+            pixelBufferAttributes[kCVPixelBufferPixelFormatTypeKey as String] = pixelFormatFourCC
+        }
         let pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: videoInput,
             sourcePixelBufferAttributes: pixelBufferAttributes

@@ -19,6 +19,16 @@ enum RecordingAppendDisposition: Sendable, Equatable {
     case failed
 }
 
+/// Native pixel format FourCC value used by the serialized capture path. The
+/// plain `UInt32` representation keeps this contracts file free of a
+/// CoreVideo dependency; the Apple adapter maps it onto
+/// `kCVPixelBufferPixelFormatTypeKey`.
+enum RecordingPixelFormat {
+    /// `kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange` (`420v`), the native
+    /// output of AVCapture/ARKit capture pipelines.
+    static let yPlanar420VideoRange: UInt32 = 875704438
+}
+
 struct RecordingConfiguration: Sendable, Equatable {
     let id: RecordingID
     let outputURL: URL
@@ -26,19 +36,36 @@ struct RecordingConfiguration: Sendable, Equatable {
     let height: Int
     let fps: Int
     let audioMode: RecordingAudioMode
+    /// M7-005: native capture pixel format the writer must accept. `nil`
+    /// preserves the platform-default adaptor behavior for direct
+    /// constructions; the serialized capture path always passes the active
+    /// buffer's actual FourCC. A present `0` is rejected by the factory.
+    let pixelFormatFourCC: UInt32?
+    /// M7-005: explicitly selected, device-supported video codec. There is no
+    /// implicit codec fallback: an unsupported selection fails before recording.
+    let videoCodec: RecordingQuickTimeCodec
+    /// M7-007: orientation/mirroring metadata written to the video track.
+    /// `nil` preserves the identity-transform behavior of existing takes.
+    let trackTransform: RecordingTrackTransformMetadata?
 
     init(id: RecordingID,
          outputURL: URL,
          width: Int,
          height: Int,
          fps: Int,
-         audioMode: RecordingAudioMode) {
+         audioMode: RecordingAudioMode,
+         pixelFormatFourCC: UInt32? = nil,
+         videoCodec: RecordingQuickTimeCodec = .h264,
+         trackTransform: RecordingTrackTransformMetadata? = nil) {
         self.id = id
         self.outputURL = outputURL
         self.width = width
         self.height = height
         self.fps = fps
         self.audioMode = audioMode
+        self.pixelFormatFourCC = pixelFormatFourCC
+        self.videoCodec = videoCodec
+        self.trackTransform = trackTransform
     }
 }
 
@@ -302,7 +329,45 @@ struct RecordingAudioFrame: Sendable {
 /// recorder never derives that disposition from accepted frame counts.
 enum RecordingWriterError: Error, Sendable, Equatable {
     case inputRejected
+    /// M7-005: the selected codec is not supported by this device, rejected
+    /// before any writer is created so recording never starts with a fallback.
+    case unsupportedVideoCodec
     case finishFailed(recoverableArtifact: RecordingArtifact?)
+}
+
+/// M7-005: answers whether the platform can encode the selected codec. The
+/// production implementation checks the platform encoder availability; the
+/// narrow seam keeps unsupported-codec fixtures deterministic without
+/// fabricating hardware.
+protocol RecordingCodecSupportChecking: Sendable {
+    func isSupported(_ codec: RecordingQuickTimeCodec) -> Bool
+}
+
+/// M7-006: bounded report of the serialized recorder's monotonic media
+/// timebase. Timestamps are host seconds as supplied by the producer; the
+/// report never contains sample payloads. Rejection and discontinuity counts
+/// are the recorder's only "handling" of timeline faults: faulted samples are
+/// never appended, and the stream timeline continues monotonically.
+struct RecordingTimebaseReport: Sendable, Equatable {
+    /// Host timestamp of the first admitted video sample of the take.
+    /// `nil` until the first video sample passes admission.
+    let videoOrigin: TimeInterval?
+    let acceptedVideoCount: Int
+    let acceptedAudioCount: Int
+    /// Samples rejected because their timestamp was non-finite.
+    let rejectedInvalidTimestampCount: Int
+    /// Video samples rejected for a non-strictly-monotonic timestamp.
+    let rejectedNonMonotonicVideoCount: Int
+    /// Audio samples rejected for a non-strictly-monotonic timestamp.
+    let rejectedNonMonotonicAudioCount: Int
+    /// Audio samples rejected because they precede the established video
+    /// origin (a negative session time cannot be represented).
+    let rejectedBeforeOriginAudioCount: Int
+    /// Forward gaps larger than the documented discontinuity threshold that
+    /// were tolerated while keeping the timeline monotonic.
+    let discontinuityCount: Int
+    let lastVideoTimestamp: TimeInterval?
+    let lastAudioTimestamp: TimeInterval?
 }
 
 enum RecordingAudioDriverError: Error, Sendable, Equatable {
