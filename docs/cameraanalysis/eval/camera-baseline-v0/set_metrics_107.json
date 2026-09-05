@@ -1,0 +1,25 @@
+{
+  "candidate_id": "m4-001-fullruntime-107-r1",
+  "runtime_claim": "real_runtime_still_replay",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.672897,
+    "demo_priority_pass_rate": 0.5,
+    "expected_action_hit_rate": 0.588785,
+    "failure_counts": {
+      "confidence_band_mismatch": 35,
+      "forbidden_action_violation": 9,
+      "good_frame_overcorrection": 24,
+      "missing_expected_action": 44,
+      "missing_future_action": 5,
+      "missing_positive_confirmation": 26,
+      "semantic_overreach_on_technical_failure": 2
+    },
+    "forbidden_action_violation_rate": 0.084112,
+    "future_action_hit_rate": 0.895833,
+    "good_frame_preservation_rate": 0.478261,
+    "pass_rate": 0.46729,
+    "positive_confirmation_rate": 0.434783,
+    "record_count": 107,
+    "technical_failure_gate_rate": 0.9
+  }
+}

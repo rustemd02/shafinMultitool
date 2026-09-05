@@ -1,0 +1,69 @@
+{
+  "receipt_id": "m4-001-swift-replay-107-r2",
+  "schema_version": 1,
+  "status": "passed",
+  "captured_at": "2026-09-05T22:46:07+03:00",
+  "source_commit": "e1280c83d787284f33076694b4b61ca88081f6fd",
+  "config": {
+    "portable_path": "docs/cameraanalysis/eval/camera-baseline-v0/replay-config-107.json",
+    "portable_sha256": "05852dd1721656616b9d1e7db7b776315e5726413ba7851f4fefe129f4bca518",
+    "runner_path": "docs/cameraanalysis/eval/run_swift_semantic_replay.py",
+    "runner_sha256": "20fa2e289c7e6877cf684257132e1ef94e8ed48220f0716b9a0ac01bd81b50b1",
+    "materialized_config_sha256": "bd1dbe8156b6ff064f522acc71c719e7520f34383647a8bcdad55ad8800d07ce",
+    "selection": "The runner materializes the committed config, sets SEMANTIC_EVAL_CONFIG, and writes the Swift test's canonical transient config candidate before xcodebuild."
+  },
+  "command_template": "python3 docs/cameraanalysis/eval/run_swift_semantic_replay.py --destination 'platform=iOS Simulator,id=<ALLOWED_SIMULATOR_ID>' --derived-data-path <EXTERNAL_DERIVED_DATA> --result-bundle-path <EXTERNAL_RESULT_BUNDLE> --output-path <EXTERNAL_OUTPUT>",
+  "test": {
+    "identifier": "shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages",
+    "result": "Passed",
+    "duration_seconds": 83.629,
+    "output_rows": 214,
+    "output_records": 107,
+    "output_sha256": "baa132b46e60b88f98189fab72d961f79be859218c636fe9c64df04ac33305e2"
+  },
+  "build": {
+    "configuration": "Debug",
+    "xcode": "26.6 (17F113)",
+    "simulator_sdk": "iPhoneSimulator26.5 (23F81a)",
+    "simulator": "iPhone 17e",
+    "simulator_os_build": "23F77",
+    "result_bundle_tree_sha256": "01bdddee76e9407bb80e7c9bfb7ce2232de8bdeef40c5e32d97e4d5a005e3997"
+  },
+  "inference_evidence": {
+    "vision_tracking": {
+      "status": "failed_closed",
+      "records_failed": 107,
+      "records_total": 107,
+      "observed_error": "Failed to create espresso context"
+    },
+    "nima": {
+      "status": "successful_score_return",
+      "records_with_finite_score": 107,
+      "records_total": 107,
+      "score_field": "debug_numeric_features.aesthetic_score",
+      "score_range": [
+        0.3325038909912109,
+        0.5681289792060852
+      ],
+      "note": "The export does not contain a calibrated aesthetic confidence; aesthetic_confidence remains -1."
+    },
+    "detr": {
+      "status": "non_empty_foreground_detections_observed",
+      "records_with_object_count_gt_zero": 85,
+      "records_total": 107,
+      "records_with_object_count_zero": 22,
+      "foreground_detection_count_sum": 239,
+      "measurement_field": "debug_numeric_features.object_count",
+      "scope_note": "This is the exact serialized foreground-detection evidence. Raw pre-filter arrays are not exported, so zero-count rows are not classified as successful or failed inference."
+    },
+    "compact_neural_evidence": {
+      "status": "unavailable",
+      "reason": "compact_neural_evidence_net is absent from the checkout"
+    }
+  },
+  "limitations": [
+    "This is a simulator replay receipt, not physical-device evidence.",
+    "The 207-record current replay remains blocked by 65 missing image inputs and 35 hashless labels.",
+    "No release-quality or model-quality claim is made."
+  ]
+}
