@@ -1123,6 +1123,14 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
     @objc private func recordingShareButtonPressed() {
         guard let artifact = viewModel.latestAvailableRecordingArtifact else { return }
 
+        // M7-027: only resolved, still-existing media is shared; a stale URL
+        // whose project was deleted (or a corrupt file) surfaces localized
+        // recovery instead of a share sheet over nothing.
+        guard FileManager.default.fileExists(atPath: artifact.localURL.path) else {
+            viewModel.errorMessage = viewModel.localizedCopy(.generatorErrorRecorder)
+            return
+        }
+
         let activityViewController = UIActivityViewController(
             activityItems: [artifact.localURL],
             applicationActivities: nil
