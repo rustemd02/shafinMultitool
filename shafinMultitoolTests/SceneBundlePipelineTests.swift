@@ -4609,10 +4609,28 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertEqual(viewModel.clarificationRequest?.options.count, 2)
         XCTAssertTrue(viewModel.clarificationRequest?.options.allSatisfy { !$0.id.isEmpty } == true)
         XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
+        XCTAssertEqual(viewModel.testingGenerationCommitCount, 0)
         XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 0)
         let after = DBService.shared.loadUnifiedSceneProject(named: projectName)?.0
         XCTAssertEqual(after?.parsedScript, before?.parsedScript)
         XCTAssertEqual(after?.plannedScene, before?.plannedScene)
+
+        let clarification = try XCTUnwrap(viewModel.clarificationRequest)
+        let requestID = try XCTUnwrap(viewModel.generationRequestState.requestID)
+        let epoch = try XCTUnwrap(viewModel.generationRequestState.epoch)
+        let answer = await viewModel.submitClarificationAnswer(
+            .choice(clarification.options[0].id),
+            for: clarification
+        )
+
+        XCTAssertEqual(answer, .accepted)
+        XCTAssertEqual(viewModel.generationRequestState.phase, .success)
+        XCTAssertEqual(viewModel.generationRequestState.requestID, requestID)
+        XCTAssertEqual(viewModel.generationRequestState.epoch, epoch)
+        XCTAssertNotNil(viewModel.parsedScript)
+        XCTAssertNotNil(viewModel.plannedScene)
+        XCTAssertEqual(viewModel.testingGenerationCommitCount, 1)
+        XCTAssertEqual(viewModel.testingGenerationStateTrace.filter { $0.phase == .success }.count, 1)
     }
 
     @MainActor
@@ -4851,16 +4869,37 @@ final class SceneBundlePipelineTests: XCTestCase {
             for: clarification
         )
         XCTAssertEqual(invalid, .rejected(.invalidAnswer))
+        let currentClarification = try XCTUnwrap(viewModel.clarificationRequest)
+        XCTAssertNotEqual(currentClarification.id, clarification.id)
+        let previousAttempt = await viewModel.submitClarificationAnswer(
+            .choice(clarification.options[0].id),
+            requestID: requestID,
+            epoch: epoch,
+            clarificationID: clarification.id
+        )
+        XCTAssertEqual(previousAttempt, .rejected(.staleRequest))
         let repeated = await viewModel.submitClarificationAnswer(
             .choice("not-an-observed-candidate"),
             requestID: requestID,
             epoch: epoch,
-            clarificationID: viewModel.clarificationRequest?.id
+            clarificationID: currentClarification.id
         )
         XCTAssertEqual(repeated, .rejected(.repeatedAnswer))
-        _ = await viewModel.submitClarificationAnswer(.choice("invalid-two"), requestID: requestID, epoch: epoch)
-        _ = await viewModel.submitClarificationAnswer(.choice("invalid-three"), requestID: requestID, epoch: epoch)
-        let exhausted = await viewModel.submitClarificationAnswer(.choice("invalid-four"), requestID: requestID, epoch: epoch)
+        let invalidTwoPayload = try XCTUnwrap(viewModel.clarificationRequest)
+        _ = await viewModel.submitClarificationAnswer(
+            .choice("invalid-two"),
+            for: invalidTwoPayload
+        )
+        let invalidThreePayload = try XCTUnwrap(viewModel.clarificationRequest)
+        _ = await viewModel.submitClarificationAnswer(
+            .choice("invalid-three"),
+            for: invalidThreePayload
+        )
+        let exhaustedPayload = try XCTUnwrap(viewModel.clarificationRequest)
+        let exhausted = await viewModel.submitClarificationAnswer(
+            .choice("invalid-four"),
+            for: exhaustedPayload
+        )
 
         XCTAssertEqual(exhausted, .rejected(.retryLimitReached))
         XCTAssertEqual(viewModel.clarificationAttemptsRemaining, 0)

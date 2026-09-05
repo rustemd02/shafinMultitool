@@ -222,6 +222,8 @@ final class SceneParserService {
         return output.result
     }
 
+    /// Returns parser diagnostics for logs/traces only. UI owners must resolve
+    /// their visible prompt from the localized SET catalog.
     func clarificationMessage(for trace: SceneRuntimeTrace?) -> String? {
         trace?.clarificationMessage
     }

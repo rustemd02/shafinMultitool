@@ -613,6 +613,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// physical camera or a simulator AR session.
     var testingWorldMapCaptureOverride: (@MainActor () async -> Result<ARWorldMap?, SceneWorkspaceTeardownFailure>)?
     private(set) var testingProjectSnapshotSaveCount = 0
+    /// Counts committed generation model/AR replacements. This DEBUG-only
+    /// receipt seam proves that a clarification continuation commits once;
+    /// persistence autosaves are intentionally separate.
+    private(set) var testingGenerationCommitCount = 0
 
     /// Test-only state seam for validating stale-map retirement when a real
     /// ARWorldMap is supplied by an AR-capable test environment.
@@ -1929,7 +1933,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         _ answer: SceneClarificationAnswer,
         requestID: UUID,
         epoch: UInt,
-        clarificationID: String? = nil
+        clarificationID: String
     ) async -> SceneClarificationSubmissionResult {
         if let generationTask {
             await generationTask.value
@@ -1946,7 +1950,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
               let payload = clarificationRequest,
               payload.requestID == requestID,
               payload.epoch == epoch,
-              clarificationID == nil || clarificationID == payload.id,
+              clarificationID == payload.id,
               let context = pendingClarificationGeneration,
               context.requestID == requestID,
               context.generationToken == epoch else {
@@ -2309,8 +2313,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         // Отображаем диагностику в статусе
         if runtimeTrace?.route == .needsClarification {
-            let clarification = parserService.clarificationMessage(for: runtimeTrace)
-                ?? localizedCopy(.generatorClarification)
+            if let parserClarification = parserService.clarificationMessage(for: runtimeTrace) {
+                diagnosticsLog("[GENERATION][\(generationID)] parser clarification diagnostic=\(parserClarification)")
+            }
+            // Parser wording is diagnostic-only. The visible sheet always
+            // uses the localized SET catalog so RU/EN cannot diverge.
+            let clarification = localizedCopy(.generatorClarification)
             guard publishClarification(
                 trace: runtimeTrace,
                 requestID: requestID,
@@ -2469,6 +2477,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         sceneChunkState = parserOutput.chunkState
         visualOverlays = parserOutput.visualOverlays
         plannedScene = plannedWithBindingSources
+#if DEBUG
+        testingGenerationCommitCount += 1
+#endif
         beatTimelineItems = buildBeatTimelineItems(for: plannedWithBindingSources, script: updatedScript)
         refreshStoryboardBeatItems()
         activeStoryboardEditDraft = nil

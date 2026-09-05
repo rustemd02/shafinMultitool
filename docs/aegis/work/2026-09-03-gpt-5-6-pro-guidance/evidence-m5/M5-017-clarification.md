@@ -77,7 +77,36 @@ iPhone 17 Pro were used.
   `CONFIGURATION=Release` with no DEBUG compilation condition; the incremental
   workspace Release build for the same Air destination exited 0 and produced
   `/private/tmp/m5-017-release.5jQ6f3/DerivedData/Build/Products/Release-iphonesimulator/shafinMultitool.app`.
-  Existing storyboard/deprecation/asset warnings remain outside this slice.
+Existing storyboard/deprecation/asset warnings remain outside this slice.
+
+## FIX-FIRST correction verification
+
+The correction run used the permitted iPhone 17e simulator (device UUID
+`1F680A42-CEB3-43E8-9CED-52F874962A62`, iOS 26.5). It did not use the iPhone
+Air, iPhone 17 Pro, a physical device, or a physical iPhone 13. The original
+baseline above remains historical evidence; this run is the current contract
+receipt.
+
+- The direct ViewModel answer API now requires the clarification payload ID;
+  there is no default or nil bypass. After an invalid answer replaces attempt
+  0 with attempt 1, the old payload ID is rejected as `staleRequest` even when
+  request UUID and epoch remain current.
+- The parser's clarification wording is retained only in diagnostics. The
+  visible prompt is always `SETCopyKey.generatorClarification` resolved for
+  the presentation locale.
+- `testRealGenerationPathUsesNaturalLanguageMarkerAmbiguityGateWithoutOverride`
+  now continues the real no-override path through the answer to success and
+  proves `testingGenerationCommitCount == 1`, exactly one success state, the
+  same request UUID/epoch, and a non-nil planned scene. No
+  `testingSetParserResultOverride` is used by that test.
+- The focused correction command:
+
+  ```text
+  xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'id=1F680A42-CEB3-43E8-9CED-52F874962A62' -parallel-testing-enabled NO -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testRealGenerationPathUsesNaturalLanguageMarkerAmbiguityGateWithoutOverride -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testClarificationRejectsStaleRepeatedAndBoundedInvalidAnswers -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testClarificationAnswerResumesSameRequestOnceAndCommits -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testClarificationCancelReturnsDraftAndClearsRequest -derivedDataPath /private/tmp/m5-017-fix-dd -resultBundlePath /private/tmp/m5-017-fix-focused.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+  ```
+
+  exited 0: 4/4 tests passed, 0 failures, result bundle
+  `/private/tmp/m5-017-fix-focused.xcresult`. `git diff --check` also passed.
 
 ## Judgment calls and boundaries
 
