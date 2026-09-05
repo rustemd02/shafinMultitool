@@ -105,6 +105,39 @@ Pro were used.
   `/private/tmp/m5-016-binding-correction-final.xcresult` (13/13).
 - Final `git diff --check` — passed after the correction/evidence update.
 
+## Fresh review correction
+
+The review reproduced one remaining first-match path before the fix. The
+no-override generation test used two same-label chair markers and a natural
+language reference; it reached success and wrote parsed/planned state instead
+of clarification. The result was
+`/private/tmp/m5-016-binding-natural-red.xcresult` with xcodebuild exit 65,
+`passedTests: 0`, `failedTests: 1`, `skippedTests: 0`, and
+`totalTestCount: 1`. The failure was an intentional red reproduction, not an
+infrastructure failure.
+
+The correction keeps label lookup uniqueness-aware in the existing matcher and
+parser fallback, propagates `same_type_marker_conflict` from every chunk into
+the request's clarification route, preserves repeated non-marked provider
+objects as distinct canonical refs while removing their ambiguous alias, and
+checks marker, detection, and canonical provenance tokens together so a
+converged detection cannot be reused by another script reference.
+
+The focused Air rerun used the permitted ordinary iPhone Air
+(`A6E7238C-B4C6-4988-B399-8E127CA8683B`) and the existing bounded derived-data
+path:
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' -derivedDataPath /private/tmp/m5-016-binding-dd -resultBundlePath /private/tmp/m5-016-binding-review-focused.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testObjectBindingMatrixUsesExplicitIdentityAndTypedFailures -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testObjectBindingCanonicalIDsSurviveDetectionReloadRepresentation -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testObjectBindingDoesNotConvergeSpatiallyDistinctOrUnpositionedObservations -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testObjectBindingRejectsTypeMismatchedExplicitAndAliasCandidates -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testObjectBindingRejectsInvalidDetectionGeometryAndNormalizesSignedZero -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testObjectBindingAliasesRemainScopedToSubmittedRequestSnapshot -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testObjectBindingRejectsReuseOfDetectionProvenanceAcrossReferences -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testChunkCanonicalizerPreservesRepeatedNonMarkedProviderObjects -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testUnresolvedObjectBindingStopsBeforeSceneCommitOrSuccess -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testRealGenerationPathStopsBeforeCommitForUnresolvedObjectBinding -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testRealGenerationPathUsesNaturalLanguageMarkerAmbiguityGateWithoutOverride -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testStoryboardManualEditChangesActionAndReplans -only-testing:shafinMultitoolTests/SceneBundlePipelineTests/testStoryboardBeatEditFailsBeforeMutationWhenObjectIdentityIsUnavailable -only-testing:shafinMultitoolTests/SceneParserServiceTests/testSameNameMarkedObjectsAreCollisionSafeAndTypedAmbiguous -only-testing:shafinMultitoolTests/SceneV8PipelineTests/testCompilerPreservesMarkedObjectIdentityAndSymbolicActors -only-testing:shafinMultitoolTests/SceneV8PipelineTests/testAnchorExtractorFlagsSameTypeMarkerConflict
+```
+
+Result bundle `/private/tmp/m5-016-binding-review-focused.xcresult`:
+`passedTests: 16`, `failedTests: 0`, `skippedTests: 0`, `result: Passed`, and
+`totalTestCount: 16`. The three fresh tests cover the no-override production
+clarification/zero-write gate, repeated provider canonicalization, and
+cross-reference detection provenance collision. `git diff --check` passed
+after this evidence update.
+
 ## Limitations
 
 Detector representation keys are stable for equivalent rounded label,

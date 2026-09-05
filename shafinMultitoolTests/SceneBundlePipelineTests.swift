@@ -4289,6 +4289,102 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertNotEqual(first.resolution(for: object.id)?.binding?.detectionID, reloaded.resolution(for: object.id)?.binding?.detectionID)
     }
 
+    func testObjectBindingRejectsReuseOfDetectionProvenanceAcrossReferences() throws {
+        let marker = makeMarkedObject(
+            idSeed: "000000a1-0000-0000-0000-000000000a01",
+            name: "стул",
+            type: .chair,
+            position: Position3D(x: 0, y: 0, z: -1)
+        )
+        let detection = makeDetectedObject(
+            idSeed: "000000a2-0000-0000-0000-000000000a02",
+            label: "chair",
+            confidence: 0.9,
+            box: CGRect(x: 0.2, y: 0.2, width: 0.3, height: 0.3),
+            position: marker.worldPosition
+        )
+        let resolver = SceneAnchorExtractor()
+        let request = resolver.makeObjectBindingRequestSnapshot(
+            requestID: UUID(uuidString: "000000a0-0000-0000-0000-000000000a00")!,
+            epoch: 1,
+            description: "стул",
+            markedObjects: [marker],
+            detectedObjects: [detection]
+        )
+        let detectedCandidate = try XCTUnwrap(request.candidates.first(where: { $0.source == .detected }))
+        let explicitDetectionObject = SceneObject(
+            id: detectedCandidate.canonicalID,
+            type: .chair,
+            name: "chair",
+            relativePosition: .center
+        )
+        let aliasObject = SceneObject(
+            id: "object_alias_detection_reuse",
+            type: .chair,
+            name: "chair",
+            relativePosition: .center
+        )
+
+        let result = resolver.resolveObjectBindings(
+            scriptObjects: [explicitDetectionObject, aliasObject],
+            request: request
+        )
+
+        XCTAssertEqual(result.resolution(for: explicitDetectionObject.id)?.state, .ambiguous)
+        XCTAssertEqual(result.resolution(for: aliasObject.id)?.state, .ambiguous)
+        XCTAssertTrue(result.diagnostics.contains {
+            $0.contains("candidate_already_bound")
+        })
+    }
+
+    func testChunkCanonicalizerPreservesRepeatedNonMarkedProviderObjects() throws {
+        let canonicalizer = ChunkCanonicalizer()
+        let firstRef = "provider_chair_1"
+        let secondRef = "provider_chair_2"
+        let draft = SceneChunkDraft(
+            sceneID: "scene_1",
+            chunkID: "scene_1_chunk_1",
+            chunkIndex: 0,
+            sourceText: "Человек подходит к стулу и стулу.",
+            sourceRange: .init(start: 0, end: 34),
+            anchors: .empty,
+            registrySnapshot: .empty,
+            plan: ScenePlanIR(
+                actors: [.init(ref: "first", type: .human)],
+                objects: [
+                    .init(ref: firstRef, type: .chair, relativePosition: .center, name: "стул"),
+                    .init(ref: secondRef, type: .chair, relativePosition: .center, name: "стул"),
+                ],
+                beats: [
+                    .init(
+                        ref: "beat_1",
+                        actions: [
+                            .init(actorRef: "first", type: .walk, targetRef: firstRef),
+                            .init(actorRef: "first", type: .lookAt, targetRef: secondRef),
+                        ]
+                    ),
+                ],
+                spatialRelations: [],
+                referenceBindings: .init()
+            ),
+            usedFallbackPlanner: false,
+            usedLegacyPlanBridge: false,
+            confidence: 0.9,
+            unresolvedMentions: [],
+            reasonCodes: []
+        )
+
+        let chunk = canonicalizer.canonicalize(draft: draft, stitchState: nil)
+        let canonicalRefs = chunk.registryPatch.objects.map(\.ref)
+
+        XCTAssertEqual(canonicalRefs.count, 2)
+        XCTAssertEqual(Set(canonicalRefs).count, 2)
+        XCTAssertNil(chunk.registryPatch.objectAliasMap["стул"])
+        XCTAssertTrue(chunk.reasonCodes.contains("v9.ambiguous_object_alias"))
+        let targetRefs = Set(chunk.beatPatch.flatMap(\.actions).compactMap(\.targetRef))
+        XCTAssertEqual(targetRefs, Set(canonicalRefs))
+    }
+
     @MainActor
     func testUnresolvedObjectBindingStopsBeforeSceneCommitOrSuccess() async {
         let projectName = "binding-clarification-\(UUID().uuidString)"
@@ -4459,6 +4555,55 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
         XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 0)
 
+        let after = DBService.shared.loadUnifiedSceneProject(named: projectName)?.0
+        XCTAssertEqual(after?.parsedScript, before?.parsedScript)
+        XCTAssertEqual(after?.plannedScene, before?.plannedScene)
+    }
+
+    @MainActor
+    func testRealGenerationPathUsesNaturalLanguageMarkerAmbiguityGateWithoutOverride() async throws {
+        let projectName = "binding-natural-language-gate-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        addTeardownBlock { @MainActor in
+            _ = await viewModel.teardownAndWait()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in
+                    continuation.resume()
+                }
+            }
+        }
+
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.markedObjects = [
+            makeMarkedObject(
+                idSeed: "000000b1-0000-0000-0000-000000000b01",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: -1, y: 0, z: -1)
+            ),
+            makeMarkedObject(
+                idSeed: "000000b2-0000-0000-0000-000000000b02",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: 1, y: 0, z: -1)
+            ),
+        ]
+        viewModel.sceneDescription = "Человек подходит к одному из стульев."
+        viewModel.testingResetGenerationStateTrace()
+        let before = DBService.shared.loadUnifiedSceneProject(named: projectName)?.0
+
+        await viewModel.generateScene()
+
+        XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
+        XCTAssertNil(viewModel.parsedScript)
+        XCTAssertNil(viewModel.plannedScene)
+        XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
+        XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 0)
         let after = DBService.shared.loadUnifiedSceneProject(named: projectName)?.0
         XCTAssertEqual(after?.parsedScript, before?.parsedScript)
         XCTAssertEqual(after?.plannedScene, before?.plannedScene)

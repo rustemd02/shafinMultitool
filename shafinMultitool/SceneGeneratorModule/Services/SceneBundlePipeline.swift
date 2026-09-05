@@ -779,18 +779,41 @@ final class ChunkCanonicalizer {
             reasonCodes: &reasonCodes
         )
 
+        func markAmbiguousObjectAlias(_ alias: String) {
+            objectAliasMap.removeValue(forKey: alias)
+            guard ambiguousObjectAliases.insert(alias).inserted else { return }
+            if !reasonCodes.contains("v9.ambiguous_object_alias") {
+                reasonCodes.append("v9.ambiguous_object_alias")
+            }
+        }
+
         func registerObjectAlias(_ alias: String, ref: String) {
             guard !ambiguousObjectAliases.contains(alias) else { return }
             if let existing = objectAliasMap[alias], existing != ref {
-                objectAliasMap.removeValue(forKey: alias)
-                ambiguousObjectAliases.insert(alias)
-                if !reasonCodes.contains("v9.ambiguous_object_alias") {
-                    reasonCodes.append("v9.ambiguous_object_alias")
-                }
+                markAmbiguousObjectAlias(alias)
                 return
             }
             objectAliasMap[alias] = ref
         }
+
+        // A provider may emit several distinct objects with the same
+        // normalized label.  Keep their source refs distinct and make the
+        // shared label explicitly ambiguous before any alias reuse occurs.
+        let providerObjectsByAlias = Dictionary(
+            grouping: plan.objects.compactMap { object -> (String, ScenePlanIR.Object)? in
+                guard object.markedObjectID == nil,
+                      !object.ref.hasPrefix("object_marked_"),
+                      let normalizedName = normalizeAlias(object.name)
+                else { return nil }
+                return (normalizedName, object)
+            },
+            by: \.0
+        )
+        let repeatedProviderAliases = Set(
+            providerObjectsByAlias.compactMap { alias, objects in
+                Set(objects.map { $0.1.ref }).count > 1 ? alias : nil
+            }
+        )
 
         for (index, actor) in plan.actors.enumerated() {
             let normalizedName = normalizeAlias(actor.name)
@@ -884,25 +907,57 @@ final class ChunkCanonicalizer {
                     existingObjectMap[stableRef] = canonical
                     createdObjects.append(canonical)
                 }
-            } else if let normalizedName, let existing = objectAliasMap[normalizedName] {
-                stableRef = existing
-            } else if let matched = existingObjectsInOrder.first(where: { existing in
-                existing.type == object.type && normalizeAlias(existing.name) == normalizedName
-            })?.ref {
-                stableRef = matched
             } else {
-                let slug = slugify(normalizedName ?? object.type.rawValue)
-                let nextIndex = existingObjectMap.values.filter { !$0.ref.hasPrefix("object_marked_") }.count + createdObjects.count + 1
-                stableRef = "object_scene\(sceneIndex)_\(slug)_\(nextIndex)"
-                let canonical = ScenePlanIR.Object(
-                    ref: stableRef,
-                    type: object.type,
-                    relativePosition: object.relativePosition,
-                    name: normalizedName ?? object.name,
-                    markedObjectID: nil
-                )
-                createdObjects.append(canonical)
-                existingObjectMap[stableRef] = canonical
+                let isRepeatedProviderAlias = normalizedName.map { repeatedProviderAliases.contains($0) } ?? false
+                let reusableRef: String?
+                if isRepeatedProviderAlias {
+                    if let normalizedName {
+                        markAmbiguousObjectAlias(normalizedName)
+                    }
+                    reusableRef = nil
+                } else if let normalizedName {
+                    let existingCandidates: [ScenePlanIR.Object]
+                    let hasExistingAlias = objectAliasMap[normalizedName] != nil
+                    if let existingRef = objectAliasMap[normalizedName] {
+                        existingCandidates = existingObjectsInOrder.filter { existing in
+                            existing.ref == existingRef
+                                && existing.type == object.type
+                                && normalizeAlias(existing.name) == normalizedName
+                        }
+                    } else {
+                        existingCandidates = existingObjectsInOrder.filter { existing in
+                            existing.type == object.type
+                                && normalizeAlias(existing.name) == normalizedName
+                        }
+                    }
+                    if existingCandidates.count == 1 {
+                        reusableRef = existingCandidates[0].ref
+                    } else {
+                        if hasExistingAlias || existingCandidates.count > 1 {
+                            markAmbiguousObjectAlias(normalizedName)
+                        }
+                        reusableRef = nil
+                    }
+                } else {
+                    reusableRef = nil
+                }
+
+                if let reusableRef {
+                    stableRef = reusableRef
+                } else {
+                    let slug = slugify(normalizedName ?? object.type.rawValue)
+                    let nextIndex = existingObjectMap.values.filter { !$0.ref.hasPrefix("object_marked_") }.count + createdObjects.count + 1
+                    stableRef = "object_scene\(sceneIndex)_\(slug)_\(nextIndex)"
+                    let canonical = ScenePlanIR.Object(
+                        ref: stableRef,
+                        type: object.type,
+                        relativePosition: object.relativePosition,
+                        name: normalizedName ?? object.name,
+                        markedObjectID: nil
+                    )
+                    createdObjects.append(canonical)
+                    existingObjectMap[stableRef] = canonical
+                }
             }
 
             objectRefMap[object.ref] = stableRef
@@ -2395,6 +2450,22 @@ final class SceneStitcher {
             state.registry.objects.append(object)
         }
         state.registry.actorAliasMap.merge(patch.actorAliasMap) { _, new in new }
+        let objectRefsByAlias = Dictionary(
+            grouping: state.objects.compactMap { object -> (String, String)? in
+                guard let alias = object.name?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+                      !alias.isEmpty
+                else { return nil }
+                return (alias, object.ref)
+            },
+            by: \.0
+        )
+        for (alias, entries) in objectRefsByAlias
+            where Set(entries.map { $0.1 }).count > 1 {
+            state.registry.objectAliasMap.removeValue(forKey: alias)
+            if !state.continuityDiagnostics.contains("v9.ambiguous_object_alias") {
+                state.continuityDiagnostics.append("v9.ambiguous_object_alias")
+            }
+        }
         for (alias, ref) in patch.objectAliasMap {
             let normalizedAlias = alias.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
             let refsAlreadyNamed = Set<String>(

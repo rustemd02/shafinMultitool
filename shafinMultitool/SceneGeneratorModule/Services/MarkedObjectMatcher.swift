@@ -593,18 +593,18 @@ final class MarkedObjectMatcher {
             .compactMap { groupedScriptObjects[$0]?.first }
             .map(resolve)
             .sorted { $0.reference < $1.reference }
-        let boundGroups = Dictionary(grouping: initialResolutions.compactMap { resolution -> (String, String)? in
-            guard let binding = resolution.binding else { return nil }
-            let provenance: String
+        let boundProvenance = initialResolutions.flatMap { resolution -> [(String, String)] in
+            guard let binding = resolution.binding else { return [] }
+            var tokens = ["canonical:\(binding.canonicalID.lowercased())"]
             if let markerID = binding.markerID {
-                provenance = "marker:\(markerID.uuidString.lowercased())"
-            } else if let detectionID = binding.detectionID {
-                provenance = "detection:\(detectionID.uuidString.lowercased())"
-            } else {
-                provenance = "canonical:\(binding.canonicalID.lowercased())"
+                tokens.append("marker:\(markerID.uuidString.lowercased())")
             }
-            return (provenance, resolution.reference)
-        }, by: \.0)
+            if let detectionID = binding.detectionID {
+                tokens.append("detection:\(detectionID.uuidString.lowercased())")
+            }
+            return tokens.map { ($0, resolution.reference) }
+        }
+        let boundGroups = Dictionary(grouping: boundProvenance, by: \.0)
         let collidingReferences = Set(
             boundGroups.values
                 .filter { $0.count > 1 }
@@ -784,34 +784,34 @@ final class MarkedObjectMatcher {
         return false
     }
     
-    /// Находит объект по слову из текста (с учётом markedObjects)
-    /// - Parameters:
-    ///   - word: Слово из текста
-    ///   - markedObjects: Список размеченных объектов
-    /// - Returns: Найденный markedObject или nil
-    func findMarkedObject(byWord word: String, in markedObjects: [MarkedObject]) -> MarkedObject? {
-        let lowercasedWord = word.lowercased()
-        
-        for marker in markedObjects {
-            let markerName = marker.name.lowercased()
-            
-            // Прямое совпадение
-            if lowercasedWord == markerName {
-                return marker
-            }
-            
-            // Через лемматизацию
-            if lemmatizer.matchesKeyword(lowercasedWord, keyword: markerName) {
-                return marker
-            }
-            
-            // Частичное совпадение (для случаев "мой стол" -> "стол")
-            if lowercasedWord.contains(markerName) || markerName.contains(lowercasedWord) {
-                return marker
-            }
+    /// Returns every marker that can represent the supplied surface word.
+    /// A caller may bind only when this set has one member; array order never
+    /// disambiguates repeated labels.
+    func findMarkedObjectCandidates(byWord word: String, in markedObjects: [MarkedObject]) -> [MarkedObject] {
+        let lowercasedWord = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !lowercasedWord.isEmpty else { return [] }
+
+        let candidates = markedObjects.filter { marker in
+            let markerName = marker.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !markerName.isEmpty else { return false }
+            return lowercasedWord == markerName
+                || lemmatizer.matchesKeyword(lowercasedWord, keyword: markerName)
+                || lowercasedWord.contains(markerName)
+                || markerName.contains(lowercasedWord)
         }
-        
-        return nil
+        return candidates.sorted { lhs, rhs in
+            if lhs.canonicalMarkedObjectID != rhs.canonicalMarkedObjectID {
+                return lhs.canonicalMarkedObjectID < rhs.canonicalMarkedObjectID
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    /// Находит объект по слову из текста (с учётом markedObjects).
+    /// Repeated labels fail closed instead of returning the first marker.
+    func findMarkedObject(byWord word: String, in markedObjects: [MarkedObject]) -> MarkedObject? {
+        let candidates = findMarkedObjectCandidates(byWord: word, in: markedObjects)
+        return candidates.count == 1 ? candidates[0] : nil
     }
     
     // MARK: - Private Helpers

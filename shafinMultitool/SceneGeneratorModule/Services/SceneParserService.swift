@@ -452,14 +452,37 @@ final class SceneParserService {
 
     private func makeRuntimeTrace(from result: SceneBundleParsingResult) -> SceneRuntimeTrace {
         let activeChunk = result.chunkDiagnostics.last
-        let route: SceneRouterOutcome = result.activeSceneScript == nil ? .fallbackRuleOnly : .acceptLocal
-        let reasons = activeChunk?.reasonCodes ?? result.diagnostics.notes
+        let anchors = activeChunk?.anchors.sourceBundle ?? .empty
+        var reasons: [String] = result.chunkDiagnostics
+            .flatMap(\.reasonCodes)
+        reasons.append(contentsOf: result.diagnostics.notes)
+        if reasons.isEmpty {
+            reasons = activeChunk?.reasonCodes ?? []
+        }
+        if anchors.sameTypeMarkerConflict || result.chunkDiagnostics.contains(where: { $0.anchors.sourceBundle.sameTypeMarkerConflict }) {
+            if !reasons.contains("same_type_marker_conflict") {
+                reasons.append("same_type_marker_conflict")
+            }
+        }
+        var uniqueReasons: [String] = []
+        for reason in reasons where !uniqueReasons.contains(reason) {
+            uniqueReasons.append(reason)
+        }
+        let hasMarkerConflict = uniqueReasons.contains("same_type_marker_conflict")
+        let route: SceneRouterOutcome
+        if hasMarkerConflict {
+            route = .needsClarification
+        } else {
+            route = result.activeSceneScript == nil ? .fallbackRuleOnly : .acceptLocal
+        }
         return SceneRuntimeTrace(
             route: route,
-            reasons: reasons,
-            anchors: activeChunk?.anchors.sourceBundle ?? .empty,
+            reasons: uniqueReasons,
+            anchors: anchors,
             usedLegacyPlanBridge: activeChunk?.usedLegacyPlanBridge ?? false,
-            clarificationMessage: nil
+            clarificationMessage: hasMarkerConflict
+                ? "Уточните, какой именно размеченный объект имеется в виду."
+                : nil
         )
     }
 
@@ -1551,20 +1574,29 @@ final class SceneParserService {
 
     private func findTargetForAction(text: String, objects: [SceneObject], markedObjects: [MarkedObject] = []) -> String? {
         // 1. Сначала ищем в markedObjects (приоритет)
-        for marker in markedObjects {
+        let markedMatches = markedObjects.filter { marker in
             let markerName = marker.name.lowercased()
             let patterns = ["к \(markerName)", "ко \(markerName)", "мимо \(markerName)", "около \(markerName)", "к моему \(markerName)", "к моей \(markerName)"]
-            for pattern in patterns {
-                if lemmatizer.textContainsKeyword(text, keyword: pattern) || text.contains(pattern) {
-                    // Находим соответствующий объект в списке
-                    if let object = objects.first(where: { $0.markedObjectShortID == marker.markedShortID || ($0.type == marker.type && $0.detectedPosition == marker.worldPosition) }) {
-                        return object.id
-                    }
-                }
+            return patterns.contains { pattern in
+                lemmatizer.textContainsKeyword(text, keyword: pattern) || text.contains(pattern)
             }
+        }
+        guard markedMatches.count <= 1 else {
+            // Repeated marker labels are not resolved by marker or array order.
+            return nil
+        }
+        if let marker = markedMatches.first {
+            let objectMatches = objects.filter { object in
+                guard object.type == marker.type else { return false }
+                return object.markedObjectShortID == marker.markedShortID
+                    || object.detectedPosition == marker.worldPosition
+            }
+            guard objectMatches.count == 1 else { return nil }
+            return objectMatches[0].id
         }
 
         // 2. Ищем "к <объекту>" или "мимо <объекта>" (с лемматизацией) в стандартных ключевых словах
+        var standardMatches: [String] = []
         for object in objects {
             for (keyword, _) in KeywordsMapping.objectKeywords where KeywordsMapping.objectKeywords[keyword] == object.type {
                 // Проверяем паттерны типа "к столу", "мимо шкафа" с учётом лемматизации
@@ -1584,43 +1616,56 @@ final class SceneParserService {
                                 guard range.upperBound < text.endIndex else { continue }
                                 let afterPreposition = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
                                 if lemmatizer.textContainsKeyword(afterPreposition, keyword: objectKeyword) {
-                                    return object.id
+                                    standardMatches.append(object.id)
+                                    break
                                 }
                             }
                         }
                     } else if text.contains(pattern) {
-                        return object.id
+                        standardMatches.append(object.id)
+                        break
                     }
                 }
             }
         }
-        return nil
+        let uniqueStandardMatches = Array(Set(standardMatches)).sorted()
+        return uniqueStandardMatches.count == 1 ? uniqueStandardMatches[0] : nil
     }
 
     private func findMatchingObject(word: String, objects: [SceneObject], markedObjects: [MarkedObject] = []) -> SceneObject? {
         let lowercasedWord = word.lowercased()
         print("🔍 [FIND_MATCHING_OBJECT] Поиск объекта для слова: '\(lowercasedWord)'")
 
-        // 1. Сначала ищем в markedObjects по имени (с лемматизацией)
-        if let marker = markedObjectMatcher.findMarkedObject(byWord: lowercasedWord, in: markedObjects) {
+        // 1. Сначала ищем в markedObjects по имени (с лемматизацией).
+        // Repeated labels are an explicit ambiguity, never a first-match guess.
+        let markerCandidates = markedObjectMatcher.findMarkedObjectCandidates(byWord: lowercasedWord, in: markedObjects)
+        guard markerCandidates.count <= 1 else {
+            print("🔍 [FIND_MATCHING_OBJECT] Неоднозначный markedObject: кандидатов=\(markerCandidates.count)")
+            return nil
+        }
+        if let marker = markerCandidates.first {
             print("🔍 [FIND_MATCHING_OBJECT] Найден markedObject: id=\(marker.id.uuidString), name='\(marker.name)', type=\(marker.type.rawValue)")
 
             // Ищем соответствующий SceneObject в списке объектов
-            let found = objects.first { object in
+            let matches = objects.filter { object in
+                guard object.type == marker.type else { return false }
                 // Проверяем по ID (если объект был создан из маркера)
                 if object.markedObjectShortID == marker.markedShortID {
                     return true
                 }
                 // Или по типу и позиции
-                return object.type == marker.type && object.detectedPosition == marker.worldPosition
+                return object.detectedPosition == marker.worldPosition
             }
 
-            if let found = found {
+            if matches.count == 1, let found = matches.first {
                 print("🔍 [FIND_MATCHING_OBJECT] Найден SceneObject из markedObject: id='\(found.id)'")
                 return found
             } else {
                 print("🔍 [FIND_MATCHING_OBJECT] MarkedObject найден, но соответствующий SceneObject не найден в списке")
             }
+            // A known marker with no unique SceneObject must not fall through
+            // to an unrelated same-type object.
+            return nil
         }
 
         // 2. Ищем объект по ключевому слову (с лемматизацией)
@@ -1628,9 +1673,13 @@ final class SceneParserService {
         for (keyword, type) in KeywordsMapping.objectKeywords {
             if lemmatizer.matchesKeyword(lowercasedWord, keyword: keyword) {
                 print("🔍 [FIND_MATCHING_OBJECT] Совпадение с ключевым словом '\(keyword)' (тип \(type.rawValue))")
-                if let found = objects.first(where: { $0.type == type }) {
+                let matches = objects.filter { $0.type == type }
+                if matches.count == 1, let found = matches.first {
                     print("🔍 [FIND_MATCHING_OBJECT] Найден стандартный объект: id='\(found.id)'")
                     return found
+                } else if matches.count > 1 {
+                    print("🔍 [FIND_MATCHING_OBJECT] Неоднозначный стандартный объект: кандидатов=\(matches.count)")
+                    return nil
                 } else {
                     print("🔍 [FIND_MATCHING_OBJECT] Ключевое слово найдено, но объект типа \(type.rawValue) отсутствует в списке")
                 }
@@ -1639,13 +1688,19 @@ final class SceneParserService {
 
         // 3. Пытаемся найти частичное совпадение через лемматизацию
         print("🔍 [FIND_MATCHING_OBJECT] Поиск частичных совпадений...")
-        for object in objects {
-            for (keyword, type) in KeywordsMapping.objectKeywords where type == object.type {
-                if lemmatizer.matchesKeyword(lowercasedWord, keyword: keyword) {
-                    print("🔍 [FIND_MATCHING_OBJECT] Найдено частичное совпадение: id='\(object.id)'")
-                    return object
-                }
+        let partialMatches = objects.filter { object in
+            KeywordsMapping.objectKeywords.contains { keyword, type in
+                type == object.type && lemmatizer.matchesKeyword(lowercasedWord, keyword: keyword)
             }
+        }
+        let uniquePartialMatches = Array(Set(partialMatches.map(\.id))).sorted()
+        if uniquePartialMatches.count == 1, let id = uniquePartialMatches.first,
+           let object = objects.first(where: { $0.id == id }) {
+            print("🔍 [FIND_MATCHING_OBJECT] Найдено частичное совпадение: id='\(object.id)'")
+            return object
+        }
+        if uniquePartialMatches.count > 1 {
+            print("🔍 [FIND_MATCHING_OBJECT] Неоднозначное частичное совпадение: кандидатов=\(uniquePartialMatches.count)")
         }
 
         print("🔍 [FIND_MATCHING_OBJECT] Объект не найден для слова '\(lowercasedWord)'")
