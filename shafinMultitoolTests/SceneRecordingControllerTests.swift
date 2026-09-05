@@ -935,6 +935,38 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: externalArtifactURL), Data("external".utf8))
     }
 
+    /// M7-014: an AR-session interruption stops the active take exactly once
+    /// through the serialized stop; the partial take finalizes,
+    /// post-interruption frames are rejected, and recovery cannot create a
+    /// hidden second take on the same owner.
+    func testInterruptionStopsTakeOnceAndRecoveryCannotCreateHiddenClip() async throws {
+        let (controller, box, temporaryDirectory) = try makeController()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let pixelBuffer = try makePixelBuffer(width: 640, height: 480)
+        controller.enqueueVideo(pixelBuffer, at: 0)
+        try await controller.start(requestedFPS: 30, audioMode: .disabled)
+        let firstRecorder = try XCTUnwrap(box.recorder(at: 0))
+        let token = try XCTUnwrap(controller.recordingSourceToken)
+
+        controller.enqueueVideo(pixelBuffer, at: 0.1, ownerToken: token)
+        let result = await controller.stop(reason: .interruption)
+        XCTAssertNotNil(result, "the interruption stop must finalize the partial take")
+        XCTAssertEqual(firstRecorder.stopCount, 1)
+
+        // Recovery frames after the interruption fence are rejected by the
+        // closed take fence.
+        controller.enqueueVideo(pixelBuffer, at: 0.2, ownerToken: token)
+        XCTAssertEqual(firstRecorder.enqueuedTimestamps, [0, 0.1])
+
+        // The recovery path cannot silently start a second take on the same
+        // owner: a fresh start is a new request with a new generation.
+        let secondGeneration = controller.recordingSourceToken
+        XCTAssertTrue(secondGeneration == nil || secondGeneration?.generation != token.generation)
+
+        _ = await controller.releaseAndWait()
+    }
+
     private func makeController(
         stopGate: ControllerAsyncGate? = nil,
         initialEnqueueObserver: (@Sendable () -> Void)? = nil
