@@ -32,7 +32,6 @@ from typing import Any
 
 import torch
 from torch import Tensor
-from torch.nn import functional as F
 
 # Keep both documented module execution and direct ``python train.py`` useful.
 if not __package__:
@@ -45,6 +44,7 @@ from ml.camera_coach.models.set_composition_net import (
     SETCompositionNetInputs,
     SETCompositionNetManifest,
 )
+from ml.camera_coach.losses import LossConfig, compute_multitask_loss
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -53,10 +53,12 @@ MODEL_SOURCE_RELATIVE_PATH = "ml/camera_coach/models/set_composition_net.py"
 LOCK_RELATIVE_PATH = "ml/camera_coach/requirements.lock"
 MODEL_SOURCE_PATH = REPO_ROOT / MODEL_SOURCE_RELATIVE_PATH
 LOCK_PATH = REPO_ROOT / LOCK_RELATIVE_PATH
+LOSS_CONFIG_RELATIVE_PATH = "ml/camera_coach/configs/loss_weights.json"
+LOSS_CONFIG_PATH = REPO_ROOT / LOSS_CONFIG_RELATIVE_PATH
 CONFIG_VERSION = "camera_training.v1"
 RECEIPT_VERSION = "camera_training_receipt.v1"
 DATASET_GENERATOR_VERSION = "seeded_contract_tensors.v1"
-LOSS_DEFINITION = "mean_mse_over_manifest_heads_before_one_sgd_step"
+LOSS_DEFINITION = "weighted_manifest_multitask_loss_before_one_sgd_step"
 FIRST_STEP_LOSS_TOLERANCE = 1e-7
 MAX_SEED = 2**63 - 1
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -285,6 +287,12 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True)
+class LossConfigReference:
+    path: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class DryRunConfig:
     sample_count: int
     batch_size: int
@@ -304,6 +312,7 @@ class TrainingConfig:
     dataset: DatasetConfig
     model: ModelConfig
     runtime: RuntimeConfig
+    loss: LossConfigReference
     lock_sha256: str
     output_root: str
     dry_run: DryRunConfig
@@ -323,6 +332,7 @@ class TrainingConfig:
                 "dataset",
                 "model",
                 "runtime",
+                "loss",
                 "lock_sha256",
                 "output_root",
                 "dry_run",
@@ -366,6 +376,14 @@ class TrainingConfig:
             _require_string(runtime_node["python_version"], "runtime.python_version"),
             _require_string(runtime_node["torch_version"], "runtime.torch_version"),
         )
+
+        loss_node = _require_keys(top["loss"], {"path", "sha256"}, "loss")
+        if loss_node["path"] != LOSS_CONFIG_RELATIVE_PATH:
+            raise ConfigError(f"loss.path must be {LOSS_CONFIG_RELATIVE_PATH!r}")
+        loss = LossConfigReference(
+            _require_string(loss_node["path"], "loss.path"),
+            _require_sha256(loss_node["sha256"], "loss.sha256"),
+        )
         lock_sha256 = _require_sha256(top["lock_sha256"], "lock_sha256")
 
         output_root = _require_string(top["output_root"], "output_root")
@@ -405,6 +423,10 @@ class TrainingConfig:
                 "python_version": runtime.python_version,
                 "torch_version": runtime.torch_version,
             },
+            "loss": {
+                "path": loss.path,
+                "sha256": loss.sha256,
+            },
             "lock_sha256": lock_sha256,
             "output_root": output_root,
             "dry_run": {
@@ -423,6 +445,7 @@ class TrainingConfig:
             dataset,
             model,
             runtime,
+            loss,
             lock_sha256,
             output_root,
             DryRunConfig(sample_count, batch_size, steps, learning_rate),
@@ -520,6 +543,7 @@ class SyntheticSample:
     sample_id: str
     inputs: SETCompositionNetInputs
     targets: Mapping[str, Tensor]
+    target_masks: Mapping[str, Tensor]
 
 
 def _mask_for_roi(roi: Tensor, height: int, width: int) -> Tensor:
@@ -593,18 +617,24 @@ def _synthetic_sample(
         missing[(index * 7) % contract.scalar_feature_count] = 1.0
 
     targets: dict[str, Tensor] = {}
+    target_masks: dict[str, Tensor] = {}
     for name in contract.output_head_names:
         width = contract.output_head_shapes[name]
-        value_range = contract.output_head_specs[name].get("value_range")
-        if value_range == [0.0, 1.0]:
-            target = torch.rand(width, generator=generator, dtype=torch.float32)
-        else:
+        if name == "scene_class_logits":
+            target = torch.randint(width, (1,), generator=generator, dtype=torch.int64)
+        elif name == "embedding":
             target = _rand_scalar(generator, -1.0, 1.0).expand(width).clone()
+        elif name == "continuous_target_deltas":
+            target = _rand_scalar(generator, -1.0, 1.0).expand(width).clone()
+        else:
+            target = torch.rand(width, generator=generator, dtype=torch.float32)
         targets[name] = target
+        target_masks[name] = torch.ones_like(target, dtype=torch.float32)
     return SyntheticSample(
         source.sample_ids[index],
         SETCompositionNetInputs(full, crop, roi, mask, scalar, missing),
         MappingProxyType(targets),
+        MappingProxyType(target_masks),
     )
 
 
@@ -629,6 +659,9 @@ def _dataset_hash(source: SyntheticSource, samples: Sequence[SyntheticSample], s
             digest.update(_tensor_hash(value).encode("ascii"))
         for name, value in sample.targets.items():
             digest.update(name.encode("utf-8"))
+            digest.update(_tensor_hash(value).encode("ascii"))
+        for name, value in sample.target_masks.items():
+            digest.update((name + ":mask").encode("utf-8"))
             digest.update(_tensor_hash(value).encode("ascii"))
     return digest.hexdigest()
 
@@ -722,7 +755,9 @@ def _command_receipt(argv: Sequence[str]) -> dict[str, object]:
     }
 
 
-def _stack_batch(samples: Sequence[SyntheticSample]) -> tuple[SETCompositionNetInputs, dict[str, Tensor]]:
+def _stack_batch(
+    samples: Sequence[SyntheticSample],
+) -> tuple[SETCompositionNetInputs, dict[str, Tensor], dict[str, Tensor]]:
     inputs = SETCompositionNetInputs(
         torch.stack([sample.inputs.full_frame_rgb for sample in samples]),
         torch.stack([sample.inputs.subject_crop_rgb for sample in samples]),
@@ -735,12 +770,25 @@ def _stack_batch(samples: Sequence[SyntheticSample]) -> tuple[SETCompositionNetI
         name: torch.stack([sample.targets[name] for sample in samples])
         for name in samples[0].targets
     }
-    return inputs, targets
+    target_masks = {
+        name: torch.stack([sample.target_masks[name] for sample in samples])
+        for name in samples[0].target_masks
+    }
+    return inputs, targets, target_masks
 
 
-def _loss(outputs: Mapping[str, Tensor], targets: Mapping[str, Tensor]) -> Tensor:
-    terms = [F.mse_loss(outputs[name], targets[name]) for name in outputs]
-    return torch.stack(terms).mean()
+def _loss(
+    outputs: Mapping[str, Tensor],
+    targets: Mapping[str, Tensor],
+    masks: Mapping[str, Tensor] | None = None,
+    loss_config: LossConfig | None = None,
+) -> Tensor:
+    return compute_multitask_loss(
+        outputs,
+        targets,
+        masks=masks,
+        config=loss_config or LossConfig(),
+    ).total
 
 
 def _make_model(config: TrainingConfig, contract: SETCompositionNetManifest) -> torch.nn.Module:
@@ -787,6 +835,16 @@ def run_training(
     _configure_runtime(config, lock)
     environment = _environment_receipt(config, lock_hash)
     environment_hash = _canonical_hash(environment)
+    loss_config_path = _resolve_repo_path(config.loss.path)
+    if loss_config_path.resolve() != LOSS_CONFIG_PATH.resolve():
+        raise TrainingError(f"loss config path is not the frozen path: {loss_config_path}")
+    loss_config_hash = _file_hash(loss_config_path)
+    if loss_config_hash != config.loss.sha256:
+        raise TrainingError(
+            f"loss config hash mismatch for {loss_config_path}: "
+            f"expected {config.loss.sha256}, got {loss_config_hash}"
+        )
+    loss_config = LossConfig.from_file(loss_config_path)
     command = _command_receipt(argv)
     command_hash = _canonical_hash(command)
 
@@ -840,13 +898,13 @@ def run_training(
         }
     )
     batch_indices = order[: config.dry_run.batch_size]
-    batch, targets = _stack_batch([samples[index] for index in batch_indices])
+    batch, targets, target_masks = _stack_batch([samples[index] for index in batch_indices])
     optimizer = torch.optim.SGD(model.parameters(), lr=config.dry_run.learning_rate)
     optimizer.zero_grad(set_to_none=True)
     outputs = model(batch)
     if tuple(outputs) != manifest.output_head_names:
         raise TrainingError("candidate output order does not match frozen manifest")
-    loss = _loss(outputs, targets)
+    loss = _loss(outputs, targets, target_masks, loss_config)
     if not torch.isfinite(loss):
         raise TrainingError("first-step synthetic loss is not finite")
     loss.backward()
@@ -906,6 +964,12 @@ def run_training(
             "source": _path_for_receipt(runner_source_path),
             "source_sha256": runner_source_hash,
         },
+        "loss": {
+            "config": _path_for_receipt(loss_config_path),
+            "config_sha256": loss_config_hash,
+            "definition": LOSS_DEFINITION,
+            "weights": loss_config.weights.as_mapping(),
+        },
         "environment": environment,
         "command": command,
         "training": training_info,
@@ -921,6 +985,7 @@ def run_training(
         "runner_source_sha256": runner_source_hash,
         "lockfile_sha256": lock_hash,
         "model_initialization_sha256": model_initialization_hash,
+        "loss_config_sha256": loss_config_hash,
         "environment_sha256": environment_hash,
         "command_sha256": command_hash,
         "content_stable_projection_sha256": _canonical_hash(stable_projection),

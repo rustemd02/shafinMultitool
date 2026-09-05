@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "camera_losses.v1.schema.json",
+  "title": "SETCompositionNet-v1 multi-task loss config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "config_version",
+    "weights",
+    "focal_gamma",
+    "focal_alpha",
+    "ranking_margin",
+    "contrastive_margin"
+  ],
+  "properties": {
+    "config_version": { "const": "camera_losses.v1" },
+    "weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_class_logits",
+        "subjectness_roi_agreement_logits",
+        "issue_logits",
+        "action_utility_logits",
+        "good_frame_probability",
+        "abstention_probability",
+        "risk_probability",
+        "continuous_target_deltas",
+        "ranking",
+        "contrastive"
+      ],
+      "properties": {
+        "scene_class_logits": { "type": "number", "minimum": 0 },
+        "subjectness_roi_agreement_logits": { "type": "number", "minimum": 0 },
+        "issue_logits": { "type": "number", "minimum": 0 },
+        "action_utility_logits": { "type": "number", "minimum": 0 },
+        "good_frame_probability": { "type": "number", "minimum": 0 },
+        "abstention_probability": { "type": "number", "minimum": 0 },
+        "risk_probability": { "type": "number", "minimum": 0 },
+        "continuous_target_deltas": { "type": "number", "minimum": 0 },
+        "ranking": { "type": "number", "minimum": 0 },
+        "contrastive": { "type": "number", "minimum": 0 }
+      }
+    },
+    "focal_gamma": { "type": "number", "minimum": 0 },
+    "focal_alpha": { "type": "number", "minimum": 0, "maximum": 1 },
+    "ranking_margin": { "type": "number", "minimum": 0 },
+    "contrastive_margin": { "type": "number", "minimum": 0 }
+  }
+}

@@ -166,3 +166,16 @@ cleaned: first-step loss `0.20293012261390686`, initialization SHA-256
   checkpoint promotion, Core ML export, iOS routing, device
   latency/thermal result, cloud/server, or production enablement is included.
   Those remain downstream M4 work.
+
+## Supersession note — M4-007/M4-009
+
+The historical M4-006 receipt above used the one-step mean-MSE smoke objective.
+M4-009 now wires the canonical weighted manifest multi-task loss into the
+same disabled-candidate dry run, so its first-step loss and stable receipt
+projection are intentionally superseded rather than numerically preserved.
+The updated receipt records `loss.config`, its SHA-256, the explicit ten-term
+weight map, and
+`weighted_manifest_multitask_loss_before_one_sgd_step`; the M4-006 integrity
+guards (same-seed equality, changed-seed/config drift, source/runner/lock/self
+hashes, and existing-target rejection) remain required and passing.  The new
+M4-007/M4-009 evidence records the replacement first-step value and hashes.

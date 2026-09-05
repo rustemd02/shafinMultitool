@@ -13,6 +13,7 @@
     "dataset",
     "model",
     "runtime",
+    "loss",
     "lock_sha256",
     "output_root",
     "dry_run"
@@ -54,6 +55,15 @@
       "properties": {
         "python_version": { "const": "3.11.9" },
         "torch_version": { "const": "2.10.0" }
+      }
+    },
+    "loss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "const": "ml/camera_coach/configs/loss_weights.json" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "lock_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },

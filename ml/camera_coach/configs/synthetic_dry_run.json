@@ -17,6 +17,10 @@
     "python_version": "3.11.9",
     "torch_version": "2.10.0"
   },
+  "loss": {
+    "path": "ml/camera_coach/configs/loss_weights.json",
+    "sha256": "b48cfca4e8de5e5930ed8498f0220cb9591ebd0d5a71ba69f99a8f8a9783b4be"
+  },
   "lock_sha256": "b3c308e04fc071402e14114e0fd43fd59677142f3e51a03bf2276c35b8ab0992",
   "output_root": "/private/tmp/setos-m4-006-runs",
   "dry_run": {

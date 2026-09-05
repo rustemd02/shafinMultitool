@@ -1,0 +1,19 @@
+{
+  "config_version": "camera_losses.v1",
+  "weights": {
+    "scene_class_logits": 1.0,
+    "subjectness_roi_agreement_logits": 1.0,
+    "issue_logits": 1.0,
+    "action_utility_logits": 1.0,
+    "good_frame_probability": 1.0,
+    "abstention_probability": 1.0,
+    "risk_probability": 1.0,
+    "continuous_target_deltas": 1.0,
+    "ranking": 1.0,
+    "contrastive": 1.0
+  },
+  "focal_gamma": 2.0,
+  "focal_alpha": 0.25,
+  "ranking_margin": 0.1,
+  "contrastive_margin": 1.0
+}

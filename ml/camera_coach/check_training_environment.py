@@ -15,10 +15,14 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ml.camera_coach.train import (
+    LOSS_CONFIG_PATH,
+    LOSS_CONFIG_RELATIVE_PATH,
+    LOSS_DEFINITION,
     REPO_ROOT,
     ConfigError,
     TrainingConfig,
     TrainingError,
+    _file_hash,
     _tensor_hash,
     run_training,
 )
@@ -26,6 +30,8 @@ from ml.camera_coach.train import (
 
 CONFIG_PATH = REPO_ROOT / "ml/camera_coach/configs/synthetic_dry_run.json"
 SCHEMA_PATH = REPO_ROOT / "ml/camera_coach/configs/training_config.schema.json"
+EXPECTED_FIRST_STEP_LOSS = 5.071068286895752
+OBSOLETE_LOSS_DEFINITION = "mean_mse_over_manifest_heads_before_one_sgd_step"
 
 
 def _must_reject(factory, label: str) -> None:
@@ -59,6 +65,7 @@ def main() -> int:
         "dataset",
         "model",
         "runtime",
+        "loss",
         "lock_sha256",
         "output_root",
         "dry_run",
@@ -66,6 +73,7 @@ def main() -> int:
     assert schema["properties"]["dataset"]["additionalProperties"] is False
     assert schema["properties"]["model"]["additionalProperties"] is False
     assert schema["properties"]["runtime"]["additionalProperties"] is False
+    assert schema["properties"]["loss"]["additionalProperties"] is False
     assert schema["properties"]["dry_run"]["additionalProperties"] is False
     assert schema["properties"]["dry_run"]["properties"]["sample_count"]["maximum"] == 4
     assert config.dry_run.sample_count == 4
@@ -94,6 +102,9 @@ def main() -> int:
     bad_runtime_pin = config.to_mapping()
     bad_runtime_pin["runtime"]["torch_version"] = "0.0.0"
     bad_runtime = TrainingConfig.from_mapping(bad_runtime_pin)
+    bad_loss_pin = config.to_mapping()
+    bad_loss_pin["loss"]["sha256"] = "0" * 64
+    bad_loss = TrainingConfig.from_mapping(bad_loss_pin)
 
     backing = torch.arange(8, dtype=torch.float32)
     logical_slice = backing[2:6]
@@ -130,6 +141,27 @@ def main() -> int:
             float(reproducibility["first_step_loss"])
             - float(projection_b["reproducibility"]["first_step_loss"])
         ) <= 1e-7
+        assert abs(float(reproducibility["first_step_loss"]) - EXPECTED_FIRST_STEP_LOSS) <= 1e-7
+        loss_info = projection_a["loss"]
+        assert isinstance(loss_info, dict)
+        assert loss_info["definition"] == LOSS_DEFINITION
+        assert loss_info["definition"] != OBSOLETE_LOSS_DEFINITION
+        assert loss_info["config"] == LOSS_CONFIG_RELATIVE_PATH
+        assert loss_info["config_sha256"] == _file_hash(LOSS_CONFIG_PATH)
+        assert projection_a["loss"]["config_sha256"] == receipt_a["hashes"]["loss_config_sha256"]
+        assert isinstance(loss_info["weights"], dict)
+        assert set(loss_info["weights"]) == {
+            "scene_class_logits",
+            "subjectness_roi_agreement_logits",
+            "issue_logits",
+            "action_utility_logits",
+            "good_frame_probability",
+            "abstention_probability",
+            "risk_probability",
+            "continuous_target_deltas",
+            "ranking",
+            "contrastive",
+        }
         _must_reject(
             lambda: run_training(
                 config,
@@ -204,6 +236,15 @@ def main() -> int:
             ),
             "runtime version drift",
         )
+        _must_reject(
+            lambda: run_training(
+                bad_loss,
+                config_path=CONFIG_PATH,
+                run_dir=root / "bad-loss",
+                argv=("--config", str(CONFIG_PATH), "--run-dir", str(root / "bad-loss")),
+            ),
+            "changed loss config hash",
+        )
 
         summary = {
             "status": "pass",
@@ -212,6 +253,12 @@ def main() -> int:
             "model_initialization_sha256": reproducibility["model_initialization_sha256"],
             "first_step_loss": reproducibility["first_step_loss"],
             "first_step_loss_tolerance": reproducibility["first_step_loss_tolerance"],
+            "expected_first_step_loss": EXPECTED_FIRST_STEP_LOSS,
+            "loss_definition": loss_info["definition"],
+            "loss_config": loss_info["config"],
+            "loss_config_sha256": loss_info["config_sha256"],
+            "weighted_loss_receipt_validated": True,
+            "obsolete_mse_definition_rejected": True,
             "changed_seed_drift_detected": True,
             "changed_config_drift_detected": True,
             "unknown_key_rejected": True,
@@ -221,6 +268,7 @@ def main() -> int:
             "dataset_hash_pin_rejected": True,
             "runtime_lock_hash_pin_rejected": True,
             "runtime_version_drift_rejected": True,
+            "loss_config_hash_pin_rejected": True,
             "alternate_model_source_path_rejected": True,
             "logical_tensor_slice_hash_isolated": True,
             "maximum_sample_count_exercised": True,

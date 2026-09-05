@@ -11,6 +11,7 @@ import XCTest
 import CoreVideo
 import CryptoKit
 import Foundation
+import ImageIO
 @testable import shafinMultitool
 
 final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
@@ -724,6 +725,199 @@ final class SETCompositionNetParityTests: XCTestCase {
             return XCTFail("SETCompositionNet production absent-ROI pixel buffers must be created")
         }
         XCTAssertTrue(absentCropRGB.allSatisfy { $0 == 0.0 })
+    }
+
+    func testDeterministicPythonSwiftParityManifestCoversFiftyCases() throws {
+        let fixtureURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ml/camera_coach/data/fixtures/preprocessing_parity.json")
+        let fixture = try JSONDecoder().decode(
+            TrainingPreprocessingParityFixture.self,
+            from: Data(contentsOf: fixtureURL)
+        )
+        XCTAssertEqual(fixture.fixtureVersion, "setcompositionnet.training_preprocessing_parity.v1")
+        XCTAssertEqual(fixture.contractVersion, SETCompositionNetContract.contractVersion)
+        XCTAssertEqual(fixture.sourceGenerator, "lcg_bgra_u8.v1")
+        XCTAssertGreaterThanOrEqual(fixture.caseCount, 50)
+        XCTAssertEqual(fixture.expectedCaseImageDigests.count, fixture.caseCount)
+
+        let preprocessor = MetalPreprocessor()
+        var aggregate = SHA256()
+        var orientations: Set<String> = []
+        var mirroredCount = 0
+        var absentCount = 0
+        for index in 0..<fixture.caseCount {
+            let parityCase = try makeTrainingParityCase(index: index, seed: fixture.seed)
+            guard let tensors = preprocessor.setCompositionNetRGBTensors(
+                from: parityCase.source,
+                orientation: parityCase.orientation,
+                roi: parityCase.roi
+            ) else {
+                return XCTFail("real MetalPreprocessor failed parity case \(index)")
+            }
+            let roiValues = parityCase.roi.present
+                ? [parityCase.roi.x, parityCase.roi.y, parityCase.roi.width, parityCase.roi.height]
+                : [0.0, 0.0, 0.0, 0.0]
+            let mask = SETCompositionNetContract.roiMask(for: parityCase.roi)
+            let caseDigest = imageFixtureDigest(
+                fullFrameRGB: tensors.fullFrameRGB,
+                subjectCropRGB: tensors.subjectCropRGB,
+                roi: roiValues,
+                roiMask: mask
+            )
+            XCTAssertEqual(caseDigest, fixture.expectedCaseImageDigests[index], "parity case \(index)")
+            updateImageFixtureDigest(&aggregate, name: "full_frame_rgb", values: tensors.fullFrameRGB)
+            updateImageFixtureDigest(&aggregate, name: "subject_crop_rgb", values: tensors.subjectCropRGB)
+            updateImageFixtureDigest(&aggregate, name: "roi_normalized_xywh", values: roiValues)
+            updateImageFixtureDigest(&aggregate, name: "roi_mask", values: mask)
+            orientations.insert(parityCase.orientationName)
+            mirroredCount += parityCase.orientationName.contains("Mirrored") ? 1 : 0
+            absentCount += parityCase.roi.present ? 0 : 1
+        }
+
+        XCTAssertEqual(hexDigest(aggregate.finalize()), fixture.expectedSwiftImageDigest)
+        XCTAssertEqual(orientations, Set(fixture.orientationOrder))
+        XCTAssertGreaterThan(mirroredCount, 0)
+        XCTAssertGreaterThan(absentCount, 0)
+    }
+
+    private struct TrainingPreprocessingParityFixture: Decodable {
+        let fixtureVersion: String
+        let contractVersion: String
+        let seed: UInt64
+        let caseCount: Int
+        let sourceGenerator: String
+        let orientationOrder: [String]
+        let expectedSwiftImageDigest: String
+        let expectedCaseImageDigests: [String]
+
+        private enum CodingKeys: String, CodingKey {
+            case fixtureVersion = "fixture_version"
+            case contractVersion = "contract_version"
+            case seed
+            case caseCount = "case_count"
+            case sourceGenerator = "source_generator"
+            case orientationOrder = "orientation_order"
+            case expectedSwiftImageDigest = "expected_swift_image_digest"
+            case expectedCaseImageDigests = "expected_case_image_digests"
+        }
+    }
+
+    private struct TrainingParityCase {
+        let source: CVPixelBuffer
+        let roi: SETCompositionNetROI
+        let orientation: CGImagePropertyOrientation
+        let orientationName: String
+    }
+
+    private func makeTrainingParityCase(index: Int, seed: UInt64) throws -> TrainingParityCase {
+        let width = 2 + (index * 7 % 7)
+        let height = 2 + (index * 5 % 8)
+        var state = UInt32(truncatingIfNeeded: seed &+ UInt64(index * 7919))
+        var pixels: [UInt8] = []
+        pixels.reserveCapacity(width * height * 4)
+        for _ in 0..<(width * height * 4) {
+            state = state &* 1_664_525 &+ 1_013_904_223
+            pixels.append(UInt8(truncatingIfNeeded: state))
+        }
+        var sourceBuffer: CVPixelBuffer?
+        guard CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            nil,
+            &sourceBuffer
+        ) == kCVReturnSuccess, let sourceBuffer,
+              CVPixelBufferLockBaseAddress(sourceBuffer, []) == kCVReturnSuccess else {
+            throw NSError(domain: "SETCompositionNetParityTests", code: 1)
+        }
+        defer { CVPixelBufferUnlockBaseAddress(sourceBuffer, []) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(sourceBuffer) else {
+            throw NSError(domain: "SETCompositionNetParityTests", code: 2)
+        }
+        let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(sourceBuffer)
+        for row in 0..<height {
+            for column in 0..<width {
+                let sourceOffset = (row * width + column) * 4
+                let destinationOffset = row * bytesPerRow + column * 4
+                for channel in 0..<4 {
+                    bytes[destinationOffset + channel] = pixels[sourceOffset + channel]
+                }
+            }
+        }
+        let orientationNames = [
+            "up", "upMirrored", "right", "rightMirrored",
+            "down", "downMirrored", "left", "leftMirrored"
+        ]
+        let orientationName = orientationNames[index % orientationNames.count]
+        let roi: SETCompositionNetROI
+        switch index % 11 {
+        case 0:
+            roi = SETCompositionNetROI(x: 0, y: 0, width: 0, height: 0, present: false)
+        case 1:
+            roi = SETCompositionNetROI(x: 0, y: 0, width: 0.2, height: 0.2)
+        case 2:
+            roi = SETCompositionNetROI(x: 0.8, y: 0.8, width: 0.2, height: 0.2)
+        default:
+            let roiWidth = 0.15 + 0.05 * Double(index % 4)
+            let roiHeight = 0.2 + 0.04 * Double(index % 3)
+            let x = (0.07 * Double(index)).truncatingRemainder(dividingBy: 1.0 - roiWidth)
+            let y = (0.11 * Double(index)).truncatingRemainder(dividingBy: 1.0 - roiHeight)
+            roi = SETCompositionNetROI(x: x, y: y, width: roiWidth, height: roiHeight)
+        }
+        return TrainingParityCase(
+            source: sourceBuffer,
+            roi: roi,
+            orientation: trainingParityOrientation(named: orientationName),
+            orientationName: orientationName
+        )
+    }
+
+    private func trainingParityOrientation(named name: String) -> CGImagePropertyOrientation {
+        switch name {
+        case "up": return .up
+        case "upMirrored": return .upMirrored
+        case "right": return .right
+        case "rightMirrored": return .rightMirrored
+        case "down": return .down
+        case "downMirrored": return .downMirrored
+        case "left": return .left
+        case "leftMirrored": return .leftMirrored
+        default: fatalError("unknown parity orientation \(name)")
+        }
+    }
+
+    private func imageFixtureDigest(fullFrameRGB: [Double], subjectCropRGB: [Double], roi: [Double], roiMask: [Double]) -> String {
+        var digest = SHA256()
+        updateImageFixtureDigest(&digest, name: "full_frame_rgb", values: fullFrameRGB)
+        updateImageFixtureDigest(&digest, name: "subject_crop_rgb", values: subjectCropRGB)
+        updateImageFixtureDigest(&digest, name: "roi_normalized_xywh", values: roi)
+        updateImageFixtureDigest(&digest, name: "roi_mask", values: roiMask)
+        return hexDigest(digest.finalize())
+    }
+
+    private func updateImageFixtureDigest(_ digest: inout SHA256, name: String, values: [Double]) {
+        digest.update(data: Data(name.utf8))
+        var count = UInt32(values.count).littleEndian
+        digest.update(data: Data(bytes: &count, count: MemoryLayout<UInt32>.size))
+        digest.update(data: float32Data(values))
+    }
+
+    private func float32Data(_ values: [Double]) -> Data {
+        var data = Data()
+        data.reserveCapacity(values.count * MemoryLayout<Float>.size)
+        for value in values {
+            var bits = Float(value).bitPattern.littleEndian
+            withUnsafeBytes(of: &bits) { data.append(contentsOf: $0) }
+        }
+        return data
+    }
+
+    private func hexDigest(_ digest: SHA256.Digest) -> String {
+        digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private func makeSyntheticSourceBuffer() -> CVPixelBuffer? {
