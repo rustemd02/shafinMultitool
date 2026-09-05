@@ -347,6 +347,15 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     /// Этап генерации, независимый от локализованного текста статуса.
     @Published private(set) var generationStage: SceneGenerationStage?
+
+    /// Request-owned leader presentation. The transient countdown is a
+    /// projection of the accepted request, not a view lifecycle effect. The
+    /// event ID stays published after the presentation retires so diagnostics
+    /// and tests can prove which request owned the one-shot.
+    @Published private(set) var generationLeaderPhase: SETLeaderPhase?
+    @Published private(set) var generationLeaderEventID: String?
+    @Published private(set) var generationLeaderPresentationRevision: UInt64 = 0
+    let generationMotionEventLedger = SETMotionEventLedger()
     
     /// Статус воспроизведения анимации
     @Published var isPlaying: Bool = false
@@ -718,6 +727,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var pendingRecordingArtifacts: [RecordingArtifact] = []
     private var projectSnapshotTask: Task<Result<Void, SceneWorkspaceTeardownFailure>, Never>?
     private var generationTask: Task<Void, Never>?
+    private var generationReduceMotion = false
 
     private struct PendingClarificationGeneration {
         let generationID: String
@@ -778,6 +788,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var debugFixtureID: String?
     private var storyboardDebugMutationDelay: TimeInterval = 0
     private var generationDebugDelay: TimeInterval = 0
+    private var didStartGenerationLeaderFixture = false
+    private static let generationLeaderFixtureArgument = "-SHAFIN_GENERATOR_LEADER_FIXTURE"
     private var testingParserResultOverride: ((String, [MarkedObject]) async -> ParsingResult)?
     private(set) var testingGenerationOwnerCount = 0
     private(set) var testingGenerationStateTrace: [SceneGenerationRequestState] = [.idle]
@@ -1213,6 +1225,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
     }
 
+    /// Accessibility preference for the request-owned leader. The view only
+    /// reports the environment value; it never owns countdown timing.
+    func updateGenerationMotionPreferences(reduceMotion: Bool) {
+        generationReduceMotion = reduceMotion
+    }
+
     /// Re-resolves the newest persisted take after a project load or when a
     /// review surface is reattached. The reference ledger itself is retained
     /// even when every file is missing.
@@ -1290,6 +1308,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             await generationTask.value
             self.generationTask = nil
         }
+        clearGenerationLeaderPresentation()
         if !cancellationPublished {
             diagnosticsLog("[GENERATION] cancellation publication failed during teardown; retiring request")
         }
@@ -1713,6 +1732,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             validation: validation
         )
         if published {
+            clearGenerationLeaderPresentation()
             clearClarificationProjection()
         }
         return published
@@ -1759,6 +1779,102 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         pendingClarificationGeneration = nil
         clarificationAnswerKeys.removeAll()
         clarificationAttemptCount = 0
+    }
+
+    /// Consumes the one-shot generator leader after the request crosses the
+    /// accepted/queued/leader state edges. The sequence itself is awaited by
+    /// the existing request-owned `generationTask`; no transient view or
+    /// parallel countdown task can outlive that request owner. A clarification
+    /// continuation keeps the same request UUID+epoch, therefore its event ID
+    /// is already consumed and the sequence is skipped.
+    @discardableResult
+    private func beginGenerationLeaderIfNeeded(
+        requestID: UUID,
+        generationToken: UInt
+    ) -> Bool {
+        let eventID = "generator.leader.\(requestID.uuidString.lowercased()).\(generationToken)"
+        guard generationMotionEventLedger.consume(eventID: eventID) else {
+            return false
+        }
+
+        generationLeaderEventID = eventID
+        generationLeaderPresentationRevision &+= 1
+        setGenerationLeaderPhase(
+            generationReduceMotion ? .action : .three,
+            eventID: eventID
+        )
+        return true
+    }
+
+    /// Runs the owner-side leader before the parser begins. The caller is the
+    /// same `generationTask` that teardown and explicit cancellation already
+    /// cancel and join, so a cancelled countdown cannot publish a late stage.
+    private func playGenerationLeaderIfNeeded(
+        requestID: UUID,
+        generationToken: UInt
+    ) async -> Bool {
+        guard generationRequestState.phase == .leader,
+              generationRequestState.requestID == requestID,
+              generationRequestState.epoch == generationToken else { return false }
+
+        guard let eventID = generationLeaderEventID,
+              generationLeaderPhase != nil else {
+            // A clarification continuation has the same consumed event ID,
+            // but no active phase; it proceeds directly to parsing.
+            return true
+        }
+
+        if generationReduceMotion {
+            try? await Task.sleep(
+                nanoseconds: UInt64(SETMotion.reducedMotionCrossfadeDuration * 1_000_000_000)
+            )
+            guard !Task.isCancelled,
+                  generationLeaderEventID == eventID else { return false }
+            setGenerationLeaderPhase(nil, eventID: eventID)
+            return true
+        }
+
+        guard await advanceGenerationLeader(eventID: eventID, to: .two) else { return false }
+        guard await advanceGenerationLeader(eventID: eventID, to: .one) else { return false }
+        guard await advanceGenerationLeader(eventID: eventID, to: .action) else { return false }
+
+        try? await Task.sleep(
+            nanoseconds: UInt64(SETMotion.leaderActionDuration * 1_000_000_000)
+        )
+        guard !Task.isCancelled,
+              generationLeaderEventID == eventID else { return false }
+        setGenerationLeaderPhase(nil, eventID: eventID)
+        return true
+    }
+
+    private func advanceGenerationLeader(
+        eventID: String,
+        to phase: SETLeaderPhase
+    ) async -> Bool {
+        try? await Task.sleep(nanoseconds: UInt64(SETMotion.leaderStepDuration * 1_000_000_000))
+        guard !Task.isCancelled,
+              generationLeaderEventID == eventID,
+              generationLeaderPhase != nil else {
+            return false
+        }
+        setGenerationLeaderPhase(phase, eventID: eventID)
+        return true
+    }
+
+    private func setGenerationLeaderPhase(
+        _ phase: SETLeaderPhase?,
+        eventID: String
+    ) {
+        guard generationLeaderEventID == eventID else { return }
+        generationLeaderPhase = phase
+        generationLeaderPresentationRevision &+= 1
+    }
+
+    private func clearGenerationLeaderPresentation() {
+        if generationLeaderPhase != nil {
+            generationLeaderPhase = nil
+            generationLeaderPresentationRevision &+= 1
+        }
     }
 
     /// Publishes a structured question only from parser/binding observations.
@@ -1808,6 +1924,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             clearError: true,
             clearValidation: true
         ) else { return false }
+        clearGenerationLeaderPresentation()
         clarificationRequest = payload
         clarificationFeedback = nil
         // UIKit can invoke generation without opening the sheet first.  The
@@ -1822,24 +1939,30 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         requestID: UUID,
         generationToken: UInt
     ) -> Bool {
-        publishGenerationState(
+        let accepted = publishGenerationState(
             .accepted(requestID: requestID, epoch: generationToken),
             expectedRequestID: requestID,
             expectedEpoch: generationToken
-        ) && publishGenerationState(
+        )
+        guard accepted,
+              publishGenerationState(
             .queued(requestID: requestID, epoch: generationToken),
             expectedRequestID: requestID,
             expectedEpoch: generationToken
-        ) && publishGenerationState(
+        ),
+              publishGenerationState(
             .leader(requestID: requestID, epoch: generationToken),
             expectedRequestID: requestID,
             expectedEpoch: generationToken
-        ) && publishGenerationState(
-            .generating(requestID: requestID, epoch: generationToken, stage: .reading),
-            expectedRequestID: requestID,
-            expectedEpoch: generationToken,
-            status: localizedCopy(.generatorStatusAnalyzing)
+        ) else {
+            return false
+        }
+
+        beginGenerationLeaderIfNeeded(
+            requestID: requestID,
+            generationToken: generationToken
         )
+        return true
     }
 
     private func parserMarkedObjects(
@@ -2051,6 +2174,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             await generationTask.value
             self.generationTask = nil
         }
+        clearGenerationLeaderPresentation()
         guard !isWorkspaceReleased else {
             clearClarificationProjection()
             return
@@ -2194,6 +2318,23 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard generationIsCurrent(context.generationToken, requestID: context.requestID) else { return }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            guard await self.playGenerationLeaderIfNeeded(
+                requestID: context.requestID,
+                generationToken: context.generationToken
+            ) else { return }
+            guard self.generationIsCurrent(
+                context.generationToken,
+                requestID: context.requestID
+            ), self.publishGenerationState(
+                .generating(
+                    requestID: context.requestID,
+                    epoch: context.generationToken,
+                    stage: .reading
+                ),
+                expectedRequestID: context.requestID,
+                expectedEpoch: context.generationToken,
+                status: localizedCopy(.generatorStatusAnalyzing)
+            ) else { return }
             await self.performGeneration(
                 generationID: context.generationID,
                 requestID: context.requestID,
@@ -2500,6 +2641,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                   clearError: true,
                   clearValidation: true
               ) else { return }
+        clearGenerationLeaderPresentation()
         clearClarificationProjection()
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
@@ -2787,6 +2929,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         isPlaying = false
         isHintsEnabled = false
         clearHintPresentation()
+        clearGenerationLeaderPresentation()
         clearClarificationProjection()
         resetPlaybackUIState(clearTimeline: true)
         if !generationRequestState.isExecutionInFlight {
@@ -6372,6 +6515,15 @@ extension SceneGeneratorViewModel {
         debugFixtureID
     }
 
+    func testingStartGenerationLeaderFixtureIfRequested() {
+        guard !didStartGenerationLeaderFixture,
+              ProcessInfo.processInfo.arguments.contains(Self.generationLeaderFixtureArgument) else {
+            return
+        }
+        didStartGenerationLeaderFixture = true
+        testingStartGenerationLeaderFixture()
+    }
+
     private static func storyboardFixtureID(from arguments: [String]) -> String? {
         guard let index = arguments.firstIndex(of: SETGalleryLaunchConfiguration.generatorStoryboardFixtureArgument),
               arguments.indices.contains(index + 1) else {
@@ -6580,6 +6732,69 @@ extension SceneGeneratorViewModel {
 
     func testingSetGenerationDelay(_ delay: TimeInterval) {
         generationDebugDelay = max(0, delay)
+    }
+
+    /// Test-only owner seam for the real request event. It exercises the same
+    /// ledger and event-ID construction as an accepted production request;
+    /// the view never consumes this event.
+    @discardableResult
+    func testingBeginGenerationLeader(
+        requestID: UUID,
+        epoch: UInt,
+        reduceMotion: Bool? = nil
+    ) -> Bool {
+        if let reduceMotion {
+            generationReduceMotion = reduceMotion
+        }
+        return beginGenerationLeaderIfNeeded(
+            requestID: requestID,
+            generationToken: epoch
+        )
+    }
+
+    func testingClearGenerationLeader() {
+        clearGenerationLeaderPresentation()
+    }
+
+    /// UI-fixture support only. The fixture enters the actual accepted/queued/
+    /// leader states and lets the existing generation task own the countdown;
+    /// it does not inject parser output, progress, or a result.
+    func testingStartGenerationLeaderFixture() {
+        guard !isWorkspaceReleased,
+              generationTask == nil else { return }
+
+        generationEpoch &+= 1
+        let epoch = generationEpoch
+        let requestID = UUID(uuidString: "00000000-0000-4000-8000-000000000018")!
+        // Mirror the production submit path: the request identity is allocated
+        // from the editable input phase, never by bypassing idle → input.
+        enterGenerationInputState(clearValidation: true)
+        guard publishGenerationState(
+            .validating(requestID: requestID, epoch: epoch),
+            status: localizedCopy(.generatorStatusAnalyzing),
+            clearError: true,
+            clearValidation: true
+        ), publishAcceptedGenerationAttempt(
+            requestID: requestID,
+            generationToken: epoch
+        ) else {
+            clearGenerationLeaderPresentation()
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.generationRequestState.phase == .leader {
+                    self.generationTask = nil
+                }
+            }
+            _ = await self.playGenerationLeaderIfNeeded(
+                requestID: requestID,
+                generationToken: epoch
+            )
+        }
+        generationTask = task
     }
 
     /// Test-only injection at the parser boundary. The production path still

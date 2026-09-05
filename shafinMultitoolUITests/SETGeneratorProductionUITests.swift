@@ -623,6 +623,47 @@ final class SETGeneratorProductionUITests: XCTestCase {
         attachPackage6Screenshot(named: "decision-trace-production-en-reduce-motion-landscape")
     }
 
+    func testGeneratorLeaderFixtureIsOwnedAcrossRotation() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        launchGeneratorLeaderFixture(locale: "ru")
+        openLibraryAndCreateScene(named: "SET-UITest-Leader-RU-(UUID().uuidString.prefix(6))")
+
+        let leader = app.descendants(matching: .any)["generator_leader"]
+        let leaderAppeared = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true"),
+            object: leader
+        )
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [leaderAppeared], timeout: launchTimeout),
+            .completed,
+            "The accepted generator request must expose its owner-rendered leader."
+        )
+        attachScreenshot(named: "generator-leader-ru-landscape-left")
+
+        // The same request owner must survive a rotation without a second
+        // lifecycle-triggered leader. The unit seam asserts the event ledger;
+        // this route proves the production overlay remains discoverable.
+        XCUIDevice.shared.orientation = .landscapeRight
+        XCTAssertTrue(
+            leader.exists,
+            "Rotation must not remove the request-owned leader before its sequence retires."
+        )
+        attachScreenshot(named: "generator-leader-ru-landscape-right")
+    }
+
+    func testGeneratorLeaderFixtureReduceMotionUsesImmediateAction() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        launchGeneratorLeaderFixture(locale: "en", reduceMotion: true)
+        openLibraryAndCreateScene(named: "SET-UITest-Leader-RM-(UUID().uuidString.prefix(6))")
+
+        let leader = app.descendants(matching: .any)["generator_leader"]
+        XCTAssertTrue(
+            leader.waitForExistence(timeout: launchTimeout),
+            "Reduce Motion must preserve the leader state as an immediate projection."
+        )
+        attachScreenshot(named: "generator-leader-en-reduce-motion-landscape")
+    }
+
     private func openLibraryAndCreateScene(named name: String) {
         let openScenes = app.descendants(matching: .any)["commercial-shell-open-scenes"]
         XCTAssertTrue(openScenes.waitForExistence(timeout: launchTimeout))
@@ -648,6 +689,26 @@ final class SETGeneratorProductionUITests: XCTestCase {
         // The confirm button sits under the keyboard in landscape; the
         // production contract accepts keyboard submission as the same intent.
         field.typeText("\n")
+    }
+
+    private func launchGeneratorLeaderFixture(locale: String, reduceMotion: Bool = false) {
+        var args = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "-SHAFIN_GENERATOR_MARK_AR_READY",
+            "-SHAFIN_LIBRARY_RESET_FOR_UI_TESTING",
+            "-SHAFIN_GENERATOR_LEADER_FIXTURE",
+            "-SHAFIN_SET_LOCALE", locale
+        ]
+        if reduceMotion {
+            args += ["-SHAFIN_SET_REDUCE_MOTION", "1"]
+        }
+        app.launchArguments = args
+        app.launchEnvironment = [
+            "SHAFIN_UI_TESTING": "1",
+            "DEVICE_BENCHMARK_CONFIG_BASE64": ""
+        ]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: launchTimeout))
     }
 
     private func attachScreenshot(named name: String) {

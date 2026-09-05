@@ -2145,6 +2145,54 @@ final class SceneBundlePipelineTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testSceneGeneratorLeaderConsumesOneRequestEventAndCannotReplay() async {
+        let viewModel = SceneGeneratorViewModel(projectName: "leader-event-\(UUID().uuidString)")
+        let requestID = UUID()
+        let epoch: UInt = 7
+        let eventID = "generator.leader.\(requestID.uuidString.lowercased()).\(epoch)"
+
+        XCTAssertTrue(viewModel.testingBeginGenerationLeader(requestID: requestID, epoch: epoch))
+        XCTAssertEqual(viewModel.generationLeaderEventID, eventID)
+        XCTAssertEqual(viewModel.generationLeaderPhase, .three)
+        XCTAssertTrue(viewModel.generationMotionEventLedger.hasConsumed(eventID))
+        let revision = viewModel.generationLeaderPresentationRevision
+
+        // The clarification continuation reuses UUID+epoch. Its accepted
+        // edge therefore cannot replay or replace the active projection.
+        XCTAssertFalse(viewModel.testingBeginGenerationLeader(requestID: requestID, epoch: epoch))
+        XCTAssertEqual(viewModel.generationLeaderPresentationRevision, revision)
+        XCTAssertEqual(viewModel.generationLeaderPhase, .three)
+
+        viewModel.testingClearGenerationLeader()
+        XCTAssertNil(viewModel.generationLeaderPhase)
+    }
+
+    @MainActor
+    func testSceneGeneratorLeaderReduceMotionStartsAtActionWithoutTravel() {
+        let viewModel = SceneGeneratorViewModel(projectName: "leader-reduce-motion-\(UUID().uuidString)")
+        let requestID = UUID()
+        let epoch: UInt = 11
+
+        XCTAssertTrue(
+            viewModel.testingBeginGenerationLeader(
+                requestID: requestID,
+                epoch: epoch,
+                reduceMotion: true
+            )
+        )
+        XCTAssertEqual(viewModel.generationLeaderPhase, .action)
+        XCTAssertFalse(
+            viewModel.testingBeginGenerationLeader(
+                requestID: requestID,
+                epoch: epoch,
+                reduceMotion: true
+            )
+        )
+        XCTAssertEqual(viewModel.generationLeaderPhase, .action)
+        viewModel.testingClearGenerationLeader()
+    }
+
     func testSceneGenerationRequestStateTransitionMatrixIsExhaustive() throws {
         let requestID = UUID()
         let epoch: UInt = 17
