@@ -63,6 +63,14 @@ struct SceneGeneratorView: View {
                             : AnyTransition.move(edge: .top).combined(with: .opacity)
                     )
             }
+
+            if let phase = viewModel.generationLeaderPhase,
+               let eventID = viewModel.generationLeaderEventID {
+                GeneratorLeaderOverlay(phase: phase, eventID: eventID)
+                    .id(eventID)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            }
         }
         .animation(
             reduceMotion
@@ -70,9 +78,23 @@ struct SceneGeneratorView: View {
                 : SETMotion.standardSpring,
             value: viewModel.isGeneratorErrorBandVisible
         )
+        .animation(
+            .easeOut(duration: SETMotion.reducedMotionCrossfadeDuration),
+            value: viewModel.generationLeaderPresentationRevision
+        )
         .onAppear {
+            viewModel.updateGenerationMotionPreferences(reduceMotion: reduceMotion)
             viewModel.prepareWorkspace()
         }
+#if DEBUG
+        // `.task` is scheduled after the representable has completed its
+        // route-entry update. The fixture therefore publishes its valid
+        // input→leader sequence outside SwiftUI's body/onAppear transaction;
+        // production submission remains owned by the existing generation task.
+        .task { @MainActor in
+            viewModel.testingStartGenerationLeaderFixtureIfRequested()
+        }
+#endif
         .onDisappear {
             Task { @MainActor in
                 _ = await viewModel.teardownAndWait()
@@ -84,6 +106,9 @@ struct SceneGeneratorView: View {
                 guard await viewModel.teardownAndWait() == .released else { return }
                 dismiss()
             }
+        }
+        .onChange(of: reduceMotion) { value in
+            viewModel.updateGenerationMotionPreferences(reduceMotion: value)
         }
         .sheet(isPresented: $viewModel.showInputSheet) {
             SceneInputSheet(viewModel: viewModel)
@@ -104,6 +129,34 @@ struct SceneGeneratorView: View {
                 .presentationDragIndicator(.visible)
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+/// The generator leader is a projection only. Its request owner publishes the
+/// phase and owns the countdown task; this view has no timer or event ledger.
+private struct GeneratorLeaderOverlay: View {
+    let phase: SETLeaderPhase
+    let eventID: String
+
+    var body: some View {
+        SETLeaderCountdown(phase: phase)
+            .frame(maxWidth: SETComponentMetric.entryLeaderMaximumDimension)
+            .padding(SETSpacing.x6)
+            // Keep the canonical SETLeaderCountdown accessibility element
+            // (including its phase/action label) as the production probe.
+            // A containing wrapper would hide that label from XCTest on the
+            // UIKit-hosted route.
+            .accessibilityIdentifier("generator_leader")
+#if DEBUG
+            // Keep the request identity available to the deterministic UI
+            // probe without adding it to the release VoiceOver surface.
+            .accessibilityValue(Text(verbatim: eventID))
+#endif
+            .transition(.opacity)
+            .animation(
+                .easeOut(duration: SETMotion.reducedMotionCrossfadeDuration),
+                value: phase
+            )
     }
 }
 

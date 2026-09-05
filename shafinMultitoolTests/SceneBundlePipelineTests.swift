@@ -2145,6 +2145,61 @@ final class SceneBundlePipelineTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testSceneGeneratorLeaderConsumesOneRequestEventAndCannotReplay() async {
+        let viewModel = SceneGeneratorViewModel(projectName: "leader-event-\(UUID().uuidString)")
+        viewModel.testingResetGenerationStateTrace()
+        viewModel.testingStartGenerationLeaderFixture()
+
+        let eventID = try! XCTUnwrap(viewModel.generationLeaderEventID)
+
+        XCTAssertEqual(
+            viewModel.testingGenerationStateTrace.map(\.phase),
+            [.idle, .input, .validating, .accepted, .queued, .leader]
+        )
+        XCTAssertEqual(viewModel.generationLeaderEventID, eventID)
+        XCTAssertEqual(viewModel.generationLeaderPhase, .three)
+        XCTAssertTrue(viewModel.generationMotionEventLedger.hasConsumed(eventID))
+        let revision = viewModel.generationLeaderPresentationRevision
+        let requestID = try! XCTUnwrap(viewModel.generationRequestState.requestID)
+        let epoch = try! XCTUnwrap(viewModel.generationRequestState.epoch)
+
+        // The clarification continuation reuses UUID+epoch. Its accepted
+        // edge therefore cannot replay or replace the active projection after
+        // the real input→validating→accepted→queued→leader path.
+        XCTAssertFalse(viewModel.testingBeginGenerationLeader(requestID: requestID, epoch: epoch))
+        XCTAssertEqual(viewModel.generationLeaderPresentationRevision, revision)
+        XCTAssertEqual(viewModel.generationLeaderPhase, .three)
+
+        viewModel.testingClearGenerationLeader()
+        XCTAssertNil(viewModel.generationLeaderPhase)
+    }
+
+    @MainActor
+    func testSceneGeneratorLeaderReduceMotionStartsAtActionWithoutTravel() {
+        let viewModel = SceneGeneratorViewModel(projectName: "leader-reduce-motion-\(UUID().uuidString)")
+        viewModel.updateGenerationMotionPreferences(reduceMotion: true)
+        viewModel.testingResetGenerationStateTrace()
+        viewModel.testingStartGenerationLeaderFixture()
+
+        XCTAssertEqual(
+            viewModel.testingGenerationStateTrace.map(\.phase),
+            [.idle, .input, .validating, .accepted, .queued, .leader]
+        )
+        XCTAssertEqual(viewModel.generationLeaderPhase, .action)
+        let eventID = try! XCTUnwrap(viewModel.generationLeaderEventID)
+        let requestID = try! XCTUnwrap(viewModel.generationRequestState.requestID)
+        let epoch = try! XCTUnwrap(viewModel.generationRequestState.epoch)
+        let revision = viewModel.generationLeaderPresentationRevision
+        // The same accepted fixture request cannot consume its event again,
+        // even when its owner is using the immediate Reduce Motion path.
+        XCTAssertFalse(viewModel.testingBeginGenerationLeader(requestID: requestID, epoch: epoch))
+        XCTAssertTrue(viewModel.generationMotionEventLedger.hasConsumed(eventID))
+        XCTAssertEqual(viewModel.generationLeaderPresentationRevision, revision)
+        XCTAssertEqual(viewModel.generationLeaderPhase, .action)
+        viewModel.testingClearGenerationLeader()
+    }
+
     func testSceneGenerationRequestStateTransitionMatrixIsExhaustive() throws {
         let requestID = UUID()
         let epoch: UInt = 17
@@ -2541,8 +2596,12 @@ final class SceneBundlePipelineTests: XCTestCase {
         let generation = Task { @MainActor in
             await viewModel.generateScene()
         }
-        for _ in 0..<100 where viewModel.generationStage != .reading {
-            await Task.yield()
+        // M5-018: the request-owned leader countdown now runs inside the
+        // generation task before parsing; wait through it with a real bound
+        // instead of a fixed yield spin.
+        let readingDeadline = Date().addingTimeInterval(5)
+        while viewModel.generationStage != .reading, Date() < readingDeadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTAssertEqual(viewModel.generationStage, .reading)
 
@@ -4411,8 +4470,12 @@ final class SceneBundlePipelineTests: XCTestCase {
         let generation = Task { @MainActor in
             await viewModel.generateScene()
         }
-        for _ in 0..<100 where viewModel.generationStage != .reading {
-            await Task.yield()
+        // M5-018: the request-owned leader countdown now runs inside the
+        // generation task before parsing; wait through it with a real bound
+        // instead of a fixed yield spin.
+        let readingDeadline = Date().addingTimeInterval(5)
+        while viewModel.generationStage != .reading, Date() < readingDeadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTAssertEqual(viewModel.generationStage, .reading)
         let requestID = try! XCTUnwrap(viewModel.generationRequestState.requestID)
