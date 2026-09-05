@@ -1,0 +1,280 @@
+{
+  "baseline_id": "camera-baseline-v0",
+  "schema_version": 1,
+  "status": "partial_current_107_blocked_207",
+  "captured_at": "2026-09-05T21:33:40+03:00",
+  "hashing": {
+    "file_sha256": "SHA-256 of exact file bytes",
+    "tree_sha256": "SHA-256 over sorted entries of relative_path\\0byte_length\\0file_sha256\\n"
+  },
+  "source": {
+    "git_commit": "e1280c83d787284f33076694b4b61ca88081f6fd",
+    "git_commit_subject": "state: start Camera development baseline lane",
+    "git_branch": "codex/set-os-m4-001",
+    "pipeline_path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+    "pipeline_sha256": "ef9c54324a9689f47a51929eaff3c0a8f7f275feab2427e345d426095de5a055",
+    "detr_wrapper_path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift",
+    "detr_wrapper_sha256": "254eeff6f4ae60a7753610bfdeed4516113a477a03ba482e844ca57bd72e0a13",
+    "aesthetic_wrapper_path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift",
+    "aesthetic_wrapper_sha256": "54f9105fc5fdc28ce694a1bd9d0b3d1cce5d1dac2e0c6c06c3a1088130e2a404",
+    "neural_evidence_provider_path": "shafinMultitool/Multitool2Module/Services/Pipeline/CoreMLNeuralEvidenceProvider.swift",
+    "neural_evidence_provider_sha256": "7b36741d762e39f1e615c353d7be81966af736774d11ca38bf7a7f18c00acd32",
+    "neural_evidence_inference_path": "shafinMultitool/Multitool2Module/Services/Pipeline/NeuralEvidenceInferenceService.swift",
+    "neural_evidence_inference_sha256": "3c9a3a43a7a189f3c6d852af27e6617185c7424924dac52d9836c00060cebbba"
+  },
+  "runtime": {
+    "entry_point": "AnalysisPipeline.testingReplayStillImageForSemanticEval",
+    "options": {
+      "runHeavyModels": true,
+      "runNeuralEvidence": true,
+      "runVisualEvidence": true,
+      "source": "swift_still_image_replay"
+    },
+    "runtime_claim": "real_runtime_still_replay",
+    "claim_scope": "The 107-row receipt was emitted by the Swift production AnalysisPipeline fullRuntime replay path. It is not a release-quality or model-quality claim.",
+    "model_availability_note": "DETR and NIMA artifacts are present and their wrappers are in the source path. The compact_neural_evidence_net resource is not present in this checkout, so NeuralEvidenceInferenceService cannot provide an executed local neural-evidence outcome; this receipt does not claim that missing model executed.",
+    "rows": 214,
+    "records": 107,
+    "modes": {
+      "live": 107,
+      "pause": 107
+    },
+    "simulator": {
+      "device_name": "iPhone 17e",
+      "device_id": "1F680A42-CEB3-43E8-9CED-52F874962A62",
+      "platform": "iOS Simulator",
+      "os_version": "26.5",
+      "os_build": "23F77"
+    },
+    "result_bundle": {
+      "path": "/private/tmp/m4-001-fullruntime-107-r1.xcresult",
+      "tree_sha256": "544811e6305fc859423ff6c5fbf5987c9fb6d0242bf055f0fc39fd8f99265d01",
+      "result": "Passed",
+      "test_name": "SemanticEvalStillImageBatchReplayTests.testExportSemanticEvalCandidateOutputsFromStillImages"
+    }
+  },
+  "datasets": {
+    "v1_107": {
+      "status": "complete_and_integrity_checked",
+      "labels_path": "docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl",
+      "labels_sha256": "db8a2cb5bb8b81a6cbf84585e1849f783e503ce03a9e090e59f9fe1bc04a3fd0",
+      "label_records": 107,
+      "images_root": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images",
+      "image_records_present": 107,
+      "image_records_missing": 0,
+      "label_image_sha256_matches": 107,
+      "label_image_sha256_mismatches": 0,
+      "selected_image_tree_sha256": "4b35072bc2355684ffbd17bfdd9ca45c51739450ad4ddab8636c95054bc62fb0",
+      "pack_manifest_path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_device_benchmark_manifest.json",
+      "pack_manifest_sha256": "116ff030e6ddac44ae276487945b0b249acc8bc71621db0afd602dfaa2470b1a"
+    },
+    "v2_207": {
+      "status": "blocked_for_current_full_runtime",
+      "labels_path": "docs/cameraanalysis/dataset/inbox/semantic_labels_v2.jsonl",
+      "labels_sha256": "3fb47ecfe3ac0edfda4afece45f9bd44fd507ab9d7476952108b83905f6da30a",
+      "label_records": 207,
+      "images_root": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images",
+      "image_records_present": 142,
+      "image_records_missing": 65,
+      "present_rows_without_label_sha256": 35,
+      "missing_filenames": [
+        "110.jpg",
+        "113.jpg",
+        "114.jpg",
+        "115.jpg",
+        "118.jpg",
+        "120.jpg",
+        "124.jpg",
+        "126.jpg",
+        "129.jpg",
+        "139.jpg",
+        "140.jpg",
+        "149.jpg",
+        "152.jpg",
+        "153.jpg",
+        "157.jpg",
+        "158.jpg",
+        "159.jpg",
+        "160.jpg",
+        "161.jpg",
+        "162.jpg",
+        "163.jpg",
+        "164.jpg",
+        "165.jpg",
+        "166.jpg",
+        "167.jpg",
+        "168.jpg",
+        "169.jpg",
+        "170.jpg",
+        "171.jpg",
+        "172.jpg",
+        "173.jpg",
+        "174.jpg",
+        "175.jpg",
+        "176.jpg",
+        "177.jpg",
+        "178.jpg",
+        "179.jpg",
+        "180.jpg",
+        "181.jpg",
+        "182.jpg",
+        "183.jpg",
+        "184.jpg",
+        "185.jpg",
+        "186.jpg",
+        "187.jpg",
+        "188.jpg",
+        "189.jpg",
+        "190.jpg",
+        "191.jpg",
+        "192.jpg",
+        "193.jpg",
+        "194.jpg",
+        "195.jpg",
+        "196.jpg",
+        "197.jpg",
+        "198.jpg",
+        "199.jpg",
+        "200.jpg",
+        "201.jpg",
+        "202.jpg",
+        "203.jpg",
+        "204.jpg",
+        "205.jpg",
+        "206.jpg",
+        "207.jpg"
+      ],
+      "reason": "The current checkout has no source files for 65 of the 207 label rows. Running a partial 207 replay would no longer be the declared 207 dataset, so no current 207 fullRuntime output is exported.",
+      "historical_reference": {
+        "candidate_outputs_path": "docs/cameraanalysis/eval/out_semantic_real_runtime_v2_after_runtime_fix_r6/candidate_outputs.jsonl",
+        "candidate_outputs_sha256": "a0bc552fc33b4eea1093590885b0f5e5ee4214ec22bfe5e0ac5bdd8dfabfa57e",
+        "rows": 414,
+        "records": 207,
+        "source_commit": "56440ecf344f2f3064270789e6cf6549215bb1f0",
+        "source_commit_subject": "camanalfixes",
+        "status": "historical_reference_only_not_current_source_evidence",
+        "set_metrics_sha256": "952ee58bdcf522ef4c4384148492a6302f03099ff513e05db7f600bd178606b7",
+        "reported_pass_rate": 0.671498,
+        "reported_expected_action_hit_rate": 0.748792,
+        "reported_forbidden_action_violation_rate": 0.188406,
+        "reported_good_frame_preservation_rate": 0.875,
+        "reported_technical_failure_gate_rate": 0.962963,
+        "reported_positive_confirmation_rate": 0.8125,
+        "reported_confidence_band_accuracy": 0.859903
+      }
+    }
+  },
+  "models": [
+    {
+      "id": "detr-resnet50-semantic-segmentation-f16p8",
+      "wrapper_path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift",
+      "artifact_path": "shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage",
+      "artifact_tree_sha256": "8ef98e8375d1e4abe14cb5db64c889af21152175d6178203b8a4e6eaeb1f0e4f",
+      "artifact_files": 3,
+      "artifact_bytes": 43085928,
+      "model_spec_sha256": "3d3666837fe990d3948308e417949864b5c2ab0dd9f21091c755c8effa005c40",
+      "weights_sha256": "8e0a22ecc1921f81611864434714ae1989f3e992ec04994ed22a8ead6deccce7",
+      "package_manifest_sha256": "e7154240ddfd55b776642ae4f6b47d42bf8ad1b9425d97151d4d7b7875d0bf95",
+      "embedded_provenance": {
+        "model_family": "DEtection TRansformer (DETR)",
+        "original_paper": "https://hf.co/papers/2005.12872",
+        "original_model": "https://huggingface.co/facebook/detr-resnet-50-panoptic",
+        "license_text": "Apache 2.0 reference in the model specification",
+        "coreml_version": "CoreML7"
+      },
+      "added_in_git_commit": "b7764f255280fcb82557b7a0349fb7bbd56ca333"
+    },
+    {
+      "id": "nima-mobilenet-fp16",
+      "wrapper_path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift",
+      "artifact_path": "shafinMultitool/Multitool2Module/Models/CoreML/aesthetic_nima_mobilenet_fp16.mlpackage",
+      "artifact_tree_sha256": "4ee0d71da23f242abfba7a1164944511960fd7ed4b48eb5ed04f612eb0af5a65",
+      "artifact_files": 3,
+      "artifact_bytes": 6499576,
+      "model_spec_sha256": "e5d44425c132e7ed2be99310226b573ae1765c37a909c1a0fd08aff311fb9cfc",
+      "weights_sha256": "198486adb600611945b067dd77c1ceb65f3ac5ad19733ace4deed5d7587fd717",
+      "package_manifest_sha256": "552c2bf2bbcd6e91f8f87b5a724dcdaa765895dbc179a9e28e0b4181d05eeaae",
+      "embedded_provenance": {
+        "model_family": "NIMA MobileNet v1 aesthetic scorer",
+        "coreml_source_marker": "com.github.apple.coremltools.source",
+        "coreml_version": "CoreML6",
+        "upstream_url": null,
+        "license_text": null,
+        "note": "The checked-in model spec contains no upstream URL or license text; provenance is incomplete until an authoritative source record is added outside this baseline task."
+      },
+      "added_in_git_commit": "b7764f255280fcb82557b7a0349fb7bbd56ca333"
+    }
+  ],
+  "evaluator": {
+    "entry_path": "docs/cameraanalysis/eval/run_semantic_label_eval.py",
+    "python_version": "3.11.9",
+    "source_commit": "e1280c83d787284f33076694b4b61ca88081f6fd",
+    "files": [
+      {
+        "path": "docs/cameraanalysis/eval/run_semantic_label_eval.py",
+        "sha256": "0d370819607b34f32cc3f073f25a3f768ec4e0571363f54d9d1135fc51305df0"
+      },
+      {
+        "path": "docs/cameraanalysis/eval/semantic_label_adapter.py",
+        "sha256": "9927bce99985df1e6855b74ba9581a69bc0c5d77c4753d7f06c033a0e2e1df73"
+      },
+      {
+        "path": "docs/cameraanalysis/eval/semantic_output_schema.py",
+        "sha256": "b8d6489977abf7ab19934ac2ad1d5540ed4c2b5d1f06d5f5298c7ce63b7ae573"
+      },
+      {
+        "path": "docs/cameraanalysis/eval/scorer.py",
+        "sha256": "2b1d351effe0ae61a07b66a729c79baa389f52480ea11290b171c31b846adfa2"
+      },
+      {
+        "path": "docs/cameraanalysis/eval/eval_io.py",
+        "sha256": "c1f81e9ce1740e058ea79def4d4d649b487c0b9243d220f97c53d3ae7d5299b4"
+      }
+    ],
+    "reproducibility": "Scoring the committed 107 candidate output twice produced byte-identical candidate_outputs, case_results, set_metrics, bucket_metrics, and summary artifacts."
+  },
+  "outputs": {
+    "current_107": {
+      "status": "current_full_runtime_receipt",
+      "candidate_outputs_path": "docs/cameraanalysis/eval/camera-baseline-v0/fullruntime_candidate_outputs_107.jsonl",
+      "candidate_outputs_sha256": "baa132b46e60b88f98189fab72d961f79be859218c636fe9c64df04ac33305e2",
+      "candidate_outputs_rows": 214,
+      "scored_candidate_outputs_path": "docs/cameraanalysis/eval/camera-baseline-v0/scored_candidate_outputs_107.jsonl",
+      "scored_candidate_outputs_sha256": "aa0254c949ba5ad4e505dbb160d2ca8ee4344ea2e9993ebb32eb6d60e5c72990",
+      "case_results_path": "docs/cameraanalysis/eval/camera-baseline-v0/case_results_107.jsonl",
+      "case_results_sha256": "36d41998affbf3fa8f9f404ef9973ca73ecf202cae9fd86c9233b9cbcf72d13b",
+      "set_metrics_path": "docs/cameraanalysis/eval/camera-baseline-v0/set_metrics_107.json",
+      "set_metrics_sha256": "98416533db179f45073073f7e38f6b44b738b70768831ff7778fdb352803c862",
+      "bucket_metrics_path": "docs/cameraanalysis/eval/camera-baseline-v0/bucket_metrics_107.json",
+      "bucket_metrics_sha256": "948343c381303b70cbf770bff493d34b63d087d549e2037864b96ef69ea605d2",
+      "summary_path": "docs/cameraanalysis/eval/camera-baseline-v0/semantic_eval_summary_107.md",
+      "summary_sha256": "a636cde18082ba03ab68fd244b96b873065fb6cf711b58045763007339d14aa8",
+      "metrics": {
+        "record_count": 107,
+        "pass_rate": 0.46729,
+        "expected_action_hit_rate": 0.588785,
+        "future_action_hit_rate": 0.895833,
+        "forbidden_action_violation_rate": 0.084112,
+        "good_frame_preservation_rate": 0.478261,
+        "technical_failure_gate_rate": 0.9,
+        "positive_confirmation_rate": 0.434783,
+        "confidence_band_accuracy": 0.672897,
+        "demo_priority_pass_rate": 0.5,
+        "failure_counts": {
+          "confidence_band_mismatch": 35,
+          "forbidden_action_violation": 9,
+          "good_frame_overcorrection": 24,
+          "missing_expected_action": 44,
+          "missing_future_action": 5,
+          "missing_positive_confirmation": 26,
+          "semantic_overreach_on_technical_failure": 2
+        }
+      }
+    },
+    "historical_207": {
+      "status": "reference_only",
+      "scoring_replay_command": "python3 docs/cameraanalysis/eval/run_semantic_label_eval.py --labels docs/cameraanalysis/dataset/inbox/semantic_labels_v2.jsonl --outputs <temp-dir> --candidate docs/cameraanalysis/eval/out_semantic_real_runtime_v2_after_runtime_fix_r6/candidate_outputs.jsonl",
+      "scoring_replay_result": "The canonical scorer reproduces the stored 207 metric values; it does not authenticate the rows against current source commit e1280c8 or current image availability."
+    }
+  }
+}
