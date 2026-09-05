@@ -258,9 +258,9 @@ final class MetalPreprocessor {
             let rowStart = row * bytesPerRow
             for column in 0..<width {
                 let pixel = rowStart + column * 4
-                values.append(Double(bytes[pixel + 2]) / 255.0)
-                values.append(Double(bytes[pixel + 1]) / 255.0)
-                values.append(Double(bytes[pixel]) / 255.0)
+                values.append(Double(bytes[pixel + 2]) / SETCompositionNetContract.rgbNormalizationDenominator)
+                values.append(Double(bytes[pixel + 1]) / SETCompositionNetContract.rgbNormalizationDenominator)
+                values.append(Double(bytes[pixel]) / SETCompositionNetContract.rgbNormalizationDenominator)
             }
         }
         return SETCompositionNetRGBImage(values: values, width: width, height: height)

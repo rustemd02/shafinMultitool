@@ -29,13 +29,14 @@ is represented by zero ROI coordinates, a zero mask, and a zero-filled
 subject crop at the production tensor trust boundary.
 
 Preprocessing freezes sRGB 32BGRA transport, alpha discard, RGB order,
-`byte / 255.0`, ImageIO orientation exactly once, no extra mirror, bilinear
-sampling, independent resize, and a `1.25×` square ROI expansion before
-resize. The raw padded square bounds are derived first, then intersected with
-the oriented full-frame bounds edge-by-edge without shifting the crop.
-`MetalPreprocessor` exposes a SET-specific logical RGB tensor seam using those
-rules. The shared legacy `resizedPixelBuffer` implementation remains unchanged
-for existing camera and CoreML callers.
+`uint8 → float32` channel conversion by exactly `/255.0` (source range
+`[0,255]`, output range `[0,1]`), ImageIO orientation exactly once, no extra
+mirror, bilinear sampling, independent resize, and a `1.25×` square ROI
+expansion before resize. The raw padded square bounds are derived first, then
+intersected with the oriented full-frame bounds edge-by-edge without shifting
+the crop. `MetalPreprocessor` exposes a SET-specific logical RGB tensor seam
+using those rules. The shared legacy `resizedPixelBuffer` implementation
+remains unchanged for existing camera and CoreML callers.
 
 The nine ordered output heads are scene class (8), subjectness/ROI agreement
 (3), issue labels (8), bounded action utility (26), good-frame probability
@@ -50,11 +51,14 @@ forbidden.
 `SETCompositionNetRuntimeSchema` and `SETCompositionNetOutputHeads` reject
 missing, extra, wrong-sized, non-finite, out-of-range, or version-mismatched
 payloads. The Swift/Python checks compare the manifest with nested schema
-shapes, ranges, normalization, catalogs, and all five runtime version
-constants. Focused negative coverage includes feature-specific range and
-categorical-value rejection, missing-fill and ROI scalar drift, non-zero
-absent-ROI crops, embedding dimension 64, risk 99, removed heads, ROI/mask
-mismatch, paired version drift, and paired signed-range drift.
+shapes, ranges, normalization formulas, RGB type/scale, the exact 40-feature
+normalization map (including `person_count → count_0_to_8`), catalogs, and all
+five runtime version constants. Focused negative coverage includes
+feature-specific range and categorical-value rejection, missing-fill and ROI
+scalar drift, non-zero absent-ROI crops, embedding dimension 64, risk 99,
+removed heads, ROI/mask mismatch, paired formula/scale/type drift, paired
+version drift, paired signed-range drift, and strict-v1 detection for each
+metadata field.
 Unavailable/failed states remain explicit and scoreless.
 
 ## Deterministic synthetic parity
@@ -89,20 +93,21 @@ values):
 - Deterministic parity/mutation checker, twice sequentially:
   `python3 ml/camera_coach/contracts/check_parity.py` — both receipts report
   `status=pass`, 40 scalar features, 9 heads, center and both edge crop hashes,
-  output hash above, absent-ROI zero hashes, and all nine mutation checks
-  rejected (including embedding 64, risk 99, removed head, paired version and
+  output hash above, absent-ROI zero hashes, and all 14 mutation checks
+  rejected (including embedding 64, risk 99, removed head, paired RGB
+  formula/scale/type drift, `person_count` mapping drift, paired version and
   signed-range drift, and unsupported categorical scalar). Receipts were
-  byte-identical (`cmp -s`) at `/private/tmp/setos-m4-second-parity1.json` and
-  `/private/tmp/setos-m4-second-parity2.json`.
+  byte-identical (`cmp -s`) at `/private/tmp/setos-m4-third-parity1.json` and
+  `/private/tmp/setos-m4-third-parity2.json`.
 - Focused Swift tests on ordinary iPhone 17 simulator (UUID
   `1F708A11-8262-4E09-9F3A-46C86381911D`, iOS 26.5), sequential xcodebuild,
   diagnostics disabled:
 
   ```text
-  xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F708A11-8262-4E09-9F3A-46C86381911D' -derivedDataPath /private/tmp/setos-m4-second-dd2 -resultBundlePath /private/tmp/setos-m4-second2.xcresult -only-testing:shafinMultitoolTests/SETCompositionNetRuntimeSchemaTests -only-testing:shafinMultitoolTests/SETCompositionNetParityTests -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO
+  xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F708A11-8262-4E09-9F3A-46C86381911D' -derivedDataPath /private/tmp/setos-m4-third-dd1 -resultBundlePath /private/tmp/setos-m4-third1.xcresult -only-testing:shafinMultitoolTests/SETCompositionNetRuntimeSchemaTests -only-testing:shafinMultitoolTests/SETCompositionNetParityTests -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO
   ```
 
-  Result: `** TEST SUCCEEDED **`; 20 selected tests, 0 skipped, 0 failed. The
+  Result: `** TEST SUCCEEDED **`; 21 selected tests, 0 skipped, 0 failed. The
   result summary records the exact ordinary iPhone 17 UUID and iOS 26.5. The
   parity class exercised the production `setCompositionNetRGBTensors` path for
   center, top-left and bottom-right edge-clipped fixtures plus an absent-ROI

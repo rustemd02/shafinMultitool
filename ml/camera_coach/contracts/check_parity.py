@@ -25,6 +25,91 @@ SWIFT_CONTRACT_PATH = (
     ROOT.parents[2]
     / "shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift"
 )
+SWIFT_PREPROCESSOR_PATH = (
+    ROOT.parents[2]
+    / "shafinMultitool/Multitool2Module/Utilities/Metal/MetalPreprocessor.swift"
+)
+
+EXPECTED_RGB_NORMALIZATION = {
+    "source_dtype": "uint8",
+    "target_dtype": "float32",
+    "source_range": [0, 255],
+    "formula": "uint8_channel / 255.0",
+    "denominator": 255.0,
+    "value_range": [0.0, 1.0],
+    "per_channel_offset": [0.0, 0.0, 0.0],
+    "per_channel_scale": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098],
+}
+
+EXPECTED_SCALAR_NORMALIZATION = {
+    "unit_interval": {
+        "formula": "clip(raw, 0.0, 1.0)",
+        "value_range": [0.0, 1.0],
+    },
+    "signed_unit_interval": {
+        "formula": "clip(raw, -1.0, 1.0)",
+        "value_range": [-1.0, 1.0],
+    },
+    "count_0_to_8": {
+        "formula": "clip(raw, 0.0, 8.0) / 8.0",
+        "value_range": [0.0, 1.0],
+    },
+    "angle_degrees_to_unit": {
+        "formula": "clip(raw_degrees / 180.0, -1.0, 1.0)",
+        "value_range": [-1.0, 1.0],
+    },
+    "categorical_index": {
+        "formula": "index / (category_count - 1)",
+        "value_range": [0.0, 1.0],
+    },
+    "aspect_ratio": {
+        "formula": "clip(raw_width / raw_height, 0.0, 4.0) / 4.0",
+        "value_range": [0.0, 1.0],
+    },
+}
+
+EXPECTED_FEATURE_TO_NORMALIZATION = {
+    "subject_bbox_x": "unit_interval",
+    "subject_bbox_y": "unit_interval",
+    "subject_bbox_width": "unit_interval",
+    "subject_bbox_height": "unit_interval",
+    "subject_area_ratio": "unit_interval",
+    "subject_edge_pressure_left": "unit_interval",
+    "subject_edge_pressure_right": "unit_interval",
+    "subject_edge_pressure_top": "unit_interval",
+    "subject_edge_pressure_bottom": "unit_interval",
+    "person_count": "count_0_to_8",
+    "face_count": "count_0_to_8",
+    "group_count": "count_0_to_8",
+    "person_confidence": "unit_interval",
+    "face_confidence": "unit_interval",
+    "group_confidence": "unit_interval",
+    "saliency_left_right_balance": "signed_unit_interval",
+    "saliency_top_bottom_balance": "signed_unit_interval",
+    "saliency_subject_mean": "unit_interval",
+    "saliency_background_mean": "unit_interval",
+    "saliency_subject_background_delta": "signed_unit_interval",
+    "horizon_angle": "angle_degrees_to_unit",
+    "horizon_confidence": "unit_interval",
+    "subject_mean_luma": "unit_interval",
+    "background_mean_luma": "unit_interval",
+    "subject_luma_delta": "signed_unit_interval",
+    "subject_clipped_ratio": "unit_interval",
+    "background_hotspot_ratio": "unit_interval",
+    "motion_shake": "unit_interval",
+    "motion_stability": "unit_interval",
+    "focus_readability": "unit_interval",
+    "focus_confidence": "unit_interval",
+    "orientation_category": "categorical_index",
+    "mirroring_flag": "unit_interval",
+    "lens_category": "categorical_index",
+    "format_aspect_ratio": "aspect_ratio",
+    "roi_present": "unit_interval",
+    "roi_area_ratio": "unit_interval",
+    "roi_mask_coverage": "unit_interval",
+    "subject_separation": "unit_interval",
+    "camera_exposure_bias": "signed_unit_interval",
+}
 
 
 def load_json(path: Path) -> dict:
@@ -298,18 +383,11 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     normalization = manifest["feature_normalization"]
     feature_to_normalization = normalization["feature_to_normalization"]
     assert list(feature_to_normalization) == names
-    allowed_normalizations = {
-        "unit_interval": [0.0, 1.0],
-        "signed_unit_interval": [-1.0, 1.0],
-        "count_0_to_8": [0.0, 1.0],
-        "angle_degrees_to_unit": [-1.0, 1.0],
-        "categorical_index": [0.0, 1.0],
-        "aspect_ratio": [0.0, 1.0],
-    }
-    for feature_name, normalization_name in feature_to_normalization.items():
-        assert normalization_name in allowed_normalizations
-        assert normalization[normalization_name]["value_range"] == allowed_normalizations[normalization_name]
-
+    assert feature_to_normalization == EXPECTED_FEATURE_TO_NORMALIZATION
+    assert list(EXPECTED_FEATURE_TO_NORMALIZATION) == names
+    for normalization_name, expected_spec in EXPECTED_SCALAR_NORMALIZATION.items():
+        assert normalization[normalization_name]["formula"] == expected_spec["formula"]
+        assert normalization[normalization_name]["value_range"] == expected_spec["value_range"]
     preprocessing = manifest["preprocessing"]
     assert preprocessing["source_color_space"] == "sRGB"
     assert preprocessing["source_pixel_format"] == "32BGRA"
@@ -319,7 +397,10 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert "no additional mirror" in preprocessing["mirroring"]
     assert preprocessing["resize_interpolation"] == "bilinear"
     assert preprocessing["resize_geometry"] == "independent_scale_to_target"
-    assert preprocessing["normalization"]["value_range"] == [0.0, 1.0]
+    assert preprocessing["normalization"] == EXPECTED_RGB_NORMALIZATION
+    assert all(type(value) is int for value in preprocessing["normalization"]["source_range"])
+    assert type(preprocessing["normalization"]["denominator"]) is float
+    assert all(type(value) is float for value in preprocessing["normalization"]["per_channel_scale"])
     assert preprocessing["subject_crop"]["recipe_version"] == "square_expand_1.25.v1"
     assert "clip padded square to oriented full-frame bounds" in preprocessing["subject_crop"]["clipping"]
     assert "derive raw padded square bounds first" in preprocessing["subject_crop"]["clipping"]
@@ -402,10 +483,25 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert schema_preprocessing["resize_interpolation"]["const"] == preprocessing["resize_interpolation"]
     assert schema_preprocessing["resize_geometry"]["const"] == preprocessing["resize_geometry"]
     schema_normalization = schema_preprocessing["normalization"]["properties"]
+    assert schema_normalization["source_dtype"]["const"] == preprocessing["normalization"]["source_dtype"]
+    assert schema_normalization["target_dtype"]["const"] == preprocessing["normalization"]["target_dtype"]
+    assert schema_normalization["source_range"]["const"] == preprocessing["normalization"]["source_range"]
     assert schema_normalization["formula"]["const"] == preprocessing["normalization"]["formula"]
+    assert schema_normalization["denominator"]["const"] == preprocessing["normalization"]["denominator"]
     assert schema_normalization["value_range"]["const"] == preprocessing["normalization"]["value_range"]
     assert schema_normalization["per_channel_offset"]["const"] == preprocessing["normalization"]["per_channel_offset"]
     assert schema_normalization["per_channel_scale"]["const"] == preprocessing["normalization"]["per_channel_scale"]
+    assert all(type(value) is int for value in schema_normalization["source_range"]["const"])
+    assert type(schema_normalization["denominator"]["const"]) is float
+    assert all(type(value) is float for value in schema_normalization["per_channel_scale"]["const"])
+    assert abs(
+        1.0 / preprocessing["normalization"]["denominator"]
+        - preprocessing["normalization"]["per_channel_scale"][0]
+    ) <= 1e-15
+    assert all(
+        scale == preprocessing["normalization"]["per_channel_scale"][0]
+        for scale in preprocessing["normalization"]["per_channel_scale"]
+    )
     schema_crop = schema_preprocessing["subject_crop"]["properties"]
     assert schema_crop["recipe_version"]["const"] == preprocessing["subject_crop"]["recipe_version"]
     assert schema_crop["square_side"]["const"] == preprocessing["subject_crop"]["square_side"]
@@ -422,8 +518,10 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert schema_lens["allowed_normalized_values"]["const"] == categorical["lens_category"]["allowed_normalized_values"]
 
     schema_ranges = schema["properties"]["feature_normalization"]["properties"]
-    for normalization_name, expected_range in allowed_normalizations.items():
-        assert schema_ranges[normalization_name]["properties"]["value_range"]["const"] == expected_range
+    for normalization_name, expected_spec in EXPECTED_SCALAR_NORMALIZATION.items():
+        assert schema_ranges[normalization_name]["properties"]["formula"]["const"] == expected_spec["formula"]
+        assert schema_ranges[normalization_name]["properties"]["value_range"]["const"] == expected_spec["value_range"]
+    assert schema_ranges["feature_to_normalization"]["const"] == EXPECTED_FEATURE_TO_NORMALIZATION
 
     schema_head_defs = {
         "scene_class_logits": "headScene",
@@ -452,6 +550,7 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     # Keep the checked manifest canonical by comparing its ordered catalogs to
     # the runtime declarations on every deterministic parity run.
     swift_source = SWIFT_CONTRACT_PATH.read_text(encoding="utf-8")
+    swift_preprocessor_source = SWIFT_PREPROCESSOR_PATH.read_text(encoding="utf-8")
     swift_heads = swift_string_array(swift_source, "outputHeadNames")
     swift_features = swift_string_array(swift_source, "featureNames")
     swift_scene = swift_string_array(swift_source, "sceneClassNames")
@@ -529,6 +628,17 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
         swift_number_constant(swift_source, "scalarMissingFillValue")
         - inputs["scalar_features"]["missing_mask"]["fill_value"]
     ) <= 1e-12
+    assert swift_string_constant(swift_source, "rgbSourceDType") == preprocessing["normalization"]["source_dtype"]
+    assert swift_string_constant(swift_source, "rgbTensorDType") == preprocessing["normalization"]["target_dtype"]
+    assert abs(
+        swift_number_constant(swift_source, "rgbNormalizationDenominator")
+        - preprocessing["normalization"]["denominator"]
+    ) <= 1e-12
+    assert abs(
+        swift_number_constant(swift_source, "rgbNormalizationScale")
+        - preprocessing["normalization"]["per_channel_scale"][0]
+    ) <= 1e-15
+    assert "SETCompositionNetContract.rgbNormalizationDenominator" in swift_preprocessor_source
 
 
 def validate_input_fixture(manifest: dict, fixture: dict) -> dict:
@@ -549,7 +659,12 @@ def validate_input_fixture(manifest: dict, fixture: dict) -> dict:
     assert [len(source["values"])] == [width * height * 3]
     assert all(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 255
                for value in source["values"])
-    source_rgb = [value / 255.0 for value in source["values"]]
+    rgb_normalization = manifest["preprocessing"]["normalization"]
+    assert rgb_normalization["source_dtype"] == "uint8"
+    assert rgb_normalization["target_dtype"] == "float32"
+    assert rgb_normalization["source_range"] == [0, 255]
+    assert rgb_normalization["formula"] == "uint8_channel / 255.0"
+    source_rgb = [value / rgb_normalization["denominator"] for value in source["values"]]
     roi = fixture["roi_normalized_xywh"]
     assert len(roi) == 4 and all(finite_number(value) and 0.0 <= value <= 1.0 for value in roi)
     assert roi[0] + roi[2] <= 1.0 and roi[1] + roi[3] <= 1.0
@@ -688,6 +803,51 @@ def validate_mutation_guards(manifest: dict, schema: dict,
         lambda: validate_manifest(manifest, schema_embedding_short),
     )
 
+    rgb_formula_manifest = deepcopy(manifest)
+    rgb_formula_schema = deepcopy(schema)
+    rgb_formula_manifest["preprocessing"]["normalization"]["formula"] = "uint8_channel / 127.0"
+    rgb_formula_schema["properties"]["preprocessing"]["properties"]["normalization"]["properties"]["formula"]["const"] = "uint8_channel / 127.0"
+    assert_rejected(
+        "paired RGB normalization formula drift",
+        lambda: validate_manifest(rgb_formula_manifest, rgb_formula_schema),
+    )
+
+    rgb_scale_manifest = deepcopy(manifest)
+    rgb_scale_schema = deepcopy(schema)
+    rgb_scale_manifest["preprocessing"]["normalization"]["per_channel_scale"] = [1.0 / 127.0] * 3
+    rgb_scale_schema["properties"]["preprocessing"]["properties"]["normalization"]["properties"]["per_channel_scale"]["const"] = [1.0 / 127.0] * 3
+    assert_rejected(
+        "paired RGB normalization scale drift",
+        lambda: validate_manifest(rgb_scale_manifest, rgb_scale_schema),
+    )
+
+    rgb_type_manifest = deepcopy(manifest)
+    rgb_type_schema = deepcopy(schema)
+    rgb_type_manifest["preprocessing"]["normalization"]["source_dtype"] = "float16"
+    rgb_type_schema["properties"]["preprocessing"]["properties"]["normalization"]["properties"]["source_dtype"]["const"] = "float16"
+    assert_rejected(
+        "paired RGB normalization type drift",
+        lambda: validate_manifest(rgb_type_manifest, rgb_type_schema),
+    )
+
+    scalar_formula_manifest = deepcopy(manifest)
+    scalar_formula_schema = deepcopy(schema)
+    scalar_formula_manifest["feature_normalization"]["count_0_to_8"]["formula"] = "raw / 8.0"
+    scalar_formula_schema["properties"]["feature_normalization"]["properties"]["count_0_to_8"]["properties"]["formula"]["const"] = "raw / 8.0"
+    assert_rejected(
+        "paired scalar normalization formula drift",
+        lambda: validate_manifest(scalar_formula_manifest, scalar_formula_schema),
+    )
+
+    scalar_mapping_manifest = deepcopy(manifest)
+    scalar_mapping_schema = deepcopy(schema)
+    scalar_mapping_manifest["feature_normalization"]["feature_to_normalization"]["person_count"] = "unit_interval"
+    scalar_mapping_schema["properties"]["feature_normalization"]["properties"]["feature_to_normalization"]["const"]["person_count"] = "unit_interval"
+    assert_rejected(
+        "person_count normalization mapping drift",
+        lambda: validate_manifest(scalar_mapping_manifest, scalar_mapping_schema),
+    )
+
     paired_version_manifest = deepcopy(manifest)
     paired_version_schema = deepcopy(schema)
     paired_version_manifest["contract_version"] = "setcompositionnet.v2"
@@ -724,6 +884,11 @@ def validate_mutation_guards(manifest: dict, schema: dict,
         "removed_scene_head",
         "manifest_embedding_64",
         "schema_embedding_64",
+        "paired_rgb_formula_drift",
+        "paired_rgb_scale_drift",
+        "paired_rgb_type_drift",
+        "paired_scalar_formula_drift",
+        "person_count_mapping_drift",
         "paired_contract_version_drift",
         "paired_signed_range_drift",
         "roi_out_of_bounds",

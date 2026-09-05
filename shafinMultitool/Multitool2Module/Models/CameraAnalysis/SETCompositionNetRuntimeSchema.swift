@@ -323,7 +323,12 @@ struct SETCompositionNetOutput {
             errors.append("compositionNet is missing the subject ROI provenance")
         }
 
-        let isV1 = heads != nil || outputContractVersion != nil || contractVersion != nil
+        let isV1 = heads != nil
+            || contractVersion != nil
+            || inputContractVersion != nil
+            || preprocessingVersion != nil
+            || featureVersion != nil
+            || outputContractVersion != nil
         if !isV1 {
             for headId in EvidenceHeadId.allCases {
                 guard let logit = issueActionLogits[headId] else {
@@ -355,7 +360,7 @@ struct SETCompositionNetOutput {
         if goodFrameScore < 0 || goodFrameScore > 1 {
             errors.append("compositionNet goodFrameScore must be within [0, 1]")
         }
-        if heads != nil || outputContractVersion != nil || contractVersion != nil {
+        if isV1 {
             guard let heads else {
                 errors.append("compositionNet v1 output heads are missing")
                 return errors

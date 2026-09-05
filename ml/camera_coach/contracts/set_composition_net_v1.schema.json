@@ -113,9 +113,13 @@
         "resize_geometry": { "const": "independent_scale_to_target" },
         "normalization": {
           "type": "object",
-          "required": ["formula", "value_range", "per_channel_offset", "per_channel_scale"],
+          "required": ["source_dtype", "target_dtype", "source_range", "formula", "denominator", "value_range", "per_channel_offset", "per_channel_scale"],
           "properties": {
-            "formula": { "const": "float8_channel / 255.0" },
+            "source_dtype": { "const": "uint8" },
+            "target_dtype": { "const": "float32" },
+            "source_range": { "const": [0, 255] },
+            "formula": { "const": "uint8_channel / 255.0" },
+            "denominator": { "const": 255.0 },
             "value_range": { "const": [0.0, 1.0] },
             "per_channel_offset": { "const": [0.0, 0.0, 0.0] },
             "per_channel_scale": { "const": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098] }
@@ -159,38 +163,96 @@
       "properties": {
         "unit_interval": {
           "type": "object",
-          "required": ["value_range"],
-          "properties": { "value_range": { "const": [0.0, 1.0] } }
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw, 0.0, 1.0)" },
+            "value_range": { "const": [0.0, 1.0] }
+          }
         },
         "signed_unit_interval": {
           "type": "object",
-          "required": ["value_range"],
-          "properties": { "value_range": { "const": [-1.0, 1.0] } }
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw, -1.0, 1.0)" },
+            "value_range": { "const": [-1.0, 1.0] }
+          }
         },
         "count_0_to_8": {
           "type": "object",
-          "required": ["value_range"],
-          "properties": { "value_range": { "const": [0.0, 1.0] } }
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw, 0.0, 8.0) / 8.0" },
+            "value_range": { "const": [0.0, 1.0] }
+          }
         },
         "angle_degrees_to_unit": {
           "type": "object",
-          "required": ["value_range"],
-          "properties": { "value_range": { "const": [-1.0, 1.0] } }
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw_degrees / 180.0, -1.0, 1.0)" },
+            "value_range": { "const": [-1.0, 1.0] }
+          }
         },
         "categorical_index": {
           "type": "object",
-          "required": ["value_range"],
-          "properties": { "value_range": { "const": [0.0, 1.0] } }
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "index / (category_count - 1)" },
+            "value_range": { "const": [0.0, 1.0] }
+          }
         },
         "aspect_ratio": {
           "type": "object",
-          "required": ["value_range"],
-          "properties": { "value_range": { "const": [0.0, 1.0] } }
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw_width / raw_height, 0.0, 4.0) / 4.0" },
+            "value_range": { "const": [0.0, 1.0] }
+          }
         },
         "feature_to_normalization": {
           "type": "object",
-          "minProperties": 40,
-          "additionalProperties": { "type": "string", "minLength": 1 }
+          "const": {
+            "subject_bbox_x": "unit_interval",
+            "subject_bbox_y": "unit_interval",
+            "subject_bbox_width": "unit_interval",
+            "subject_bbox_height": "unit_interval",
+            "subject_area_ratio": "unit_interval",
+            "subject_edge_pressure_left": "unit_interval",
+            "subject_edge_pressure_right": "unit_interval",
+            "subject_edge_pressure_top": "unit_interval",
+            "subject_edge_pressure_bottom": "unit_interval",
+            "person_count": "count_0_to_8",
+            "face_count": "count_0_to_8",
+            "group_count": "count_0_to_8",
+            "person_confidence": "unit_interval",
+            "face_confidence": "unit_interval",
+            "group_confidence": "unit_interval",
+            "saliency_left_right_balance": "signed_unit_interval",
+            "saliency_top_bottom_balance": "signed_unit_interval",
+            "saliency_subject_mean": "unit_interval",
+            "saliency_background_mean": "unit_interval",
+            "saliency_subject_background_delta": "signed_unit_interval",
+            "horizon_angle": "angle_degrees_to_unit",
+            "horizon_confidence": "unit_interval",
+            "subject_mean_luma": "unit_interval",
+            "background_mean_luma": "unit_interval",
+            "subject_luma_delta": "signed_unit_interval",
+            "subject_clipped_ratio": "unit_interval",
+            "background_hotspot_ratio": "unit_interval",
+            "motion_shake": "unit_interval",
+            "motion_stability": "unit_interval",
+            "focus_readability": "unit_interval",
+            "focus_confidence": "unit_interval",
+            "orientation_category": "categorical_index",
+            "mirroring_flag": "unit_interval",
+            "lens_category": "categorical_index",
+            "format_aspect_ratio": "aspect_ratio",
+            "roi_present": "unit_interval",
+            "roi_area_ratio": "unit_interval",
+            "roi_mask_coverage": "unit_interval",
+            "subject_separation": "unit_interval",
+            "camera_exposure_bias": "signed_unit_interval"
+          }
         }
       },
       "additionalProperties": true

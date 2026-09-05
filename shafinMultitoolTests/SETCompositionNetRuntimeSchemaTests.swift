@@ -152,7 +152,12 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
         abstentionScore: Double? = nil,
         goodFrameScore: Double? = nil,
         subjectROI: NormalizedRect?? = nil,
-        frameId: String? = nil
+        frameId: String? = nil,
+        contractVersion: String? = nil,
+        inputContractVersion: String? = nil,
+        preprocessingVersion: String? = nil,
+        featureVersion: String? = nil,
+        outputContractVersion: String? = nil
     ) throws -> SETCompositionNetOutput {
         SETCompositionNetOutput(
             status: base.status,
@@ -166,7 +171,13 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
             shotTypeAffinities: base.shotTypeAffinities,
             riskScore: riskScore ?? base.riskScore,
             abstentionScore: abstentionScore ?? base.abstentionScore,
-            goodFrameScore: goodFrameScore ?? base.goodFrameScore
+            goodFrameScore: goodFrameScore ?? base.goodFrameScore,
+            contractVersion: contractVersion ?? base.contractVersion,
+            inputContractVersion: inputContractVersion ?? base.inputContractVersion,
+            preprocessingVersion: preprocessingVersion ?? base.preprocessingVersion,
+            featureVersion: featureVersion ?? base.featureVersion,
+            outputContractVersion: outputContractVersion ?? base.outputContractVersion,
+            heads: base.heads
         )
     }
 
@@ -503,6 +514,45 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
         let errors = output.validate(request: request, generation: 5)
         XCTAssertTrue(errors.contains { $0.contains("embedding") && $0.contains("128 values") })
         XCTAssertTrue(errors.contains { $0.contains("risk_probability") && $0.contains("[0, 1]") })
+    }
+
+    func testAnyV1MetadataFieldForcesStrictValidation() throws {
+        let request = makeRequest()
+        let base = makeAvailableOutput(request: request, generation: 5)
+        let metadataOnlyOutputs: [(String, SETCompositionNetOutput)] = [
+            (
+                "contractVersion",
+                try makeCustomOutput(from: base, contractVersion: SETCompositionNetContract.contractVersion)
+            ),
+            (
+                "inputContractVersion",
+                try makeCustomOutput(from: base, inputContractVersion: SETCompositionNetContract.inputContractVersion)
+            ),
+            (
+                "preprocessingVersion",
+                try makeCustomOutput(from: base, preprocessingVersion: SETCompositionNetContract.preprocessingVersion)
+            ),
+            (
+                "featureVersion",
+                try makeCustomOutput(from: base, featureVersion: SETCompositionNetContract.featureVersion)
+            ),
+            (
+                "outputContractVersion",
+                try makeCustomOutput(from: base, outputContractVersion: SETCompositionNetContract.outputContractVersion)
+            )
+        ]
+
+        for (metadataName, output) in metadataOnlyOutputs {
+            let errors = output.validate(request: request, generation: 5)
+            XCTAssertTrue(
+                errors.contains { $0.contains("v1 output heads are missing") },
+                "any \(metadataName) metadata must select strict v1 validation: \(errors)"
+            )
+            XCTAssertFalse(
+                errors.contains { $0.contains("subject_prominence") },
+                "any \(metadataName) metadata must not fall through legacy validation: \(errors)"
+            )
+        }
     }
 
     // MARK: - Explicit unavailable / failed states

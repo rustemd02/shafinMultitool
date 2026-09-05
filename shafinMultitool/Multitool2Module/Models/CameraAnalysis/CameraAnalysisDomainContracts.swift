@@ -1153,6 +1153,10 @@ enum SETCompositionNetContract {
     static let scalarFeatureCount = 40
     static let scalarMissingFillValue = 0.0
     static let embeddingDimension = 128
+    static let rgbSourceDType = "uint8"
+    static let rgbTensorDType = "float32"
+    static let rgbNormalizationDenominator = 255.0
+    static let rgbNormalizationScale = 0.00392156862745098
 
     static let featureNames = [
         "subject_bbox_x", "subject_bbox_y", "subject_bbox_width", "subject_bbox_height",

@@ -104,7 +104,11 @@
     "resize_interpolation": "bilinear",
     "resize_geometry": "independent_scale_to_target",
     "normalization": {
-      "formula": "float8_channel / 255.0",
+      "source_dtype": "uint8",
+      "target_dtype": "float32",
+      "source_range": [0, 255],
+      "formula": "uint8_channel / 255.0",
+      "denominator": 255.0,
       "value_range": [0.0, 1.0],
       "per_channel_offset": [0.0, 0.0, 0.0],
       "per_channel_scale": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098]
