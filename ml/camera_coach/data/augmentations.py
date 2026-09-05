@@ -2,10 +2,11 @@
 
 The v1 record is an immutable source label.  This module never creates a
 canonical derived record and never treats a receipt hash as authentication.
-An external M3-008 cluster/split receipt is injected, copied into immutable
-canonical bytes, and replayed against every supplied encoded asset before a
-training result is accepted.  The only non-identity operation is a horizontal
-flip; photometric identity is retained for schedule completeness and crop or
+Production M3 authority loading is disabled until an authenticated redacted
+train/calibration artifact exists.  The private fixture path copies and
+replays M3 receipts against every supplied encoded asset before a self-check
+result is accepted.  The only non-identity operation is a horizontal flip;
+photometric identity is retained for schedule completeness and crop or
 non-identity photometric transforms fail closed pending reannotation.
 """
 
@@ -42,12 +43,14 @@ SPLIT_SCHEMA_PATH = CAMERA_DIR / "split-manifest-schema.json"
 DERIVATION_MANIFEST_PATH = CAMERA_DIR / "derivation-manifest.jsonl"
 
 RECORD_SCHEMA_VERSION = "v1.0.0"
-AUGMENTATION_VERSION = "v4.0.0"
-POLICY_SCHEMA_ID = "camera-augmentation-policy-v4"
-LINEAGE_SCHEMA_ID = "camera-augmentation-lineage-v4"
-SCHEDULE_SCHEMA_ID = "camera-augmentation-schedule-v2"
-SCHEDULE_SCHEMA_VERSION = "v2.0.0"
-AUTHORITY_SCHEMA_ID = "camera-m3-authority-v1"
+AUGMENTATION_VERSION = "v4.1.0"
+POLICY_SCHEMA_ID = "camera-augmentation-policy-v4.1"
+LINEAGE_SCHEMA_ID = "camera-augmentation-lineage-v4.1"
+SCHEDULE_SCHEMA_ID = "camera-augmentation-schedule-v2.1"
+SCHEDULE_SCHEMA_VERSION = "v2.1.0"
+AUTHORITY_SCHEMA_ID = "camera-m3-fixture-authority-v1"
+PRODUCTION_AUTHORITY_VIEW_SCHEMA_ID = "camera-m3-redacted-train-calibration-view-v1"
+PRODUCTION_AUTHORITY_VIEW_VERSION = "v1.0.0"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -58,7 +61,10 @@ _PINNED_DECODER_NAME = "Pillow"
 _PINNED_MAX_ENCODED_BYTES = 8 * 1024 * 1024
 _PINNED_MAX_WIDTH = 4096
 _PINNED_MAX_HEIGHT = 4096
-_PINNED_MAX_PIXELS = 16_777_216
+# Results expose nested HWC lists for the training boundary.  Keep the
+# materialized representation bounded; 512x512 is the largest admitted image
+# (262,144 pixels) and keeps a result/deepcopy well below workstation memory.
+_PINNED_MAX_PIXELS = 512 * 512
 PILLOW_VERSION_PIN = _PINNED_PILLOW_VERSION_PIN
 DECODER_NAME = _PINNED_DECODER_NAME
 MAX_ENCODED_BYTES = _PINNED_MAX_ENCODED_BYTES
@@ -120,11 +126,31 @@ _PINNED_FIXTURE_ASSET_SHA256 = (
     ("asset-episode-fixture-003-after", "49506a05e22e2cb69928636c629f5e09ba00f234a17b1f586c03227ab3c01543"),
 )
 _FIXTURE_ASSET_SHA256 = _PINNED_FIXTURE_ASSET_SHA256
+_PINNED_FIXTURE_RECORD_IDS = (
+    "cam-episode-fixture-003",
+    "cam-still-fixture-001",
+    "cam-temporal-fixture-002",
+)
 
 # Fixed schedule authority.  There is no public constructor that accepts
 # caller-provided jobs, ratios, seeds, counters, or source subsets.
 _PINNED_SCHEDULE_SEED = 17
 _PINNED_SCHEDULE_TRANSFORMS = (("horizontal_flip", ()), ("photometric_identity", ()))
+
+# Future production injection is deliberately a contract only.  It must be an
+# authenticated redacted view derived from the complete frozen M3 receipt; it
+# contains no locked-test records/media and cannot be issued by this module.
+_PRODUCTION_AUTHORITY_VIEW_FIELDS = (
+    "schema_id",
+    "schema_version",
+    "artifact_sha256",
+    "complete_m3_receipt_sha256",
+    "cluster_receipt_sha256",
+    "split_manifest_sha256",
+    "train_calibration_records",
+    "asset_content_sha256",
+    "signature",
+)
 
 
 class AugmentationError(ValueError):
@@ -213,6 +239,15 @@ def _config() -> dict[str, Any]:
         "remap_authority_sha256": REMAP_AUTHORITY_SHA256,
         "schedule_authority_sha256": SCHEDULE_AUTHORITY_SHA256,
         "fixture_asset_sha256": _fixture_map(),
+        "production_authority_view": {
+            "schema_id": PRODUCTION_AUTHORITY_VIEW_SCHEMA_ID,
+            "schema_version": PRODUCTION_AUTHORITY_VIEW_VERSION,
+            "required_fields": list(_PRODUCTION_AUTHORITY_VIEW_FIELDS),
+            "source_scope": "redacted-train-calibration-only",
+            "derivation": "complete-frozen-m3-receipt",
+            "authentication": "independent-m3-signed-artifact-required",
+            "locked_test_records_or_media": False,
+        },
         "decoder": {
             "name": _PINNED_DECODER_NAME,
             "version_pin": _PINNED_PILLOW_VERSION_PIN,
@@ -225,7 +260,7 @@ def _config() -> dict[str, Any]:
             "orientation": "reject-EXIF-orientation-unless-1; preprocessing applies ImageIO orientation exactly once",
             "multi_frame": "reject",
         },
-        "source_authority": "external-m3-008-cluster-and-split-receipts-replayed-over-all-assets",
+        "source_authority": "fixture-only-in-repository; production-artifact-required",
         "eligible_split_owners": ["train", "calibration"],
         "protected_categories": list(_PINNED_PROTECTED_CATEGORIES),
     }
@@ -240,7 +275,7 @@ def _freeze(value: Any) -> Any:
 
 
 # Replaced with the independently computed digest after this file is written.
-_PINNED_CONFIG_SHA256 = "c54a4c4ace2165a84a17ea4b8670fba8a3159a772ab371751c4a3206b89d4746"
+_PINNED_CONFIG_SHA256 = "3303ffdedd1796343ec5fce85d092c5ba7676e434fee65fb146a4ca5b0efe9a5"
 AUGMENTATION_CONFIG = _freeze(_config())
 AUGMENTATION_CONFIG_SHA256 = _PINNED_CONFIG_SHA256
 
@@ -399,7 +434,7 @@ class SourceBundle:
 
 
 _SOURCE_TOKEN = object()
-_AUTHORITY_TOKEN = object()
+_FIXTURE_AUTHORITY_TOKEN = object()
 
 
 def _record_sequences(record: Mapping[str, Any]) -> tuple[str, ...]:
@@ -550,6 +585,7 @@ class _AuthoritySource:
     record_sha256: str
     asset_ids: tuple[str, ...]
     asset_sha256: tuple[tuple[str, str], ...]
+    source_split: str
     split_owner: str
     protected_families: tuple[tuple[str, tuple[str, ...]], ...]
 
@@ -561,11 +597,16 @@ class _AuthoritySource:
 
 
 class M3Authority:
-    """Immutable external M3 receipt plus its exact canonical source set."""
+    """Immutable fixture authority used only by the local self-check.
+
+    A production authority is intentionally not constructible in this module.
+    The future production input is the authenticated redacted view described by
+    ``PRODUCTION_AUTHORITY_VIEW_SCHEMA_ID`` and ``_PRODUCTION_AUTHORITY_VIEW_FIELDS``.
+    """
 
     __slots__ = (
         "_records_json", "_cluster_json", "_split_json", "_rows", "_record_ids", "_asset_ids",
-        "_authority_sha256", "_cluster_sha256", "_split_sha256", "_split_seed", "_split_ratios",
+        "_authority_sha256", "_cluster_sha256", "_split_sha256", "_split_seed", "_split_ratios", "_authority_kind",
     )
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -583,10 +624,11 @@ class M3Authority:
         split_sha256: str,
         split_seed: int,
         split_ratios: tuple[tuple[str, float], ...],
+        authority_kind: str,
         token: object,
     ) -> None:
-        if token is not _AUTHORITY_TOKEN:
-            raise TypeError("M3Authority is produced by load_m3_authority")
+        if token is not _FIXTURE_AUTHORITY_TOKEN or authority_kind != "fixture":
+            raise TypeError("M3Authority is produced only by the private fixture loader")
         self._records_json = records_json
         self._cluster_json = cluster_json
         self._split_json = split_json
@@ -597,9 +639,11 @@ class M3Authority:
         self._split_sha256 = split_sha256
         self._split_seed = split_seed
         self._split_ratios = split_ratios
+        self._authority_kind = authority_kind
         self._authority_sha256 = digest(
             {
                 "schema_id": AUTHORITY_SCHEMA_ID,
+                "authority_kind": authority_kind,
                 "records_sha256": digest(json.loads(records_json)),
                 "cluster_receipt_sha256": cluster_sha256,
                 "split_manifest_sha256": split_sha256,
@@ -617,6 +661,10 @@ class M3Authority:
     @property
     def split_manifest_sha256(self) -> str:
         return self._split_sha256
+
+    @property
+    def authority_kind(self) -> str:
+        return self._authority_kind
 
     @property
     def record_ids(self) -> tuple[str, ...]:
@@ -691,12 +739,17 @@ def _authority_families(record: Mapping[str, Any], cluster: Mapping[str, tuple[s
     return tuple((category, families[category]) for category in _PINNED_PROTECTED_CATEGORIES)
 
 
-def load_m3_authority(
+def _load_fixture_authority(
     records: list[Mapping[str, Any]],
     cluster_receipt: Mapping[str, Any],
     split_receipt: Mapping[str, Any],
 ) -> M3Authority:
-    """Inject external M3 receipts without requiring pixels or issuing jobs."""
+    """Issue a fixture-only authority for the local self-check.
+
+    This path is intentionally private and accepts only the committed
+    synthetic fixture provenance.  It is not a production authority loader and
+    its authority kind is retained in every schedule and lineage value.
+    """
 
     if type(records) is not list or not records:
         raise AugmentationError("external M3 authority records must be a non-empty list")
@@ -704,6 +757,15 @@ def load_m3_authority(
     record_ids = tuple(record["record_id"] for record in source_records)
     if len(set(record_ids)) != len(record_ids):
         raise AugmentationError("external M3 authority has duplicate record IDs")
+    if tuple(sorted(record_ids)) != _PINNED_FIXTURE_RECORD_IDS:
+        raise AugmentationError("fixture authority source set is not the pinned fixture set")
+    if any(
+        record["split"] != "fixture"
+        or record["provenance"]["source_kind"] != "synthetic_fixture"
+        or record["provenance"]["rights_disposition"] != "fixture_only"
+        for record in source_records
+    ):
+        raise AugmentationError("fixture authority accepts only fixture-only records")
     cluster = copy.deepcopy(dict(cluster_receipt)) if type(cluster_receipt) is dict else None
     split = copy.deepcopy(dict(split_receipt)) if type(split_receipt) is dict else None
     if cluster is None or split is None:
@@ -742,8 +804,8 @@ def load_m3_authority(
     if canonical_json(recomputed) != canonical_json(split):
         raise AugmentationError("M3 split authority does not replay from canonical source records")
     assignments = {row["record_id"]: row["split"] for row in split["assignments"]}
-    if any(assignments[record_id] not in ("train", "calibration") for record_id in record_ids):
-        raise AugmentationError("locked-test authority is outside this training owner")
+    if any(assignments[record_id] == "locked_test" for record_id in record_ids):
+        raise AugmentationError("fixture authority cannot include locked-test assignments")
     rows: list[_AuthoritySource] = []
     for record in source_records:
         record_id = record["record_id"]
@@ -763,7 +825,8 @@ def load_m3_authority(
                 record_sha256=digest(record),
                 asset_ids=asset_ids,
                 asset_sha256=tuple((asset_id, cluster_index[asset_id][0]) for asset_id in asset_ids),
-                split_owner=assigned,
+                source_split="fixture",
+                split_owner="fixture",
                 protected_families=_authority_families(record, cluster_index),
             )
         )
@@ -776,7 +839,29 @@ def load_m3_authority(
         split_sha256=split["manifest_sha256"],
         split_seed=split_seed,
         split_ratios=ratios,
-        token=_AUTHORITY_TOKEN,
+        authority_kind="fixture",
+        token=_FIXTURE_AUTHORITY_TOKEN,
+    )
+
+
+def load_m3_authority(
+    records: list[Mapping[str, Any]],
+    cluster_receipt: Mapping[str, Any],
+    split_receipt: Mapping[str, Any],
+) -> M3Authority:
+    """Reject self-issued production receipts until M3 supplies its artifact.
+
+    The future production contract is an authenticated redacted
+    train/calibration authority view derived from the complete frozen M3
+    receipt.  This repository intentionally has no verifier or issuer for that
+    artifact, so accepting caller-provided records/receipts here would be a
+    self-issued authority boundary.
+    """
+
+    del records, cluster_receipt, split_receipt
+    raise AugmentationError(
+        "production M3 authority loading is disabled; authenticated redacted "
+        "train/calibration authority view required"
     )
 
 
@@ -812,8 +897,8 @@ def make_source_bundle(
     if source["record_type"] == "still" and source["media"]["content_sha256"] != decoded[0].encoded_sha256:
         raise AugmentationError("record media.content_sha256 does not match actual asset bytes")
     fixture_only = source["provenance"]["source_kind"] == "synthetic_fixture" and source["provenance"]["rights_disposition"] == "fixture_only"
-    if authority is None and source["record_type"] != "still" and not fixture_only:
-        raise AugmentationError("requires_external_asset_authority for grouped production media")
+    if authority is None and not fixture_only:
+        raise AugmentationError("requires_authenticated_production_authority")
     if authority is None and fixture_only:
         expected_fixture = _fixture_map()
         for asset in decoded:
@@ -921,6 +1006,7 @@ def make_trusted_schedule(authority: M3Authority) -> TrustedSchedule:
         "source_authority_sha256": authority.authority_sha256,
         "cluster_receipt_sha256": authority.cluster_receipt_sha256,
         "split_manifest_sha256": authority.split_manifest_sha256,
+        "authority_kind": authority.authority_kind,
         "seed": _PINNED_SCHEDULE_SEED,
         "transforms": [{"kind": kind, "parameters": {}} for kind, _ in _PINNED_SCHEDULE_TRANSFORMS],
         "sources": [
@@ -929,6 +1015,7 @@ def make_trusted_schedule(authority: M3Authority) -> TrustedSchedule:
                 "record_sha256": source.record_sha256,
                 "asset_ids": list(source.asset_ids),
                 "asset_sha256": {key: value for key, value in source.asset_sha256},
+                "source_split": source.source_split,
                 "split_owner": source.split_owner,
                 "protected_families": {key: list(values) for key, values in source.protected_families},
             }
@@ -952,6 +1039,10 @@ def _assert_authority(schedule: TrustedSchedule, authority: M3Authority) -> None
         raise AugmentationError("schedule authority digest changed")
     if body["source_authority_sha256"] != authority.authority_sha256:
         raise AugmentationError("schedule source authority digest changed")
+    if body["authority_kind"] != authority.authority_kind:
+        raise AugmentationError("schedule authority kind changed")
+    if authority.authority_kind != "fixture":
+        raise AugmentationError("production augmentation authority is unavailable")
 
 
 def _check_bundle(bundle: SourceBundle, schedule: TrustedSchedule, authority: M3Authority, record_id: str) -> dict[str, Any]:
@@ -961,6 +1052,8 @@ def _check_bundle(bundle: SourceBundle, schedule: TrustedSchedule, authority: M3
     row = schedule.source(record_id)
     if record["record_id"] != record_id or digest(record) != row.record_sha256:
         raise AugmentationError("source record does not match trusted schedule")
+    if record["split"] != row.source_split:
+        raise AugmentationError("source record split provenance changed")
     if tuple(sorted(bundle.asset_ids)) != row.asset_ids:
         raise AugmentationError("source bundle asset set does not match trusted schedule")
     for asset_id in row.asset_ids:
@@ -1124,6 +1217,7 @@ def _lineage(
         "cluster_receipt_sha256": schedule.authority.cluster_receipt_sha256,
         "split_manifest_sha256": schedule.authority.split_manifest_sha256,
         "protected_families": {key: list(values) for key, values in source.protected_families},
+        "source_split": source.source_split,
         "split_owner": source.split_owner,
     }
     return {**body, "receipt_sha256": digest(body)}
@@ -1296,6 +1390,6 @@ __all__ = [
     "DECODER_NAME", "DERIVATION_MANIFEST_PATH", "LINEAGE_SCHEMA_ID", "M3Authority", "MAX_ENCODED_BYTES",
     "MAX_HEIGHT", "MAX_PIXELS", "MAX_WIDTH", "PILLOW_VERSION_PIN", "POLICY_SCHEMA_ID", "REMAP_AUTHORITY_SHA256",
     "SCHEDULE_AUTHORITY_SHA256", "SCHEDULE_SCHEMA_ID", "SourceBundle", "TrustedSchedule", "VERIFIER_PAIRS",
-    "augment", "canonical_json", "digest", "load_m3_authority", "make_source_bundle", "make_trusted_schedule",
+    "augment", "canonical_json", "digest", "make_source_bundle", "make_trusted_schedule",
     "validate_derivation_manifest", "validate_lineage_batch", "validate_result",
 ]

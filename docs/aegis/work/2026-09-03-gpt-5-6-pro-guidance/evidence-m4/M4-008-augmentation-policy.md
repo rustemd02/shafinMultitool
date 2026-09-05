@@ -1,12 +1,10 @@
 # M4-008 — Camera Coach augmentation trust boundary
 
-Status: `PARTIAL` for production closure; the v4 implementation and focused
-checks pass, but this repository contains no externally issued production M3
-cluster/split artifact or signed dataset-admission source-set receipt.  The
-module therefore accepts production grouped media only when that external
-authority is injected, and never self-issues one.  This report supersedes the
-rejected implementations in commits `5380270` and `1d704b2`; the committed
-derivation manifest remains a zero-record template.
+Status: `PARTIAL`.  This correction supersedes rejected commits `5380270`
+and `1d704b2` and hard-disables production M3 authority loading.  The
+repository has no authenticated production M3 source-set artifact, so only a
+private fixture-only authority path is executable here.  The derivation
+manifest remains a zero-record template.
 
 No real media, rights-uncleared content, human labels, locked holdout,
 candidate model, training run, calibration, export, selection, runtime
@@ -14,81 +12,72 @@ enablement, or iOS change is claimed.
 
 ## Implemented boundary
 
-- `load_m3_authority(records, cluster_receipt, split_receipt)` is the only
-  authority injection path.  It accepts canonical v1 records through the
-  existing `validate_record(..., admission=False)` owner, validates exact M3
-  cluster/split schemas, checks that both receipts cover exactly the supplied
-  record and asset set, recomputes the split from the canonical projections,
-  rejects locked-test assignments, and stores source records/receipts as
-  canonical bytes plus frozen tuples.  It does not choose ratios, jobs, seeds,
-  counters, or a partial batch.
-- `make_source_bundle` requires an exact `asset_id -> encoded bytes` map.  A
-  still is bound to its frozen aggregate `media.content_sha256`; grouped
-  records require the injected M3 per-asset digest authority unless they are
-  the six pinned synthetic fixtures.  Every supplied byte is hashed before
-  decode, decoded through the existing M3 Pillow owner as one-frame RGB8 HWC,
-  and checked against the authoritative per-asset digest.  Missing, extra,
-  mismatched, truncated, multiframe, oversized, decompression-bomb, or
-  non-normalized EXIF-oriented assets fail closed.  Encoded bytes are capped at
-  8 MiB; dimensions at 4096×4096 and 16,777,216 pixels.
-- `make_trusted_schedule(authority)` is the sole schedule constructor.  It
-  derives every source and exactly two fixed jobs per source (`horizontal_flip`
-  and `photometric_identity`) from one immutable authority.  The seed (17),
-  counters, job IDs, parameters, and transform order are module-owned; caller
-  job lists, ratios, source subsets, and alternate seeds are not accepted.
-  Schedule and authority internals are frozen value objects/canonical strings;
-  returned receipts/schedules are fresh copies and post-construction mutation
-  attempts cannot change replay behavior.
-- `augment` returns an explicit training result, never a derived canonical
-  record.  It transforms every identified asset in a grouped/temporal bundle,
-  retains the source `record_id`, and emits transformed target fields plus
-  lineage binding source-record hash, each encoded asset hash, decoded input
-  pixels, output pixels, source/output target hashes, transform parameters,
-  fixed seed/counter, policy/config, external authority, schedule, all ten
-  protected family categories, split owner, and a deterministic receipt.
-  `validate_result` replays the fixed assignment from the supplied immutable
-  authority and actual bundle bytes; a forged output with a recomputed
-  unkeyed receipt is rejected.
-- `validate_lineage_batch` rejects empty, incomplete, duplicate, or extra
-  source/result sets; re-runs M3 clustering and splitting over every actual
-  asset; validates every result; and maintains a category/value-to-split
-  registry for `source_shoot`, `scene`, `person`, `location`, `time`,
-  `derivation`, `sequence`, `take`, `device`, and `dedup_cluster`.  A family
-  crossing split owners is rejected.  One grouped production fixture proves
-  the non-circular external-authority path and all assets are replayed.
-- Horizontal flip uses an explicit exhaustive table for all frozen left/right
-  action/verifier pairs at global, per-issue, selected, verification, and
-  episode locations, plus every tracked normalized top-left subject region.
-  Exact representable geometry values round-trip twice; values whose IEEE-754
-  complement would lose a low-order bit reject with `requires_reannotation`
-  rather than being rounded.  The v1 records do not contain model-derived
-  scalar vectors, logits, masks, or continuous deltas, so those are not
-  accepted or silently copied as stale targets.  EXIF orientation is rejected
-  because the frozen preprocessing contract requires ImageIO orientation to be
-  applied exactly once before model coordinates are defined; no storage-pixel
-  flip is allowed to guess displayed coordinates.
+- Public `load_m3_authority` is not exported from `ml.camera_coach.data` and
+  always raises.  Caller-provided records, seeds, ratios, receipts, or source
+  subsets can never issue a production authority.
+- Private `_load_fixture_authority` is test-only by contract and accepts only
+  canonical records whose split is `fixture`, source kind is
+  `synthetic_fixture`, and rights disposition is `fixture_only`.  It copies
+  and replays the M3 receipts, but its resulting authority kind is permanently
+  `fixture`.
+- The future production contract is named
+  `camera-m3-redacted-train-calibration-view-v1`: an independently
+  authenticated redacted view derived from the complete frozen M3 receipt,
+  containing only train/calibration record and asset authority.  It must bind
+  artifact, complete-receipt, cluster, split, record/asset, and signature
+  fields; it does not require locked-test records or media.  No issuer or
+  verifier exists in this repository, so this view is a contract only.
+- The fixed schedule derives only from the immutable authority object.  Its
+  body includes `authority_kind` and each source includes `source_split`.
+  Every emitted lineage retains both `source_split` and `split_owner`; fixture
+  provenance cannot masquerade as train or calibration.
+- The checker issues synthetic receipts independently through the M3 owner and
+  its own metadata projection.  It does not call augmentation `_m3_items` or
+  `_m3_records_from_records`, avoiding a production/checker circular oracle.
+
+## Asset and transform boundary
+
+- `make_source_bundle` requires an exact asset-ID-to-encoded-byte map for every
+  still, temporal, or episode asset.  Actual bytes are hashed and decoded;
+  caller-declared media hashes cannot override them.  Production bundles fail
+  closed without the unavailable authenticated authority, including stills.
+- Existing M3 Pillow is reused with runtime pin `12.2.0`; encoded bytes are
+  capped at 8 MiB, dimensions at 4096×4096, and expanded HWC output at 512×512
+  (`262,144` pixels) to bound nested-list materialization and deepcopy memory.
+  Truncation, decompression bombs, multiframe media, and non-normalized EXIF
+  orientation reject before a training result exists.
+- Horizontal flip remains explicit and exhaustive for frozen directional
+  action/verifier IDs, all label locations, episode fields, and normalized
+  top-left subject regions.  Exact representable geometry double-flips; values
+  that lose an IEEE-754 bit reject rather than round.
 - Photometric policy is identity-only.  Non-identity photometric and all crop
-  specifications reject with `requires_reannotation`; there is no label patch
-  API and no cosmetic keep/lighting-label mutation path.
-- `AUGMENTATION_CONFIG` is recursively immutable.  Its pinned digest binds the
-  exact label schema, runtime contract, M3 schemas, explicit remap/schedule
-  authorities, protected categories, decoder name/version, orientation
-  semantics, resource caps, and fixture hashes.  Runtime Pillow must be the
-  existing M3 decoder version `12.2.0`; a mismatch fails closed.  No new
-  dependency or unpinned lock entry was added; `ml/camera_coach/requirements.lock`
-  is outside this slice and does not contain Pillow, so production environment
-  packaging remains an external prerequisite.
+  specifications reject with `requires_reannotation`; no label patch API
+  exists.  Grouped transforms always transform every identified asset.
+- `validate_result` replays the transform from the source bundle and trusted
+  schedule.  `validate_lineage_batch` requires the authority's complete source
+  and job sets, replays M3 over every actual asset, and rejects duplicate,
+  missing, extra, empty, or cross-split family jobs.
+
+## Frozen bindings
+
+```text
+augmentation_config_sha256=3303ffdedd1796343ec5fce85d092c5ba7676e434fee65fb146a4ca5b0efe9a5
+schedule_authority_sha256=9b916392542ffc2145f4e19e6251254a8f9c6dfbfe31eb7011ecfb8d29a93d18
+cluster_receipt_sha256=f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1
+split_manifest_sha256=580d4bbf6b1238adace00b95de9511e6c8b851c6cc1a92640a5106d92e2af7b
+manifest_sha256=d105df0df2b98fe780fe3212623f0db1c2b722217a683623cb865aedcde3f040
+```
 
 ## Exact verification
 
-All commands below were run from the M4-008 worktree:
+All commands ran from the M4-008 worktree:
 
 ```text
 python3 -m py_compile ml/camera_coach/data/augmentations.py ml/camera_coach/data/check_augmentations.py ml/camera_coach/data/__init__.py
 ruff check ml/camera_coach/data/augmentations.py ml/camera_coach/data/check_augmentations.py ml/camera_coach/data/__init__.py
-PYTHONHASHSEED=1 python3 -m ml.camera_coach.data.check_augmentations > /tmp/m4-008-v4-seed1.json
-PYTHONHASHSEED=777 python3 -m ml.camera_coach.data.check_augmentations > /tmp/m4-008-v4-seed777.json
-cmp -s /tmp/m4-008-v4-seed1.json /tmp/m4-008-v4-seed777.json
+PYTHONHASHSEED=1 python3 -m ml.camera_coach.data.check_augmentations > /tmp/m4-008-correction-seed1.json
+PYTHONHASHSEED=777 python3 -m ml.camera_coach.data.check_augmentations > /tmp/m4-008-correction-seed777.json
+cmp -s /tmp/m4-008-correction-seed1.json /tmp/m4-008-correction-seed777.json
 python3 tools/camera_dataset_audit.py --self-test
 python3 tools/dataset/camera_coach_check.py --self-test
 python3 -m ml.camera_coach.data.check_preprocessing_parity
@@ -113,55 +102,47 @@ PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap unique_frame_ids=requir
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
 PASS camera-coach self-test valid=3 invalid=90
 preprocessing parity status=pass case_count=50 case_image_digest_count=50 mirrored_cases=25 canonical_digest=2795a72659873d369581b686f29d3fe0b70aa7513db98a28374de3cdb581f26a swift_image_digest=962ee64634f9ccb52d91971fa247e141e7800014609963c54e123b2c225c49a1
-manifest_sha256=58d1b66978f0b1c91dd60b6e56cdb362dd1c26957f59f9157cc2fee8c06cf6fe
+manifest_sha256=d105df0df2b98fe780fe3212623f0db1c2b722217a683623cb865aedcde3f040
 diff_check=pass
 ```
 
-The dual-seed checker output was byte-identical and both runs reported:
+Both checker runs produced the same canonical JSON and reported:
 
 ```json
-{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"c54a4c4ace2165a84a17ea4b8670fba8a3159a772ab371751c4a3206b89d4746","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"70ffac0e5743c93d26bad6cd74a47da021d3ff55adc51ccac9226108b460da23","identity_receipt_sha256":"136438f4826befe19bfbeff5fbce117db7f784709f155198f14653a426831f56","job_count":6,"negative_probe_count":36,"protected_category_count":10,"schedule_sha256":"aec3158e5b8653d8a6fdb4be87f728b270c1bfba8323e8af03412890f2547c0f","split_manifest_sha256":"580d4bbf6b1238adace00b95de9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23,"verifier_pair_count":3}
+{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"3303ffdedd1796343ec5fce85d092c5ba7676e434fee65fb146a4ca5b0efe9a5","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"ec2dade8bd1c85176f0c4f2675a17bdb0573968032f52faba8dfaea2d3c6ebbb","identity_receipt_sha256":"527ac9fda12adbb5007bbb777f555d9633c9a7623d5098fcdcd3d8ccaa980515","job_count":6,"negative_probe_count":49,"protected_category_count":10,"schedule_sha256":"b4fd7f3fa7991be9f929d5d5a08f60d26a1114eee119625229d52cfc17553eda","split_manifest_sha256":"580d4bbf6b1238adace00b95de9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23}
 ```
 
-The checker’s 36 negative probes cover the reviewer attacks: mismatched
-record/media bytes; missing/extra grouped assets; one-asset temporal output;
-forged/rehashed output, split, family, dedup, seed, counter, and transform;
-unknown record/label fields; alternate/partial schedule calls; immutable
-authority/schedule mutation; exported config and fixture-map mutation;
-arbitrary 1×1 fixture bytes; 90° EXIF; truncation; encoded/resource caps;
-multiframe input; bool/non-finite/range/unknown transform values; missing
-grouped authority; and empty/incomplete/duplicate/extra batch or manifest
-records.  Positive coverage includes canonical-valid fixtures, exact
-full-bundle replay, deterministic schedule construction, double-flip geometry,
-all-assets temporal/episode flips, protected-family replay, and a valid
-externally injected grouped production authority.
+The 49 negative probes include the reviewer attacks: public production-loader
+rejection; fixture/production separation; mismatched record/media bytes;
+missing, extra, or one-of-many grouped assets; forged/rehashed output,
+families, split, seed, counter, and transform; unknown record/label fields;
+alternate/partial schedule and authority calls; immutable authority/schedule
+and exported-config mutation; arbitrary 1×1 bytes; EXIF 90°; truncation;
+encoded, width, height, and expanded-pixel caps; multiframe media;
+bool/non-finite/range/unknown transforms; empty/incomplete/duplicate/extra
+lineage batches; cross-split lineage and authority mismatch; and manifest
+reorder/hash/duplicate records.
 
-## Scope, judgments, and non-claims
+## Scope, judgments, and gaps
 
-The changed scope is exactly the five owned files: explicit augmentation owner,
-focused self-check, data exports, zero-record derivation-manifest header, and
-this evidence report. The main judgment is to delete the prior self-issued
-authority/schedule path and require external M3 receipts, while retaining only
-horizontal flip and identity photometric jobs. Crop and all non-identity
-photometric work remain fail-closed pending full reannotation and proof.
+Changed scope is exactly the five owned files: augmentation owner, focused
+self-check, data exports, zero-record derivation manifest, and this evidence.
+The corrective judgment is to delete the self-issued production authority
+surface and retain only a fixture test path until M3 supplies the authenticated
+redacted view.  No production grouped-authority success is claimed.
 
-This work does not claim model quality, image-quality improvement, fairness,
-split balance beyond replay of a supplied M3 receipt, rights approval,
-production admission, feature-vector/logit/mask augmentation, training,
-calibration, Core ML export, candidate selection, runtime enablement, or iOS
-behavior. No locked-test records are inspected or synthesized. The remaining
-external-data limit is concrete: M3-008 currently commits schemas and owner
-code, but no production cluster/split receipt or authenticated complete source
-set exists in this repository. Until that authority is supplied by the M3/data
-owner (with environment packaging for the existing Pillow decoder), grouped
-production augmentation remains intentionally unavailable; synthetic fixture
-checks are not production evidence.
+Remaining external prerequisites are concrete: M3 must supply and verify the
+complete frozen cluster/split/source-set receipt plus the redacted
+train/calibration artifact; environment packaging must provide the existing
+Pillow `12.2.0` runtime (the out-of-scope requirements lock does not contain
+Pillow).  No model-quality or production-enablement evidence exists.
 
-Final owned-file line counts at this verification:
+Final pre-commit line counts:
 
 ```text
-1301 ml/camera_coach/data/augmentations.py
- 372 ml/camera_coach/data/check_augmentations.py
-  77 ml/camera_coach/data/__init__.py
-   1 datasets/camera-coach/v1/derivation-manifest.jsonl
+1395 ml/camera_coach/data/augmentations.py
+489 ml/camera_coach/data/check_augmentations.py
+75 ml/camera_coach/data/__init__.py
+1 datasets/camera-coach/v1/derivation-manifest.jsonl
+148 docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-008-augmentation-policy.md
 ```

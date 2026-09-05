@@ -144,19 +144,108 @@ def _fixtures() -> tuple[list[dict], dict[str, bytes]]:
     return records, assets
 
 
-def _external_authority(records: list[dict], bundles: list[aug.SourceBundle]) -> aug.M3Authority:
-    """Test-only issuance of receipts; production has no builder for this path."""
+def _fixture_m3_items(records: list[dict], assets: dict[str, bytes], root: Path) -> list[m3.MediaItem]:
+    """Issue test cluster input independently of the augmentation owner."""
+    rows: dict[str, dict] = {}
+    for record in records:
+        for asset_id in record["media"]["asset_ids"]:
+            row = rows.setdefault(
+                asset_id,
+                {"record_ids": set(), "sequence_ids": set(), "frame_ordinals": set(), "derivation_family_ids": set()},
+            )
+            row["record_ids"].add(record["record_id"])
+            row["derivation_family_ids"].add(record["provenance"]["derivation_family_id"])
+            if record["record_type"] == "temporal":
+                row["sequence_ids"].add(record["sequence"]["sequence_id"])
+                row["frame_ordinals"].update(
+                    frame["ordinal"] for frame in record["sequence"]["frames"] if frame["asset_id"] == asset_id
+                )
+            elif record["record_type"] == "episode":
+                row["sequence_ids"].add(record["episode"]["episode_id"])
+                row["frame_ordinals"].add(0 if record["episode"]["before"]["asset_id"] == asset_id else 1)
+    items = []
+    for index, asset_id in enumerate(sorted(rows)):
+        encoded = assets[asset_id]
+        path = root / f"fixture-asset-{index}.bin"
+        path.write_bytes(encoded)
+        row = rows[asset_id]
+        items.append(
+            m3.MediaItem(
+                asset_id=asset_id,
+                path=path,
+                record_ids=tuple(sorted(row["record_ids"])),
+                sequence_ids=tuple(sorted(row["sequence_ids"])),
+                frame_ordinals=tuple(sorted(row["frame_ordinals"])),
+                derivation_family_ids=tuple(sorted(row["derivation_family_ids"])),
+                declared_sha256=hashlib.sha256(encoded).hexdigest(),
+            )
+        )
+    return items
+
+
+def _fixture_split_records(records: list[dict]) -> list[m3.SplitRecord]:
+    """Build the metadata-only M3 input independently for fixture issuance."""
+    entries = []
+    for record in records:
+        entry = {
+            "record_id": record["record_id"],
+            "record_type": record["record_type"],
+            "bucket": "synthetic",
+            "rights_disposition": record["provenance"]["rights_disposition"],
+            "source_shoot_id": record["provenance"]["source_shoot_id"],
+            "scene_family_id": record["capture"]["scene_family_id"],
+            "person_family_ids": list(record["capture"]["person_family_ids"]),
+            "location_family_id": record["capture"]["location_family_id"],
+            "time_family_id": record["capture"]["time_family_id"],
+            "take_family_id": record["capture"]["take_family_id"],
+            "device_family_id": record["capture"]["device_family_id"],
+            "derivation_family_id": record["provenance"]["derivation_family_id"],
+            "asset_ids": list(record["media"]["asset_ids"]),
+            "review": copy.deepcopy(record["review"]),
+        }
+        if record["record_type"] == "episode":
+            entry["sequence_id"] = record["episode"]["episode_id"]
+        if record["record_type"] == "temporal":
+            entry["sequence_id"] = record["sequence"]["sequence_id"]
+            entry["sequence"] = {
+                "sequence_id": record["sequence"]["sequence_id"],
+                "derivation_family_id": record["provenance"]["derivation_family_id"],
+                "frames": [
+                    {
+                        "asset_id": frame["asset_id"],
+                        "sequence_id": record["sequence"]["sequence_id"],
+                        "ordinal": frame["ordinal"],
+                        "derivation_family_id": record["provenance"]["derivation_family_id"],
+                    }
+                    for frame in record["sequence"]["frames"]
+                ],
+            }
+        entries.append(entry)
+    payload = {
+        "manifest_type": m3.SPLIT_MANIFEST_TYPE,
+        "schema_id": m3.SPLIT_INPUT_SCHEMA_ID,
+        "schema_version": m3.SCHEMA_VERSION,
+        "entries": entries,
+    }
+    with tempfile.TemporaryDirectory(prefix="camera-augmentation-check-split-") as temp:
+        path = Path(temp) / "fixture-split-input.json"
+        path.write_text(aug.canonical_json(payload), encoding="utf-8")
+        return m3.load_split_manifest(path)
+
+
+def _fixture_authority(records: list[dict], assets: dict[str, bytes]) -> aug.M3Authority:
+    """Test-only receipt issuance; production authority loading is disabled."""
     with tempfile.TemporaryDirectory(prefix="camera-augmentation-check-authority-") as temp:
-        cluster = m3.cluster_media(aug._m3_items(bundles, Path(temp)))
+        cluster = m3.cluster_media(_fixture_m3_items(records, assets, Path(temp)))
     split = m3.split_records(
-        aug._m3_records_from_records(records),
+        _fixture_split_records(records),
         cluster,
         seed=0,
         train_ratio=0.8,
         calibration_ratio=0.1,
         locked_test_ratio=0.1,
     )
-    return aug.load_m3_authority(records, cluster, split)
+    return aug._load_fixture_authority(records, cluster, split)
 
 
 def _rehashed(result: dict) -> dict:
@@ -169,7 +258,7 @@ def _rehashed(result: dict) -> dict:
 def _run() -> dict:
     records, asset_bytes = _fixtures()
     bundles = [aug.make_source_bundle(record, {asset_id: asset_bytes[asset_id] for asset_id in record["media"]["asset_ids"]}) for record in records]
-    authority = _external_authority(records, bundles)
+    authority = _fixture_authority(records, asset_bytes)
     schedule = aug.make_trusted_schedule(authority)
     schedule_repeat = aug.make_trusted_schedule(authority)
     assert schedule.schedule_sha256 == schedule_repeat.schedule_sha256
@@ -178,7 +267,35 @@ def _run() -> dict:
     for result in results:
         job = schedule.job(result["job_id"])
         aug.validate_result(by_id[job.record_id], result, authority=authority, schedule=schedule)
+        assert result["lineage"]["source_split"] == "fixture"
+        assert result["lineage"]["split_owner"] == "fixture"
+    assert authority.authority_kind == "fixture"
+    assert schedule.schedule()["authority_kind"] == "fixture"
+
+    negatives = 0
+    def reject(*args, **kwargs):
+        nonlocal negatives
+        _reject(*args, **kwargs)
+        negatives += 1
+
     aug.validate_lineage_batch(bundles, results, authority=authority, schedule=schedule)
+
+    # Batch cardinality and authority identity are checked independently of
+    # the per-result receipt.  A complete source set is the authority's set,
+    # not a caller-selected subset.
+    reject(aug.validate_lineage_batch, [], [], authority=authority, schedule=schedule)
+    reject(aug.validate_lineage_batch, bundles, results[:-1], authority=authority, schedule=schedule)
+    duplicate_results = results[:-1] + [copy.deepcopy(results[0])]
+    reject(aug.validate_lineage_batch, bundles, duplicate_results, authority=authority, schedule=schedule)
+    reject(aug.validate_lineage_batch, bundles, results + [copy.deepcopy(results[0])], authority=authority, schedule=schedule)
+    reject(aug.validate_lineage_batch, bundles + [bundles[0]], results, authority=authority, schedule=schedule)
+    cross_split_results = copy.deepcopy(results)
+    cross_split_results[0]["lineage"]["source_split"] = "train"
+    cross_split_results[0]["lineage"]["split_owner"] = "train"
+    cross_split_results[0] = _rehashed(cross_split_results[0])
+    reject(aug.validate_lineage_batch, bundles, cross_split_results, authority=authority, schedule=schedule)
+    other_authority = _fixture_authority(records, asset_bytes)
+    reject(aug.validate_lineage_batch, bundles, results, authority=other_authority, schedule=schedule)
 
     # Every direction-bearing label location and normalized geometry uses an
     # independent oracle; exact representable coordinates round-trip twice.
@@ -200,12 +317,6 @@ def _run() -> dict:
                 with Image.open(BytesIO(asset_bytes[asset_id])) as image:
                     original = [[list(image.convert("RGB").getpixel((x, y))) for x in range(image.width)] for y in range(image.height)]
                 assert _oracle_pixels(output) == original
-
-    negatives = 0
-    def reject(*args, **kwargs):
-        nonlocal negatives
-        _reject(*args, **kwargs)
-        negatives += 1
 
     still_id = records[0]["media"]["asset_ids"][0]
     temporal = records[1]
@@ -249,10 +360,24 @@ def _run() -> dict:
     unknown_label["label"]["selected_action_id"] = "unknown_action"
     reject(aug.make_source_bundle, unknown_label, {still_id: asset_bytes[still_id]})
 
+    # Production authority loading is hard-disabled; only the private
+    # fixture-only path above can issue an in-repo authority.
+    reject(aug.load_m3_authority, records, authority.cluster_receipt(), authority.split_receipt())
+    production_record = copy.deepcopy(records[1])
+    production_record["split"] = "train"
+    production_record["provenance"]["source_kind"] = "owned"
+    production_record["provenance"]["rights_disposition"] = "approved"
+    reject(aug._load_fixture_authority, [production_record], authority.cluster_receipt(), authority.split_receipt())
+    production_still = copy.deepcopy(records[0])
+    production_still["split"] = "train"
+    production_still["provenance"]["source_kind"] = "owned"
+    production_still["provenance"]["rights_disposition"] = "approved"
+    reject(aug.make_source_bundle, production_still, {still_id: asset_bytes[still_id]})
+
     # No caller can inject an alternative/partial schedule or transform spec.
     reject(aug.make_trusted_schedule, bundles)
     reject(aug.make_trusted_schedule, authority, [{"job_id": "forged"}])
-    reject(aug.load_m3_authority, records[:1], authority.cluster_receipt(), authority.split_receipt())
+    reject(aug._load_fixture_authority, records[:1], authority.cluster_receipt(), authority.split_receipt())
     reject(aug._validate_transform, "photometric", {})
     reject(aug._validate_transform, "crop", {})
     reject(aug._validate_transform, "unknown", {})
@@ -307,6 +432,10 @@ def _run() -> dict:
     reject(aug.make_source_bundle, records[0], {still_id: output.getvalue()})
     reject(aug.make_source_bundle, records[0], {still_id: asset_bytes[still_id][:-2]})
     reject(aug.make_source_bundle, records[0], {still_id: b"x" * (aug.MAX_ENCODED_BYTES + 1)})
+    for size in ((aug.MAX_WIDTH + 1, 1), (1, aug.MAX_HEIGHT + 1), (513, 512)):
+        oversized = BytesIO()
+        Image.new("RGB", size, (3, 5, 7)).save(oversized, format="PNG")
+        reject(aug.make_source_bundle, records[0], {still_id: oversized.getvalue()})
     gif = BytesIO()
     Image.new("RGB", (2, 2), (0, 0, 0)).save(
         gif,
@@ -316,21 +445,9 @@ def _run() -> dict:
     )
     reject(aug.make_source_bundle, records[0], {still_id: gif.getvalue()})
 
-    # The grouped production path is non-circular: receipts are injected from
-    # canonical records and a per-asset M3 receipt before bundle admission.
-    production_record = copy.deepcopy(temporal)
-    production_record["split"] = "train"
-    production_record["provenance"]["source_kind"] = "owned"
-    production_record["provenance"]["rights_disposition"] = "approved"
-    production_record["provenance"]["rights_record_id"] = "rights-production-fixture"
+    # Grouped production remains unavailable until the independent authority
+    # artifact exists; no test fixture is allowed to masquerade as production.
     assert not validate_record(production_record, {}, admission=False)
-    production_cluster_bundle = bundles[1]
-    production_authority = _external_authority([production_record], [production_cluster_bundle])
-    production_bundle = aug.make_source_bundle(production_record, temporal_assets, authority=production_authority)
-    production_schedule = aug.make_trusted_schedule(production_authority)
-    production_results = [aug.augment(production_bundle, production_schedule, job["job_id"]) for job in production_schedule.jobs]
-    aug.validate_lineage_batch([production_bundle], production_results, authority=production_authority, schedule=production_schedule)
-    assert production_authority.asset_ids == tuple(sorted(temporal_assets))
     reject(aug.make_source_bundle, production_record, temporal_assets)
 
     # Manifest remains a canonical zero-record template.
