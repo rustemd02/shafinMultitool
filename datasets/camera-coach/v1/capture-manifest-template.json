@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/datasets/camera-coach/v1/capture-manifest-template.json",
+  "title": "Camera Coach capture manifest template v1",
+  "description": "Operator template only. It contains no source data, rights grant, calibration result, or model output.",
+  "schema_id": "camera-capture-manifest-v1",
+  "schema_version": "v1.0.0",
+  "template_only": true,
+  "raw_storage": "outside_git",
+  "required_entry_fields": [
+    "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "person_family_ids",
+    "location_family_id", "device_family_id", "orientation", "lens", "lighting", "capture_mode",
+    "asset_ids", "derivation_family_id", "rights_record_id", "consent_record_id"
+  ],
+  "capture_modes": {
+    "still": {
+      "unit": "one deliberate still decision per scene/take",
+      "requirements": [
+        "capture one intentional frame after the operator settles the camera",
+        "do not count burst-adjacent frames as independent records",
+        "record any discarded burst as the same take_family_id and derivation family"
+      ]
+    },
+    "temporal_sequence": {
+      "unit": "one complete live sequence per take",
+      "requirements": [
+        "keep all frames in one source_shoot_id, take_family_id, and split",
+        "record monotonic timestamps and state transitions",
+        "do not split individual frames across train, calibration, or holdout"
+      ]
+    },
+    "before_after_episode": {
+      "unit": "before frame, one named action, and after frame",
+      "requirements": [
+        "preserve subject and scene continuity where the action is meant to be evaluated",
+        "label the outcome as correct, no_op, opposite, overshoot, track_loss, or incomparable",
+        "pilot each action with correct, no-op, and opposite examples before scaling"
+      ]
+    }
+  },
+  "pilot_checklist": [
+    {"id":"independent_decision","check":"Each counted record is a deliberate source decision, not a burst neighbour, crop, color variant, or duplicated frame."},
+    {"id":"family_keys","check":"scene_family_id, take_family_id, time_family_id, and derivation_family_id are present and stable."},
+    {"id":"coverage","check":"Pilot spans multiple devices, people, locations, portrait/landscape orientations, lenses, and lighting conditions."},
+    {"id":"rights","check":"A rights_record_id is present and its disposition/allowed use is resolved before admission."},
+    {"id":"action_episodes","check":"Before/after pilot includes correct, no-op, and opposite outcomes for each exercised action."},
+    {"id":"split_isolation","check":"A source shoot, take, time, person, location, and derivation family occurs in one split only."},
+    {"id":"audit_receipt","check":"Manifest entry hashes and operator/date are retained outside raw media storage."}
+  ]
+}

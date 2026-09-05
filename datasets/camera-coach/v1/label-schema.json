@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/datasets/camera-coach/v1/label-schema.json",
+  "schema_version": "v1.0.0",
+  "title": "Camera Coach label record v1",
+  "description": "Closed human-label contract shared by still, temporal, and before/after Camera Coach records. Candidate/model outputs and locked labels are intentionally absent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "schema_version", "record_id", "record_type", "matrix_class", "split",
+    "media", "capture", "provenance", "subject", "style_intent", "label", "review"
+  ],
+  "properties": {
+    "schema_id": {"enum": ["camera-label-v1", "camera-temporal-v1", "camera-episode-v1"]},
+    "schema_version": {"const": "v1.0.0"},
+    "record_id": {"type": "string", "pattern": "^cam-[a-z0-9][a-z0-9._-]*$"},
+    "record_type": {"enum": ["still", "temporal", "episode"]},
+    "matrix_class": {"enum": ["single_person", "two_people", "object_or_food", "interior", "street_or_landscape", "difficult_light", "already_good_frame"]},
+    "split": {"enum": ["train", "calibration", "holdout", "quarantine", "fixture"]},
+    "media": {"$ref": "#/$defs/media"},
+    "capture": {"$ref": "#/$defs/capture"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "subject": {"$ref": "#/$defs/subject"},
+    "style_intent": {"$ref": "#/$defs/styleIntent"},
+    "label": {"$ref": "#/$defs/label"},
+    "review": {"$ref": "#/$defs/review"},
+    "sequence": {"type": "object"},
+    "episode": {"type": "object"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "familyId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "media": {
+      "type": "object", "additionalProperties": false,
+      "required": ["asset_id", "asset_ids", "content_sha256", "hash_algorithm", "storage"],
+      "properties": {
+        "asset_id": {"$ref": "#/$defs/id"},
+        "asset_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "hash_algorithm": {"const": "sha256"},
+        "storage": {"const": "outside_git"}
+      }
+    },
+    "capture": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "capture_mode"],
+      "properties": {
+        "scene_family_id": {"$ref": "#/$defs/familyId"},
+        "take_family_id": {"$ref": "#/$defs/familyId"},
+        "time_family_id": {"$ref": "#/$defs/familyId"},
+        "location_family_id": {"$ref": "#/$defs/familyId"},
+        "person_family_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/familyId"}},
+        "device_family_id": {"$ref": "#/$defs/familyId"},
+        "orientation": {"enum": ["portrait", "landscape", "square", "unknown"]},
+        "lens": {"enum": ["front", "ultrawide", "wide", "telephoto", "macro", "unknown"]},
+        "lighting": {"enum": ["daylight", "overcast", "tungsten", "mixed", "low_key", "backlit", "high_key", "practical", "flicker", "unknown"]},
+        "capture_mode": {"enum": ["still", "temporal_sequence", "before_after_episode"]}
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_shoot_id", "source_asset_ids", "derivation_family_id", "rights_record_id", "rights_disposition", "source_kind", "raw_storage"],
+      "properties": {
+        "source_shoot_id": {"$ref": "#/$defs/id"},
+        "source_asset_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "derivation_family_id": {"$ref": "#/$defs/familyId"},
+        "rights_record_id": {"$ref": "#/$defs/id"},
+        "rights_disposition": {"enum": ["approved", "denied", "unresolved", "pending", "withdrawn", "fixture_only"]},
+        "source_kind": {"enum": ["owned", "licensed", "consented", "public", "runtime_export", "synthetic_fixture"]},
+        "raw_storage": {"const": "outside_git"}
+      }
+    },
+    "subjectCandidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["subject_id", "kind", "reference"],
+      "properties": {
+        "subject_id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["face", "person", "object", "group", "scene", "unknown"]},
+        "reference": {"$ref": "#/$defs/id"},
+        "region": {
+          "type": "array", "prefixItems": [
+            {"type": "number", "minimum": 0, "maximum": 1}, {"type": "number", "minimum": 0, "maximum": 1},
+            {"type": "number", "minimum": 0, "maximum": 1}, {"type": "number", "minimum": 0, "maximum": 1}
+          ], "items": false, "minItems": 4, "maxItems": 4
+        }
+      }
+    },
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "candidates", "selected_subject_id"],
+      "properties": {
+        "status": {"enum": ["selected", "ambiguous", "none", "abstain"]},
+        "candidates": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/subjectCandidate"}},
+        "selected_subject_id": {"type": ["string", "null"]}
+      }
+    },
+    "styleIntent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["style_id", "intentional", "basis"],
+      "properties": {
+        "style_id": {"enum": ["naturalistic", "cinematic", "documentary", "commercial", "stylized", "already_good", "unknown"]},
+        "intentional": {"type": "boolean"},
+        "basis": {"enum": ["capture_brief", "annotator_observed", "not_available", "fixture"]}
+      }
+    },
+    "issue": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issue_id", "severity", "evidence", "acceptable_action_ids", "forbidden_action_ids"],
+      "properties": {
+        "issue_id": {"enum": [
+          "insufficient_look_space", "subject_edge_pressure", "object_edge_pressure", "tight_framing",
+          "weak_subject_prominence", "weak_object_prominence", "camera_height_mismatch", "perspective_mismatch",
+          "background_competition", "tilted_horizon", "weak_subject_background_separation", "flat_depth",
+          "front_light_deficit", "prop_breaks_balance", "object_conflicts_with_subject", "face_contour_occlusion",
+          "subject_blends_into_dark_background", "bright_background_pull", "unclear_focus_hierarchy",
+          "timing_blocker_in_frame", "background_clutter"
+        ]},
+        "severity": {"enum": ["minor", "moderate", "major", "critical"]},
+        "evidence": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["visible_composition", "subject_relation", "lighting", "horizon", "motion", "temporal_change", "before_after_metric", "human_context"]}},
+        "acceptable_action_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/actionId"}},
+        "forbidden_action_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/actionId"}}
+      }
+    },
+    "label": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issues", "acceptable_action_ids", "forbidden_action_ids", "selected_action_id", "selection_status", "keep_decision", "abstention", "verification"],
+      "properties": {
+        "issues": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/issue"}},
+        "acceptable_action_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/actionId"}},
+        "forbidden_action_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/actionId"}},
+        "selected_action_id": {"type": ["string", "null"]},
+        "selection_status": {"enum": ["single", "multiple_valid", "no_action", "abstain"]},
+        "keep_decision": {"enum": ["keep", "not_keep", "uncertain"]},
+        "abstention": {
+          "type": "object", "additionalProperties": false, "required": ["status", "reasons"],
+          "properties": {
+            "status": {"enum": ["none", "abstain"]},
+            "reasons": {"type": "array", "uniqueItems": true, "items": {"enum": ["subject_unclear", "issue_unclear", "style_intent_unclear", "insufficient_visibility", "rights_or_privacy_blocker", "before_after_not_comparable", "other"]}}
+          }
+        },
+        "verification": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["action_id", "verifier_id", "result", "measurement"],
+            "properties": {
+              "action_id": {"$ref": "#/$defs/verificationActionId"},
+              "verifier_id": {"$ref": "#/$defs/verifierId"},
+              "result": {"enum": ["pass", "fail", "inconclusive", "not_run"]},
+              "measurement": {"enum": ["single_frame", "before_after", "temporal_timeline", "not_observed"]}
+            }
+          }
+        }
+      }
+    },
+    "actionId": {
+      "enum": [
+        "move_frame_left", "move_frame_right", "move_frame_up", "move_frame_down", "increase_subject_size",
+        "reduce_background_distractions", "change_angle", "improve_front_light", "level_horizon", "leave_frame_as_is",
+        "step_back", "step_closer", "lower_camera", "raise_camera", "rotate_subject_toward_light",
+        "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right",
+        "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance",
+        "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background",
+        "wait_for_background_clearance", "keep_current_setup"
+      ]
+    },
+    "verificationActionId": {
+      "enum": [
+        "move_frame_left", "move_frame_right", "move_frame_up", "move_frame_down", "increase_subject_size",
+        "reduce_background_distractions", "change_angle", "improve_front_light", "level_horizon", "leave_frame_as_is",
+        "step_back", "step_closer", "lower_camera", "raise_camera", "rotate_subject_toward_light",
+        "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right",
+        "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance",
+        "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background",
+        "wait_for_background_clearance", "keep_current_setup", "abstain"
+      ]
+    },
+    "verifierId": {
+      "enum": [
+        "framing_left_improves", "framing_right_improves", "headroom_or_upper_boundary_improves", "lower_frame_context_improves",
+        "subject_prominence_increases", "background_competition_decreases", "background_or_perspective_improves",
+        "subject_exposure_improves", "horizon_tilt_decreases", "frame_remains_acceptable", "framing_breathing_room_increases",
+        "perspective_height_improves", "subject_light_direction_improves", "subject_position_improves_left", "subject_position_improves_right",
+        "subject_separation_increases", "object_position_improves_left", "object_position_improves_right",
+        "object_depth_relation_improves_forward", "object_depth_relation_improves_back", "object_balance_improves",
+        "transient_blocker_clears", "insufficient_evidence"
+      ]
+    },
+    "review": {
+      "type": "object", "additionalProperties": false, "required": ["status", "vote_history", "adjudication_history"],
+      "properties": {
+        "status": {"enum": ["unreviewed", "in_review", "dual_reviewed", "adjudicated", "rejected"]},
+        "vote_history": {
+          "type": "array", "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["vote_id", "annotator_id", "submitted_at", "decision"],
+            "properties": {
+              "vote_id": {"$ref": "#/$defs/id"}, "annotator_id": {"$ref": "#/$defs/id"},
+              "submitted_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+              "decision": {"enum": ["accept", "reject", "abstain"]}
+            }
+          }
+        },
+        "adjudication_history": {
+          "type": "array", "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["adjudication_id", "adjudicator_id", "occurred_at", "based_on_vote_ids", "outcome"],
+            "properties": {
+              "adjudication_id": {"$ref": "#/$defs/id"}, "adjudicator_id": {"$ref": "#/$defs/id"},
+              "occurred_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+              "based_on_vote_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+              "outcome": {"enum": ["accepted", "rejected", "quarantined"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

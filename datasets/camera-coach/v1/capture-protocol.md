@@ -1,0 +1,135 @@
+# Camera Coach capture protocol v1
+
+Status: operational draft; `schema_version=v1.0.0`.
+
+This protocol defines how future Camera Coach source shoots are recorded. It
+does not claim that any source has been collected, licensed, consented, or
+calibrated. Raw media and rights-uncleared material stay outside Git. Only
+versioned metadata and hashes may be admitted to a release manifest.
+
+## Unit of capture and stable families
+
+The atomic capture unit is a deliberate source decision, not a file count.
+Every entry receives stable IDs for:
+
+- `source_shoot_id`: one controlled session with one source owner;
+- `scene_family_id`: the same physical scene and layout;
+- `take_family_id`: one continuous take or still decision window;
+- `time_family_id`: a bounded lighting/people/time condition;
+- `location_family_id` and `person_family_ids`: privacy-safe grouping keys;
+- `device_family_id`, orientation, lens, and lighting condition;
+- `derivation_family_id`: the source plus all crops, color variants, burst
+  neighbours, sequence frames, and episode views derived from it.
+
+The family IDs are split-protection keys. A family must occur in exactly one of
+`train`, `calibration`, or `holdout`; ambiguous or rights-incomplete entries go
+to `quarantine`. A release owner, not the capture operator, assigns the split.
+
+## Coverage matrix
+
+Each pilot and later collection plan records observed coverage across all seven
+matrix classes. The table is a coverage requirement, not a claim that the
+requirement has already been met.
+
+| Matrix class | Include deliberate variation |
+|---|---|
+| `single_person` | talking head, portrait, actor, seated/standing, headroom, look-space, wardrobe and skin-tone variation |
+| `two_people` | dialogue, balanced group, depth difference, partial occlusion, similar saliency, crossing, and no-random-face-selection negatives |
+| `object_or_food` | selected ROI, plates/products/props, reflective surfaces, clutter, scale changes, and no-clear-subject cases |
+| `interior` | rooms/workspaces, architecture, no-person scenes, distributed interest, verticals, window light, and deliberate asymmetry |
+| `street_or_landscape` | horizons, architecture, moving people, wide scenes, foreground layers, intentional tilt, and no-single-subject cases |
+| `difficult_light` | low-key, mixed temperature, clipping, backlight, window hotspot, practicals, flicker, and intentional silhouette |
+| `already_good_frame` | centered/off-center compositions, film-like frames, balanced groups, negative space, low-key, and unconventional but strong framing |
+
+Across the matrix, plan independent source shoots across multiple devices,
+people, locations, portrait and landscape orientations, lenses, and lighting
+conditions. Record what was actually captured in the manifest; never fill a
+missing dimension with a synthetic or assumed value.
+
+## Still capture
+
+1. Set the scene and record all family/device/orientation/lens/light fields.
+2. Let the operator settle the camera, then capture one intentional still
+   decision for the take.
+3. If a burst or rapid retry is used, keep every frame in the same
+   `take_family_id` and `derivation_family_id`. Select at most one independent
+   source decision. Mark adjacent frames, crops, resizes, and color variants as
+   non-independent derivatives in the derivation manifest.
+4. Record the asset IDs and SHA-256 hashes without copying raw media into Git.
+5. Stop admission when source, rights, privacy, or family metadata is missing.
+
+No still quota may be satisfied by burst-adjacent frames, synthetic images,
+model outputs, or post-hoc crops of one decision.
+
+## Temporal sequence capture
+
+Capture one complete sequence per take. The record stores monotonic frame
+timestamps, frame ordinals, asset IDs, and a state timeline such as
+`acquire`, `stable`, `moving`, `rotation`, `lens_change`,
+`lighting_transition`, or `scene_cut`.
+
+The sequence remains one record and one split. Never split frames into separate
+partitions, count each frame as an independent still, or use a later frame as a
+new source shoot. Include sequences that exercise subject acquisition,
+tracking, motion, advice stability, device rotation, lens changes, lighting
+transitions, and scene cuts when those conditions are available.
+
+## Before/after episode capture
+
+An episode contains exactly a before asset, one named action, and an after asset
+from the same source context. The action must be one of the closed action IDs in
+`label-schema.json`. Record the action-specific verifier and one explicit
+outcome:
+
+- `correct`: the named action moves the intended condition in the expected
+  direction;
+- `no_op`: the action was performed but the relevant condition did not change;
+- `opposite`: the condition moved in the wrong direction;
+- `overshoot`: the action moved past the intended acceptable range;
+- `track_loss`: the subject or reference was lost;
+- `incomparable`: before and after cannot be compared safely.
+
+The pilot must exercise correct, no-op, and opposite outcomes for each action
+that it tests. Overshoot, track loss, and incomparable outcomes are preserved
+as failure/abstention evidence, never silently converted to `no_op`.
+
+## Rights and provenance gate
+
+Before a record can enter train, calibration, or holdout, the validator must
+resolve:
+
+1. `source_shoot_id` and every source asset ID in `source-shoots.jsonl`;
+2. `rights_record_id`, source-shoot match, asset scope, explicit disposition,
+   and allowed use in `rights-manifest.jsonl` (including its consent record);
+3. `derivation_family_id`, record link, source-shoot link, and independence in
+   `derivation-manifest.jsonl`;
+4. all family fields against the source-shoot entry.
+
+Only `approved` rights with the requested allowed use are eligible. Missing,
+`denied`, `unresolved`, `pending`, `withdrawn`, or `fixture_only` rights are
+not eligible for a release split. They remain quarantine/audit evidence only.
+
+## Auditable pilot manifest
+
+Start from `capture-manifest-template.json`. For every entry, retain the
+operator, UTC timestamp, family IDs, device/lens/light/orientation fields,
+asset IDs, derivation classification, rights record ID, and an external
+receipt/hash reference. A pilot audit is incomplete until each checklist item
+in that template has a recorded pass/fail/blocked result and an evidence
+location. Empty or unobserved fields are not passes.
+
+Minimum pilot audit checklist:
+
+- all seven matrix classes have a planned row and an observed status;
+- stills contain one counted decision per take family;
+- temporal sequences have monotonic timestamps and remain one split group;
+- each exercised action has correct, no-op, and opposite episode rows;
+- device, person, location, orientation, lens, and light variation is recorded;
+- source, rights, and derivation references resolve before annotation;
+- unresolved privacy/rights/family issues are quarantined;
+- no locked labels, candidate outputs, human votes, or model-quality claims are
+  written into capture manifests.
+
+The two-annotator, 35-case calibration and disagreement report belong to the
+annotation workflow and remain pending HUMAN work; capture metadata cannot
+close that requirement.

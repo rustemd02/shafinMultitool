@@ -1,0 +1,265 @@
+{
+  "fixture_id": "camera-coach-foundation-fixtures",
+  "fixture_version": "v1.0.0",
+  "synthetic": true,
+  "purpose": "Validator-only synthetic records; not source data, rights evidence, human votes, calibration, or model quality evidence.",
+  "manifests": {
+    "source_shoots": [
+      {
+        "manifest_type": "source_shoot_entry",
+        "schema_id": "camera-source-shoot-v1",
+        "manifest_version": "v1.0.0",
+        "source_shoot_id": "shoot-fixture-001",
+        "scene_family_id": "scene-fixture-001",
+        "take_family_id": "take-fixture-001",
+        "time_family_id": "time-fixture-001",
+        "location_family_id": "location-fixture-001",
+        "person_family_ids": ["person-fixture-001"],
+        "device_family_id": "device-fixture-001",
+        "orientation": "portrait",
+        "lens": "wide",
+        "lighting": "daylight",
+        "asset_ids": ["asset-still-fixture-001"],
+        "storage": "outside_git",
+        "source_kind": "synthetic_fixture"
+      },
+      {
+        "manifest_type": "source_shoot_entry",
+        "schema_id": "camera-source-shoot-v1",
+        "manifest_version": "v1.0.0",
+        "source_shoot_id": "shoot-fixture-002",
+        "scene_family_id": "scene-fixture-002",
+        "take_family_id": "take-fixture-002",
+        "time_family_id": "time-fixture-002",
+        "location_family_id": "location-fixture-002",
+        "person_family_ids": ["person-fixture-002", "person-fixture-003"],
+        "device_family_id": "device-fixture-002",
+        "orientation": "landscape",
+        "lens": "telephoto",
+        "lighting": "mixed",
+        "asset_ids": ["asset-seq-fixture-002", "asset-seq-fixture-002-f0", "asset-seq-fixture-002-f1", "asset-seq-fixture-002-f2"],
+        "storage": "outside_git",
+        "source_kind": "synthetic_fixture"
+      },
+      {
+        "manifest_type": "source_shoot_entry",
+        "schema_id": "camera-source-shoot-v1",
+        "manifest_version": "v1.0.0",
+        "source_shoot_id": "shoot-fixture-003",
+        "scene_family_id": "scene-fixture-003",
+        "take_family_id": "take-fixture-003",
+        "time_family_id": "time-fixture-003",
+        "location_family_id": "location-fixture-003",
+        "person_family_ids": [],
+        "device_family_id": "device-fixture-003",
+        "orientation": "square",
+        "lens": "macro",
+        "lighting": "low_key",
+        "asset_ids": ["asset-episode-fixture-003", "asset-episode-fixture-003-before", "asset-episode-fixture-003-after"],
+        "storage": "outside_git",
+        "source_kind": "synthetic_fixture"
+      }
+    ],
+    "rights": [
+      {
+        "manifest_type": "rights_entry",
+        "schema_id": "camera-rights-entry-v1",
+        "manifest_version": "v1.0.0",
+        "rights_record_id": "rights-fixture-001",
+        "source_shoot_id": "shoot-fixture-001",
+        "consent_record_id": "consent-fixture-001",
+        "asset_ids": ["asset-still-fixture-001"],
+        "disposition": "fixture_only",
+        "allowed_uses": ["fixture"],
+        "evidence_ref": "synthetic-fixture-only",
+        "recorded_at": "2026-09-05T00:00:00Z"
+      },
+      {
+        "manifest_type": "rights_entry",
+        "schema_id": "camera-rights-entry-v1",
+        "manifest_version": "v1.0.0",
+        "rights_record_id": "rights-fixture-002",
+        "source_shoot_id": "shoot-fixture-002",
+        "consent_record_id": "consent-fixture-002",
+        "asset_ids": ["asset-seq-fixture-002", "asset-seq-fixture-002-f0", "asset-seq-fixture-002-f1", "asset-seq-fixture-002-f2"],
+        "disposition": "fixture_only",
+        "allowed_uses": ["fixture"],
+        "evidence_ref": "synthetic-fixture-only",
+        "recorded_at": "2026-09-05T00:00:00Z"
+      },
+      {
+        "manifest_type": "rights_entry",
+        "schema_id": "camera-rights-entry-v1",
+        "manifest_version": "v1.0.0",
+        "rights_record_id": "rights-fixture-003",
+        "source_shoot_id": "shoot-fixture-003",
+        "consent_record_id": "consent-fixture-003",
+        "asset_ids": ["asset-episode-fixture-003", "asset-episode-fixture-003-before", "asset-episode-fixture-003-after"],
+        "disposition": "fixture_only",
+        "allowed_uses": ["fixture"],
+        "evidence_ref": "synthetic-fixture-only",
+        "recorded_at": "2026-09-05T00:00:00Z"
+      }
+    ],
+    "derivations": [
+      {
+        "manifest_type": "derivation_entry",
+        "schema_id": "camera-derivation-entry-v1",
+        "manifest_version": "v1.0.0",
+        "derivation_id": "derivation-fixture-001",
+        "source_shoot_id": "shoot-fixture-001",
+        "record_id": "cam-still-fixture-001",
+        "input_asset_ids": ["asset-still-fixture-001"],
+        "output_asset_ids": ["asset-still-fixture-001"],
+        "derivation_family_id": "derivation-family-fixture-001",
+        "derivation_kind": "original_still",
+        "is_independent": true,
+        "counts_toward_quota": false
+      },
+      {
+        "manifest_type": "derivation_entry",
+        "schema_id": "camera-derivation-entry-v1",
+        "manifest_version": "v1.0.0",
+        "derivation_id": "derivation-fixture-002",
+        "source_shoot_id": "shoot-fixture-002",
+        "record_id": "cam-temporal-fixture-002",
+        "input_asset_ids": ["asset-seq-fixture-002-f0", "asset-seq-fixture-002-f1", "asset-seq-fixture-002-f2"],
+        "output_asset_ids": ["asset-seq-fixture-002", "asset-seq-fixture-002-f0", "asset-seq-fixture-002-f1", "asset-seq-fixture-002-f2"],
+        "derivation_family_id": "derivation-family-fixture-002",
+        "derivation_kind": "original_temporal_sequence",
+        "is_independent": true,
+        "counts_toward_quota": false
+      },
+      {
+        "manifest_type": "derivation_entry",
+        "schema_id": "camera-derivation-entry-v1",
+        "manifest_version": "v1.0.0",
+        "derivation_id": "derivation-fixture-003",
+        "source_shoot_id": "shoot-fixture-003",
+        "record_id": "cam-episode-fixture-003",
+        "input_asset_ids": ["asset-episode-fixture-003-before", "asset-episode-fixture-003-after"],
+        "output_asset_ids": ["asset-episode-fixture-003", "asset-episode-fixture-003-before", "asset-episode-fixture-003-after"],
+        "derivation_family_id": "derivation-family-fixture-003",
+        "derivation_kind": "original_before_after_episode",
+        "is_independent": true,
+        "counts_toward_quota": false
+      }
+    ]
+  },
+  "valid_records": [
+    {
+      "schema_id": "camera-label-v1",
+      "schema_version": "v1.0.0",
+      "record_id": "cam-still-fixture-001",
+      "record_type": "still",
+      "matrix_class": "single_person",
+      "split": "fixture",
+      "media": {"asset_id":"asset-still-fixture-001", "asset_ids":["asset-still-fixture-001"], "content_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "hash_algorithm":"sha256", "storage":"outside_git"},
+      "capture": {"scene_family_id":"scene-fixture-001", "take_family_id":"take-fixture-001", "time_family_id":"time-fixture-001", "location_family_id":"location-fixture-001", "person_family_ids":["person-fixture-001"], "device_family_id":"device-fixture-001", "orientation":"portrait", "lens":"wide", "lighting":"daylight", "capture_mode":"still"},
+      "provenance": {"source_shoot_id":"shoot-fixture-001", "source_asset_ids":["asset-still-fixture-001"], "derivation_family_id":"derivation-family-fixture-001", "rights_record_id":"rights-fixture-001", "rights_disposition":"fixture_only", "source_kind":"synthetic_fixture", "raw_storage":"outside_git"},
+      "subject": {"status":"selected", "candidates":[{"subject_id":"subject-fixture-001", "kind":"person", "reference":"subject-fixture-001"}], "selected_subject_id":"subject-fixture-001"},
+      "style_intent": {"style_id":"naturalistic", "intentional":true, "basis":"fixture"},
+      "label": {
+        "issues":[{"issue_id":"tight_framing", "severity":"moderate", "evidence":["visible_composition"], "acceptable_action_ids":["step_back", "move_frame_up"], "forbidden_action_ids":["step_closer"]}],
+        "acceptable_action_ids":["step_back", "move_frame_up"],
+        "forbidden_action_ids":["step_closer"],
+        "selected_action_id":"step_back",
+        "selection_status":"multiple_valid",
+        "keep_decision":"not_keep",
+        "abstention":{"status":"none", "reasons":[]},
+        "verification":[
+          {"action_id":"step_back", "verifier_id":"framing_breathing_room_increases", "result":"not_run", "measurement":"single_frame"},
+          {"action_id":"move_frame_up", "verifier_id":"headroom_or_upper_boundary_improves", "result":"not_run", "measurement":"single_frame"}
+        ]
+      },
+      "review": {"status":"unreviewed", "vote_history":[], "adjudication_history":[]}
+    },
+    {
+      "schema_id": "camera-temporal-v1",
+      "schema_version": "v1.0.0",
+      "record_id": "cam-temporal-fixture-002",
+      "record_type": "temporal",
+      "matrix_class": "two_people",
+      "split": "fixture",
+      "media": {"asset_id":"asset-seq-fixture-002", "asset_ids":["asset-seq-fixture-002-f0", "asset-seq-fixture-002-f1", "asset-seq-fixture-002-f2"], "content_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "hash_algorithm":"sha256", "storage":"outside_git"},
+      "capture": {"scene_family_id":"scene-fixture-002", "take_family_id":"take-fixture-002", "time_family_id":"time-fixture-002", "location_family_id":"location-fixture-002", "person_family_ids":["person-fixture-002", "person-fixture-003"], "device_family_id":"device-fixture-002", "orientation":"landscape", "lens":"telephoto", "lighting":"mixed", "capture_mode":"temporal_sequence"},
+      "provenance": {"source_shoot_id":"shoot-fixture-002", "source_asset_ids":["asset-seq-fixture-002-f0", "asset-seq-fixture-002-f1", "asset-seq-fixture-002-f2"], "derivation_family_id":"derivation-family-fixture-002", "rights_record_id":"rights-fixture-002", "rights_disposition":"fixture_only", "source_kind":"synthetic_fixture", "raw_storage":"outside_git"},
+      "subject": {"status":"selected", "candidates":[{"subject_id":"subject-group-fixture-002", "kind":"group", "reference":"subject-group-fixture-002"}], "selected_subject_id":"subject-group-fixture-002"},
+      "style_intent": {"style_id":"cinematic", "intentional":true, "basis":"fixture"},
+      "label": {
+        "issues":[{"issue_id":"background_competition", "severity":"minor", "evidence":["visible_composition", "temporal_change"], "acceptable_action_ids":["change_angle", "wait_for_background_clearance"], "forbidden_action_ids":["leave_frame_as_is"]}],
+        "acceptable_action_ids":["change_angle", "wait_for_background_clearance"],
+        "forbidden_action_ids":["leave_frame_as_is"],
+        "selected_action_id":"change_angle",
+        "selection_status":"multiple_valid",
+        "keep_decision":"not_keep",
+        "abstention":{"status":"none", "reasons":[]},
+        "verification":[
+          {"action_id":"change_angle", "verifier_id":"background_or_perspective_improves", "result":"not_run", "measurement":"temporal_timeline"},
+          {"action_id":"wait_for_background_clearance", "verifier_id":"transient_blocker_clears", "result":"not_run", "measurement":"temporal_timeline"}
+        ]
+      },
+      "review": {"status":"unreviewed", "vote_history":[], "adjudication_history":[]},
+      "sequence": {
+        "sequence_id":"sequence-fixture-002",
+        "frame_count":3,
+        "frames":[
+          {"frame_id":"frame-fixture-002-f0", "ordinal":0, "timestamp_ms":0, "asset_id":"asset-seq-fixture-002-f0", "state":"acquire"},
+          {"frame_id":"frame-fixture-002-f1", "ordinal":1, "timestamp_ms":100, "asset_id":"asset-seq-fixture-002-f1", "state":"stable"},
+          {"frame_id":"frame-fixture-002-f2", "ordinal":2, "timestamp_ms":200, "asset_id":"asset-seq-fixture-002-f2", "state":"moving"}
+        ],
+        "timeline":[{"state":"acquire", "start_frame":0, "end_frame":0}, {"state":"stable", "start_frame":1, "end_frame":1}, {"state":"moving", "start_frame":2, "end_frame":2}]
+      }
+    },
+    {
+      "schema_id": "camera-episode-v1",
+      "schema_version": "v1.0.0",
+      "record_id": "cam-episode-fixture-003",
+      "record_type": "episode",
+      "matrix_class": "object_or_food",
+      "split": "fixture",
+      "media": {"asset_id":"asset-episode-fixture-003", "asset_ids":["asset-episode-fixture-003-before", "asset-episode-fixture-003-after"], "content_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "hash_algorithm":"sha256", "storage":"outside_git"},
+      "capture": {"scene_family_id":"scene-fixture-003", "take_family_id":"take-fixture-003", "time_family_id":"time-fixture-003", "location_family_id":"location-fixture-003", "person_family_ids":[], "device_family_id":"device-fixture-003", "orientation":"square", "lens":"macro", "lighting":"low_key", "capture_mode":"before_after_episode"},
+      "provenance": {"source_shoot_id":"shoot-fixture-003", "source_asset_ids":["asset-episode-fixture-003-before", "asset-episode-fixture-003-after"], "derivation_family_id":"derivation-family-fixture-003", "rights_record_id":"rights-fixture-003", "rights_disposition":"fixture_only", "source_kind":"synthetic_fixture", "raw_storage":"outside_git"},
+      "subject": {"status":"selected", "candidates":[{"subject_id":"object-fixture-003", "kind":"object", "reference":"object-fixture-003"}], "selected_subject_id":"object-fixture-003"},
+      "style_intent": {"style_id":"stylized", "intentional":true, "basis":"fixture"},
+      "label": {
+        "issues":[{"issue_id":"object_conflicts_with_subject", "severity":"major", "evidence":["subject_relation", "before_after_metric"], "acceptable_action_ids":["move_object_right", "remove_distracting_object"], "forbidden_action_ids":["move_object_left"]}],
+        "acceptable_action_ids":["move_object_right", "remove_distracting_object"],
+        "forbidden_action_ids":["move_object_left"],
+        "selected_action_id":"move_object_right",
+        "selection_status":"multiple_valid",
+        "keep_decision":"not_keep",
+        "abstention":{"status":"none", "reasons":[]},
+        "verification":[
+          {"action_id":"move_object_right", "verifier_id":"object_position_improves_right", "result":"pass", "measurement":"before_after"},
+          {"action_id":"remove_distracting_object", "verifier_id":"background_competition_decreases", "result":"not_run", "measurement":"before_after"}
+        ]
+      },
+      "review": {"status":"unreviewed", "vote_history":[], "adjudication_history":[]},
+      "episode": {
+        "episode_id":"episode-fixture-003",
+        "before":{"asset_id":"asset-episode-fixture-003-before", "captured_at":"2026-09-05T00:00:00Z"},
+        "action_step":{"action_id":"move_object_right", "performed_at":"2026-09-05T00:00:01Z"},
+        "after":{"asset_id":"asset-episode-fixture-003-after", "captured_at":"2026-09-05T00:00:02Z"},
+        "outcome":"correct",
+        "outcome_verifier":"object_position_improves_right",
+        "subject_continuity":"same"
+      }
+    }
+  ],
+  "invalid_cases": [
+    {"case_id":"missing-source-shoot", "declared_reason":"missing_source_shoot", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"remove", "path":"provenance.source_shoot_id"}]},
+    {"case_id":"denied-rights", "declared_reason":"rights_not_approved", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"split", "value":"train"},{"target":"record", "operation":"set", "path":"provenance.rights_disposition", "value":"denied"},{"target":"rights", "operation":"set", "path":"disposition", "value":"denied"}]},
+    {"case_id":"unresolved-rights", "declared_reason":"rights_not_approved", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"split", "value":"calibration"},{"target":"record", "operation":"set", "path":"provenance.rights_disposition", "value":"unresolved"},{"target":"rights", "operation":"set", "path":"disposition", "value":"unresolved"}]},
+    {"case_id":"invalid-subject-reference", "declared_reason":"invalid_subject_reference", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"subject.selected_subject_id", "value":"subject-missing"}]},
+    {"case_id":"invalid-action-id", "declared_reason":"invalid_action_id", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"label.acceptable_action_ids", "value":["invent_action"]}]},
+    {"case_id":"invalid-action-verifier", "declared_reason":"invalid_action_verifier", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"label.verification.0.verifier_id", "value":"object_balance_improves"}]},
+    {"case_id":"family-mismatch", "declared_reason":"family_mismatch", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"capture.scene_family_id", "value":"scene-other"}]},
+    {"case_id":"missing-rights-record", "declared_reason":"missing_rights_record", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"provenance.rights_record_id", "value":"rights-missing"}]},
+    {"case_id":"missing-source-asset", "declared_reason":"missing_source_asset", "base_record_id":"cam-temporal-fixture-002", "mutations":[{"target":"record", "operation":"set", "path":"sequence.frames.1.asset_id", "value":"asset-missing"}]},
+    {"case_id":"non-independent-derivation", "declared_reason":"non_independent_derivation", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"derivation", "operation":"set", "path":"is_independent", "value":false},{"target":"derivation", "operation":"set", "path":"counts_toward_quota", "value":true}]},
+    {"case_id":"burst-frame-inflation", "declared_reason":"non_independent_derivation", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"derivation", "operation":"set", "path":"derivation_kind", "value":"burst_frame"}]},
+    {"case_id":"episode-verifier-mismatch", "declared_reason":"invalid_action_verifier", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.outcome_verifier", "value":"object_position_improves_left"}]}
+  ]
+}
