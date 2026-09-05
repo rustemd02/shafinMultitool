@@ -313,7 +313,7 @@ def _validate_capture(capture: Any, errors: list[str]) -> None:
     _require(capture, REQUIRED_CAPTURE_FIELDS, "capture", errors)
     if not isinstance(capture, dict):
         return
-    for field in REQUIRED_CAPTURE_FIELDS - {"person_family_ids"}:
+    for field in sorted(REQUIRED_CAPTURE_FIELDS - {"person_family_ids"}):
         _check_id(capture.get(field), f"capture.{field}", errors)
     persons = _check_list(capture.get("person_family_ids"), "capture.person_family_ids", errors)
     for person in persons:
@@ -596,7 +596,7 @@ def _validate_review(review: Any, errors: list[str]) -> None:
         if len(referenced_vote_ids) != len(based_on) or not referenced_vote_ids.issubset(vote_ids):
             errors.append(_error("unknown_vote_reference", path))
         if occurred_at_instant is not None:
-            for vote_id in referenced_vote_ids:
+            for vote_id in sorted(referenced_vote_ids):
                 submitted_at = vote_times.get(vote_id)
                 if submitted_at is not None and occurred_at_instant <= submitted_at:
                     errors.append(_error("invalid_review_chronology", f"{path}.occurred_at must follow referenced vote {vote_id}"))
@@ -1042,6 +1042,7 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
 
     source_ids: set[str] = set()
     source_assets: dict[str, set[str]] = {}
+    source_asset_owners: dict[str, str] = {}
     for index, entry in enumerate(entries("source_shoots")):
         path = f"manifests.source_shoots[{index}]"
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "asset_ids", "storage", "source_kind"}, path, errors)
@@ -1067,6 +1068,13 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             errors.append(_error("duplicate_manifest_id", f"{path}.asset_ids"))
         for asset_id in assets:
             _check_id(asset_id, f"{path}.asset_ids", errors)
+        if isinstance(source_id, str):
+            for asset_id in asset_ids:
+                owner = source_asset_owners.get(asset_id)
+                if owner is not None and owner != source_id:
+                    errors.append(_error("source_asset_owner_conflict", f"{path}.asset_ids {asset_id} already owned by {owner}"))
+                else:
+                    source_asset_owners[asset_id] = source_id
         if isinstance(source_id, str):
             source_assets[source_id] = asset_set
         person_ids = _check_list(entry.get("person_family_ids"), f"{path}.person_family_ids", errors)
