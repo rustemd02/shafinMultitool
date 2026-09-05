@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete for the autonomous foundation correction batch. This receipt documents
+Complete for the autonomous fourth correction batch. This receipt documents
 contracts and validator evidence only; it is not a collection, rights grant,
 human calibration result, or model-quality claim.
 
@@ -32,27 +32,33 @@ human calibration result, or model-quality claim.
 - `datasets/camera-coach/v1/capture-protocol.md` — independent still,
   temporal, and before/after procedures; burst-frame inflation prevention;
   closed derivation kinds and quota rules; strict timeline coverage;
-  measurable episode verification; source/consent/rights/family gates;
+  measurable episode verification with subject continuity; source/consent/rights/
+  family/review gates;
   seven-class and capture-dimension coverage; explicit external-manifest batch
   admission invocations and duplicate guards.
 - `datasets/camera-coach/v1/annotation-guide.md` — operational rubric for
   subject, canonical SELECT_SUBJECT/fail-closed encoding, issue, action, KEEP,
   ABSTAIN with or without a selected subject, intentional style, verification,
-  temporal segments, episode outcomes, and review.
+  temporal segments, episode outcomes with subject continuity, issue-evidence
+  enum, and release review.
 - `tools/dataset/camera_coach_check.py` — stdlib-only narrow schema declaration,
   canonical-action parity, recursively closed production record keys,
   record/manifest checks, source-authority and media-asset resolution,
   consent/rights resolution, derivation independence/quota and duplicate
   checks, subject/ABSTAIN semantics, family/device split isolation, temporal
-  chronology/full timeline, episode chronology/measurable outcomes, and
-  action-specific verifier checks. Production `--record` and batch admission
-  require explicit source/consent/rights/derivation manifests; embedded
-  synthetic manifests are used only by `--self-test`.
+  chronology/full timeline, episode chronology/measurable outcomes with
+  subject-continuity coupling, exact schema-derived issue evidence, resolved
+  human-review admission, and action-specific verifier checks. Production
+  `--record` and batch admission require explicit source/consent/rights/
+  derivation manifests; embedded synthetic manifests are used only by
+  `--self-test`.
 - `tools/dataset/tests/fixtures/camera-coach-fixtures.json` — explicitly
-  synthetic valid still/temporal/episode records and 44 declared negative
+  synthetic valid still/temporal/episode records and 55 declared negative
   mutation cases, including source relabel, media asset authority, recursive
   unknown fields, subject/ABSTAIN semantics, consent resolution, derivation
-  kind/independence/quota, temporal timeline, and episode outcome probes.
+  kind/independence/quota, temporal timeline, review status/conflict/
+  adjudication, closed issue evidence, and episode outcome/subject-continuity
+  probes.
 - `tools/dataset/tests/fixtures/camera-coach-batch-*.jsonl` — explicitly
   synthetic caller-supplied positive manifests, train/calibration protected-
   family crossing, device-family-only crossing, duplicate record, and duplicate
@@ -69,13 +75,13 @@ PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/m3-dataset-foundation/d
 
 $ python3 tools/dataset/camera_coach_check.py --self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=44
-PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot capture_families=scene/take/time/device/derivation
-PASS M3-005 review_status=unreviewed vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=44
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=55
+PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation
+PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
+PASS camera-coach self-test valid=3 invalid=55
 
-$ python3 -c 'import json; from pathlib import Path; a=json.loads(Path("docs/implementation/camera-coach-contract-v2.json").read_text()); s=json.loads(Path("datasets/camera-coach/v1/label-schema.json").read_text()); assert set(a["approvedActionIDs"]) == set(s["$defs"]["actionId"]["enum"]); assert set(s["$defs"]["verificationActionId"]["enum"]) == set(a["approvedActionIDs"]) | {"abstain"}; print("PASS canonical_action_parity actions=26 verification_actions=27")'
-PASS canonical_action_parity actions=26 verification_actions=27
+$ python3 -c 'import json; from pathlib import Path; a=json.loads(Path("docs/implementation/camera-coach-contract-v2.json").read_text()); s=json.loads(Path("datasets/camera-coach/v1/label-schema.json").read_text()); assert set(a["approvedActionIDs"]) == set(s["$defs"]["actionId"]["enum"]); assert set(s["$defs"]["verificationActionId"]["enum"]) == set(a["approvedActionIDs"]) | {"abstain"}; e=s["$defs"]["issue"]["properties"]["evidence"]["items"]["enum"]; assert e == list(dict.fromkeys(e)); print("PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8")'
+PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8
 
 $ python3 - <<'PY'
 import copy, json, sys
@@ -93,9 +99,9 @@ for case in fixture["invalid_cases"]:
     assert errors and any(case["declared_reason"] in error for error in errors), (case["case_id"], case["declared_reason"], errors)
 print(f"PASS declared_hostile_probes={len(fixture['invalid_cases'])} exact_declared_reasons={len({case['declared_reason'] for case in fixture['invalid_cases']})}")
 PY
-PASS declared_hostile_probes=44 exact_declared_reasons=24
+PASS declared_hostile_probes=55 exact_declared_reasons=28
 
-The self-test and hostile probe loop require every one of the 44 declared
+The self-test and hostile probe loop require every one of the 55 declared
 negative fixtures to fail for its declared reason. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
 assets, recursive unknown `candidate_identity`/`modelOutput`/`label` fields,
@@ -104,16 +110,23 @@ attempts, ABSTAIN status/reason/subject cross-semantics, consent absence and
 denial, closed derivation kinds and independence/quota semantics, duplicate
 record/derivation controls, temporal length/order/timestamps and full timeline
 overlap/gap, all three episode timestamp boundaries, and missing measured
-pass evidence for correct/no-op/opposite/overshoot outcomes.
+pass evidence for correct/no-op/opposite/overshoot outcomes, unreviewed,
+conflicting, and missing-adjudication release review, exact issue evidence
+(`model_output` and unknown strings), and measurable outcomes with lost,
+changed, or unknown subject continuity. The release review gate accepts only
+two distinct accepting votes or a latest accepted adjudication covering every
+vote.
 
 $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
 PASS tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl camera-coach-batch records=2 source_shoots=2 consents=2 rights=2 derivations=2
 
 $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-family.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-negative-derivations.jsonl --fixture-mode
+FAIL review_not_admissible: train requires two independent annotator votes
 FAIL synthetic_source_not_admissible: resolved source_shoot source_kind is synthetic_fixture
 FAIL consent_not_admissible: train requires approved consent and allowed use
 FAIL rights_not_approved: train requires approved rights and allowed use
 FAIL invalid_quota_semantics: train independent record must count toward quota
+FAIL review_not_admissible: calibration requires two independent annotator votes
 FAIL synthetic_source_not_admissible: resolved source_shoot source_kind is synthetic_fixture
 FAIL consent_not_admissible: calibration requires approved consent and allowed use
 FAIL rights_not_approved: calibration requires approved rights and allowed use
@@ -126,27 +139,29 @@ FAIL family_cross_split: location-fixture-001
 FAIL family_cross_split: device-fixture-001
 FAIL family_cross_split: derivation-family-fixture-001
 FAIL family_cross_split: person-fixture-001
-family_exit=1
+exit=1
 
 $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-device.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
+FAIL review_not_admissible: train requires two independent annotator votes
 FAIL synthetic_source_not_admissible: resolved source_shoot source_kind is synthetic_fixture
 FAIL consent_not_admissible: train requires approved consent and allowed use
 FAIL rights_not_approved: train requires approved rights and allowed use
 FAIL invalid_quota_semantics: train independent record must count toward quota
+FAIL review_not_admissible: calibration requires two independent annotator votes
 FAIL synthetic_source_not_admissible: resolved source_shoot source_kind is synthetic_fixture
 FAIL consent_not_admissible: calibration requires approved consent and allowed use
 FAIL rights_not_approved: calibration requires approved rights and allowed use
 FAIL invalid_quota_semantics: calibration independent record must count toward quota
 FAIL family_cross_split: device-fixture-001
-device_exit=1
+exit=1
 
 $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-duplicates.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
 FAIL duplicate_record_id: cam-still-fixture-001
-record_duplicate_exit=1
+exit=1
 
 $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-duplicate-derivations.jsonl --fixture-mode
 FAIL duplicate_derivation_record: cam-still-fixture-001
-derivation_duplicate_exit=1
+exit=1
 
 $ python3 tools/dataset/camera_coach_check.py --record tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl
 input_error: explicit --source-shoots, --consent-manifest, --rights-manifest, and --derivation-manifest are required for admission
@@ -155,14 +170,27 @@ exit=1 (expected: no implicit fixture manifests)
 $ python3 -m py_compile tools/dataset/camera_coach_check.py
 (no output); exit=0
 
-$ python3 <stdlib JSON/JSONL parse loop over datasets/camera-coach/v1 and tools/dataset/tests/fixtures>
+$ python3 - <<'PY'
+import json
+from pathlib import Path
+roots = [Path("datasets/camera-coach/v1"), Path("tools/dataset/tests/fixtures")]
+paths = sorted({path for root in roots for pattern in ("*.json", "*.jsonl") for path in root.rglob(pattern)})
+for path in paths:
+    if path.suffix == ".jsonl":
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.strip():
+                json.loads(line)
+    else:
+        json.loads(path.read_text(encoding="utf-8"))
+print(f"PASS parsed_files={len(paths)} json_and_jsonl={len(paths)}")
+PY
 PASS parsed_files=19 json_and_jsonl=19
 
 $ git diff --check
 (no output); exit=0
 ```
 
-The self-test and hostile probe loop require every one of the 44 declared
+The self-test and hostile probe loop require every one of the 55 declared
 negative fixtures to fail for its declared reason. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
 assets, recursive unknown `candidate_identity`/`modelOutput`/`label` fields,
@@ -171,8 +199,10 @@ attempts, ABSTAIN status/reason/subject cross-semantics, consent absence and
 denial, closed derivation kinds and independence/quota semantics, duplicate
 record/derivation controls, temporal length/order/timestamps and full timeline
 overlap/gap, all three episode timestamp boundaries, and missing measured
-pass evidence for correct/no-op/opposite/overshoot outcomes. The hostile source
-case still fails because the resolved source entry remains
+pass evidence for correct/no-op/opposite/overshoot outcomes, release review
+status/conflict/missing-adjudication, exact closed issue evidence, and
+measurable outcome subject-continuity failures. The hostile source case still
+fails because the resolved source entry remains
 `synthetic_fixture`; claimant fields cannot override source authority.
 
 The validator uses only Python standard-library modules and intentionally does
@@ -193,13 +223,17 @@ structural, closed-key, and referential gates required for this batch.
   permission and are allowed only on the synthetic `fixture` split.
 - Missing, denied, unresolved, pending, withdrawn, or fixture-only rights or
   consent fail train/calibration/holdout admission.
-- Review arrays are empty in fixtures. The required two-annotator, 35-case
-  calibration and disagreement report remain pending HUMAN work.
+- Release splits require resolved human review: two distinct accepting votes or
+  a latest accepted adjudication covering every vote; fixture/quarantine review
+  may remain unreviewed for audit only. Review arrays are empty in fixtures.
+- The required two-annotator, 35-case calibration and disagreement report
+  remain pending HUMAN work; no human agreement, calibration quality, or release
+  readiness claim is made.
 - No raw media, rights-uncleared media, candidate/model outputs, locked labels,
   model downloads, network access, collection, annotation, or training was
   used.
 
 ## Commit
 
-This receipt is included in the local third-correction commit; the worker
+This receipt is included in the local fourth-correction commit; the worker
 return reports its exact SHA.

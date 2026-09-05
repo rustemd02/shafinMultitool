@@ -88,7 +88,9 @@ closed ID:
 Severity is `minor`, `moderate`, `major`, or `critical`. Add at least one
 evidence kind (`visible_composition`, `subject_relation`, `lighting`,
 `horizon`, `motion`, `temporal_change`, `before_after_metric`, or
-`human_context`). An issue may list more than one acceptable action and more
+`human_context`) from the closed `label-schema.json` enum. `model_output` and
+unknown evidence strings are invalid; evidence is an observed fact, not a
+prediction or locked label. An issue may list more than one acceptable action and more
 than one forbidden action. The global action lists must remain consistent with
 the issue lists.
 
@@ -210,7 +212,9 @@ must satisfy `before.captured_at < action_step.performed_at <
 after.captured_at`. Every measurable outcome (`correct`, `no_op`, `opposite`,
 or `overshoot`) requires the matching label verification to be `pass` with
 `before_after` measurement; failure or inconclusive evidence is not measurable
-proof. Record the outcome as `correct`, `no_op`, `opposite`, `overshoot`,
+proof. Every measurable outcome also requires `subject_continuity=same`; if
+the subject is changed, lost, or unknown, use `track_loss`/`incomparable` or
+ABSTAIN as appropriate. Record the outcome as `correct`, `no_op`, `opposite`, `overshoot`,
 `track_loss`, or `incomparable`; no outcome implies a model-quality metric.
 
 ## 8. Temporal records
@@ -230,7 +234,14 @@ a new vote entry; do not replace a previous vote. `adjudication_history` is a
 separate append-only array and may reference prior vote IDs. Candidate/model
 outputs are never written into either array. An `adjudicated` status requires
 the evidence of the votes and a separate adjudication event; it does not erase
-the disagreement history.
+the disagreement history. For `train`, `calibration`, or `holdout`, admission
+requires either `dual_reviewed` with at least two distinct annotators whose
+votes all accept, or `adjudicated` with at least two votes and a latest
+`accepted` adjudication that references every vote. Conflicting independent
+votes are not resolved by averaging; they require adjudication. Unreviewed,
+in-review, rejected, incomplete, or missing-adjudication records are not
+release-admissible. Fixture and quarantine records may retain unreviewed or
+partial review for audit, but they cannot be promoted without this gate.
 
 Hard disagreements include subject identity mismatch, acceptable versus
 forbidden action conflict, KEEP versus corrective action, ABSTAIN versus a

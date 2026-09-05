@@ -108,6 +108,24 @@ def _load_canonical_action_ids() -> set[str]:
     return set(actions)
 
 
+def _load_label_issue_evidence_ids() -> set[str]:
+    """Derive the closed issue-evidence catalog from the owned JSON Schema."""
+    schema = json.loads((CAMERA_DIR / "label-schema.json").read_text(encoding="utf-8"))
+    evidence = (
+        schema.get("$defs", {})
+        .get("issue", {})
+        .get("properties", {})
+        .get("evidence", {})
+        .get("items", {})
+        .get("enum")
+    )
+    if not isinstance(evidence, list) or not evidence or any(not isinstance(item, str) for item in evidence):
+        raise ValueError(f"closed issue-evidence catalog missing from {CAMERA_DIR / 'label-schema.json'}")
+    if len(set(evidence)) != len(evidence):
+        raise ValueError(f"closed issue-evidence catalog contains duplicates: {CAMERA_DIR / 'label-schema.json'}")
+    return set(evidence)
+
+
 # This is derived state, not a second action-catalog owner. Schema parity is
 # checked against the same authority in validate_schema_files().
 ACTION_IDS = _load_canonical_action_ids()
@@ -148,6 +166,7 @@ ISSUE_IDS = {
     "subject_blends_into_dark_background", "bright_background_pull", "unclear_focus_hierarchy",
     "timing_blocker_in_frame", "background_clutter",
 }
+ISSUE_EVIDENCE_IDS = _load_label_issue_evidence_ids()
 REQUIRED_CAPTURE_FIELDS = {
     "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids",
     "device_family_id", "orientation", "lens", "lighting", "capture_mode",
@@ -187,7 +206,11 @@ def _require(mapping: Any, fields: set[str], path: str, errors: list[str]) -> No
 
 
 def _check_enum(value: Any, allowed: set[str], path: str, errors: list[str], code: str = "invalid_value") -> None:
-    if value not in allowed:
+    try:
+        valid = value in allowed
+    except TypeError:
+        valid = False
+    if not valid:
         errors.append(_error(code, path))
 
 
@@ -312,6 +335,8 @@ def _validate_label(label: Any, errors: list[str]) -> None:
         _check_enum(issue.get("issue_id"), ISSUE_IDS, f"{path}.issue_id", errors)
         _check_enum(issue.get("severity"), {"minor", "moderate", "major", "critical"}, f"{path}.severity", errors)
         evidence = _check_list(issue.get("evidence"), f"{path}.evidence", errors, nonempty=True)
+        for evidence_id in evidence:
+            _check_enum(evidence_id, ISSUE_EVIDENCE_IDS, f"{path}.evidence", errors, code="invalid_issue_evidence")
         _check_list(issue.get("acceptable_action_ids"), f"{path}.acceptable_action_ids", errors)
         _check_list(issue.get("forbidden_action_ids"), f"{path}.forbidden_action_ids", errors)
         if not evidence:
@@ -480,6 +505,44 @@ def _validate_review(review: Any, errors: list[str]) -> None:
         errors.append(_error("review_status_mismatch", "adjudicated requires two votes and adjudication history"))
 
 
+def _validate_release_review(review: Any, split: Any, errors: list[str]) -> None:
+    """Require a resolved independent human review before release admission."""
+    if split not in RELEASE_SPLITS:
+        return
+    if not isinstance(review, dict):
+        errors.append(_error("review_not_admissible", f"{split} requires resolved human review"))
+        return
+    status = review.get("status")
+    votes = review.get("vote_history") if isinstance(review.get("vote_history"), list) else []
+    adjudications = review.get("adjudication_history") if isinstance(review.get("adjudication_history"), list) else []
+    valid_votes = [vote for vote in votes if isinstance(vote, dict)]
+    annotators = {vote.get("annotator_id") for vote in valid_votes if isinstance(vote.get("annotator_id"), str)}
+    vote_ids = {vote.get("vote_id") for vote in valid_votes if isinstance(vote.get("vote_id"), str)}
+    decisions = [vote.get("decision") for vote in valid_votes]
+
+    if len(valid_votes) < 2 or len(annotators) < 2:
+        errors.append(_error("review_not_admissible", f"{split} requires two independent annotator votes"))
+        return
+    if status == "dual_reviewed":
+        if len(set(decisions)) > 1:
+            errors.append(_error("review_conflict_unresolved", "conflicting independent votes require adjudication"))
+        elif decisions != ["accept"] * len(decisions):
+            errors.append(_error("review_not_admissible", "release review votes must all accept"))
+        return
+    if status != "adjudicated":
+        errors.append(_error("review_not_admissible", f"{split} requires dual_reviewed or adjudicated review"))
+        return
+    if not adjudications:
+        errors.append(_error("missing_adjudication", "adjudicated release review requires adjudication history"))
+        return
+    latest = adjudications[-1] if isinstance(adjudications[-1], dict) else {}
+    based_on = latest.get("based_on_vote_ids") if isinstance(latest.get("based_on_vote_ids"), list) else []
+    if set(based_on) != vote_ids:
+        errors.append(_error("invalid_adjudication_scope", "latest adjudication must resolve every independent vote"))
+    elif latest.get("outcome") != "accepted":
+        errors.append(_error("review_not_admissible", "release adjudication outcome must be accepted"))
+
+
 def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set[str], errors: list[str]) -> None:
     _require(sequence, {"sequence_id", "frame_count", "frames", "timeline"}, "sequence", errors)
     if not isinstance(sequence, dict):
@@ -604,7 +667,9 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
     has_passed_before_after = any(item.get("result") == "pass" and item.get("measurement") == "before_after" for item in matching)
     if episode.get("outcome") in measurable and not has_passed_before_after:
         errors.append(_error("invalid_episode_outcome", f"{episode.get('outcome')} requires matching action verification pass/before_after"))
-    elif episode.get("outcome") not in measurable and has_passed_before_after:
+    if episode.get("outcome") in measurable and episode.get("subject_continuity") != "same":
+        errors.append(_error("invalid_episode_outcome", f"{episode.get('outcome')} requires subject_continuity=same"))
+    if episode.get("outcome") not in measurable and has_passed_before_after:
         errors.append(_error("contradictory_episode_outcome", "non-measurable outcome cannot have a matching pass/before_after verification"))
 
 
@@ -753,6 +818,7 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
     _validate_label(label, errors)
     _validate_subject_label_semantics(subject, label, errors)
     _validate_review(record.get("review"), errors)
+    _validate_release_review(record.get("review"), record.get("split"), errors)
     accepted = set(label.get("acceptable_action_ids", [])) if isinstance(label, dict) else set()
     if record_type == "still":
         if capture.get("capture_mode") != "still":
@@ -1052,6 +1118,9 @@ def validate_schema_files() -> list[str]:
                 errors.append(_error("canonical_action_drift", "label-schema verificationActionId enum differs from approved actions plus abstain"))
             if set(VERIFIER_BY_ACTION) != ACTION_IDS:
                 errors.append(_error("action_verifier_catalog_mismatch", "every approved action needs one verifier predicate"))
+            evidence = schema.get("$defs", {}).get("issue", {}).get("properties", {}).get("evidence", {}).get("items", {}).get("enum")
+            if not isinstance(evidence, list) or set(evidence) != ISSUE_EVIDENCE_IDS or len(evidence) != len(ISSUE_EVIDENCE_IDS):
+                errors.append(_error("issue_evidence_catalog_mismatch", "label-schema issue evidence enum drift"))
         if schema.get("title", "").startswith("Camera Coach") is False:
             errors.append(_error("invalid_schema_title", filename))
     return errors
@@ -1136,6 +1205,31 @@ def self_test() -> None:
     for record in valid_records:
         errors = validate_record(record, manifests, fixture_mode=True)
         assert not errors, (record.get("record_id"), errors)
+    resolved_review = {
+        "status": "dual_reviewed",
+        "vote_history": [
+            {"vote_id": "vote-self-test-001", "annotator_id": "annotator-self-test-001", "submitted_at": "2026-09-05T00:00:00Z", "decision": "accept"},
+            {"vote_id": "vote-self-test-002", "annotator_id": "annotator-self-test-002", "submitted_at": "2026-09-05T00:00:01Z", "decision": "accept"},
+        ],
+        "adjudication_history": [],
+    }
+    resolved_review_errors: list[str] = []
+    _validate_review(resolved_review, resolved_review_errors)
+    _validate_release_review(resolved_review, "train", resolved_review_errors)
+    assert not resolved_review_errors, resolved_review_errors
+    adjudicated_review = copy.deepcopy(resolved_review)
+    adjudicated_review["status"] = "adjudicated"
+    adjudicated_review["adjudication_history"] = [{
+        "adjudication_id": "adjudication-self-test-001",
+        "adjudicator_id": "adjudicator-self-test-001",
+        "occurred_at": "2026-09-05T00:00:02Z",
+        "based_on_vote_ids": ["vote-self-test-001", "vote-self-test-002"],
+        "outcome": "accepted",
+    }]
+    adjudicated_review_errors: list[str] = []
+    _validate_review(adjudicated_review, adjudicated_review_errors)
+    _validate_release_review(adjudicated_review, "calibration", adjudicated_review_errors)
+    assert not adjudicated_review_errors, adjudicated_review_errors
     for outcome in ("correct", "no_op", "opposite", "overshoot"):
         measurable_episode = copy.deepcopy(valid_records[2])
         measurable_episode["episode"]["outcome"] = outcome
@@ -1202,8 +1296,8 @@ def self_test() -> None:
         invalid_passes += 1
     print(f"PASS M3-002 schemas matrix_classes={len(MATRIX_CLASSES)} actions={len(ACTION_IDS)} keep=1 abstain=1")
     print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes}")
-    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot capture_families=scene/take/time/device/derivation")
-    print("PASS M3-005 review_status=unreviewed vote_history=append_only adjudication_history=separate human_calibration=pending")
+    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation")
+    print("PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending")
     print(f"PASS camera-coach self-test valid={len(valid_records)} invalid={invalid_passes}")
 
 

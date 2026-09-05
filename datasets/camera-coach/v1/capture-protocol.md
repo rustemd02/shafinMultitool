@@ -111,8 +111,9 @@ after.captured_at`; failure or inconclusive evidence cannot be called correct:
 The pilot must exercise correct, no-op, and opposite outcomes for each action
 that it tests. Every measurable outcome (`correct`, `no_op`, `opposite`, or
 `overshoot`) requires a matching action-specific verifier with `result=pass` and
-`measurement=before_after`; `track_loss` and `incomparable` are non-measurable
-outcomes. Overshoot, track loss, and incomparable outcomes are preserved as
+`measurement=before_after` and `subject_continuity=same`; a changed, lost, or
+unknown subject is not measurable proof. Use `track_loss` or `incomparable`
+when continuity is not established. Overshoot, track loss, and incomparable outcomes are preserved as
 failure/abstention evidence, never silently converted to `no_op`.
 
 ## Rights and provenance gate
@@ -129,6 +130,10 @@ resolve:
 4. `derivation_family_id`, record link, source-shoot link, and independence in
    `derivation-manifest.jsonl`;
 5. all family fields against the source-shoot entry.
+6. resolved human review: a release record needs two distinct annotator votes
+   that all accept, or an accepted latest adjudication covering every vote;
+   conflicting, unreviewed, rejected, or missing-adjudication records stop at
+   quarantine.
 
 The resolved source-shoot entry is authoritative for `source_kind`; a record
 claiming a different kind is invalid. A resolved `synthetic_fixture` source is
@@ -137,6 +142,8 @@ fields or a relabeled rights disposition. Only `approved` rights and `approved`
 consent with the requested allowed use are eligible. Missing,
 `denied`, `unresolved`, `pending`, `withdrawn`, or `fixture_only` rights are
 not eligible for a release split. They remain quarantine/audit evidence only.
+Fixture and quarantine records may retain unreviewed or partial review for
+audit, but that status never satisfies a later train/calibration/holdout gate.
 
 ## Operational batch admission
 
