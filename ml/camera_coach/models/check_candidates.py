@@ -347,21 +347,40 @@ def _assert_candidate_wiring(
     assert len({id(module) for module in routed_modules}) == len(routed_modules)
 
 
+def _apply_manifest_output_range(raw: torch.Tensor, spec: dict) -> torch.Tensor:
+    value_range = spec.get("value_range")
+    if value_range == [0.0, 1.0]:
+        return torch.sigmoid(raw)
+    if value_range == [-1.0, 1.0]:
+        return torch.tanh(raw)
+    return raw
+
+
 def _assert_forward_routing(
     candidate: torch.nn.Module,
     inputs: SETCompositionNetInputs,
     contract: SETCompositionNetManifest,
     expected_fusion_input: int,
+    expected_head_modules: dict[str, torch.nn.Module] | None = None,
 ) -> None:
+    head_modules = expected_head_modules or {
+        name: candidate.heads[name]
+        for name in contract.output_head_names
+        if name != contract.embedding_name
+    }
     routed = [("fusion", candidate.fusion[0]), ("embedding", candidate.embedding_projection)]
-    routed.extend((name, candidate.heads[name]) for name in contract.output_head_names if name != contract.embedding_name)
+    routed.extend((name, head_modules[name]) for name in head_modules)
     calls: dict[str, list[tuple[tuple[int, ...], tuple[int, ...]]]] = {name: [] for name, _ in routed}
+    raw_outputs: dict[str, list[torch.Tensor]] = {"embedding": []}
+    raw_outputs.update({name: [] for name in head_modules})
     handles = []
 
     def record(name: str) -> Callable[[torch.nn.Module, tuple[torch.Tensor, ...], torch.Tensor], None]:
         def hook(_module: torch.nn.Module, args: tuple[torch.Tensor, ...], output: torch.Tensor) -> None:
             assert len(args) == 1
             calls[name].append((tuple(args[0].shape), tuple(output.shape)))
+            if name in raw_outputs:
+                raw_outputs[name].append(output.detach().clone())
 
         return hook
 
@@ -378,10 +397,22 @@ def _assert_forward_routing(
     assert tuple(outputs) == contract.output_head_names
     assert calls["fusion"] == [((1, expected_fusion_input), (1, 256))]
     assert calls["embedding"] == [((1, 256), (1, contract.output_head_shapes[contract.embedding_name]))]
+    assert len(raw_outputs[contract.embedding_name]) == 1
+    expected_embedding = _apply_manifest_output_range(
+        raw_outputs[contract.embedding_name][0],
+        contract.output_head_specs[contract.embedding_name],
+    )
+    assert torch.equal(outputs[contract.embedding_name], expected_embedding), "embedding provenance mismatch"
     for name in contract.output_head_names:
         if name == contract.embedding_name:
             continue
         assert calls[name] == [((1, 256), (1, contract.output_head_shapes[name]))]
+        assert len(raw_outputs[name]) == 1
+        expected_value = _apply_manifest_output_range(
+            raw_outputs[name][0],
+            contract.output_head_specs[name],
+        )
+        assert torch.equal(outputs[name], expected_value), f"head provenance mismatch: {name}"
 
 
 def _assert_rejects(label: str, check: Callable[[], None]) -> None:
@@ -396,6 +427,7 @@ def _assert_mutation_guards(
     candidate_a: torch.nn.Module,
     candidate_b: torch.nn.Module,
     contract: SETCompositionNetManifest,
+    inputs: SETCompositionNetInputs,
 ) -> None:
     stem = candidate_a.full_frame_backbone.features[0]
     original_stem_activation = stem[-1]
@@ -458,15 +490,37 @@ def _assert_mutation_guards(
     finally:
         fusion_bias.bias = original_fusion_bias
 
-    original_risk_head = candidate_a.heads["risk_probability"]
-    candidate_a.heads["risk_probability"] = candidate_a.heads["good_frame_probability"]
+    expected_head_modules = {
+        name: candidate_a.heads[name]
+        for name in contract.output_head_names
+        if name != contract.embedding_name
+    }
+    good_head = expected_head_modules["good_frame_probability"]
+    risk_head = expected_head_modules["risk_probability"]
+    original_good_bias = good_head.bias.detach().clone()
+    original_risk_bias = risk_head.bias.detach().clone()
+    with torch.no_grad():
+        good_head.bias.fill_(0.25)
+        risk_head.bias.fill_(-0.75)
+    candidate_a.heads["good_frame_probability"] = risk_head
+    candidate_a.heads["risk_probability"] = good_head
     try:
         _assert_rejects(
-            "candidate A aliased probability heads",
-            lambda: _assert_candidate_wiring(candidate_a, contract, 1072),
+            "candidate A swapped probability heads",
+            lambda: _assert_forward_routing(
+                candidate_a,
+                inputs,
+                contract,
+                1072,
+                expected_head_modules,
+            ),
         )
     finally:
-        candidate_a.heads["risk_probability"] = original_risk_head
+        candidate_a.heads["good_frame_probability"] = good_head
+        candidate_a.heads["risk_probability"] = risk_head
+        with torch.no_grad():
+            good_head.bias.copy_(original_good_bias)
+            risk_head.bias.copy_(original_risk_bias)
 
     block = candidate_a.full_frame_backbone.features[1]
     projection_conv = block.block[-2]
@@ -704,7 +758,7 @@ def main() -> int:
     _assert_mobilenet_schedules(candidate_a, candidate_b)
     _assert_candidate_wiring(candidate_a, contract, 1072)
     _assert_candidate_wiring(candidate_b, contract, 352)
-    _assert_mutation_guards(candidate_a, candidate_b, contract)
+    _assert_mutation_guards(candidate_a, candidate_b, contract, inputs)
     _assert_forward_routing(candidate_a, inputs, contract, 1072)
     _assert_forward_routing(candidate_b, inputs, contract, 352)
     hash_a = _assert_deterministic(candidate_a, inputs, contract)
@@ -749,11 +803,11 @@ def main() -> int:
         "checks": [
             "actual MobileNetV3 stem, Large-15/Small-11 blocks, and final projections",
             "actual scalar MLP, 256D fusion, 256-to-embedding, and manifest head wiring",
-            "actual fusion/embedding/all-nine-head forward routing and distinct module identity",
+            "actual fusion/embedding/all-nine-head routing, provenance, and distinct identity",
             "actual BatchNorm topology/settings plus removal and settings mutation guards",
             "actual 1x1 projection topology plus 1x1-to-3x3 mutation guard",
             "actual Conv/BN/activation/SE/Linear signatures and identity/routing checks",
-            "bounded mutation matrix for representative field, topology, and alias escapes",
+            "bounded mutation matrix for representative field, topology, alias, and key-swap escapes",
             "all nine manifest-driven output heads and shapes",
             "repeated forward equality",
             "absent ROI/crop deterministic zero gate",

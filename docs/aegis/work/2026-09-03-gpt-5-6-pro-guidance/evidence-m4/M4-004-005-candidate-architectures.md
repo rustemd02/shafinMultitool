@@ -68,20 +68,24 @@ Environment and reproducibility:
   stride-1, groups-1, zero-padding layer. It also inspects exact Linear
   in/out/bias signatures for the scalar MLP, fusion, 256D embedding projection,
   and every manifest head. Fusion, embedding, and all nine output modules must
-  be distinct objects and must each be observed on the expected forward route;
-  `block_schedule` and dimension metadata are not trusted. Deliberate
+  be distinct objects and must each be observed on the expected forward route.
+  For every named output, the checker captures the expected module's raw Linear
+  output, independently applies that head's declared manifest range
+  (`sigmoid`, `tanh`, or no-op), and compares it to the returned value for the
+  same mapping key; `block_schedule` and dimension metadata are not trusted.
+  Deliberate
   Hardswish-to-ReLU, stem-padding, projection-dilation, Conv/BN field,
-  SE-kernel/order, fusion-bias, and aliased-head mutations are required to fail
-  the bounded guards.
+  SE-kernel/order, fusion-bias, aliased-head, and swapped-probability-key
+  mutations are required to fail the bounded guards.
 
 Commands:
 
 ```text
 python3 -m py_compile ml/camera_coach/models/set_composition_net.py ml/camera_coach/models/check_candidates.py
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-struct7-1.json
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-struct7-2.json
-cmp -s /private/tmp/setos-m4-004-005-struct7-1.json /private/tmp/setos-m4-004-005-struct7-2.json
-python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-struct7.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-provenance-1.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-provenance-2.json
+cmp -s /private/tmp/setos-m4-004-005-provenance-1.json /private/tmp/setos-m4-004-005-provenance-2.json
+python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-provenance.json
 python3 -m py_compile ml/camera_coach/models/*.py
 git diff --check
 ```
