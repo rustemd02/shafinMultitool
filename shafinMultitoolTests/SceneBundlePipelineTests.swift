@@ -2596,8 +2596,12 @@ final class SceneBundlePipelineTests: XCTestCase {
         let generation = Task { @MainActor in
             await viewModel.generateScene()
         }
-        for _ in 0..<100 where viewModel.generationStage != .reading {
-            await Task.yield()
+        // M5-018: the request-owned leader countdown now runs inside the
+        // generation task before parsing; wait through it with a real bound
+        // instead of a fixed yield spin.
+        let readingDeadline = Date().addingTimeInterval(5)
+        while viewModel.generationStage != .reading, Date() < readingDeadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTAssertEqual(viewModel.generationStage, .reading)
 
@@ -4466,8 +4470,12 @@ final class SceneBundlePipelineTests: XCTestCase {
         let generation = Task { @MainActor in
             await viewModel.generateScene()
         }
-        for _ in 0..<100 where viewModel.generationStage != .reading {
-            await Task.yield()
+        // M5-018: the request-owned leader countdown now runs inside the
+        // generation task before parsing; wait through it with a real bound
+        // instead of a fixed yield spin.
+        let readingDeadline = Date().addingTimeInterval(5)
+        while viewModel.generationStage != .reading, Date() < readingDeadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTAssertEqual(viewModel.generationStage, .reading)
         let requestID = try! XCTUnwrap(viewModel.generationRequestState.requestID)

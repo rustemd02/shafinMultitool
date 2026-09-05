@@ -790,6 +790,19 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var generationDebugDelay: TimeInterval = 0
     private var didStartGenerationLeaderFixture = false
     private static let generationLeaderFixtureArgument = "-SHAFIN_GENERATOR_LEADER_FIXTURE"
+
+    /// M5-018 UI fixture hold: when the app is launched with the leader
+    /// fixture argument, the action phase holds for 30 s instead of the
+    /// production retire timing so the rotation/ownership UI probes can
+    /// inspect the request-owned projection without racing the sequence.
+    /// Unit tests never launch with this argument and keep production timing.
+    static var generationLeaderFixtureHoldsSequence: Bool {
+        ProcessInfo.processInfo.arguments.contains(generationLeaderFixtureArgument)
+    }
+
+    private static var leaderActionHoldSeconds: TimeInterval {
+        generationLeaderFixtureHoldsSequence ? 30 : SETMotion.leaderActionDuration
+    }
     private var testingParserResultOverride: ((String, [MarkedObject]) async -> ParsingResult)?
     private(set) var testingGenerationOwnerCount = 0
     private(set) var testingGenerationStateTrace: [SceneGenerationRequestState] = [.idle]
@@ -1825,8 +1838,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
 
         if generationReduceMotion {
+            let hold = Self.generationLeaderFixtureHoldsSequence
+                ? Self.leaderActionHoldSeconds
+                : SETMotion.reducedMotionCrossfadeDuration
             try? await Task.sleep(
-                nanoseconds: UInt64(SETMotion.reducedMotionCrossfadeDuration * 1_000_000_000)
+                nanoseconds: UInt64(hold * 1_000_000_000)
             )
             guard !Task.isCancelled,
                   generationLeaderEventID == eventID else { return false }
@@ -1839,7 +1855,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard await advanceGenerationLeader(eventID: eventID, to: .action) else { return false }
 
         try? await Task.sleep(
-            nanoseconds: UInt64(SETMotion.leaderActionDuration * 1_000_000_000)
+            nanoseconds: UInt64(Self.leaderActionHoldSeconds * 1_000_000_000)
         )
         guard !Task.isCancelled,
               generationLeaderEventID == eventID else { return false }
