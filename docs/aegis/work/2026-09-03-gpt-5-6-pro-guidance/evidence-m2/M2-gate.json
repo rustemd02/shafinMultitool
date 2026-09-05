@@ -42,7 +42,7 @@
           "stable_streak": 5,
           "dominant_failure_result": "ABSTAIN"
         },
-        "call_site_search": "No GoodFramePreservationPolicy.evaluate call exists in shafinMultitool or shafinMultitoolTests at base_head.",
+        "call_site_search": "GoodFramePreservationPolicy.evaluate calls exist only in unit tests (8 calls); no production call exists in shafinMultitool at base_head.",
         "live_planner_observation": "RecommendationPlanner returns KEEP-like no-change output for a single critique.verdict == good at shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:1738-1751, without the required five-frame policy evaluation.",
         "live_candidate_observation": "The live bounded candidate branch passes goodFrameScore: 0 at shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift:6575-6585, so the neural good-frame score is not proven to reach the live planner gate.",
         "related_semantic_guard": "shouldPreserveGoodFrameSemanticActions is a separate heuristic at AnalysisPipeline.swift:9535-9611; it is not the accepted five-frame GoodFramePreservationPolicy contract."
@@ -458,7 +458,7 @@
   "test_evidence_receipts": [
     {
       "name": "independent_current_head_capture_provenance_and_closed_loop_slice",
-      "command": "xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B -derivedDataPath /private/tmp/m2-gate-current-dd -resultBundlePath /private/tmp/m2-gate-current.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 with 7 selected tests",
+      "command": "xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' -derivedDataPath /private/tmp/m2-gate-current-dd -resultBundlePath /private/tmp/m2-gate-current.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathAutomaticallyVerifiesCorrectiveEpisode -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathPublishesCorrectiveAndHonestAbstention -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testKnownSamplePTSAndSessionGenerationRejectLateOlderEvidence -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testEqualKnownPTSRejectsConflictingEvidenceWithoutMutation -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testEqualKnownPTSAcceptsOnlyIdempotentRetransmissionWithoutReplacement -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testDetrProvenanceMustMatchFrameGenerationAndOrientation",
       "destination": "iPhone Air simulator A6E7238C-B4C6-4988-B399-8E127CA8683B",
       "result_bundle": "/private/tmp/m2-gate-current.xcresult",
       "result_bundle_sha256": null,
