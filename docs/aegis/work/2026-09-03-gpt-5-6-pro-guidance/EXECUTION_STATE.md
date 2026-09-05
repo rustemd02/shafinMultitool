@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last accepted task head: `96747f3` (M2-034; no push)
+- Last accepted task head: `4df7702` (M2-031; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3 dataset and M4 model-contract foundations (M1 COMPLETE with GATE PASS)
-- Current task: M2-031 immutable pause/resume; M3-002→M3-005 Camera dataset foundation; M4-002→M4-003 SETCompositionNet contracts
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-030, M2-032, M2-034, M3-001, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M5-013, M6-001, M6-002, M6-003, M6-004, M7-001, M7-002, M7-003, M7-004, M12-033]
-- In-progress: [M2-031, M3-002, M3-003, M3-004, M3-005, M4-002, M4-003]
+- Current task: M3-002→M3-005 Camera dataset foundation; M4-002→M4-003 SETCompositionNet contracts
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-032, M2-034, M3-001, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M5-013, M6-001, M6-002, M6-003, M6-004, M7-001, M7-002, M7-003, M7-004, M12-033]
+- In-progress: [M3-002, M3-003, M3-004, M3-005, M4-002, M4-003]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -502,3 +502,8 @@
 - The independent P0 Camera-model contract batch freezes SETCompositionNet-v1 input and output shapes before any architecture/training work: full-frame 320×320 RGB, subject crop 192×192 RGB, normalized ROI/mask, versioned bounded scalar features with missing masks, and bounded non-text multi-task heads.
 - It may extend only the existing Camera analysis/runtime-schema and Metal preprocessing seams plus new `ml/camera_coach/contracts/**`, parity/shape fixtures and evidence. Candidate architecture, training dependencies, data collection, calibration, model selection and production enablement remain outside this batch.
 - Swift/Python parity must be derived from fixed synthetic fixtures with hashes and tolerances; no locked holdout, proxy quality claim or new model artifact may be introduced.
+
+### 2026-09-05T09:13+03:00 — M2-031 CLOSED
+- One accepted pause snapshot now owns displayed pixels, typed linked evidence, canonical primary action, marker and Decision Trace across rotation and a committed background transition. Pending work is canceled pre-commit; committed review survives until `startAndWait()` succeeds, and a failed resume remains recoverable without discarding the review.
+- Two fix-first rounds closed secondary-action provenance drift, action-order mismatch, failed-resume clearing and generic failure presentation. The final fresh Sol audit returned `SHIP`; no new route, accessibility ID, catalog key or parallel state machine was introduced.
+- Integrated verification on ordinary iPhone 17e simulator iOS 26.5 passed 4/4 critical serial scenarios at `/private/tmp/setos-root-m2-031-integrated-serial.xcresult`; the same background case also passed alone after a parallel cross-class timeout. Full evidence and the retained failed run are recorded in `evidence-m2/M2-031-immutable-pause-resume.md`. Physical-camera behavior remains external. Tracker total: 90/424 completed, 334 remaining.

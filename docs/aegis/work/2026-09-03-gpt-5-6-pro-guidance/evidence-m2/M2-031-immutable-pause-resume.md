@@ -113,3 +113,10 @@ Additional focused projection compile/run evidence: `/private/tmp/setos-m2-031-p
 
 - The full presentation class remains red only at the documented pre-existing replay/missing-fixture boundary; task-owned pause methods and all other selected classes pass.
 - Device-only physical-camera behavior was not exercised; simulator evidence is complete for the bounded lifecycle and presentation contract.
+
+## Coordinator integration verification
+
+- Integrated on `store` as `f39a432`, `654e7ee`, `4df7702` after fresh Sol review returned `SHIP`.
+- `/private/tmp/setos-root-m2-031-integrated-serial.xcresult`: 4/4 passed on iPhone 17e / iOS 26.5 with parallel testing disabled. Covered canonical pause action ordering, portrait/landscape marker reprojection, committed background preservation and failed-resume review preservation.
+- The preceding parallel run `/private/tmp/setos-root-m2-031-integrated.xcresult` passed 3/4; the background-preservation case timed out while another analysis class ran concurrently. The same case then passed alone in `/private/tmp/setos-root-m2-031-integrated-retry.xcresult` and in the serial four-test run above. This is retained as test-isolation evidence rather than hidden as a passing run.
+- Coordinator DerivedData and extracted temporary JSON were removed after verification; result bundles were retained.
