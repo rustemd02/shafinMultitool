@@ -15,7 +15,9 @@ squeeze-excitation, ReLU/h-swish, and global average pooling). Width is
 applied independently to each fixed raw input/expansion/output channel. The
 SE bottleneck derives from the scaled expanded feature channels, and its
 explicit `torch.nn.Hardsigmoid` gate returns to that expanded width.
-`torchvision` is not required and no weights are downloaded.
+Every MobileNetV3 BatchNorm uses the centralized canonical configuration
+`eps=0.001`, `momentum=0.01`. `torchvision` is not required and no weights are
+downloaded.
 
 The common `SETCompositionNetInputs` boundary accepts logical HWC/BHWC tensors
 (and BCHW as an explicit PyTorch adapter), preserves `float32`, validates
@@ -60,20 +62,21 @@ Environment and reproducibility:
   stem and final projection channels/kernels/strides/activations, canonical
   Large-15/Small-11 block count and channel schedule, kernel, stride,
   activation, residual flag, SE presence, expanded-width squeeze channels,
-  and hard-sigmoid gate. It also inspects the scalar MLP, exact fusion widths,
-  256D embedding projection, and every manifest head; the convenience
+  hard-sigmoid gate, and BatchNorm presence/settings in every stem, block, and
+  final projection. It also inspects the scalar MLP, exact fusion widths, 256D
+  embedding projection, and every manifest head; the convenience
   `block_schedule` and dimension metadata are not trusted. Deliberate
-  Hardswish-to-ReLU stem/final mutations and 256-to-128 fusion mutation probes
-  are required to fail the guards.
+  Hardswish-to-ReLU stem/final, 256-to-128 fusion, depthwise/projection-BN
+  removal, and BN eps/momentum mutation probes are required to fail the guards.
 
 Commands:
 
 ```text
 python3 -m py_compile ml/camera_coach/models/set_composition_net.py ml/camera_coach/models/check_candidates.py
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-fix4-1.json
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-fix4-2.json
-cmp -s /private/tmp/setos-m4-004-005-candidates-fix4-1.json /private/tmp/setos-m4-004-005-candidates-fix4-2.json
-python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-fix4.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-bn-1.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-bn-2.json
+cmp -s /private/tmp/setos-m4-004-005-candidates-bn-1.json /private/tmp/setos-m4-004-005-candidates-bn-2.json
+python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-bn.json
 python3 -m py_compile ml/camera_coach/models/*.py
 git diff --check
 ```
@@ -87,7 +90,7 @@ features, nine heads, all synthetic hashes, and all mutation probes rejected.
 | Parameters | 2,320,541 | 411,877 |
 | Conv2d + Linear MACs (batch 1) | 295,340,192 | 39,246,272 |
 | B / A MAC ratio | — | `0.13288496812516462` |
-| Deterministic output receipt hash | `c82ee48d00ab7ca8a47d285ff4d4f4c6df62fe2fb47874c9b4ea415bb5fcd40d` | `87fa94364c1f98b12daec51fdbe0fb456f9a3616427ec67512ffdedcf7492030` |
+| Deterministic output receipt hash | `71392c56f6e9a5dd18065686689e1230779cac46e8f9dce95ca00ee7a833134d` | `f4d6d2d3691bbad1a27d725ca3483b1e5309a17689209a06203af295d1d3ee26` |
 
 The measured ratio is `13.29%`, satisfying the required `B ≤ 70% of A`
 threshold. The counter includes convolution multiply-accumulates and linear

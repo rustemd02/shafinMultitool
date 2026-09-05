@@ -247,6 +247,10 @@ def _make_divisible(value: float, divisor: int = 8) -> int:
     return rounded
 
 
+def _canonical_batch_norm(num_features: int) -> nn.BatchNorm2d:
+    return nn.BatchNorm2d(num_features, eps=0.001, momentum=0.01)
+
+
 class _ConvBNActivation(nn.Sequential):
     def __init__(self, in_channels: int, out_channels: int, kernel: int, stride: int, activation: str):
         layers: list[nn.Module] = [
@@ -258,7 +262,7 @@ class _ConvBNActivation(nn.Sequential):
                 padding=(kernel - 1) // 2,
                 bias=False,
             ),
-            nn.BatchNorm2d(out_channels),
+            _canonical_batch_norm(out_channels),
         ]
         layers.append(nn.ReLU(inplace=True) if activation == "RE" else nn.Hardswish(inplace=True))
         super().__init__(*layers)
@@ -307,7 +311,7 @@ class _InvertedResidual(nn.Module):
                 groups=expanded_channels,
                 bias=False,
             ),
-            nn.BatchNorm2d(expanded_channels),
+            _canonical_batch_norm(expanded_channels),
             nn.ReLU(inplace=True) if activation == "RE" else nn.Hardswish(inplace=True),
         ))
         if use_se:
@@ -317,7 +321,7 @@ class _InvertedResidual(nn.Module):
         layers.extend(
             [
                 nn.Conv2d(expanded_channels, out_channels, kernel_size=1, bias=False),
-                nn.BatchNorm2d(out_channels),
+                _canonical_batch_norm(out_channels),
             ]
         )
         self.block = nn.Sequential(*layers)
@@ -413,7 +417,7 @@ class _MobileNetV3Backbone(nn.Module):
             _ConvBNActivation(model_input_channels, stem_channels, 3, 2, "HS"),
             *blocks,
             nn.Conv2d(current, final_channels, kernel_size=1, bias=False),
-            nn.BatchNorm2d(final_channels),
+            _canonical_batch_norm(final_channels),
             nn.Hardswish(inplace=True),
         )
 

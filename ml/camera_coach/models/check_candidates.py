@@ -32,6 +32,8 @@ from .set_composition_net import (
 
 
 SEED = 20260905
+_EXPECTED_BATCH_NORM_EPS = 0.001
+_EXPECTED_BATCH_NORM_MOMENTUM = 0.01
 
 # Independent admission expectations for the canonical MobileNetV3 schedules.
 # These are intentionally not read back from the implementation table: a
@@ -119,6 +121,7 @@ def _assert_conv_bn_activation(
     expected_kernel: int,
     expected_stride: int,
     expected_activation: str,
+    expected_groups: int = 1,
 ) -> None:
     assert isinstance(module, torch.nn.Sequential)
     assert len(module) == 3
@@ -127,10 +130,16 @@ def _assert_conv_bn_activation(
     assert (conv.in_channels, conv.out_channels) == (expected_input, expected_output)
     assert conv.kernel_size == (expected_kernel, expected_kernel)
     assert conv.stride == (expected_stride, expected_stride)
-    assert conv.groups == 1
-    assert isinstance(batch_norm, torch.nn.BatchNorm2d)
-    assert batch_norm.num_features == expected_output
+    assert conv.groups == expected_groups
+    _assert_batch_norm(batch_norm, expected_output)
     assert _activation_code(activation) == expected_activation
+
+
+def _assert_batch_norm(module: torch.nn.Module, expected_features: int) -> None:
+    assert isinstance(module, torch.nn.BatchNorm2d)
+    assert module.num_features == expected_features
+    assert module.eps == _EXPECTED_BATCH_NORM_EPS
+    assert module.momentum == _EXPECTED_BATCH_NORM_MOMENTUM
 
 
 def _assert_actual_backbone(
@@ -152,8 +161,7 @@ def _assert_actual_backbone(
     assert final_conv.kernel_size == (1, 1)
     assert final_conv.stride == (1, 1)
     assert final_conv.groups == 1
-    assert isinstance(final_batch_norm, torch.nn.BatchNorm2d)
-    assert final_batch_norm.num_features == expected_final_output
+    _assert_batch_norm(final_batch_norm, expected_final_output)
     assert _activation_code(final_activation) == "HS"
     blocks = features[1:-3]
     assert len(blocks) == len(expected_schedule)
@@ -168,20 +176,27 @@ def _assert_actual_backbone(
             and child[0].groups == child[0].in_channels
         )
         depthwise_conv = depthwise[0]
+        _assert_conv_bn_activation(
+            depthwise,
+            expected_expanded,
+            expected_expanded,
+            expected_kernel,
+            expected_stride,
+            expected_activation,
+            expected_groups=expected_expanded,
+        )
         output_conv = children[-2]
         assert isinstance(output_conv, torch.nn.Conv2d)
+        assert len(children) >= 3
+        _assert_batch_norm(children[-1], expected_output)
         actual_input = depthwise_conv.in_channels
         if expected_expanded != expected_input:
             expansion = children[0]
-            assert isinstance(expansion, torch.nn.Sequential)
+            _assert_conv_bn_activation(expansion, expected_input, expected_expanded, 1, 1, expected_activation)
             expansion_conv = expansion[0]
-            assert isinstance(expansion_conv, torch.nn.Conv2d)
-            assert expansion_conv.kernel_size == (1, 1)
-            assert expansion_conv.in_channels == expected_input
-            assert expansion_conv.out_channels == expected_expanded
-            assert _activation_code(expansion[-1]) == expected_activation
             actual_input = expansion_conv.in_channels
         else:
+            assert children[0] is depthwise
             assert not (
                 isinstance(children[0], torch.nn.Sequential)
                 and isinstance(children[0][0], torch.nn.Conv2d)
@@ -191,10 +206,6 @@ def _assert_actual_backbone(
             expected_input, expected_expanded, expected_output
         )
         assert output_conv.in_channels == depthwise_conv.out_channels == expected_expanded
-        assert depthwise_conv.kernel_size == (expected_kernel, expected_kernel)
-        assert depthwise_conv.stride == (expected_stride, expected_stride)
-        assert depthwise_conv.groups == expected_expanded
-        assert _activation_code(depthwise[-1]) == expected_activation
         actual_se = next((child for child in children if isinstance(child, _SqueezeExcitation)), None)
         assert (actual_se is not None) == expected_se
         if actual_se is not None:
@@ -331,6 +342,55 @@ def _assert_mutation_guards(
         )
     finally:
         candidate_a.fusion[0] = original_fusion_projection
+
+    block = candidate_a.full_frame_backbone.features[1]
+    depthwise = next(
+        child for child in block.block
+        if isinstance(child, torch.nn.Sequential)
+        and isinstance(child[0], torch.nn.Conv2d)
+        and child[0].groups == child[0].in_channels
+    )
+    original_depthwise_batch_norm = depthwise[1]
+    depthwise[1] = torch.nn.Identity()
+    try:
+        _assert_rejects(
+            "candidate A depthwise BatchNorm removal",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        depthwise[1] = original_depthwise_batch_norm
+
+    projection_batch_norm = block.block[-1]
+    block.block[-1] = torch.nn.Identity()
+    try:
+        _assert_rejects(
+            "candidate A projection BatchNorm removal",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        block.block[-1] = projection_batch_norm
+
+    stem_batch_norm = candidate_a.full_frame_backbone.features[0][1]
+    original_stem_eps = stem_batch_norm.eps
+    stem_batch_norm.eps = 1e-5
+    try:
+        _assert_rejects(
+            "candidate A stem BatchNorm eps mutation",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        stem_batch_norm.eps = original_stem_eps
+
+    final_batch_norm = candidate_a.full_frame_backbone.features[-2]
+    original_final_momentum = final_batch_norm.momentum
+    final_batch_norm.momentum = 0.1
+    try:
+        _assert_rejects(
+            "candidate A final BatchNorm momentum mutation",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        final_batch_norm.momentum = original_final_momentum
 
 
 def _assert_shapes(outputs: dict[str, torch.Tensor], contract: SETCompositionNetManifest) -> None:
@@ -482,6 +542,7 @@ def main() -> int:
         "checks": [
             "actual MobileNetV3 stem, Large-15/Small-11 blocks, and final projections",
             "actual scalar MLP, 256D fusion, 256-to-embedding, and manifest head wiring",
+            "actual BatchNorm topology/settings plus removal and settings mutation guards",
             "mutation guards for stem/final Hardswish and fusion output width",
             "all nine manifest-driven output heads and shapes",
             "repeated forward equality",
