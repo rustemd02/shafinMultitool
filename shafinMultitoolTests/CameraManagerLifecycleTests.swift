@@ -270,6 +270,27 @@ final class CameraManagerLifecycleTests: XCTestCase {
         }
     }
 
+    func testPreviewGeometryIsValidatedAndClearedByItsCameraOwner() {
+        let (manager, _) = makeManager()
+        XCTAssertNil(CameraPreviewGeometry(
+            destinationSize: .zero,
+            imageOrientation: .up,
+            isMirrored: false
+        ))
+
+        let geometry = CameraPreviewGeometry(
+            destinationSize: CGSize(width: 390, height: 844),
+            imageOrientation: .right,
+            isMirrored: false
+        )
+        XCTAssertNotNil(geometry)
+        manager.updatePreviewGeometry(geometry)
+        XCTAssertEqual(manager.previewGeometryForTesting, geometry)
+
+        manager.clearPreviewGeometry()
+        XCTAssertNil(manager.previewGeometryForTesting)
+    }
+
     func testVideoDataConnectionConfiguratorRequestsNativeRotationAndNoMirroring() {
         let supported = CameraDataOutputConnectionFake(
             supportsRotation: true,

@@ -12,6 +12,14 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
         let sourceFrameId: String
         let capturedAt: Date
         let isStable: Bool
+        /// The capture-side lens identity that produced this exact buffer.
+        /// Nil is retained as unknown provenance and must fail closed for
+        /// subject-bound verification.
+        let lensID: String?
+        /// Actual preview destination geometry captured with this frame's
+        /// orientation. Mismatched geometry is discarded at this immutable
+        /// boundary rather than becoming an identity transform.
+        let previewGeometry: CameraPreviewGeometry?
         /// The feature/adapter values produced for this exact source frame.
         /// This is optional for legacy synthetic publishers, but production
         /// high-priority capture publishes it atomically with the pixels.
@@ -26,6 +34,8 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
               sourceFrameId: String,
               capturedAt: Date,
               isStable: Bool,
+              lensID: String? = nil,
+              previewGeometry: CameraPreviewGeometry? = nil,
               adapterState: PipelineFeatureSnapshotAdapterState? = nil,
               lensGeneration: UInt64 = 0) {
             let trimmedSourceFrameId = sourceFrameId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,6 +46,11 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
             self.sourceFrameId = trimmedSourceFrameId
             self.capturedAt = capturedAt
             self.isStable = isStable
+            let trimmedLensID = lensID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.lensID = trimmedLensID?.isEmpty == false ? trimmedLensID : nil
+            self.previewGeometry = previewGeometry?.imageOrientation == orientation
+                ? previewGeometry
+                : nil
             self.adapterState = adapterState?.sanitizedForFrame(
                 frameID: trimmedSourceFrameId,
                 captureGeneration: lensGeneration,
@@ -73,6 +88,8 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
                 frameID: sourceFrameId,
                 capturedAt: capturedAt,
                 orientation: orientation,
+                lensID: lensID,
+                previewGeometry: previewGeometry,
                 lensGeneration: lensGeneration,
                 pixelBuffer: pixelBuffer,
                 featureSourceTimestamps: featureSourceTimestamps
@@ -121,6 +138,8 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
                           sourceFrameId: String,
                           capturedAt: Date,
                           isStable: Bool,
+                          lensID: String? = nil,
+                          previewGeometry: CameraPreviewGeometry? = nil,
                           adapterState: PipelineFeatureSnapshotAdapterState? = nil,
                           lensGeneration: UInt64 = 0) -> Bool {
         guard let snapshot = Snapshot(
@@ -129,6 +148,8 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
             sourceFrameId: sourceFrameId,
             capturedAt: capturedAt,
             isStable: isStable,
+            lensID: lensID,
+            previewGeometry: previewGeometry,
             adapterState: adapterState,
             lensGeneration: lensGeneration
         ) else {
@@ -176,6 +197,8 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
                   sourceFrameId: currentSnapshot.sourceFrameId,
                   capturedAt: currentSnapshot.capturedAt,
                   isStable: currentSnapshot.isStable,
+                  lensID: currentSnapshot.lensID,
+                  previewGeometry: currentSnapshot.previewGeometry,
                   adapterState: currentSnapshot.adapterState,
                   lensGeneration: currentSnapshot.lensGeneration
               ) else {
@@ -317,15 +340,17 @@ enum FeatureSourceFreshnessWindows {
 }
 
 /// M2-005 frame ownership: one immutable value binding the accepted frame's
-/// identity (ID), capture time, orientation, lens generation, pixels, and the
-/// measurement timestamp of every feature source built from it. Every
-/// analysis result must reference exactly one envelope; sources outside their
-/// declared freshness window are reported unavailable rather than silently
-/// mixed with newer values.
+/// identity (ID), capture time, orientation, capture-side lens ID, preview
+/// geometry, lens generation, pixels, and the measurement timestamp of every
+/// feature source built from it. Every analysis result must reference exactly
+/// one envelope; sources outside their declared freshness window are reported
+/// unavailable rather than silently mixed with newer values.
 struct AcceptedFrameEnvelope {
     let frameID: String
     let capturedAt: Date
     let orientation: CGImagePropertyOrientation
+    let lensID: String?
+    let previewGeometry: CameraPreviewGeometry?
     let lensGeneration: UInt64
     let pixelBuffer: CVPixelBuffer
     let featureSourceTimestamps: [FeatureSourceID: Date]
@@ -333,6 +358,8 @@ struct AcceptedFrameEnvelope {
     init(frameID: String,
          capturedAt: Date,
          orientation: CGImagePropertyOrientation,
+         lensID: String? = nil,
+         previewGeometry: CameraPreviewGeometry? = nil,
          lensGeneration: UInt64,
          pixelBuffer: CVPixelBuffer,
          featureSourceTimestamps: [FeatureSourceID: Date]) {
@@ -340,12 +367,19 @@ struct AcceptedFrameEnvelope {
         self.frameID = trimmedFrameID
         self.capturedAt = capturedAt
         self.orientation = orientation
+        let trimmedLensID = lensID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.lensID = trimmedLensID?.isEmpty == false ? trimmedLensID : nil
+        self.previewGeometry = previewGeometry?.imageOrientation == orientation
+            ? previewGeometry
+            : nil
         self.lensGeneration = lensGeneration
         self.pixelBuffer = pixelBuffer
         self.featureSourceTimestamps = featureSourceTimestamps
     }
 
     var isLensGenerationKnown: Bool { lensGeneration != 0 }
+
+    var isLensIDKnown: Bool { lensID != nil }
 
     /// Age of one source relative to `asOf`. Nil when the source produced no
     /// value for this frame (unknown, therefore unavailable).

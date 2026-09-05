@@ -4410,6 +4410,8 @@ final class AnalysisPipeline: ObservableObject {
             sourceFrameId: sourceFrameId,
             capturedAt: context.capturedAt,
             isStable: context.isStable,
+            lensID: context.lensID,
+            previewGeometry: context.previewGeometry,
             adapterState: frameAdapterState,
             lensGeneration: captureGeneration
         ) else { return }
@@ -4427,6 +4429,8 @@ final class AnalysisPipeline: ObservableObject {
             sourceFrameId: frameEvidence.sourceFrameId,
             capturedAt: frameEvidence.capturedAt,
             isStable: frameEvidence.isStable,
+            lensID: frameEvidence.lensID,
+            previewGeometry: frameEvidence.previewGeometry,
             adapterState: frameEvidence.adapterState,
             lensGeneration: captureGeneration
         ) else { return }
@@ -6272,14 +6276,11 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         // Keep the verifier's provenance pair grounded in the same immutable
-        // frame envelope as the subject binding. The pipeline does not know
-        // the eventual SwiftUI canvas size, so the analysis canvas is the
-        // source pixel size (an honest identity aspect-fill transform); the
-        // preview owner remains responsible for its display transform.
+        // frame envelope as the subject binding. The camera owner captures
+        // the actual preview destination; no analysis/source-size identity
+        // fallback is valid for a subject-bound comparison.
         let verificationGeometry = makeLiveVerificationGeometry(
-            frameID: frameEvidence.sourceFrameId,
-            pixelBuffer: frameEvidence.pixelBuffer,
-            orientation: orientation
+            frameEvidence: frameEvidence
         )
 
         let lifecycle = SubjectTrackLifecycleContext(
@@ -6288,7 +6289,9 @@ final class AnalysisPipeline: ObservableObject {
             // The camera owner is the source of lens identity. Do not invent
             // a default here: a missing registration/active lens remains an
             // honest fail-closed verification boundary.
-            lensID: registrationManager?.activeLens?.rawValue,
+            // This must remain frame-bound. The manager may switch lenses
+            // after capture and before this main-actor presentation runs.
+            lensID: frameEvidence.lensID,
             routeActive: true,
             isAppBackgrounded: false,
             // The producer owns a frozen, thresholded scene identity. Ordinary
@@ -6547,25 +6550,37 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     private func makeLiveVerificationGeometry(
-        frameID: String,
-        pixelBuffer: CVPixelBuffer,
-        orientation: CameraCoachOrientation
+        frameEvidence: LatestFrameEvidenceStore.Snapshot
     ) -> ActionVerificationGeometryContext? {
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        guard width > 0, height > 0 else { return nil }
-        let sourceSize = CGSize(width: width, height: height)
-        return ActionVerificationGeometryContext(
-            frameID: frameID,
+        let width = CVPixelBufferGetWidth(frameEvidence.pixelBuffer)
+        let height = CVPixelBufferGetHeight(frameEvidence.pixelBuffer)
+        guard width > 0, height > 0,
+              let previewGeometry = frameEvidence.previewGeometry,
+              previewGeometry.imageOrientation == frameEvidence.orientation,
+              let orientation = coachingOrientation(for: frameEvidence.orientation) else {
+            return nil
+        }
+
+        let sourceSize: CGSize
+        switch frameEvidence.orientation {
+        case .left, .right, .leftMirrored, .rightMirrored:
+            sourceSize = CGSize(width: height, height: width)
+        default:
+            sourceSize = CGSize(width: width, height: height)
+        }
+
+        let context = ActionVerificationGeometryContext(
+            frameID: frameEvidence.sourceFrameId,
             displayTransform: CameraDisplayTransform(
                 orientation: orientation,
-                isMirrored: false
+                isMirrored: previewGeometry.isMirrored
             ),
             aspectFillTransform: AspectFillTransform(
                 sourceSize: sourceSize,
-                destinationSize: sourceSize
+                destinationSize: previewGeometry.destinationSize
             )
         )
+        return context.isValid ? context : nil
     }
 
     /// Returns the current episode's stable scene provenance identity for the
@@ -6902,10 +6917,12 @@ final class AnalysisPipeline: ObservableObject {
         for orientation: CGImagePropertyOrientation
     ) -> CameraCoachOrientation? {
         switch orientation {
-        case .right: return .portrait
-        case .left: return .portraitUpsideDown
+        case .right, .rightMirrored: return .portrait
+        case .left, .leftMirrored: return .portraitUpsideDown
         case .up: return .landscapeRight
+        case .upMirrored: return .landscapeRight
         case .down: return .landscapeLeft
+        case .downMirrored: return .landscapeLeft
         default: return nil
         }
     }
@@ -7003,6 +7020,7 @@ final class AnalysisPipeline: ObservableObject {
         case "action_changed": return .actionChanged
         case "subject_unavailable", "subject_source_changed": return .subjectChanged
         case "capture_context_changed": return .cameraGenerationChange
+        case "scene_cut": return .sceneCut
         case "camera_motion": return .staleEvidence
         case "invalid_live_envelope", "frame_adapter_rejected", "bounded_plan_blocked",
              "probability_invalid", "plan_not_actionable": return .staleEvidence

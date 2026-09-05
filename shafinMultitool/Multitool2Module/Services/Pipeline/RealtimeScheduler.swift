@@ -57,6 +57,13 @@ struct FrameContext {
     let pixelBuffer: CVPixelBuffer
     let timestamp: CMTime
     let orientation: CGImagePropertyOrientation
+    /// Immutable capture-side lens identity. This is the lens that produced
+    /// the buffer, not a later mutable CameraManager selection.
+    let lensID: String?
+    /// Preview geometry captured with the same orientation as the buffer.
+    /// Missing geometry remains explicit so subject-bound verification can
+    /// fail closed instead of inventing an identity transform.
+    let previewGeometry: CameraPreviewGeometry?
     let isStable: Bool
     let shakeLevel: Double
     let motionState: MotionState
@@ -69,6 +76,8 @@ struct FrameContext {
     init(pixelBuffer: CVPixelBuffer,
          timestamp: CMTime,
          orientation: CGImagePropertyOrientation,
+         lensID: String? = nil,
+         previewGeometry: CameraPreviewGeometry? = nil,
          isStable: Bool,
          shakeLevel: Double,
          motionState: MotionState,
@@ -77,6 +86,8 @@ struct FrameContext {
         self.pixelBuffer = pixelBuffer
         self.timestamp = timestamp
         self.orientation = orientation
+        self.lensID = lensID
+        self.previewGeometry = previewGeometry
         self.isStable = isStable
         self.shakeLevel = shakeLevel
         self.motionState = motionState

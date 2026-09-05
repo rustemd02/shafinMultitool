@@ -235,6 +235,140 @@ retained existing compiler warnings only (including known deprecations and
   Completed task-owned DerivedData was removed after the final evidence was
   retained; the xcresult bundles remain.
 
+## Post-audit correction — frame-bound provenance and scene-cut recovery
+
+The Sol audit identified a provenance gap in the earlier closure: a subject
+comparison could be built with an analysis/source-size identity transform, and
+the mutable manager lens could be read after capture. This correction keeps the
+existing production owners and makes the comparison frame-bound:
+
+- `CameraPreviewGeometry` is one immutable, validated carrier for the actual
+  preview-layer destination size, ImageIO orientation and mirror state. The
+  `CameraManager` stores it behind a lock; `PreviewView` publishes it only
+  after a live connection, attached window and non-zero layer bounds exist, and
+  clears it when those facts disappear.
+- `CameraManager.captureOutput` takes one capture-bound lock snapshot of image
+  orientation, active-lens ID, capture generation and matching preview
+  geometry. `FrameContext` carries the values through
+  `LatestFrameEvidenceStore.Snapshot` and `AcceptedFrameEnvelope`, including
+  pause acceptance; later lens changes cannot rewrite accepted provenance.
+- `AnalysisPipeline` builds `ActionVerificationGeometryContext` only from the
+  immutable envelope. It rotates raw buffer dimensions for ImageIO left/right
+  orientations, uses the actual preview destination and captured mirroring,
+  and returns no geometry for missing, invalid or orientation-mismatched
+  provenance. Subject-bound verification therefore remains fail-closed.
+- `.sceneCut` is a retryable same-capture cancellation. The existing pipeline
+  owner reset path clears the terminal episode so the next admissible baseline
+  receives a fresh token; capture, lens, orientation and route boundaries stay
+  non-retryable. The existing frozen, thresholded scene identity remains the
+  producer-side scene owner. Its `.12` structural distance, `.18` exposure
+  tolerance and four-outlier profile are explicitly uncalibrated until a
+  physical-device corpus is available.
+
+### Correction delta files
+
+The post-audit correction changed only the following owned files in addition to
+the previously documented closure commit:
+
+- `shafinMultitool/Multitool2Module/Models/CameraAnalysis/CoachingEpisodeCoordinator.swift`
+  — permits typed scene-cut retry.
+- `shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift` —
+  validated preview geometry, lock-backed capture provenance and lifecycle
+  clearing.
+- `shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift`
+  — frame-bound envelope propagation and verifier geometry construction.
+- `shafinMultitool/Multitool2Module/Services/Pipeline/LatestFrameEvidenceStore.swift`
+  — immutable lens/geometry propagation through snapshots and envelopes.
+- `shafinMultitool/Multitool2Module/Services/Pipeline/RealtimeScheduler.swift`
+  — frame-context provenance fields.
+- `shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift` — actual
+  preview-layer geometry publication and clearing.
+- `shafinMultitoolTests/CameraCoachClosedLoopTests.swift` — frame-bound
+  geometry assertions and production closed-loop evidence.
+- `shafinMultitoolTests/CameraManagerLifecycleTests.swift` — geometry owner
+  validation/clearing.
+- `shafinMultitoolTests/CoachingEpisodeCoordinatorTests.swift` — scene-cut
+  cancellation and fresh-baseline recovery.
+- `shafinMultitoolTests/LatestFrameEvidenceStoreTests.swift` — accepted-frame
+  lens/geometry immutability and orientation mismatch rejection.
+- This evidence file.
+
+No `SubjectTracker.swift` change was necessary; its IoU and lifecycle contract
+remain untouched. No route, accessibility-ID, catalog, fixture-root, release
+surface, thesis/litreview or user file changed.
+
+### Correction verification
+
+All simulator tests below used iPhone Air (iOS 26.5,
+`A6E7238C-B4C6-4988-B399-8E127CA8683B`), serial execution, code signing
+disabled and `-collect-test-diagnostics never`. No iPhone 17 Pro was targeted.
+
+```text
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/setos-m2-camera-provenance-unit-dd \
+  -resultBundlePath /private/tmp/setos-m2-camera-provenance-unit.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionOwnersAdvanceSubjectSelectionThroughStabilizedEpisode \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionSceneIdentityIgnoresNoiseAndLocalMotionButRotatesOnMaterialCut \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests/testSceneCutCancellationAdmitsFreshBaselineWithinSameCapture \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testAcceptedFrameKeepsFrameBoundLensAndPreviewGeometryAfterLensChanges \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testMismatchedPreviewGeometryIsUnavailableAtImmutableBoundary \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests/testPreviewGeometryIsValidatedAndClearedByItsCameraOwner
+```
+
+Result: `** TEST SUCCEEDED **`; 6/6 tests passed, 0 failed, 0 skipped.
+
+```text
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/setos-m2-camera-provenance-unit-dd \
+  -resultBundlePath /private/tmp/setos-m2-camera-provenance-closed-loop-final.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests
+```
+
+Result: `** TEST SUCCEEDED **`; 4/4 production closed-loop tests passed, 0
+failed, 0 skipped. Bundle: `/private/tmp/setos-m2-camera-provenance-closed-loop-final.xcresult`.
+
+```text
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolUITests/CameraCoachProductionUITests \
+  -derivedDataPath /private/tmp/setos-m2-camera-provenance-unit-dd \
+  -resultBundlePath /private/tmp/setos-m2-camera-provenance-ui-production-final.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+```
+
+Result: `** TEST SUCCEEDED **`; 10/10 production UI tests passed, 0 failed,
+0 skipped, including portrait/landscape, fixture semantics, pause/lens,
+Reduce Motion and Dynamic Type. Bundle:
+`/private/tmp/setos-m2-camera-provenance-ui-production-final.xcresult`.
+
+```text
+xcodebuild build -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -configuration Release -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/setos-m2-camera-provenance-release-dd \
+  -resultBundlePath /private/tmp/setos-m2-camera-provenance-release.xcresult \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Result: exit `0`; Release bundle:
+`/private/tmp/setos-m2-camera-provenance-release.xcresult`; product:
+`/private/tmp/setos-m2-camera-provenance-release-dd/Build/Products/Release-iphonesimulator/shafinMultitool.app/shafinMultitool`.
+The Release binary contained none of the selected DEBUG fixture/probe strings
+(`previewGeometryForTesting`, `testingLiveSceneIdentity`,
+`testingResetLiveSceneIdentity`, `SHAFIN_CAMERA_PRODUCTION_FIXTURE`).
+
+`git diff --check` passed. The final Air xcresult bundles above were retained;
+completed task-owned DerivedData was removed after evidence capture. Existing
+M2-033 composition and entry-flow bundles remain the previously recorded Air
+artifacts because this correction did not alter routes or root-control
+semantics.
+
 ## Remaining boundary
 
 Simulator and unit evidence cannot prove physical-device ARKit tracking,

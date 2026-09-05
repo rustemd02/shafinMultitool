@@ -184,6 +184,26 @@ final class CameraCoachClosedLoopTests: XCTestCase {
                     observation.stabilizedAdvice.actionID,
                     SemanticActionType.shiftFrameRight.rawValue
                 )
+                guard let geometry = observation.geometryContext else {
+                    XCTFail("live verification must carry captured preview geometry")
+                    continue
+                }
+                XCTAssertFalse(
+                    geometry.displayTransform.isMirrored,
+                    "live verification must preserve the captured preview mirror state"
+                )
+                XCTAssertEqual(
+                    geometry.aspectFillTransform.destinationPixelWidth,
+                    390,
+                    accuracy: 0.0001,
+                    "live verification must use actual preview destination geometry"
+                )
+                XCTAssertEqual(
+                    geometry.aspectFillTransform.destinationPixelHeight,
+                    844,
+                    accuracy: 0.0001,
+                    "live verification must use actual preview destination geometry"
+                )
                 acceptedBaselineFrameID = observation.frame.frameID
                 let baselineConsumedByViewModel = await waitUntil {
                     viewModel.coachingEpisodeState.phase == .awaitingMovement
@@ -712,6 +732,12 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             sourceFrameId: id,
             capturedAt: date,
             isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            previewGeometry: CameraPreviewGeometry(
+                destinationSize: CGSize(width: 390, height: 844),
+                imageOrientation: orientation,
+                isMirrored: false
+            ),
             adapterState: state,
             lensGeneration: 1
         )!

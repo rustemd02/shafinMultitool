@@ -259,6 +259,30 @@ enum CameraFrameDeliveryOrientationContract {
     }
 }
 
+/// Immutable preview geometry captured at the same display orientation as a
+/// camera frame. The destination is the actual preview-layer size, not an
+/// analysis/source-size placeholder; invalid geometry is unavailable rather
+/// than normalized into a plausible crop.
+struct CameraPreviewGeometry: Equatable, @unchecked Sendable {
+    let destinationSize: CGSize
+    let imageOrientation: CGImagePropertyOrientation
+    let isMirrored: Bool
+
+    init?(destinationSize: CGSize,
+          imageOrientation: CGImagePropertyOrientation,
+          isMirrored: Bool) {
+        guard destinationSize.width.isFinite,
+              destinationSize.height.isFinite,
+              destinationSize.width > 0,
+              destinationSize.height > 0 else {
+            return nil
+        }
+        self.destinationSize = destinationSize
+        self.imageOrientation = imageOrientation
+        self.isMirrored = isMirrored
+    }
+}
+
 enum CameraLifecycleState: Equatable, Sendable {
     case idle
     case starting
@@ -351,6 +375,12 @@ final class CameraManager: NSObject, @unchecked Sendable {
     private let activeLensLock = NSLock()
     private var storedActiveLens: CameraLens?
 
+    /// Preview-layer geometry is written by PreviewView only after its
+    /// connection and bounds are real. The capture boundary lock makes a
+    /// geometry update and a frame provenance snapshot mutually exclusive.
+    private let previewGeometryLock = NSLock()
+    private var storedPreviewGeometry: CameraPreviewGeometry?
+
     private let lensDescriptorsLock = NSLock()
     private var storedLensDescriptors: [CameraLens: CameraLensDescriptor] = [:]
 
@@ -416,6 +446,27 @@ final class CameraManager: NSObject, @unchecked Sendable {
         defer { lensDescriptorsLock.unlock() }
         return storedLensDescriptors[activeLens] ?? activeLens.descriptor
     }
+
+    /// Updates the manager-owned preview geometry. A nil value means that the
+    /// preview is not currently measurable (for example, no window or zero
+    /// bounds), so subject-bound verification must not guess a transform.
+    func updatePreviewGeometry(_ geometry: CameraPreviewGeometry?) {
+        captureBoundaryLock.lock()
+        previewGeometryLock.lock()
+        storedPreviewGeometry = geometry
+        previewGeometryLock.unlock()
+        captureBoundaryLock.unlock()
+    }
+
+    func clearPreviewGeometry() {
+        updatePreviewGeometry(nil)
+    }
+
+#if DEBUG
+    var previewGeometryForTesting: CameraPreviewGeometry? {
+        previewGeometrySnapshot()
+    }
+#endif
 
     init(scheduler: RealtimeScheduler,
          thermalGovernor: ThermalGovernor,
@@ -539,6 +590,47 @@ final class CameraManager: NSObject, @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return storedCaptureGeneration
+    }
+
+    private func previewGeometrySnapshot() -> CameraPreviewGeometry? {
+        previewGeometryLock.lock()
+        defer { previewGeometryLock.unlock() }
+        return storedPreviewGeometry
+    }
+
+    private struct FrameProvenanceSnapshot {
+        let orientation: CGImagePropertyOrientation
+        let lensID: String?
+        let previewGeometry: CameraPreviewGeometry?
+        let captureGeneration: UInt64
+    }
+
+    /// Takes one capture-bound provenance snapshot. It is intentionally a
+    /// lock-only operation: no pixel analysis or UI work may happen under the
+    /// capture boundary.
+    private func frameProvenanceSnapshot() -> FrameProvenanceSnapshot? {
+        captureBoundaryLock.lock()
+        defer { captureBoundaryLock.unlock() }
+        guard isFrameDeliveryEnabled() else { return nil }
+
+        let requestedOrientation = desiredVideoOrientationSnapshot()
+        let imageOrientation = CameraFrameDeliveryOrientationContract.imageOrientation(
+            for: requestedOrientation
+        )
+        let previewGeometry = previewGeometrySnapshot()
+            .flatMap { $0.imageOrientation == imageOrientation ? $0 : nil }
+        return FrameProvenanceSnapshot(
+            orientation: imageOrientation,
+            lensID: activeLensSnapshot()?.rawValue,
+            previewGeometry: previewGeometry,
+            captureGeneration: currentCaptureGeneration()
+        )
+    }
+
+    private func activeLensSnapshot() -> CameraLens? {
+        activeLensLock.lock()
+        defer { activeLensLock.unlock() }
+        return storedActiveLens
     }
 
     /// M2-023 test visibility for the camera-owned provenance epoch.
@@ -702,6 +794,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
 
         currentInput = nil
         setCurrentLens(nil)
+        clearPreviewGeometry()
         isConfigured = false
         setAvailableLenses([])
         setLensDescriptors([:])
@@ -1195,17 +1288,17 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         let capturedAt = Date()
-        guard isFrameDeliveryEnabled() else { return }
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let orientation = CameraFrameDeliveryOrientationContract.imageOrientation(
-            for: desiredVideoOrientationSnapshot()
-        )
+        guard let provenance = frameProvenanceSnapshot() else { return }
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let captureGeneration = currentCaptureGeneration()
+        let orientation = provenance.orientation
+        let captureGeneration = provenance.captureGeneration
         let motionSnapshot = motionGate.snapshot()
         let context = FrameContext(pixelBuffer: pixelBuffer,
                                    timestamp: timestamp,
                                    orientation: orientation,
+                                   lensID: provenance.lensID,
+                                   previewGeometry: provenance.previewGeometry,
                                    isStable: motionSnapshot.isStable,
                                    shakeLevel: motionSnapshot.shakeLevel,
                                    motionState: motionSnapshot.motionState,

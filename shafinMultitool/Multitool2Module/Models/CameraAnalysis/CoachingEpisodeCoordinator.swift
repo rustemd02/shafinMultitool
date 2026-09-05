@@ -38,16 +38,17 @@ enum CoachingEpisodeCancellationReason: String, Codable, CaseIterable, Equatable
 }
 
 extension CoachingEpisodeCancellationReason {
-    /// Evidence failures can recover on the next admissible frame in the
-    /// same capture. Capture and route boundaries remain explicit owners: the
-    /// camera/lens lifecycle must establish a new context before retrying.
+    /// Evidence failures, including a material scene cut, can recover on the
+    /// next admissible frame in the same capture. Capture and route boundaries
+    /// remain explicit owners: the camera/lens lifecycle must establish a new
+    /// context before retrying.
     var permitsAutomaticRetryWithinCapture: Bool {
         switch self {
         case .actionChanged, .subjectChanged, .staleEvidence, .outOfOrder,
-             .invalidObservation, .expired:
+             .invalidObservation, .expired, .sceneCut:
             return true
         case .cameraGenerationChange, .lensChange, .orientationChange,
-             .routeExit, .background, .sceneCut:
+             .routeExit, .background:
             return false
         }
     }

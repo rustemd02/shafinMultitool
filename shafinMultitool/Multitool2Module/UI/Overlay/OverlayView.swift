@@ -190,6 +190,7 @@ final class PreviewView: UIView {
             scheduleOrientationUpdate()
         } else {
             stopOrientationObservation()
+            cameraManager?.clearPreviewGeometry()
         }
     }
 
@@ -200,6 +201,7 @@ final class PreviewView: UIView {
     }
 
     func updateMappedRegions() {
+        updatePreviewGeometry()
         let bounds = videoPreviewLayer.bounds
         guard bounds.width > 0, bounds.height > 0 else {
             transformStore?.clear()
@@ -223,15 +225,46 @@ final class PreviewView: UIView {
               connection.isVideoOrientationSupported,
               let interfaceOrientation = currentInterfaceOrientation(),
               let coachOrientation = CameraCoachOrientation(interfaceOrientation: interfaceOrientation) else {
+            cameraManager?.clearPreviewGeometry()
             return
         }
         let captureOrientation = coachOrientation.captureOrientation
 
-        guard force || lastOrientation != captureOrientation else { return }
+        guard force || lastOrientation != captureOrientation else {
+            updatePreviewGeometry()
+            return
+        }
 
         lastOrientation = captureOrientation
         connection.videoOrientation = captureOrientation
         cameraManager?.setVideoOrientation(captureOrientation)
+        updatePreviewGeometry()
+    }
+
+    /// Publishes the actual preview-layer destination only after the layer is
+    /// attached to a window, has non-zero bounds, and exposes a live video
+    /// connection. A stale value is cleared whenever those facts disappear.
+    private func updatePreviewGeometry() {
+        guard window != nil,
+              let connection = videoPreviewLayer.connection,
+              connection.isVideoOrientationSupported else {
+            cameraManager?.clearPreviewGeometry()
+            return
+        }
+        let bounds = videoPreviewLayer.bounds
+        guard bounds.width > 0, bounds.height > 0,
+              let geometry = CameraPreviewGeometry(
+                  destinationSize: bounds.size,
+                  imageOrientation: CameraFrameDeliveryOrientationContract.imageOrientation(
+                      for: connection.videoOrientation
+                  ),
+                  isMirrored: connection.isVideoMirroringSupported
+                      && connection.isVideoMirrored
+              ) else {
+            cameraManager?.clearPreviewGeometry()
+            return
+        }
+        cameraManager?.updatePreviewGeometry(geometry)
     }
 
     private func startOrientationObservationIfNeeded() {

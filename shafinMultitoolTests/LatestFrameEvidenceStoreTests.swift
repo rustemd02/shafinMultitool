@@ -202,6 +202,65 @@ final class LatestFrameEvidenceStoreTests: XCTestCase {
         XCTAssertTrue(acceptedA?.isStable ?? false)
     }
 
+    func testAcceptedFrameKeepsFrameBoundLensAndPreviewGeometryAfterLensChanges() {
+        let store = LatestFrameEvidenceStore()
+        let geometry = CameraPreviewGeometry(
+            destinationSize: CGSize(width: 390, height: 844),
+            imageOrientation: .right,
+            isMirrored: true
+        )!
+
+        XCTAssertTrue(store.publish(
+            pixelBuffer: makePixelBuffer(width: 1920, height: 1080),
+            orientation: .right,
+            sourceFrameId: "lens-a-frame",
+            capturedAt: Date(timeIntervalSince1970: 60),
+            isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            previewGeometry: geometry,
+            lensGeneration: 8
+        ))
+        let acceptedA = store.acceptCurrentSnapshot()
+
+        XCTAssertTrue(store.publish(
+            pixelBuffer: makePixelBuffer(width: 1920, height: 1080),
+            orientation: .right,
+            sourceFrameId: "lens-b-frame",
+            capturedAt: Date(timeIntervalSince1970: 61),
+            isStable: true,
+            lensID: CameraLens.telephoto.rawValue,
+            previewGeometry: geometry,
+            lensGeneration: 9
+        ))
+
+        XCTAssertEqual(acceptedA?.evidence.lensID, CameraLens.wide.rawValue)
+        XCTAssertEqual(acceptedA?.evidence.previewGeometry, geometry)
+        XCTAssertEqual(acceptedA?.evidence.makeEnvelope().lensID, CameraLens.wide.rawValue)
+        XCTAssertEqual(acceptedA?.evidence.makeEnvelope().previewGeometry, geometry)
+        XCTAssertEqual(store.snapshot()?.lensID, CameraLens.telephoto.rawValue)
+    }
+
+    func testMismatchedPreviewGeometryIsUnavailableAtImmutableBoundary() {
+        let geometry = CameraPreviewGeometry(
+            destinationSize: CGSize(width: 390, height: 844),
+            imageOrientation: .up,
+            isMirrored: false
+        )!
+        let snapshot = LatestFrameEvidenceStore.Snapshot(
+            pixelBuffer: makePixelBuffer(),
+            orientation: .right,
+            sourceFrameId: "mismatched-geometry",
+            capturedAt: Date(timeIntervalSince1970: 70),
+            isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            previewGeometry: geometry,
+            lensGeneration: 10
+        )
+
+        XCTAssertNil(snapshot?.previewGeometry)
+        XCTAssertNil(snapshot?.makeEnvelope().previewGeometry)
+    }
+
     func testDetrProvenanceMustMatchFrameGenerationAndOrientation() {
         let measuredAt = Date(timeIntervalSince1970: 50)
         let provenance = FeatureSampleProvenance(

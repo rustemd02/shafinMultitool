@@ -748,6 +748,30 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         }
     }
 
+    func testSceneCutCancellationAdmitsFreshBaselineWithinSameCapture() {
+        var coordinator = startedCoordinator()
+        let firstToken = coordinator.episodeToken
+
+        let cancelled = coordinator.observe(observation(
+            id: "scene-cut",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            sceneSignature: "scene-b"
+        ))
+        XCTAssertEqual(cancelled.phase, .cancelled)
+        XCTAssertEqual(cancelled.cancellationReason, .sceneCut)
+        XCTAssertTrue(CoachingEpisodeCancellationReason.sceneCut.permitsAutomaticRetryWithinCapture)
+
+        let fresh = coordinator.consume(.baseline(observation(
+            id: "fresh-baseline",
+            capturedAt: startDate.addingTimeInterval(0.2),
+            sceneSignature: "scene-b"
+        )))
+        XCTAssertEqual(fresh.phase, .awaitingMovement)
+        XCTAssertNotEqual(fresh.token, firstToken,
+                          "scene-cut retry must require a fresh episode token")
+        XCTAssertEqual(fresh.baseline?.frameID, "fresh-baseline")
+    }
+
     func testActionAndSubjectIdentityChangesCancelTheEpisode() {
         var actionChanged = startedCoordinator()
         XCTAssertEqual(
