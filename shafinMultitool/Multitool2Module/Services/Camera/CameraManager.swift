@@ -622,6 +622,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
         let lensID: String?
         let previewGeometry: CameraPreviewGeometry?
         let captureGeneration: UInt64
+        let sessionGeneration: UInt64
     }
 
     /// Takes one capture-bound provenance snapshot. It is intentionally a
@@ -642,7 +643,8 @@ final class CameraManager: NSObject, @unchecked Sendable {
             orientation: imageOrientation,
             lensID: activeLensSnapshot()?.rawValue,
             previewGeometry: previewGeometry,
-            captureGeneration: currentCaptureGeneration()
+            captureGeneration: currentCaptureGeneration(),
+            sessionGeneration: currentSessionGeneration()
         )
     }
 
@@ -1308,10 +1310,15 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
                        from connection: AVCaptureConnection) {
         let capturedAt = Date()
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        guard let provenance = frameProvenanceSnapshot() else { return }
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        // The callback's wall-clock arrival time is useful only for freshness;
+        // it cannot establish sample order. A real camera frame must carry a
+        // numeric presentation timestamp through the analysis boundary.
+        guard timestamp.isNumeric else { return }
+        guard let provenance = frameProvenanceSnapshot() else { return }
         let orientation = provenance.orientation
         let captureGeneration = provenance.captureGeneration
+        let sessionGeneration = provenance.sessionGeneration
         let motionSnapshot = motionGate.snapshot()
         let context = FrameContext(pixelBuffer: pixelBuffer,
                                    timestamp: timestamp,
@@ -1322,13 +1329,15 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
                                    shakeLevel: motionSnapshot.shakeLevel,
                                    motionState: motionSnapshot.motionState,
                                    capturedAt: capturedAt,
-                                   captureGeneration: captureGeneration)
+                                   captureGeneration: captureGeneration,
+                                   sessionGeneration: sessionGeneration)
 
         let budget = thermalGovernor.nextBudget()
 
         frameDeliveryLock.lock()
         guard frameDeliveryEnabled,
-              captureGeneration == currentCaptureGeneration() else {
+              captureGeneration == currentCaptureGeneration(),
+              sessionGeneration == currentSessionGeneration() else {
             frameDeliveryLock.unlock()
             return
         }

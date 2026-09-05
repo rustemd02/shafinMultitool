@@ -1,5 +1,6 @@
 import CoreGraphics
 import CoreImage
+import CoreMedia
 import CoreVideo
 import Darwin
 import Foundation
@@ -28,6 +29,14 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
         /// frame. 0 means unknown (legacy/synthetic publishers); production
         /// high-priority capture supplies CameraManager's capture generation.
         let lensGeneration: UInt64
+        /// Exact presentation timestamp copied from the CMSampleBuffer. This
+        /// is the ordering source within one camera capture epoch; it is not
+        /// the callback arrival `capturedAt` wall-clock value.
+        let samplePresentationTimestamp: CMTime
+        /// CameraManager lifecycle/session epoch for this sample. `nil` is
+        /// retained only for legacy synthetic publishers; `.some(0)` is a
+        /// valid first camera session.
+        let sessionGeneration: UInt64?
 
         init?(pixelBuffer: CVPixelBuffer,
               orientation: CGImagePropertyOrientation,
@@ -37,9 +46,17 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
               lensID: String? = nil,
               previewGeometry: CameraPreviewGeometry? = nil,
               adapterState: PipelineFeatureSnapshotAdapterState? = nil,
-              lensGeneration: UInt64 = 0) {
+              lensGeneration: UInt64 = 0,
+              samplePresentationTimestamp: CMTime = .invalid,
+              sessionGeneration: UInt64? = nil) {
             let trimmedSourceFrameId = sourceFrameId.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedSourceFrameId.isEmpty else { return nil }
+            // A known CameraManager session is a production provenance claim;
+            // do not admit it without both the capture epoch and numeric PTS.
+            guard sessionGeneration == nil
+                || (lensGeneration != 0 && samplePresentationTimestamp.isNumeric) else {
+                return nil
+            }
 
             self.pixelBuffer = pixelBuffer
             self.orientation = orientation
@@ -54,9 +71,13 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
             self.adapterState = adapterState?.sanitizedForFrame(
                 frameID: trimmedSourceFrameId,
                 captureGeneration: lensGeneration,
-                orientation: orientation
+                orientation: orientation,
+                samplePresentationTimestamp: samplePresentationTimestamp,
+                sessionGeneration: sessionGeneration
             )
             self.lensGeneration = lensGeneration
+            self.samplePresentationTimestamp = samplePresentationTimestamp
+            self.sessionGeneration = sessionGeneration
         }
 
         /// M2-005: per-source feature measurement timestamps for this frame,
@@ -92,7 +113,9 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
                 previewGeometry: previewGeometry,
                 lensGeneration: lensGeneration,
                 pixelBuffer: pixelBuffer,
-                featureSourceTimestamps: featureSourceTimestamps
+                featureSourceTimestamps: featureSourceTimestamps,
+                samplePresentationTimestamp: samplePresentationTimestamp,
+                sessionGeneration: sessionGeneration
             )
         }
     }
@@ -123,6 +146,9 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
             )
         }
 
+        var samplePresentationTimestamp: CMTime { evidence.samplePresentationTimestamp }
+        var sessionGeneration: UInt64? { evidence.sessionGeneration }
+
         func withDisplayImage(_ image: CGImage) -> Self {
             Self(snapshotID: snapshotID, evidence: evidence, displayImage: image)
         }
@@ -141,7 +167,9 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
                           lensID: String? = nil,
                           previewGeometry: CameraPreviewGeometry? = nil,
                           adapterState: PipelineFeatureSnapshotAdapterState? = nil,
-                          lensGeneration: UInt64 = 0) -> Bool {
+                          lensGeneration: UInt64 = 0,
+                          samplePresentationTimestamp: CMTime = .invalid,
+                          sessionGeneration: UInt64? = nil) -> Bool {
         guard let snapshot = Snapshot(
             pixelBuffer: pixelBuffer,
             orientation: orientation,
@@ -151,21 +179,22 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
             lensID: lensID,
             previewGeometry: previewGeometry,
             adapterState: adapterState,
-            lensGeneration: lensGeneration
+            lensGeneration: lensGeneration,
+            samplePresentationTimestamp: samplePresentationTimestamp,
+            sessionGeneration: sessionGeneration
         ) else {
             return false
         }
 
         lock.lock()
         if let currentSnapshot {
-            let currentGeneration = currentSnapshot.lensGeneration
-            let incomingGeneration = snapshot.lensGeneration
-            let isOlderGeneration = incomingGeneration == 0
-                ? currentGeneration != 0
-                : currentGeneration != 0 && incomingGeneration < currentGeneration
-            let isOlderFrameInGeneration = incomingGeneration == currentGeneration
-                && snapshot.capturedAt < currentSnapshot.capturedAt
-            guard !isOlderGeneration, !isOlderFrameInGeneration else {
+            guard Self.accepts(
+                sessionGeneration: snapshot.sessionGeneration,
+                captureGeneration: snapshot.lensGeneration,
+                samplePresentationTimestamp: snapshot.samplePresentationTimestamp,
+                capturedAt: snapshot.capturedAt,
+                over: currentSnapshot
+            ) else {
                 lock.unlock()
                 return false
             }
@@ -173,6 +202,73 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
         currentSnapshot = snapshot
         lock.unlock()
         return true
+    }
+
+    /// Atomically checks the same provenance ordering used by `publish`.
+    /// Callers use this before expensive work; `publish` repeats the check
+    /// under its lock so a concurrent newer sample cannot be overtaken.
+    internal func accepts(sessionGeneration: UInt64?,
+                          captureGeneration: UInt64,
+                          samplePresentationTimestamp: CMTime,
+                          capturedAt: Date = Date()) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let currentSnapshot else { return true }
+        return Self.accepts(
+            sessionGeneration: sessionGeneration,
+            captureGeneration: captureGeneration,
+            samplePresentationTimestamp: samplePresentationTimestamp,
+            capturedAt: capturedAt,
+            over: currentSnapshot
+        )
+    }
+
+    private static func accepts(sessionGeneration incomingSessionGeneration: UInt64?,
+                                captureGeneration incomingCaptureGeneration: UInt64,
+                                samplePresentationTimestamp incomingTimestamp: CMTime,
+                                capturedAt incomingCapturedAt: Date,
+                                over current: Snapshot) -> Bool {
+        // Preserve the existing Date fallback only for fully legacy values.
+        // CameraManager captureOutput always supplies a known session and
+        // numeric PTS, so callback arrival time can never make old pixels
+        // appear newer on the production path.
+        let legacyOrdering = incomingSessionGeneration == nil
+            && current.sessionGeneration == nil
+            && !incomingTimestamp.isNumeric
+            && !current.samplePresentationTimestamp.isNumeric
+
+        if let currentSessionGeneration = current.sessionGeneration {
+            guard let incomingSessionGeneration else { return false }
+            if incomingSessionGeneration != currentSessionGeneration {
+                return incomingSessionGeneration > currentSessionGeneration
+            }
+        } else if incomingSessionGeneration != nil {
+            // A known session is a new authoritative epoch over an unknown
+            // legacy value; its sample order starts anew.
+            return true
+        }
+
+        if current.lensGeneration != 0 {
+            guard incomingCaptureGeneration != 0 else { return false }
+            if incomingCaptureGeneration < current.lensGeneration { return false }
+        }
+
+        if incomingCaptureGeneration != current.lensGeneration {
+            // A newer known capture epoch supersedes any older/unknown PTS.
+            return incomingCaptureGeneration > current.lensGeneration
+                || (current.lensGeneration == 0 && incomingCaptureGeneration != 0)
+        }
+
+        if current.samplePresentationTimestamp.isNumeric {
+            guard incomingTimestamp.isNumeric else { return false }
+            return CMTimeCompare(incomingTimestamp, current.samplePresentationTimestamp) >= 0
+        }
+        if incomingTimestamp.isNumeric {
+            return true
+        }
+
+        guard legacyOrdering else { return false }
+        return incomingCapturedAt >= current.capturedAt
     }
 
     internal func snapshot() -> Snapshot? {
@@ -200,7 +296,9 @@ internal final class LatestFrameEvidenceStore: @unchecked Sendable {
                   lensID: currentSnapshot.lensID,
                   previewGeometry: currentSnapshot.previewGeometry,
                   adapterState: currentSnapshot.adapterState,
-                  lensGeneration: currentSnapshot.lensGeneration
+                  lensGeneration: currentSnapshot.lensGeneration,
+                  samplePresentationTimestamp: currentSnapshot.samplePresentationTimestamp,
+                  sessionGeneration: currentSnapshot.sessionGeneration
               ) else {
             lock.unlock()
             return nil
@@ -352,6 +450,8 @@ struct AcceptedFrameEnvelope {
     let lensID: String?
     let previewGeometry: CameraPreviewGeometry?
     let lensGeneration: UInt64
+    let samplePresentationTimestamp: CMTime
+    let sessionGeneration: UInt64?
     let pixelBuffer: CVPixelBuffer
     let featureSourceTimestamps: [FeatureSourceID: Date]
 
@@ -362,7 +462,9 @@ struct AcceptedFrameEnvelope {
          previewGeometry: CameraPreviewGeometry? = nil,
          lensGeneration: UInt64,
          pixelBuffer: CVPixelBuffer,
-         featureSourceTimestamps: [FeatureSourceID: Date]) {
+         featureSourceTimestamps: [FeatureSourceID: Date],
+         samplePresentationTimestamp: CMTime = .invalid,
+         sessionGeneration: UInt64? = nil) {
         let trimmedFrameID = frameID.trimmingCharacters(in: .whitespacesAndNewlines)
         self.frameID = trimmedFrameID
         self.capturedAt = capturedAt
@@ -373,6 +475,8 @@ struct AcceptedFrameEnvelope {
             ? previewGeometry
             : nil
         self.lensGeneration = lensGeneration
+        self.samplePresentationTimestamp = samplePresentationTimestamp
+        self.sessionGeneration = sessionGeneration
         self.pixelBuffer = pixelBuffer
         self.featureSourceTimestamps = featureSourceTimestamps
     }

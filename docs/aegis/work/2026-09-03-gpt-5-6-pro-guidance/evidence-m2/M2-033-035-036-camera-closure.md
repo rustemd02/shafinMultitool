@@ -491,6 +491,115 @@ specified owned set. No changes were needed in `AnalysisPipeline.swift`,
 contracts in those files were exercised by the new boundary tests and
 regression group.
 
+## Final Sol/High correction — exact sample/session provenance and real capture-path evidence
+
+This section supersedes the preceding correction claims wherever they called
+the direct typed scene-cut fixture the decisive stale-frame proof, said that
+`AnalysisPipeline.swift` and `LatestFrameEvidenceStore.swift` needed no
+changes, or treated callback `Date` ordering as sufficient. The final bounded
+correction carries the exact `CMSampleBuffer` presentation timestamp and
+`CameraManager` session generation from `captureOutput` through
+`FrameContext`, the immutable evidence snapshot and `AcceptedFrameEnvelope`,
+and the live feature provenance. Within one session/capture epoch, the store
+orders by numeric `CMTime`; session and capture-generation changes start a
+new ordering epoch. Callback `capturedAt` remains a wall-clock freshness
+value and is used for ordering only for fully legacy values with no session or
+numeric sample timestamp. The pipeline checks the same comparator before
+expensive work and the store repeats it while locked at publication.
+
+The only deterministic test seam is the DEBUG-only Vision result provider at
+the earliest ML boundary. The decisive tests still invoke the real
+`CameraManager.captureOutput` with synthetic `CMSampleBuffer` values, the
+real `RealtimeScheduler`, the real `AnalysisPipeline`, and the real
+`CameraViewModel` publication path. No direct evidence-store injection or
+late presentation publisher is used by these tests.
+
+The first red capture-boundary retry was diagnosed as the scheduler cadence
+gate, not a provenance drop: callbacks delivered faster than the nominal 6 Hz
+high-priority interval were intentionally skipped, so the expected sample PTS
+was not yet the latest accepted PTS. The fixture now spaces callbacks by 180
+ms and waits for the actual high queue, preserving the production cadence and
+making the boundary assertion report its sample index and PTS.
+
+### Focused exact provenance and production-path run
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-final-provenance-focused-1788621503-dd \
+  -resultBundlePath /private/tmp/m2-camera-final-provenance-focused-1788621503.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests/testCaptureOutputBindsLensAndPreviewGeometryBeforeAnalysisPipelineReceivesFrame \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testKnownSamplePTSAndSessionGenerationRejectLateOlderEvidence \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathPublishesCorrectiveAndHonestAbstention \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries
+```
+
+Result: exit `0`; Air summary reports `totalTestCount: 4`,
+`passedTests: 4`, `failedTests: 0`, `skippedTests: 0`, `result: Passed`.
+The capture-boundary test verifies exact PTS `1/30`, session generation and
+capture generation in the evidence and envelope. The closed-loop corrective
+test reaches a ViewModel baseline through captureOutput and separately proves
+an unsupported frame remains an abstention. The scene-cut test rejects a late
+pre-cut sample with older PTS after cancellation and then admits a fresh
+post-cut baseline with a new token in the same capture/session.
+
+The corrective capture test was rerun alone after the cadence diagnosis:
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-corrective-capture-final-dd \
+  -resultBundlePath /private/tmp/m2-camera-corrective-capture-final.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathPublishesCorrectiveAndHonestAbstention
+```
+
+Result: exit `0`; Air summary reports `totalTestCount: 1`,
+`passedTests: 1`, `failedTests: 0`, `skippedTests: 0`, `result: Passed`.
+
+### Historical 53-test regression selection
+
+The prior 53-test selection was rerun with the new standalone PTS/store test
+excluded so its historical count remains comparable; that new test is included
+in the focused four-test run above.
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-final-provenance-regression53-1788621503-dd \
+  -resultBundlePath /private/tmp/m2-camera-final-provenance-regression53-1788621503.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests \
+  -skip-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testKnownSamplePTSAndSessionGenerationRejectLateOlderEvidence \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionOwnersAdvanceSubjectSelectionThroughStabilizedEpisode \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionSceneIdentityIgnoresNoiseAndLocalMotionButRotatesOnMaterialCut \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testTypedSceneCutCoordinatorFixtureRetainsTerminalState
+```
+
+Result: exit `0`; Air summary reports `totalTestCount: 53`,
+`passedTests: 53`, `failedTests: 0`, `skippedTests: 0`, `result: Passed`.
+
+The retained production UI result bundle
+`/private/tmp/m2-camera-second-correction-ui-rebinding.xcresult` reports the
+allowed Air device and `totalTestCount: 10`, `passedTests: 10`,
+`failedTests: 0`, `skippedTests: 0`, `result: Passed`; accessibility IDs were
+retained. A fresh Release rebuild of the current tree was attempted but was
+blocked by the host disk reaching `100%` while another task's temporary
+DerivedData was active; the prior Release fixture-string result remains
+valid for the unchanged UI/fixture boundary, and the coordinator must rerun
+the current-tree Release guard after serializing temporary storage.
+
+`git diff --check` passed. No iPhone 17 Pro or physical device was targeted.
+The only additional production-range file needed for this correction was
+`RealtimeScheduler.swift`, because `FrameContext` is the existing owner-path
+carrier for the new session/PTS provenance.
+
 ## Remaining boundary
 
 Simulator and unit evidence cannot prove physical-device ARKit tracking,

@@ -364,7 +364,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         )
     }
 
-    func testProductionSceneCutFlowsThroughViewModelAndRetriesWithinSameCapture() async {
+    func testTypedSceneCutCoordinatorFixtureRetainsTerminalState() async {
         let thermal = ThermalGovernor(
             thermalStateProvider: { .nominal },
             batteryLevelProvider: { 1.0 }
@@ -546,6 +546,188 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         XCTAssertEqual(viewModel.coachingEpisodeState.cancellationReason, nil)
 
         await viewModel.releaseAndWait()
+    }
+
+    func testProductionCapturePathPublishesCorrectiveAndHonestAbstention() async throws {
+        let corrective = makeCapturePathHarness(visionResult: { _, _ in
+            Self.supportedCaptureVisionResult
+        }, neuralEnabled: false)
+        await corrective.viewModel.startAndWait()
+        corrective.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
+
+        for index in 0..<10 {
+            let timestamp = CMTime(value: Int64(1_000 + index * 100), timescale: 1_000)
+            try await deliverCaptureSample(
+                through: corrective,
+                timestamp: timestamp,
+                lumaValues: Self.supportedCaptureLuma
+            )
+            let published = await waitUntil {
+                guard let evidence = corrective.pipeline.testingLatestFrameEvidence else {
+                    return false
+                }
+                return CMTimeCompare(evidence.samplePresentationTimestamp, timestamp) == 0
+            }
+            XCTAssertTrue(
+                published,
+                "the real CameraManager.captureOutput boundary must publish sample index=\(index) with PTS=\(timestamp.seconds)"
+            )
+        }
+
+        let correctiveBaselinePublished = await waitUntil {
+            corrective.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && corrective.viewModel.coachingEpisodeState.baseline != nil
+        }
+        XCTAssertTrue(correctiveBaselinePublished,
+                      "CameraManager.captureOutput -> RealtimeScheduler -> AnalysisPipeline -> CameraViewModel must publish a corrective baseline")
+        let baseline = try XCTUnwrap(corrective.viewModel.coachingEpisodeState.baseline,
+                                     "CameraViewModel must retain the production baseline after later frame evidence")
+        XCTAssertEqual(baseline.advice.actionID, SemanticActionType.shiftFrameRight.rawValue)
+        XCTAssertEqual(corrective.viewModel.coachingEpisodeState.phase, .awaitingMovement)
+        XCTAssertEqual(corrective.viewModel.coachingEpisodeState.baseline?.frameID, baseline.frame.frameID)
+        XCTAssertEqual(corrective.pipeline.testingDirectFrameAcceptanceCount, 0)
+        XCTAssertEqual(corrective.pipeline.testingLatestFrameEvidence?.sessionGeneration,
+                       corrective.manager.sessionGenerationForTesting)
+
+        await corrective.viewModel.releaseAndWait()
+
+        let abstention = makeCapturePathHarness(visionResult: { _, _ in
+            Self.emptyCaptureVisionResult
+        }, neuralEnabled: false)
+        await abstention.viewModel.startAndWait()
+        abstention.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
+        try await deliverCaptureSample(
+            through: abstention,
+            timestamp: CMTime(value: 3_000, timescale: 1_000),
+            lumaValues: [128, 128, 128, 128, 128, 128, 128, 128,
+                         128, 128, 128, 128, 128, 128, 128, 128]
+        )
+
+        XCTAssertNotNil(abstention.pipeline.testingLatestFrameEvidence)
+        XCTAssertNil(abstention.pipeline.currentLiveHint,
+                     "a frame with no supported subject/evidence must remain an honest abstention")
+        XCTAssertNil(abstention.pipeline.currentCoachingEpisodeEvent)
+        XCTAssertNil(abstention.viewModel.liveHint)
+        XCTAssertNil(abstention.viewModel.plannerDecision)
+        XCTAssertEqual(abstention.viewModel.coachingEpisodeState.phase, .idle)
+        XCTAssertEqual(abstention.pipeline.testingDirectFrameAcceptanceCount, 0)
+
+        await abstention.viewModel.releaseAndWait()
+    }
+
+    func testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries() async throws {
+        let harness = makeCapturePathHarness(visionResult: { _, _ in
+            Self.supportedCaptureVisionResult
+        }, neuralEnabled: false)
+        await harness.viewModel.startAndWait()
+        harness.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
+
+        let baseLuma = Self.supportedCaptureLuma
+        let cutLuma: [UInt8] = [
+            208, 48, 208, 48,
+            48, 208, 48, 208,
+            208, 48, 208, 48,
+            48, 208, 48, 208
+        ]
+        for index in 0..<10 {
+            try await deliverCaptureSample(
+                through: harness,
+                timestamp: CMTime(value: Int64(1_000 + index * 100), timescale: 1_000),
+                lumaValues: Self.supportedCaptureLuma
+            )
+        }
+
+        let baselineAccepted = await waitUntil {
+            harness.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && harness.viewModel.coachingEpisodeState.baseline != nil
+        }
+        XCTAssertTrue(baselineAccepted,
+                      "captureOutput -> scheduler -> pipeline must publish the initial baseline")
+        let firstToken = harness.viewModel.coachingEpisodeState.token
+        let baselineSceneIdentity = harness.viewModel.coachingEpisodeState.baseline?.lifecycle.sceneSignature
+
+        try await deliverCaptureSample(
+            through: harness,
+            timestamp: CMTime(value: 2_000, timescale: 1_000),
+            lumaValues: cutLuma
+        )
+        let sceneCutPublished = await waitUntil {
+            harness.viewModel.coachingEpisodeState.phase == .cancelled
+                && harness.viewModel.coachingEpisodeState.cancellationReason == .sceneCut
+        }
+        XCTAssertTrue(sceneCutPublished,
+                      "captureOutput -> ViewModel must consume the scene-cut cancellation")
+
+        let terminalState = harness.viewModel.coachingEpisodeState
+        let terminalEvent = harness.pipeline.currentCoachingEpisodeEvent
+        let terminalEvidence = try XCTUnwrap(harness.pipeline.testingLatestFrameEvidence)
+        let terminalLiveHint = harness.pipeline.currentLiveHint
+        let terminalPlannerDecision = harness.viewModel.plannerDecision
+        let terminalPipelineTrace = harness.pipeline.testingLiveFusionTraceBundle
+        let terminalPipelineGeneration = harness.pipeline.testingLifecycleGeneration
+        let terminalCaptureGeneration = terminalEvidence.lensGeneration
+        let terminalSessionGeneration = terminalEvidence.sessionGeneration
+        let terminalSceneIdentity = terminalState.baseline?.lifecycle.sceneSignature
+
+        // This is a real late CMSampleBuffer after the scene-cut cancellation.
+        // Its callback arrives now, but its pre-cut sample PTS is older than the
+        // accepted cut frame, so it must stop at the pipeline provenance gate.
+        try await deliverCaptureSample(
+            through: harness,
+            timestamp: CMTime(value: 1_400, timescale: 1_000),
+            lumaValues: baseLuma
+        )
+
+        let stateAfterStale = harness.viewModel.coachingEpisodeState
+        XCTAssertEqual(stateAfterStale.phase, terminalState.phase)
+        XCTAssertEqual(stateAfterStale.token, terminalState.token)
+        XCTAssertEqual(stateAfterStale.baseline, terminalState.baseline)
+        XCTAssertEqual(stateAfterStale.lastFrameID, terminalState.lastFrameID)
+        XCTAssertEqual(stateAfterStale.movementFrames, terminalState.movementFrames)
+        XCTAssertEqual(stateAfterStale.stableAfterFrames, terminalState.stableAfterFrames)
+        XCTAssertEqual(stateAfterStale.cancellationReason, terminalState.cancellationReason)
+        XCTAssertEqual(harness.pipeline.currentCoachingEpisodeEvent, terminalEvent)
+        XCTAssertEqual(harness.pipeline.currentLiveHint, terminalLiveHint)
+        XCTAssertEqual(harness.viewModel.plannerDecision, terminalPlannerDecision)
+        XCTAssertEqual(harness.pipeline.testingLiveFusionTraceBundle, terminalPipelineTrace)
+        XCTAssertEqual(harness.pipeline.testingLifecycleGeneration, terminalPipelineGeneration)
+        XCTAssertEqual(harness.pipeline.testingLatestFrameEvidence?.sourceFrameId, terminalEvidence.sourceFrameId)
+        XCTAssertEqual(
+            CMTimeCompare(
+                harness.pipeline.testingLatestFrameEvidence!.samplePresentationTimestamp,
+                terminalEvidence.samplePresentationTimestamp
+            ),
+            0
+        )
+        XCTAssertEqual(harness.pipeline.testingLatestFrameEvidence?.lensGeneration, terminalCaptureGeneration)
+        XCTAssertEqual(harness.pipeline.testingLatestFrameEvidence?.sessionGeneration, terminalSessionGeneration)
+        XCTAssertEqual(stateAfterStale.baseline?.lifecycle.sceneSignature, terminalSceneIdentity)
+        XCTAssertEqual(stateAfterStale.baseline?.lifecycle.sceneSignature, baselineSceneIdentity)
+
+        for index in 0..<10 {
+            try await deliverCaptureSample(
+                through: harness,
+                timestamp: CMTime(value: Int64(2_100 + index * 100), timescale: 1_000),
+                lumaValues: cutLuma
+            )
+        }
+
+        let retryAccepted = await waitUntil {
+            harness.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && harness.viewModel.coachingEpisodeState.baseline?.frameID
+                    != terminalState.baseline?.frameID
+        }
+        XCTAssertTrue(retryAccepted,
+                      "fresh post-cut capture samples must establish a new baseline")
+        XCTAssertNotEqual(harness.viewModel.coachingEpisodeState.token, firstToken,
+                          "scene-cut retry must issue a fresh episode token")
+        XCTAssertNil(harness.viewModel.coachingEpisodeState.cancellationReason)
+        XCTAssertEqual(harness.pipeline.testingLatestFrameEvidence?.sessionGeneration,
+                       terminalSessionGeneration)
+        XCTAssertEqual(harness.pipeline.testingLatestFrameEvidence?.lensGeneration,
+                       terminalCaptureGeneration)
+
+        await harness.viewModel.releaseAndWait()
     }
 
     func testProtectedProductionOwnerDecisionsRemainFailClosed() {
@@ -824,6 +1006,139 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         let snapshot: FrameFeatureSnapshot
         let evidence: LatestFrameEvidenceStore.Snapshot
         let date: Date
+    }
+
+    private struct CapturePathHarness {
+        let manager: CameraManager
+        let pipeline: AnalysisPipeline
+        let viewModel: CameraViewModel
+    }
+
+    private static let capturePreviewGeometry = CameraPreviewGeometry(
+        destinationSize: CGSize(width: 390, height: 844),
+        imageOrientation: .down,
+        isMirrored: false
+    )!
+
+    private static let neutralLuma = [UInt8](repeating: 0, count: 16)
+
+    private static let supportedCaptureLuma: [UInt8] = [
+        48, 208, 48, 208,
+        208, 48, 208, 48,
+        48, 208, 48, 208,
+        208, 48, 208, 48
+    ]
+
+    private static let supportedCaptureVisionResult = VisionTrackingResult(
+        subjects: [
+            TrackedSubject(
+                boundingBox: CGRect(x: 0.60, y: 0.20, width: 0.40, height: 0.40),
+                confidence: 1.0,
+                isFace: true
+            )
+        ],
+        saliencyCenter: CGPoint(x: 0.80, y: 0.50),
+        saliencyRegion: CGRect(x: 0.60, y: 0.20, width: 0.40, height: 0.40),
+        faceCount: 1,
+        personCount: 1
+    )
+
+    private static let emptyCaptureVisionResult = VisionTrackingResult(
+        subjects: [],
+        saliencyCenter: nil,
+        saliencyRegion: nil,
+        faceCount: 0,
+        personCount: 0
+    )
+
+    private func makeCapturePathHarness(
+        visionResult: @escaping (CVPixelBuffer, CGImagePropertyOrientation) -> VisionTrackingResult,
+        neuralEnabled: Bool
+    ) -> CapturePathHarness {
+        let thermal = ThermalGovernor(
+            thermalStateProvider: { .nominal },
+            batteryLevelProvider: { 1.0 }
+        )
+        let manager = CameraManager(
+            scheduler: RealtimeScheduler(),
+            thermalGovernor: thermal,
+            motionGate: MotionGate(startMotionUpdates: false),
+            sessionRunner: ClosedLoopSessionRunner(),
+            configuration: .ready,
+            notificationCenter: NotificationCenter()
+        )
+        let neuralService: NeuralEvidenceInferenceService? = neuralEnabled
+            ? NeuralEvidenceInferenceService(
+                configuration: makeNeuralConfiguration(),
+                provider: ClosedLoopNeuralEvidenceProvider()
+            )
+            : nil
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: neuralService,
+            thermalGovernor: thermal,
+            neuralHeavyModelsEnabledProvider: { true },
+            liveHybridFusionEnabled: neuralEnabled,
+            demoLiveCoachEnabled: false,
+            visionResultProviderForTesting: visionResult
+        )
+        let viewModel = CameraViewModel(cameraManager: manager, analysisPipeline: pipeline)
+        return CapturePathHarness(manager: manager, pipeline: pipeline, viewModel: viewModel)
+    }
+
+    private func deliverCaptureSample(
+        through harness: CapturePathHarness,
+        timestamp: CMTime,
+        lumaValues: [UInt8]
+    ) async throws {
+        let output = AVCaptureVideoDataOutput()
+        let connection = AVCaptureConnection(inputPorts: [], output: output)
+        let sampleBuffer = try makeVideoSampleBuffer(
+            pixelBuffer: makePixelBuffer(lumaValues: lumaValues),
+            timestamp: timestamp
+        )
+        harness.manager.captureOutput(output, didOutput: sampleBuffer, from: connection)
+        await harness.manager.drainSchedulerAndWait()
+        await harness.pipeline.testingDrainHighQueue()
+        // RealtimeScheduler retains the production thermal budget's nominal
+        // high-priority cadence (6 Hz in this fixture). Leave one full
+        // interval before the next synthetic callback so every sample
+        // exercises the real scheduler dispatch rather than a direct
+        // pipeline ingest seam.
+        try? await Task.sleep(nanoseconds: 180_000_000)
+    }
+
+    private func makeVideoSampleBuffer(
+        pixelBuffer: CVPixelBuffer,
+        timestamp: CMTime
+    ) throws -> CMSampleBuffer {
+        var timing = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: timestamp,
+            decodeTimeStamp: .invalid
+        )
+        var formatDescription: CMVideoFormatDescription?
+        let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescriptionOut: &formatDescription
+        )
+        guard formatStatus == noErr, let formatDescription else {
+            throw NSError(domain: "CameraCoachClosedLoopTests", code: Int(formatStatus))
+        }
+        var sampleBuffer: CMSampleBuffer?
+        let status = CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescription: formatDescription,
+            sampleTiming: &timing,
+            sampleBufferOut: &sampleBuffer
+        )
+        guard status == noErr, let sampleBuffer else {
+            throw NSError(domain: "CameraCoachClosedLoopTests", code: Int(status))
+        }
+        return sampleBuffer
     }
 
     private func makeFrame(

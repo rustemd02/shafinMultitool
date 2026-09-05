@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreMedia
 import CoreVideo
 import Dispatch
 import XCTest
@@ -238,6 +239,65 @@ final class LatestFrameEvidenceStoreTests: XCTestCase {
         XCTAssertEqual(acceptedA?.evidence.makeEnvelope().lensID, CameraLens.wide.rawValue)
         XCTAssertEqual(acceptedA?.evidence.makeEnvelope().previewGeometry, geometry)
         XCTAssertEqual(store.snapshot()?.lensID, CameraLens.telephoto.rawValue)
+    }
+
+    func testKnownSamplePTSAndSessionGenerationRejectLateOlderEvidence() {
+        let store = LatestFrameEvidenceStore()
+        let currentPTS = CMTime(value: 10, timescale: 10)
+        let olderPTS = CMTime(value: 9, timescale: 10)
+
+        XCTAssertTrue(store.publish(
+            pixelBuffer: makePixelBuffer(),
+            orientation: .right,
+            sourceFrameId: "pts-current",
+            capturedAt: Date(timeIntervalSince1970: 100),
+            isStable: true,
+            lensGeneration: 4,
+            samplePresentationTimestamp: currentPTS,
+            sessionGeneration: 7
+        ))
+
+        // A delayed callback can arrive later in wall-clock time, but its
+        // older sample PTS must not replace the current frame.
+        XCTAssertFalse(store.publish(
+            pixelBuffer: makePixelBuffer(),
+            orientation: .right,
+            sourceFrameId: "pts-late-old",
+            capturedAt: Date(timeIntervalSince1970: 101),
+            isStable: true,
+            lensGeneration: 4,
+            samplePresentationTimestamp: olderPTS,
+            sessionGeneration: 7
+        ))
+        XCTAssertEqual(store.snapshot()?.sourceFrameId, "pts-current")
+        XCTAssertEqual(store.snapshot()?.sessionGeneration, 7)
+        XCTAssertEqual(CMTimeCompare(store.snapshot()!.samplePresentationTimestamp, currentPTS), 0)
+
+        // A newer camera session starts a new ordering domain even when its
+        // first PTS is lower; a delayed sample from the old session is then
+        // rejected regardless of its callback arrival time.
+        XCTAssertTrue(store.publish(
+            pixelBuffer: makePixelBuffer(),
+            orientation: .right,
+            sourceFrameId: "new-session-first",
+            capturedAt: Date(timeIntervalSince1970: 102),
+            isStable: true,
+            lensGeneration: 1,
+            samplePresentationTimestamp: olderPTS,
+            sessionGeneration: 8
+        ))
+        XCTAssertFalse(store.publish(
+            pixelBuffer: makePixelBuffer(),
+            orientation: .right,
+            sourceFrameId: "old-session-late",
+            capturedAt: Date(timeIntervalSince1970: 103),
+            isStable: true,
+            lensGeneration: 4,
+            samplePresentationTimestamp: currentPTS,
+            sessionGeneration: 7
+        ))
+        XCTAssertEqual(store.snapshot()?.sourceFrameId, "new-session-first")
+        XCTAssertEqual(store.snapshot()?.sessionGeneration, 8)
     }
 
     func testMismatchedPreviewGeometryIsUnavailableAtImmutableBoundary() {

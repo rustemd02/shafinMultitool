@@ -72,6 +72,16 @@ struct FrameContext {
     /// separate from AnalysisPipeline's lifecycle generation: a frame keeps
     /// the camera input/lens epoch that actually produced its pixels.
     let captureGeneration: UInt64
+    /// CameraManager's lifecycle/session epoch that produced the pixels.
+    /// `nil` is reserved for legacy synthetic contexts; a real camera frame
+    /// carries `.some(0)` for its first session rather than losing that value.
+    let sessionGeneration: UInt64?
+
+    /// Explicit name for the immutable sample PTS already carried by
+    /// `timestamp`. Keeping the compatibility spelling avoids changing the
+    /// scheduler contract while making ordering provenance unambiguous at
+    /// downstream boundaries.
+    var samplePresentationTimestamp: CMTime { timestamp }
 
     init(pixelBuffer: CVPixelBuffer,
          timestamp: CMTime,
@@ -82,7 +92,8 @@ struct FrameContext {
          shakeLevel: Double,
          motionState: MotionState,
          capturedAt: Date = Date(),
-         captureGeneration: UInt64 = 0) {
+         captureGeneration: UInt64 = 0,
+         sessionGeneration: UInt64? = nil) {
         self.pixelBuffer = pixelBuffer
         self.timestamp = timestamp
         self.orientation = orientation
@@ -93,6 +104,7 @@ struct FrameContext {
         self.motionState = motionState
         self.capturedAt = capturedAt
         self.captureGeneration = captureGeneration
+        self.sessionGeneration = sessionGeneration
     }
 }
 

@@ -1940,13 +1940,23 @@ struct FeatureSampleProvenance: Equatable {
     let frameID: String
     let captureGeneration: UInt64
     let orientation: CGImagePropertyOrientation
+    /// Exact sample presentation time used to attribute asynchronous work;
+    /// `.invalid` is retained for legacy synthetic feature samples.
+    let samplePresentationTimestamp: CMTime
+    /// CameraManager session epoch. `nil` is legacy/unattributed, while
+    /// `.some(0)` is the valid first production session.
+    let sessionGeneration: UInt64?
 
     init(frameID: String,
          captureGeneration: UInt64,
-         orientation: CGImagePropertyOrientation) {
+         orientation: CGImagePropertyOrientation,
+         samplePresentationTimestamp: CMTime = .invalid,
+         sessionGeneration: UInt64? = nil) {
         self.frameID = frameID.trimmingCharacters(in: .whitespacesAndNewlines)
         self.captureGeneration = captureGeneration
         self.orientation = orientation
+        self.samplePresentationTimestamp = samplePresentationTimestamp
+        self.sessionGeneration = sessionGeneration
     }
 
     var isKnown: Bool {
@@ -1955,11 +1965,31 @@ struct FeatureSampleProvenance: Equatable {
 
     func matches(frameID: String,
                  captureGeneration: UInt64,
-                 orientation: CGImagePropertyOrientation) -> Bool {
-        isKnown
-            && self.frameID == frameID.trimmingCharacters(in: .whitespacesAndNewlines)
-            && self.captureGeneration == captureGeneration
-            && self.orientation == orientation
+                 orientation: CGImagePropertyOrientation,
+                 samplePresentationTimestamp: CMTime? = nil,
+                 sessionGeneration: UInt64? = nil) -> Bool {
+        guard isKnown,
+              self.frameID == frameID.trimmingCharacters(in: .whitespacesAndNewlines),
+              self.captureGeneration == captureGeneration,
+              self.orientation == orientation else {
+            return false
+        }
+
+        if let sessionGeneration {
+            guard self.sessionGeneration == sessionGeneration else { return false }
+        }
+        if let samplePresentationTimestamp {
+            guard self.samplePresentationTimestamp.isNumeric == samplePresentationTimestamp.isNumeric else {
+                return false
+            }
+            if samplePresentationTimestamp.isNumeric {
+                guard CMTimeCompare(
+                    self.samplePresentationTimestamp,
+                    samplePresentationTimestamp
+                ) == 0 else { return false }
+            }
+        }
+        return true
     }
 }
 
@@ -2115,14 +2145,18 @@ extension PipelineFeatureSnapshotAdapterState {
     /// important: otherwise the adapter could reconstruct the rejected sample.
     func sanitizedForFrame(frameID: String,
                            captureGeneration: UInt64,
-                           orientation: CGImagePropertyOrientation) -> Self {
+                           orientation: CGImagePropertyOrientation,
+                           samplePresentationTimestamp: CMTime? = nil,
+                           sessionGeneration: UInt64? = nil) -> Self {
         let validDetr: FeatureSample<FeatureSnapshotDetrPayload>? = detr.flatMap { sample in
             guard let provenance = sample.provenance,
                   provenance.matches(
                     frameID: frameID,
                     captureGeneration: captureGeneration,
-                    orientation: orientation
-                  ) else {
+                    orientation: orientation,
+                    samplePresentationTimestamp: samplePresentationTimestamp,
+                    sessionGeneration: sessionGeneration
+                ) else {
                 return nil
             }
             return sample
@@ -3598,6 +3632,12 @@ final class AnalysisPipeline: ObservableObject {
     private let pauseReasoningCoordinator: PauseReasoningCoordinator
     private let visualSemanticEvidenceCoordinator: VisualSemanticEvidenceCoordinator
     private let neuralEvidenceService: NeuralEvidenceInferenceService?
+#if DEBUG
+    /// Hardware-free tests may replace only the earliest Vision result while
+    /// retaining the real CameraManager → RealtimeScheduler → pipeline →
+    /// ViewModel owner chain. Release has no such injection point.
+    private var visionResultProviderForTesting: ((CVPixelBuffer, CGImagePropertyOrientation) -> VisionTrackingResult)?
+#endif
     private let thermalGovernor: ThermalGovernor
     private let neuralHeavyModelsEnabledProvider: () -> Bool
     private let liveHybridFusionEnabled: Bool
@@ -3751,6 +3791,30 @@ final class AnalysisPipeline: ObservableObject {
         self.demoLiveCoachEnabled = demoLiveCoachEnabled
         self.pauseAnalysisAvailabilityProvider = pauseAnalysisAvailabilityProvider
     }
+
+#if DEBUG
+    convenience init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider(),
+                     visualEvidenceProvider: VisualSemanticEvidenceProvider? = VisualSemanticEvidenceProviderFactory.makeDefaultProvider(),
+                     neuralEvidenceService: NeuralEvidenceInferenceService? = NeuralEvidenceInferenceService.makeDefault(),
+                     thermalGovernor: ThermalGovernor = ThermalGovernor(),
+                     neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true },
+                     liveHybridFusionEnabled: Bool = true,
+                     demoLiveCoachEnabled: Bool = false,
+                     visionResultProviderForTesting: @escaping (CVPixelBuffer, CGImagePropertyOrientation) -> VisionTrackingResult,
+                     pauseAnalysisAvailabilityProvider: @escaping () -> Bool = { true }) {
+        self.init(
+            reasoningProvider: reasoningProvider,
+            visualEvidenceProvider: visualEvidenceProvider,
+            neuralEvidenceService: neuralEvidenceService,
+            thermalGovernor: thermalGovernor,
+            neuralHeavyModelsEnabledProvider: neuralHeavyModelsEnabledProvider,
+            liveHybridFusionEnabled: liveHybridFusionEnabled,
+            demoLiveCoachEnabled: demoLiveCoachEnabled,
+            pauseAnalysisAvailabilityProvider: pauseAnalysisAvailabilityProvider
+        )
+        self.visionResultProviderForTesting = visionResultProviderForTesting
+    }
+#endif
 
     @MainActor
     func setCameraDemoSceneMode(_ mode: CameraDemoSceneMode) {
@@ -4260,29 +4324,28 @@ final class AnalysisPipeline: ObservableObject {
     /// The accepted envelope is the pipeline's only observed camera epoch.
     /// Unknown legacy contexts may be processed until a known frame exists,
     /// but they can never replace known capture evidence. A known older epoch
-    /// is delayed work from a prior input/lens and is rejected before any
-    /// feature state is mutated.
-    private func isCaptureGenerationAcceptable(_ captureGeneration: UInt64) -> Bool {
-        guard let latest = latestFrameEvidenceStore.snapshot() else { return true }
-        if captureGeneration == 0 {
-            return latest.lensGeneration == 0
-        }
-        return latest.lensGeneration == 0 || captureGeneration >= latest.lensGeneration
+    /// or sample PTS is rejected before any feature state is mutated. The
+    /// evidence store repeats this comparison atomically at publication.
+    private func isCaptureProvenanceAcceptable(_ context: FrameContext) -> Bool {
+        latestFrameEvidenceStore.accepts(
+            sessionGeneration: context.sessionGeneration,
+            captureGeneration: context.captureGeneration,
+            samplePresentationTimestamp: context.samplePresentationTimestamp,
+            capturedAt: context.capturedAt
+        )
     }
 
     private func performHigh(context: FrameContext, generation: UInt64) {
         guard isGenerationCurrent(generation),
-              isCaptureGenerationAcceptable(context.captureGeneration) else { return }
-        if let latest = latestFrameEvidenceStore.snapshot(),
-           latest.capturedAt > context.capturedAt {
-            return
-        }
+              isCaptureProvenanceAcceptable(context) else { return }
         let sourceFrameId = makeSourceFrameId(from: context.timestamp)
         let captureGeneration = context.captureGeneration
         let frameProvenance = FeatureSampleProvenance(
             frameID: sourceFrameId,
             captureGeneration: captureGeneration,
-            orientation: context.orientation
+            orientation: context.orientation,
+            samplePresentationTimestamp: context.samplePresentationTimestamp,
+            sessionGeneration: context.sessionGeneration
         )
         featureQueue.sync {
             latestHighFrameProvenance = frameProvenance.isKnown ? frameProvenance : nil
@@ -4290,8 +4353,14 @@ final class AnalysisPipeline: ObservableObject {
         let startTime = CACurrentMediaTime()
         
         Telemetry.shared.setActiveModule("Vision", active: true)
+#if DEBUG
+        let trackingResult = visionResultProviderForTesting?(context.pixelBuffer, context.orientation)
+            ?? visionTracking.process(pixelBuffer: context.pixelBuffer,
+                                      orientation: context.orientation)
+#else
         let trackingResult = visionTracking.process(pixelBuffer: context.pixelBuffer,
                                                     orientation: context.orientation)
+#endif
         let visionLatency = CACurrentMediaTime() - startTime
         Telemetry.shared.recordLatency(label: "Vision", duration: visionLatency)
         Telemetry.shared.setActiveModule("Vision", active: false)
@@ -4413,16 +4482,15 @@ final class AnalysisPipeline: ObservableObject {
             lensID: context.lensID,
             previewGeometry: context.previewGeometry,
             adapterState: frameAdapterState,
-            lensGeneration: captureGeneration
+            lensGeneration: captureGeneration,
+            samplePresentationTimestamp: context.samplePresentationTimestamp,
+            sessionGeneration: context.sessionGeneration
         ) else { return }
 
         // High work is serial, but a caller can still enqueue frames from
         // different callback threads. Never replace newer immutable evidence
-        // with an older frame that finished analysis later.
-        if let latest = latestFrameEvidenceStore.snapshot(),
-           latest.capturedAt > frameEvidence.capturedAt {
-            return
-        }
+        // with an older frame that finished analysis later; publish repeats
+        // the same provenance check while holding the store lock.
         guard latestFrameEvidenceStore.publish(
             pixelBuffer: frameEvidence.pixelBuffer,
             orientation: frameEvidence.orientation,
@@ -4432,7 +4500,9 @@ final class AnalysisPipeline: ObservableObject {
             lensID: frameEvidence.lensID,
             previewGeometry: frameEvidence.previewGeometry,
             adapterState: frameEvidence.adapterState,
-            lensGeneration: captureGeneration
+            lensGeneration: captureGeneration,
+            samplePresentationTimestamp: frameEvidence.samplePresentationTimestamp,
+            sessionGeneration: frameEvidence.sessionGeneration
         ) else { return }
         
         Telemetry.shared.setCameraStable(context.isStable, shakeLevel: context.shakeLevel)
@@ -4505,7 +4575,7 @@ final class AnalysisPipeline: ObservableObject {
 
     private func performMedium(context: FrameContext, generation: UInt64) {
         guard isGenerationCurrent(generation),
-              isCaptureGenerationAcceptable(context.captureGeneration) else { return }
+              isCaptureProvenanceAcceptable(context) else { return }
         guard let bbox = overlayState.primaryBoundingBox else { return }
         
         let startTime = CACurrentMediaTime()
@@ -4554,7 +4624,7 @@ final class AnalysisPipeline: ObservableObject {
 
     private func performLow(context: FrameContext, generation: UInt64) {
         guard isGenerationCurrent(generation),
-              isCaptureGenerationAcceptable(context.captureGeneration) else { return }
+              isCaptureProvenanceAcceptable(context) else { return }
         lowFrameCount += 1
         let now = Date()
         let budget = thermalGovernor.nextBudget()
@@ -4608,7 +4678,9 @@ final class AnalysisPipeline: ObservableObject {
             let detrProvenance = FeatureSampleProvenance(
                 frameID: makeSourceFrameId(from: context.timestamp),
                 captureGeneration: context.captureGeneration,
-                orientation: context.orientation
+                orientation: context.orientation,
+                samplePresentationTimestamp: context.samplePresentationTimestamp,
+                sessionGeneration: context.sessionGeneration
             )
             Telemetry.shared.setActiveModule("DETR", active: true)
             print(
@@ -7095,7 +7167,9 @@ final class AnalysisPipeline: ObservableObject {
         let pauseDetrProvenance = FeatureSampleProvenance(
             frameID: pauseSourceFrameId,
             captureGeneration: frameEvidence.lensGeneration,
-            orientation: frameEvidence.orientation
+            orientation: frameEvidence.orientation,
+            samplePresentationTimestamp: frameEvidence.samplePresentationTimestamp,
+            sessionGeneration: frameEvidence.sessionGeneration
         )
         // A production pause always supplies the adapter state captured with
         // the accepted frame. Falling back to current live state is retained

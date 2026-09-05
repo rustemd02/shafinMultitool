@@ -491,6 +491,22 @@ final class CameraManagerLifecycleTests: XCTestCase {
         XCTAssertEqual(evidence.previewGeometry, geometry)
         XCTAssertEqual(evidence.orientation, .down)
         XCTAssertEqual(evidence.lensGeneration, 1)
+        XCTAssertEqual(CMTimeCompare(
+            evidence.samplePresentationTimestamp,
+            CMTime(value: 1, timescale: 30)
+        ), 0)
+        XCTAssertEqual(evidence.sessionGeneration, manager.sessionGenerationForTesting)
+        XCTAssertEqual(
+            evidence.makeEnvelope().sessionGeneration,
+            manager.sessionGenerationForTesting
+        )
+        XCTAssertEqual(
+            CMTimeCompare(
+                evidence.makeEnvelope().samplePresentationTimestamp,
+                CMTime(value: 1, timescale: 30)
+            ),
+            0
+        )
 
         await pipeline.releaseAndWait()
         await manager.releaseAndWait()
