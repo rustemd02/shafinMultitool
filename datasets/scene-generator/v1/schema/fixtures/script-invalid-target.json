@@ -1,0 +1,25 @@
+{
+  "actors": [
+    {
+      "id": "actor_1",
+      "type": "human"
+    }
+  ],
+  "objects": [],
+  "beats": [
+    {
+      "id": "beat_1",
+      "actions": [
+        {
+          "id": "action_1",
+          "actorId": "actor_1",
+          "type": "approach",
+          "target": "object_999",
+          "resultingPose": "walking"
+        }
+      ]
+    }
+  ],
+  "spatialRelations": [],
+  "originalDescription": "The actor approaches the missing object."
+}

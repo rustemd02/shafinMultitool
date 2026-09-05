@@ -1,0 +1,73 @@
+{
+  "schema_version": "scene-annotation-v1",
+  "annotation_id": "ann_invalid_history",
+  "sample_id": "scene_sample_invalid",
+  "locale": "en",
+  "source_text": "A person waits.",
+  "scene_boundaries": [
+    {
+      "id": "scene_1",
+      "start": 0,
+      "end": 15
+    }
+  ],
+  "marked_objects": [],
+  "candidates": [
+    {
+      "candidate_id": "candidate_a",
+      "kind": "human",
+      "scene_script": {
+        "actors": [
+          {
+            "id": "actor_1",
+            "type": "human"
+          }
+        ],
+        "objects": [],
+        "beats": [
+          {
+            "id": "beat_1",
+            "actions": [
+              {
+                "id": "action_1",
+                "actorId": "actor_1",
+                "type": "stand"
+              }
+            ]
+          }
+        ],
+        "spatialRelations": [],
+        "originalDescription": "A person waits."
+      },
+      "validation": {
+        "status": "valid",
+        "issues": []
+      }
+    }
+  ],
+  "acceptable_variants": [],
+  "forbidden_hallucinations": [],
+  "gold": {
+    "primary_candidate_id": "candidate_a",
+    "acceptable_variant_ids": []
+  },
+  "votes": [
+    {
+      "vote_id": "vote_1",
+      "sequence": 1,
+      "annotator_id": "annotator_a",
+      "candidate_id": "candidate_a",
+      "decision": "accept",
+      "recorded_at": "2026-09-05T10:00:00Z"
+    },
+    {
+      "vote_id": "vote_2",
+      "sequence": 1,
+      "annotator_id": "annotator_b",
+      "candidate_id": "candidate_a",
+      "decision": "accept",
+      "recorded_at": "2026-09-05T10:01:00Z"
+    }
+  ],
+  "review_history": []
+}

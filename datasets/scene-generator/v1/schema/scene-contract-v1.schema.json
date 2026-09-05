@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/scene-contract-v1.schema.json",
+  "title": "SET OS Scene Generator shared contract definitions v1",
+  "description": "Shared definitions for the versioned Scene Generator transport, SceneScript projection, clarification and annotation records. Rights and raw-source storage are owned by the separate provenance manifest.",
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536,
+      "pattern": "^[^\\u0000]*$"
+    },
+    "short_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\u0000]*$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,127}$"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "entity_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,127}$"
+    },
+    "actor_id": {
+      "type": "string",
+      "pattern": "^actor_[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "object_id": {
+      "type": "string",
+      "pattern": "^(object_[a-z0-9][a-z0-9_-]{0,63}|object_marked_[a-z0-9]{8,64})$"
+    },
+    "target_id": {
+      "type": "string",
+      "pattern": "^(actor_[a-z0-9][a-z0-9_-]{0,63}|object_[a-z0-9][a-z0-9_-]{0,63}|object_marked_[a-z0-9]{8,64})$"
+    },
+    "beat_id": {
+      "type": "string",
+      "pattern": "^beat_[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "action_id": {
+      "type": "string",
+      "pattern": "^action_[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "relation_id": {
+      "type": "string",
+      "pattern": "^(rel|relation)_[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "marker_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["ru", "en"]
+    },
+    "actor_type": {
+      "type": "string",
+      "enum": ["human", "tiger", "lion", "dog", "cat", "bird", "generic"]
+    },
+    "object_type": {
+      "type": "string",
+      "enum": ["table", "chair", "cabinet", "door", "couch", "bed", "window", "shelf", "tv", "phone", "generic"]
+    },
+    "relative_position": {
+      "type": "string",
+      "enum": ["left", "right", "center", "background", "foreground", "unknown"]
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "walk", "run", "stop", "turn", "approach", "pass_by", "enter", "exit",
+        "stand", "sit", "lie_down", "crouch", "look_at", "pick_up", "put_down",
+        "open", "close", "give", "talk", "described_action"
+      ]
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["left", "right", "forward", "backward", "toward_each_other", "away_from_each_other", "to_target"]
+    },
+    "modifier": {
+      "type": "string",
+      "enum": ["slowly", "quickly", "carefully"]
+    },
+    "pose": {
+      "type": "string",
+      "enum": ["standing", "sitting", "crouching", "lying", "walking", "running"]
+    },
+    "relation_type": {
+      "type": "string",
+      "enum": ["near", "in_front_of", "behind", "left_of", "right_of", "between", "pass_by", "inside", "outside"]
+    },
+    "shot_type": {
+      "type": "string",
+      "enum": ["wide", "medium", "close_up", "extreme_close_up", "over_shoulder", "two_shot"]
+    },
+    "camera_movement": {
+      "type": "string",
+      "enum": ["static", "pan_left", "pan_right", "tilt_up", "tilt_down", "dolly_in", "dolly_out", "tracking", "crane_up", "crane_down"]
+    },
+    "marked_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "aliases"],
+      "properties": {
+        "id": { "$ref": "#/$defs/marker_id" },
+        "name": { "$ref": "#/$defs/short_text" },
+        "aliases": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/short_text" }
+        }
+      }
+    },
+    "position_3d": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "camera_setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shotType"],
+      "properties": {
+        "shotType": { "$ref": "#/$defs/shot_type" },
+        "movement": { "$ref": "#/$defs/camera_movement" },
+        "target": { "$ref": "#/$defs/target_id" }
+      }
+    },
+    "scene_actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/actor_id" },
+        "type": { "$ref": "#/$defs/actor_type" },
+        "name": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "scene_object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "relativePosition"],
+      "properties": {
+        "id": { "$ref": "#/$defs/object_id" },
+        "type": { "$ref": "#/$defs/object_type" },
+        "name": { "$ref": "#/$defs/short_text" },
+        "detectedPosition": { "$ref": "#/$defs/position_3d" },
+        "relativePosition": { "$ref": "#/$defs/relative_position" }
+      }
+    },
+    "scene_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "actorId", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/action_id" },
+        "actorId": { "$ref": "#/$defs/actor_id" },
+        "type": { "$ref": "#/$defs/action_type" },
+        "target": { "$ref": "#/$defs/target_id" },
+        "direction": { "$ref": "#/$defs/direction" },
+        "modifier": { "$ref": "#/$defs/modifier" },
+        "resultingPose": { "$ref": "#/$defs/pose" },
+        "holdingObject": { "$ref": "#/$defs/object_id" },
+        "dialogue": { "$ref": "#/$defs/text" },
+        "fallbackText": { "$ref": "#/$defs/text" },
+        "sourceText": { "$ref": "#/$defs/text" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "talk" } } },
+          "then": { "required": ["dialogue"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "described_action" } } },
+          "then": { "required": ["fallbackText", "sourceText"] }
+        }
+      ]
+    },
+    "scene_beat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "actions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/beat_id" },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/scene_action" }
+        },
+        "camera": { "$ref": "#/$defs/camera_setup" },
+        "minDuration": { "type": "number", "minimum": 0, "maximum": 86400 }
+      }
+    },
+    "spatial_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "subject", "relation", "object"],
+      "properties": {
+        "id": { "$ref": "#/$defs/relation_id" },
+        "subject": { "$ref": "#/$defs/target_id" },
+        "relation": { "$ref": "#/$defs/relation_type" },
+        "object": { "$ref": "#/$defs/target_id" }
+      }
+    },
+    "scene_script": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actors", "objects", "beats", "spatialRelations", "originalDescription"],
+      "properties": {
+        "sceneHeading": { "$ref": "#/$defs/short_text" },
+        "locationName": { "$ref": "#/$defs/short_text" },
+        "interiorExterior": { "$ref": "#/$defs/short_text" },
+        "timeOfDay": { "$ref": "#/$defs/short_text" },
+        "actors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/scene_actor" }
+        },
+        "objects": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/scene_object" }
+        },
+        "beats": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/scene_beat" }
+        },
+        "spatialRelations": {
+          "type": "array",
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/spatial_relation" }
+        },
+        "originalDescription": { "$ref": "#/$defs/text" }
+      }
+    },
+    "scene_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "start", "end"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 },
+        "heading": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "generation_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximum_scenes", "allow_clarification"],
+      "properties": {
+        "maximum_scenes": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "allow_clarification": { "type": "boolean" }
+      }
+    },
+    "clarification_option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "label": { "$ref": "#/$defs/short_text" },
+        "entity_id": { "$ref": "#/$defs/entity_id" }
+      }
+    },
+    "clarification_question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "field", "prompt_key", "candidate_entity_ids", "allows_free_text"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^q[0-9]+$|^q_[a-z0-9][a-z0-9_-]{0,63}$" },
+        "field": {
+          "type": "string",
+          "enum": ["target_entity", "actor_identity", "marked_object", "scene_boundary", "action", "spatial_relation", "other"]
+        },
+        "prompt_key": { "type": "string", "pattern": "^scene\\.clarify\\.[a-z0-9_.-]+$" },
+        "candidate_entity_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/entity_id" }
+        },
+        "allows_free_text": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/clarification_option" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "allows_free_text": { "const": false } } },
+          "then": { "required": ["options"] }
+        }
+      ]
+    },
+    "validation_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "path", "severity"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": ["malformed", "duplicate_id", "missing_actor", "dangling_target", "missing_marked_object", "invalid_action", "chronology_conflict", "hallucinated_entity", "dialogue_not_in_source", "clarification_required", "unsupported_action", "meaning_corruption"]
+        },
+        "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "severity": { "type": "string", "enum": ["error", "warning"] },
+        "detail": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "issues"],
+      "properties": {
+        "status": { "type": "string", "enum": ["valid", "invalid", "clarification_required"] },
+        "issues": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/validation_issue" }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "kind", "scene_script", "validation"],
+      "properties": {
+        "candidate_id": { "$ref": "#/$defs/identifier" },
+        "kind": { "type": "string", "enum": ["human", "deterministic", "model"] },
+        "scene_script": { "$ref": "#/$defs/scene_script" },
+        "validation": { "$ref": "#/$defs/validation" }
+      }
+    },
+    "acceptable_variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant_id", "scene_script", "rationale"],
+      "properties": {
+        "variant_id": { "$ref": "#/$defs/identifier" },
+        "scene_script": { "$ref": "#/$defs/scene_script" },
+        "rationale": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "forbidden_hallucination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "reason"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "kind": { "type": "string", "enum": ["entity", "object", "action", "target", "relation", "dialogue", "scene"] },
+        "ref": { "$ref": "#/$defs/entity_id" },
+        "source_text": { "$ref": "#/$defs/short_text" },
+        "reason": { "$ref": "#/$defs/short_text" }
+      }
+    },
+    "vote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vote_id", "sequence", "annotator_id", "candidate_id", "decision", "recorded_at"],
+      "properties": {
+        "vote_id": { "$ref": "#/$defs/identifier" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "annotator_id": { "$ref": "#/$defs/identifier" },
+        "candidate_id": { "$ref": "#/$defs/identifier" },
+        "decision": { "type": "string", "enum": ["accept", "reject", "abstain"] },
+        "field_paths": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "notes": { "$ref": "#/$defs/short_text" },
+        "recorded_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "review_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review_id", "sequence", "reviewer_id", "status", "recorded_at"],
+      "properties": {
+        "review_id": { "$ref": "#/$defs/identifier" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "reviewer_id": { "$ref": "#/$defs/identifier" },
+        "status": { "type": "string", "enum": ["pending", "pass", "fail", "needs_adjudication"] },
+        "reason_codes": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "recorded_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

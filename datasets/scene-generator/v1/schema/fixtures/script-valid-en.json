@@ -1,0 +1,61 @@
+{
+  "sceneHeading": "INT. KITCHEN - NIGHT",
+  "locationName": "KITCHEN",
+  "interiorExterior": "INT",
+  "timeOfDay": "NIGHT",
+  "actors": [
+    {
+      "id": "actor_1",
+      "type": "human",
+      "name": "MARA"
+    }
+  ],
+  "objects": [
+    {
+      "id": "object_marked_deadbeef",
+      "type": "table",
+      "name": "table",
+      "relativePosition": "center"
+    }
+  ],
+  "beats": [
+    {
+      "id": "beat_1",
+      "actions": [
+        {
+          "id": "action_1",
+          "actorId": "actor_1",
+          "type": "approach",
+          "target": "object_marked_deadbeef",
+          "resultingPose": "walking"
+        }
+      ]
+    },
+    {
+      "id": "beat_2",
+      "actions": [
+        {
+          "id": "action_2",
+          "actorId": "actor_1",
+          "type": "talk",
+          "dialogue": "Wait here.",
+          "resultingPose": "standing"
+        }
+      ],
+      "camera": {
+        "shotType": "medium",
+        "movement": "static",
+        "target": "actor_1"
+      }
+    }
+  ],
+  "spatialRelations": [
+    {
+      "id": "relation_1",
+      "subject": "actor_1",
+      "relation": "near",
+      "object": "object_marked_deadbeef"
+    }
+  ],
+  "originalDescription": "MARA approaches the marked table and says: Wait here."
+}

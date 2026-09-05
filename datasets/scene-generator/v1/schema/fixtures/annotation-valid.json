@@ -1,0 +1,188 @@
+{
+  "schema_version": "scene-annotation-v1",
+  "annotation_id": "ann_scene_001",
+  "sample_id": "scene_sample_001",
+  "locale": "en",
+  "source_text": "INT. KITCHEN - NIGHT\nMARA approaches the marked table.\n",
+  "scene_boundaries": [
+    {
+      "id": "scene_1",
+      "start": 0,
+      "end": 55,
+      "heading": "INT. KITCHEN - NIGHT"
+    }
+  ],
+  "marked_objects": [
+    {
+      "id": "deadbeef",
+      "name": "table",
+      "aliases": ["desk"]
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "candidate_human",
+      "kind": "human",
+      "scene_script": {
+        "actors": [
+          {
+            "id": "actor_1",
+            "type": "human",
+            "name": "MARA"
+          }
+        ],
+        "objects": [
+          {
+            "id": "object_marked_deadbeef",
+            "type": "table",
+            "name": "table",
+            "relativePosition": "center"
+          }
+        ],
+        "beats": [
+          {
+            "id": "beat_1",
+            "actions": [
+              {
+                "id": "action_1",
+                "actorId": "actor_1",
+                "type": "approach",
+                "target": "object_marked_deadbeef",
+                "resultingPose": "walking"
+              }
+            ]
+          }
+        ],
+        "spatialRelations": [],
+        "originalDescription": "MARA approaches the marked table."
+      },
+      "validation": {
+        "status": "valid",
+        "issues": []
+      }
+    },
+    {
+      "candidate_id": "candidate_model",
+      "kind": "model",
+      "scene_script": {
+        "actors": [
+          {
+            "id": "actor_1",
+            "type": "human",
+            "name": "MARA"
+          }
+        ],
+        "objects": [
+          {
+            "id": "object_marked_deadbeef",
+            "type": "table",
+            "name": "table",
+            "relativePosition": "center"
+          }
+        ],
+        "beats": [
+          {
+            "id": "beat_1",
+            "actions": [
+              {
+                "id": "action_1",
+                "actorId": "actor_1",
+                "type": "approach",
+                "target": "object_marked_deadbeef",
+                "resultingPose": "walking"
+              }
+            ]
+          }
+        ],
+        "spatialRelations": [],
+        "originalDescription": "MARA approaches the marked table."
+      },
+      "validation": {
+        "status": "valid",
+        "issues": []
+      }
+    }
+  ],
+  "acceptable_variants": [
+    {
+      "variant_id": "variant_canonical",
+      "scene_script": {
+        "actors": [
+          {
+            "id": "actor_1",
+            "type": "human",
+            "name": "MARA"
+          }
+        ],
+        "objects": [
+          {
+            "id": "object_marked_deadbeef",
+            "type": "table",
+            "name": "table",
+            "relativePosition": "center"
+          }
+        ],
+        "beats": [
+          {
+            "id": "beat_1",
+            "actions": [
+              {
+                "id": "action_1",
+                "actorId": "actor_1",
+                "type": "approach",
+                "target": "object_marked_deadbeef",
+                "resultingPose": "walking"
+              }
+            ]
+          }
+        ],
+        "spatialRelations": [],
+        "originalDescription": "MARA approaches the marked table."
+      },
+      "rationale": "Preserves the marked table binding and action order."
+    }
+  ],
+  "forbidden_hallucinations": [
+    {
+      "id": "forbidden_gun",
+      "kind": "object",
+      "ref": "object_999",
+      "source_text": "gun",
+      "reason": "No gun occurs in the source."
+    }
+  ],
+  "gold": {
+    "primary_candidate_id": "candidate_human",
+    "acceptable_variant_ids": ["variant_canonical"]
+  },
+  "votes": [
+    {
+      "vote_id": "vote_1",
+      "sequence": 1,
+      "annotator_id": "annotator_a",
+      "candidate_id": "candidate_human",
+      "decision": "accept",
+      "field_paths": ["/beats/0/actions/0"],
+      "recorded_at": "2026-09-05T10:00:00Z"
+    },
+    {
+      "vote_id": "vote_2",
+      "sequence": 2,
+      "annotator_id": "annotator_b",
+      "candidate_id": "candidate_human",
+      "decision": "accept",
+      "field_paths": ["/objects/0/id"],
+      "recorded_at": "2026-09-05T10:01:00Z"
+    }
+  ],
+  "review_history": [
+    {
+      "review_id": "review_1",
+      "sequence": 1,
+      "reviewer_id": "adjudicator_1",
+      "status": "pass",
+      "reason_codes": ["schema_pass", "binding_preserved"],
+      "recorded_at": "2026-09-05T10:02:00Z"
+    }
+  ]
+}

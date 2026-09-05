@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/scene-clarification-v1.schema.json",
+  "title": "SET OS Scene Generator clarification v1",
+  "description": "The non-terminal result used when the source cannot be safely bound without a user answer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "questions", "schema_version"],
+  "properties": {
+    "status": { "const": "clarification_required" },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "$ref": "scene-contract-v1.schema.json#/$defs/clarification_question" }
+    },
+    "schema_version": { "const": "scene-script-v1" }
+  }
+}

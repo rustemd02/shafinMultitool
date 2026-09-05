@@ -1,0 +1,20 @@
+{
+  "request_id": "123e4567-e89b-42d3-a456-426614174000",
+  "client_build": "1.0.0+123",
+  "schema_version": "scene-script-v1",
+  "locale": "ru",
+  "script_text": "ИНТ. КУХНЯ — НОЧЬ\nМАРИНА подходит к столу.\n",
+  "marked_objects": [
+    {
+      "id": "deadbeef",
+      "name": "стол",
+      "aliases": ["столик"]
+    }
+  ],
+  "constraints": {
+    "maximum_scenes": 20,
+    "allow_clarification": true
+  },
+  "previous_job_id": null,
+  "consent_version": "scene-processing-v1"
+}

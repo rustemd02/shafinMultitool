@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/scene-output-v1.schema.json",
+  "title": "SET OS Scene Generator output v1",
+  "description": "A structured generation result. Exactly one terminal branch is allowed: complete SceneScript or bounded clarification questions.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "scene_script", "model_version", "prompt_version", "schema_version", "warnings"],
+      "properties": {
+        "status": { "const": "complete" },
+        "scene_script": { "$ref": "scene-contract-v1.schema.json#/$defs/scene_script" },
+        "model_version": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+        "prompt_version": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+        "schema_version": { "const": "scene-script-v1" },
+        "warnings": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "questions", "schema_version"],
+      "properties": {
+        "status": { "const": "clarification_required" },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "scene-contract-v1.schema.json#/$defs/clarification_question" }
+        },
+        "schema_version": { "const": "scene-script-v1" }
+      }
+    }
+  ]
+}

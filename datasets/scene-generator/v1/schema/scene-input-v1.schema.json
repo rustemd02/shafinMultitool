@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/scene-input-v1.schema.json",
+  "title": "SET OS Scene Generator input v1",
+  "description": "The request envelope from the app. The script is retained verbatim; marked-object IDs are stable request references and are not positional hints.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "client_build",
+    "schema_version",
+    "locale",
+    "script_text",
+    "marked_objects",
+    "constraints",
+    "previous_job_id",
+    "consent_version"
+  ],
+  "properties": {
+    "request_id": { "$ref": "scene-contract-v1.schema.json#/$defs/request_id" },
+    "client_build": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+    "schema_version": { "const": "scene-script-v1" },
+    "locale": { "$ref": "scene-contract-v1.schema.json#/$defs/locale" },
+    "script_text": { "$ref": "scene-contract-v1.schema.json#/$defs/text" },
+    "marked_objects": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "scene-contract-v1.schema.json#/$defs/marked_object" }
+    },
+    "scene_boundaries": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "scene-contract-v1.schema.json#/$defs/scene_boundary" }
+    },
+    "constraints": { "$ref": "scene-contract-v1.schema.json#/$defs/generation_constraints" },
+    "previous_job_id": {
+      "anyOf": [
+        { "$ref": "scene-contract-v1.schema.json#/$defs/request_id" },
+        { "type": "null" }
+      ]
+    },
+    "consent_version": { "const": "scene-processing-v1" }
+  }
+}

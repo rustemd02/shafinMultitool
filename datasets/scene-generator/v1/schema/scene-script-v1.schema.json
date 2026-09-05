@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/scene-script-v1.schema.json",
+  "title": "SET OS SceneScript projection v1",
+  "description": "The canonical camelCase JSON projection of the existing Codable SceneScript model. The schema version is carried by its request/response envelope.",
+  "$ref": "scene-contract-v1.schema.json#/$defs/scene_script"
+}

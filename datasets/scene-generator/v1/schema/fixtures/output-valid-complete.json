@@ -1,0 +1,39 @@
+{
+  "status": "complete",
+  "scene_script": {
+    "actors": [
+      {
+        "id": "actor_1",
+        "type": "human",
+        "name": "MARA"
+      }
+    ],
+    "objects": [
+      {
+        "id": "object_marked_deadbeef",
+        "type": "table",
+        "relativePosition": "center"
+      }
+    ],
+    "beats": [
+      {
+        "id": "beat_1",
+        "actions": [
+          {
+            "id": "action_1",
+            "actorId": "actor_1",
+            "type": "approach",
+            "target": "object_marked_deadbeef",
+            "resultingPose": "walking"
+          }
+        ]
+      }
+    ],
+    "spatialRelations": [],
+    "originalDescription": "MARA approaches the marked table."
+  },
+  "model_version": "scene-model-pending",
+  "prompt_version": "scene-prompt-v1",
+  "schema_version": "scene-script-v1",
+  "warnings": []
+}

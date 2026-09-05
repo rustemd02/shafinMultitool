@@ -1,0 +1,31 @@
+{
+  "status": "complete",
+  "scene_script": {
+    "actors": [
+      {
+        "id": "actor_1",
+        "type": "human"
+      }
+    ],
+    "objects": [],
+    "beats": [
+      {
+        "id": "beat_1",
+        "actions": [
+          {
+            "id": "action_1",
+            "actorId": "actor_1",
+            "type": "look_at",
+            "target": "actor_404"
+          }
+        ]
+      }
+    ],
+    "spatialRelations": [],
+    "originalDescription": "The actor looks at the missing actor."
+  },
+  "model_version": "scene-model-pending",
+  "prompt_version": "scene-prompt-v1",
+  "schema_version": "scene-script-v1",
+  "warnings": []
+}

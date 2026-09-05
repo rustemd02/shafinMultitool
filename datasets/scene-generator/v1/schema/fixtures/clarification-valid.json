@@ -1,0 +1,25 @@
+{
+  "status": "clarification_required",
+  "schema_version": "scene-script-v1",
+  "questions": [
+    {
+      "id": "q1",
+      "field": "target_entity",
+      "prompt_key": "scene.clarify.target",
+      "candidate_entity_ids": ["actor_1", "object_marked_deadbeef"],
+      "allows_free_text": false,
+      "options": [
+        {
+          "id": "choose_actor",
+          "label": "Mara",
+          "entity_id": "actor_1"
+        },
+        {
+          "id": "choose_table",
+          "label": "Marked table",
+          "entity_id": "object_marked_deadbeef"
+        }
+      ]
+    }
+  ]
+}
