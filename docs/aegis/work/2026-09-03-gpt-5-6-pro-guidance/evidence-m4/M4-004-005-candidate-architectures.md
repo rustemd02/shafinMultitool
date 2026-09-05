@@ -63,20 +63,23 @@ Environment and reproducibility:
   Large-15/Small-11 block count and channel schedule, kernel, stride,
   activation, residual flag, SE presence, expanded-width squeeze channels,
   hard-sigmoid gate, and BatchNorm presence/settings in every stem, block, and
-  final projection. It also inspects the scalar MLP, exact fusion widths, 256D
-  embedding projection, and every manifest head; the convenience
+  final projection. Every inverted-residual projection Conv2d is additionally
+  required to be a bias-free `1×1`, stride-1, groups-1, zero-padding layer. It
+  also inspects the scalar MLP, exact fusion widths, 256D embedding projection,
+  and every manifest head; the convenience
   `block_schedule` and dimension metadata are not trusted. Deliberate
-  Hardswish-to-ReLU stem/final, 256-to-128 fusion, depthwise/projection-BN
-  removal, and BN eps/momentum mutation probes are required to fail the guards.
+  Hardswish-to-ReLU stem/final, 256-to-128 fusion, projection `1×1→3×3`,
+  depthwise/projection-BN removal, and BN eps/momentum mutation probes are
+  required to fail the guards.
 
 Commands:
 
 ```text
 python3 -m py_compile ml/camera_coach/models/set_composition_net.py ml/camera_coach/models/check_candidates.py
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-bn-1.json
-python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-bn-2.json
-cmp -s /private/tmp/setos-m4-004-005-candidates-bn-1.json /private/tmp/setos-m4-004-005-candidates-bn-2.json
-python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-bn.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-proj-1.json
+python3 -m ml.camera_coach.models.check_candidates > /private/tmp/setos-m4-004-005-candidates-proj-2.json
+cmp -s /private/tmp/setos-m4-004-005-candidates-proj-1.json /private/tmp/setos-m4-004-005-candidates-proj-2.json
+python3 ml/camera_coach/contracts/check_parity.py > /private/tmp/setos-m4-004-005-parity-proj.json
 python3 -m py_compile ml/camera_coach/models/*.py
 git diff --check
 ```

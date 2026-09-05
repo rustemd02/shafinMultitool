@@ -142,6 +142,16 @@ def _assert_batch_norm(module: torch.nn.Module, expected_features: int) -> None:
     assert module.momentum == _EXPECTED_BATCH_NORM_MOMENTUM
 
 
+def _assert_projection_conv(module: torch.nn.Module, expected_input: int, expected_output: int) -> None:
+    assert isinstance(module, torch.nn.Conv2d)
+    assert (module.in_channels, module.out_channels) == (expected_input, expected_output)
+    assert module.kernel_size == (1, 1)
+    assert module.stride == (1, 1)
+    assert module.groups == 1
+    assert module.padding == (0, 0)
+    assert module.bias is None
+
+
 def _assert_actual_backbone(
     backbone: torch.nn.Module,
     expected_schedule: tuple[tuple[int, int, int, int, int, bool, str], ...],
@@ -186,7 +196,7 @@ def _assert_actual_backbone(
             expected_groups=expected_expanded,
         )
         output_conv = children[-2]
-        assert isinstance(output_conv, torch.nn.Conv2d)
+        _assert_projection_conv(output_conv, expected_expanded, expected_output)
         assert len(children) >= 3
         _assert_batch_norm(children[-1], expected_output)
         actual_input = depthwise_conv.in_channels
@@ -344,6 +354,23 @@ def _assert_mutation_guards(
         candidate_a.fusion[0] = original_fusion_projection
 
     block = candidate_a.full_frame_backbone.features[1]
+    projection_conv = block.block[-2]
+    mutated_projection = torch.nn.Conv2d(
+        projection_conv.in_channels,
+        projection_conv.out_channels,
+        kernel_size=3,
+        padding=1,
+        bias=False,
+    )
+    block.block[-2] = mutated_projection
+    try:
+        _assert_rejects(
+            "candidate A projection 1x1 -> 3x3",
+            lambda: _assert_mobilenet_schedules(candidate_a, candidate_b),
+        )
+    finally:
+        block.block[-2] = projection_conv
+
     depthwise = next(
         child for child in block.block
         if isinstance(child, torch.nn.Sequential)
@@ -543,6 +570,7 @@ def main() -> int:
             "actual MobileNetV3 stem, Large-15/Small-11 blocks, and final projections",
             "actual scalar MLP, 256D fusion, 256-to-embedding, and manifest head wiring",
             "actual BatchNorm topology/settings plus removal and settings mutation guards",
+            "actual 1x1 projection topology plus 1x1-to-3x3 mutation guard",
             "mutation guards for stem/final Hardswish and fusion output width",
             "all nine manifest-driven output heads and shapes",
             "repeated forward equality",
