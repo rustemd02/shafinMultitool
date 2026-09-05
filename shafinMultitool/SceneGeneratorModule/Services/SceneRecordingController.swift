@@ -152,10 +152,12 @@ final class SceneRecordingController: @unchecked Sendable {
     @discardableResult
     func setRecordingSourceOwnerID(_ ownerID: UUID) -> Bool {
         withState {
-            guard ownerID != UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
-                  activeSourceOwnerToken == nil,
+            guard ownerID != UUID(uuidString: "00000000-0000-0000-0000-000000000000")! else { return false }
+            if sourceOwnerID == ownerID {
+                return lifecycle != .released
+            }
+            guard activeSourceOwnerToken == nil,
                   lifecycle == .idle else { return false }
-            if sourceOwnerID == ownerID { return true }
             sourceOwnerID = ownerID
             sourceGenerationStorage = 0
             return true

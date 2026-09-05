@@ -64,7 +64,7 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertNil(controller.recordingSourceToken)
     }
 
-    func testSecondCoordinatorCannotBorrowActiveFirstCoordinatorSourceToken() async throws {
+    func testCoordinatorRebindPreservesActiveSourceAndForeignCoordinatorCannotBorrowToken() async throws {
         let (controller, box, temporaryDirectory) = try makeController()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 
@@ -94,6 +94,22 @@ final class SceneRecordingControllerTests: XCTestCase {
         let activeToken = try XCTUnwrap(controller.recordingSourceToken)
         XCTAssertEqual(activeToken.source, .arWorkspace)
 
+        firstCoordinator.updateSessionState(
+            for: firstRuntime,
+            request: ARWorldTrackingConfigurationRequest(depthRequested: false, initialWorldMap: nil),
+            isGenerating: false,
+            shouldForwardCapturedImage: true,
+            isSceneGenerated: false,
+            isARSessionReady: false,
+            isARSessionInterrupted: false,
+            isARSessionRecovering: false,
+            force: true
+        )
+        firstCoordinator.testingForwardRecordingFrame(pixelBuffer, at: 2)
+        firstCoordinator.testingForwardRecordingFrame(pixelBuffer, at: 3)
+        XCTAssertEqual(box.recorder(at: 0)?.enqueuedTimestamps, [1, 2, 3])
+        XCTAssertEqual(controller.recordingSourceToken, activeToken)
+
         let secondRuntime = RecordingCoordinatorRuntime()
         let secondCoordinator = ARSceneContainer.Coordinator(
             viewModel: viewModel,
@@ -114,7 +130,7 @@ final class SceneRecordingControllerTests: XCTestCase {
         )
 
         secondCoordinator.testingForwardRecordingFrame(pixelBuffer, at: 2)
-        XCTAssertEqual(box.recorder(at: 0)?.enqueuedTimestamps, [1])
+        XCTAssertEqual(box.recorder(at: 0)?.enqueuedTimestamps, [1, 2, 3])
         XCTAssertEqual(controller.recordingSourceToken, activeToken)
 
         _ = await controller.stop(reason: .routeExit)

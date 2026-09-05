@@ -81,13 +81,24 @@ match the controller binding; an active token must additionally be the AR
 workspace token for that same owner. A second coordinator attached to the same
 view-model/context therefore cannot borrow the first coordinator's token. The
 two-coordinator case is covered by
-`testSecondCoordinatorCannotBorrowActiveFirstCoordinatorSourceToken`.
+`testCoordinatorRebindPreservesActiveSourceAndForeignCoordinatorCannotBorrowToken`.
 
 `CameraService.stopRecording()` now captures the stopped token and performs
 compare-and-clear while holding `recorderLock`. The bounded interleaving test
 `testCameraServiceStopPreservesReplacementClaimMadeDuringUnlockedCleanup`
 releases the old claim and installs a replacement during the cleanup hook; the
 replacement remains active and is not erased by the old stop path.
+
+## FIX-FIRST idempotent-rebind correction evidence
+
+`SceneRecordingController.setRecordingSourceOwnerID` now accepts an exact
+currently bound owner again in every non-terminal lifecycle state, including
+`.recording`, without changing the source generation or active token. A
+different owner remains rejected while a take is active, and a terminally
+released controller cannot be rebound. The coordinator regression invokes the
+same owner's `updateSessionState` after recording starts, forwards two later
+frames through the production boundary, and verifies both reach the recorder;
+the same test then verifies a foreign coordinator remains rejected.
 
 ## Verification record
 
@@ -108,8 +119,10 @@ xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMult
   CODE_SIGNING_ALLOWED=NO
 ```
 
-Result: **TEST SUCCEEDED**, 94/94 passed, 0 failures, 0 skipped. The durable
-result bundle is `/private/tmp/setos-m7-002-final2-20260905.xcresult`.
+Result: **TEST SUCCEEDED**, 94/94 passed, 0 failures, 0 skipped. This was the
+pre-correction baseline; its result bundle was
+`/private/tmp/setos-m7-002-final2-20260905.xcresult` and is superseded by the
+correction evidence below.
 `git diff --check` passed with exit status 0. A prior identical target briefly
 returned simulator `SBMainWorkspace Busy` before any test executed; rerun after
 the allowed iPhone Air boot completed passed without source changes.
@@ -119,9 +132,18 @@ passed**, 0 failures, 0 skipped. The final correction run added the M6-004 route
 and teardown integration suites (`CommercialShellRoutingTests`,
 `CommercialShellLaunchCompositionTests`, `CameraViewModelLifecycleTests`, and
 `SceneWorkspaceTeardownTests`) to the prior set: **151/151 passed**, 0 failures,
-0 skipped. Its retained result bundle is
-`/private/tmp/setos-m7-002-correction-final-20260905.xcresult`.
+0 skipped. Its historical result bundle was
+`/private/tmp/setos-m7-002-correction-final-20260905.xcresult` and is
+superseded by the second correction below.
 `git diff --check` passed after the correction edits.
+
+The second correction focused run covered the recording/ownership classes:
+**96/96 passed**, 0 failures, 0 skipped on iPhone Air iOS 26.5. Its historical
+result bundle was `/private/tmp/setos-m7-002-correction2-focused-20260905.xcresult`.
+The final second-correction run added the M6-004 route and teardown integration
+suites above: **151/151 passed**, 0 failures, 0 skipped. The retained final
+result bundle is `/private/tmp/setos-m7-002-correction2-final-20260905.xcresult`.
+`git diff --check` passed after the idempotent-rebind correction.
 
 This lane did not use, boot, target, shut down, or erase an iPhone 17 Pro,
 physical iPhone 13, or any physical device. Simulator evidence does not qualify
