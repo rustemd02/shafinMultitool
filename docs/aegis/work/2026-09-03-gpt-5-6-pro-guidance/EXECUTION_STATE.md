@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last accepted task head: `4df7702` (M2-031; no push)
+- Last accepted task head: `910704b` (M4-002/M4-003; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3 dataset and M4 model-contract foundations (M1 COMPLETE with GATE PASS)
-- Current task: M2-033/M2-035/M2-036 Camera closure tests and root control; M3-002→M3-005 Camera dataset foundation; M4-002→M4-003 SETCompositionNet contracts
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-032, M2-034, M3-001, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M5-013, M6-001, M6-002, M6-003, M6-004, M7-001, M7-002, M7-003, M7-004, M12-033]
-- In-progress: [M2-033, M2-035, M2-036, M3-002, M3-003, M3-004, M3-005, M4-002, M4-003]
+- Current task: M2-033/M2-035/M2-036 Camera closure tests and root control; M3-002→M3-005 Camera dataset foundation
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-032, M2-034, M3-001, M4-002, M4-003, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M5-013, M6-001, M6-002, M6-003, M6-004, M7-001, M7-002, M7-003, M7-004, M12-033]
+- In-progress: [M2-033, M2-035, M2-036, M3-002, M3-003, M3-004, M3-005]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -512,3 +512,8 @@
 - All dependencies are closed. One coherent Camera-closure batch now owns the root close-control contract, production-owner closed-loop integration coverage and true-process UI fixture matrix needed before M2-GATE.
 - Ownership is limited to the existing Camera overlay/shell composition seams, Camera closed-loop unit tests, existing Camera entry/production UI tests, debug-only deterministic fixture injection and one evidence bundle. CommercialShell route ownership, Release switch absence and retained accessibility IDs must remain unchanged.
 - The batch uses an isolated Luna/Max worktree and an allowed non-Pro simulator. Portrait/landscape and KEEP/WAIT/ABSTAIN/select/correct/why/movement/verification/interruption/recovery states must be proven without weakening fail-closed safety.
+
+### 2026-09-05T09:42+03:00 — M4-002/M4-003 CLOSED
+- SETCompositionNet-v1 now has one frozen machine-readable input/output authority: full-frame and subject tensors, true padded-square clipping, absent-ROI zeros, exact RGB `/255.0`, 40 ordered scalar features/masks and exact categorical/formula mappings. Output is exactly nine ordered bounded/non-text heads, including the 128D internal embedding.
+- Four fix-first rounds closed shifted-crop parity, arbitrary categorical values, paired normalization/version drift, incomplete strict-v1 metadata routing and extensible JSON signatures. Contract-owned objects reject extra fields; extra/reordered/duplicate heads and input/category/normalization expansion fail closed. Final fresh Sol audit returned `SHIP`.
+- Integrated parity is deterministic with 20 mutation probes; focused Swift runtime/parity tests passed 21/21 on ordinary iPhone Air at `/private/tmp/setos-root-m4-integrated-air.xcresult`. The ordinary iPhone 17 preparation failure was CoreSimulator-only and is retained in evidence. Training, model selection, calibration and production enablement remain downstream. Tracker total: 92/424 completed, 332 remaining.

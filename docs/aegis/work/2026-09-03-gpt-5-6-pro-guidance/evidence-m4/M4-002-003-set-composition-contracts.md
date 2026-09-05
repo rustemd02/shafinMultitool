@@ -137,3 +137,10 @@ values):
 - No training, model download, dataset/holdout inspection, metric, candidate
   quality, planner, Visual Policy, UI, route, or production enablement claim is
   made here.
+
+## Coordinator integration verification
+
+- Integrated on `store` as `8d0727b`, `bfc7942`, `7492233`, `efc39d3`, `910704b` after the final fresh Sol audit returned `SHIP`.
+- The parity checker ran twice on the integrated tree with byte-identical receipts at `/private/tmp/setos-root-m4-parity1.json` and `/private/tmp/setos-root-m4-parity2.json`: 40 scalar features, 9 output heads and all 20 mutation probes passed.
+- `/private/tmp/setos-root-m4-integrated-air.xcresult`: 21/21 focused Swift parity/runtime-schema tests passed on ordinary iPhone Air / iOS 26.5. An earlier ordinary iPhone 17 attempt at `/private/tmp/setos-root-m4-integrated.xcresult` executed no tests because CoreSimulator rejected device preparation with `Invalid connectionUUID`; no test failure is inferred from it.
+- Coordinator DerivedData and Python bytecode cache were removed after verification; receipts and result bundles were retained.
