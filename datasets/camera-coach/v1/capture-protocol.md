@@ -79,9 +79,12 @@ timestamps, frame ordinals, asset IDs, and a state timeline such as
 `acquire`, `stable`, `moving`, `rotation`, `lens_change`,
 `lighting_transition`, or `scene_cut`.
 
-The sequence remains one record and one split. Timeline segments must be
-ordered, non-overlapping, contiguous from frame 0 through the final frame, and
-cover every frame exactly once. Never split frames into separate partitions,
+The sequence remains one record and one split. `frame_count`, frame `ordinal`
+and `timestamp_ms`, and timeline `start_frame`/`end_frame` must be JSON
+integers; strings, floating-point values, and booleans are invalid. Timeline
+segments must be ordered, non-overlapping, contiguous from frame 0 through the
+final frame, and cover every frame exactly once. Never split frames into
+separate partitions,
 count each frame as an independent still, or use a later frame as a new source
 shoot. Device family is also a protected split key even when scene,
 take, time, location, and person families differ. Include sequences that
@@ -131,9 +134,10 @@ resolve:
    `derivation-manifest.jsonl`;
 5. all family fields against the source-shoot entry.
 6. resolved human review: a release record needs two distinct annotator votes
-   that all accept, or an accepted latest adjudication covering every vote;
-   conflicting, unreviewed, rejected, or missing-adjudication records stop at
-   quarantine.
+   that all accept and no adjudication history, or an accepted latest
+   adjudication that occurs after every referenced vote and covers every vote;
+   conflicting, unreviewed, rejected, quarantined, or missing-adjudication
+   records stop at quarantine.
 
 The resolved source-shoot entry is authoritative for `source_kind`; a record
 claiming a different kind is invalid. A resolved `synthetic_fixture` source is

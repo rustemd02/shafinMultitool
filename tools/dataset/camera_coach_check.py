@@ -7,6 +7,7 @@ import argparse
 import copy
 import hashlib
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -214,6 +215,16 @@ def _check_enum(value: Any, allowed: set[str], path: str, errors: list[str], cod
         errors.append(_error(code, path))
 
 
+def _is_strict_int(value: Any) -> bool:
+    """Match JSON Schema integer semantics without Python's bool-as-int trap."""
+    return type(value) is int
+
+
+def _is_json_number(value: Any) -> bool:
+    """Match JSON number semantics and reject booleans/non-finite Python values."""
+    return type(value) is int or (type(value) is float and math.isfinite(value))
+
+
 def _check_list(value: Any, path: str, errors: list[str], *, nonempty: bool = False) -> list[Any]:
     if not isinstance(value, list) or (nonempty and not value) or len({json.dumps(v, sort_keys=True) for v in value}) != len(value):
         errors.append(_error("invalid_list", path))
@@ -299,6 +310,14 @@ def _validate_subject(subject: Any, errors: list[str]) -> None:
         _check_id(candidate.get("subject_id"), f"{path}.subject_id", errors)
         _check_enum(candidate.get("kind"), {"face", "person", "object", "group", "scene", "unknown"}, f"{path}.kind", errors)
         _check_id(candidate.get("reference"), f"{path}.reference", errors)
+        region = candidate.get("region")
+        if region is not None:
+            if (
+                not isinstance(region, list)
+                or len(region) != 4
+                or any(not _is_json_number(value) or not 0 <= value <= 1 for value in region)
+            ):
+                errors.append(_error("invalid_subject_region", f"{path}.region"))
         candidate_ids.append(candidate.get("subject_id"))
     if len(set(candidate_ids)) != len(candidate_ids):
         errors.append(_error("invalid_subject_reference", "subject.candidates duplicate subject_id"))
@@ -464,43 +483,67 @@ def _validate_review(review: Any, errors: list[str]) -> None:
     votes = _check_list(review.get("vote_history"), "review.vote_history", errors)
     vote_ids: set[str] = set()
     annotators: set[str] = set()
+    vote_times: dict[str, str] = {}
     for index, vote in enumerate(votes):
         path = f"review.vote_history[{index}]"
         _require(vote, {"vote_id", "annotator_id", "submitted_at", "decision"}, path, errors)
         if not isinstance(vote, dict):
             continue
-        _check_id(vote.get("vote_id"), f"{path}.vote_id", errors)
-        _check_id(vote.get("annotator_id"), f"{path}.annotator_id", errors)
-        if vote.get("vote_id") in vote_ids:
+        vote_id = vote.get("vote_id")
+        annotator_id = vote.get("annotator_id")
+        submitted_at = vote.get("submitted_at")
+        _check_id(vote_id, f"{path}.vote_id", errors)
+        _check_id(annotator_id, f"{path}.annotator_id", errors)
+        if isinstance(vote_id, str) and vote_id in vote_ids:
             errors.append(_error("duplicate_vote_id", path))
-        vote_ids.add(vote.get("vote_id"))
-        annotators.add(vote.get("annotator_id"))
-        if not DATE_RE.fullmatch(vote.get("submitted_at", "")):
+        if isinstance(vote_id, str):
+            vote_ids.add(vote_id)
+            if isinstance(submitted_at, str) and DATE_RE.fullmatch(submitted_at):
+                vote_times[vote_id] = submitted_at
+        if isinstance(annotator_id, str):
+            annotators.add(annotator_id)
+        if not isinstance(submitted_at, str) or not DATE_RE.fullmatch(submitted_at):
             errors.append(_error("invalid_timestamp", f"{path}.submitted_at"))
         _check_enum(vote.get("decision"), {"accept", "reject", "abstain"}, f"{path}.decision", errors)
     adjudications = _check_list(review.get("adjudication_history"), "review.adjudication_history", errors)
     adjudication_ids: set[str] = set()
+    previous_adjudication_at: str | None = None
     for index, adjudication in enumerate(adjudications):
         path = f"review.adjudication_history[{index}]"
         _require(adjudication, {"adjudication_id", "adjudicator_id", "occurred_at", "based_on_vote_ids", "outcome"}, path, errors)
         if not isinstance(adjudication, dict):
             continue
-        _check_id(adjudication.get("adjudication_id"), f"{path}.adjudication_id", errors)
+        adjudication_id = adjudication.get("adjudication_id")
+        occurred_at = adjudication.get("occurred_at")
+        _check_id(adjudication_id, f"{path}.adjudication_id", errors)
         _check_id(adjudication.get("adjudicator_id"), f"{path}.adjudicator_id", errors)
-        if adjudication.get("adjudication_id") in adjudication_ids:
+        if isinstance(adjudication_id, str) and adjudication_id in adjudication_ids:
             errors.append(_error("duplicate_adjudication_id", path))
-        adjudication_ids.add(adjudication.get("adjudication_id"))
-        if not DATE_RE.fullmatch(adjudication.get("occurred_at", "")):
+        if isinstance(adjudication_id, str):
+            adjudication_ids.add(adjudication_id)
+        if not isinstance(occurred_at, str) or not DATE_RE.fullmatch(occurred_at):
             errors.append(_error("invalid_timestamp", f"{path}.occurred_at"))
+        elif previous_adjudication_at is not None and occurred_at <= previous_adjudication_at:
+            errors.append(_error("invalid_review_chronology", f"{path}.occurred_at must follow prior adjudication"))
+        if isinstance(occurred_at, str) and DATE_RE.fullmatch(occurred_at):
+            previous_adjudication_at = occurred_at
         based_on = _check_list(adjudication.get("based_on_vote_ids"), f"{path}.based_on_vote_ids", errors, nonempty=True)
-        if not set(based_on).issubset(vote_ids):
+        referenced_vote_ids = {vote_id for vote_id in based_on if isinstance(vote_id, str)}
+        if len(referenced_vote_ids) != len(based_on) or not referenced_vote_ids.issubset(vote_ids):
             errors.append(_error("unknown_vote_reference", path))
+        if isinstance(occurred_at, str) and DATE_RE.fullmatch(occurred_at):
+            for vote_id in referenced_vote_ids:
+                submitted_at = vote_times.get(vote_id)
+                if submitted_at is not None and occurred_at <= submitted_at:
+                    errors.append(_error("invalid_review_chronology", f"{path}.occurred_at must follow referenced vote {vote_id}"))
         _check_enum(adjudication.get("outcome"), {"accepted", "rejected", "quarantined"}, f"{path}.outcome", errors)
     status = review.get("status")
     if status == "unreviewed" and (votes or adjudications):
         errors.append(_error("review_status_mismatch", "unreviewed record has review events"))
     if status == "dual_reviewed" and len(annotators) < 2:
         errors.append(_error("review_status_mismatch", "dual_reviewed requires two annotators"))
+    if status == "dual_reviewed" and adjudications:
+        errors.append(_error("review_status_mismatch", "dual_reviewed cannot contain adjudications"))
     if status == "adjudicated" and (len(annotators) < 2 or not adjudications):
         errors.append(_error("review_status_mismatch", "adjudicated requires two votes and adjudication history"))
 
@@ -520,10 +563,12 @@ def _validate_release_review(review: Any, split: Any, errors: list[str]) -> None
     vote_ids = {vote.get("vote_id") for vote in valid_votes if isinstance(vote.get("vote_id"), str)}
     decisions = [vote.get("decision") for vote in valid_votes]
 
-    if len(valid_votes) < 2 or len(annotators) < 2:
+    if len(valid_votes) < 2 or len(annotators) < 2 or len(vote_ids) != len(valid_votes):
         errors.append(_error("review_not_admissible", f"{split} requires two independent annotator votes"))
         return
     if status == "dual_reviewed":
+        if adjudications:
+            errors.append(_error("review_not_admissible", "dual_reviewed release review cannot include adjudication history"))
         if len(set(decisions)) > 1:
             errors.append(_error("review_conflict_unresolved", "conflicting independent votes require adjudication"))
         elif decisions != ["accept"] * len(decisions):
@@ -537,7 +582,8 @@ def _validate_release_review(review: Any, split: Any, errors: list[str]) -> None
         return
     latest = adjudications[-1] if isinstance(adjudications[-1], dict) else {}
     based_on = latest.get("based_on_vote_ids") if isinstance(latest.get("based_on_vote_ids"), list) else []
-    if set(based_on) != vote_ids:
+    referenced_vote_ids = {vote_id for vote_id in based_on if isinstance(vote_id, str)}
+    if len(referenced_vote_ids) != len(based_on) or referenced_vote_ids != vote_ids:
         errors.append(_error("invalid_adjudication_scope", "latest adjudication must resolve every independent vote"))
     elif latest.get("outcome") != "accepted":
         errors.append(_error("review_not_admissible", "release adjudication outcome must be accepted"))
@@ -567,16 +613,21 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
             errors.append(_error("missing_source_asset", f"{path}.asset_id"))
         ordinal = frame.get("ordinal")
         timestamp = frame.get("timestamp_ms")
-        if not isinstance(ordinal, int) or ordinal < 0:
-            errors.append(_error("invalid_sequence_order", f"{path}.ordinal"))
+        if not _is_strict_int(ordinal) or ordinal < 0:
+            errors.append(_error("invalid_sequence_numeric_type" if not _is_strict_int(ordinal) else "invalid_sequence_order", f"{path}.ordinal"))
         else:
             ordinals.append(ordinal)
-        if not isinstance(timestamp, int) or timestamp < 0:
-            errors.append(_error("invalid_sequence_timestamp", f"{path}.timestamp_ms"))
+        if not _is_strict_int(timestamp) or timestamp < 0:
+            errors.append(_error("invalid_sequence_numeric_type" if not _is_strict_int(timestamp) else "invalid_sequence_timestamp", f"{path}.timestamp_ms"))
         else:
             timestamps.append(timestamp)
         _check_enum(frame.get("state"), {"acquire", "stable", "moving", "rotation", "lens_change", "lighting_transition", "scene_cut", "unknown"}, f"{path}.state", errors)
-    if isinstance(sequence.get("frame_count"), int) and sequence.get("frame_count") != len(frames):
+    frame_count = sequence.get("frame_count")
+    if not _is_strict_int(frame_count):
+        errors.append(_error("invalid_sequence_numeric_type", "sequence.frame_count"))
+    elif frame_count < 2:
+        errors.append(_error("invalid_sequence_length", "sequence.frame_count"))
+    elif frame_count != len(frames):
         errors.append(_error("invalid_sequence_order", "sequence.frame_count does not match frames"))
     if ordinals != list(range(len(frames))):
         errors.append(_error("invalid_sequence_order", "frame ordinals must be contiguous"))
@@ -595,13 +646,16 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
         start = segment.get("start_frame")
         end = segment.get("end_frame")
         if (
-            not isinstance(start, int)
-            or not isinstance(end, int)
+            not _is_strict_int(start)
+            or not _is_strict_int(end)
             or start != expected_start
             or end < start
             or end >= len(frames)
         ):
-            errors.append(_error("invalid_sequence_timeline", f"{path}: segments must be non-overlapping and cover every frame"))
+            errors.append(_error(
+                "invalid_sequence_numeric_type" if not _is_strict_int(start) or not _is_strict_int(end) else "invalid_sequence_timeline",
+                f"{path}.start_frame/end_frame" if not _is_strict_int(start) or not _is_strict_int(end) else f"{path}: segments must be non-overlapping and cover every frame",
+            ))
         else:
             expected_start = end + 1
     if timeline and expected_start != len(frames):

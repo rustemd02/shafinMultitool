@@ -219,9 +219,13 @@ ABSTAIN as appropriate. Record the outcome as `correct`, `no_op`, `opposite`, `o
 
 ## 8. Temporal records
 
-Annotate the sequence as one record. Frame ordinals are contiguous, timestamps
-are strictly increasing, and all frames share the source shoot, take family,
-derivation family, and split. Timeline segments must be ordered, non-overlapping,
+Annotate the sequence as one record. `frame_count`, frame `ordinal` and
+`timestamp_ms`, and timeline `start_frame`/`end_frame` are JSON integers, not
+strings, floating-point values, or booleans; the validator uses strict integer
+checks because Python treats `bool` as an `int`. Frame ordinals are
+contiguous, timestamps are strictly increasing, and all frames share the
+source shoot, take family, derivation family, and split. Timeline segments must
+be ordered, non-overlapping,
 contiguous, and cover every frame exactly once from frame 0 through the final
 frame. Use the timeline to mark acquisition, stable periods, movement, rotation,
 lens change, lighting transition, or scene cut. Never make a frame-by-frame vote
@@ -231,17 +235,21 @@ look like independent still evidence.
 
 `review.vote_history` is append-only. Each independent annotator submission is
 a new vote entry; do not replace a previous vote. `adjudication_history` is a
-separate append-only array and may reference prior vote IDs. Candidate/model
-outputs are never written into either array. An `adjudicated` status requires
-the evidence of the votes and a separate adjudication event; it does not erase
-the disagreement history. For `train`, `calibration`, or `holdout`, admission
-requires either `dual_reviewed` with at least two distinct annotators whose
-votes all accept, or `adjudicated` with at least two votes and a latest
-`accepted` adjudication that references every vote. Conflicting independent
-votes are not resolved by averaging; they require adjudication. Unreviewed,
-in-review, rejected, incomplete, or missing-adjudication records are not
-release-admissible. Fixture and quarantine records may retain unreviewed or
-partial review for audit, but they cannot be promoted without this gate.
+separate append-only array and may reference prior vote IDs. Each adjudication
+event must occur strictly after every vote it references, and the array order
+must remain chronological. Candidate/model outputs are never written into
+either array. An `adjudicated` status requires the evidence of the votes and a
+separate adjudication event; it does not erase the disagreement history. For
+`train`, `calibration`, or `holdout`, admission requires either `dual_reviewed`
+with at least two distinct annotators whose votes all accept and no
+adjudication history, or `adjudicated` with at least two votes and a latest
+`accepted` adjudication that chronologically follows and references every
+vote. A rejected or quarantined latest adjudication is not release-admissible.
+Conflicting independent votes are not resolved by averaging; they require
+adjudication. Unreviewed, in-review, rejected, incomplete, or
+missing-adjudication records are not release-admissible. Fixture and
+quarantine records may retain unreviewed or partial review for audit, but they
+cannot be promoted without this gate.
 
 Hard disagreements include subject identity mismatch, acceptable versus
 forbidden action conflict, KEEP versus corrective action, ABSTAIN versus a
