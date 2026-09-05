@@ -293,4 +293,21 @@ final class ARWorkspaceContractTests: XCTestCase {
                 && $0.trigger.localizedCaseInsensitiveContains("safe stop")
         } == true)
     }
+
+    func testARViewConstructionDisablesAutomaticSessionConfigurationBeforeOwnerAttach() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("shafinMultitool/SceneGeneratorModule/Views/ARSceneContainer.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let constructor = "let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)"
+
+        XCTAssertTrue(source.contains(constructor))
+        XCTAssertFalse(source.contains("arView.automaticallyConfigureSession = false"))
+        guard let constructorRange = source.range(of: constructor),
+              let attachRange = source.range(of: "context.coordinator.attachSession(to: arView)") else {
+            return XCTFail("ARView must be constructed before the coordinator attaches its session")
+        }
+        XCTAssertLessThan(constructorRange.lowerBound, attachRange.lowerBound)
+    }
 }

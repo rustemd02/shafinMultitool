@@ -216,4 +216,31 @@ final class ARSessionOwnershipTests: XCTestCase {
         XCTAssertEqual(runtime.pauseCount, 1)
         XCTAssertNil(runtime.delegate)
     }
+
+    func testInterruptionEndedAppliesSafetyOnceBeforeLatestGenerationRecovery() async {
+        let session = ARSession()
+        let viewModel = makeViewModel()
+        viewModel.isPlaying = true
+        let owner = ARSceneContainer.Coordinator(
+            viewModel: viewModel,
+            capabilityProvider: makeCapabilities(),
+            sessionRuntime: session
+        )
+
+        owner.attachSession(runtime: session)
+
+        // Keep both callbacks ahead of the MainActor queue so the ended
+        // callback advances to the latest generation before interruption
+        // safety work can observe the first one.
+        owner.sessionWasInterrupted(session)
+        owner.sessionInterruptionEnded(session)
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(owner.interruptionSafetyApplicationCount, 1)
+        XCTAssertFalse(viewModel.isPlaying)
+        XCTAssertFalse(viewModel.isARSessionInterrupted)
+        XCTAssertTrue(viewModel.isARSessionRecovering)
+        XCTAssertFalse(viewModel.isARSessionReady)
+    }
 }

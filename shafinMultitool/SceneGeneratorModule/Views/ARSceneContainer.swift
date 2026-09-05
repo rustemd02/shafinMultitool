@@ -181,10 +181,9 @@ struct ARSceneContainer: UIViewRepresentable {
     
     func makeUIView(context: Context) -> ARView {
         viewModel.setPresentationLocale(presentationLocale)
-        let arView = ARView(frame: .zero)
+        // Disable automatic session work before the sole owner attaches.
+        let arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
 
-        // Избегаем двойной автоконфигурации ARView (она может увеличивать нагрузку)
-        arView.automaticallyConfigureSession = false
         context.coordinator.attachSession(to: arView)
         context.coordinator.updateSessionState(
             for: arView,
@@ -310,6 +309,8 @@ struct ARSceneContainer: UIViewRepresentable {
         private var activeSessionGeneration = 0
         private var sessionIsReleased = false
         private var sessionReleaseCount = 0
+        private var interruptionSafetyApplied = false
+        private var interruptionSafetyApplications = 0
         private var skippedFramesSinceLog = 0
         private var processedFramesSinceLog = 0
         private var lastFrameMetricsLogTimestamp: TimeInterval = 0
@@ -389,6 +390,7 @@ struct ARSceneContainer: UIViewRepresentable {
 
             sessionRuntime = runtime
             setActiveSession(identifier: runtime.sessionIdentifier)
+            interruptionSafetyApplied = false
             runtime.delegate = self
             viewModel.setARSessionOwner(self)
             viewModel.setExpectedARSessionGeneration(currentSessionGeneration())
@@ -578,6 +580,10 @@ struct ARSceneContainer: UIViewRepresentable {
             sessionStateLock.lock()
             defer { sessionStateLock.unlock() }
             return sessionReleaseCount
+        }
+
+        var interruptionSafetyApplicationCount: Int {
+            interruptionSafetyApplications
         }
 
         var sessionGeneration: Int {
@@ -797,11 +803,11 @@ struct ARSceneContainer: UIViewRepresentable {
             guard callbackGeneration(for: session) != nil else { return }
             let generation = advanceFrameGeneration()
             let sessionIdentifier = ObjectIdentifier(session)
-            SceneGeneratorDiagnosticsLogger.shared.log("[AR] session interrupted")
             Task { @MainActor [weak self] in
                 guard let self,
                       self.acceptsSessionCallback(sessionIdentifier: sessionIdentifier, generation: generation) else { return }
-                self.viewModel.handleARSessionInterruption(generation: generation)
+                self.applyInterruptionSafetyIfNeeded(generation: generation)
+                SceneGeneratorDiagnosticsLogger.shared.log("[AR] session interrupted")
             }
         }
         
@@ -809,12 +815,25 @@ struct ARSceneContainer: UIViewRepresentable {
             guard callbackGeneration(for: session) != nil else { return }
             let generation = advanceFrameGeneration()
             let sessionIdentifier = ObjectIdentifier(session)
-            SceneGeneratorDiagnosticsLogger.shared.log("[AR] session interruption ended")
             Task { @MainActor [weak self] in
                 guard let self,
                       self.acceptsSessionCallback(sessionIdentifier: sessionIdentifier, generation: generation) else { return }
+                // The ended callback may win the MainActor race against the
+                // earlier interruption callback. Safety must still run for
+                // this accepted generation before recovery is entered.
+                self.applyInterruptionSafetyIfNeeded(generation: generation)
                 self.viewModel.handleARSessionInterruptionEnded(generation: generation)
+                self.interruptionSafetyApplied = false
+                SceneGeneratorDiagnosticsLogger.shared.log("[AR] session interruption ended")
             }
+        }
+
+        @MainActor
+        private func applyInterruptionSafetyIfNeeded(generation: Int) {
+            guard !interruptionSafetyApplied else { return }
+            interruptionSafetyApplied = true
+            interruptionSafetyApplications += 1
+            viewModel.handleARSessionInterruption(generation: generation)
         }
 
         private func advanceFrameGeneration() -> Int {
