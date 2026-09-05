@@ -27,6 +27,160 @@ final class SerializedMediaRecorderTests: XCTestCase {
         XCTAssertEqual(snapshot.state, .idle)
         XCTAssertNil(snapshot.recordingID)
         XCTAssertEqual(snapshot.generation, 0)
+        XCTAssertNil(snapshot.ownerToken)
+    }
+
+    func testTypedSourceClaimAllowsOneOwnerAndRejectsTheOtherRoute() async {
+        let cameraFixture = makeFixture()
+        let cameraToken = makeSourceToken(
+            source: .cameraCoach,
+            recordingID: cameraFixture.configuration.id,
+            generation: 1
+        )
+        let arToken = makeSourceToken(
+            source: .arWorkspace,
+            recordingID: cameraFixture.configuration.id,
+            generation: 2
+        )
+
+        let cameraClaimed = await cameraFixture.recorder.claimRecordingSource(cameraToken)
+        let arRejected = await cameraFixture.recorder.claimRecordingSource(arToken)
+        let repeatedCameraClaimed = await cameraFixture.recorder.claimRecordingSource(cameraToken)
+        XCTAssertTrue(cameraClaimed)
+        XCTAssertFalse(arRejected)
+        XCTAssertTrue(repeatedCameraClaimed)
+
+        let arFixture = makeFixture()
+        let arOwnerToken = makeSourceToken(
+            source: .arWorkspace,
+            recordingID: arFixture.configuration.id,
+            generation: 1
+        )
+        let cameraOwnerToken = makeSourceToken(
+            source: .cameraCoach,
+            recordingID: arFixture.configuration.id,
+            generation: 2
+        )
+
+        let arClaimed = await arFixture.recorder.claimRecordingSource(arOwnerToken)
+        let cameraRejected = await arFixture.recorder.claimRecordingSource(cameraOwnerToken)
+        XCTAssertTrue(arClaimed)
+        XCTAssertFalse(cameraRejected)
+    }
+
+    func testExactSourceTokenIsRequiredForFramesAndStaleReleaseCannotClearOwner() async throws {
+        let fixture = makeFixture()
+        let ownerToken = makeSourceToken(
+            source: .arWorkspace,
+            recordingID: fixture.configuration.id,
+            generation: 7
+        )
+        let staleGenerationToken = makeSourceToken(
+            source: .arWorkspace,
+            recordingID: fixture.configuration.id,
+            ownerID: ownerToken.ownerID,
+            generation: 6
+        )
+        let staleOwnerToken = makeSourceToken(
+            source: .arWorkspace,
+            recordingID: fixture.configuration.id,
+            ownerID: UUID(),
+            generation: ownerToken.generation
+        )
+
+        let ownerClaimed = await fixture.recorder.claimRecordingSource(ownerToken)
+        let staleGenerationReleaseWhileIdle = await fixture.recorder.releaseRecordingSource(staleGenerationToken)
+        let staleOwnerReleaseWhileIdle = await fixture.recorder.releaseRecordingSource(staleOwnerToken)
+        XCTAssertTrue(ownerClaimed)
+        XCTAssertFalse(staleGenerationReleaseWhileIdle)
+        XCTAssertFalse(staleOwnerReleaseWhileIdle)
+        try await fixture.recorder.prepare(fixture.configuration)
+        try await fixture.recorder.start()
+
+        let activeSnapshot = await fixture.recorder.stateSnapshot()
+        XCTAssertEqual(activeSnapshot.ownerToken, ownerToken)
+        XCTAssertEqual(activeSnapshot.generation, ownerToken.generation)
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(
+            fence: RecordingFrameFence(ownerToken: staleGenerationToken),
+            timestamp: 1.0,
+            payload: TestVideoPayload(index: 1)
+        ))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(
+            fence: RecordingFrameFence(ownerToken: staleOwnerToken),
+            timestamp: 2.0,
+            payload: TestVideoPayload(index: 2)
+        ))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(
+            fence: RecordingFrameFence(ownerToken: ownerToken),
+            timestamp: 3.0,
+            payload: TestVideoPayload(index: 3)
+        ))
+
+        let replacementToken = makeSourceToken(
+            source: .cameraCoach,
+            recordingID: fixture.configuration.id,
+            ownerID: UUID(),
+            generation: 8
+        )
+        let replacementWhileActive = await fixture.recorder.claimRecordingSource(replacementToken)
+        XCTAssertFalse(replacementWhileActive)
+
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+        XCTAssertEqual(fixture.writer.videoAppendCount, 1)
+        let replacementBeforeSourceRelease = await fixture.recorder.claimRecordingSource(replacementToken)
+        XCTAssertFalse(replacementBeforeSourceRelease)
+        let staleGenerationRelease = await fixture.recorder.releaseRecordingSource(staleGenerationToken)
+        let staleOwnerRelease = await fixture.recorder.releaseRecordingSource(staleOwnerToken)
+        XCTAssertFalse(staleGenerationRelease)
+        XCTAssertFalse(staleOwnerRelease)
+
+        // A replacement is closed while the old take is active or finishing;
+        // the exact owner can be released only after terminal stop.
+        let terminalOwnerRelease = await fixture.recorder.releaseRecordingSource(ownerToken)
+        XCTAssertTrue(terminalOwnerRelease)
+        let staleReleaseAfterOwnerClear = await fixture.recorder.releaseRecordingSource(ownerToken)
+        XCTAssertFalse(staleReleaseAfterOwnerClear)
+        let replacementAfterSourceRelease = await fixture.recorder.claimRecordingSource(replacementToken)
+        XCTAssertFalse(replacementAfterSourceRelease)
+        let releasedSnapshot = await fixture.recorder.stateSnapshot()
+        XCTAssertNil(releasedSnapshot.ownerToken)
+        _ = await fixture.recorder.releaseAndWait()
+
+        let replacementFixture = makeFixture()
+        let replacementClaimed = await replacementFixture.recorder.claimRecordingSource(replacementToken)
+        XCTAssertTrue(replacementClaimed)
+    }
+
+    func testConcurrentSourceClaimsHaveExactlyOneWinner() async {
+        let fixture = makeFixture()
+        let tokens = (0..<16).map { index in
+            makeSourceToken(
+                source: index.isMultiple(of: 2) ? .cameraCoach : .arWorkspace,
+                recordingID: fixture.configuration.id,
+                ownerID: UUID(),
+                generation: UInt64(index + 1)
+            )
+        }
+
+        let winnerCount = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for token in tokens {
+                group.addTask {
+                    await fixture.recorder.claimRecordingSource(token)
+                }
+            }
+
+            var count = 0
+            for await won in group {
+                if won { count += 1 }
+            }
+            return count
+        }
+
+        XCTAssertEqual(winnerCount, 1)
+        let snapshot = await fixture.recorder.stateSnapshot()
+        XCTAssertNotNil(snapshot.ownerToken)
     }
 
     func testPrepareDoesNotStartAudio() async throws {
@@ -773,6 +927,20 @@ final class SerializedMediaRecorderTests: XCTestCase {
             height: 1080,
             fps: 30,
             audioMode: audioMode
+        )
+    }
+
+    private func makeSourceToken(
+        source: RecordingWorkspaceSource,
+        recordingID: RecordingID,
+        ownerID: UUID = UUID(),
+        generation: UInt64
+    ) -> RecordingOwnerToken {
+        RecordingOwnerToken(
+            source: source,
+            ownerID: ownerID,
+            recordingID: recordingID,
+            generation: generation
         )
     }
 

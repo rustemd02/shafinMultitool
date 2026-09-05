@@ -167,7 +167,7 @@ final class RecordingLifecycleTransitionTests: XCTestCase {
         )
         XCTAssertEqual(controller.canonicalLifecycleState, .recording)
 
-        controller.enqueueVideo(buffer, at: 1.5)
+        controller.enqueueVideo(buffer, at: 1.5, ownerToken: controller.recordingSourceToken)
 
         let stopResult = await controller.stop(reason: .user)
         XCTAssertEqual(controller.canonicalLifecycleState, .idle)

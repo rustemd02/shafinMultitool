@@ -26,6 +26,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     private var audioDriver: (any RecordingAudioDriver)?
     private var audioStarted = false
     private var activeGeneration: UInt64 = 0
+    private var activeSourceOwnerToken: RecordingOwnerToken?
+    private var latestSourceGeneration: UInt64 = 0
     private var acceptingFrames = false
     private var firstVideoTimestamp: TimeInterval?
     private var lastVideoTimestamp: TimeInterval?
@@ -61,7 +63,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
                 continuation.resume(returning: RecorderStateSnapshot(
                     state: stateStorage,
                     recordingID: currentConfiguration?.id,
-                    generation: activeGeneration
+                    generation: activeGeneration,
+                    ownerToken: activeSourceOwnerToken
                 ))
             }
         }
@@ -109,6 +112,22 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         }
     }
 
+    func claimRecordingSource(_ ownerToken: RecordingOwnerToken) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                continuation.resume(returning: claimRecordingSourceOnQueue(ownerToken))
+            }
+        }
+    }
+
+    func releaseRecordingSource(_ ownerToken: RecordingOwnerToken) async -> Bool {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                continuation.resume(returning: releaseRecordingSourceOnQueue(ownerToken))
+            }
+        }
+    }
+
     func enqueueVideo(_ frame: RecordingVideoFrame) {
         queue.async { [self] in
             appendVideoOnQueue(frame)
@@ -119,6 +138,50 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         queue.async { [self] in
             appendAudioOnQueue(frame)
         }
+    }
+
+    // MARK: - Source ownership
+
+    private func claimRecordingSourceOnQueue(_ ownerToken: RecordingOwnerToken) -> Bool {
+        guard ownerToken.isValid,
+              ownerToken.generation > latestSourceGeneration else {
+            return activeSourceOwnerToken == ownerToken
+        }
+
+        guard activeSourceOwnerToken == nil,
+              stateStorage == .idle || stateStorage == .prepared else {
+            return false
+        }
+
+        if let currentConfiguration {
+            guard stateStorage == .prepared,
+                  currentConfiguration.id == ownerToken.recordingID,
+                  !acceptingFrames else {
+                return false
+            }
+            // A source may be claimed either before prepare (the controller's
+            // path) or after prepare (legacy/adaptor callers). In both cases
+            // the claim owns the recorder generation before frames are
+            // admitted.
+            activeGeneration = ownerToken.generation
+        }
+
+        activeSourceOwnerToken = ownerToken
+        latestSourceGeneration = ownerToken.generation
+        return true
+    }
+
+    private func releaseRecordingSourceOnQueue(_ ownerToken: RecordingOwnerToken) -> Bool {
+        guard activeSourceOwnerToken == ownerToken,
+              stateStorage == .idle
+                || stateStorage == .finished
+                || stateStorage == .failed
+                || stateStorage == .released,
+              !finishInFlight else {
+            return false
+        }
+        activeSourceOwnerToken = nil
+        return true
     }
 
     // MARK: - Prepare/start
@@ -136,6 +199,12 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
         guard !outputChecker.exists(at: configuration.outputURL) else {
             throw RecorderFailure.outputAlreadyExists
+        }
+
+        if let activeSourceOwnerToken {
+            guard activeSourceOwnerToken.recordingID == configuration.id else {
+                throw RecorderFailure.invalidTransition
+            }
         }
 
         let newWriter: any RecordingWriter
@@ -162,7 +231,11 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         releaseRequested = false
         lastStopReason = nil
         lastStopResult = nil
-        advanceGenerationOnQueue()
+        if let activeSourceOwnerToken {
+            activeGeneration = activeSourceOwnerToken.generation
+        } else {
+            advanceGenerationOnQueue()
+        }
         acceptingFrames = false
         setStateOnQueue(.prepared)
     }
@@ -202,7 +275,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
         let frameFence = RecordingFrameFence(
             recordingID: configuration.id,
-            generation: activeGeneration
+            generation: activeGeneration,
+            ownerToken: activeSourceOwnerToken
         )
 
         if let preparedAudioDriver {
@@ -245,7 +319,9 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     // MARK: - Frame queue
 
     private func appendVideoOnQueue(_ frame: RecordingVideoFrame) {
-        guard canAccept(frame.recordingID, generation: frame.generation),
+        guard canAccept(frame.recordingID,
+                        generation: frame.generation,
+                        ownerToken: frame.ownerToken),
               let writer else {
             return
         }
@@ -272,7 +348,9 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     private func appendAudioOnQueue(_ frame: RecordingAudioFrame) {
         guard let configuration = currentConfiguration,
               configuration.audioMode == .required,
-              canAccept(frame.recordingID, generation: frame.generation),
+              canAccept(frame.recordingID,
+                        generation: frame.generation,
+                        ownerToken: frame.ownerToken),
               audioStarted,
               let writer else {
             return
@@ -288,13 +366,20 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
     }
 
-    private func canAccept(_ recordingID: RecordingID, generation: UInt64) -> Bool {
+    private func canAccept(_ recordingID: RecordingID,
+                           generation: UInt64,
+                           ownerToken: RecordingOwnerToken?) -> Bool {
         guard acceptingFrames,
               stateStorage == .recording,
               let configuration = currentConfiguration else {
             return false
         }
-        return configuration.id == recordingID && activeGeneration == generation
+        return configuration.id == recordingID
+            && activeGeneration == generation
+            && RecordingSourceFence.accepts(
+                frameOwnerToken: ownerToken,
+                activeOwnerToken: activeSourceOwnerToken
+            )
     }
 
     private func markAppendFailureOnQueue(_ failure: RecorderFailure) {

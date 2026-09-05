@@ -42,6 +42,9 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var outputURL: URL?
     private let recorderLock = NSLock()
     private var recorderStateStorage: RecorderState = .idle
+    private let defaultRecordingSourceOwnerID = UUID()
+    private var storedRecordingSourceToken: RecordingOwnerToken?
+    private var latestRecordingSourceGeneration: UInt64 = 0
     private var isPreparingRecorder = false
     private var preparationIdentity: UUID?
 
@@ -60,6 +63,48 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         default:
             return false
         }
+    }
+
+    var recordingSourceToken: RecordingOwnerToken? {
+        recorderLock.lock()
+        defer { recorderLock.unlock() }
+        return storedRecordingSourceToken
+    }
+
+    /// The legacy writer has no async owner protocol, so its source claim is
+    /// lock-serialized here and uses the same typed token as the shared
+    /// serialized recorder.
+    @discardableResult
+    func claimRecordingSource(_ ownerToken: RecordingOwnerToken) -> Bool {
+        recorderLock.lock()
+        defer { recorderLock.unlock() }
+        guard ownerToken.isValid, ownerToken.source == .cameraCoach else { return false }
+        if let storedRecordingSourceToken {
+            return storedRecordingSourceToken == ownerToken
+        }
+        guard !isPreparingRecorder,
+              recorderStateStorage == .idle || recorderStateStorage == .prepared,
+              ownerToken.generation > latestRecordingSourceGeneration else {
+            return false
+        }
+        storedRecordingSourceToken = ownerToken
+        latestRecordingSourceGeneration = ownerToken.generation
+        return true
+    }
+
+    @discardableResult
+    func releaseRecordingSource(_ ownerToken: RecordingOwnerToken) -> Bool {
+        recorderLock.lock()
+        defer { recorderLock.unlock() }
+        guard storedRecordingSourceToken == ownerToken,
+              !isPreparingRecorder,
+              recorderStateStorage == .idle
+                || recorderStateStorage == .finished
+                || recorderStateStorage == .failed else {
+            return false
+        }
+        storedRecordingSourceToken = nil
+        return true
     }
     
     var wbValues: [Int] = []
@@ -350,6 +395,18 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             return false
         }
 
+        if storedRecordingSourceToken == nil {
+            latestRecordingSourceGeneration = latestRecordingSourceGeneration == .max
+                ? 1
+                : latestRecordingSourceGeneration &+ 1
+            storedRecordingSourceToken = RecordingOwnerToken(
+                source: .cameraCoach,
+                ownerID: defaultRecordingSourceOwnerID,
+                recordingID: RecordingID(rawValue: UUID()),
+                generation: latestRecordingSourceGeneration
+            )
+        }
+
         recorderStateStorage = .recording
         return true
     }
@@ -375,14 +432,19 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             }
             recorderLock.unlock()
             guard let detachedResources else {
+                storedRecordingSourceToken = nil
                 completion?()
                 return
             }
+            let stoppedSourceToken = storedRecordingSourceToken
             Task { [weak self] in
                 guard let self else { return }
                 await self.stopDetachedResources(detachedResources)
                 self.recorderLock.lock()
                 self.isPreparingRecorder = false
+                if self.storedRecordingSourceToken == stoppedSourceToken {
+                    self.storedRecordingSourceToken = nil
+                }
                 self.recorderLock.unlock()
                 await MainActor.run {
                     completion?()
@@ -393,6 +455,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
         recorderStateStorage = .finishing
         let finishedOutputURL = outputURL
+        let finishedSourceToken = storedRecordingSourceToken
         videoInput.markAsFinished()
         assetWriterAudioInput?.markAsFinished()
         let audioOutput = audioCaptureOutput
@@ -407,6 +470,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
                 self?.finishRecording(
                     writer: writer,
                     outputURL: finishedOutputURL,
+                    sourceToken: finishedSourceToken,
                     completion: completion
                 )
             }
@@ -415,6 +479,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     private func finishRecording(writer: AVAssetWriter,
                                   outputURL: URL?,
+                                  sourceToken: RecordingOwnerToken?,
                                   completion: (() -> Void)?) {
         recorderLock.lock()
         guard recorderStateStorage == .finishing,
@@ -442,6 +507,9 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
                         && self.assetWriter == nil
                     if isStillCurrent {
                         self.isPreparingRecorder = false
+                        if self.storedRecordingSourceToken == sourceToken {
+                            self.storedRecordingSourceToken = nil
+                        }
                     }
                     self.recorderLock.unlock()
 
@@ -525,19 +593,31 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
                 await self.stopDetachedResources(resources)
                 self.recorderLock.lock()
                 self.isPreparingRecorder = false
+                self.storedRecordingSourceToken = nil
                 self.recorderLock.unlock()
             }
         }
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        appendCapturedPixelBuffer(frame.capturedImage, at: frame.timestamp)
+        appendCapturedPixelBuffer(
+            frame.capturedImage,
+            at: frame.timestamp,
+            ownerToken: recordingSourceToken
+        )
     }
 
-    func appendCapturedPixelBuffer(_ pixelBuffer: CVPixelBuffer, at timestamp: TimeInterval) {
+    func appendCapturedPixelBuffer(_ pixelBuffer: CVPixelBuffer,
+                                   at timestamp: TimeInterval,
+                                   ownerToken: RecordingOwnerToken? = nil) {
         recorderLock.lock()
         guard recorderStateStorage == .recording,
               isRecording,
+              let activeOwnerToken = storedRecordingSourceToken,
+              RecordingSourceFence.accepts(
+                  frameOwnerToken: ownerToken,
+                  activeOwnerToken: activeOwnerToken
+              ),
               let assetWriter,
               let assetWriterVideoInput,
               let pixelBufferAdaptor else {
@@ -584,6 +664,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
               output === currentAudioOutput,
               recorderStateStorage == .recording,
               isRecording,
+              storedRecordingSourceToken?.source == .cameraCoach,
               let assetWriter,
               let assetWriterAudioInput else {
             recorderLock.unlock()

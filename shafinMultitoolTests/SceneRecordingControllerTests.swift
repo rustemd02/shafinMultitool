@@ -16,15 +16,16 @@ final class SceneRecordingControllerTests: XCTestCase {
 
         try await controller.start(requestedFPS: 30, audioMode: .disabled)
         let firstRecorder = try XCTUnwrap(box.recorder(at: 0))
+        let firstSourceToken = try XCTUnwrap(controller.recordingSourceToken)
 
-        controller.enqueueVideo(pixelBuffer, at: 0.010)
-        controller.enqueueVideo(pixelBuffer, at: 0.020)
-        controller.enqueueVideo(pixelBuffer, at: 0.021)
-        controller.enqueueVideo(pixelBuffer, at: 0.040)
-        controller.enqueueVideo(pixelBuffer, at: 0.040)
-        controller.enqueueVideo(pixelBuffer, at: 0.030)
-        controller.enqueueVideo(pixelBuffer, at: .nan)
-        controller.enqueueVideo(pixelBuffer, at: .infinity)
+        controller.enqueueVideo(pixelBuffer, at: 0.010, ownerToken: controller.recordingSourceToken)
+        controller.enqueueVideo(pixelBuffer, at: 0.020, ownerToken: controller.recordingSourceToken)
+        controller.enqueueVideo(pixelBuffer, at: 0.021, ownerToken: controller.recordingSourceToken)
+        controller.enqueueVideo(pixelBuffer, at: 0.040, ownerToken: controller.recordingSourceToken)
+        controller.enqueueVideo(pixelBuffer, at: 0.040, ownerToken: controller.recordingSourceToken)
+        controller.enqueueVideo(pixelBuffer, at: 0.030, ownerToken: controller.recordingSourceToken)
+        controller.enqueueVideo(pixelBuffer, at: .nan, ownerToken: controller.recordingSourceToken)
+        controller.enqueueVideo(pixelBuffer, at: .infinity, ownerToken: controller.recordingSourceToken)
 
         XCTAssertEqual(firstRecorder.enqueuedTimestamps, [0, 0.010, 0.020, 0.021, 0.040])
         XCTAssertEqual(firstRecorder.configuration?.width, 640)
@@ -46,8 +47,11 @@ final class SceneRecordingControllerTests: XCTestCase {
             timestamp: 20
         )
         let secondRecorder = try XCTUnwrap(box.recorder(at: 1))
+        let secondSourceToken = try XCTUnwrap(controller.recordingSourceToken)
 
         XCTAssertNotEqual(firstRecorder.configuration?.id, secondRecorder.configuration?.id)
+        XCTAssertEqual(secondSourceToken.ownerID, firstSourceToken.ownerID)
+        XCTAssertGreaterThan(secondSourceToken.generation, firstSourceToken.generation)
         XCTAssertEqual(secondRecorder.configuration?.width, 640)
         XCTAssertEqual(secondRecorder.configuration?.height, 480)
         XCTAssertEqual(secondRecorder.enqueuedTimestamps, [20])
@@ -56,6 +60,7 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertNotNil(firstResult)
         XCTAssertNotNil(secondResult)
         _ = await controller.releaseAndWait()
+        XCTAssertNil(controller.recordingSourceToken)
     }
 
     func testConcurrentStopsShareOneFinalizationResult() async throws {
@@ -115,6 +120,7 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertEqual(recorder.stopCount, 1)
         XCTAssertEqual(releaseResult, stopResult)
         XCTAssertFalse(controller.isAcceptingFrames)
+        XCTAssertNil(controller.recordingSourceToken)
 
         do {
             try await controller.start(
@@ -838,6 +844,8 @@ private final class ControllerTestRecorder: MediaRecording, @unchecked Sendable 
     private let initialEnqueueObserver: (@Sendable () -> Void)?
     private var stateStorage: RecorderState = .idle
     private var generationStorage: UInt64 = 0
+    private var ownerTokenStorage: RecordingOwnerToken?
+    private var latestSourceGenerationStorage: UInt64 = 0
     private var configurationStorage: RecordingConfiguration?
     private var timestampsStorage: [TimeInterval] = []
     private var stopCountStorage = 0
@@ -888,21 +896,64 @@ private final class ControllerTestRecorder: MediaRecording, @unchecked Sendable 
             RecorderStateSnapshot(
                 state: stateStorage,
                 recordingID: configurationStorage?.id,
-                generation: generationStorage
+                generation: generationStorage,
+                ownerToken: ownerTokenStorage
             )
+        }
+    }
+
+    func claimRecordingSource(_ ownerToken: RecordingOwnerToken) async -> Bool {
+        withLock {
+            guard ownerToken.isValid,
+                  ownerToken.source == .arWorkspace else { return false }
+            if ownerTokenStorage == ownerToken { return true }
+            guard ownerTokenStorage == nil,
+                  stateStorage == .idle || stateStorage == .prepared,
+                  ownerToken.generation > latestSourceGenerationStorage else {
+                return false
+            }
+            if let configurationStorage {
+                guard stateStorage == .prepared,
+                      configurationStorage.id == ownerToken.recordingID else {
+                    return false
+                }
+                generationStorage = ownerToken.generation
+            }
+            ownerTokenStorage = ownerToken
+            latestSourceGenerationStorage = ownerToken.generation
+            return true
+        }
+    }
+
+    func releaseRecordingSource(_ ownerToken: RecordingOwnerToken) async -> Bool {
+        withLock {
+            guard ownerTokenStorage == ownerToken,
+                  stateStorage == .idle
+                    || stateStorage == .finished
+                    || stateStorage == .failed
+                    || stateStorage == .released else {
+                return false
+            }
+            ownerTokenStorage = nil
+            return true
         }
     }
 
     func prepare(_ configuration: RecordingConfiguration) async throws {
         withLock {
             configurationStorage = configuration
+            if let ownerTokenStorage {
+                generationStorage = ownerTokenStorage.generation
+            }
             stateStorage = .prepared
         }
     }
 
     func start() async throws {
         withLock {
-            generationStorage += 1
+            if ownerTokenStorage == nil {
+                generationStorage += 1
+            }
             stateStorage = .recording
         }
     }
@@ -943,6 +994,7 @@ private final class ControllerTestRecorder: MediaRecording, @unchecked Sendable 
 
     func enqueueVideo(_ frame: RecordingVideoFrame) {
         let isFirstFrame = withLock {
+            guard frame.ownerToken == ownerTokenStorage else { return false }
             guard !hasEnqueuedFrameStorage else { return false }
             hasEnqueuedFrameStorage = true
             firstEnqueueFenceStorage = fenceProvider()

@@ -70,6 +70,7 @@ enum RecorderFailure: Error, Sendable, Equatable {
     case audioAppendFailed
     case noVideoFrames
     case finishFailed
+    case sourceClaimRejected
 }
 
 enum RecordingStopResult: Sendable, Equatable {
@@ -172,16 +173,44 @@ enum RecordingLifecycleState: String, CaseIterable, Sendable, Equatable {
 struct RecordingFrameFence: Hashable, Sendable, Equatable {
     let recordingID: RecordingID
     let generation: UInt64
+    let ownerToken: RecordingOwnerToken?
+
+    init(recordingID: RecordingID,
+         generation: UInt64,
+         ownerToken: RecordingOwnerToken? = nil) {
+        self.recordingID = recordingID
+        self.generation = generation
+        self.ownerToken = ownerToken
+    }
+
+    init(ownerToken: RecordingOwnerToken) {
+        self.init(recordingID: ownerToken.recordingID,
+                  generation: ownerToken.generation,
+                  ownerToken: ownerToken)
+    }
 }
 
 struct RecorderStateSnapshot: Sendable, Equatable {
     let state: RecorderState
     let recordingID: RecordingID?
     let generation: UInt64
+    let ownerToken: RecordingOwnerToken?
+
+    init(state: RecorderState,
+         recordingID: RecordingID?,
+         generation: UInt64,
+         ownerToken: RecordingOwnerToken? = nil) {
+        self.state = state
+        self.recordingID = recordingID
+        self.generation = generation
+        self.ownerToken = ownerToken
+    }
 
     var frameFence: RecordingFrameFence? {
         guard let recordingID else { return nil }
-        return RecordingFrameFence(recordingID: recordingID, generation: generation)
+        return RecordingFrameFence(recordingID: recordingID,
+                                   generation: generation,
+                                   ownerToken: ownerToken)
     }
 }
 
@@ -192,15 +221,18 @@ struct RecordingVideoFrame: Sendable {
     let recordingID: RecordingID
     let generation: UInt64
     let timestamp: TimeInterval
+    let ownerToken: RecordingOwnerToken?
     let payload: (any RecordingVideoFramePayload)?
 
     init(recordingID: RecordingID,
          generation: UInt64,
          timestamp: TimeInterval,
-         payload: (any RecordingVideoFramePayload)? = nil) {
+         payload: (any RecordingVideoFramePayload)? = nil,
+         ownerToken: RecordingOwnerToken? = nil) {
         self.recordingID = recordingID
         self.generation = generation
         self.timestamp = timestamp
+        self.ownerToken = ownerToken
         self.payload = payload
     }
 
@@ -210,7 +242,18 @@ struct RecordingVideoFrame: Sendable {
         self.init(recordingID: fence.recordingID,
                   generation: fence.generation,
                   timestamp: timestamp,
-                  payload: payload)
+                  payload: payload,
+                  ownerToken: fence.ownerToken)
+    }
+
+    init(ownerToken: RecordingOwnerToken,
+         timestamp: TimeInterval,
+         payload: (any RecordingVideoFramePayload)? = nil) {
+        self.init(recordingID: ownerToken.recordingID,
+                  generation: ownerToken.generation,
+                  timestamp: timestamp,
+                  payload: payload,
+                  ownerToken: ownerToken)
     }
 }
 
@@ -218,15 +261,18 @@ struct RecordingAudioFrame: Sendable {
     let recordingID: RecordingID
     let generation: UInt64
     let timestamp: TimeInterval
+    let ownerToken: RecordingOwnerToken?
     let payload: (any RecordingAudioFramePayload)?
 
     init(recordingID: RecordingID,
          generation: UInt64,
          timestamp: TimeInterval,
-         payload: (any RecordingAudioFramePayload)? = nil) {
+         payload: (any RecordingAudioFramePayload)? = nil,
+         ownerToken: RecordingOwnerToken? = nil) {
         self.recordingID = recordingID
         self.generation = generation
         self.timestamp = timestamp
+        self.ownerToken = ownerToken
         self.payload = payload
     }
 
@@ -236,7 +282,18 @@ struct RecordingAudioFrame: Sendable {
         self.init(recordingID: fence.recordingID,
                   generation: fence.generation,
                   timestamp: timestamp,
-                  payload: payload)
+                  payload: payload,
+                  ownerToken: fence.ownerToken)
+    }
+
+    init(ownerToken: RecordingOwnerToken,
+         timestamp: TimeInterval,
+         payload: (any RecordingAudioFramePayload)? = nil) {
+        self.init(recordingID: ownerToken.recordingID,
+                  generation: ownerToken.generation,
+                  timestamp: timestamp,
+                  payload: payload,
+                  ownerToken: ownerToken)
     }
 }
 
@@ -312,6 +369,8 @@ protocol MediaRecording: AnyObject {
     var state: RecorderState { get async }
 
     func stateSnapshot() async -> RecorderStateSnapshot
+    func claimRecordingSource(_ ownerToken: RecordingOwnerToken) async -> Bool
+    func releaseRecordingSource(_ ownerToken: RecordingOwnerToken) async -> Bool
     func prepare(_ configuration: RecordingConfiguration) async throws
     func start() async throws
     func stop(reason: RecordingStopReason) async -> RecordingStopResult
@@ -356,6 +415,24 @@ struct RecordingOwnerToken: Hashable, Sendable {
         self.ownerID = ownerID
         self.recordingID = recordingID
         self.generation = generation
+    }
+
+    var isValid: Bool {
+        !isZeroUUID(ownerID)
+            && !isZeroUUID(recordingID.rawValue)
+            && generation > 0
+    }
+}
+
+/// Shared source identity comparison used by every recorder append boundary.
+/// An untagged frame remains compatible only while no source claim exists;
+/// once claimed, the exact owner token (including route, owner and generation)
+/// is required.
+enum RecordingSourceFence {
+    static func accepts(frameOwnerToken: RecordingOwnerToken?,
+                        activeOwnerToken: RecordingOwnerToken?) -> Bool {
+        guard let activeOwnerToken else { return frameOwnerToken == nil }
+        return frameOwnerToken == activeOwnerToken
     }
 }
 

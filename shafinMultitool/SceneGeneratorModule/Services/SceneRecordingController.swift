@@ -61,6 +61,9 @@ final class SceneRecordingController: @unchecked Sendable {
     private var lifecycle: Lifecycle = .idle
     private var recorder: (any MediaRecording)?
     private var acceptingFrameFence: RecordingFrameFence?
+    private var sourceOwnerID: UUID
+    private var sourceGenerationStorage: UInt64 = 0
+    private var activeSourceOwnerToken: RecordingOwnerToken?
     private var lastAcceptedTimestamp: TimeInterval?
     private var latestVideoPayload: AppleRecordingVideoFramePayload?
     private var latestTimestamp: TimeInterval?
@@ -70,8 +73,10 @@ final class SceneRecordingController: @unchecked Sendable {
     private var releaseTask: Task<RecordingStopResult?, Never>?
 
     init(artifactStore: RecordingArtifactStore,
+         sourceOwnerID: UUID = UUID(),
          makeRecorder: @escaping RecorderFactory) {
         self.artifactStore = artifactStore
+        self.sourceOwnerID = sourceOwnerID
         self.makeRecorder = makeRecorder
     }
 
@@ -133,6 +138,26 @@ final class SceneRecordingController: @unchecked Sendable {
         withState { acceptingFrameFence }
     }
 
+    var recordingSourceToken: RecordingOwnerToken? {
+        withState { activeSourceOwnerToken }
+    }
+
+    /// ARSceneContainer supplies its coordinator identity before the first
+    /// take. Changing an owner while a take is active is rejected so stale
+    /// callbacks cannot inherit a newer producer's token.
+    @discardableResult
+    func setRecordingSourceOwnerID(_ ownerID: UUID) -> Bool {
+        withState {
+            guard ownerID != UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
+                  activeSourceOwnerToken == nil,
+                  lifecycle == .idle else { return false }
+            if sourceOwnerID == ownerID { return true }
+            sourceOwnerID = ownerID
+            sourceGenerationStorage = 0
+            return true
+        }
+    }
+
     var isAcceptingFrames: Bool {
         withState { acceptingFrameFence != nil }
     }
@@ -153,14 +178,31 @@ final class SceneRecordingController: @unchecked Sendable {
     /// Caches the latest raw camera image even while idle, so an explicit REC
     /// tap can prepare a writer from the current AR frame without dispatching a
     /// MainActor task for every frame.
-    func enqueueVideo(_ pixelBuffer: CVPixelBuffer, at timestamp: TimeInterval) {
+    func enqueueVideo(_ pixelBuffer: CVPixelBuffer,
+                      at timestamp: TimeInterval,
+                      ownerToken: RecordingOwnerToken? = nil) {
         guard timestamp.isFinite else { return }
         let payload = AppleRecordingVideoFramePayload(pixelBuffer: pixelBuffer)
         let submission: (any MediaRecording, RecordingVideoFrame)? = withState {
+            // Idle frames are the only unclaimed source samples allowed to
+            // seed the next take. Once a take has a token, stale/untagged
+            // producers cannot even replace that seed buffer.
+            switch lifecycle {
+            case .idle:
+                guard ownerToken == nil else { return nil }
+            case .recording:
+                guard let activeSourceOwnerToken,
+                      ownerToken == activeSourceOwnerToken else { return nil }
+            case .starting, .stopping, .released:
+                return nil
+            }
+
             latestVideoPayload = payload
             latestTimestamp = timestamp
 
             guard let fence = acceptingFrameFence,
+                  let activeSourceOwnerToken,
+                  ownerToken == activeSourceOwnerToken,
                   let recorder,
                   lifecycle == .recording,
                   shouldAccept(timestamp: timestamp) else {
@@ -259,6 +301,7 @@ final class SceneRecordingController: @unchecked Sendable {
             case .recording:
                 guard let recorder else {
                     acceptingFrameFence = nil
+                    activeSourceOwnerToken = nil
                     lifecycle = .idle
                     return .result(nil)
                 }
@@ -269,9 +312,13 @@ final class SceneRecordingController: @unchecked Sendable {
                 let task: Task<RecordingStopResult, Never> = Task { [self] in
                     let result = await recorder.stop(reason: reason)
                     _ = await recorder.releaseAndWait()
+                    if let sourceToken = withState({ activeSourceOwnerToken }) {
+                        _ = await recorder.releaseRecordingSource(sourceToken)
+                    }
 
                     withState {
                         self.recorder = nil
+                        self.activeSourceOwnerToken = nil
                         self.lifecycle = .idle
                         self.stopTask = nil
                         self.lastStopResult = result
@@ -331,20 +378,37 @@ final class SceneRecordingController: @unchecked Sendable {
                 fps: max(1, requestedFPS),
                 audioMode: audioMode
             )
+            let sourceToken = RecordingOwnerToken(
+                source: .arWorkspace,
+                ownerID: sourceOwnerID,
+                recordingID: configuration.id,
+                generation: nextSourceGeneration()
+            )
             var newRecorder: (any MediaRecording)?
+            var claimedSourceToken: RecordingOwnerToken?
             do {
                 let preparedRecorder = try makeRecorder(configuration)
                 newRecorder = preparedRecorder
+                guard await preparedRecorder.claimRecordingSource(sourceToken) else {
+                    throw RecorderFailure.sourceClaimRejected
+                }
+                claimedSourceToken = sourceToken
                 try await preparedRecorder.prepare(configuration)
                 try await preparedRecorder.start()
             } catch let failure as RecorderFailure {
                 if let newRecorder {
                     _ = await newRecorder.releaseAndWait()
+                    if let claimedSourceToken {
+                        _ = await newRecorder.releaseRecordingSource(claimedSourceToken)
+                    }
                 }
                 throw failure
             } catch {
                 if let newRecorder {
                     _ = await newRecorder.releaseAndWait()
+                    if let claimedSourceToken {
+                        _ = await newRecorder.releaseRecordingSource(claimedSourceToken)
+                    }
                 }
                 throw RecorderFailure.writerCreationFailed
             }
@@ -353,13 +417,17 @@ final class SceneRecordingController: @unchecked Sendable {
                 throw RecorderFailure.writerCreationFailed
             }
             let snapshot = await newRecorder.stateSnapshot()
-            guard snapshot.state == .recording else {
+            guard snapshot.state == .recording,
+                  snapshot.generation == sourceToken.generation,
+                  snapshot.ownerToken == sourceToken else {
                 _ = await newRecorder.releaseAndWait()
+                _ = await newRecorder.releaseRecordingSource(sourceToken)
                 throw RecorderFailure.invalidTransition
             }
             let fence = RecordingFrameFence(
                 recordingID: configuration.id,
-                generation: snapshot.generation
+                generation: snapshot.generation,
+                ownerToken: sourceToken
             )
 
             // Submit the source frame while the lifecycle is still `.starting`.
@@ -375,6 +443,7 @@ final class SceneRecordingController: @unchecked Sendable {
                 guard lifecycle == .starting else { return false }
                 recorder = newRecorder
                 acceptingFrameFence = fence
+                activeSourceOwnerToken = sourceToken
                 lastAcceptedTimestamp = initialTimestamp
                 lastStopResult = nil
                 lifecycle = .recording
@@ -383,6 +452,7 @@ final class SceneRecordingController: @unchecked Sendable {
             }
             guard committed else {
                 _ = await newRecorder.releaseAndWait()
+                _ = await newRecorder.releaseRecordingSource(sourceToken)
                 throw RecorderFailure.invalidTransition
             }
         } catch {
@@ -445,5 +515,14 @@ final class SceneRecordingController: @unchecked Sendable {
     private func shouldAccept(timestamp: TimeInterval) -> Bool {
         guard let lastAcceptedTimestamp else { return true }
         return timestamp > lastAcceptedTimestamp
+    }
+
+    private func nextSourceGeneration() -> UInt64 {
+        withState {
+            sourceGenerationStorage = sourceGenerationStorage == .max
+                ? 1
+                : sourceGenerationStorage &+ 1
+            return sourceGenerationStorage
+        }
     }
 }

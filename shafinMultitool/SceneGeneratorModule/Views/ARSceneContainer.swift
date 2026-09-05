@@ -469,7 +469,9 @@ struct ARSceneContainer: UIViewRepresentable {
                 self.arView = arView
                 refreshOrientation(for: arView)
             }
-            self.recordingController = viewModel.sceneRecordingController
+            let recordingController = viewModel.sceneRecordingController
+            self.recordingController = recordingController
+            _ = recordingController?.setRecordingSourceOwnerID(recordingSourceOwnerID)
             self.shouldForwardCapturedImage = shouldForwardCapturedImage && !isGenerating
             self.isSceneGenerated = isSceneGenerated
             updateCoachingOverlay(
@@ -731,7 +733,12 @@ struct ARSceneContainer: UIViewRepresentable {
             let capturedImage = frame.capturedImage
             let sessionIdentifier = ObjectIdentifier(session)
             guard acceptsSessionCallback(sessionIdentifier: sessionIdentifier, generation: generation) else { return }
-            recordingController?.enqueueVideo(capturedImage, at: timestamp)
+            let currentRecordingController = recordingController
+            currentRecordingController?.enqueueVideo(
+                capturedImage,
+                at: timestamp,
+                ownerToken: currentRecordingController?.recordingSourceToken
+            )
             let cameraTransform = frame.camera.transform
             Task { @MainActor [weak self, weak viewModel, cameraTransform, timestamp, generation, sessionIdentifier] in
                 guard let self,
