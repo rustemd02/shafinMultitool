@@ -59,6 +59,9 @@ enablement, or iOS change is claimed.
   source bundle and trusted schedule.  `validate_lineage_batch` requires the
   authority's complete source and job sets, replays M3 over every actual asset,
   and rejects duplicate, missing, extra, empty, or cross-split family jobs.
+- Output validation checks exact HWC/RGB cell and scalar types/ranges and exact
+  replay tree shape before hashing; oversized strings, unknown nested payloads,
+  and over-cardinality iterables reject without canonical serialization.
 - `ml.camera_coach.data` lazily exports preprocessing only; importing the
   package does not import Pillow or the unavailable augmentation authority.
 
@@ -121,10 +124,10 @@ diff_check=pass
 Both checker runs produced the same canonical JSON and reported:
 
 ```json
-{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"e34c6be0a6d71b8449657d35348fada05e1d8df0c8b47b9a19e3850b956e109a","identity_receipt_sha256":"b21e11e54ebea56da7deeeef0cce7c9ad32440f2c8120bc7165828d93a12515e","job_count":6,"negative_probe_count":59,"protected_category_count":10,"schedule_sha256":"9534b79f8845b9183e441ae9ba2ded68aea3b88baf998f05643e41f9fe7f51ef","split_manifest_sha256":"580d4bbf6b1238adace00b95bde9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23,"verifier_pair_count":3}
+{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"e34c6be0a6d71b8449657d35348fada05e1d8df0c8b47b9a19e3850b956e109a","identity_receipt_sha256":"b21e11e54ebea56da7deeeef0cce7c9ad32440f2c8120bc7165828d93a12515e","job_count":6,"negative_probe_count":63,"protected_category_count":10,"schedule_sha256":"9534b79f8845b9183e441ae9ba2ded68aea3b88baf998f05643e41f9fe7f51ef","split_manifest_sha256":"580d4bbf6b1238adace00b95bde9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23,"verifier_pair_count":3}
 ```
 
-The 59 negative probes include the reviewer attacks: public production-loader
+The 63 negative probes include the reviewer attacks: public production-loader
 rejection; fixture/production separation; mismatched record/media bytes;
 missing, extra, or one-of-many grouped assets; forged/rehashed output,
 families, split, seed, counter, and transform; unknown record/label fields;
@@ -134,7 +137,9 @@ encoded, width, height, and expanded-pixel caps; multiframe media;
 bool/non-finite/range/unknown transforms; empty/incomplete/duplicate/extra
 lineage batches; cross-split lineage and authority mismatch; mixed
 train/fixture provenance; caller-selected fixture seed/ratios; aggregate
-bundle/output caps; and manifest reorder/hash/duplicate records.
+bundle/output caps; exact RGB cell/channel validation including a 1 MB string
+attack; generator/iterable over-cardinality rejection; and manifest
+reorder/hash/duplicate records.
 
 ## Scope, judgments, and gaps
 
@@ -153,9 +158,9 @@ Pillow).  No model-quality or production-enablement evidence exists.
 Final pre-commit line counts:
 
 ```text
-1503 ml/camera_coach/data/augmentations.py
-520 ml/camera_coach/data/check_augmentations.py
+1549 ml/camera_coach/data/augmentations.py
+544 ml/camera_coach/data/check_augmentations.py
 21 ml/camera_coach/data/__init__.py
 1 datasets/camera-coach/v1/derivation-manifest.jsonl
-161 docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-008-augmentation-policy.md
+166 docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-008-augmentation-policy.md
 ```

@@ -289,6 +289,13 @@ def _run() -> dict:
     reject(aug.validate_lineage_batch, bundles, duplicate_results, authority=authority, schedule=schedule)
     reject(aug.validate_lineage_batch, bundles, results + [copy.deepcopy(results[0])], authority=authority, schedule=schedule)
     reject(aug.validate_lineage_batch, bundles + [bundles[0]], results, authority=authority, schedule=schedule)
+    reject(
+        aug.validate_lineage_batch,
+        (bundle for bundle in bundles),
+        (result for result in results),
+        authority=authority,
+        schedule=schedule,
+    )
     cross_split_results = copy.deepcopy(results)
     cross_split_results[0]["lineage"]["source_split"] = "train"
     cross_split_results[0]["lineage"]["split_owner"] = "train"
@@ -330,6 +337,12 @@ def _run() -> dict:
     extra = dict(temporal_assets)
     extra["asset-extra-fixture"] = _png(250)
     reject(aug.make_source_bundle, temporal, extra)
+    too_many_assets = {
+        f"asset-overflow-{index}": asset_bytes[still_id]
+        for index in range(aug.MAX_ASSETS_PER_BUNDLE + 1)
+    }
+    reject(aug.make_source_bundle, records[0], too_many_assets)
+    reject(aug.make_source_bundle, records[0], (item for item in ((still_id, asset_bytes[still_id]),)))
     one_asset = copy.deepcopy(next(result for result in results if result["record_id"] == temporal["record_id"] and result["lineage"]["transform"]["kind"] == "horizontal_flip"))
     one_asset["pixels_by_asset"].pop(temporal["media"]["asset_ids"][0])
     reject(aug.validate_result, bundles[1], one_asset, authority=authority, schedule=schedule)
@@ -354,6 +367,17 @@ def _run() -> dict:
     first_output = oversized_output["pixels_by_asset"][directional_asset_id]
     oversized_output["pixels_by_asset"][directional_asset_id] = first_output + [first_output[0]]
     reject(aug.validate_result, bundles[2], oversized_output, authority=authority, schedule=schedule)
+    one_pixel = aug._DecodedAsset("one-pixel", b"", "", 1, 1, b"\0\0\0")
+    one_pixel_payload = {"pixels_by_asset": {"one-pixel": [[[
+        "x" * 1_000_000,
+        0,
+        0,
+    ]]]}}
+    reject(
+        aug._check_result_budget,
+        one_pixel_payload,
+        (one_pixel,),
+    )
     forged = copy.deepcopy(next(result for result in results if result["record_id"] == records[0]["record_id"]))
     forged["targets"]["label"]["keep_decision"] = "keep"
     reject(aug.validate_result, bundles[0], forged, authority=authority, schedule=schedule)

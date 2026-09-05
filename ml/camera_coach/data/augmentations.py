@@ -939,17 +939,21 @@ def make_source_bundle(
 ) -> SourceBundle:
     """Bind actual encoded bytes to every canonical asset in ``record``."""
 
-    source = _record(record)
-    expected_ids = _required_asset_ids(source)
     if type(assets) is not dict:
         raise AugmentationError("source assets must be an asset_id-to-bytes object")
-    supplied_ids = tuple(sorted(_id(key, "asset map key") for key in assets))
-    if supplied_ids != expected_ids:
-        raise AugmentationError("source asset bundle is missing or has extra assets")
-    if len(expected_ids) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+    if len(assets) > _PINNED_MAX_ASSETS_PER_BUNDLE:
         raise AugmentationError("source bundle exceeds asset-count cap")
     if all(type(value) is bytes for value in assets.values()) and sum(len(value) for value in assets.values()) > _PINNED_MAX_BUNDLE_ENCODED_BYTES:
         raise AugmentationError("source bundle exceeds encoded-byte cap")
+    source = _record(record)
+    expected_ids = _required_asset_ids(source)
+    if len(assets) != len(expected_ids):
+        raise AugmentationError("source asset bundle is missing or has extra assets")
+    supplied_ids = [_id(key, "asset map key") for key in assets]
+    supplied_ids.sort()
+    supplied_ids = tuple(supplied_ids)
+    if supplied_ids != expected_ids:
+        raise AugmentationError("source asset bundle is missing or has extra assets")
     if authority is not None and type(authority) is not M3Authority:
         raise AugmentationError("authority must be an externally loaded M3Authority")
     if authority is not None:
@@ -1251,23 +1255,41 @@ def _result_pixels(bundle: SourceBundle, kind: str) -> dict[str, list[list[list[
     return result
 
 
-def _pixel_map_digest(pixels_by_asset: Mapping[str, Any], expected: Sequence[_DecodedAsset]) -> str:
-    if type(pixels_by_asset) is not dict or set(pixels_by_asset) != {asset.asset_id for asset in expected}:
+def _validate_pixel_map(pixels_by_asset: Any, expected: Sequence[_DecodedAsset]) -> list[_DecodedAsset]:
+    """Validate bounded RGB cells before hashing or serializing untrusted pixels."""
+    if type(pixels_by_asset) is not dict:
+        raise AugmentationError("output pixels must be a plain asset map")
+    if len(pixels_by_asset) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+        raise AugmentationError("output exceeds asset-count cap")
+    expected_ids = tuple(asset.asset_id for asset in expected)
+    if len(pixels_by_asset) != len(expected_ids) or any(asset_id not in expected_ids for asset_id in pixels_by_asset):
         raise AugmentationError("output pixels must cover exactly every source asset")
+    total_pixels = 0
     packed: list[_DecodedAsset] = []
     for asset in expected:
         pixels = pixels_by_asset[asset.asset_id]
-        if type(pixels) is not list or not pixels or any(type(row) is not list for row in pixels):
-            raise AugmentationError("output pixels must be HWC lists")
-        if len(pixels) != asset.height or any(len(row) != asset.width for row in pixels):
+        if type(pixels) is not list or len(pixels) != asset.height:
             raise AugmentationError("output pixel shape changed")
+        total_pixels += asset.width * asset.height
+        if total_pixels > _PINNED_MAX_BUNDLE_PIXELS or total_pixels * 3 > _PINNED_MAX_BUNDLE_OUTPUT_BYTES:
+            raise AugmentationError("output exceeds aggregate pixel/byte cap")
         raw = bytearray()
         for row in pixels:
+            if type(row) is not list or len(row) != asset.width:
+                raise AugmentationError("output pixel row shape changed")
             for pixel in row:
-                if type(pixel) is not list or len(pixel) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in pixel):
+                if type(pixel) is not list or len(pixel) != 3:
                     raise AugmentationError("output pixels contain an invalid RGB value")
+                for channel in pixel:
+                    if type(channel) is not int or isinstance(channel, bool) or not 0 <= channel <= 255:
+                        raise AugmentationError("output pixels contain an invalid RGB value")
                 raw.extend(pixel)
         packed.append(_DecodedAsset(asset.asset_id, b"", "", asset.height, asset.width, bytes(raw)))
+    return packed
+
+
+def _pixel_map_digest(pixels_by_asset: Mapping[str, Any], expected: Sequence[_DecodedAsset]) -> str:
+    packed = _validate_pixel_map(pixels_by_asset, expected)
     return _asset_pixels_digest(packed)
 
 
@@ -1333,24 +1355,42 @@ def augment(bundle: SourceBundle, schedule: TrustedSchedule, job_id: str) -> dic
 _RESULT_KEYS = {"job_id", "record_id", "pixels_by_asset", "targets", "lineage"}
 
 
+def _check_result_tree(candidate: Any, expected: Any, label: str) -> None:
+    """Reject unknown/oversized nested values before canonical serialization."""
+    if type(expected) is dict:
+        if type(candidate) is not dict or len(candidate) != len(expected):
+            raise AugmentationError(f"{label} has unknown or oversized keys")
+        for key in candidate:
+            if type(key) is not str or key not in expected:
+                raise AugmentationError(f"{label} has an unknown key")
+        for key, expected_value in expected.items():
+            _check_result_tree(candidate[key], expected_value, f"{label}.{key}")
+        return
+    if type(expected) is list:
+        if type(candidate) is not list or len(candidate) != len(expected):
+            raise AugmentationError(f"{label} has an unknown or oversized list")
+        for index, (candidate_value, expected_value) in enumerate(zip(candidate, expected)):
+            _check_result_tree(candidate_value, expected_value, f"{label}[{index}]")
+        return
+    if type(candidate) is not type(expected):
+        raise AugmentationError(f"{label} has an invalid scalar type")
+    if type(candidate) is str and len(candidate) != len(expected):
+        raise AugmentationError(f"{label} has an oversized string")
+    if type(candidate) is float:
+        if not math.isfinite(candidate):
+            raise AugmentationError(f"{label} has a non-finite scalar")
+        if struct.pack(">d", candidate) != struct.pack(">d", expected):
+            raise AugmentationError(f"{label} disagrees with replay")
+        return
+    if candidate != expected:
+        raise AugmentationError(f"{label} disagrees with replay")
+
+
 def _check_result_budget(result: Mapping[str, Any], expected: Sequence[_DecodedAsset]) -> None:
-    """Bound untrusted nested output before canonical serialization/deepcopy."""
-    pixels_by_asset = result.get("pixels_by_asset")
-    if type(pixels_by_asset) is not dict or set(pixels_by_asset) != {asset.asset_id for asset in expected}:
-        raise AugmentationError("output pixels must cover exactly every source asset")
-    if len(pixels_by_asset) > _PINNED_MAX_ASSETS_PER_BUNDLE:
-        raise AugmentationError("output exceeds asset-count cap")
-    total_pixels = 0
-    for asset in expected:
-        pixels = pixels_by_asset[asset.asset_id]
-        if type(pixels) is not list or len(pixels) != asset.height:
-            raise AugmentationError("output pixel shape exceeds the bounded representation")
-        total_pixels += asset.width * asset.height
-        if total_pixels > _PINNED_MAX_BUNDLE_PIXELS or total_pixels * 3 > _PINNED_MAX_BUNDLE_OUTPUT_BYTES:
-            raise AugmentationError("output exceeds aggregate pixel/byte cap")
-        for row in pixels:
-            if type(row) is not list or len(row) != asset.width:
-                raise AugmentationError("output pixel row exceeds the bounded representation")
+    """Bound and type-check untrusted nested output before serialization."""
+    if type(result) is not dict:
+        raise AugmentationError("result must be a plain object")
+    _validate_pixel_map(result.get("pixels_by_asset"), expected)
 
 
 def validate_result(
@@ -1363,13 +1403,17 @@ def validate_result(
     """Replay the fixed job over actual source pixels and compare every field."""
 
     _assert_authority(schedule, authority)
-    if type(result) is not dict or set(result) != _RESULT_KEYS:
+    if type(result) is not dict or len(result) != len(_RESULT_KEYS) or any(key not in _RESULT_KEYS for key in result):
         raise AugmentationError("result has unknown or missing keys")
     expected_assets = tuple(bundle._decoded(asset_id) for asset_id in bundle.asset_ids)
     _check_result_budget(result, expected_assets)
     expected = _expected_result(bundle, schedule, authority, result["job_id"])
-    if canonical_json(dict(result)) != canonical_json(expected):
-        raise AugmentationError("result does not replay from the trusted source bundle and schedule")
+    _check_result_tree(result["job_id"], expected["job_id"], "result.job_id")
+    _check_result_tree(result["record_id"], expected["record_id"], "result.record_id")
+    _check_result_tree(result["targets"], expected["targets"], "result.targets")
+    _check_result_tree(result["lineage"], expected["lineage"], "result.lineage")
+    if _pixel_map_digest(result["pixels_by_asset"], expected_assets) != expected["lineage"]["output_pixels_sha256"]:
+        raise AugmentationError("result pixels do not replay from the trusted source bundle")
 
 
 def _replay_external_authority(bundles: list[SourceBundle], authority: M3Authority) -> None:
@@ -1411,17 +1455,19 @@ def validate_lineage_batch(
         raise AugmentationError("lineage batch must be a non-empty complete batch")
     if len(bundles) != len(authority.record_ids):
         raise AugmentationError("batch source set exceeds or omits the authority's bounded source set")
+    if len(results) != len(schedule._jobs):
+        raise AugmentationError("batch result set exceeds or omits the schedule's bounded job set")
     checked = _bundle_list(bundles)
     by_id = {bundle.record["record_id"]: bundle for bundle in checked}
     if set(by_id) != set(authority.record_ids):
         raise AugmentationError("batch source set is incomplete or has extra records")
     result_ids = []
     for result in results:
-        if type(result) is not dict or type(result.get("job_id")) is not str:
+        if type(result) is not dict or len(result) != len(_RESULT_KEYS) or type(result.get("job_id")) is not str:
             raise AugmentationError("batch result has no valid job ID")
         result_ids.append(result["job_id"])
-    expected_ids = [job.job_id for job in schedule._jobs]
-    if len(result_ids) != len(set(result_ids)) or set(result_ids) != set(expected_ids):
+    expected_ids = tuple(job.job_id for job in schedule._jobs)
+    if len(result_ids) != len(set(result_ids)) or any(job_id not in expected_ids for job_id in result_ids):
         raise AugmentationError("batch result set is incomplete, duplicated, or has extras")
     _replay_external_authority(checked, authority)
     for result in results:
