@@ -20,6 +20,11 @@ in Git.
   from the cluster receipt. A closed per-object allowlist also rejects unknown
   container/header, record, provenance, capture, media, sequence/frame,
   review, vote, or adjudication keys.
+- `SplitRecord` construction is parser-only: the public constructor is blocked,
+  parser output carries a private immutable admission token plus a digest of
+  the complete rights/review evidence, and the builder rejects records without
+  that admission. The admission digest is included in the canonical input hash,
+  so a status string cannot stand in for release evidence.
 - Protected connected components union source shoot, scene, person, location,
   time, derivation, optional take/device, sequence, and dedup-cluster families.
   Components are assigned independently within explicit `organic` and
@@ -66,13 +71,13 @@ organic and synthetic buckets.
 
 ```text
 $ python3 tools/dataset/tests/fixtures/camera_dataset_audit_fixture.py
-M3-008 split seed=1 output_sha256=b0c52f5a6c5fe08bd66b0eed98430b8b08c693f7c251a0aa581998f45b4ff4d3 seed5_output_sha256=8e4377350c2e0c6f54ca5fba3bd237507c95623c1d04a0e49b18d2a502adf73a cli_sha256=75e9c497aeece496bf1e1f9a42c562dbf1fdf560a56dc33d4535cfc794c93015 input_sha256=d52529431d2e2c6c2514ae30989c1cdbe499da45baa5e744b0513d25682edbc2 components=3 per_split={"calibration":{"buckets":{"organic":{"component_count":1,"record_count":2},"synthetic":{"component_count":0,"record_count":0}},"component_count":1,"record_count":2},"locked_test":{"buckets":{"organic":{"component_count":0,"record_count":0},"synthetic":{"component_count":0,"record_count":0}},"component_count":0,"record_count":0},"train":{"buckets":{"organic":{"component_count":1,"record_count":1},"synthetic":{"component_count":1,"record_count":1}},"component_count":2,"record_count":2}}
-PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated sequence_family input_order_independent malformed_rejected rights_required media_map_conflict schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity split_schema_negative_cases closed_input_topology review_history_contract seeded_assignment_receipt_tamper family_hash_owner_tamper
+M3-008 split seed=1 output_sha256=1714c162bd2597c3b029214afbd620a9a1aae8c99fe1c67f30c78e9db0b4a5d6 seed5_output_sha256=1ca99d73980aec1166afd0fe03944f74d4baabf13a01264f3f010691d0157449 cli_sha256=1095035ab72b3dfa1aaa3ea7b0159a5a0b1a45c0f6a2fc7734e4817af45a6200 input_sha256=5256fdda22166c1d1a520b850bdf939d69ed3adffa903ee848413f4dd58c0b2a components=3 per_split={"calibration":{"buckets":{"organic":{"component_count":1,"record_count":2},"synthetic":{"component_count":0,"record_count":0}},"component_count":1,"record_count":2},"locked_test":{"buckets":{"organic":{"component_count":0,"record_count":0},"synthetic":{"component_count":0,"record_count":0}},"component_count":0,"record_count":0},"train":{"buckets":{"organic":{"component_count":1,"record_count":1},"synthetic":{"component_count":1,"record_count":1}},"component_count":2,"record_count":2}}
+PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated sequence_family input_order_independent malformed_rejected rights_required media_map_conflict schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity split_schema_negative_cases closed_input_topology review_history_contract seeded_assignment_receipt_tamper family_hash_owner_tamper split_admission_boundary header_value_validation
 ```
 
 The fixture's CLI subprocess runs the same seed and ratios with
 `PYTHONHASHSEED=1` and `PYTHONHASHSEED=5`; the output bytes match exactly and
-have `cli_sha256=75e9c497aeece496bf1e1f9a42c562dbf1fdf560a56dc33d4535cfc794c93015`.
+have `cli_sha256=1095035ab72b3dfa1aaa3ea7b0159a5a0b1a45c0f6a2fc7734e4817af45a6200`.
 The API reverse-input run is byte/object-identical. `seed=1` and `seed=5`
 produce different fixture assignment receipts while preserving the same record
 set and `cross_split_leak_count=0`. The accepted receipt has three components,
@@ -106,6 +111,12 @@ validation; its semantic pass recomputes the receipt, config, and input hashes,
 component IDs and membership, assignment/target order, all aggregate/per-split
 bucket/family/dedup/sequence counts, and protected-family ownership. This
 prevents a component move from being hidden by recomputed receipt hashes.
+
+Header validation additionally requires `manifest_type=camera_split_input`,
+rejects non-string or alternate values, and checks an optional
+non-bool-integer `record_count` exactly against parsed records. Parser-only
+admission rejects caller-created denied, unreviewed, or status-only records
+before any split receipt can be emitted.
 
 The fixture invokes the repository-owned `Draft202012Validator` for both
 positive receipts and extra/missing/wrong-type/non-finite negative cases. No

@@ -35,6 +35,7 @@ SPLIT_SCHEMA_PATH = ROOT / "datasets/camera-coach/v1/split-manifest-schema.json"
 SCHEMA_ID = "camera-dedup-clusters-v1"
 INPUT_SCHEMA_ID = "camera-dedup-input-v1"
 SPLIT_INPUT_SCHEMA_ID = "camera-split-input-v1"
+SPLIT_MANIFEST_TYPE = "camera_split_input"
 SPLIT_SCHEMA_ID = "camera-split-manifest-v1"
 SCHEMA_VERSION = "v1.0.0"
 ALGORITHM_ID = "camera-dedup-v1"
@@ -179,6 +180,7 @@ class AuditInputError(ValueError):
 
 
 _CAMERA_COACH_CHECK: Any | None = None
+_ADMISSION_TOKEN = object()
 
 
 @dataclass(frozen=True)
@@ -195,6 +197,14 @@ class MediaItem:
 
 
 @dataclass(frozen=True)
+class _SplitAdmission:
+    token: object
+    rights_disposition: str
+    review_status: str
+    evidence_sha256: str
+
+
+@dataclass(frozen=True, init=False)
 class SplitRecord:
     """Metadata-only record projection consumed by the M3-008 splitter."""
 
@@ -204,6 +214,10 @@ class SplitRecord:
     families: tuple[tuple[str, tuple[str, ...]], ...]
     rights_disposition: str
     review_status: str
+    _admission: _SplitAdmission = field(repr=False)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError("SplitRecord must be produced by load_split_manifest")
 
     def family_map(self) -> dict[str, tuple[str, ...]]:
         return dict(self.families)
@@ -828,6 +842,13 @@ def _split_allowlist(value: Any, allowed: set[str], path: str) -> None:
         raise AuditInputError(f"unknown_split_field: {path}.{unknown[0]}")
 
 
+def _split_validate_header_values(header: dict[str, Any], path: str) -> None:
+    if type(header.get("manifest_type")) is not str or header["manifest_type"] != SPLIT_MANIFEST_TYPE:
+        raise AuditInputError(f"invalid_split_manifest_type: {path}.manifest_type")
+    if "record_count" in header and type(header["record_count"]) is not int:
+        raise AuditInputError(f"invalid_split_record_count: {path}.record_count")
+
+
 def _split_validate_record_topology(record: Any, path: str) -> None:
     _split_allowlist(record, SPLIT_RECORD_FIELDS, path)
     for field_name, allowed in (
@@ -875,6 +896,7 @@ def _split_validate_topology(payload: Any) -> None:
 
     if isinstance(payload, dict):
         _split_allowlist(payload, SPLIT_HEADER_FIELDS, "manifest")
+        _split_validate_header_values(payload, "manifest")
         if "entries" not in payload:
             raise AuditInputError("missing_split_manifest_entries")
         _split_validate_record_list(payload["entries"], "manifest.entries")
@@ -883,6 +905,7 @@ def _split_validate_topology(payload: Any) -> None:
         if not payload or not isinstance(payload[0], dict) or "record_id" in payload[0]:
             raise AuditInputError("missing_split_manifest_header")
         _split_allowlist(payload[0], SPLIT_HEADER_FIELDS, "manifest[0]")
+        _split_validate_header_values(payload[0], "manifest[0]")
         if "entries" in payload[0]:
             _split_validate_record_list(payload[0]["entries"], "manifest[0].entries")
         _split_validate_record_list(payload[1:], "manifest")
@@ -1030,6 +1053,30 @@ def _split_review_status(entry: dict[str, Any]) -> str:
     return status
 
 
+def _split_admission_digest(rights_disposition: str, review: dict[str, Any]) -> str:
+    return _json_digest(
+        {
+            "rights_disposition": rights_disposition,
+            "review": review,
+        }
+    )
+
+
+def _validate_split_admission(record: SplitRecord) -> None:
+    record_id = getattr(record, "record_id", "<unknown>")
+    admission = getattr(record, "_admission", None)
+    if not isinstance(admission, _SplitAdmission) or admission.token is not _ADMISSION_TOKEN:
+        raise AuditInputError(f"split_record_admission_required: {record_id}")
+    record_rights = getattr(record, "rights_disposition", None)
+    record_status = getattr(record, "review_status", None)
+    if admission.rights_disposition != record_rights:
+        raise AuditInputError(f"split_record_admission_conflict: rights_disposition:{record_id}")
+    if admission.review_status != record_status:
+        raise AuditInputError(f"split_record_admission_conflict: review_status:{record_id}")
+    if not isinstance(admission.evidence_sha256, str) or not SHA256_RE.fullmatch(admission.evidence_sha256):
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+
+
 def _split_record_entry(entry: dict[str, Any]) -> SplitRecord:
     if not isinstance(entry, dict):
         raise AuditInputError("invalid_split_record")
@@ -1135,14 +1182,22 @@ def _split_record_entry(entry: dict[str, Any]) -> SplitRecord:
         raise AuditInputError("missing_sequence_id")
     families["sequence"] = sequence_ids
     assets = _split_asset_values(entry, provenance, capture)
-    return SplitRecord(
-        record_id=record_id,
-        asset_ids=assets,
-        bucket=bucket,
-        families=tuple((category, values) for category, values in sorted(families.items()) if values),
+    review_status = _split_review_status(entry)
+    admission = _SplitAdmission(
+        token=_ADMISSION_TOKEN,
         rights_disposition=rights,
-        review_status=_split_review_status(entry),
+        review_status=review_status,
+        evidence_sha256=_split_admission_digest(rights, entry["review"]),
     )
+    record = object.__new__(SplitRecord)
+    object.__setattr__(record, "record_id", record_id)
+    object.__setattr__(record, "asset_ids", assets)
+    object.__setattr__(record, "bucket", bucket)
+    object.__setattr__(record, "families", tuple((category, values) for category, values in sorted(families.items()) if values))
+    object.__setattr__(record, "rights_disposition", rights)
+    object.__setattr__(record, "review_status", review_status)
+    object.__setattr__(record, "_admission", admission)
+    return record
 
 
 def load_split_manifest(path: Path) -> list[SplitRecord]:
@@ -1178,6 +1233,8 @@ def load_split_manifest(path: Path) -> list[SplitRecord]:
     record_ids = [record.record_id for record in records]
     if len(set(record_ids)) != len(record_ids):
         raise AuditInputError("duplicate_record_id")
+    if "record_count" in header and header["record_count"] != len(records):
+        raise AuditInputError(f"split_manifest_record_count_mismatch: {path}")
     return sorted(records, key=lambda record: record.record_id)
 
 
@@ -1193,6 +1250,7 @@ def _canonical_split_records(records: Iterable[SplitRecord]) -> list[dict[str, A
             "families": {category: list(values) for category, values in record.families},
             "rights_disposition": record.rights_disposition,
             "review_status": record.review_status,
+            "admission_sha256": record._admission.evidence_sha256,
         }
         for record in sorted(records, key=lambda item: item.record_id)
     ]
@@ -1308,8 +1366,10 @@ def split_records(
         raise AuditInputError("split_ratios_must_sum_to_one")
     if not isinstance(records, list) or not records:
         raise AuditInputError("empty_split_manifest")
-    if any(not isinstance(record, SplitRecord) for record in records):
+    if any(type(record) is not SplitRecord for record in records):
         raise AuditInputError("invalid_split_record_type")
+    for record in records:
+        _validate_split_admission(record)
     records = sorted(records, key=lambda record: record.record_id)
     if len({record.record_id for record in records}) != len(records):
         raise AuditInputError("duplicate_record_id")

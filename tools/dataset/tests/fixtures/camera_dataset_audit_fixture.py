@@ -398,6 +398,69 @@ def run() -> None:
         )
         AUDIT.validate_split_output(json.loads(json.dumps(split_output)))
 
+        counted_document = split_document(split_entries)
+        counted_document["record_count"] = len(split_entries)
+        counted_manifest = root / "counted-split-input.json"
+        counted_manifest.write_text(json.dumps(counted_document), encoding="utf-8")
+        assert AUDIT.load_split_manifest(counted_manifest) == split_records
+
+        assert "admission_sha256" in AUDIT._canonical_split_records(split_records)[0]
+        try:
+            AUDIT.SplitRecord(
+                "forged-record",
+                ("asset-base",),
+                "organic",
+                split_records[0].families,
+                "approved",
+                "dual_reviewed",
+            )
+        except TypeError as exc:
+            assert "load_split_manifest" in str(exc)
+        else:
+            raise AssertionError("public SplitRecord constructor remained available")
+
+        def forge_split_record(rights: str, status: str) -> object:
+            forged = object.__new__(AUDIT.SplitRecord)
+            for field_name in ("record_id", "asset_ids", "bucket", "families"):
+                object.__setattr__(forged, field_name, getattr(split_records[0], field_name))
+            object.__setattr__(forged, "rights_disposition", rights)
+            object.__setattr__(forged, "review_status", status)
+            return forged
+
+        for forged_rights, forged_status in (
+            ("denied", "dual_reviewed"),
+            ("approved", "unreviewed"),
+            ("approved", "dual_reviewed"),
+        ):
+            forged = forge_split_record(forged_rights, forged_status)
+            try:
+                AUDIT.split_records(
+                    [forged],
+                    output,
+                    train_ratio=1.0,
+                    calibration_ratio=0.0,
+                    locked_test_ratio=0.0,
+                )
+            except AUDIT.AuditInputError as exc:
+                assert "split_record_admission_required" in str(exc)
+            else:
+                raise AssertionError("caller-created split record emitted a passing receipt")
+
+        mutated_admission = copy.copy(split_records[0])
+        object.__setattr__(mutated_admission, "rights_disposition", "denied")
+        try:
+            AUDIT.split_records(
+                [mutated_admission],
+                output,
+                train_ratio=1.0,
+                calibration_ratio=0.0,
+                locked_test_ratio=0.0,
+            )
+        except AUDIT.AuditInputError as exc:
+            assert "split_record_admission_conflict" in str(exc)
+        else:
+            raise AssertionError("mutated admission evidence emitted a passing receipt")
+
         split_jsonl = root / "split-input.jsonl"
         split_jsonl.write_text(
             "\n".join(json.dumps(row) for row in [split_document([]), *split_entries]) + "\n",
@@ -405,9 +468,15 @@ def run() -> None:
         )
         assert AUDIT.load_split_manifest(split_jsonl) == split_records
         for header_mutation, expected in (
+            (lambda value: value.pop("manifest_type"), "invalid_split_manifest_type"),
+            (lambda value: value.__setitem__("manifest_type", 1), "invalid_split_manifest_type"),
+            (lambda value: value.__setitem__("manifest_type", "not_camera_split_input"), "invalid_split_manifest_type"),
             (lambda value: value.pop("schema_id"), "invalid_split_schema_id"),
             (lambda value: value.pop("schema_version"), "invalid_split_schema_version"),
             (lambda value: value.__setitem__("schema_version", "v0.0.0"), "invalid_split_schema_version"),
+            (lambda value: value.__setitem__("record_count", True), "invalid_split_record_count"),
+            (lambda value: value.__setitem__("record_count", 1.5), "invalid_split_record_count"),
+            (lambda value: value.__setitem__("record_count", 99), "split_manifest_record_count_mismatch"),
         ):
             bad_header = split_document([])
             header_mutation(bad_header)
@@ -423,7 +492,10 @@ def run() -> None:
             else:
                 raise AssertionError(f"split header mutation {expected} was accepted")
         unversioned_path = root / "unversioned-split.json"
-        unversioned_path.write_text(json.dumps({"entries": split_entries}), encoding="utf-8")
+        unversioned_path.write_text(
+            json.dumps({"manifest_type": "camera_split_input", "entries": split_entries}),
+            encoding="utf-8",
+        )
         try:
             AUDIT.load_split_manifest(unversioned_path)
         except AUDIT.AuditInputError as exc:
@@ -975,7 +1047,8 @@ def run() -> None:
         "schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected "
         "M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity "
         "split_schema_negative_cases closed_input_topology review_history_contract "
-        "seeded_assignment_receipt_tamper family_hash_owner_tamper"
+        "seeded_assignment_receipt_tamper family_hash_owner_tamper split_admission_boundary "
+        "header_value_validation"
     )
 
 
