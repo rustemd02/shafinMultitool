@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 // MARK: - Ownership contract
@@ -40,13 +41,33 @@ struct SETLibraryPreviewMetadata: Codable, Equatable, Sendable {
     let actorCount: Int
     let objectCount: Int
     let recordingCount: Int
+    /// Set only when the persistence owner resolved an existing, project-owned
+    /// recording. Absence is the honest metadata-placeholder path.
+    let recordingReference: SceneRecordingReference?
+
+    init(
+        kind: Kind,
+        beatCount: Int,
+        actorCount: Int,
+        objectCount: Int,
+        recordingCount: Int,
+        recordingReference: SceneRecordingReference? = nil
+    ) {
+        self.kind = kind
+        self.beatCount = beatCount
+        self.actorCount = actorCount
+        self.objectCount = objectCount
+        self.recordingCount = recordingCount
+        self.recordingReference = recordingReference
+    }
 
     static let unavailable = SETLibraryPreviewMetadata(
         kind: .unavailable,
         beatCount: 0,
         actorCount: 0,
         objectCount: 0,
-        recordingCount: 0
+        recordingCount: 0,
+        recordingReference: nil
     )
 }
 
@@ -724,11 +745,14 @@ enum SETLibraryLocalizedCopy {
     }
 
     private static func previewStatus(_ preview: SETLibraryPreviewMetadata) -> SETCopyKey {
+        // A content kind without an owned, resolvable source is metadata only;
+        // announce the honest fallback instead of implying a media preview.
+        if preview.recordingReference == nil {
+            return .libraryPreviewMetadataPlaceholder
+        }
         switch preview.kind {
-        case .storyboard: return .libraryPreviewStoryboard
-        case .screenplay: return .libraryPreviewScreenplay
-        case .metadataOnly: return .libraryPreviewMetadataOnly
-        case .unavailable: return .libraryPreviewUnavailable
+        case .storyboard, .screenplay, .metadataOnly, .unavailable:
+            return .libraryPreviewRecording
         }
     }
 
@@ -760,6 +784,9 @@ enum SETLibraryAccessibilityID {
     static let failureDetail = "library_failure_detail"
     static let sceneDelete = "library_scene_delete"
     static let sceneOpen = "library_scene_open"
+    static let sceneRename = "library_scene_rename"
+    static let scenePreview = "library_scene_preview"
+    static let deleteDetail = "library_delete_detail"
     static let deleteConfirm = "library_delete_confirm"
     static let deleteCancel = "library_delete_cancel"
     static let failureRetry = "library_failure_retry"
@@ -1027,6 +1054,10 @@ private struct SETLibrarySceneList: View {
                             model.select(scene.id)
                             model.openSelectedScene()
                         },
+                        onRename: {
+                            model.select(scene.id)
+                            model.beginRename(sceneID: scene.id)
+                        },
                         onDelete: {
                             model.select(scene.id)
                             model.beginDelete(sceneID: scene.id)
@@ -1049,6 +1080,7 @@ private struct SETLibrarySceneRow: View {
     let locale: Locale
     let onSelect: () -> Void
     let onOpen: () -> Void
+    let onRename: () -> Void
     let onDelete: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1088,6 +1120,7 @@ private struct SETLibrarySceneRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilitySortPriority(4)
             .accessibilityLabel(Text(scene.name))
             .accessibilityValue(
                 Text(SETLibraryLocalizedCopy.sceneAccessibilityValue(scene: scene, locale: locale))
@@ -1124,35 +1157,182 @@ private struct SETLibrarySceneRow: View {
 
     @ViewBuilder
     private var selectedContent: some View {
-        HStack(spacing: SETSpacing.x4) {
-            SETDigitalAction(title: .libraryOpen, action: onOpen)
-                .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
-                .contentShape(Rectangle())
-                .accessibilityIdentifier(SETLibraryAccessibilityID.sceneOpen)
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
+            SETLibraryScenePreview(preview: scene.preview, locale: locale)
 
-            Button(action: onDelete) {
-                Text(SETCopyKey.libraryDelete.localizedTextKey)
-                    .font(SETTypography.uiBodyFont(weight: .semibold))
-                    .foregroundStyle(.setTextSecondary)
-                    .underline()
-                    .padding(.horizontal, SETSpacing.x3)
-                    .frame(minHeight: SETComponentMetric.minimumHitTarget)
+            // The row itself is the selection target. These controls are its
+            // sibling actions, with a vertical fallback that cannot overlap
+            // on compact portrait widths.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: SETSpacing.x4) {
+                    openAction
+                    renameAction
+                    deleteAction
+                }
+                VStack(alignment: .leading, spacing: SETSpacing.x2) {
+                    openAction
+                    renameAction
+                    deleteAction
+                }
             }
-            .buttonStyle(.plain)
-            .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
-            .contentShape(Rectangle())
-            .accessibilityIdentifier(SETLibraryAccessibilityID.sceneDelete)
-            .accessibilityLabel(
-                Text(
-                    SETLibraryLocalizedCopy.formatted(
-                        .accessibilityLibraryDeleteScene,
-                        locale: locale,
-                        arguments: [scene.name]
-                    )
-                )
-            )
+            .accessibilityElement(children: .contain)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var openAction: some View {
+        SETDigitalAction(title: .libraryOpen, action: onOpen)
+            .frame(minWidth: 96, minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier(SETLibraryAccessibilityID.sceneOpen)
+            .accessibilitySortPriority(3)
+    }
+
+    private var renameAction: some View {
+        Button(action: onRename) {
+            Text(SETCopyKey.libraryRename.localizedTextKey)
+                .font(SETTypography.uiBodyFont(weight: .semibold))
+                .foregroundStyle(.setTextSecondary)
+                .underline()
+                .padding(.horizontal, SETSpacing.x3)
+                .frame(minWidth: 96, minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier(SETLibraryAccessibilityID.sceneRename)
+        .accessibilityLabel(
+            Text(
+                SETLibraryLocalizedCopy.formatted(
+                    .accessibilityLibraryRenameScene,
+                    locale: locale,
+                    arguments: [scene.name]
+                )
+            )
+        )
+        .accessibilitySortPriority(2)
+    }
+
+    private var deleteAction: some View {
+        Button(action: onDelete) {
+            Text(SETCopyKey.libraryDelete.localizedTextKey)
+                .font(SETTypography.uiBodyFont(weight: .semibold))
+                .foregroundStyle(.setTextSecondary)
+                .underline()
+                .padding(.horizontal, SETSpacing.x3)
+                .frame(minWidth: 96, minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier(SETLibraryAccessibilityID.sceneDelete)
+        .accessibilityLabel(
+            Text(
+                SETLibraryLocalizedCopy.formatted(
+                    .accessibilityLibraryDeleteScene,
+                    locale: locale,
+                    arguments: [scene.name]
+                )
+            )
+        )
+        .accessibilitySortPriority(1)
+    }
+}
+
+/// Resolves one project-owned recording into a poster frame on demand. The
+/// fallback is metadata-only and carries no synthetic image or fixture art.
+private struct SETLibraryScenePreview: View {
+    let preview: SETLibraryPreviewMetadata
+    let locale: Locale
+
+    @State private var image: CGImage?
+
+    private var sourceKey: String {
+        preview.recordingReference?.relativePath ?? "metadata"
+    }
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(decorative: image, scale: 1, orientation: .up)
+                    .resizable()
+                    .scaledToFit()
+                    .accessibilityLabel(Text(SETCopyKey.libraryPreviewRecording.localizedString(locale: locale)))
+            } else {
+                metadataPlaceholder
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 88, maxHeight: 180, alignment: .leading)
+        .accessibilityIdentifier(SETLibraryAccessibilityID.scenePreview)
+        .task(id: sourceKey) {
+            image = await loadPosterFrame()
+        }
+    }
+
+    private var metadataPlaceholder: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            Text(SETCopyKey.libraryPreviewMetadataPlaceholder.localizedString(locale: locale))
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .tracking(0.35)
+                .foregroundStyle(.setTextPrimary)
+                .accessibilityHidden(true)
+            Text(
+                SETCopyKey.libraryPreviewMetadataDetail.localizedFormat(
+                    locale: locale,
+                    arguments: [
+                        preview.beatCount,
+                        preview.actorCount,
+                        preview.objectCount,
+                        preview.recordingCount
+                    ]
+                )
+            )
+            .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+            .foregroundStyle(.setTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(SETSpacing.x3)
+        .background(Color.setSurfaceSolid)
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
+        // Expose one deterministic VoiceOver element. The explicit label and
+        // value below already carry the two visible text nodes.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(SETCopyKey.libraryPreviewMetadataPlaceholder.localizedString(locale: locale)))
+        .accessibilityValue(
+            Text(
+                SETCopyKey.libraryPreviewMetadataDetail.localizedFormat(
+                    locale: locale,
+                    arguments: [
+                        preview.beatCount,
+                        preview.actorCount,
+                        preview.objectCount,
+                        preview.recordingCount
+                    ]
+                )
+            )
+        )
+    }
+
+    private func loadPosterFrame() async -> CGImage? {
+        guard let reference = preview.recordingReference else { return nil }
+        return await Task.detached(priority: .utility) {
+            guard let store = try? RecordingArtifactStore(),
+                  let url = store.resolve(reference),
+                  let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let size = attributes[.size] as? NSNumber,
+                  size.int64Value > 0 else {
+                return nil
+            }
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 768, height: 432)
+            return try? generator.copyCGImage(
+                at: CMTime(seconds: 0, preferredTimescale: 600),
+                actualTime: nil
+            )
+        }.value
     }
 }
 
@@ -1307,6 +1487,7 @@ private struct SETLibraryDeletePanel: View {
                 .foregroundStyle(.setTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, SETSpacing.x1)
+                .accessibilityIdentifier(SETLibraryAccessibilityID.deleteDetail)
 
                 // One bracket annotation on the scene identity.
                 GlassMarkGuide(kind: .bracket, color: .setWarmWhite)

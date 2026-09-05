@@ -121,6 +121,47 @@ final class DBServiceConcurrencyTests: XCTestCase {
         XCTAssertEqual(snapshot.artifactHealth, .none)
     }
 
+    func testLibrarySnapshotUsesOnlyOwnedRecordingForPreviewSource() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-library-preview-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let service = DBService(recordingArtifactStore: store)
+        let project = try service.createUnifiedSceneProject(named: "preview-source-\(UUID().uuidString)")
+        defer { service.deleteUnifiedSceneProject(named: project.name) { _ in } }
+
+        let recordingID = UUID()
+        let reference = SceneRecordingReference(
+            recordingID: recordingID,
+            relativePath: "Recordings/Projects/\(project.id.uuidString)/\(recordingID.uuidString).mov"
+        )
+        var enriched = project
+        enriched.sceneDescription = "A real recorded scene"
+        enriched.recordingReferences = [reference]
+        try service.saveUnifiedSceneProject(enriched, worldMap: nil)
+
+        let projectArtifactsURL = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectArtifactsURL, withIntermediateDirectories: true)
+        let artifactURL = projectArtifactsURL.appendingPathComponent("\(recordingID.uuidString).mov")
+        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: Data("owned media".utf8)))
+
+        let valid = try XCTUnwrap(service.loadLibrarySceneSnapshots().successValue?.first)
+        XCTAssertEqual(valid.preview.recordingReference, reference)
+        XCTAssertEqual(valid.artifactHealth, .healthy)
+
+        try FileManager.default.removeItem(at: artifactURL)
+        let deleted = try XCTUnwrap(service.loadLibrarySceneSnapshots().successValue?.first)
+        XCTAssertNil(deleted.preview.recordingReference, "Deleted media must use the metadata fallback.")
+        XCTAssertEqual(deleted.artifactHealth, .missing)
+
+        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: Data()))
+        let corrupt = try XCTUnwrap(service.loadLibrarySceneSnapshots().successValue?.first)
+        XCTAssertNil(corrupt.preview.recordingReference, "Zero-byte media must not enter preview rendering.")
+        XCTAssertEqual(corrupt.artifactHealth, .corrupt)
+    }
+
     // MARK: - Optimistic conflict behavior
 
     func testStaleExpectedUpdatedAtThrowsRecoverableConflictAndKeepsStoredWrite() throws {
@@ -246,6 +287,55 @@ final class DBServiceConcurrencyTests: XCTestCase {
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: unexpectedEntry.path))
         XCTAssertEqual(dbService.loadUnifiedSceneProject(named: project.name)?.0, withRecording)
+    }
+
+    func testTypedDeleteRemovesOnlyProjectAndOwnedArtifacts() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-library-delete-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let service = DBService(recordingArtifactStore: store)
+        let first = try service.createUnifiedSceneProject(named: "delete-owned-one-\(UUID().uuidString)")
+        let second = try service.createUnifiedSceneProject(named: "delete-owned-two-\(UUID().uuidString)")
+
+        let firstRecordingID = UUID()
+        let secondRecordingID = UUID()
+        var firstWithRecording = first
+        firstWithRecording.recordingReferences = [SceneRecordingReference(
+            recordingID: firstRecordingID,
+            relativePath: "Recordings/Projects/\(first.id.uuidString)/\(firstRecordingID.uuidString).mov"
+        )]
+        var secondWithRecording = second
+        secondWithRecording.recordingReferences = [SceneRecordingReference(
+            recordingID: secondRecordingID,
+            relativePath: "Recordings/Projects/\(second.id.uuidString)/\(secondRecordingID.uuidString).mov"
+        )]
+        try service.saveUnifiedSceneProject(firstWithRecording, worldMap: nil)
+        try service.saveUnifiedSceneProject(secondWithRecording, worldMap: nil)
+
+        let firstDirectory = store.projectsDirectoryURL.appendingPathComponent(first.id.uuidString, isDirectory: true)
+        let secondDirectory = store.projectsDirectoryURL.appendingPathComponent(second.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
+        let firstArtifact = firstDirectory.appendingPathComponent("\(firstRecordingID.uuidString).mov")
+        let secondArtifact = secondDirectory.appendingPathComponent("\(secondRecordingID.uuidString).mov")
+        XCTAssertTrue(FileManager.default.createFile(atPath: firstArtifact.path, contents: Data("owned one".utf8)))
+        XCTAssertTrue(FileManager.default.createFile(atPath: secondArtifact.path, contents: Data("owned two".utf8)))
+
+        var result: Result<Void, SETLibraryFailure>?
+        service.deleteUnifiedSceneProject(id: first.id, expectedUpdatedAt: firstWithRecording.updatedAt) {
+            result = $0
+        }
+
+        guard case .success = result else {
+            return XCTFail("expected successful project and artifact deletion, got \(String(describing: result))")
+        }
+        XCTAssertNil(service.loadUnifiedSceneProject(named: firstWithRecording.name))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secondArtifact.path), "A sibling project's artifact must remain.")
+        XCTAssertEqual(try Data(contentsOf: secondArtifact), Data("owned two".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstArtifact.path), "The deleted project's artifact must be removed.")
+        XCTAssertNotNil(service.loadUnifiedSceneProject(named: secondWithRecording.name))
     }
 
     func testTypedDeleteRollsBackMetadataWhenArtifactCommitFailsPartway() throws {

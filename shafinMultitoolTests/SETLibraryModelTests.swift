@@ -444,6 +444,24 @@ final class SETLibraryModelTests: XCTestCase {
         XCTAssertEqual(model.flow, .idle)
     }
 
+    func testCancelDeleteDoesNotMutateSelectionOrInvokeProvider() {
+        let provider = MockProvider()
+        let id = UUID()
+        provider.summaries = [makeSummary("СЦЕНА", id: id)]
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+        model.select(id)
+        let before = model.scenes
+
+        model.beginDelete(sceneID: id)
+        model.cancelDelete()
+
+        XCTAssertEqual(model.flow, .idle)
+        XCTAssertEqual(model.selectedSceneID, id)
+        XCTAssertEqual(model.scenes, before)
+        XCTAssertTrue(provider.deleteRequests.isEmpty, "Cancel must not call the deletion owner.")
+    }
+
     /// Lets the model's main-actor completion hop run before asserting.
     private func drainMainActor() async {
         for _ in 0..<50 {

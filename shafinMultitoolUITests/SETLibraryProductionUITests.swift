@@ -69,10 +69,20 @@ final class SETLibraryProductionUITests: XCTestCase {
             )
             if entry.fixture == "library.selected" {
                 let open = app.buttons["library_scene_open"]
+                let rename = app.buttons["library_scene_rename"]
                 let delete = app.buttons["library_scene_delete"]
+                let preview = app.descendants(matching: .any)["library_scene_preview"]
                 XCTAssertTrue(open.exists, "The selected row must expose the open action (\(entry.locale)).")
+                XCTAssertTrue(rename.exists, "The selected row must expose the rename action (\(entry.locale)).")
                 XCTAssertTrue(delete.exists, "The selected row must expose the delete action (\(entry.locale)).")
+                XCTAssertTrue(preview.exists, "The selected row must expose a truthful preview surface (\(entry.locale)).")
+                XCTAssertEqual(
+                    preview.label,
+                    entry.locale == "ru" ? "МЕТАДАННЫЕ — ЗАПОЛНИТЕЛЬ" : "METADATA PLACEHOLDER",
+                    "The fallback preview must expose its explicit metadata label (\(entry.locale))."
+                )
                 assertMinimumHitTarget(open, "The open action must remain reachable (\(entry.locale)).")
+                assertMinimumHitTarget(rename, "The rename action must remain reachable (\(entry.locale)).")
                 assertMinimumHitTarget(delete, "The delete action must remain reachable (\(entry.locale)).")
             }
             let attachmentName = entry.fixture == "library.contact-sheet"
@@ -128,6 +138,7 @@ final class SETLibraryProductionUITests: XCTestCase {
                 )
             }
             if entry.fixture == "library.delete-confirmation" {
+                let detail = app.descendants(matching: .any)["library_delete_detail"]
                 assertMinimumHitTarget(
                     app.buttons["library_delete_confirm"],
                     "The delete confirmation action must remain reachable (\(entry.locale))."
@@ -136,10 +147,79 @@ final class SETLibraryProductionUITests: XCTestCase {
                     app.buttons["library_delete_cancel"],
                     "The delete cancel action must remain reachable (\(entry.locale))."
                 )
+                XCTAssertTrue(detail.exists, "The destructive confirmation must expose the named scene (\(entry.locale)).")
+                let detailText = detail.label + " " + String(describing: detail.value ?? "")
+                let expectedScene = entry.locale == "ru"
+                    ? "ИНТ. МАСТЕРСКАЯ — НОЧЬ"
+                    : "INT. WORKSHOP — NIGHT"
+                XCTAssertTrue(
+                    detailText.contains(expectedScene),
+                    "The destructive confirmation must name the scene (\(entry.locale))."
+                )
             }
             attachScreenshot(app, named: entry.attachment)
             app.terminate()
         }
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testSelectedActionHitRegionsDoNotOverlapAndKeepOrder() {
+        let app = launch(fixture: "library.selected", locale: "en")
+        assertRoot("library.selected", in: app)
+
+        let sceneRow = app.descendants(matching: .any)["library_scene_row_2"]
+        let open = app.buttons["library_scene_open"]
+        let rename = app.buttons["library_scene_rename"]
+        let delete = app.buttons["library_scene_delete"]
+        XCTAssertTrue(sceneRow.waitForExistence(timeout: 4))
+        XCTAssertTrue(open.waitForExistence(timeout: 4))
+        XCTAssertTrue(rename.waitForExistence(timeout: 4))
+        XCTAssertTrue(delete.waitForExistence(timeout: 4))
+
+        let actions = [open, rename, delete]
+        for index in actions.indices {
+            for otherIndex in actions.indices where otherIndex > index {
+                XCTAssertFalse(
+                    actions[index].frame.intersects(actions[otherIndex].frame),
+                    "Sibling Library action hit regions must not overlap."
+                )
+            }
+        }
+        XCTAssertGreaterThan(open.frame.minY, sceneRow.frame.minY)
+        XCTAssertTrue(
+            open.label.localizedCaseInsensitiveContains("open") || open.label.localizedCaseInsensitiveContains("открыть")
+        )
+        XCTAssertTrue(
+            rename.label.localizedCaseInsensitiveContains("rename") || rename.label.localizedCaseInsensitiveContains("переименовать")
+        )
+        XCTAssertTrue(
+            delete.label.localizedCaseInsensitiveContains("delete") || delete.label.localizedCaseInsensitiveContains("удалить")
+        )
+        attachScreenshot(app, named: "m5-library-selected-en-landscape-actions")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testDeleteCancelLeavesNamedSceneAndRowsVisible() {
+        let app = launch(fixture: "library.delete-confirmation", locale: "en")
+        assertRoot("library.delete-confirmation", in: app)
+
+        let detail = app.descendants(matching: .any)["library_delete_detail"]
+        let cancel = app.buttons["library_delete_cancel"]
+        let selectedRow = app.descendants(matching: .any)["library_scene_row_1"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 4))
+        XCTAssertTrue(cancel.waitForExistence(timeout: 4))
+        XCTAssertTrue(selectedRow.exists)
+        let namedScene = detail.label + " " + String(describing: detail.value ?? "")
+        XCTAssertTrue(namedScene.contains("INT. WORKSHOP — NIGHT"))
+
+        cancel.tap()
+
+        XCTAssertFalse(app.buttons["library_delete_confirm"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["library_list"].exists)
+        XCTAssertTrue(selectedRow.exists, "Cancel must leave the persisted scene row visible.")
+        attachScreenshot(app, named: "m5-library-delete-cancel-en-landscape")
+        app.terminate()
         XCUIDevice.shared.orientation = .portrait
     }
 

@@ -790,6 +790,16 @@ class DBService {
     }
 
     private func makeLibrarySnapshotOnQueue(for project: UnifiedSceneProject) -> SETLibrarySceneSnapshot {
+        let recordingReference = project.recordingReferences.first { reference in
+            guard case .success(let artifactStore) = recordingArtifactStore,
+                  let url = artifactStore.resolve(reference),
+                  let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+                  let fileSize = attributes[.size] as? NSNumber else {
+                return false
+            }
+            return fileSize.int64Value > 0
+        }
+
         let preview: SETLibraryPreviewMetadata
         if let plannedScene = project.plannedScene {
             preview = SETLibraryPreviewMetadata(
@@ -797,7 +807,8 @@ class DBService {
                 beatCount: project.parsedScript?.beats.count ?? 0,
                 actorCount: plannedScene.placedActors.count,
                 objectCount: plannedScene.placedObjects.count,
-                recordingCount: project.recordingReferences.count
+                recordingCount: project.recordingReferences.count,
+                recordingReference: recordingReference
             )
         } else if let parsedScript = project.parsedScript {
             preview = SETLibraryPreviewMetadata(
@@ -805,7 +816,8 @@ class DBService {
                 beatCount: parsedScript.beats.count,
                 actorCount: parsedScript.actors.count,
                 objectCount: parsedScript.objects.count,
-                recordingCount: project.recordingReferences.count
+                recordingCount: project.recordingReferences.count,
+                recordingReference: recordingReference
             )
         } else if !project.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             preview = SETLibraryPreviewMetadata(
@@ -813,7 +825,8 @@ class DBService {
                 beatCount: 0,
                 actorCount: 0,
                 objectCount: 0,
-                recordingCount: project.recordingReferences.count
+                recordingCount: project.recordingReferences.count,
+                recordingReference: recordingReference
             )
         } else {
             preview = .unavailable

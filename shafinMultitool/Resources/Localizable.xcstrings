@@ -177,6 +177,22 @@
         }
       }
     },
+    "set.a11y.library_rename_scene": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename scene %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переименовать сцену %@"
+          }
+        }
+      }
+    },
     "set.a11y.library_selected_scene": {
       "localizations": {
         "en": {
@@ -2593,6 +2609,54 @@
         }
       }
     },
+    "set.library.preview.metadata_detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d BEATS · %d ACTORS · %d OBJECTS · %d TAKES"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d БИТОВ · %d АКТЁРОВ · %d ОБЪЕКТОВ · %d ДУБЛЕЙ"
+          }
+        }
+      }
+    },
+    "set.library.preview.metadata_placeholder": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "METADATA PLACEHOLDER"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "МЕТАДАННЫЕ — ЗАПОЛНИТЕЛЬ"
+          }
+        }
+      }
+    },
+    "set.library.preview.recording": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RECORDING PREVIEW"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ПРЕВЬЮ ЗАПИСИ"
+          }
+        }
+      }
+    },
     "set.library.preview.screenplay": {
       "localizations": {
         "en": {
@@ -2653,6 +2717,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ОТКРЫТЬ"
+          }
+        }
+      }
+    },
+    "set.library.rename": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RENAME"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ПЕРЕИМЕНОВАТЬ"
           }
         }
       }
