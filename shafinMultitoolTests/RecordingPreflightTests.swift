@@ -153,6 +153,26 @@ final class RecordingPreflightTests: XCTestCase {
         XCTAssertNil(verdict)
     }
 
+    /// The default controller preflight (unit seam) is availability-neutral:
+    /// a sound-required start in a unit fixture never depends on the host's
+    /// real privacy state.
+    func testDefaultControllerPreflightIsAvailabilityNeutral() async {
+        let preflight = StandardRecordingStartPreflight(
+            microphonePermission: AlwaysAvailableMicrophonePermissionChecker(),
+            audioSession: AlwaysAvailableAudioSessionChecker()
+        )
+        let verdict = await preflight.validate(makeContext(audioMode: .required))
+        XCTAssertNil(verdict)
+    }
+
+    /// The production session checker answers available for the shared
+    /// coordinator's non-interrupted state.
+    func testCoordinatorAudioSessionCheckerAnswersAvailableWhenInactive() async {
+        let checker = CoordinatorAudioSessionChecker()
+        let available = await checker.audioSessionAvailable()
+        XCTAssertTrue(available)
+    }
+
     /// M7-017: the budget model is a documented deterministic function.
     func testDiskBudgetModelIsConservativeAndMonotonic() {
         let base = RecordingDiskBudgetModel.requiredFreeBytes(

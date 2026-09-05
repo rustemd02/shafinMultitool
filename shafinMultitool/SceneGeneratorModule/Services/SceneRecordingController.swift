@@ -84,7 +84,13 @@ final class SceneRecordingController: @unchecked Sendable {
          makeRecorder: @escaping RecorderFactory) {
         self.artifactStore = artifactStore
         self.sourceOwnerID = sourceOwnerID
-        self.preflight = preflight ?? StandardRecordingStartPreflight()
+        // The unit-seam default is deliberately availability-neutral so
+        // tests never depend on the host's real privacy/audio-session state;
+        // production wiring (convenience init) supplies the real checkers.
+        self.preflight = preflight ?? StandardRecordingStartPreflight(
+            microphonePermission: AlwaysAvailableMicrophonePermissionChecker(),
+            audioSession: AlwaysAvailableAudioSessionChecker()
+        )
         self.makeRecorder = makeRecorder
     }
 

@@ -56,6 +56,13 @@ struct SystemMicrophonePermissionChecker: RecordingMicrophonePermissionChecking 
     }
 }
 
+/// Availability-neutral posture for unit seams: the default controller
+/// preflight must never depend on the host's real privacy state. Only the
+/// production convenience initializer wires `SystemMicrophonePermissionChecker`.
+struct AlwaysAvailableMicrophonePermissionChecker: RecordingMicrophonePermissionChecking {
+    func microphoneAvailable() async -> Bool { true }
+}
+
 /// Read-only audio-session posture for start decisions.
 protocol RecordingAudioSessionChecking: Sendable {
     func audioSessionAvailable() async -> Bool
@@ -67,6 +74,12 @@ struct CoordinatorAudioSessionChecker: RecordingAudioSessionChecking {
     func audioSessionAvailable() async -> Bool {
         await AudioSessionCoordinator.shared.state != .interrupted
     }
+}
+
+/// Availability-neutral session posture for unit seams (see
+/// ``AlwaysAvailableMicrophonePermissionChecker``).
+struct AlwaysAvailableAudioSessionChecker: RecordingAudioSessionChecking {
+    func audioSessionAvailable() async -> Bool { true }
 }
 
 /// M7-008 production preflight. Order is deterministic and documented:

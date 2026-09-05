@@ -32,8 +32,16 @@ Three new typed `RecorderFailure` cases: `.microphoneDenied`,
 `.insufficientStorage`, `.audioSessionUnavailable` (all recoverable; existing
 localized recorder error surface covers them via the recording error band).
 
-The production convenience initializer wires the disk-budget closure to the
-real artifact store; tests inject static checkers and budget closures.
+The production convenience initializer wires the disk-budget closure and the
+**real** system checkers (`SystemMicrophonePermissionChecker`,
+`CoordinatorAudioSessionChecker`). The controller's designated-init default
+preflight is deliberately **availability-neutral** (format/codec/pixel
+format/disk only): the first combined regression lane exposed a real
+environment-sensitivity defect — the unit seam depended on the simulator
+host's real microphone privacy state, which flipped to denied after a
+simulator reboot and failed a sound-on VM retry test. The fix keeps full
+defense-in-depth in production while making unit fixtures deterministic
+(`testDefaultControllerPreflightIsAvailabilityNeutral` pins it).
 
 ## Acceptance criteria evidence
 
