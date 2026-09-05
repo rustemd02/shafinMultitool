@@ -137,6 +137,71 @@ final class SceneRecordingControllerTests: XCTestCase {
         _ = await controller.releaseAndWait()
     }
 
+    func testOwnerReplacementCannotStartFromPreviousIdleCache() async throws {
+        let (controller, box, temporaryDirectory) = try makeController()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let pixelBuffer = try makePixelBuffer(width: 320, height: 240)
+        let firstOwner = UUID()
+        let secondOwner = UUID()
+        XCTAssertTrue(controller.setRecordingSourceOwnerID(firstOwner))
+        controller.enqueueVideo(pixelBuffer, at: 2, ownerID: firstOwner)
+        XCTAssertTrue(controller.setRecordingSourceOwnerID(secondOwner))
+
+        do {
+            try await controller.start(requestedFPS: 30, audioMode: .disabled)
+            XCTFail("A's idle frame must not seed B's take")
+        } catch let failure as RecorderFailure {
+            XCTAssertEqual(failure, .noVideoFrames)
+        }
+        XCTAssertNil(box.recorder(at: 0))
+
+        // A callback that crossed the owner replacement must not repopulate
+        // B's cache, even though it reaches the controller after the swap.
+        controller.enqueueVideo(pixelBuffer, at: 2, ownerID: firstOwner)
+        do {
+            try await controller.start(requestedFPS: 30, audioMode: .disabled)
+            XCTFail("A's stale callback must not seed B's take")
+        } catch let failure as RecorderFailure {
+            XCTAssertEqual(failure, .noVideoFrames)
+        }
+
+        controller.enqueueVideo(pixelBuffer, at: 4, ownerID: secondOwner)
+        try await controller.start(requestedFPS: 30, audioMode: .disabled)
+        let recorder = try XCTUnwrap(box.recorder(at: 0))
+        XCTAssertEqual(recorder.enqueuedTimestamps, [4])
+        _ = await controller.stop(reason: .routeExit)
+        _ = await controller.releaseAndWait()
+    }
+
+    func testTerminalStopInvalidatesPreviousOwnerCacheBeforeReplacement() async throws {
+        let (controller, box, temporaryDirectory) = try makeController()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let pixelBuffer = try makePixelBuffer(width: 320, height: 240)
+        let firstOwner = UUID()
+        let secondOwner = UUID()
+        XCTAssertTrue(controller.setRecordingSourceOwnerID(firstOwner))
+        controller.enqueueVideo(pixelBuffer, at: 2, ownerID: firstOwner)
+        try await controller.start(requestedFPS: 30, audioMode: .disabled)
+        XCTAssertEqual(box.recorder(at: 0)?.enqueuedTimestamps, [2])
+        _ = await controller.stop(reason: .routeExit)
+
+        XCTAssertTrue(controller.setRecordingSourceOwnerID(secondOwner))
+        do {
+            try await controller.start(requestedFPS: 30, audioMode: .disabled)
+            XCTFail("A's terminal frame must not seed B's take")
+        } catch let failure as RecorderFailure {
+            XCTAssertEqual(failure, .noVideoFrames)
+        }
+
+        controller.enqueueVideo(pixelBuffer, at: 4, ownerID: secondOwner)
+        try await controller.start(requestedFPS: 30, audioMode: .disabled)
+        XCTAssertEqual(box.recorder(at: 1)?.enqueuedTimestamps, [4])
+        _ = await controller.stop(reason: .routeExit)
+        _ = await controller.releaseAndWait()
+    }
+
     func testCameraServiceStopPreservesReplacementClaimMadeDuringUnlockedCleanup() {
         let cameraService = CameraService.makeTestingInstance()
         let oldToken = RecordingOwnerToken(

@@ -805,6 +805,7 @@ struct ARSceneContainer: UIViewRepresentable {
             currentRecordingController.enqueueVideo(
                 pixelBuffer,
                 at: timestamp,
+                ownerID: recordingSourceOwnerID,
                 ownerToken: ownerToken
             )
         }

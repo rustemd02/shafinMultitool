@@ -67,6 +67,9 @@ final class SceneRecordingController: @unchecked Sendable {
     private var lastAcceptedTimestamp: TimeInterval?
     private var latestVideoPayload: AppleRecordingVideoFramePayload?
     private var latestTimestamp: TimeInterval?
+    private var latestVideoOwnerID: UUID?
+    private var latestVideoGeneration: UInt64?
+    private var hasExplicitSourceOwnerBinding = false
     private var lastStopResult: RecordingStopResult?
     private var startTask: Task<Void, Error>?
     private var stopTask: Task<RecordingStopResult, Never>?
@@ -154,12 +157,16 @@ final class SceneRecordingController: @unchecked Sendable {
         withState {
             guard ownerID != UUID(uuidString: "00000000-0000-0000-0000-000000000000")! else { return false }
             if sourceOwnerID == ownerID {
-                return lifecycle != .released
+                guard lifecycle != .released else { return false }
+                hasExplicitSourceOwnerBinding = true
+                return true
             }
             guard activeSourceOwnerToken == nil,
                   lifecycle == .idle else { return false }
             sourceOwnerID = ownerID
             sourceGenerationStorage = 0
+            hasExplicitSourceOwnerBinding = true
+            clearCachedVideo()
             return true
         }
     }
@@ -186,10 +193,18 @@ final class SceneRecordingController: @unchecked Sendable {
     /// MainActor task for every frame.
     func enqueueVideo(_ pixelBuffer: CVPixelBuffer,
                       at timestamp: TimeInterval,
+                      ownerID: UUID? = nil,
                       ownerToken: RecordingOwnerToken? = nil) {
         guard timestamp.isFinite else { return }
         let payload = AppleRecordingVideoFramePayload(pixelBuffer: pixelBuffer)
         let submission: (any MediaRecording, RecordingVideoFrame)? = withState {
+            // The owner check and cache/append mutation share this stateQueue
+            // transaction. A late producer therefore cannot re-seed a cache
+            // after another owner has replaced the source while this caller
+            // was reading the coordinator's snapshot.
+            guard ownerID == sourceOwnerID
+                    || (!hasExplicitSourceOwnerBinding && ownerID == nil) else { return nil }
+
             // Idle frames are the only unclaimed source samples allowed to
             // seed the next take. Once a take has a token, stale/untagged
             // producers cannot even replace that seed buffer.
@@ -198,13 +213,17 @@ final class SceneRecordingController: @unchecked Sendable {
                 guard ownerToken == nil else { return nil }
             case .recording:
                 guard let activeSourceOwnerToken,
-                      ownerToken == activeSourceOwnerToken else { return nil }
+                      ownerToken == activeSourceOwnerToken,
+                      ownerID == activeSourceOwnerToken.ownerID
+                        || (!hasExplicitSourceOwnerBinding && ownerID == nil) else { return nil }
             case .starting, .stopping, .released:
                 return nil
             }
 
             latestVideoPayload = payload
             latestTimestamp = timestamp
+            latestVideoOwnerID = ownerID ?? sourceOwnerID
+            latestVideoGeneration = ownerToken?.generation ?? nextSourceGenerationValue()
 
             guard let fence = acceptingFrameFence,
                   let activeSourceOwnerToken,
@@ -255,6 +274,13 @@ final class SceneRecordingController: @unchecked Sendable {
             case .idle:
                 guard let initialPayload = explicitPayload ?? latestVideoPayload else {
                     return .failure(.noVideoFrames)
+                }
+
+                if explicitPayload == nil {
+                    guard latestVideoOwnerID == sourceOwnerID,
+                          latestVideoGeneration == nextSourceGenerationValue() else {
+                        return .failure(.noVideoFrames)
+                    }
                 }
 
                 let initialTimestamp = timestamp ?? latestTimestamp ?? 0
@@ -308,6 +334,7 @@ final class SceneRecordingController: @unchecked Sendable {
                 guard let recorder else {
                     acceptingFrameFence = nil
                     activeSourceOwnerToken = nil
+                    clearCachedVideo()
                     lifecycle = .idle
                     return .result(nil)
                 }
@@ -325,6 +352,7 @@ final class SceneRecordingController: @unchecked Sendable {
                     withState {
                         self.recorder = nil
                         self.activeSourceOwnerToken = nil
+                        self.clearCachedVideo()
                         self.lifecycle = .idle
                         self.stopTask = nil
                         self.lastStopResult = result
@@ -495,6 +523,7 @@ final class SceneRecordingController: @unchecked Sendable {
                     let result = lastStopResult
                     self.recorder = nil
                     acceptingFrameFence = nil
+                    self.clearCachedVideo()
                     lifecycle = .released
                     return .release(recorder: recorder, result: result)
                 }
@@ -523,11 +552,20 @@ final class SceneRecordingController: @unchecked Sendable {
         return timestamp > lastAcceptedTimestamp
     }
 
+    private func clearCachedVideo() {
+        latestVideoPayload = nil
+        latestTimestamp = nil
+        latestVideoOwnerID = nil
+        latestVideoGeneration = nil
+    }
+
+    private func nextSourceGenerationValue() -> UInt64 {
+        sourceGenerationStorage == .max ? 1 : sourceGenerationStorage &+ 1
+    }
+
     private func nextSourceGeneration() -> UInt64 {
         withState {
-            sourceGenerationStorage = sourceGenerationStorage == .max
-                ? 1
-                : sourceGenerationStorage &+ 1
+            sourceGenerationStorage = nextSourceGenerationValue()
             return sourceGenerationStorage
         }
     }

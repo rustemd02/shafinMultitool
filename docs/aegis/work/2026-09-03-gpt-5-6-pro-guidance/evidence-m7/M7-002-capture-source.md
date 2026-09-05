@@ -100,6 +100,24 @@ same owner's `updateSessionState` after recording starts, forwards two later
 frames through the production boundary, and verifies both reach the recorder;
 the same test then verifies a foreign coordinator remains rejected.
 
+## FIX-FIRST cache-generation correction evidence
+
+`SceneRecordingController` now carries the producer owner ID into the same
+`stateQueue` transaction that validates lifecycle/token state and mutates the
+cached payload/timestamp or recorder append. Idle cache entries carry the
+current owner and anticipated next generation; active entries carry the exact
+token generation. Owner replacement clears the cache atomically, and terminal
+stop/release clears it before returning to idle/released state. Implicit start
+requires an exact current owner and next generation, so a prior coordinator's
+frame cannot seed a replacement take.
+
+`testOwnerReplacementCannotStartFromPreviousIdleCache` covers A's idle frame,
+B replacement, a stale A callback after the swap, and B's fresh timestamp 4.
+`testTerminalStopInvalidatesPreviousOwnerCacheBeforeReplacement` covers the
+same boundary after a terminal writer stop. The existing coordinator rebind,
+foreign-active rejection, and CameraService compare-and-clear tests remain
+unchanged.
+
 ## Verification record
 
 Executed from this worktree on the simulator-only hardware boundary:
@@ -144,6 +162,18 @@ The final second-correction run added the M6-004 route and teardown integration
 suites above: **151/151 passed**, 0 failures, 0 skipped. The retained final
 result bundle is `/private/tmp/setos-m7-002-correction2-final-20260905.xcresult`.
 `git diff --check` passed after the idempotent-rebind correction.
+
+The third-correction RED reproduction failed on the pre-fix cache path as
+expected (`testOwnerReplacementCannotStartFromPreviousIdleCache`), then the
+two direct production regressions passed **2/2**, 0 failures/skips, on iPhone
+Air iOS 26.5. Its result bundle was
+`/private/tmp/setos-m7-002-correction3-reg-20260905.xcresult` and is retained as
+the smallest passing correction evidence. A subsequent full focused run
+and expanded M6-004 run were blocked after test launch by the host's orphaned
+`simctl diagnose` process (no test summary was produced); only the owned
+xcodebuild/diagnostics processes were terminated. Root/coordinator integration
+must rerun the focused and expanded commands cleanly before claiming final
+verification for this correction.
 
 This lane did not use, boot, target, shut down, or erase an iPhone 17 Pro,
 physical iPhone 13, or any physical device. Simulator evidence does not qualify
