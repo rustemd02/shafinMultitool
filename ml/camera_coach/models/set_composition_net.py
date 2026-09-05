@@ -265,20 +265,19 @@ class _ConvBNActivation(nn.Sequential):
 
 
 class _SqueezeExcitation(nn.Module):
-    def __init__(self, input_channels: int, feature_channels: int, squeeze_factor: int = 4):
+    def __init__(self, feature_channels: int, squeeze_factor: int = 4):
         super().__init__()
-        squeeze_channels = _make_divisible(input_channels / squeeze_factor, 8)
-        self.input_channels = input_channels
         self.feature_channels = feature_channels
-        self.squeeze_channels = squeeze_channels
-        self.reduce = nn.Conv2d(feature_channels, squeeze_channels, kernel_size=1)
-        self.expand = nn.Conv2d(squeeze_channels, feature_channels, kernel_size=1)
+        self.squeeze_channels = _make_divisible(feature_channels / squeeze_factor, 8)
+        self.reduce = nn.Conv2d(feature_channels, self.squeeze_channels, kernel_size=1)
+        self.expand = nn.Conv2d(self.squeeze_channels, feature_channels, kernel_size=1)
+        self.gate = nn.Hardsigmoid()
 
     def forward(self, x: Tensor) -> Tensor:
         scale = x.mean(dim=(2, 3), keepdim=True)
         scale = torch.relu(self.reduce(scale))
         # MobileNetV3's squeeze-excitation gate uses hard-sigmoid.
-        scale = torch.clamp((self.expand(scale) + 3.0) / 6.0, 0.0, 1.0)
+        scale = self.gate(self.expand(scale))
         return x * scale
 
 
@@ -312,9 +311,9 @@ class _InvertedResidual(nn.Module):
             nn.ReLU(inplace=True) if activation == "RE" else nn.Hardswish(inplace=True),
         ))
         if use_se:
-            # SET's frozen candidate specification derives the SE bottleneck
-            # from the block input channels, never the expanded width.
-            layers.append(_SqueezeExcitation(in_channels, expanded_channels))
+            # MobileNetV3 derives the SE bottleneck from expanded feature
+            # channels; the gate still returns to the expanded width.
+            layers.append(_SqueezeExcitation(expanded_channels))
         layers.extend(
             [
                 nn.Conv2d(expanded_channels, out_channels, kernel_size=1, bias=False),

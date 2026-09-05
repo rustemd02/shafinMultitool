@@ -21,6 +21,8 @@ import torch
 from .set_composition_net import (
     CandidateA,
     CandidateB,
+    _InvertedResidual,
+    _SqueezeExcitation,
     SETCompositionNetInputs,
     SETCompositionNetManifest,
     count_macs,
@@ -63,6 +65,8 @@ _EXPECTED_SMALL_050 = (
     (48, 288, 48, 5, 1, True, "HS"),
     (48, 288, 48, 5, 1, True, "HS"),
 )
+_EXPECTED_LARGE_SE_SQUEEZE = (None, None, None, 16, 24, 24, None, None, None, None, 88, 128, 128, 184, 184)
+_EXPECTED_SMALL_SE_SQUEEZE = (8, None, None, 16, 32, 32, 16, 24, 40, 72, 72)
 
 
 def _tensor_hash(value: torch.Tensor) -> str:
@@ -99,18 +103,103 @@ def _make_inputs(contract: SETCompositionNetManifest, *, absent_roi: bool = Fals
     return SETCompositionNetInputs(full, crop, roi, mask, scalar, missing)
 
 
+def _activation_code(module: torch.nn.Module) -> str:
+    if isinstance(module, torch.nn.ReLU):
+        return "RE"
+    if isinstance(module, torch.nn.Hardswish):
+        return "HS"
+    raise AssertionError(f"unexpected MobileNetV3 activation: {type(module).__name__}")
+
+
+def _assert_actual_backbone(
+    backbone: torch.nn.Module,
+    expected_schedule: tuple[tuple[int, int, int, int, int, bool, str], ...],
+    expected_se_squeeze: tuple[int | None, ...],
+    family: str,
+    width_multiplier: float,
+) -> None:
+    assert backbone.family == family and backbone.width_multiplier == width_multiplier
+    blocks = [module for module in backbone.features if isinstance(module, _InvertedResidual)]
+    assert len(blocks) == len(expected_schedule)
+    assert len(expected_se_squeeze) == len(expected_schedule)
+    for block, expected, expected_squeeze in zip(blocks, expected_schedule, expected_se_squeeze):
+        expected_input, expected_expanded, expected_output, expected_kernel, expected_stride, expected_se, expected_activation = expected
+        children = list(block.block)
+        depthwise = next(
+            child for child in children
+            if isinstance(child, torch.nn.Sequential)
+            and isinstance(child[0], torch.nn.Conv2d)
+            and child[0].groups == child[0].in_channels
+        )
+        depthwise_conv = depthwise[0]
+        output_conv = children[-2]
+        assert isinstance(output_conv, torch.nn.Conv2d)
+        actual_input = depthwise_conv.in_channels
+        if expected_expanded != expected_input:
+            expansion = children[0]
+            assert isinstance(expansion, torch.nn.Sequential)
+            expansion_conv = expansion[0]
+            assert isinstance(expansion_conv, torch.nn.Conv2d)
+            assert expansion_conv.kernel_size == (1, 1)
+            assert expansion_conv.in_channels == expected_input
+            assert expansion_conv.out_channels == expected_expanded
+            assert _activation_code(expansion[-1]) == expected_activation
+            actual_input = expansion_conv.in_channels
+        else:
+            assert not (
+                isinstance(children[0], torch.nn.Sequential)
+                and isinstance(children[0][0], torch.nn.Conv2d)
+                and children[0][0].groups == 1
+            )
+        assert (actual_input, depthwise_conv.in_channels, output_conv.out_channels) == (
+            expected_input, expected_expanded, expected_output
+        )
+        assert output_conv.in_channels == depthwise_conv.out_channels == expected_expanded
+        assert depthwise_conv.kernel_size == (expected_kernel, expected_kernel)
+        assert depthwise_conv.stride == (expected_stride, expected_stride)
+        assert depthwise_conv.groups == expected_expanded
+        assert _activation_code(depthwise[-1]) == expected_activation
+        actual_se = next((child for child in children if isinstance(child, _SqueezeExcitation)), None)
+        assert (actual_se is not None) == expected_se
+        if actual_se is not None:
+            assert expected_squeeze is not None
+            assert actual_se.reduce.in_channels == expected_expanded
+            assert actual_se.reduce.out_channels == expected_squeeze
+            assert actual_se.expand.in_channels == expected_squeeze
+            assert actual_se.expand.out_channels == expected_expanded
+            assert isinstance(actual_se.gate, torch.nn.Hardsigmoid)
+        else:
+            assert expected_squeeze is None
+        actual_stride = depthwise_conv.stride[0]
+        actual_residual = actual_stride == 1 and actual_input == output_conv.out_channels
+        assert block.use_residual == actual_residual
+        assert block.use_residual == (expected_stride == 1 and expected_input == expected_output)
+
+
 def _assert_mobilenet_schedules(candidate_a: torch.nn.Module, candidate_b: torch.nn.Module) -> None:
-    large = candidate_a.full_frame_backbone
-    crop = candidate_a.subject_crop_backbone
-    ablation = candidate_b.backbone
-    assert large.family == "large" and large.width_multiplier == 0.75
-    assert crop.family == "small" and crop.width_multiplier == 0.50
-    assert ablation.family == "small" and ablation.width_multiplier == 0.50
-    assert len(large.block_schedule) == 15
-    assert len(crop.block_schedule) == len(ablation.block_schedule) == 11
-    assert tuple(large.block_schedule) == _EXPECTED_LARGE_075
-    assert tuple(crop.block_schedule) == _EXPECTED_SMALL_050
-    assert tuple(ablation.block_schedule) == _EXPECTED_SMALL_050
+    # Inspect actual Conv2d/Sequential modules, not the convenience schedule
+    # metadata attached to the backbone.
+    _assert_actual_backbone(
+        candidate_a.full_frame_backbone,
+        _EXPECTED_LARGE_075,
+        _EXPECTED_LARGE_SE_SQUEEZE,
+        "large",
+        0.75,
+    )
+    _assert_actual_backbone(
+        candidate_a.subject_crop_backbone,
+        _EXPECTED_SMALL_050,
+        _EXPECTED_SMALL_SE_SQUEEZE,
+        "small",
+        0.50,
+    )
+    _assert_actual_backbone(
+        candidate_b.backbone,
+        _EXPECTED_SMALL_050,
+        _EXPECTED_SMALL_SE_SQUEEZE,
+        "small",
+        0.50,
+    )
 
 
 def _assert_shapes(outputs: dict[str, torch.Tensor], contract: SETCompositionNetManifest) -> None:
