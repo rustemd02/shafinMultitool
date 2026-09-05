@@ -461,12 +461,169 @@ def run() -> None:
         else:
             raise AssertionError("mutated admission evidence emitted a passing receipt")
 
+        def forged_admission_record(base: object, admission: object) -> object:
+            forged = object.__new__(AUDIT.SplitRecord)
+            for field_name in ("record_id", "asset_ids", "bucket", "families", "rights_disposition", "review_status"):
+                object.__setattr__(forged, field_name, getattr(base, field_name))
+            object.__setattr__(forged, "_admission", admission)
+            return forged
+
+        base_record = split_records[0]
+        base_admission = base_record._admission
+        valid_review_json = base_admission.review_json
+
+        replayed_admission = forged_admission_record(split_records[1], base_admission)
+        try:
+            AUDIT.split_records(
+                [replayed_admission],
+                output,
+                train_ratio=1.0,
+                calibration_ratio=0.0,
+                locked_test_ratio=0.0,
+            )
+        except AUDIT.AuditInputError as exc:
+            assert "split_record_admission_conflict" in str(exc)
+        else:
+            raise AssertionError("admission evidence replayed onto another record")
+
+        mutated_record_id = copy.copy(base_record)
+        object.__setattr__(mutated_record_id, "record_id", "split-mutated")
+        try:
+            AUDIT.split_records(
+                [mutated_record_id],
+                output,
+                train_ratio=1.0,
+                calibration_ratio=0.0,
+                locked_test_ratio=0.0,
+            )
+        except AUDIT.AuditInputError as exc:
+            assert "split_record_admission_conflict" in str(exc)
+        else:
+            raise AssertionError("mutated record projection emitted a passing receipt")
+
+        wrong_digest = AUDIT._SplitAdmission(
+            review_json=valid_review_json,
+            rights_disposition=base_admission.rights_disposition,
+            review_status=base_admission.review_status,
+            record_sha256="0" * 64,
+        )
+        try:
+            AUDIT.split_records(
+                [forged_admission_record(base_record, wrong_digest)],
+                output,
+                train_ratio=1.0,
+                calibration_ratio=0.0,
+                locked_test_ratio=0.0,
+            )
+        except AUDIT.AuditInputError as exc:
+            assert "split_record_admission_conflict" in str(exc)
+        else:
+            raise AssertionError("arbitrary admission digest was accepted")
+
+        noncanonical_review = AUDIT._SplitAdmission(
+            review_json=valid_review_json + " ",
+            rights_disposition=base_admission.rights_disposition,
+            review_status=base_admission.review_status,
+            record_sha256=base_admission.record_sha256,
+        )
+        try:
+            AUDIT.split_records(
+                [forged_admission_record(base_record, noncanonical_review)],
+                output,
+                train_ratio=1.0,
+                calibration_ratio=0.0,
+                locked_test_ratio=0.0,
+            )
+        except AUDIT.AuditInputError as exc:
+            assert "split_record_admission_invalid" in str(exc)
+        else:
+            raise AssertionError("non-canonical admission evidence was accepted")
+
+        status_only = AUDIT._SplitAdmission(
+            review_json=AUDIT._canonical_json({"status": "dual_reviewed"}),
+            rights_disposition=base_admission.rights_disposition,
+            review_status=base_admission.review_status,
+            record_sha256=base_admission.record_sha256,
+        )
+        omitted_review_evidence = object.__new__(AUDIT._SplitAdmission)
+        object.__setattr__(omitted_review_evidence, "rights_disposition", base_admission.rights_disposition)
+        object.__setattr__(omitted_review_evidence, "review_status", base_admission.review_status)
+        object.__setattr__(omitted_review_evidence, "record_sha256", base_admission.record_sha256)
+        mismatched_status = AUDIT._SplitAdmission(
+            review_json=valid_review_json,
+            rights_disposition=base_admission.rights_disposition,
+            review_status="adjudicated",
+            record_sha256=base_admission.record_sha256,
+        )
+        for mismatched, expected in (
+            (mismatched_status, "split_record_admission_conflict"),
+        ):
+            try:
+                AUDIT.split_records(
+                    [forged_admission_record(base_record, mismatched)],
+                    output,
+                    train_ratio=1.0,
+                    calibration_ratio=0.0,
+                    locked_test_ratio=0.0,
+                )
+            except AUDIT.AuditInputError as exc:
+                assert expected in str(exc), exc
+            else:
+                raise AssertionError("mismatched admission status was accepted")
+        for forged_review, expected in (
+            (status_only, "review_not_admissible"),
+            (omitted_review_evidence, "split_record_admission_invalid"),
+            (
+                AUDIT._SplitAdmission(
+                    review_json=AUDIT._canonical_json({**json.loads(valid_review_json), "status": "rejected"}),
+                    rights_disposition=base_admission.rights_disposition,
+                    review_status=base_admission.review_status,
+                    record_sha256=base_admission.record_sha256,
+                ),
+                "review_not_admissible",
+            ),
+            (
+                AUDIT._SplitAdmission(
+                    review_json=AUDIT._canonical_json({**json.loads(valid_review_json), "status": "unreviewed"}),
+                    rights_disposition=base_admission.rights_disposition,
+                    review_status=base_admission.review_status,
+                    record_sha256=base_admission.record_sha256,
+                ),
+                "review_not_admissible",
+            ),
+        ):
+            try:
+                AUDIT.split_records(
+                    [forged_admission_record(base_record, forged_review)],
+                    output,
+                    train_ratio=1.0,
+                    calibration_ratio=0.0,
+                    locked_test_ratio=0.0,
+                )
+            except AUDIT.AuditInputError as exc:
+                assert expected in str(exc), exc
+            else:
+                raise AssertionError("forged denied/unreviewed review evidence was accepted")
+
         split_jsonl = root / "split-input.jsonl"
+        jsonl_header = split_document([])
+        jsonl_header.pop("entries")
         split_jsonl.write_text(
-            "\n".join(json.dumps(row) for row in [split_document([]), *split_entries]) + "\n",
+            "\n".join(json.dumps(row) for row in [jsonl_header, *split_entries]) + "\n",
             encoding="utf-8",
         )
         assert AUDIT.load_split_manifest(split_jsonl) == split_records
+        mixed_jsonl = root / "mixed-inline-entries.jsonl"
+        mixed_jsonl.write_text(
+            "\n".join(json.dumps(row) for row in [split_document([]), *split_entries]) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            AUDIT.load_split_manifest(mixed_jsonl)
+        except AUDIT.AuditInputError as exc:
+            assert "inline_entries_in_jsonl_header" in str(exc)
+        else:
+            raise AssertionError("JSONL header inline entries were silently discarded")
         for header_mutation, expected in (
             (lambda value: value.pop("manifest_type"), "invalid_split_manifest_type"),
             (lambda value: value.__setitem__("manifest_type", 1), "invalid_split_manifest_type"),
@@ -479,6 +636,7 @@ def run() -> None:
             (lambda value: value.__setitem__("record_count", 99), "split_manifest_record_count_mismatch"),
         ):
             bad_header = split_document([])
+            bad_header.pop("entries")
             header_mutation(bad_header)
             bad_header_path = root / f"bad-header-{expected}.jsonl"
             bad_header_path.write_text(
@@ -1048,7 +1206,7 @@ def run() -> None:
         "M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity "
         "split_schema_negative_cases closed_input_topology review_history_contract "
         "seeded_assignment_receipt_tamper family_hash_owner_tamper split_admission_boundary "
-        "header_value_validation"
+        "admission_revalidation jsonl_header_representation header_value_validation"
     )
 
 

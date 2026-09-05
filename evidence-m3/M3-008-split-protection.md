@@ -21,10 +21,16 @@ in Git.
   container/header, record, provenance, capture, media, sequence/frame,
   review, vote, or adjudication keys.
 - `SplitRecord` construction is parser-only: the public constructor is blocked,
-  parser output carries a private immutable admission token plus a digest of
-  the complete rights/review evidence, and the builder rejects records without
-  that admission. The admission digest is included in the canonical input hash,
-  so a status string cannot stand in for release evidence.
+  and parser output carries a private immutable admission object containing the
+  canonical review JSON, rights/status values, and a SHA-256 binding of the
+  complete record projection (record ID, assets, bucket, families, rights,
+  status, and full review evidence). At every public builder boundary the
+  canonical JSON is parsed and checked, the authoritative closed review and
+  release validator is rerun, the rights allowlist is rerun, and the complete
+  binding digest is recomputed. Replay onto another record, mutation, omitted
+  or status-only evidence, denied/unreviewed evidence, non-canonical JSON, and
+  arbitrary digest replacement are rejected; a status string cannot stand in
+  for release evidence.
 - Protected connected components union source shoot, scene, person, location,
   time, derivation, optional take/device, sequence, and dedup-cluster families.
   Components are assigned independently within explicit `organic` and
@@ -53,6 +59,8 @@ temporary directory. It verifies M3-007 and M3-008 together, including each
 protected-family leakage case: source shoot, scene, person, location, time,
 derivation, sequence, take, device, and dedup cluster. Shared protected families are
 co-located in one component and every accepted receipt reports zero leakage.
+JSONL uses a header-only first row; an inline `entries` value in a list/JSONL
+header is rejected rather than validated and discarded.
 It also exercises bucket isolation, changed-seed integrity, duplicate and
 missing IDs, rights/review/bucket/split rejection, absent cluster assets,
 non-finite/bool/wrong-type parameters, explicit JSON/JSONL header requirements,
@@ -71,8 +79,8 @@ organic and synthetic buckets.
 
 ```text
 $ python3 tools/dataset/tests/fixtures/camera_dataset_audit_fixture.py
-M3-008 split seed=1 output_sha256=1714c162bd2597c3b029214afbd620a9a1aae8c99fe1c67f30c78e9db0b4a5d6 seed5_output_sha256=1ca99d73980aec1166afd0fe03944f74d4baabf13a01264f3f010691d0157449 cli_sha256=1095035ab72b3dfa1aaa3ea7b0159a5a0b1a45c0f6a2fc7734e4817af45a6200 input_sha256=5256fdda22166c1d1a520b850bdf939d69ed3adffa903ee848413f4dd58c0b2a components=3 per_split={"calibration":{"buckets":{"organic":{"component_count":1,"record_count":2},"synthetic":{"component_count":0,"record_count":0}},"component_count":1,"record_count":2},"locked_test":{"buckets":{"organic":{"component_count":0,"record_count":0},"synthetic":{"component_count":0,"record_count":0}},"component_count":0,"record_count":0},"train":{"buckets":{"organic":{"component_count":1,"record_count":1},"synthetic":{"component_count":1,"record_count":1}},"component_count":2,"record_count":2}}
-PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated sequence_family input_order_independent malformed_rejected rights_required media_map_conflict schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity split_schema_negative_cases closed_input_topology review_history_contract seeded_assignment_receipt_tamper family_hash_owner_tamper split_admission_boundary header_value_validation
+M3-008 split seed=1 output_sha256=0786e4b4d4194c077f3007e4bab8a930b49a8cab644f8cfba98db76398767874 seed5_output_sha256=52814979b1fb0eb0529563b6d8a670379c62c0b4f383ab3918a3b0189cc63071 cli_sha256=d606a1de2ff128d0a1666cbe5e3a61f91a4805c5a33f3593c05ef0a184ce4346 input_sha256=043df9257c2bff5950180dfecdd7a9e6dd881fc3b8e042cf325280383526ac12 components=3 per_split={"calibration":{"buckets":{"organic":{"component_count":1,"record_count":2},"synthetic":{"component_count":0,"record_count":0}},"component_count":1,"record_count":2},"locked_test":{"buckets":{"organic":{"component_count":0,"record_count":0},"synthetic":{"component_count":0,"record_count":0}},"component_count":0,"record_count":0},"train":{"buckets":{"organic":{"component_count":1,"record_count":1},"synthetic":{"component_count":1,"record_count":1}},"component_count":2,"record_count":2}}
+PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated sequence_family input_order_independent malformed_rejected rights_required media_map_conflict schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity split_schema_negative_cases closed_input_topology review_history_contract seeded_assignment_receipt_tamper family_hash_owner_tamper split_admission_boundary admission_revalidation jsonl_header_representation header_value_validation
 ```
 
 The fixture's CLI subprocess runs the same seed and ratios with

@@ -173,6 +173,17 @@ SPLIT_ADJUDICATION_FIELDS = {
     "based_on_vote_ids",
     "outcome",
 }
+SPLIT_FAMILY_CATEGORIES = {
+    "source_shoot",
+    "scene",
+    "person",
+    "location",
+    "time",
+    "derivation",
+    "sequence",
+    "take",
+    "device",
+}
 
 
 class AuditInputError(ValueError):
@@ -180,7 +191,6 @@ class AuditInputError(ValueError):
 
 
 _CAMERA_COACH_CHECK: Any | None = None
-_ADMISSION_TOKEN = object()
 
 
 @dataclass(frozen=True)
@@ -198,10 +208,17 @@ class MediaItem:
 
 @dataclass(frozen=True)
 class _SplitAdmission:
-    token: object
+    """Canonical evidence and binding for a parser-admitted split record.
+
+    This object is intentionally not treated as a capability.  The splitter
+    re-parses and re-validates ``review_json`` and recomputes
+    ``record_sha256`` at every public boundary.
+    """
+
+    review_json: str
     rights_disposition: str
     review_status: str
-    evidence_sha256: str
+    record_sha256: str
 
 
 @dataclass(frozen=True, init=False)
@@ -276,10 +293,18 @@ class _UnionFind:
             self.rank[left_root] += 1
 
 
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
 def _json_digest(value: Any) -> str:
-    return hashlib.sha256(
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def sha256_file(path: Path) -> str:
@@ -907,7 +932,7 @@ def _split_validate_topology(payload: Any) -> None:
         _split_allowlist(payload[0], SPLIT_HEADER_FIELDS, "manifest[0]")
         _split_validate_header_values(payload[0], "manifest[0]")
         if "entries" in payload[0]:
-            _split_validate_record_list(payload[0]["entries"], "manifest[0].entries")
+            raise AuditInputError("inline_entries_in_jsonl_header")
         _split_validate_record_list(payload[1:], "manifest")
         return
     raise AuditInputError("invalid_split_manifest_topology")
@@ -1030,17 +1055,24 @@ def _release_review_checker() -> Any:
     return checker
 
 
-def _split_review_status(entry: dict[str, Any]) -> str:
-    review = entry.get("review")
-    if not isinstance(review, dict):
-        if "review_status" in entry:
-            raise AuditInputError("review_status_only_not_admissible")
-        raise AuditInputError("review_not_admissible")
-    if "review_status" in entry:
-        raise AuditInputError("review_status_only_not_admissible")
+def _split_validate_review_evidence(review: Any, path: str = "review") -> str:
+    """Validate one canonical review object at every admission boundary."""
+
+    _split_allowlist(review, SPLIT_REVIEW_FIELDS, path)
+    for field_name, allowed in (
+        ("vote_history", SPLIT_VOTE_FIELDS),
+        ("adjudication_history", SPLIT_ADJUDICATION_FIELDS),
+    ):
+        history = review.get(field_name)
+        if history is None:
+            continue
+        if not isinstance(history, list):
+            raise AuditInputError(f"invalid_split_list: {path}.{field_name}")
+        for index, item in enumerate(history):
+            _split_allowlist(item, allowed, f"{path}.{field_name}[{index}]")
     checker = _release_review_checker()
     errors: list[str] = []
-    checker._validate_closed_keys(review, "review", "review", errors)
+    checker._validate_closed_keys(review, "review", path, errors)
     checker._validate_review(review, errors)
     # The release helper has identical admission rules for train and
     # calibration; use train as the unassigned-input gate.
@@ -1053,28 +1085,176 @@ def _split_review_status(entry: dict[str, Any]) -> str:
     return status
 
 
-def _split_admission_digest(rights_disposition: str, review: dict[str, Any]) -> str:
+def _split_review_status(entry: dict[str, Any]) -> str:
+    review = entry.get("review")
+    if not isinstance(review, dict):
+        if "review_status" in entry:
+            raise AuditInputError("review_status_only_not_admissible")
+        raise AuditInputError("review_not_admissible")
+    if "review_status" in entry:
+        raise AuditInputError("review_status_only_not_admissible")
+    return _split_validate_review_evidence(review)
+
+
+def _parse_canonical_review(review_json: Any, record_id: str) -> dict[str, Any]:
+    if not isinstance(review_json, str):
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    try:
+        review = json.loads(review_json)
+        canonical = _canonical_json(review)
+    except (json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}") from exc
+    if not isinstance(review, dict) or canonical != review_json:
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    return review
+
+
+def _split_record_projection(
+    *,
+    record_id: str,
+    asset_ids: tuple[str, ...],
+    bucket: str,
+    families: tuple[tuple[str, tuple[str, ...]], ...],
+    rights_disposition: str,
+    review_status: str,
+    review: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the complete immutable record/evidence projection for binding."""
+
+    return {
+        "record_id": record_id,
+        "asset_ids": list(asset_ids),
+        "bucket": bucket,
+        "families": {category: list(values) for category, values in families},
+        "rights_disposition": rights_disposition,
+        "review_status": review_status,
+        "review": review,
+    }
+
+
+def _split_record_digest(
+    *,
+    record_id: str,
+    asset_ids: tuple[str, ...],
+    bucket: str,
+    families: tuple[tuple[str, tuple[str, ...]], ...],
+    rights_disposition: str,
+    review_status: str,
+    review: dict[str, Any],
+) -> str:
     return _json_digest(
-        {
-            "rights_disposition": rights_disposition,
-            "review": review,
-        }
+        _split_record_projection(
+            record_id=record_id,
+            asset_ids=asset_ids,
+            bucket=bucket,
+            families=families,
+            rights_disposition=rights_disposition,
+            review_status=review_status,
+            review=review,
+        )
     )
 
 
-def _validate_split_admission(record: SplitRecord) -> None:
-    record_id = getattr(record, "record_id", "<unknown>")
-    admission = getattr(record, "_admission", None)
-    if not isinstance(admission, _SplitAdmission) or admission.token is not _ADMISSION_TOKEN:
-        raise AuditInputError(f"split_record_admission_required: {record_id}")
-    record_rights = getattr(record, "rights_disposition", None)
-    record_status = getattr(record, "review_status", None)
-    if admission.rights_disposition != record_rights:
-        raise AuditInputError(f"split_record_admission_conflict: rights_disposition:{record_id}")
-    if admission.review_status != record_status:
-        raise AuditInputError(f"split_record_admission_conflict: review_status:{record_id}")
-    if not isinstance(admission.evidence_sha256, str) or not SHA256_RE.fullmatch(admission.evidence_sha256):
+def _split_record_projection_from_record(
+    record: SplitRecord,
+) -> tuple[dict[str, Any], str]:
+    """Validate immutable field shapes and return the record projection."""
+
+    record_id = getattr(record, "record_id", None)
+    try:
+        record_id = _ensure_id(record_id, "record_id")
+    except AuditInputError as exc:
+        raise AuditInputError("split_record_admission_invalid: record_id") from exc
+
+    asset_ids = getattr(record, "asset_ids", None)
+    if type(asset_ids) is not tuple or not asset_ids:
         raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    try:
+        normalized_assets = tuple(_ensure_id(value, "asset_id") for value in asset_ids)
+    except AuditInputError as exc:
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}") from exc
+    if normalized_assets != asset_ids or len(set(asset_ids)) != len(asset_ids):
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+
+    bucket = getattr(record, "bucket", None)
+    if not isinstance(bucket, str) or bucket not in BUCKETS:
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    rights_disposition = getattr(record, "rights_disposition", None)
+    if not isinstance(rights_disposition, str):
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    review_status = getattr(record, "review_status", None)
+    if not isinstance(review_status, str) or review_status not in RESOLVED_REVIEW_STATUSES:
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+
+    families = getattr(record, "families", None)
+    if type(families) is not tuple:
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    normalized_families: list[tuple[str, tuple[str, ...]]] = []
+    for pair in families:
+        if type(pair) is not tuple or len(pair) != 2:
+            raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+        category, values = pair
+        if not isinstance(category, str) or category not in SPLIT_FAMILY_CATEGORIES:
+            raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+        if type(values) is not tuple or not values:
+            raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+        try:
+            normalized_values = tuple(_ensure_id(value, f"families.{category}") for value in values)
+        except AuditInputError as exc:
+            raise AuditInputError(f"split_record_admission_invalid: {record_id}") from exc
+        if normalized_values != values or len(set(values)) != len(values):
+            raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+        normalized_families.append((category, values))
+    categories = [category for category, _ in normalized_families]
+    if categories != sorted(categories) or len(set(categories)) != len(categories):
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    projection = _split_record_projection(
+        record_id=record_id,
+        asset_ids=asset_ids,
+        bucket=bucket,
+        families=tuple(normalized_families),
+        rights_disposition=rights_disposition,
+        review_status=review_status,
+        review={},
+    )
+    return projection, record_id
+
+
+def _validate_split_admission(record: SplitRecord) -> None:
+    admission = getattr(record, "_admission", None)
+    record_id = getattr(record, "record_id", "<unknown>")
+    if not isinstance(admission, _SplitAdmission):
+        raise AuditInputError(f"split_record_admission_required: {record_id}")
+    projection, record_id = _split_record_projection_from_record(record)
+    review = _parse_canonical_review(getattr(admission, "review_json", None), record_id)
+    try:
+        status = _split_validate_review_evidence(review, f"admission.review:{record_id}")
+    except AuditInputError as exc:
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}: {exc}") from exc
+    record_rights = projection["rights_disposition"]
+    record_status = projection["review_status"]
+    admission_rights = getattr(admission, "rights_disposition", None)
+    admission_status = getattr(admission, "review_status", None)
+    admission_digest = getattr(admission, "record_sha256", None)
+    if admission_rights != record_rights:
+        raise AuditInputError(f"split_record_admission_conflict: rights_disposition:{record_id}")
+    if record_rights not in ALLOWED_RIGHTS or admission_rights not in ALLOWED_RIGHTS:
+        raise AuditInputError(f"rights_not_admissible: {record_id}")
+    if admission_status != record_status or status != record_status:
+        raise AuditInputError(f"split_record_admission_conflict: review_status:{record_id}")
+    if not isinstance(admission_digest, str) or not SHA256_RE.fullmatch(admission_digest):
+        raise AuditInputError(f"split_record_admission_invalid: {record_id}")
+    expected_digest = _split_record_digest(
+        record_id=projection["record_id"],
+        asset_ids=tuple(projection["asset_ids"]),
+        bucket=projection["bucket"],
+        families=tuple((category, tuple(values)) for category, values in projection["families"].items()),
+        rights_disposition=projection["rights_disposition"],
+        review_status=projection["review_status"],
+        review=review,
+    )
+    if admission_digest != expected_digest:
+        raise AuditInputError(f"split_record_admission_conflict: digest:{record_id}")
 
 
 def _split_record_entry(entry: dict[str, Any]) -> SplitRecord:
@@ -1183,17 +1363,31 @@ def _split_record_entry(entry: dict[str, Any]) -> SplitRecord:
     families["sequence"] = sequence_ids
     assets = _split_asset_values(entry, provenance, capture)
     review_status = _split_review_status(entry)
+    review = entry["review"]
+    try:
+        review_json = _canonical_json(review)
+    except (TypeError, ValueError) as exc:
+        raise AuditInputError("review_not_admissible") from exc
+    families_tuple = tuple((category, values) for category, values in sorted(families.items()) if values)
     admission = _SplitAdmission(
-        token=_ADMISSION_TOKEN,
+        review_json=review_json,
         rights_disposition=rights,
         review_status=review_status,
-        evidence_sha256=_split_admission_digest(rights, entry["review"]),
+        record_sha256=_split_record_digest(
+            record_id=record_id,
+            asset_ids=assets,
+            bucket=bucket,
+            families=families_tuple,
+            rights_disposition=rights,
+            review_status=review_status,
+            review=review,
+        ),
     )
     record = object.__new__(SplitRecord)
     object.__setattr__(record, "record_id", record_id)
     object.__setattr__(record, "asset_ids", assets)
     object.__setattr__(record, "bucket", bucket)
-    object.__setattr__(record, "families", tuple((category, values) for category, values in sorted(families.items()) if values))
+    object.__setattr__(record, "families", families_tuple)
     object.__setattr__(record, "rights_disposition", rights)
     object.__setattr__(record, "review_status", review_status)
     object.__setattr__(record, "_admission", admission)
@@ -1250,7 +1444,7 @@ def _canonical_split_records(records: Iterable[SplitRecord]) -> list[dict[str, A
             "families": {category: list(values) for category, values in record.families},
             "rights_disposition": record.rights_disposition,
             "review_status": record.review_status,
-            "admission_sha256": record._admission.evidence_sha256,
+            "admission_sha256": record._admission.record_sha256,
         }
         for record in sorted(records, key=lambda item: item.record_id)
     ]
