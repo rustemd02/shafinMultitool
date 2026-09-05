@@ -170,6 +170,15 @@ struct PauseActionRow: Equatable, Sendable {
     let targetRegion: NormalizedRect?
     let overlayHintId: String?
     let traceRefId: String?
+
+    /// The same deterministic order is used by the pipeline and Decision
+    /// Trace so the provenance-bound action is always the first chosen row.
+    static func canonicalOrder(_ lhs: PauseActionRow, _ rhs: PauseActionRow) -> Bool {
+        if lhs.priority != rhs.priority {
+            return lhs.priority < rhs.priority
+        }
+        return lhs.actionId < rhs.actionId
+    }
 }
 
 struct PauseCritiquePresentation: Equatable, Sendable {
@@ -3844,6 +3853,7 @@ final class AnalysisPipeline: ObservableObject {
         let manager: CameraManager?
         let registrations: [UUID]
         let tasks: [Task<Void, Never>]
+        let preservesPauseReview: Bool
     }
 
     @discardableResult
@@ -3894,12 +3904,12 @@ final class AnalysisPipeline: ObservableObject {
         return true
     }
 
-    func releaseAndWait() async {
-        let operation = makeReleaseOperation()
+    func releaseAndWait(preservingCurrentPauseReview: Bool = false) async {
+        let operation = makeReleaseOperation(preservingCurrentPauseReview: preservingCurrentPauseReview)
         await operation.value
     }
 
-    private func makeReleaseOperation() -> Task<Void, Never> {
+    private func makeReleaseOperation(preservingCurrentPauseReview: Bool = false) -> Task<Void, Never> {
         registrationLock.lock()
         lifecycleLock.lock()
         if let existing = releaseTask, releaseInProgress {
@@ -3929,7 +3939,8 @@ final class AnalysisPipeline: ObservableObject {
             generation: releaseGeneration,
             manager: manager,
             registrations: ownedRegistrations,
-            tasks: ownedTasks
+            tasks: ownedTasks,
+            preservesPauseReview: preservingCurrentPauseReview
         )
         releaseInProgress = true
         let operation = Task<Void, Never> { [weak self] in
@@ -3956,7 +3967,9 @@ final class AnalysisPipeline: ObservableObject {
 
         await MainActor.run { [weak self] in
             guard let self, self.isGenerationCurrent(snapshot.generation) else { return }
-            self.clearPresentationStateOnMainActor()
+            self.clearPresentationStateOnMainActor(
+                preservingPauseReview: snapshot.preservesPauseReview
+            )
         }
         await waitForMainQueueFence()
 
@@ -5982,7 +5995,7 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     @MainActor
-    private func clearPresentationStateOnMainActor() {
+    private func clearPresentationStateOnMainActor(preservingPauseReview: Bool = false) {
         subjectRegions = []
         overlayState = OverlayState(primaryBoundingBox: nil,
                                      horizonAngle: 0,
@@ -5996,13 +6009,17 @@ final class AnalysisPipeline: ObservableObject {
         liveSubjectLifecycleContext = nil
         liveSubjectSource = nil
         resetLiveEpisodeStream()
-        currentPauseCritique = nil
+        if !preservingPauseReview {
+            currentPauseCritique = nil
+        }
         currentOverlayAnnotations = []
         liveHintShownAt = .distantPast
         liveHintExpiresAt = .distantPast
         lastLiveMotionBecameUnstableAt = nil
         lastOverlayPublishAt = .distantPast
-        currentPauseTraceBundle = nil
+        if !preservingPauseReview {
+            currentPauseTraceBundle = nil
+        }
         currentLiveFusionTraceBundle = nil
         currentDemoOverlayAnnotations = []
         demoSubjectTrack = nil
@@ -6041,7 +6058,7 @@ final class AnalysisPipeline: ObservableObject {
         return fence.publishIfValid(body)
     }
 
-    func clearPausePresentationState() {
+    func clearPausePresentationState(preservingCurrentCritique: Bool = false) {
         invalidatePausePublicationFence()
 #if DEBUG
         clearPauseAnalysisTimeoutTriggerForTesting()
@@ -6061,11 +6078,15 @@ final class AnalysisPipeline: ObservableObject {
         }
         cancelPauseReasoningTask()
         lastRefinedPauseFrameId = nil
-        currentPauseTraceBundle = nil
+        if !preservingCurrentCritique {
+            currentPauseTraceBundle = nil
+        }
         let generation = currentGeneration()
         DispatchQueue.main.async {
             guard self.isGenerationCurrent(generation) else { return }
-            self.currentPauseCritique = nil
+            if !preservingCurrentCritique {
+                self.currentPauseCritique = nil
+            }
             self.currentOverlayAnnotations = []
         }
     }
@@ -9028,9 +9049,14 @@ final class AnalysisPipeline: ObservableObject {
             actions = semanticActionRows
         }
 
+        // Decision Trace presents rows by this same order. Canonicalizing at
+        // the producer keeps `actions.first` and the displayed first row the
+        // same identity before linked evidence is created.
+        let canonicalActions = actions.sorted(by: PauseActionRow.canonicalOrder)
+
         let effectiveVerdict = preservesGoodFrameActions ? FrameVerdict.good : (contextualCorrection?.verdict ?? critique.verdict)
         let noChangeRationale: String?
-        if effectiveVerdict == .good && actions.isEmpty {
+        if effectiveVerdict == .good && canonicalActions.isEmpty {
             noChangeRationale = nonEmpty(semanticTips.first?.pauseText)
                 ?? nonEmpty(plan.noChangeRationale)
                 ?? critique.summary.whyGood
@@ -9050,7 +9076,7 @@ final class AnalysisPipeline: ObservableObject {
             verdict: effectiveVerdict,
             baseConfidence: critique.verdictConfidence,
             strengths: strengths,
-            actions: actions
+            actions: canonicalActions
         )
         let traceRootIds = preservesGoodFrameActions
             ? ["cinematic_good_frame_action_preservation"] + critique.traceRefs
@@ -9068,7 +9094,7 @@ final class AnalysisPipeline: ObservableObject {
             whyProblematic: contextualCorrection?.whyProblematic ?? critique.summary.whyProblematic,
             strengths: Array(strengths),
             issues: Array(issues),
-            actions: actions,
+            actions: canonicalActions,
             noChangeRationale: noChangeRationale,
             assumptions: assumptions,
             traceRootIds: traceRootIds,
@@ -9076,7 +9102,7 @@ final class AnalysisPipeline: ObservableObject {
             linkedEvidence: makePauseLinkedEvidenceProjection(
                 critique: critique,
                 plan: plan,
-                actions: actions
+                actions: canonicalActions
             )
         )
     }

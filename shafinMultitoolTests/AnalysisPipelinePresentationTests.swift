@@ -2560,6 +2560,64 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertEqual(trace.actionRows.first?.linkedEvidenceIds, ["iss_background"])
     }
 
+    func testPauseProjectionUsesDecisionTraceOrderWhenSemanticRankConflictsWithPriority() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let frameID = "pause-action-order"
+        let critique = makeCritiqueWithTwoIssues(frameId: frameID)
+        let semanticRankFirst = RecommendationAction(
+            id: "semantic_rank_first",
+            actionType: .moveFrameLeft,
+            priority: 2,
+            targetRegion: nil,
+            linkedIssueIds: ["iss_high"],
+            expectedOutcome: "Сместите камеру левее.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.4,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        let priorityFirst = RecommendationAction(
+            id: "priority_first",
+            actionType: .reduceBackgroundDistractions,
+            priority: 1,
+            targetRegion: nil,
+            linkedIssueIds: ["iss_low"],
+            expectedOutcome: "Упростите фон.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.4,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: frameID,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: semanticRankFirst,
+            secondaryActions: [priorityFirst],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.82
+        )
+
+        let presentation = pipeline.testingMakePauseCritiquePresentation(
+            critique: critique,
+            plan: plan
+        )
+
+        XCTAssertEqual(presentation.actions.map(\.actionId), ["priority_first", "semantic_rank_first"])
+        XCTAssertEqual(presentation.linkedEvidence?.actionID, "priority_first")
+        XCTAssertEqual(presentation.linkedEvidence?.issueID, "iss_low")
+
+        let trace = DecisionTracePresentation.pause(critique: presentation)
+        XCTAssertEqual(trace.actionRows.first?.id, "priority_first")
+        XCTAssertEqual(trace.actionRows.first?.linkedEvidenceIds, ["iss_low"])
+        XCTAssertEqual(trace.evidenceRows.map(\.sourceId), ["iss_low"])
+    }
+
     func testPauseProjectionFailsClosedWhenOnlySecondaryActionHasObservedEvidence() {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let frameID = "pause-primary-provenance"

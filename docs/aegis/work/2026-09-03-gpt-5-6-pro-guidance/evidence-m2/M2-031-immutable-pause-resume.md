@@ -9,11 +9,12 @@
 ## Implementation
 
 - `AnalysisPipeline.swift` adds the optional typed `CameraLinkedEvidenceProjection` to `PauseCritiquePresentation`. Pause presentation construction derives it only from the accepted critique frame, one rendered action row and one known issue with observed structured evidence. Refinement merges bounded text while carrying the original projection unchanged.
+- `AnalysisPipeline.swift` uses one canonical priority/action-ID order for pause construction and Decision Trace rows, and its failed-start release path can preserve the committed critique and trace bundle while the normal release path still clears them.
 - `PauseReasoningCoordinator.swift` preserves the draft projection when applying a text patch; provider output cannot replace frame/action/issue/evidence identity, and existing request/frame validation still rejects stale responses.
 - `DecisionTracePresentation.swift` validates the pause projection before emitting deterministic Why, evidence and action linkage. Missing or mismatched provenance remains empty; validation is bound to `critique.actions.first`, so a later observed action cannot stand in for an unproven primary row.
 - `SETCameraCoachProductionView.swift` validates the accepted snapshot ID, critique, action, issue and deterministic explanation before deriving the pause marker region; rotation only reprojects the accepted geometry.
 - `CameraViewModel.swift` keeps the accepted review across a fully committed background transition, cancels/fails pre-commit pause work, invalidates pause work on resume, preserves review/configuration through restart, and clears pause output only after a successful restart. A failed resume now reconciles `.resuming` to a recoverable paused `.failure` while retaining the accepted display snapshot and critique.
-- Focused tests cover projection identity/refinement, mixed primary/secondary evidence fail-closed behavior, stale publication fencing, pre-commit cancellation, committed background preservation, resume success/failure boundaries, portrait↔landscape marker reprojection and deterministic trace output.
+- Focused tests cover projection identity/refinement, mixed primary/secondary evidence fail-closed behavior, canonical action ordering, stale publication fencing, pre-commit cancellation, committed background preservation, resume success/failure boundaries, portrait↔landscape marker reprojection and deterministic trace output.
 
 ## Verification
 
@@ -61,7 +62,33 @@ Correction result bundles:
 - `/private/tmp/setos-m2-031-pause-fix-trace.xcresult`: 5/5 passed, 0 skipped.
 - `/private/tmp/setos-m2-031-pause-fix-ui.xcresult`: 2/2 passed, 0 skipped; `testProductionPauseTransitionAndResumeRoute` rotates the committed pause review to landscape and back before resuming.
 
-The first correction lifecycle run (`/private/tmp/setos-m2-031-pause-fix-lifecycle.xcresult`) was 16/17 because the synthetic blank-frame fixture legitimately produced no critique and the new test initially asserted one. The assertion was removed; the isolated corrected test (`/private/tmp/setos-m2-031-pause-fix-resume-retry.xcresult`) passed 1/1, followed by the final 17/17 class run. This was a test-fixture expectation correction, not a production failure.
+The earlier 16/17 lifecycle run (`/private/tmp/setos-m2-031-pause-fix-lifecycle.xcresult`) exposed that its blank-frame fixture could not prove a non-nil committed review. That vacuous assertion was replaced with the deterministic non-nil critique fixture recorded in the final lifecycle run; no passing evidence is claimed from the blank-frame case.
+
+## Second FIX-FIRST correction on `fa97528`
+
+- Pause construction now canonicalizes actions by priority and action ID before binding `linkedEvidence`; the first chosen Decision Trace row, marker and Why projection therefore share one action/issue identity. If the primary action cannot be proven, the projection remains empty even when a later action has observed evidence.
+- Resume invalidates pending pause work but retains the committed, non-nil critique, accepted display snapshot and typed trace through the restart attempt. Failed `startAndWait()` rolls back registrations without clearing that review and reconciles the ViewModel to paused `.failure`; successful restart remains the only clearing boundary.
+- Resume-start failure is rendered through the existing camera failure/retry copy and `camera_coach_pause_action` accessibility ID. No new catalog key, route or accessibility ID was introduced.
+
+Exact second-correction runs after the first fix (and the final lifecycle rerun after preserving the trace bundle) used only iPhone 17e / iOS 26.5, device UUID `1F680A42-CEB3-43E8-9CED-52F874962A62`, sequentially, with `CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never`:
+
+```text
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testPausePresentationKeepsActionIssueAndTraceOnOneFrameProjection -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testPauseProjectionFailsClosedWhenOnlySecondaryActionHasObservedEvidence -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testCommittedPauseRotationReprojectsMarkerWithoutChangingProvenance -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testPauseProjectionUsesDecisionTraceOrderWhenSemanticRankConflictsWithPriority -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testPauseActionConfidenceIsCappedByPlanAndLinkedIssue -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testPauseActionConfidenceCanUseSemanticTipIssueScope -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testGoodPauseVerdictWithExplicitStrengthUsesHighConfidenceFloor -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testGoodPauseVerdictWithoutStrengthKeepsConservativeConfidence -only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testMixedPauseCorrectiveVerdictConfidenceIsCappedToMedium -derivedDataPath /private/tmp/setos-m2-031-pause-fix2c-presentation-dd -resultBundlePath /private/tmp/setos-m2-031-pause-fix2c-presentation.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' -only-testing:shafinMultitoolTests/CameraViewModelLifecycleTests -derivedDataPath /private/tmp/setos-m2-031-pause-fix2c-lifecycle-dd -resultBundlePath /private/tmp/setos-m2-031-pause-fix2c-lifecycle.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' -only-testing:shafinMultitoolTests/AnalysisPipelineReleaseTests -derivedDataPath /private/tmp/setos-m2-031-pause-fix2c-release-dd -resultBundlePath /private/tmp/setos-m2-031-pause-fix2c-release.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' -only-testing:shafinMultitoolTests/DecisionTracePresentationTests -derivedDataPath /private/tmp/setos-m2-031-pause-fix2c-trace-dd -resultBundlePath /private/tmp/setos-m2-031-pause-fix2c-trace.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' -only-testing:shafinMultitoolUITests/CameraCoachProductionUITests/testProductionPauseTransitionAndResumeRoute -derivedDataPath /private/tmp/setos-m2-031-pause-fix2c-ui-dd -resultBundlePath /private/tmp/setos-m2-031-pause-fix2c-ui.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62' -only-testing:shafinMultitoolTests/CameraViewModelLifecycleTests -derivedDataPath /private/tmp/setos-m2-031-pause-fix2d-lifecycle-dd -resultBundlePath /private/tmp/setos-m2-031-pause-fix2d-lifecycle.xcresult CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never
+```
+
+Second-correction result bundles:
+
+- `/private/tmp/setos-m2-031-pause-fix2c-presentation.xcresult`: 9/9 passed, 0 skipped, including the conflicting semantic-rank/priority regression, primary-only fail-closed regression and portrait↔landscape marker/provenance test.
+- `/private/tmp/setos-m2-031-pause-fix2c-lifecycle.xcresult`: 17/17 passed, 0 skipped.
+- `/private/tmp/setos-m2-031-pause-fix2c-release.xcresult`: 18/18 passed, 0 skipped.
+- `/private/tmp/setos-m2-031-pause-fix2c-trace.xcresult`: 5/5 passed, 0 skipped.
+- `/private/tmp/setos-m2-031-pause-fix2c-ui.xcresult`: 1/1 passed, 0 skipped; the production pause transition rotates the committed review portrait→landscape→portrait and verifies the existing pause action ID.
+- `/private/tmp/setos-m2-031-pause-fix2d-lifecycle.xcresult`: 17/17 passed, 0 skipped; final rerun after retaining the committed typed trace bundle through failed resume rollback.
 
 The requested full `AnalysisPipelinePresentationTests` class was also run:
 

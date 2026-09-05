@@ -327,12 +327,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
     private static func pauseActionRows(for critique: PauseCritiquePresentation,
                                         linkedEvidence: CameraLinkedEvidenceProjection?,
                                         locale: Locale) -> [ActionRow] {
-        let rows = critique.actions.sorted { lhs, rhs in
-            if lhs.priority != rhs.priority {
-                return lhs.priority < rhs.priority
-            }
-            return lhs.actionId < rhs.actionId
-        }.map { action in
+        let rows = critique.actions.sorted(by: PauseActionRow.canonicalOrder).map { action in
             ActionRow(
                 id: action.actionId,
                 title: semanticActionTitle(action.semanticActionType, locale: locale),

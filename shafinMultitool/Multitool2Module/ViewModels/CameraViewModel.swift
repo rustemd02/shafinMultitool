@@ -225,6 +225,17 @@ final class CameraViewModel: ObservableObject {
         isPaused && acceptedPauseSnapshot?.displayImage != nil
     }
 
+    /// A failed resume is a camera lifecycle failure, not a pause-analysis
+    /// failure. The accepted review remains retryable and inspectable while
+    /// the lifecycle reports the typed start error.
+    var isResumeStartFailure: Bool {
+        guard isPaused,
+              lifecycleState == .failed(.startFailed),
+              case .failure(let snapshotID) = pausePresentationState,
+              acceptedPauseSnapshot?.snapshotID == snapshotID else { return false }
+        return acceptedPauseSnapshot?.displayImage != nil
+    }
+
     /// A background transition may preserve the review only after the
     /// terminal pause result has been committed alongside the accepted image.
     /// A display-ready frame that is still loading remains cancelable work.
@@ -649,6 +660,7 @@ final class CameraViewModel: ObservableObject {
             timecodeSession.beginOrResume()
             publishNominalTimecode()
             if case .resuming = pausePresentationState {
+                analysisPipeline.clearPausePresentationState()
                 pausePresentationState = .idle
                 acceptedPauseSnapshot = nil
                 acceptedPauseRequestToken = nil
@@ -705,7 +717,7 @@ final class CameraViewModel: ObservableObject {
         let generation = nextFailedStartRollbackGeneration
         let pipeline = analysisPipeline
         let task = Task {
-            await pipeline.releaseAndWait()
+            await pipeline.releaseAndWait(preservingCurrentPauseReview: true)
         }
         let operation = FailedStartRollbackOperation(generation: generation, task: task)
         failedStartRollbackOperation = operation
@@ -805,7 +817,7 @@ final class CameraViewModel: ObservableObject {
             // session attempts to restart. A successful start clears it at
             // the restart commit boundary; failure leaves it inspectable.
             pausePresentationState = .resuming(snapshotID: snapshotID)
-            analysisPipeline.clearPausePresentationState()
+            analysisPipeline.clearPausePresentationState(preservingCurrentCritique: true)
             start()
         } else {
             // A pause request owns one accepted frame and one render task. Do

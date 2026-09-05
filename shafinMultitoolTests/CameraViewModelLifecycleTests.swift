@@ -671,8 +671,25 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         let committedSnapshotID = acceptedBefore.snapshotID
         let committedSourceSize = acceptedBefore.sourcePixelSize
         let committedOrientation = acceptedBefore.orientation
-        let committedCritique = fixture.viewModel.pauseCritique
-        let committedTrace = committedCritique.map { DecisionTracePresentation.pause(critique: $0) }
+        let committedCritique = makeCommittedResumeFailureCritique(frameID: committedSnapshotID)
+        fixture.pipeline.testingPreparePauseState(
+            critique: committedCritique,
+            traceBundle: ExplainabilityTraceBundle(
+                frameId: committedSnapshotID,
+                mode: .pause,
+                items: [],
+                rootSummaryIds: []
+            ),
+            revision: 100
+        )
+        let critiqueSeeded = await waitUntil {
+            fixture.viewModel.pauseCritique == committedCritique
+                && fixture.pipeline.currentPauseCritique == committedCritique
+        }
+        XCTAssertTrue(critiqueSeeded)
+        let committedTrace = DecisionTracePresentation.pause(critique: committedCritique)
+        XCTAssertEqual(committedTrace.evidenceRows.map(\.sourceId), ["resume_issue"])
+        XCTAssertEqual(committedTrace.actionRows.first?.linkedEvidenceIds, ["resume_issue"])
 
         fixture.viewModel.togglePause()
 
@@ -690,12 +707,40 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(fixture.viewModel.acceptedPauseSnapshot?.orientation, committedOrientation)
         XCTAssertNotNil(fixture.viewModel.acceptedPauseSnapshot?.displayImage)
         XCTAssertEqual(fixture.viewModel.pauseCritique, committedCritique)
-        if let committedTrace {
-            XCTAssertEqual(
-                fixture.viewModel.pauseCritique.map { DecisionTracePresentation.pause(critique: $0) },
-                committedTrace
+        XCTAssertEqual(fixture.pipeline.currentPauseCritique, committedCritique)
+        XCTAssertEqual(
+            fixture.viewModel.pauseCritique.map { DecisionTracePresentation.pause(critique: $0) },
+            committedTrace
+        )
+        XCTAssertTrue(fixture.viewModel.isResumeStartFailure)
+        XCTAssertEqual(
+            fixture.pipeline.testingPauseTraceBundle?.frameId,
+            committedSnapshotID
+        )
+
+        let locale = Locale(identifier: "ru")
+        let failureProjection = CameraOverlayUXPresentation.make(
+            liveHint: nil,
+            context: CameraOverlayUXContext(
+                lifecycleState: .failed(.startFailed),
+                pauseState: .failure(snapshotID: committedSnapshotID)
+            ),
+            locale: locale
+        )
+        XCTAssertEqual(failureProjection.state, .failed)
+        XCTAssertEqual(
+            failureProjection.observation,
+            SETCopyKey.cameraFailed.localizedString(locale: locale)
+        )
+        XCTAssertTrue(
+            failureProjection.accessibilityLabel.contains(
+                SETCopyKey.cameraFailed.localizedString(locale: locale)
             )
-        }
+        )
+        XCTAssertEqual(
+            SETCopyKey.retry.localizedString(locale: locale),
+            "ПОВТОРИТЬ"
+        )
 
         await fixture.viewModel.releaseAndWait()
     }
@@ -808,6 +853,64 @@ final class CameraViewModelLifecycleTests: XCTestCase {
                                       manager: manager,
                                       pipeline: pipeline,
                                       viewModel: viewModel)
+    }
+
+    private func makeCommittedResumeFailureCritique(frameID: String) -> PauseCritiquePresentation {
+        let issueID = "resume_issue"
+        let actionID = "resume_action"
+        let issueType: IssueTypeV1 = .backgroundCompetesWithSubject
+        let evidence = [
+            EvidenceRef(source: .snapshot, key: "background.clutter", value: "observed")
+        ]
+        return PauseCritiquePresentation(
+            frameId: frameID,
+            verdict: .mixed,
+            verdictConfidence: 0.72,
+            summaryId: "resume_summary",
+            shortVerdict: "Кадр можно улучшить.",
+            whyGood: nil,
+            whyProblematic: "Фон конкурирует с главным объектом.",
+            strengths: [],
+            issues: [
+                PauseIssueRow(
+                    issueId: issueID,
+                    type: issueType,
+                    severity: 0.64,
+                    confidence: 0.78,
+                    rationale: "Фон конкурирует с главным объектом.",
+                    affectedRegion: NormalizedRect(x: 0.58, y: 0.18, width: 0.28, height: 0.40),
+                    suggestedFixTypes: [.reframing],
+                    traceRefId: "resume_issue_trace"
+                )
+            ],
+            actions: [
+                PauseActionRow(
+                    actionId: actionID,
+                    actionType: .reduceBackgroundDistractions,
+                    semanticActionType: .simplifyBackground,
+                    priority: 1,
+                    confidence: 0.72,
+                    linkedIssueIds: [issueID],
+                    expectedOutcome: "Упростите фон.",
+                    targetRegion: NormalizedRect(x: 0.58, y: 0.18, width: 0.28, height: 0.40),
+                    overlayHintId: nil,
+                    traceRefId: "resume_action_trace"
+                )
+            ],
+            noChangeRationale: nil,
+            assumptions: [],
+            traceRootIds: ["resume_trace_root"],
+            fallbackUsed: false,
+            linkedEvidence: CameraLinkedEvidenceProjection(
+                frameID: frameID,
+                actionID: actionID,
+                actionType: .reduceBackgroundDistractions,
+                semanticActionType: .simplifyBackground,
+                issueID: issueID,
+                issueType: issueType,
+                evidence: evidence
+            )
+        )
     }
 
     private func waitUntil(timeout: Duration = .seconds(2),

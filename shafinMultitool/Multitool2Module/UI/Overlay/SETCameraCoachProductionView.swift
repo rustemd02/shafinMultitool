@@ -159,6 +159,8 @@ private struct SETCameraCoachRuntimeSurface: View {
                         acceptedFramePixelSize: acceptedSnapshot.sourcePixelSize,
                         acceptedFrameOrientation: acceptedSnapshot.orientation,
                         acceptedFrameIsMirrored: false,
+                        failureReason: viewModel.pauseFailureReason,
+                        resumeStartFailure: viewModel.isResumeStartFailure,
                         snapshotID: pausePresentation.snapshotID ?? "pause",
                         takeNumber: viewModel.takeNumber,
                         cutMarkController: viewModel.pauseCutMarkController,
@@ -1762,6 +1764,7 @@ private struct SETPauseReviewOverlay: View {
     let acceptedFrameOrientation: CGImagePropertyOrientation
     let acceptedFrameIsMirrored: Bool
     let failureReason: CameraPauseFailureReason?
+    let resumeStartFailure: Bool
     let snapshotID: String
     let takeNumber: Int
     var cutMarkController: SETPauseCutMarkController? = nil
@@ -1781,6 +1784,7 @@ private struct SETPauseReviewOverlay: View {
         acceptedFrameOrientation: CGImagePropertyOrientation = .up,
         acceptedFrameIsMirrored: Bool = false,
         failureReason: CameraPauseFailureReason? = nil,
+        resumeStartFailure: Bool = false,
         snapshotID: String,
         takeNumber: Int,
         cutMarkController: SETPauseCutMarkController? = nil,
@@ -1797,6 +1801,7 @@ private struct SETPauseReviewOverlay: View {
         self.acceptedFrameOrientation = acceptedFrameOrientation
         self.acceptedFrameIsMirrored = acceptedFrameIsMirrored
         self.failureReason = failureReason
+        self.resumeStartFailure = resumeStartFailure
         self.snapshotID = snapshotID
         self.takeNumber = takeNumber
         self.cutMarkController = cutMarkController
@@ -1928,7 +1933,7 @@ private struct SETPauseReviewOverlay: View {
         case .empty:
             return nil
         case .failure:
-            return SETLocalizedCopy.string(failureDetailKey, locale: locale)
+            return failureDetailKey.map { SETLocalizedCopy.string($0, locale: locale) }
         }
     }
 
@@ -1941,6 +1946,7 @@ private struct SETPauseReviewOverlay: View {
     }
 
     private var failureTitleKey: SETCopyKey {
+        if resumeStartFailure { return .cameraFailed }
         switch failureReason {
         case .noAcceptedEvidence: return .pauseFailureNoEvidenceTitle
         case .displayRenderFailed: return .pauseFailureRenderTitle
@@ -1950,7 +1956,8 @@ private struct SETPauseReviewOverlay: View {
         }
     }
 
-    private var failureDetailKey: SETCopyKey {
+    private var failureDetailKey: SETCopyKey? {
+        if resumeStartFailure { return nil }
         switch failureReason {
         case .noAcceptedEvidence: return .pauseFailureNoEvidenceDetail
         case .displayRenderFailed: return .pauseFailureRenderDetail
@@ -1961,7 +1968,7 @@ private struct SETPauseReviewOverlay: View {
     }
 
     private var failureActionKey: SETCopyKey {
-        .pauseFailureRecovery
+        resumeStartFailure ? .retry : .pauseFailureRecovery
     }
 
     private func markerFrame(in canvasSize: CGSize) -> CGRect? {

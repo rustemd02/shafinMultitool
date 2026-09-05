@@ -130,6 +130,10 @@ final class CameraCoachProductionUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "РАЗБОР")).firstMatch.waitForExistence(timeout: 3)
         )
+        XCTAssertTrue(
+            app.buttons["camera_coach_pause_action"].waitForExistence(timeout: 3),
+            "the committed pause review must expose its existing accessible action"
+        )
 
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(
