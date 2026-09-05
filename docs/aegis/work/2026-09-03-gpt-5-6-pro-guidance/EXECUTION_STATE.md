@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last integrated task head: `4fdae56` (M12-033; journal-only commits may follow; no push)
+- Last accepted task head: `1e11a05` (M5-004/M5-005/M5-011; later M6 work commits remain in review; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-027/M2-028/M2-029/M2-032 Camera presentation; M5-004/M5-005/M5-011 Library states; M6-002/M6-003 AR session ownership/configuration
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-026, M3-001, M5-001, M5-002, M6-001, M7-001, M7-003, M7-004, M12-033]
-- In-progress: [M2-027, M2-028, M2-029, M2-032, M5-004, M5-005, M5-011, M6-002, M6-003]
+- Current task: M2-027/M2-028/M2-029/M2-032 Camera presentation; M6-002/M6-003 AR session ownership/configuration
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-026, M3-001, M5-001, M5-002, M5-004, M5-005, M5-011, M6-001, M7-001, M7-003, M7-004, M12-033]
+- In-progress: [M2-027, M2-028, M2-029, M2-032, M6-002, M6-003]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -409,3 +409,9 @@
 ### 2026-09-05T02:48+03:00 — M2-027/M2-028/M2-029/M2-032 STARTED
 - A single CameraPresentationOwner batch audits and closes the existing production projection, action-linked marker geometry, subject/target-aware occlusion and honest thermal/error states. The internally ordered path is M2-027→M2-028→M2-029, with M2-032 branching from M2-027.
 - The batch must extend existing `CameraOverlayUXPresentation`/SET OS Package 2 components only: no parallel UI state machine, no raw confidence/debug copy, no fixed decorative arrows, no per-frame decorative animation and no fixture-only ECO claim. M2-030 explanation, M2-031 pause, M2-033 navigation and M2-034 permissions remain separate owners.
+
+### 2026-09-05T03:43+03:00 — M5-004/M5-005/M5-011 CLOSED
+- Library empty/loaded/failure projections now consume typed persisted snapshots: empty appears only after successful zero-row load, rows retain UUID/metadata/artifact truth with deterministic `updatedAt` descending then UUID ascending ordering, and create/rename/delete/open retry replays only its captured operation.
+- Fresh Sol review found and corrections closed two real defects: successful open retry now retires the failure state, and all preview/artifact VoiceOver phrases resolve through typed RU+EN String Catalog keys. Coordinator additionally removed batch-induced UUID-order test nondeterminism instead of classifying it as an unrelated flake.
+- Independent integrated verification on ordinary iPhone 17 simulator iOS 26.5: 37/37 focused unit/integration tests and 5/5 production UI tests PASS, 0 failed/skipped; xcresults `/private/tmp/setos-root-m5-004-005-011-r2-unit.xcresult` and `/private/tmp/setos-root-m5-004-005-011-r2-ui.xcresult`; final fresh Sol verdict `ship`.
+- Evidence: `evidence-m5/M5-004-005-011-library-states.md`. Physical VoiceOver/media qualification and later Library slices remain unclaimed. Tracker total: 75/424 completed, 349 remaining.
