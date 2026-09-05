@@ -38,9 +38,10 @@ was used.
   checks the draft remains visible.
 - `git diff --check` and `python3 -m json.tool
   shafinMultitool/Resources/Localizable.xcstrings` passed.
-- Result bundles: `/tmp/shafin-m5-015-derived/Logs/Test/Test-shafinMultitool-2026.09.05_17-25-55-+0300.xcresult`
-  (four unit tests) and `/tmp/shafin-m5-015-derived/Logs/Test/Test-shafinMultitool-2026.09.05_17-26-34-+0300.xcresult`
-  (one UI test).
+- Stable unit result bundle: `/private/tmp/setos-m5-015-final-unit.xcresult`;
+  `xcrun xcresulttool get test-results summary` reports 4 passed, 0 failed,
+  and 0 skipped on the listed simulator. The earlier UI result bundle was
+  transient DerivedData output and is not retained here.
 
 Residual risk: simulator UI coverage cannot establish physical keyboard,
 camera, or AR behavior; background persistence is proven through the existing
