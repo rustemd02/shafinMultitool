@@ -281,9 +281,24 @@ final class SETWorldMapCaptureResolver<Value>: @unchecked Sendable {
     }
 }
 
+/// Trust-boundary result for the screenplay draft. The raw `String` remains
+/// untouched so valid Unicode, including composed characters and emoji, is
+/// preserved for the parser and project persistence owner.
+enum SceneInputValidationIssue: Equatable {
+    case empty
+    case tooLong(maximum: Int)
+    case invalidText
+}
+
 /// ViewModel для управления генерацией AR сцены из текстового описания
 @MainActor
 final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownProviding {
+    /// The input contract uses user-perceived `Character` units. This keeps
+    /// the editor and persistence boundary aligned for RU/EN text and emoji.
+    /// Five thousand characters also matches the existing screenplay chunk
+    /// smoke boundary without changing the parser or persistence schemas.
+    static let maximumSceneDescriptionCharacters = 5_000
+
     // MARK: - Published Properties
     
     /// Текущее описание сцены
@@ -497,6 +512,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     /// Ошибка, относящаяся только к вводу сценария.
     @Published private(set) var inputValidationMessage: String?
+
+    /// Structured projection of the current draft validation. It is derived
+    /// from `sceneDescription`; the existing validation message remains the
+    /// single published owner used by the sheet.
+    var sceneDescriptionValidationIssue: SceneInputValidationIssue? {
+        sceneDescriptionValidationIssue(for: sceneDescription)
+    }
 
     /// Storyboard fixtures are domain evidence, not an AR substitute. On a
     /// simulator ARKit may still report an unsupported configuration; keep
@@ -786,8 +808,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
 #endif
         setupBindings()
-        if !sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            enterGenerationInputState()
+        if !sceneDescription.isEmpty {
+            updateGenerationInputState(for: sceneDescription)
         }
 #if DEBUG
         if launchFixtureID == "sheet.decision-trace" {
@@ -1373,6 +1395,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             && !isMarkingMode
     }
 
+    /// UI-facing projection of the same trust-boundary checks used by
+    /// `generateScene()`. The action remains disabled for every rejected
+    /// draft, while the submit method repeats the check before request
+    /// identity is allocated.
+    var canSubmitScene: Bool {
+        canGenerateScene && sceneDescriptionValidationIssue == nil
+    }
+
     var canToggleHints: Bool {
         !isPlaying
             && !isGenerating
@@ -1451,10 +1481,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private func updateGenerationInputState(for description: String) {
         guard !generationRequestState.isExecutionInFlight else { return }
 
-        let isWhitespaceOnly = !description.isEmpty
-            && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if isWhitespaceOnly {
-            let message = localizedCopy(.generatorInputInvalid)
+        let issue = sceneDescriptionValidationIssue(for: description)
+        if let issue, !(issue == .empty && description.isEmpty) {
+            let message = localizedInputValidationCopy(for: issue)
             enterGenerationInputState()
             _ = publishGenerationState(
                 .input(),
@@ -1462,6 +1491,57 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             )
         } else {
             enterGenerationInputState(clearValidation: true)
+        }
+    }
+
+    /// Validates the editable draft without normalizing or truncating it.
+    /// `String.count` is the user-perceived `Character` count required by the
+    /// input contract. Swift `String` does not expose unpaired UTF-16
+    /// surrogates as valid scalar input, so this check deliberately makes no
+    /// impossible coverage claim for them.
+    private func sceneDescriptionValidationIssue(for description: String) -> SceneInputValidationIssue? {
+        guard !description.isEmpty else { return .empty }
+        guard !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .empty
+        }
+        guard description.count <= Self.maximumSceneDescriptionCharacters else {
+            return .tooLong(maximum: Self.maximumSceneDescriptionCharacters)
+        }
+        guard !description.unicodeScalars.contains(where: Self.isDisallowedInputScalar) else {
+            return .invalidText
+        }
+        return nil
+    }
+
+    private static func isDisallowedInputScalar(_ scalar: UnicodeScalar) -> Bool {
+        let value = scalar.value
+        if value == 0 || (CharacterSet.controlCharacters.contains(scalar) && value != 0x0A && value != 0x0D) {
+            return true
+        }
+
+        return (0xFDD0...0xFDEF).contains(value)
+            || (value & 0xFFFF) == 0xFFFE
+            || (value & 0xFFFF) == 0xFFFF
+    }
+
+    private func localizedInputValidationCopy(for issue: SceneInputValidationIssue) -> String {
+        let bundle = SETLibraryLocalizedCopy.resolvedBundle(for: presentationLocale)
+        switch issue {
+        case .empty:
+            return localizedCopy(.generatorInputInvalid)
+        case .tooLong(let maximum):
+            let format = bundle.localizedString(
+                forKey: "set.generator.input.too_long",
+                value: "Keep the screenplay under %d characters",
+                table: nil
+            )
+            return String(format: format, locale: presentationLocale, arguments: [maximum])
+        case .invalidText:
+            return bundle.localizedString(
+                forKey: "set.generator.input.invalid_text",
+                value: "Remove unsupported control characters",
+                table: nil
+            )
         }
     }
 
@@ -1612,15 +1692,21 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // terminal/retryable result. This clears the previous request identity
         // before issuing the next epoch.
         enterGenerationInputState()
-        let trimmedDescription = sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedDescription.isEmpty else {
-            let message = localizedCopy(.generatorInputInvalid)
-            _ = publishGenerationFailure(
-                .emptyInput,
-                retryable: false,
-                message: message,
-                validation: message
-            )
+        if let issue = sceneDescriptionValidationIssue {
+            let message = localizedInputValidationCopy(for: issue)
+            if issue == .empty {
+                _ = publishGenerationFailure(
+                    .emptyInput,
+                    retryable: false,
+                    message: message,
+                    validation: message
+                )
+            } else {
+                _ = publishGenerationState(
+                    .input(),
+                    validation: message
+                )
+            }
             return
         }
         let submittedDescription = sceneDescription
@@ -2212,7 +2298,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Показывает sheet ввода
     func showInput() {
-        enterGenerationInputState(clearValidation: true)
+        let issue = sceneDescriptionValidationIssue
+        enterGenerationInputState(clearValidation: issue == nil || issue == .empty)
+        if let issue, issue != .empty {
+            _ = publishGenerationState(
+                .input(),
+                validation: localizedInputValidationCopy(for: issue)
+            )
+        }
         showInputSheet = true
     }
     

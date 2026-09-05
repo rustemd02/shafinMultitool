@@ -103,6 +103,52 @@ final class SETGeneratorProductionUITests: XCTestCase {
         attachScreenshot(named: "generator-input-whitespace-validation-ru-landscape")
     }
 
+    func testScreenplayDraftSurvivesCancelReopenAndKeyboardRecomposition() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        launchApp()
+        openLibraryAndCreateScene(named: "SET-UITest-Draft-\(UUID().uuidString.prefix(6))")
+
+        let sceneButton = app.buttons["generator_scene_button"]
+        XCTAssertTrue(sceneButton.waitForExistence(timeout: launchTimeout))
+        let errorClose = app.buttons.matching(
+            NSPredicate(format: "label == 'ЗАКРЫТЬ' OR identifier == 'generator_error_close'")
+        ).firstMatch
+        if errorClose.waitForExistence(timeout: 3) {
+            errorClose.tap()
+            _ = sceneButton.waitForExistence(timeout: 2)
+        }
+
+        sceneButton.tap()
+        let editor = app.descendants(matching: .any)["generator_input_editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: launchTimeout))
+        editor.tap()
+        editor.typeText("INT. ROOM - DAY\nMARA: HELLO")
+
+        let generate = app.buttons["generator_input_generate"]
+        XCTAssertTrue(generate.waitForExistence(timeout: launchTimeout))
+        XCTAssertTrue(generate.isEnabled)
+        XCTAssertTrue(
+            generate.isHittable,
+            "The focused landscape editor must keep the primary action reachable above the system keyboard."
+        )
+
+        let cancel = app.buttons["generator_input_cancel"]
+        XCTAssertTrue(cancel.isHittable, "Cancel must remain reachable while the screenplay keyboard is focused.")
+        cancel.tap()
+        XCTAssertTrue(sceneButton.waitForExistence(timeout: launchTimeout))
+
+        // Recomposition of the same landscape sheet must read the draft from
+        // the project ViewModel, not from transient sheet-local state.
+        sceneButton.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: launchTimeout))
+        XCTAssertTrue((editor.value as? String)?.contains("INT. ROOM - DAY") == true)
+        XCUIDevice.shared.orientation = .landscapeRight
+        XCTAssertTrue(generate.waitForExistence(timeout: launchTimeout))
+        XCTAssertTrue(generate.isHittable)
+        XCTAssertTrue((editor.value as? String)?.contains("MARA: HELLO") == true)
+        attachScreenshot(named: "generator-input-draft-keyboard-landscape")
+    }
+
     func testErrorBandIsTheHonestFailureSurface() {
         // The error band itself requires a runtime failure; on the simulator an
         // AR session failure is expected and surfaces through the same band.

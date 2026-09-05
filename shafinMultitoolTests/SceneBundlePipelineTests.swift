@@ -2027,6 +2027,109 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertTrue(viewModel.testingGenerationStateTrace.contains { $0.phase == .terminalFailure })
     }
 
+    @MainActor
+    func testSceneGeneratorDraftSurvivesSheetDismissalAndProjectReload() async throws {
+        let projectName = "screenplay-draft-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        defer {
+            DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in }
+        }
+
+        let draft = "INT. ТИХАЯ КОМНАТА — ДЕНЬ\nМАРА: Привет 👋"
+        viewModel.showInput()
+        viewModel.sceneDescription = draft
+        viewModel.showInputSheet = false
+        viewModel.showInput()
+
+        XCTAssertEqual(viewModel.sceneDescription, draft)
+        XCTAssertTrue(viewModel.showInputSheet)
+        XCTAssertNil(viewModel.inputValidationMessage)
+
+        // `persistWorkspaceState` is the same owner-side path used by the
+        // generator's background lifecycle. Awaiting the existing DEBUG seam
+        // below coalesces with it and makes the reload assertion deterministic.
+        viewModel.persistWorkspaceState()
+        let saveResult = await viewModel.testingPersistProjectSnapshot()
+        if case .failure(let failure) = saveResult {
+            XCTFail("Draft snapshot failed: \(failure)")
+        }
+
+        let reloaded = SceneGeneratorViewModel(projectName: projectName, isNewProject: false)
+        XCTAssertEqual(reloaded.sceneDescription, draft)
+        XCTAssertNil(reloaded.inputValidationMessage)
+    }
+
+    @MainActor
+    func testSceneGeneratorInputValidationUsesCharacterBoundaryAndRejectsInvalidText() {
+        let viewModel = SceneGeneratorViewModel(projectName: "screenplay-input-contract-\(UUID().uuidString)")
+        let maximum = SceneGeneratorViewModel.maximumSceneDescriptionCharacters
+
+        viewModel.sceneDescription = " \n\t"
+        XCTAssertEqual(viewModel.sceneDescriptionValidationIssue, .empty)
+        XCTAssertFalse(viewModel.canSubmitScene)
+        XCTAssertNotNil(viewModel.inputValidationMessage)
+
+        viewModel.sceneDescription = String(repeating: "🙂", count: maximum)
+        XCTAssertEqual(viewModel.sceneDescription.count, maximum)
+        XCTAssertNil(viewModel.sceneDescriptionValidationIssue)
+        XCTAssertTrue(viewModel.canSubmitScene)
+
+        viewModel.sceneDescription = String(repeating: "🙂", count: maximum + 1)
+        XCTAssertEqual(viewModel.sceneDescriptionValidationIssue, .tooLong(maximum: maximum))
+        XCTAssertFalse(viewModel.canSubmitScene)
+        XCTAssertNotNil(viewModel.inputValidationMessage)
+
+        for invalid in [
+            "Сцена\u{0001}",
+            "Сцена\u{0000}",
+            "Сцена\(String(UnicodeScalar(0xFDD0)!))"
+        ] {
+            viewModel.sceneDescription = invalid
+            XCTAssertEqual(viewModel.sceneDescriptionValidationIssue, .invalidText, "Rejected input should be explicit")
+            XCTAssertFalse(viewModel.canSubmitScene)
+            XCTAssertNotNil(viewModel.inputValidationMessage)
+        }
+
+        viewModel.sceneDescription = "INT. ROOM — DAY\nМАРА: Привет 👋"
+        XCTAssertNil(viewModel.sceneDescriptionValidationIssue)
+        XCTAssertNil(viewModel.inputValidationMessage)
+        XCTAssertTrue(viewModel.canSubmitScene)
+    }
+
+    @MainActor
+    func testSceneGeneratorRapidDoubleSubmitUsesOneRequestOwner() async {
+        let viewModel = SceneGeneratorViewModel(projectName: "screenplay-single-submit-\(UUID().uuidString)")
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.sceneDescription = "Марина стоит."
+        viewModel.testingSetGenerationDelay(0.05)
+        viewModel.testingResetGenerationStateTrace()
+
+        let first = Task { @MainActor in
+            await viewModel.generateScene()
+        }
+        for _ in 0..<100 where viewModel.generationStage != .reading {
+            await Task.yield()
+        }
+        let second = Task { @MainActor in
+            await viewModel.generateScene()
+        }
+
+        await first.value
+        await second.value
+
+        XCTAssertEqual(viewModel.testingGenerationOwnerCount, 1)
+        XCTAssertEqual(viewModel.generationRequestState.phase, .success)
+        XCTAssertEqual(
+            viewModel.testingGenerationStateTrace.filter { $0.phase == .validating }.count,
+            1
+        )
+    }
+
     func testSceneGenerationRequestStateTransitionMatrixIsExhaustive() throws {
         let requestID = UUID()
         let epoch: UInt = 17

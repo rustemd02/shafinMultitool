@@ -32,19 +32,32 @@ struct SceneInputSheet: View {
     // MARK: - Layout
 
     private var portraitLayout: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
+            // Keep the sheet command visible while focus scrolls the editor
+            // into view for the keyboard.
+            headerSection
+                .padding(.horizontal, SETSpacing.x4)
+                .padding(.top, SETSpacing.x4)
+                .padding(.bottom, SETSpacing.x4)
+
             ScrollView {
                 VStack(alignment: .leading, spacing: SETSpacing.x4) {
-                    headerSection
                     if !viewModel.markedObjects.isEmpty { markedObjectsSection }
                     textInputSection
                     if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
-                    Spacer(minLength: SETSpacing.x12)
+                    Spacer(minLength: SETSpacing.x4)
                 }
-                .padding(SETSpacing.x4)
+                .padding(.horizontal, SETSpacing.x4)
+                .padding(.bottom, SETSpacing.x4)
             }
+        }
+        // The system adjusts the safe area when the keyboard is present, so
+        // the primary action stays above it without guessing a keyboard
+        // height or creating a second modal layer.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             generateButton
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: - Header
@@ -252,8 +265,8 @@ struct SceneInputSheet: View {
                         }
                     }
                 )
-                .disabled(viewModel.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isGenerating)
-                .opacity(viewModel.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                .disabled(!viewModel.canSubmitScene)
+                .opacity(viewModel.canSubmitScene ? 1 : 0.45)
                 .accessibilityIdentifier("generator_input_generate")
             }
             .padding(.horizontal, SETSpacing.x4)
@@ -263,9 +276,8 @@ struct SceneInputSheet: View {
     }
 
     private var shouldShowGenerateAccent: Bool {
-        viewModel.inputValidationMessage == nil
+        viewModel.canSubmitScene
             && !isTextFieldFocused
-            && !viewModel.sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !viewModel.isGenerating
     }
 }

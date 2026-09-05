@@ -1889,6 +1889,22 @@
         }
       }
     },
+    "set.generator.input.invalid_text": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove unsupported control characters"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удали недопустимые управляющие символы"
+          }
+        }
+      }
+    },
     "set.generator.input.marked": {
       "localizations": {
         "en": {
@@ -1933,6 +1949,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Опиши сцену: место, свет, действие"
+          }
+        }
+      }
+    },
+    "set.generator.input.too_long": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the screenplay under %d characters"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сократи сценарий до %d символов"
           }
         }
       }
