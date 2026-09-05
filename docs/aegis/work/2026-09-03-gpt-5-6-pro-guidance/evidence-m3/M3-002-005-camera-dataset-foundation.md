@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete for the current namespace-isolation correction batch. This receipt documents
+Complete for the current issue/global action-consistency correction batch. This receipt documents
 contracts and validator evidence only; it is not a collection, rights grant,
 human calibration result, or model-quality claim.
 
@@ -47,7 +47,9 @@ human calibration result, or model-quality claim.
   record/manifest checks, source-authority and media-asset resolution,
   consent/rights resolution, derivation independence/quota and duplicate
   checks, subject/ABSTAIN semantics, category-keyed family/device split
-  isolation and source-asset ownership, temporal
+  isolation and source-asset ownership, exact issue/global action-list
+  consistency (issue rows authoritative in both directions; schema action
+  arrays compared as unordered unique-ID sets), temporal
   chronology/full timeline with strict JSON integer typing, strict RFC3339 UTC
   timestamp parsing, episode chronology/measurable outcomes with
   subject-continuity coupling, exact schema-derived issue evidence, resolved
@@ -60,7 +62,7 @@ human calibration result, or model-quality claim.
   derivation manifests; embedded synthetic manifests are used only by
   `--self-test`.
 - `tools/dataset/tests/fixtures/camera-coach-fixtures.json` — explicitly
-  synthetic valid still/temporal/episode records and 82 declared negative
+  synthetic valid still/temporal/episode records and 84 declared negative
   mutation cases, including source relabel, media asset authority, recursive
   unknown fields, subject/ABSTAIN semantics, consent resolution, derivation
   kind/independence/quota, temporal timeline, review status/conflict/
@@ -69,8 +71,10 @@ human calibration result, or model-quality claim.
   subject IDs, malformed action/provenance source-asset/capture person-family/
   temporal asset/manifest source IDs, scalar abstention reasons and
   verification lists, unused source-shoot family IDs and closed enum fields,
-  source-asset owner conflicts, category-keyed family namespace probes, closed
-  issue evidence, and episode outcome/subject-continuity probes. Every
+  source-asset owner conflicts, category-keyed family namespace probes, exact
+  issue/global action consistency (including orphan globals with no issue or
+  evidence rows and issue actions missing globally), closed issue evidence,
+  and episode outcome/subject-continuity probes. Every
   hostile mutation is asserted to return validation errors without raising.
 - `tools/dataset/tests/fixtures/camera-coach-batch-*.jsonl` — explicitly
   synthetic caller-supplied positive manifests, train/calibration protected-
@@ -88,20 +92,26 @@ PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/m3-dataset-foundation/d
 
 $ python3 tools/dataset/camera_coach_check.py --self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=82
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=84
 PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=82
+PASS camera-coach self-test valid=3 invalid=84
 
 $ python3 tools/dataset/camera_coach_check.py --self-test  # repeated deterministic run
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=82
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=84
 PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=82
+PASS camera-coach self-test valid=3 invalid=84
 
 $ PYTHONHASHSEED=1..5 deterministic validator/order and namespace probe
-PASS cross_seed_determinism seeds=1,2,3,4,5 cases=capture_review_source_asset_owner split_namespace
+PASS cross_seed_determinism seeds=1,2,3,4,5 cases=capture_review_source_asset_owner split_namespace label_action_consistency
+
+$ in-memory approved-manifest release-gate smoke (three distinct release splits, two accepting votes per record)
+PASS positive_release_batch records=3 splits=train,calibration,holdout errors=0
+
+$ malformed label boundary totality quick probe
+PASS malformed_totality cases=7
 
 $ python3 -c 'import json; from pathlib import Path; a=json.loads(Path("docs/implementation/camera-coach-contract-v2.json").read_text()); s=json.loads(Path("datasets/camera-coach/v1/label-schema.json").read_text()); assert set(a["approvedActionIDs"]) == set(s["$defs"]["actionId"]["enum"]); assert set(s["$defs"]["verificationActionId"]["enum"]) == set(a["approvedActionIDs"]) | {"abstain"}; e=s["$defs"]["issue"]["properties"]["evidence"]["items"]["enum"]; assert e == list(dict.fromkeys(e)); print("PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8")'
 PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8
@@ -125,7 +135,7 @@ for case in fixture["invalid_cases"]:
     assert errors and any(case["declared_reason"] in error for error in errors), (case["case_id"], case["declared_reason"], errors)
 print(f"PASS declared_hostile_probes={len(fixture['invalid_cases'])} exact_declared_reasons={len({case['declared_reason'] for case in fixture['invalid_cases']})}")
 PY
-PASS declared_hostile_probes=82 exact_declared_reasons=36
+PASS declared_hostile_probes=84 exact_declared_reasons=38
 
 $ deterministic AST audit of every `_check_list` call (no files written)
 PASS check_list_calls=25 assigned_calls=25 discarded_calls=0
@@ -135,7 +145,7 @@ $ deterministic schema-invalid scalar/list boundary matrix and unused-source
 PASS normalized_list_matrix cases=70 targets=14 values=5
 PASS unused_source_field_matrix cases=16 fields=16
 
-The self-test and hostile probe loop require every one of the 82 declared
+The self-test and hostile probe loop require every one of the 84 declared
 negative fixtures to fail for its declared reason and to return validation
 errors without raising an exception. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
@@ -154,8 +164,10 @@ review, exact issue evidence (`model_output` and unknown strings), malformed
 subject IDs, malformed action/provenance source-asset/capture person-family/
 temporal asset/manifest source IDs, scalar list-valued abstention/verification
 fields, unused source-shoot family IDs and orientation/lens/lighting fields,
-source-asset owner conflicts, category-keyed family namespace probes, and
-measurable outcomes with lost, changed, or unknown subject continuity. The
+source-asset owner conflicts, category-keyed family namespace probes, exact
+issue/global action consistency in both directions (including orphan global
+actions with no issue/evidence rows), and measurable outcomes with lost,
+changed, or unknown subject continuity. The
 release review gate accepts only two distinct
 accepting votes or a latest accepted adjudication that chronologically follows
 every referenced vote, covers every vote, and has accepted outcome.
@@ -233,7 +245,7 @@ $ git diff --check
 (no output); exit=0
 ```
 
-The self-test and hostile probe loop require every one of the 82 declared
+The self-test and hostile probe loop require every one of the 84 declared
 negative fixtures to fail for its declared reason and to return validation
 errors without raising an exception. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
@@ -248,7 +260,8 @@ timestamps, all three episode timestamp boundaries, and
 missing measured pass evidence for correct/no-op/opposite/overshoot outcomes,
 release review status/conflict/rejected-adjudication/before-vote chronology/
 impossible-timestamp/reversed-vote-history/missing-adjudication, exact closed
-issue evidence, malformed subject IDs, malformed action/provenance
+issue evidence, exact issue/global action consistency in both directions,
+malformed subject IDs, malformed action/provenance
 source-asset/capture person-family/temporal asset/manifest source IDs, scalar
 abstention/verification lists, unused source-shoot family and closed-enum
 fields, source-asset owner conflicts, and measurable outcome subject-continuity

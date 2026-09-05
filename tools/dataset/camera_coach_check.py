@@ -397,6 +397,8 @@ def _validate_label(label: Any, errors: list[str]) -> None:
             errors.append(_error("invalid_action_id", "label action list"))
     if set(_string_values(accepted)) & set(_string_values(forbidden)):
         errors.append(_error("contradictory_actions", "label action lists overlap"))
+    issue_accepted_ids: set[str] = set()
+    issue_forbidden_ids: set[str] = set()
     for index, issue in enumerate(issues):
         path = f"label.issues[{index}]"
         _require(issue, {"issue_id", "severity", "evidence", "acceptable_action_ids", "forbidden_action_ids"}, path, errors)
@@ -411,6 +413,8 @@ def _validate_label(label: Any, errors: list[str]) -> None:
         issue_forbidden = _check_list(issue.get("forbidden_action_ids"), f"{path}.forbidden_action_ids", errors)
         if not evidence:
             errors.append(_error("missing_issue_evidence", path))
+        issue_accepted_ids.update(_string_values(issue_accepted))
+        issue_forbidden_ids.update(_string_values(issue_forbidden))
         for action in issue_accepted:
             if not isinstance(action, str) or action not in ACTION_IDS:
                 errors.append(_error("invalid_action_id", f"{path}.acceptable_action_ids"))
@@ -421,6 +425,16 @@ def _validate_label(label: Any, errors: list[str]) -> None:
                 errors.append(_error("invalid_action_id", f"{path}.forbidden_action_ids"))
             if action not in forbidden:
                 errors.append(_error("action_issue_mismatch", path))
+    # Per-issue checks above reject issue-only IDs. These set differences reject
+    # global-only IDs; arrays are uniqueItems but not order-sensitive in the
+    # schema. Retain the special KEEP no-change action with no issue rows.
+    expected_accepted_ids = issue_accepted_ids
+    if not issues and label.get("keep_decision") == "keep":
+        expected_accepted_ids = {"keep_current_setup"}
+    if _string_set(accepted) - expected_accepted_ids:
+        errors.append(_error("orphan_global_action", "label.acceptable_action_ids"))
+    if _string_set(forbidden) - issue_forbidden_ids:
+        errors.append(_error("orphan_global_action", "label.forbidden_action_ids"))
     selected = label.get("selected_action_id")
     if selected is not None and (not isinstance(selected, str) or selected not in accepted):
         errors.append(_error("invalid_action_id", "label.selected_action_id"))
