@@ -31,9 +31,41 @@
       "source": "swift_still_image_replay"
     },
     "runtime_claim": "real_runtime_still_replay",
-    "claim_scope": "The 107-row receipt is genuine Swift production AnalysisPipeline fullRuntime orchestration under the simulator. The simulator Vision path fail-closed with the observed error `Failed to create espresso context`; this receipt is therefore not evidence of successful Vision, DETR, NIMA, or neural-evidence inference, and is not a release-quality or model-quality claim.",
-    "model_availability_note": "DETR and NIMA artifacts are present and their wrappers are in the source path. The compact_neural_evidence_net resource is not present in this checkout, so NeuralEvidenceInferenceService cannot provide an executed local neural-evidence outcome; this receipt does not claim that missing model executed.",
-    "simulator_inference_note": "Vision logged `Failed to create espresso context` during this simulator session. Treat the rows as an orchestration/schema receipt with fail-closed Vision behavior, not as successful Vision/model inference.",
+    "claim_scope": "The 107-row receipt is genuine Swift production AnalysisPipeline fullRuntime orchestration under the simulator. Apple Vision tracking failed closed for all 107 records with the observed error `Failed to create espresso context`; NIMA returned a finite aesthetic score for all 107 records; DETR-derived foreground detections were non-empty in exactly 85 of 107 records. The receipt does not claim successful Vision tracking, calibrated model quality, or compact neural-evidence inference, and is not a release-quality claim.",
+    "model_availability_note": "DETR and NIMA artifacts are present and their wrappers are in the source path. The executed replay returned finite NIMA scores for 107/107 records and serialized non-empty DETR-derived foreground detections for 85/107 records. The compact_neural_evidence_net resource is not present in this checkout, so NeuralEvidenceInferenceService cannot provide an executed local neural-evidence outcome.",
+    "simulator_inference_note": "Apple Vision tracking logged `Failed to create espresso context` for 107/107 records and fail-closed. NIMA score return succeeded for 107/107 records. DETR-derived foreground object_count was greater than zero for 85/107 records; the 22 zero-count records are not classified as successful or failed raw inference because pre-filter arrays are not exported.",
+    "inference_evidence": {
+      "vision_tracking": {
+        "status": "failed_closed",
+        "records_failed": 107,
+        "records_total": 107,
+        "observed_error": "Failed to create espresso context"
+      },
+      "nima": {
+        "status": "successful_score_return",
+        "records_with_finite_score": 107,
+        "records_total": 107,
+        "score_field": "debug_numeric_features.aesthetic_score",
+        "score_range": [
+          0.3325038909912109,
+          0.5681289792060852
+        ],
+        "confidence_field_note": "debug_numeric_features.aesthetic_confidence remains -1 and is not a calibrated confidence output."
+      },
+      "detr": {
+        "status": "non_empty_foreground_detections_observed",
+        "records_with_object_count_gt_zero": 85,
+        "records_total": 107,
+        "records_with_object_count_zero": 22,
+        "foreground_detection_count_sum": 239,
+        "measurement_field": "debug_numeric_features.object_count",
+        "scope_note": "This is the exact serialized foreground-detection evidence. Raw pre-filter arrays are not exported, so zero-count rows are not classified as successful or failed inference."
+      },
+      "compact_neural_evidence": {
+        "status": "unavailable",
+        "reason": "compact_neural_evidence_net is absent from the checkout"
+      }
+    },
     "rows": 214,
     "records": 107,
     "modes": {
@@ -61,11 +93,26 @@
       "result": "Passed",
       "test_name": "SemanticEvalStillImageBatchReplayTests.testExportSemanticEvalCandidateOutputsFromStillImages"
     },
+    "verification_result_bundle": {
+      "portable_evidence_locator": "docs/cameraanalysis/eval/camera-baseline-v0/swift-replay-receipt-107.json",
+      "nonportable_session_note": {
+        "path": "/private/tmp/m4-001-fix-replay.qyakaD/replay.xcresult",
+        "tree_sha256": "01bdddee76e9407bb80e7c9bfb7ce2232de8bdeef40c5e32d97e4d5a005e3997"
+      },
+      "result": "Passed",
+      "test_name": "SemanticEvalStillImageBatchReplayTests.testExportSemanticEvalCandidateOutputsFromStillImages",
+      "output_sha256": "baa132b46e60b88f98189fab72d961f79be859218c636fe9c64df04ac33305e2"
+    },
     "replay_config": {
       "portable_path": "docs/cameraanalysis/eval/camera-baseline-v0/replay-config-107.json",
       "portable_sha256": "05852dd1721656616b9d1e7db7b776315e5726413ba7851f4fefe129f4bca518",
-      "executed_transient_sha256": "48b40a5fa27eb19182fd1933cfbeb7b742e252a4563de71f5054b2227a296e84",
-      "execution_contract": "The portable config was normalized to the repository root and a writable external output path before test execution; the absolute materialization was transient and removed."
+      "runner_path": "docs/cameraanalysis/eval/run_swift_semantic_replay.py",
+      "runner_sha256": "20fa2e289c7e6877cf684257132e1ef94e8ed48220f0716b9a0ac01bd81b50b1",
+      "executed_transient_sha256": "bd1dbe8156b6ff064f522acc71c719e7520f34383647a8bcdad55ad8800d07ce",
+      "selection": "The runner materializes the committed config, sets SEMANTIC_EVAL_CONFIG, and writes the Swift test's canonical transient config candidate before xcodebuild.",
+      "execution_contract": "The portable config was normalized to the repository root and a writable external output path before test execution; the absolute materialization was transient and removed.",
+      "verification_receipt_path": "docs/cameraanalysis/eval/camera-baseline-v0/swift-replay-receipt-107.json",
+      "verification_receipt_sha256": "37419c5e543f2566c2d98093a5e46aa4ad731de7223a7c1294d103955aaa33e9"
     }
   },
   "datasets": {
