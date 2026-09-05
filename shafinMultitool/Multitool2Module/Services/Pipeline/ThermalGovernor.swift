@@ -8,21 +8,118 @@
 import Foundation
 import UIKit
 
-enum ThermalBudgetTier: Sendable {
+enum ThermalBudgetTier: String, Equatable, Sendable {
     case unrestricted
     case constrained
     case critical
+}
+
+/// The only performance mode the camera surface may expose. The thermal and
+/// scheduler owners publish this value; the view never derives it from a
+/// fixture identifier, a timer, or a raw thermal reason.
+enum CameraEffectivePerformanceMode: String, Equatable, Sendable {
+    case nominal
+    case eco
+}
+
+/// Runtime performance truth shared by CameraManager, AnalysisPipeline and
+/// the presentation owner. Keeping this as a small immutable value avoids a
+/// per-frame SwiftUI dependency while still making an effective degradation
+/// transition observable at the boundary.
+struct CameraRuntimePerformanceSnapshot: Equatable, Sendable {
+    let mode: CameraEffectivePerformanceMode
+    let thermalTier: ThermalBudgetTier
+    let budget: ThermalGovernor.Budget
+
+    var isLimited: Bool { mode == .eco }
+
+    static let nominal = Self(
+        mode: .nominal,
+        thermalTier: .unrestricted,
+        budget: .nominal
+    )
+
+    init(mode: CameraEffectivePerformanceMode,
+         thermalTier: ThermalBudgetTier,
+         budget: ThermalGovernor.Budget) {
+        self.mode = mode
+        self.thermalTier = thermalTier
+        self.budget = budget
+    }
+
+    init(budget: ThermalGovernor.Budget,
+         thermalTier: ThermalBudgetTier = .constrained) {
+        self.init(
+            mode: budget.heavyModelsEnabled ? .nominal : .eco,
+            thermalTier: thermalTier,
+            budget: budget
+        )
+    }
+}
+
+/// Notification-backed store is intentionally process-local. CameraManager
+/// and AnalysisPipeline already own their governors and scheduler, so this is
+/// the narrow bridge that lets CameraViewModel observe their *effective*
+/// result without reaching into either private owner or duplicating cadence
+/// policy. Publications are deduplicated to avoid layout churn on every frame.
+final class CameraRuntimePerformanceStore: @unchecked Sendable {
+    static let shared = CameraRuntimePerformanceStore()
+
+    static let notification = Notification.Name("CameraRuntimePerformanceDidChange")
+    static let snapshotUserInfoKey = "snapshot"
+
+    private let lock = NSLock()
+    private var snapshotStorage = CameraRuntimePerformanceSnapshot.nominal
+
+    var currentSnapshot: CameraRuntimePerformanceSnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return snapshotStorage
+    }
+
+    @discardableResult
+    func publish(_ snapshot: CameraRuntimePerformanceSnapshot,
+                 notificationCenter: NotificationCenter = .default) -> Bool {
+        lock.lock()
+        guard snapshotStorage != snapshot else {
+            lock.unlock()
+            return false
+        }
+        snapshotStorage = snapshot
+        lock.unlock()
+
+        notificationCenter.post(
+            name: Self.notification,
+            object: self,
+            userInfo: [Self.snapshotUserInfoKey: snapshot]
+        )
+        return true
+    }
+
+#if DEBUG
+    func resetForTesting(notificationCenter: NotificationCenter = .default) {
+        _ = publish(.nominal, notificationCenter: notificationCenter)
+    }
+#endif
 }
 
 final class ThermalGovernor {
     typealias ThermalStateProvider = () -> ProcessInfo.ThermalState
     typealias BatteryLevelProvider = () -> Float
 
-    struct Budget: Sendable {
+    struct Budget: Equatable, Sendable {
         let highPriorityFrequency: Double
         let mediumPriorityFrequency: Double
         let lowPriorityFrequency: Double
         let heavyModelsEnabled: Bool
+
+        static let nominal = Self(
+            highPriorityFrequency: 6,
+            mediumPriorityFrequency: 2,
+            lowPriorityFrequency: 0.25,
+            heavyModelsEnabled: true
+        )
+
     }
 
     private let thermalStateProvider: ThermalStateProvider
@@ -76,7 +173,27 @@ final class ThermalGovernor {
             effectiveState = thermalState
         }
 
-        return Self.budget(for: effectiveState)
+        let budget = Self.budget(for: effectiveState)
+        CameraRuntimePerformanceStore.shared.publish(
+            CameraRuntimePerformanceSnapshot(
+                budget: budget,
+                thermalTier: Self.effectiveTier(for: effectiveState)
+            )
+        )
+        return budget
+    }
+
+    private static func effectiveTier(for state: ProcessInfo.ThermalState) -> ThermalBudgetTier {
+        switch state {
+        case .nominal:
+            return .unrestricted
+        case .fair, .serious:
+            return .constrained
+        case .critical:
+            return .critical
+        @unknown default:
+            return .constrained
+        }
     }
 
     private static func budget(for state: ProcessInfo.ThermalState) -> Budget {

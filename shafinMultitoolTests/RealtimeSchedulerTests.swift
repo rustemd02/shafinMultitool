@@ -96,6 +96,26 @@ final class RealtimeSchedulerTests: XCTestCase {
         XCTAssertEqual(lowConsumer.count, 0)
     }
 
+    func testSchedulerPublishesTheEffectiveModeOfTheBudgetItDispatches() {
+        let store = CameraRuntimePerformanceStore.shared
+        store.resetForTesting()
+        let scheduler = RealtimeScheduler()
+
+        scheduler.dispatchSynchronouslyForTesting(
+            context: makeFrameContext(isStable: true),
+            budget: ThermalGovernor.Budget(
+                highPriorityFrequency: 2,
+                mediumPriorityFrequency: 0.5,
+                lowPriorityFrequency: 0,
+                heavyModelsEnabled: false
+            )
+        )
+
+        XCTAssertEqual(store.currentSnapshot.mode, .eco)
+        XCTAssertEqual(store.currentSnapshot.thermalTier, .constrained)
+        store.resetForTesting()
+    }
+
     func testUnregisterIsIdempotentAndPostUnregisterDispatchDoesNotInvokeConsumer() {
         let scheduler = RealtimeScheduler()
         let consumer = CountingFrameConsumer()

@@ -149,6 +149,13 @@ final class CameraViewModel: ObservableObject {
     @Published var isPaused: Bool = false
     @Published var previewSuggestions: [Suggestion] = []
     @Published var liveHint: LiveHintPresentation?
+    /// Bounded domain outputs consumed by CameraOverlayUXPresentation. Raw
+    /// model confidence/debug values never enter this projection.
+    @Published private(set) var plannerDecision: CameraCoachDecisionV2?
+    @Published private(set) var verificationResult: ActionVerificationResult?
+    @Published private(set) var analysisStatus: CameraOverlayAnalysisStatus = .healthy
+    @Published private(set) var analysisFailure: CameraAnalysisFailure?
+    @Published private(set) var effectivePerformance: CameraRuntimePerformanceSnapshot = .nominal
     @Published var pauseCritique: PauseCritiquePresentation?
     @Published private(set) var pausePresentationState: CameraPausePresentationState = .idle
     @Published private(set) var pauseFailureReason: CameraPauseFailureReason?
@@ -217,11 +224,14 @@ final class CameraViewModel: ObservableObject {
     init(cameraManager: CameraManager,
          analysisPipeline: AnalysisPipeline,
          lensSwitchOperation: (@Sendable (CameraLens) async -> CameraLensSwitchResult)? = nil,
-         lensSelectionHaptic: SETHapticPerforming? = nil) {
+         lensSelectionHaptic: SETHapticPerforming? = nil,
+         performanceStore: CameraRuntimePerformanceStore = .shared) {
         self.cameraManager = cameraManager
         self.analysisPipeline = analysisPipeline
         self.pauseCutMarkController = SETPauseCutMarkController(eventLedger: motionEventLedger)
         self.lensSelectionHaptic = lensSelectionHaptic ?? SETHapticFeedback()
+        self.effectivePerformance = performanceStore.currentSnapshot
+        self.analysisStatus = performanceStore.currentSnapshot.isLimited ? .limited : .healthy
         self.lensSwitchOperation = lensSwitchOperation ?? { [cameraManager] lens in
             await cameraManager.switchLensAndWait(to: lens)
         }
@@ -240,7 +250,10 @@ final class CameraViewModel: ObservableObject {
 
         analysisPipeline.$currentLiveHint
             .receive(on: DispatchQueue.main)
-            .assign(to: &$liveHint)
+            .sink { [weak self] hint in
+                self?.applyLiveHint(hint)
+            }
+            .store(in: &cancellables)
 
         analysisPipeline.$currentCoachingEpisodeEvent
             .receive(on: DispatchQueue.main)
@@ -268,9 +281,32 @@ final class CameraViewModel: ObservableObject {
                 self?.handleCameraFailure(error)
             }
             .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: CameraRuntimePerformanceStore.notification)
+            .compactMap { notification in
+                notification.userInfo?[CameraRuntimePerformanceStore.snapshotUserInfoKey]
+                    as? CameraRuntimePerformanceSnapshot
+            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] snapshot in
+                self?.applyEffectivePerformance(snapshot)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: CameraAnalysisRuntimeSignal.failureNotification)
+            .compactMap { notification in
+                notification.userInfo?[CameraAnalysisRuntimeSignal.failureUserInfoKey]
+                    as? CameraAnalysisFailure
+            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] failure in
+                self?.reportAnalysisFailure(failure)
+            }
+            .store(in: &cancellables)
     }
 
     func start() {
+        clearAnalysisFailureForNewCapture()
         resetCoachingEpisodeForNewCapture()
         let intent = beginLifecycleRequest(.starting)
         let pendingRollback = failedStartRollbackOperation
@@ -294,6 +330,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func startAndWait() async {
+        clearAnalysisFailureForNewCapture()
         resetCoachingEpisodeForNewCapture()
         let intent = beginLifecycleRequest(.starting)
         if let pendingRollback = failedStartRollbackOperation {
@@ -471,6 +508,8 @@ final class CameraViewModel: ObservableObject {
         suggestion = nil
         legacySuggestion = nil
         liveHint = nil
+        plannerDecision = nil
+        verificationResult = nil
         overlayAnnotations = []
         subjectRegions = []
         currentLens = .wide
@@ -588,6 +627,40 @@ final class CameraViewModel: ObservableObject {
     
     func toggleDebug() {
         debugMode.toggle()
+    }
+
+    /// Verifier owner handoff. A result from a different episode token is
+    /// stale and is discarded instead of changing the live presentation.
+    @discardableResult
+    func applyVerificationResult(_ result: ActionVerificationResult) -> Bool {
+        guard coachingEpisodeState.token == result.token else { return false }
+        verificationResult = result
+        if case .incomparable = result.decision {
+            clearLiveAdviceForAnalysisBoundary()
+            analysisStatus = effectivePerformance.isLimited ? .limited : .healthy
+        }
+        return true
+    }
+
+    /// Planner owner handoff for WAIT/SELECT_SUBJECT/ABSTAIN states that do
+    /// not carry a human-facing live hint. The normal production path derives
+    /// this same bounded decision from the pipeline's typed LiveHint output.
+    func applyPlannerDecision(_ decision: CameraCoachDecisionV2?) {
+        plannerDecision = decision
+        verificationResult = nil
+        if decision == .wait || decision == .abstain || decision == .selectSubject {
+            clearLiveAdviceForAnalysisBoundary()
+        }
+    }
+
+    /// Analyzer failure is an explicit owner signal. The presentation becomes
+    /// honest fallback immediately and all stale marker/copy is removed.
+    func reportAnalysisFailure(_ failure: CameraAnalysisFailure = .failed) {
+        analysisFailure = failure
+        analysisStatus = .failed
+        plannerDecision = nil
+        verificationResult = nil
+        clearLiveAdviceForAnalysisBoundary()
     }
 
     func togglePause() {
@@ -836,11 +909,59 @@ final class CameraViewModel: ObservableObject {
         // the old episode after a no-op or failed switch.
         analysisPipeline.cancelCoachingEpisode(reason: reason)
         coachingEpisodeState = coachingEpisodeCoordinator.cancel(reason: reason)
+        verificationResult = nil
     }
 
     private func resetCoachingEpisodeForNewCapture() {
         coachingEpisodeCoordinator.resetForRetry()
         coachingEpisodeState = .idle
+        verificationResult = nil
+    }
+
+    private func applyLiveHint(_ hint: LiveHintPresentation?) {
+        guard analysisStatus != .failed,
+              !effectivePerformance.isLimited else {
+            liveHint = nil
+            plannerDecision = nil
+            verificationResult = nil
+            return
+        }
+        verificationResult = nil
+        liveHint = hint
+        guard let hint else {
+            plannerDecision = nil
+            return
+        }
+        plannerDecision = hint.actionType == .leaveFrameAsIs ? .keep : .correct
+    }
+
+    private func applyEffectivePerformance(_ snapshot: CameraRuntimePerformanceSnapshot) {
+        effectivePerformance = snapshot
+
+        if snapshot.isLimited {
+            analysisStatus = .limited
+            plannerDecision = nil
+            verificationResult = nil
+            clearLiveAdviceForAnalysisBoundary()
+        } else if analysisStatus == .limited {
+            // Returning to nominal cadence never resurrects stale advice. The
+            // next valid pipeline publication must establish a fresh event.
+            analysisStatus = .healthy
+            plannerDecision = nil
+            verificationResult = nil
+        }
+    }
+
+    private func clearAnalysisFailureForNewCapture() {
+        analysisFailure = nil
+        analysisStatus = effectivePerformance.isLimited ? .limited : .healthy
+    }
+
+    private func clearLiveAdviceForAnalysisBoundary() {
+        liveHint = nil
+        overlayAnnotations = []
+        subjectRegions = []
+        analysisPipeline.clearLivePresentationState()
     }
 
     private func publishNominalTimecode() {

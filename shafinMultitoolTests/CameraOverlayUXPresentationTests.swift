@@ -411,6 +411,149 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         }
     }
 
+    func testOwnerContextMapsLifecyclePauseLensAndDegradationBoundaries() {
+        let hint = makeLiveHint(
+            overlayHint: OverlayHint(
+                id: "guide",
+                kind: .arrow,
+                targetRegion: NormalizedRect(x: 0.62, y: 0.2, width: 0.24, height: 0.44),
+                direction: .left
+            )
+        )
+
+        let lifecycleCases: [(CameraLifecycleState, CameraOverlayUXPresentation.State)] = [
+            (.starting, .starting),
+            (.stopping, .interrupted),
+            (.failed(.sessionInterrupted), .interrupted),
+            (.failed(.runtimeError), .failed)
+        ]
+        for (lifecycle, expected) in lifecycleCases {
+            let presentation = CameraOverlayUXPresentation.make(
+                liveHint: hint,
+                context: CameraOverlayUXContext(lifecycleState: lifecycle)
+            )
+            XCTAssertEqual(presentation.state, expected)
+            XCTAssertNil(presentation.markerEventID)
+            XCTAssertFalse(presentation.visibleCopy.contains(hint.text))
+        }
+
+        let pauseCases: [(CameraPausePresentationState, CameraOverlayUXPresentation.State)] = [
+            (.loading(snapshotID: "pause"), .pauseLoading),
+            (.empty(snapshotID: "pause"), .pauseEmpty),
+            (.failure(snapshotID: "pause"), .pauseFailure),
+            (.resuming(snapshotID: "pause"), .resuming)
+        ]
+        for (pause, expected) in pauseCases {
+            XCTAssertEqual(
+                CameraOverlayUXPresentation.make(
+                    liveHint: hint,
+                    context: CameraOverlayUXContext(pauseState: pause)
+                ).state,
+                expected
+            )
+        }
+
+        XCTAssertEqual(
+            CameraOverlayUXPresentation.make(
+                liveHint: hint,
+                context: CameraOverlayUXContext(lensState: .switching(.wide))
+            ).state,
+            .lensSwitching
+        )
+
+        let limited = CameraOverlayUXPresentation.make(
+            liveHint: hint,
+            context: CameraOverlayUXContext(
+                performance: CameraRuntimePerformanceSnapshot(
+                    budget: ThermalGovernor.Budget(
+                        highPriorityFrequency: 2,
+                        mediumPriorityFrequency: 0.5,
+                        lowPriorityFrequency: 0,
+                        heavyModelsEnabled: false
+                    ),
+                    thermalTier: .constrained
+                )
+            )
+        )
+        XCTAssertEqual(limited.state, CameraOverlayUXPresentation.State.liveSeeking)
+        XCTAssertTrue(limited.showsECO)
+        XCTAssertTrue(limited.isLimited)
+        XCTAssertNil(limited.overlayHint)
+
+        let failed = CameraOverlayUXPresentation.make(
+            liveHint: hint,
+            context: CameraOverlayUXContext(analysisStatus: .failed)
+        )
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertFalse(failed.isFallback)
+        XCTAssertNil(failed.markerEventID)
+    }
+
+    func testCorrectiveGeometryUsesSubjectAndTargetAndStaysInsideSafeRect() {
+        let sizes = [
+            CGSize(width: 390, height: 844),
+            CGSize(width: 844, height: 390),
+            CGSize(width: 600, height: 600)
+        ]
+
+        for size in sizes {
+            let canvas = CGRect(origin: .zero, size: size)
+            let safe = canvas.insetBy(dx: 20, dy: 20)
+            let subject = CGRect(
+                x: safe.minX + size.width * 0.08,
+                y: safe.minY + size.height * 0.16,
+                width: size.width * 0.16,
+                height: size.height * 0.18
+            )
+            let target = CGRect(
+                x: safe.maxX - size.width * 0.24,
+                y: safe.minY + size.height * 0.32,
+                width: size.width * 0.16,
+                height: size.height * 0.18
+            )
+            guard let geometry = SETCorrectiveArrowGeometry.resolveValidated(
+                canvasSize: size,
+                targetRect: target,
+                commandRailFrame: subject,
+                safeInset: 20
+            ) else {
+                XCTFail("subject/target geometry should be drawable")
+                continue
+            }
+            XCTAssertTrue(safe.contains(geometry.start))
+            XCTAssertTrue(safe.contains(geometry.end))
+            XCTAssertTrue(geometry.strokeAvoidsTarget())
+            XCTAssertEqual(geometry.commandRailFrame, subject.intersection(canvas))
+        }
+    }
+
+    func testOcclusionPlacementPrefersSafeCornersAndBoundsFallbackBand() {
+        let viewport = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let safe = viewport.insetBy(dx: 8, dy: 8)
+        let placement = CameraOcclusionSolver.resolve(
+            viewport: viewport,
+            safeRect: safe,
+            subjectRect: CGRect(x: 145, y: 190, width: 100, height: 280),
+            targetRect: CGRect(x: 270, y: 300, width: 90, height: 180),
+            contentSize: CGSize(width: 180, height: 80)
+        )
+        XCTAssertNotNil(placement)
+        XCTAssertTrue(safe.contains(placement!.frame))
+        XCTAssertFalse(placement!.frame.intersects(CGRect(x: 145, y: 190, width: 100, height: 280)))
+        XCTAssertFalse(placement!.frame.intersects(CGRect(x: 270, y: 300, width: 90, height: 180)))
+
+        let fallback = CameraOcclusionSolver.resolve(
+            viewport: viewport,
+            safeRect: safe,
+            subjectRect: safe,
+            contentSize: CGSize(width: 380, height: 200)
+        )
+        XCTAssertNotNil(fallback)
+        XCTAssertLessThanOrEqual(fallback!.frame.width, 360)
+        XCTAssertLessThanOrEqual(fallback!.frame.height, 96)
+        XCTAssertTrue(safe.contains(fallback!.frame))
+    }
+
     private func makeLiveHint(
         id: String = "hint-1",
         frameId: String = "frame-1",

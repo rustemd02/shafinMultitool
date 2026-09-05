@@ -16,6 +16,12 @@ struct SETCameraCoachFixtureConfiguration {
     /// CameraViewModel and never use this default.
     let takeNumber: Int
     let snapshotID: String?
+    /// Optional owner-injected performance/evidence values. Defaults read the
+    /// process-local runtime store; fixture IDs never manufacture ECO.
+    let effectivePerformance: CameraRuntimePerformanceSnapshot
+    let analysisStatus: CameraOverlayAnalysisStatus
+    let subjectRegion: NormalizedRect?
+    let targetRegion: NormalizedRect?
 
     init(
         fixtureID: String,
@@ -26,7 +32,11 @@ struct SETCameraCoachFixtureConfiguration {
         availableLenses: [CameraLens] = [.ultraWide, .wide, .telephoto],
         motionEventLedger: SETMotionEventLedger = SETMotionEventLedger(),
         takeNumber: Int = 3,
-        snapshotID: String? = nil
+        snapshotID: String? = nil,
+        effectivePerformance: CameraRuntimePerformanceSnapshot? = nil,
+        analysisStatus: CameraOverlayAnalysisStatus = .healthy,
+        subjectRegion: NormalizedRect? = NormalizedRect(x: 0.28, y: 0.30, width: 0.18, height: 0.28),
+        targetRegion: NormalizedRect? = NormalizedRect(x: 0.58, y: 0.36, width: 0.20, height: 0.34)
     ) {
         self.fixtureID = fixtureID
         self.locale = Locale(identifier: localeIdentifier)
@@ -41,6 +51,10 @@ struct SETCameraCoachFixtureConfiguration {
         self.motionEventLedger = motionEventLedger
         self.takeNumber = max(1, takeNumber)
         self.snapshotID = snapshotID
+        self.effectivePerformance = effectivePerformance ?? CameraRuntimePerformanceStore.shared.currentSnapshot
+        self.analysisStatus = analysisStatus
+        self.subjectRegion = subjectRegion
+        self.targetRegion = targetRegion
     }
 }
 
@@ -212,14 +226,26 @@ private struct SETCameraCoachRuntimeSurface: View {
                                 onAction: {}
                             )
                         case .running:
-                            SETCameraLiveOverlay(
-                                viewModel: viewModel,
-                                canvasSize: canvasSize,
-                                reduceMotion: reduceMotion,
-                                subjectRegions: previewTransformStore.subjectRegions,
-                                correctiveTargetRegion: previewTransformStore.targetRegion,
-                                lensDescriptors: cameraManager.availableLensDescriptors
-                            )
+                            if viewModel.analysisStatus == .failed {
+                                SETCameraStatusOverlay(
+                                    canvasSize: canvasSize,
+                                    title: .cameraFailed,
+                                    action: .retry,
+                                    tallyMode: .standby,
+                                    timecode: viewModel.nominalTimecode,
+                                    onAction: { viewModel.start() }
+                                )
+                            } else {
+                                SETCameraLiveOverlay(
+                                    viewModel: viewModel,
+                                    canvasSize: canvasSize,
+                                    reduceMotion: reduceMotion,
+                                    subjectRegions: previewTransformStore.subjectRegions,
+                                    correctiveTargetRegion: previewTransformStore.targetRegion,
+                                    targetRegion: previewTransformStore.targetRegion,
+                                    lensDescriptors: cameraManager.availableLensDescriptors
+                                )
+                            }
                         }
                     }
                 }
@@ -273,7 +299,7 @@ private struct SETCameraCoachRuntimeSurface: View {
     private var validatedCorrectiveTargetRegion: NormalizedRect? {
         guard let liveHint = viewModel.liveHint,
               let overlayHint = liveHint.overlayHint,
-              overlayHint.kind == .arrow,
+              overlayHint.kind == .arrow || overlayHint.kind == .regionHighlight,
               let targetRegion = liveHint.targetRegion,
               !targetRegion.isDegenerate else { return nil }
         return targetRegion
@@ -319,7 +345,11 @@ private struct SETCameraCoachFixtureSurface: View {
                         canvasSize: canvasSize,
                         availableLenses: configuration.availableLenses,
                         reduceMotion: configuration.reduceMotion,
-                        eventLedger: configuration.motionEventLedger
+                        eventLedger: configuration.motionEventLedger,
+                        effectivePerformance: configuration.effectivePerformance,
+                        analysisStatus: configuration.analysisStatus,
+                        subjectRegion: configuration.subjectRegion,
+                        targetRegion: configuration.targetRegion
                     )
                 }
 
@@ -351,7 +381,7 @@ private struct SETCameraCoachFixtureSurface: View {
 
     private var fixturePauseMarkerRegion: NormalizedRect? {
         guard fixturePauseMode == .success else { return nil }
-        return NormalizedRect(x: 0.58, y: 0.36, width: 0.20, height: 0.34)
+        return configuration.targetRegion
     }
 
     private func toggleFixturePause() {
@@ -431,27 +461,23 @@ private struct SETCameraLiveOverlay: View {
     let reduceMotion: Bool
     let subjectRegions: [CGRect]
     let correctiveTargetRegion: CGRect?
+    let targetRegion: CGRect?
     let lensDescriptors: [CameraLensDescriptor]
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
 
     var body: some View {
-        let presentation = CameraOverlayUXPresentation.make(
-            liveHint: viewModel.liveHint,
-            isExpanded: isExpanded,
-            isPaused: false,
-            locale: locale
-        )
-        let railHeight = commandRailHeight
-        let railWidth = commandRailWidth
+        let presentation = self.presentation
+        let placement = advicePlacement
+        let railFrame = placement?.frame ?? legacyCommandRailFrame
 
         ZStack {
             SETCameraRuntimeHUDHeader(
                 tallyMode: .live,
                 dimmed: presentation.isFallback,
                 timecodePublisher: viewModel.nominalTimecodePublisher,
-                showsECO: false
+                showsECO: presentation.showsECO
             )
 
             if !viewModel.availableLenses.isEmpty {
@@ -461,7 +487,7 @@ private struct SETCameraLiveOverlay: View {
                     lensDescriptors: lensDescriptors,
                     currentLens: viewModel.currentLens,
                     subjectRegions: subjectRegions,
-                    commandRailFrame: commandRailFrame,
+                    commandRailFrame: railFrame,
                     reservedFrames: lensStatus == nil ? [] : lensStatusReservedFrames,
                     isInteractionLocked: viewModel.lensSwitchPresentationState.isSwitching,
                     onLensChange: { viewModel.switchLens(to: $0) }
@@ -475,14 +501,14 @@ private struct SETCameraLiveOverlay: View {
                     requestedLens: viewModel.lensSwitchRequestedLens,
                     canvasSize: canvasSize,
                     subjectRegions: subjectRegions,
-                    commandRailFrame: commandRailFrame,
+                    commandRailFrame: railFrame,
                     reservedFrames: lensRailReservedFrames,
                     reduceMotion: reduceMotion
                 )
             }
 
             if let geometry = correctiveArrowGeometry,
-               let markerEventID = presentation.liveHintID {
+               let markerEventID = presentation.markerEventID {
                 SETCorrectiveArrowDrawGuide(
                     geometry: geometry,
                     eventID: markerEventID,
@@ -491,7 +517,7 @@ private struct SETCameraLiveOverlay: View {
                 )
                 .frame(width: canvasSize.width, height: canvasSize.height)
                 .accessibilityHidden(true)
-            } else if let markerKind, let markerEventID = presentation.liveHintID {
+            } else if let markerKind, let markerEventID = presentation.markerEventID {
                 SETMarkerDrawGuide(
                     kind: markerKind,
                     eventID: markerEventID,
@@ -503,10 +529,8 @@ private struct SETCameraLiveOverlay: View {
                 .accessibilityHidden(true)
             }
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-
-                HStack(spacing: 0) {
+            Group {
+                if let placement {
                     SETCameraCommandBand(
                         state: presentationState,
                         actionKey: actionKey,
@@ -514,15 +538,12 @@ private struct SETCameraLiveOverlay: View {
                         explanation: presentation.explanation,
                         showsWhy: presentation.showsWhy,
                         isExpanded: isExpanded,
-                        railHeight: railHeight,
+                        railHeight: placement.frame.height,
                         onWhy: toggleExplanation
                     )
-                    .frame(width: railWidth, height: railHeight)
-
-                    Spacer(minLength: 0)
+                    .frame(width: placement.frame.width, height: placement.frame.height)
+                    .position(x: placement.frame.midX, y: placement.frame.midY)
                 }
-                .padding(.horizontal, SETCameraCoachMetric.liveRailHorizontalInset)
-                .padding(.bottom, SETCameraCoachMetric.liveRailBottomInset)
             }
 
             SETAccessibilityIdentifierProbe(identifier: CameraOverlayAccessibilityID.surface)
@@ -539,8 +560,28 @@ private struct SETCameraLiveOverlay: View {
     private var presentation: CameraOverlayUXPresentation {
         CameraOverlayUXPresentation.make(
             liveHint: viewModel.liveHint,
+            context: presentationContext,
             isExpanded: isExpanded,
             locale: locale
+        )
+    }
+
+    private var presentationContext: CameraOverlayUXContext {
+        let requiresSpatialEvidence = viewModel.liveHint?.overlayHint?.kind == .arrow
+            || viewModel.liveHint?.overlayHint?.kind == .regionHighlight
+        return CameraOverlayUXContext(
+            lifecycleState: viewModel.lifecycleState,
+            decision: viewModel.plannerDecision,
+            episodeState: viewModel.coachingEpisodeState,
+            verificationResult: viewModel.verificationResult,
+            pauseState: viewModel.pausePresentationState,
+            lensState: viewModel.lensSwitchPresentationState,
+            performance: viewModel.effectivePerformance,
+            analysisStatus: viewModel.analysisStatus,
+            hasSpatialEvidence: !requiresSpatialEvidence || (
+                targetRegion != nil
+                    && (viewModel.liveHint?.overlayHint?.kind != .arrow || markerGeometry != nil)
+            )
         )
     }
 
@@ -551,6 +592,9 @@ private struct SETCameraLiveOverlay: View {
         case .explanation: return .explanation
         case .stableTip: return .corrective
         case .liveSeeking: return .seeking
+        case .starting, .interrupted, .failed, .lensSwitching,
+             .pauseLoading, .pauseSuccess, .pauseEmpty, .pauseFailure, .resuming:
+            return .seeking
         }
     }
 
@@ -597,9 +641,9 @@ private struct SETCameraLiveOverlay: View {
     }
 
     private var markerPosition: CGPoint {
-        let target = viewModel.liveHint?.targetRegion
-        let targetX = target.map { ($0.x + $0.width * 0.5) * canvasSize.width } ?? canvasSize.width * 0.68
-        let targetY = target.map { ($0.y + $0.height * 0.5) * canvasSize.height } ?? canvasSize.height * 0.64
+        guard let target = targetRegion else { return .zero }
+        let targetX = target.midX
+        let targetY = target.midY
         let halfWidth = markerFrameSize.width * 0.5
         let halfHeight = markerFrameSize.height * 0.5
         let minimumY = halfHeight + SETCameraCoachMetric.markerTargetInset
@@ -618,6 +662,10 @@ private struct SETCameraLiveOverlay: View {
     }
 
     private var commandRailFrame: CGRect {
+        advicePlacement?.frame ?? legacyCommandRailFrame
+    }
+
+    private var legacyCommandRailFrame: CGRect {
         CGRect(
             x: SETCameraCoachMetric.liveRailHorizontalInset,
             y: canvasSize.height - commandRailHeight - SETCameraCoachMetric.liveRailBottomInset,
@@ -628,14 +676,71 @@ private struct SETCameraLiveOverlay: View {
 
     private var correctiveArrowGeometry: SETCorrectiveArrowGeometry? {
         guard presentationState == .corrective,
-              presentation.overlayHint?.kind == .arrow,
-              let targetRect = correctiveTargetRegion,
-              !targetRect.isNull,
-              !targetRect.isEmpty else { return nil }
+              presentation.overlayHint?.kind == .arrow else { return nil }
+        return markerGeometry
+    }
+
+    private var acceptedSubjectRegion: CGRect? {
+        let usableRegions = subjectRegions.filter { !$0.isNull && !$0.isEmpty }
+        guard !usableRegions.isEmpty else { return nil }
+        let target = correctiveTargetRegion ?? targetRegion
+        guard let target else {
+            return usableRegions.sorted { lhs, rhs in
+                let lhsArea = lhs.width * lhs.height
+                let rhsArea = rhs.width * rhs.height
+                if lhsArea != rhsArea { return lhsArea > rhsArea }
+                if lhs.minY != rhs.minY { return lhs.minY < rhs.minY }
+                return lhs.minX < rhs.minX
+            }.first
+        }
+        let targetCenter = CGPoint(x: target.midX, y: target.midY)
+        return usableRegions.sorted { lhs, rhs in
+            let leftDistance = hypot(lhs.midX - targetCenter.x, lhs.midY - targetCenter.y)
+            let rightDistance = hypot(rhs.midX - targetCenter.x, rhs.midY - targetCenter.y)
+            if abs(leftDistance - rightDistance) > 0.001 { return leftDistance < rightDistance }
+            let lhsArea = lhs.width * lhs.height
+            let rhsArea = rhs.width * rhs.height
+            if lhsArea != rhsArea { return lhsArea > rhsArea }
+            if lhs.minY != rhs.minY { return lhs.minY < rhs.minY }
+            return lhs.minX < rhs.minX
+        }.first
+    }
+
+    private var markerGeometry: SETCorrectiveArrowGeometry? {
+        guard let subject = acceptedSubjectRegion,
+              let target = correctiveTargetRegion,
+              viewModel.liveHint?.overlayHint?.kind == .arrow else { return nil }
+        let safeRect = CGRect(origin: .zero, size: canvasSize).insetBy(
+            dx: SETCameraCoachMetric.markerTargetInset,
+            dy: SETCameraCoachMetric.markerTargetInset
+        )
+        let clippedSubject = subject.intersection(safeRect)
+        guard !clippedSubject.isNull, !clippedSubject.isEmpty,
+              !clippedSubject.intersects(target.intersection(safeRect)) else { return nil }
         return SETCorrectiveArrowGeometry.resolveValidated(
             canvasSize: canvasSize,
-            targetRect: targetRect,
-            commandRailFrame: commandRailFrame
+            targetRect: target,
+            commandRailFrame: clippedSubject,
+            safeInset: SETCameraCoachMetric.markerTargetInset
+        )
+    }
+
+    private var advicePlacement: SETSubjectSafeControlPlacement? {
+        let viewport = CGRect(origin: .zero, size: canvasSize)
+        let protectedTarget = correctiveTargetRegion ?? targetRegion
+        return CameraOcclusionSolver.resolve(
+            viewport: viewport,
+            safeRect: viewport.insetBy(dx: SETSpacing.x2, dy: SETSpacing.x2),
+            subjectRect: acceptedSubjectRegion,
+            targetRect: protectedTarget,
+            contentSize: CGSize(width: commandRailWidth, height: commandRailHeight),
+            preferredAnchor: .bottomLeading,
+            reservedRects: [CGRect(
+                x: 0,
+                y: 0,
+                width: canvasSize.width,
+                height: SETCameraCoachMetric.lensRailTopInset
+            )]
         )
     }
 
@@ -700,19 +805,46 @@ private struct SETCameraFixtureLiveOverlay: View {
     let availableLenses: [CameraLens]
     let reduceMotion: Bool
     let eventLedger: SETMotionEventLedger
+    let effectivePerformance: CameraRuntimePerformanceSnapshot
+    let analysisStatus: CameraOverlayAnalysisStatus
+    let subjectRegion: NormalizedRect?
+    let targetRegion: NormalizedRect?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let railHeight = commandRailHeight
         let railWidth = commandRailWidth
+        let preferredCommandSize = CGSize(
+            width: fixtureID == "camera.lens-switching"
+                ? SETCameraCoachMetric.lensStatusWidth
+                : railWidth,
+            height: fixtureID == "camera.lens-switching"
+                ? SETCameraCoachMetric.lensStatusHeight
+                : railHeight
+        )
+        let placement = CameraOcclusionSolver.resolve(
+            viewport: CGRect(origin: .zero, size: canvasSize),
+            safeRect: CGRect(origin: .zero, size: canvasSize).insetBy(dx: SETSpacing.x2, dy: SETSpacing.x2),
+            subjectRect: fixtureSubjectRect,
+            targetRect: fixtureTargetRect,
+            contentSize: preferredCommandSize,
+            preferredAnchor: .bottomLeading,
+            reservedRects: [CGRect(
+                x: 0,
+                y: 0,
+                width: canvasSize.width,
+                height: SETCameraCoachMetric.lensRailTopInset
+            )]
+        )
+        let resolvedCommandFrame = placement?.frame ?? commandRailFrame
 
         ZStack {
             SETCameraHUDHeader(
                 tallyMode: tallyMode,
                 dimmed: fixtureID == "camera.fallback",
                 timecode: SETLiveMonitorFixtureMetric.timecode,
-                showsECO: fixtureID == "camera.eco"
+                showsECO: effectivePerformance.mode == .eco
             )
 
             if fixtureID == "camera.lens-switching" {
@@ -721,7 +853,7 @@ private struct SETCameraFixtureLiveOverlay: View {
                     availableLenses: availableLenses,
                     currentLens: .wide,
                     subjectRegions: [],
-                    commandRailFrame: commandRailFrame,
+                    commandRailFrame: resolvedCommandFrame,
                     reservedFrames: [],
                     isInteractionLocked: false,
                     onLensChange: { _ in }
@@ -733,13 +865,16 @@ private struct SETCameraFixtureLiveOverlay: View {
                     requestedLens: availableLenses.last ?? .wide,
                     canvasSize: canvasSize,
                     subjectRegions: [],
-                    commandRailFrame: commandRailFrame,
+                    commandRailFrame: resolvedCommandFrame,
                     reservedFrames: [],
                     reduceMotion: reduceMotion
                 )
             }
 
-            if fixtureID == "camera.corrective" {
+            if fixtureID == "camera.corrective",
+               analysisStatus == .healthy,
+               !effectivePerformance.isLimited,
+               let correctiveArrowGeometry {
                 SETCorrectiveArrowDrawGuide(
                     geometry: correctiveArrowGeometry,
                     eventID: fixtureID,
@@ -761,31 +896,19 @@ private struct SETCameraFixtureLiveOverlay: View {
                 .accessibilityHidden(true)
             }
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-
-                HStack(spacing: 0) {
+            Group {
+                if let placement {
                     SETCameraFixtureCommandBand(
                         fixtureID: fixtureID,
                         currentLens: .wide,
-                        railHeight: fixtureID == "camera.lens-switching"
-                            ? SETCameraCoachMetric.lensStatusHeight
-                            : railHeight,
+                        showsECO: effectivePerformance.mode == .eco,
+                        analysisStatus: analysisStatus,
+                        railHeight: placement.frame.height,
                         isCompactStatus: fixtureID == "camera.lens-switching"
                     )
-                    .frame(
-                        width: fixtureID == "camera.lens-switching"
-                            ? SETCameraCoachMetric.lensStatusWidth
-                            : railWidth,
-                        height: fixtureID == "camera.lens-switching"
-                            ? SETCameraCoachMetric.lensStatusHeight
-                            : railHeight
-                    )
-
-                    Spacer(minLength: 0)
+                    .frame(width: placement.frame.width, height: placement.frame.height)
+                    .position(x: placement.frame.midX, y: placement.frame.midY)
                 }
-                .padding(.horizontal, SETCameraCoachMetric.liveRailHorizontalInset)
-                .padding(.bottom, SETCameraCoachMetric.liveRailBottomInset)
             }
 
             SETAccessibilityIdentifierProbe(identifier: CameraOverlayAccessibilityID.surface)
@@ -795,6 +918,10 @@ private struct SETCameraFixtureLiveOverlay: View {
     }
 
     private var markerKind: SETMarkerKind? {
+        guard analysisStatus == .healthy,
+              !effectivePerformance.isLimited,
+              let targetRegion,
+              !targetRegion.isDegenerate else { return nil }
         switch fixtureID {
         case "camera.corrective": return .arrow
         case "camera.keep", "camera.explanation": return .underline
@@ -839,15 +966,48 @@ private struct SETCameraFixtureLiveOverlay: View {
         )
     }
 
-    private var correctiveArrowGeometry: SETCorrectiveArrowGeometry {
-        SETCorrectiveArrowGeometry.resolve(
+    private var correctiveArrowGeometry: SETCorrectiveArrowGeometry? {
+        guard let subjectRect = fixtureSubjectRect,
+              let targetRect = fixtureTargetRect else { return nil }
+        let safeRect = CGRect(origin: .zero, size: canvasSize).insetBy(
+            dx: SETCameraCoachMetric.markerTargetInset,
+            dy: SETCameraCoachMetric.markerTargetInset
+        )
+        let clippedSubject = subjectRect.intersection(safeRect)
+        let clippedTarget = targetRect.intersection(safeRect)
+        guard !clippedSubject.isNull, !clippedSubject.isEmpty,
+              !clippedTarget.isNull, !clippedTarget.isEmpty,
+              !clippedSubject.intersects(clippedTarget) else { return nil }
+        return SETCorrectiveArrowGeometry.resolveValidated(
             canvasSize: canvasSize,
-            targetRegion: NormalizedRect(x: 0.58, y: 0.36, width: 0.20, height: 0.34),
-            commandRailFrame: commandRailFrame
+            targetRect: clippedTarget,
+            commandRailFrame: clippedSubject,
+            safeInset: SETCameraCoachMetric.markerTargetInset
+        )
+    }
+
+    private var fixtureSubjectRect: CGRect? {
+        guard let region = subjectRegion, !region.isDegenerate else { return nil }
+        return CGRect(
+            x: CGFloat(region.x) * canvasSize.width,
+            y: CGFloat(region.y) * canvasSize.height,
+            width: CGFloat(region.width) * canvasSize.width,
+            height: CGFloat(region.height) * canvasSize.height
+        )
+    }
+
+    private var fixtureTargetRect: CGRect? {
+        guard let region = targetRegion, !region.isDegenerate else { return nil }
+        return CGRect(
+            x: CGFloat(region.x) * canvasSize.width,
+            y: CGFloat(region.y) * canvasSize.height,
+            width: CGFloat(region.width) * canvasSize.width,
+            height: CGFloat(region.height) * canvasSize.height
         )
     }
 
     private var markerPosition: CGPoint {
+        guard let target = fixtureTargetRect else { return .zero }
         let markerWidth = SETCameraCoachMetric.markerWidth
         let markerHeight = SETCameraCoachMetric.markerHeight
         let halfWidth = markerWidth * 0.5
@@ -860,11 +1020,12 @@ private struct SETCameraFixtureLiveOverlay: View {
             minimumY,
             railTop - SETCameraCoachMetric.liveRailMarkerClearance - halfHeight
         )
-        let targetY = canvasSize.height * SETLiveMonitorFixtureMetric.markerCenterY
+        let targetX = target.midX
+        let targetY = target.midY
 
         return CGPoint(
             x: min(
-                max(canvasSize.width * SETLiveMonitorFixtureMetric.markerCenterX,
+                max(targetX,
                     halfWidth + SETCameraCoachMetric.markerTargetInset),
                 max(halfWidth + SETCameraCoachMetric.markerTargetInset,
                     canvasSize.width - halfWidth - SETCameraCoachMetric.markerTargetInset)
@@ -1235,6 +1396,8 @@ private struct SETCameraCommandBand: View {
 private struct SETCameraFixtureCommandBand: View {
     let fixtureID: String
     let currentLens: CameraLens
+    let showsECO: Bool
+    let analysisStatus: CameraOverlayAnalysisStatus
     let railHeight: CGFloat
     let isCompactStatus: Bool
 
@@ -1246,7 +1409,7 @@ private struct SETCameraFixtureCommandBand: View {
                         .hudMono,
                         size: isCompactStatus ? SETTypographySize.label : SETTypographySize.body
                     ))
-                    .foregroundStyle(fixtureID == "camera.corrective" ? .setOrange : .setTextPrimary)
+                    .foregroundStyle(fixtureID == "camera.corrective" && analysisStatus == .healthy && !showsECO ? .setOrange : .setTextPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .fixedSize(horizontal: !isCompactStatus, vertical: true)
@@ -1274,7 +1437,7 @@ private struct SETCameraFixtureCommandBand: View {
         .background(.setHUDScrim)
         .overlay(alignment: .topLeading) {
             Rectangle()
-                .fill(fixtureID == "camera.fallback" ? Color.setWarmWhite : Color.setOrange)
+                .fill(fixtureID == "camera.fallback" || analysisStatus == .failed ? Color.setWarmWhite : Color.setOrange)
                 .frame(width: SETStroke.standard)
         }
         .accessibilityElement(children: .contain)
@@ -1288,12 +1451,14 @@ private struct SETCameraFixtureCommandBand: View {
         case "camera.failed": return .cameraFailed
         case "camera.seeking": return .cameraSeeking
         case "camera.keep": return .cameraKeep
-        case "camera.corrective": return .cameraCorrectiveAction
+        case "camera.corrective":
+            if analysisStatus == .failed { return .cameraFallback }
+            return showsECO ? .cameraEco : .cameraCorrectiveAction
         case "camera.fallback": return .cameraFallback
         case "camera.explanation": return .cameraCorrectiveAction
         case "camera.lens-switching": return .cameraLensSwitching
         case "camera.resuming": return .cameraResuming
-        case "camera.eco": return .cameraEco
+        case "camera.eco": return showsECO ? .cameraEco : .cameraSeeking
         default: return .cameraSeeking
         }
     }

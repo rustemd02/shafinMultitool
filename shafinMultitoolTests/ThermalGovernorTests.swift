@@ -54,6 +54,21 @@ final class ThermalGovernorTests: XCTestCase {
         XCTAssertFalse(budget.heavyModelsEnabled)
     }
 
+    func testNextBudgetPublishesEffectiveNominalAndEcoModes() {
+        let store = CameraRuntimePerformanceStore.shared
+        store.resetForTesting()
+
+        _ = makeGovernor(thermalState: .nominal, batteryLevel: 1.0).nextBudget()
+        XCTAssertEqual(store.currentSnapshot.mode, .nominal)
+        XCTAssertEqual(store.currentSnapshot.thermalTier, .unrestricted)
+
+        _ = makeGovernor(thermalState: .serious, batteryLevel: 1.0).nextBudget()
+        XCTAssertEqual(store.currentSnapshot.mode, .eco)
+        XCTAssertEqual(store.currentSnapshot.thermalTier, .constrained)
+
+        store.resetForTesting()
+    }
+
     func testConcurrentFixedProviderGovernorsReturnExactPolicyBudgets() {
         let fixtures: [(governor: ThermalGovernor, expected: BudgetTuple)] = [
             (makeGovernor(thermalState: .nominal, batteryLevel: 1.0),

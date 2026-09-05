@@ -187,6 +187,45 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         await fixture.viewModel.releaseAndWait()
     }
 
+    func testAnalysisFailureClearsStaleLiveAdviceAndPublishesFailure() async {
+        let fixture = makeFixture(startPlans: [.init(succeeds: true)])
+        await fixture.viewModel.startAndWait()
+
+        fixture.viewModel.liveHint = LiveHintPresentation(
+            id: "failure-hint",
+            frameId: "failure-frame",
+            text: "Move the frame.",
+            confidence: 0.8,
+            actionType: .moveFrameLeft,
+            actionId: "failure-action",
+            linkedIssueIds: [],
+            summaryId: nil,
+            traceRootIds: [],
+            targetRegion: nil,
+            overlayHint: nil,
+            isFallback: false,
+            expandedVerdict: nil
+        )
+        fixture.viewModel.overlayAnnotations = [
+            OverlayAnnotationPresentation(
+                id: "failure-annotation",
+                kind: .regionHighlight,
+                direction: nil,
+                targetRegion: NormalizedRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                emphasis: 1
+            )
+        ]
+
+        fixture.viewModel.reportAnalysisFailure(.failed)
+
+        XCTAssertEqual(fixture.viewModel.analysisStatus, .failed)
+        XCTAssertEqual(fixture.viewModel.analysisFailure, .failed)
+        XCTAssertNil(fixture.viewModel.liveHint)
+        XCTAssertTrue(fixture.viewModel.overlayAnnotations.isEmpty)
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
     func testInterruptionClearsProjectionReleasesOnceAndRetryWaitsForCleanup() async {
         let fixture = makeFixture(startPlans: [
             .init(succeeds: true),

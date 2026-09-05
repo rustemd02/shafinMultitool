@@ -8,6 +8,27 @@
 import Foundation
 import AVFoundation
 
+/// Fail-closed analysis signal. The analysis owner can publish this through
+/// the scheduler boundary without sending model/debug details to the view.
+enum CameraAnalysisFailure: String, Equatable, Sendable {
+    case unavailable
+    case failed
+}
+
+enum CameraAnalysisRuntimeSignal {
+    static let failureNotification = Notification.Name("CameraAnalysisDidFail")
+    static let failureUserInfoKey = "failure"
+
+    static func publishFailure(_ failure: CameraAnalysisFailure,
+                               notificationCenter: NotificationCenter = .default) {
+        notificationCenter.post(
+            name: failureNotification,
+            object: nil,
+            userInfo: [failureUserInfoKey: failure]
+        )
+    }
+}
+
 enum SchedulerPriority: Comparable {
     case high
     case medium
@@ -143,6 +164,17 @@ final class RealtimeScheduler {
     private func dispatchInternal(context: FrameContext, budget: ThermalGovernor.Budget) {
         var removals: [UUID] = []
         let now = CFAbsoluteTimeGetCurrent()
+
+        // The scheduler receives the effective budget from CameraManager. It
+        // republishes that result so a ViewModel observing this boundary sees
+        // the same cadence/availability decision that governs dispatch.
+        let tier: ThermalBudgetTier = {
+            guard !budget.heavyModelsEnabled else { return .unrestricted }
+            return budget.highPriorityFrequency <= 0.5 ? .critical : .constrained
+        }()
+        _ = CameraRuntimePerformanceStore.shared.publish(
+            CameraRuntimePerformanceSnapshot(budget: budget, thermalTier: tier)
+        )
         
         Telemetry.shared.setHeavyModelsEnabled(budget.heavyModelsEnabled)
 
