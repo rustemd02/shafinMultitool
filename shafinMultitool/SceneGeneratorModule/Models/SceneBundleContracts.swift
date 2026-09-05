@@ -723,7 +723,7 @@ struct ARWorkspaceOrientationMatrix: Codable, Equatable {
 }
 
 enum ARWorkspaceRuntimeConformance: String, Codable, Equatable {
-    case pendingM6002 = "pending M6-002: runtime sole-ARSession ownership"
+    case conformingM6002 = "runtime conforms to M6-002 sole-ARSession ownership"
 }
 
 enum ARWorkspaceOwnerRole: String, CaseIterable, Codable, Hashable {
@@ -741,7 +741,7 @@ enum ARWorkspaceOwnerRole: String, CaseIterable, Codable, Hashable {
 
 enum ARWorkspaceOwnerReference: String, Codable, Equatable {
     case workspaceLifecycle = "SceneGeneratorViewModel + SceneWorkspaceTeardownCoordinator"
-    case arSessionLifecycle = "ARSceneContainer (runtime sole ARSession ownership pending M6-002)"
+    case arSessionLifecycle = "ARSceneContainer.Coordinator (runtime sole ARSession owner)"
     case presentation = "CommercialShell routes + AR presentation"
     case placementAnchors = "SceneGeneratorViewModel placement/anchors owner"
     case marking = "SceneGeneratorViewModel marking owner"
@@ -774,7 +774,7 @@ struct ARWorkspaceOwnershipContract: Codable, Equatable {
             ARWorkspaceOwnershipBoundary(role: .persistence, owner: .persistence),
             ARWorkspaceOwnershipBoundary(role: .teardown, owner: .teardown)
         ],
-        arSessionRuntimeConformance: .pendingM6002
+        arSessionRuntimeConformance: .conformingM6002
     )
 
     var arSessionOwners: [ARWorkspaceOwnershipBoundary] {

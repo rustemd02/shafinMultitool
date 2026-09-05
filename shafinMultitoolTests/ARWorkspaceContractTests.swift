@@ -89,7 +89,7 @@ final class ARWorkspaceContractTests: XCTestCase {
         }
     }
 
-    func testOwnershipMappingsAreExactAndSessionConformanceIsPending() {
+    func testOwnershipMappingsAreExactAndSessionConformanceIsRuntimeConforming() {
         let contract = ARWorkspaceContract.production
         let expectedRoles: [ARWorkspaceOwnerRole] = [
             .workspaceLifecycle,
@@ -124,7 +124,15 @@ final class ARWorkspaceContractTests: XCTestCase {
             contract.ownership.boundary(for: .arSessionLifecycle)?.owner,
             .arSessionLifecycle
         )
-        XCTAssertEqual(contract.ownership.arSessionRuntimeConformance, .pendingM6002)
+        XCTAssertEqual(contract.ownership.arSessionRuntimeConformance, .conformingM6002)
+        XCTAssertEqual(
+            contract.ownership.arSessionRuntimeConformance.rawValue,
+            "runtime conforms to M6-002 sole-ARSession ownership"
+        )
+        XCTAssertEqual(
+            contract.ownership.boundary(for: .arSessionLifecycle)?.owner.rawValue,
+            "ARSceneContainer.Coordinator (runtime sole ARSession owner)"
+        )
 
         var swapped = contract.ownership.boundaries
         let first = swapped[0]
@@ -134,7 +142,7 @@ final class ARWorkspaceContractTests: XCTestCase {
         )
         let swappedOwnership = ARWorkspaceOwnershipContract(
             boundaries: swapped,
-            arSessionRuntimeConformance: .pendingM6002
+            arSessionRuntimeConformance: .conformingM6002
         )
         XCTAssertFalse(ARWorkspaceContract(ownership: swappedOwnership).validate())
     }

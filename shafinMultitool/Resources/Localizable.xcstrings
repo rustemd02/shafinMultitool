@@ -4545,6 +4545,22 @@
         }
       }
     },
+    "set.generator.error.ar_configuration_unsupported": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AR world tracking is unavailable on this device. Use a device that supports AR world tracking."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мировое отслеживание AR недоступно на этом устройстве. Используйте устройство с поддержкой AR-мирового отслеживания."
+          }
+        }
+      }
+    },
     "set.generator.error.camera_position": {
       "localizations": {
         "en": {

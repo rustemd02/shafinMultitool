@@ -152,6 +152,7 @@ enum SETCopyKey: String, CaseIterable, Sendable {
     case generatorRecordingShare = "set.generator.recording.share"
     case generatorRecordWithoutSound = "set.generator.record_without_sound"
     case generatorErrorARNotReady = "set.generator.error.ar_not_ready"
+    case generatorErrorARConfigurationUnsupported = "set.generator.error.ar_configuration_unsupported"
     case generatorErrorCameraPosition = "set.generator.error.camera_position"
     case generatorErrorParseEmpty = "set.generator.error.parse_empty"
     case generatorErrorNoScene = "set.generator.error.no_scene"

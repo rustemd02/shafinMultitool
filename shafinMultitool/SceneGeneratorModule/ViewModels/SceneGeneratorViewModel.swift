@@ -561,6 +561,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Ссылка на ARView (устанавливается из ARSceneContainer)
     weak var arView: ARView?
 
+    /// The view model only requests release; the coordinator remains the sole
+    /// owner of ARSession delegate/run/pause mutations.
+    private weak var arSessionOwner: (any ARSessionOwnerReleaseHandling)?
+
     /// Once released, AR callbacks and SwiftUI updates must not reattach the session.
     private(set) var isWorkspaceReleased = false
 
@@ -1036,6 +1040,21 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         prepareWorkspaceIfNeeded()
     }
 
+    func setARSessionOwner(_ owner: (any ARSessionOwnerReleaseHandling)?) {
+        arSessionOwner = owner
+    }
+
+    func clearARSessionOwner(_ owner: any ARSessionOwnerReleaseHandling) {
+        guard let currentOwner = arSessionOwner, currentOwner === owner else { return }
+        arSessionOwner = nil
+        arView = nil
+    }
+
+    func setExpectedARSessionGeneration(_ generation: Int) {
+        guard generation >= expectedARFrameGeneration else { return }
+        expectedARFrameGeneration = generation
+    }
+
     /// Concrete capture sink used directly by ARSceneContainer.Coordinator.
     /// It is intentionally not a protocol so the reachable path has one
     /// recording owner.
@@ -1194,16 +1213,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func pauseAndDetachARSession() {
-        guard let arView else {
-            isWorkspaceReleased = true
-            return
-        }
-
-        arView.session.pause()
-        arView.session.delegate = nil
-        self.arView = nil
-        isWorkspaceReleased = true
-        SceneGeneratorDiagnosticsLogger.shared.log("[AR] session paused and detached for workspace teardown")
+        arSessionOwner?.releaseSession()
+        arView = nil
     }
 
     func attachARView(_ arView: ARView) {
@@ -1221,24 +1232,22 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         isMarkingMode && UserDefaults.standard.bool(forKey: lidarDepthMarkingEnabledDefaultsKey)
     }
 
-    func makeSessionConfiguration(depthEnabled: Bool) -> ARWorldTrackingConfiguration {
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.planeDetection = [.horizontal]
-        configuration.environmentTexturing = .none
+    func makeARSessionConfigurationRequest() -> ARWorldTrackingConfigurationRequest {
+        ARWorldTrackingConfigurationRequest(
+            depthRequested: isDepthMarkingEnabled,
+            initialWorldMap: initialWorldMap
+        )
+    }
 
-        if let initialWorldMap {
-            configuration.initialWorldMap = initialWorldMap
-        }
-
-        if depthEnabled && UserDefaults.standard.bool(forKey: lidarDepthMarkingEnabledDefaultsKey) {
-            if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
-                configuration.frameSemantics.insert(.smoothedSceneDepth)
-            } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-                configuration.frameSemantics.insert(.sceneDepth)
-            }
-        }
-
-        return configuration
+    func handleARSessionConfigurationFailure(_ failure: ARWorldTrackingConfigurationFailure) {
+        guard !isWorkspaceReleased else { return }
+        isARSessionReady = false
+        isARSessionInterrupted = false
+        isARSessionRecovering = false
+        refreshWorkspaceMode()
+        let recovery = localizedCopy(failure.recoveryCopyKey)
+        errorMessage = recovery
+        statusMessage = recovery
     }
 
     /// Called by the AR coordinator when the operating system suspends the
