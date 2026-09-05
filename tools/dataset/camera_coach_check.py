@@ -1437,6 +1437,8 @@ def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict
     """Validate an externally supplied collection and isolate all families."""
     errors = _validate_fixture_manifests(manifests)
     record_ids: set[str] = set()
+    # _validate_sequence owns within-sequence duplicates; this adds batch scope.
+    temporal_frame_owners: dict[str, tuple[int, str]] = {}
     # The capture protocol's one-decision quota unit is source + take + derivation.
     quota_owners: dict[tuple[str, str, str], str] = {}
     derivation_by_record = {
@@ -1444,13 +1446,30 @@ def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict
         for entry in _manifest_entries(manifests, "derivations")
         if isinstance(entry, dict) and isinstance(entry.get("record_id"), str)
     }
-    for record in records:
+    for record_index, record in enumerate(records):
         record_id = record.get("record_id") if isinstance(record, dict) else None
         if isinstance(record_id, str):
             if record_id in record_ids:
                 errors.append(_error("duplicate_record_id", record_id))
             record_ids.add(record_id)
         errors.extend(validate_record(record, manifests, fixture_mode=fixture_mode))
+        if isinstance(record, dict) and record.get("record_type") == "temporal":
+            sequence = record.get("sequence")
+            frames = sequence.get("frames") if isinstance(sequence, dict) else None
+            record_label = record_id if isinstance(record_id, str) else f"record[{record_index}]"
+            if isinstance(frames, list):
+                for frame in frames:
+                    frame_id = frame.get("frame_id") if isinstance(frame, dict) else None
+                    if not isinstance(frame_id, str):
+                        continue
+                    previous = temporal_frame_owners.get(frame_id)
+                    if previous is not None and previous[0] != record_index:
+                        errors.append(_error(
+                            "duplicate_frame_id",
+                            f"batch temporal frame_id {frame_id} in {record_label} duplicates {previous[1]}",
+                        ))
+                    else:
+                        temporal_frame_owners.setdefault(frame_id, (record_index, record_label))
         derivation = derivation_by_record.get(record_id) if isinstance(record_id, str) else None
         capture = record.get("capture") if isinstance(record, dict) and isinstance(record.get("capture"), dict) else {}
         quota_key = (
@@ -1614,6 +1633,28 @@ def self_test() -> None:
         derivation["counts_toward_quota"] = False
     non_quota_errors = validate_batch(quota_records, quota_manifests, fixture_mode=True)
     assert not non_quota_errors, non_quota_errors
+    temporal_records = [copy.deepcopy(valid_records[1]), copy.deepcopy(valid_records[1])]
+    temporal_duplicate = temporal_records[1]
+    temporal_duplicate["record_id"] = "cam-temporal-fixture-002-batch"
+    temporal_duplicate["provenance"]["derivation_family_id"] = "derivation-family-fixture-002-batch"
+    temporal_duplicate["sequence"]["sequence_id"] = "sequence-fixture-002-batch"
+    temporal_duplicate["sequence"]["frames"][1]["frame_id"] = "frame-fixture-002-batch-f1"
+    temporal_duplicate["sequence"]["frames"][2]["frame_id"] = "frame-fixture-002-batch-f2"
+    temporal_manifests = copy.deepcopy(manifests)
+    temporal_derivation = copy.deepcopy(temporal_manifests["derivations"][1])
+    temporal_derivation.update({
+        "derivation_id": "derivation-fixture-002-batch",
+        "record_id": temporal_duplicate["record_id"],
+        "derivation_family_id": temporal_duplicate["provenance"]["derivation_family_id"],
+    })
+    temporal_manifests["derivations"] = [temporal_manifests["derivations"][1], temporal_derivation]
+    temporal_record_errors = [
+        validate_record(record, temporal_manifests, fixture_mode=True)
+        for record in temporal_records
+    ]
+    assert temporal_record_errors == [[], []], temporal_record_errors
+    temporal_batch_errors = validate_batch(temporal_records, temporal_manifests, fixture_mode=True)
+    assert any(error.startswith("duplicate_frame_id:") for error in temporal_batch_errors), temporal_batch_errors
     separate_record_outputs: list[str] = []
     with TemporaryDirectory(prefix="camera-coach-self-test-") as temp_dir:
         for index, schema_only_record in enumerate(quota_records):

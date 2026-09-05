@@ -18,7 +18,8 @@ claim.
   aliases are rejected.
 - `datasets/camera-coach/v1/temporal-schema.json` — monotonic timestamped
   sequence extension with one-take timeline and validator-enforced unique
-  `frame_id` values within each sequence.
+  `frame_id` values within each sequence and across all temporal records in an
+  admitted batch.
 - `datasets/camera-coach/v1/episode-schema.json` — before/action/after
   extension with correct, no-op, opposite, overshoot, track-loss, and
   incomparable outcomes.
@@ -66,8 +67,9 @@ claim.
   boundary, direct validation of every source-shoot manifest field (including
   unused entries), and action-specific verifier checks. Production
   source-shoot metadata validation (`source_owner_id`, `operator_id`, UTC
-  `captured_at`, and `provenance_receipt_ref`), unique temporal `frame_id`
-  enforcement, and a non-admitting `--record` schema-only mode; embedded
+  `captured_at`, and `provenance_receipt_ref`), within-sequence and batch-scoped
+  unique temporal `frame_id` enforcement, and a non-admitting `--record`
+  schema-only mode; embedded
   synthetic manifests are used only by `--self-test`.
 - `tools/dataset/tests/fixtures/camera-coach-fixtures.json` — explicitly
   synthetic valid still/temporal/episode records and 90 declared negative
@@ -83,11 +85,13 @@ claim.
   issue/global action consistency (including orphan globals with no issue or
   evidence rows and issue actions missing globally), closed issue evidence,
   source-shoot owner/operator/timestamp/receipt failures, duplicate temporal
-  frame IDs, and episode outcome/subject-continuity probes. Every
+  frame IDs within a sequence and across distinct batch records, and episode
+  outcome/subject-continuity probes. Every
   hostile mutation is asserted to return validation errors without raising.
   The self-test additionally builds a two-record quota fixture with unique
-  assets, rejects its second counted decision, and admits the same pair when
-  both derivations are non-quota.
+  assets, rejects its second counted decision, admits the same pair when both
+  derivations are non-quota, and rejects two otherwise valid temporal records
+  that share their first batch frame ID.
 - `tools/dataset/tests/fixtures/camera-coach-batch-*.jsonl` — explicitly
   synthetic caller-supplied positive manifests, train/calibration protected-
   family crossing, device-family-only crossing, duplicate record, and duplicate
@@ -177,7 +181,8 @@ subject IDs, malformed action/provenance source-asset/capture person-family/
 temporal asset/manifest source IDs, scalar list-valued abstention/verification
 fields, unused source-shoot family IDs and orientation/lens/lighting fields,
 source-shoot owner/operator/timestamp/receipt metadata, duplicate temporal
-frame IDs, source-asset owner conflicts, category-keyed family namespace probes, exact
+frame IDs within a sequence and across distinct batch records, source-asset
+owner conflicts, category-keyed family namespace probes, exact
 issue/global action consistency in both directions (including orphan global
 actions with no issue/evidence rows), the two-record quota duplicate fixture
 with unique assets and non-quota duplicate allowance, and measurable outcomes
@@ -290,7 +295,8 @@ subject IDs, malformed action/provenance
 source-asset/capture person-family/temporal asset/manifest source IDs, scalar
 abstention/verification lists, unused source-shoot family and closed-enum
 fields, source-shoot owner/operator/timestamp/receipt metadata, duplicate
-temporal frame IDs, source-asset owner conflicts, and measurable outcome subject-continuity
+temporal frame IDs within a sequence and across distinct batch records,
+source-asset owner conflicts, and measurable outcome subject-continuity
 failures. The same ID is allowed across distinct family categories but remains
 blocked within one category across release splits. The hostile source case still fails because the
 resolved source entry remains

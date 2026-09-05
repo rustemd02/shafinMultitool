@@ -87,9 +87,10 @@ timestamps, frame ordinals, asset IDs, and a state timeline such as
 The sequence remains one record and one split. `frame_count`, frame `ordinal`
 and `timestamp_ms`, and timeline `start_frame`/`end_frame` must be JSON
 integers; strings, floating-point values, and booleans are invalid. Every
-`frame_id` is unique within its sequence. Timeline segments must be ordered,
-non-overlapping, contiguous from frame 0 through the final frame, and cover
-every frame exactly once. Never split frames into
+`frame_id` is unique within its sequence and across all temporal records in one
+admitted batch; the batch validator enforces both scopes. Timeline segments
+must be ordered, non-overlapping, contiguous from frame 0 through the final
+frame, and cover every frame exactly once. Never split frames into
 separate partitions,
 count each frame as an independent still, or use a later frame as a new source
 shoot. Device family is also a protected split key even when scene,
