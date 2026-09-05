@@ -44,6 +44,42 @@ final class CameraCoachEntryPresentationTests: XCTestCase {
         XCTAssertEqual(CameraCoachEntryCopy.recheckActionKey, .checkAgain)
     }
 
+    func testCameraEntryCopyHasRussianAndEnglishVisibleAndAccessibilityValues() {
+        let keys: [SETCopyKey] = [
+            .entryPoster,
+            .entryBody,
+            .actionMain,
+            .permissionTitle,
+            .permissionBody,
+            .entryLocalProcessing,
+            .permissionContinue,
+            .blockedDenied,
+            .blockedRestricted,
+            .blockedUnavailable,
+            .blockedUnknown,
+            .entryBlockedBody,
+            .entrySettingsFallback,
+            .entryResolving,
+            .entryRequesting,
+            .entryReady,
+            .accessibilityOpenCamera,
+            .accessibilityContinue,
+            .openSettings,
+            .checkAgain,
+            .accessibilityOpenSettings,
+            .accessibilityRecheck
+        ]
+
+        for key in keys {
+            let english = key.localizedString(locale: Locale(identifier: "en"))
+            let russian = key.localizedString(locale: Locale(identifier: "ru"))
+            XCTAssertFalse(english.isEmpty, "Missing English value for \(key.rawValue)")
+            XCTAssertFalse(russian.isEmpty, "Missing Russian value for \(key.rawValue)")
+            XCTAssertNotEqual(english, key.rawValue, "English falls back to key for \(key.rawValue)")
+            XCTAssertNotEqual(russian, key.rawValue, "Russian falls back to key for \(key.rawValue)")
+        }
+    }
+
     func testEveryRenderedPhaseHasStableRootAndActionIdentifiers() {
         let phases: [CameraCoachEntryPhase] = [
             .resolving,

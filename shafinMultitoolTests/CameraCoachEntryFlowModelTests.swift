@@ -171,6 +171,111 @@ final class CameraCoachEntryFlowModelTests: XCTestCase {
         XCTAssertEqual(snapshotCount, 2)
     }
 
+    func testForegroundRecheckCannotSkipUnseenIntro() async {
+        let authorized = cameraSnapshot(authorization: .authorized)
+        let client = MockPermissionClient(
+            snapshot: authorized,
+            queuedSnapshots: [],
+            requestResult: authorized
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore()
+        )
+
+        await model.resolveInitialState()
+        await model.recheckCameraAccess()
+
+        XCTAssertEqual(model.phase, .intro)
+        XCTAssertFalse(model.shouldRecheckOnForeground)
+        let snapshotCount = await client.snapshotCount(for: .camera)
+        XCTAssertEqual(snapshotCount, 1)
+    }
+
+    func testForegroundRecheckWhileResolvingDoesNotStartAnotherSnapshot() async {
+        let authorized = cameraSnapshot(authorization: .authorized)
+        let client = MockPermissionClient(
+            snapshot: authorized,
+            queuedSnapshots: [],
+            requestResult: authorized,
+            holdsSnapshot: true
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore()
+        )
+        let resolveTask = Task { @MainActor in
+            await model.resolveInitialState()
+        }
+
+        let snapshotIssued = await client.waitUntilSnapshotIssued(minimumCount: 1)
+        XCTAssertTrue(snapshotIssued)
+        await model.recheckCameraAccess()
+
+        let snapshotCount = await client.snapshotCount(for: .camera)
+        XCTAssertEqual(snapshotCount, 1)
+        await client.completeSnapshots()
+        await resolveTask.value
+        XCTAssertEqual(model.phase, .intro)
+    }
+
+    func testCancelledInitialResolutionCannotPublishLateReadyState() async {
+        let authorized = cameraSnapshot(authorization: .authorized)
+        let client = MockPermissionClient(
+            snapshot: authorized,
+            queuedSnapshots: [],
+            requestResult: authorized,
+            holdsSnapshot: true
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore(seen: true)
+        )
+        let resolveTask = Task { @MainActor in
+            await model.resolveInitialState()
+        }
+
+        let snapshotIssued = await client.waitUntilSnapshotIssued(minimumCount: 1)
+        XCTAssertTrue(snapshotIssued)
+        resolveTask.cancel()
+        await client.completeSnapshots()
+        await resolveTask.value
+
+        XCTAssertEqual(model.phase, .resolving)
+    }
+
+    func testCancelledPermissionRequestCannotPublishLateReadyState() async {
+        let notDetermined = cameraSnapshot(authorization: .notDetermined)
+        let authorized = cameraSnapshot(authorization: .authorized)
+        let client = MockPermissionClient(
+            snapshot: notDetermined,
+            queuedSnapshots: [notDetermined],
+            requestResult: authorized,
+            holdsRequest: true
+        )
+        let model = CameraCoachEntryFlowModel(
+            permissionClient: client,
+            introStore: InMemoryCameraCoachIntroStore()
+        )
+
+        await model.resolveInitialState()
+        await model.openCameraTapped()
+        XCTAssertEqual(model.phase, .permissionContext)
+
+        let requestTask = Task { @MainActor in
+            await model.continuePermissionRequest()
+        }
+        let requestIssued = await client.waitUntilRequestIssued()
+        XCTAssertTrue(requestIssued)
+        requestTask.cancel()
+        await client.completeRequest()
+        await requestTask.value
+
+        XCTAssertEqual(model.phase, .requesting)
+        let requestCount = await client.requestCount(for: .camera)
+        XCTAssertEqual(requestCount, 1)
+    }
+
     func testConcurrentRechecksShareOneSnapshotWithoutRequesting() async {
         let denied = cameraSnapshot(authorization: .denied)
         let authorized = cameraSnapshot(authorization: .authorized)
@@ -418,9 +523,9 @@ private actor MockPermissionClient: PermissionClient {
         return false
     }
 
-    func waitUntilSnapshotIssued() async -> Bool {
+    func waitUntilSnapshotIssued(minimumCount: Int = 2) async -> Bool {
         for _ in 0..<1_000 {
-            if snapshotCounts[.camera, default: 0] > 1 {
+            if snapshotCounts[.camera, default: 0] >= minimumCount {
                 return true
             }
             try? await Task.sleep(nanoseconds: 1_000_000)

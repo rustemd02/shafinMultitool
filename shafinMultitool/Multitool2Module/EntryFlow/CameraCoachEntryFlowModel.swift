@@ -83,7 +83,10 @@ final class CameraCoachEntryFlowModel: ObservableObject {
     private let routeSessionID = UUID()
     private var didResolveInitialState = false
     private var permissionRequestTask: Task<PermissionSnapshot, Never>?
+    private var permissionRequestGeneration: UInt64?
     private var recheckTask: Task<PermissionSnapshot, Never>?
+    private var recheckGeneration: UInt64?
+    private var operationGeneration: UInt64 = 0
     private var markerTask: Task<Void, Never>?
     private var leaderTask: Task<Void, Never>?
     private var didAcceptCameraEntry = false
@@ -108,10 +111,12 @@ final class CameraCoachEntryFlowModel: ObservableObject {
     }
 
     func resolveInitialState() async {
-        guard !didResolveInitialState else { return }
+        guard !didResolveInitialState, !Task.isCancelled else { return }
         didResolveInitialState = true
+        let generation = beginOperation()
 
         let snapshot = await permissionClient.snapshot(for: .camera)
+        guard !Task.isCancelled, isCurrentOperation(generation) else { return }
         if introStore.hasSeenCameraCoachIntro() {
             transition(to: Self.phase(for: snapshot))
         } else {
@@ -120,54 +125,77 @@ final class CameraCoachEntryFlowModel: ObservableObject {
     }
 
     func openCameraTapped() async {
-        guard phase == .intro else { return }
+        guard phase == .intro, !Task.isCancelled else { return }
 
         if !introStore.hasSeenCameraCoachIntro() {
             introStore.markCameraCoachIntroSeen()
         }
+        let generation = beginOperation()
         transition(to: .resolving)
 
         let snapshot = await permissionClient.snapshot(for: .camera)
+        guard !Task.isCancelled, isCurrentOperation(generation) else { return }
         transition(to: Self.phase(for: snapshot))
     }
 
     func continuePermissionRequest() async {
-        if phase == .requesting, let permissionRequestTask {
+        guard !Task.isCancelled else { return }
+
+        if phase == .requesting,
+           let permissionRequestTask,
+           let generation = permissionRequestGeneration {
             let snapshot = await permissionRequestTask.value
+            guard !Task.isCancelled, isCurrentOperation(generation) else { return }
+            clearPermissionRequest(generation)
             transition(to: Self.phase(for: snapshot))
             return
         }
 
         guard phase == .permissionContext else { return }
 
+        let generation = beginOperation()
         transition(to: .requesting)
         let permissionClient = self.permissionClient
         let requestTask = Task<PermissionSnapshot, Never> {
             await permissionClient.request(.camera)
         }
         permissionRequestTask = requestTask
+        permissionRequestGeneration = generation
 
         let snapshot = await requestTask.value
-        permissionRequestTask = nil
+        guard !Task.isCancelled, isCurrentOperation(generation) else { return }
+        clearPermissionRequest(generation)
         transition(to: Self.phase(for: snapshot))
     }
 
     func recheckCameraAccess() async {
-        if let recheckTask {
+        guard !Task.isCancelled else { return }
+
+        if let recheckTask,
+           let generation = recheckGeneration {
             let snapshot = await recheckTask.value
+            guard !Task.isCancelled, isCurrentOperation(generation) else { return }
+            clearRecheck(generation)
             transition(to: Self.phase(for: snapshot))
             return
         }
 
-        transition(to: .resolving)
+        guard phase == .ready || isBlockedPhase else { return }
+
+        let generation = beginOperation()
+        if phase != .ready {
+            transition(to: .resolving)
+        }
         let permissionClient = self.permissionClient
         let task = Task<PermissionSnapshot, Never> {
             await permissionClient.snapshot(for: .camera)
         }
         recheckTask = task
+        recheckGeneration = generation
 
         let snapshot = await task.value
-        recheckTask = nil
+        guard !Task.isCancelled, isCurrentOperation(generation) else { return }
+        clearRecheck(generation)
         transition(to: Self.phase(for: snapshot))
     }
 
@@ -278,6 +306,32 @@ final class CameraCoachEntryFlowModel: ObservableObject {
     private func setLeaderPhase(_ phase: SETLeaderPhase) {
         leaderPhase = phase
         leaderPresentationRevision &+= 1
+    }
+
+    private var isBlockedPhase: Bool {
+        if case .blocked = phase { return true }
+        return false
+    }
+
+    private func beginOperation() -> UInt64 {
+        operationGeneration &+= 1
+        return operationGeneration
+    }
+
+    private func isCurrentOperation(_ generation: UInt64) -> Bool {
+        operationGeneration == generation
+    }
+
+    private func clearPermissionRequest(_ generation: UInt64) {
+        guard permissionRequestGeneration == generation else { return }
+        permissionRequestGeneration = nil
+        permissionRequestTask = nil
+    }
+
+    private func clearRecheck(_ generation: UInt64) {
+        guard recheckGeneration == generation else { return }
+        recheckGeneration = nil
+        recheckTask = nil
     }
 
     private func phaseEventName(_ phase: CameraCoachEntryPhase) -> String {
