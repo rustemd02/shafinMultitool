@@ -1894,13 +1894,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove unsupported control characters"
+            "value": "Remove unsupported hidden or control characters and invalid Unicode characters"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Удали недопустимые управляющие символы"
+            "value": "Удали неподдерживаемые скрытые или управляющие символы и недопустимые Unicode-символы"
           }
         }
       }
@@ -1958,13 +1958,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keep the screenplay under %d characters"
+            "value": "Use %@ characters or fewer"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сократи сценарий до %d символов"
+            "value": "Используй не более %@ символов"
           }
         }
       }

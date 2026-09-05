@@ -2077,7 +2077,12 @@ final class SceneBundlePipelineTests: XCTestCase {
         viewModel.sceneDescription = String(repeating: "🙂", count: maximum + 1)
         XCTAssertEqual(viewModel.sceneDescriptionValidationIssue, .tooLong(maximum: maximum))
         XCTAssertFalse(viewModel.canSubmitScene)
-        XCTAssertNotNil(viewModel.inputValidationMessage)
+        XCTAssertEqual(viewModel.inputValidationMessage, "Используй не более 5\u{00A0}000 символов")
+
+        viewModel.setPresentationLocale(Locale(identifier: "en"))
+        viewModel.sceneDescription = String(repeating: "🙂", count: maximum + 1)
+        XCTAssertEqual(viewModel.sceneDescriptionValidationIssue, .tooLong(maximum: maximum))
+        XCTAssertEqual(viewModel.inputValidationMessage, "Use 5,000 characters or fewer")
 
         for invalid in [
             "Сцена\u{0001}",
@@ -2087,8 +2092,18 @@ final class SceneBundlePipelineTests: XCTestCase {
             viewModel.sceneDescription = invalid
             XCTAssertEqual(viewModel.sceneDescriptionValidationIssue, .invalidText, "Rejected input should be explicit")
             XCTAssertFalse(viewModel.canSubmitScene)
-            XCTAssertNotNil(viewModel.inputValidationMessage)
+            XCTAssertEqual(
+                viewModel.inputValidationMessage,
+                "Remove unsupported hidden or control characters and invalid Unicode characters"
+            )
         }
+
+        viewModel.setPresentationLocale(Locale(identifier: "ru"))
+        viewModel.sceneDescription = "Сцена\u{0001}"
+        XCTAssertEqual(
+            viewModel.inputValidationMessage,
+            "Удали неподдерживаемые скрытые или управляющие символы и недопустимые Unicode-символы"
+        )
 
         viewModel.sceneDescription = "INT. ROOM — DAY\nМАРА: Привет 👋"
         XCTAssertNil(viewModel.sceneDescriptionValidationIssue)

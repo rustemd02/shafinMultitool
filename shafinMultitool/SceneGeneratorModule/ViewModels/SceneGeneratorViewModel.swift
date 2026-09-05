@@ -1532,17 +1532,29 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         case .tooLong(let maximum):
             let format = bundle.localizedString(
                 forKey: "set.generator.input.too_long",
-                value: "Keep the screenplay under %d characters",
+                value: "Use %@ characters or fewer",
                 table: nil
             )
-            return String(format: format, locale: presentationLocale, arguments: [maximum])
+            return String(
+                format: format,
+                locale: presentationLocale,
+                arguments: [localizedCharacterCount(maximum)]
+            )
         case .invalidText:
             return bundle.localizedString(
                 forKey: "set.generator.input.invalid_text",
-                value: "Remove unsupported control characters",
+                value: "Remove unsupported hidden or control characters and invalid Unicode characters",
                 table: nil
             )
         }
+    }
+
+    private func localizedCharacterCount(_ count: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = presentationLocale
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        return formatter.string(from: NSNumber(value: count)) ?? String(count)
     }
 
     private func enterGenerationInputState(clearValidation: Bool = false) {
