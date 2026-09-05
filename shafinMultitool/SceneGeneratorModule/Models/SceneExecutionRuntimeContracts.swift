@@ -9,6 +9,308 @@ import Foundation
 import UIKit
 import Darwin
 
+/// Request-owned failures are deliberately smaller than the parser/transport
+/// diagnostics. The owner maps these stable categories to localized copy.
+enum SceneGenerationFailureKind: String, CaseIterable, Codable, Equatable {
+    case emptyInput = "empty_input"
+    case arNotReady = "ar_not_ready"
+    case cameraPosition = "camera_position"
+    case parse = "parse"
+    case malformed = "malformed"
+    case network = "network"
+    case quota = "quota"
+    case model = "model"
+    case persistence = "persistence"
+    case compilation = "compilation"
+    case timeout = "timeout"
+    case cancelled = "cancelled"
+    case background = "background"
+
+    var isRetryable: Bool {
+        switch self {
+        case .arNotReady, .cameraPosition, .network, .quota, .model,
+             .persistence, .compilation, .timeout, .background:
+            return true
+        case .emptyInput, .parse, .malformed, .cancelled:
+            return false
+        }
+    }
+}
+
+/// The one domain state for a Scene Generator request. Editable input and its
+/// sole identityless failure (`emptyInput`) are pre-request states. Every
+/// post-submit state, including every retryable/terminal failure, carries both
+/// the request UUID and epoch.
+struct SceneGenerationRequestState: Codable, Equatable {
+    enum Phase: String, CaseIterable, Codable, Equatable {
+        case idle
+        case input
+        case validating
+        case clarification
+        case accepted
+        case leader
+        case queued
+        case generating
+        case cancelling
+        case paused
+        case backgrounded
+        case retryableFailure = "retryable_failure"
+        case terminalFailure = "terminal_failure"
+        case success
+    }
+
+    var phase: Phase
+    var requestID: UUID?
+    var epoch: UInt?
+    var stage: SceneGenerationStage?
+    var failure: SceneGenerationFailureKind?
+    var clarificationMessage: String?
+
+    init(
+        phase: Phase,
+        requestID: UUID? = nil,
+        epoch: UInt? = nil,
+        stage: SceneGenerationStage? = nil,
+        failure: SceneGenerationFailureKind? = nil,
+        clarificationMessage: String? = nil
+    ) {
+        self.phase = phase
+        self.requestID = requestID
+        self.epoch = epoch
+        self.stage = stage
+        self.failure = failure
+        self.clarificationMessage = clarificationMessage
+    }
+
+    static let idle = Self(phase: .idle)
+
+    static func input() -> Self {
+        Self(phase: .input)
+    }
+
+    static func validating(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .validating, requestID: requestID, epoch: epoch)
+    }
+
+    static func clarification(
+        requestID: UUID,
+        epoch: UInt,
+        message: String
+    ) -> Self {
+        Self(
+            phase: .clarification,
+            requestID: requestID,
+            epoch: epoch,
+            clarificationMessage: message
+        )
+    }
+
+    static func accepted(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .accepted, requestID: requestID, epoch: epoch)
+    }
+
+    static func leader(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .leader, requestID: requestID, epoch: epoch)
+    }
+
+    static func queued(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .queued, requestID: requestID, epoch: epoch)
+    }
+
+    static func generating(
+        requestID: UUID,
+        epoch: UInt,
+        stage: SceneGenerationStage
+    ) -> Self {
+        Self(phase: .generating, requestID: requestID, epoch: epoch, stage: stage)
+    }
+
+    static func cancelling(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .cancelling, requestID: requestID, epoch: epoch)
+    }
+
+    static func paused(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .paused, requestID: requestID, epoch: epoch)
+    }
+
+    static func backgrounded(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .backgrounded, requestID: requestID, epoch: epoch)
+    }
+
+    static func retryableFailure(
+        requestID: UUID,
+        epoch: UInt,
+        failure: SceneGenerationFailureKind
+    ) -> Self {
+        Self(phase: .retryableFailure, requestID: requestID, epoch: epoch, failure: failure)
+    }
+
+    static func terminalFailure(
+        requestID: UUID,
+        epoch: UInt,
+        failure: SceneGenerationFailureKind
+    ) -> Self {
+        Self(phase: .terminalFailure, requestID: requestID, epoch: epoch, failure: failure)
+    }
+
+    /// The only identityless failure: submit-time validation of an empty
+    /// draft, before a request UUID/epoch exists.
+    static func emptyInputFailure() -> Self {
+        Self(phase: .terminalFailure, failure: .emptyInput)
+    }
+
+    static func success(requestID: UUID, epoch: UInt) -> Self {
+        Self(phase: .success, requestID: requestID, epoch: epoch)
+    }
+
+    var isExecutionInFlight: Bool {
+        switch phase {
+        case .validating, .accepted, .leader, .queued, .generating,
+             .cancelling, .paused, .backgrounded:
+            return true
+        case .idle, .input, .clarification, .retryableFailure,
+             .terminalFailure, .success:
+            return false
+        }
+    }
+
+    var allowedNextPhases: Set<Phase> {
+        Self.transitionTable[phase] ?? []
+    }
+
+    /// Closed phase-level transition table. Payload and identity rules are
+    /// checked by `canTransition` below.
+    static let transitionTable: [Phase: Set<Phase>] = [
+        .idle: [.input],
+        .input: [.validating, .terminalFailure, .idle],
+        .validating: [.clarification, .accepted, .cancelling, .retryableFailure, .terminalFailure],
+        .clarification: [.input, .accepted, .validating, .idle],
+        .accepted: [.queued, .cancelling, .retryableFailure],
+        .leader: [.generating, .paused, .backgrounded, .cancelling, .retryableFailure, .terminalFailure],
+        .queued: [.leader, .paused, .backgrounded, .cancelling, .retryableFailure, .terminalFailure],
+        .generating: [.clarification, .paused, .backgrounded, .cancelling, .retryableFailure, .terminalFailure, .success],
+        .cancelling: [.input, .idle, .backgrounded, .terminalFailure],
+        .paused: [.queued, .generating, .backgrounded, .cancelling, .retryableFailure, .terminalFailure],
+        .backgrounded: [.accepted, .queued, .generating, .paused, .cancelling, .retryableFailure, .terminalFailure, .input, .idle],
+        .retryableFailure: [.validating, .input, .idle],
+        .terminalFailure: [.input, .idle],
+        .success: [.input, .idle],
+    ]
+
+    static func canTransition(
+        from: SceneGenerationRequestState,
+        to: SceneGenerationRequestState
+    ) -> Bool {
+        guard isWellFormed(from), isWellFormed(to) else { return false }
+
+        if from.phase == to.phase {
+            switch from.phase {
+            case .input:
+                return true
+            case .generating:
+                guard from.requestID == to.requestID,
+                      from.epoch == to.epoch,
+                      let fromStage = from.stage,
+                      let toStage = to.stage else { return false }
+                return stageRank(toStage) >= stageRank(fromStage)
+            case .cancelling:
+                return from.requestID == to.requestID && from.epoch == to.epoch
+            default:
+                return false
+            }
+        }
+
+        guard transitionTable[from.phase]?.contains(to.phase) == true else { return false }
+
+        // Input starts a fresh request identity. The terminal/success/input
+        // edges intentionally clear the old identity before the next submit.
+        if from.phase == .input, to.phase == .validating {
+            return to.requestID != nil && to.epoch != nil
+        }
+        if to.phase == .idle || (to.phase == .input && to.requestID == nil) {
+            return to.epoch == nil && to.requestID == nil
+        }
+
+        return from.requestID == to.requestID && from.epoch == to.epoch
+    }
+
+    static func validateTransition(
+        from: SceneGenerationRequestState,
+        to: SceneGenerationRequestState
+    ) -> Bool {
+        canTransition(from: from, to: to)
+    }
+
+    static func transition(
+        from: SceneGenerationRequestState,
+        to: SceneGenerationRequestState
+    ) -> SceneGenerationRequestState? {
+        canTransition(from: from, to: to) ? to : nil
+    }
+
+    private static func isWellFormed(_ state: SceneGenerationRequestState) -> Bool {
+        guard (state.requestID == nil) == (state.epoch == nil) else { return false }
+
+        switch state.phase {
+        case .idle:
+            return state.requestID == nil
+                && state.stage == nil
+                && state.failure == nil
+                && state.clarificationMessage == nil
+        case .input:
+            return state.requestID == nil
+                && state.epoch == nil
+                && state.stage == nil
+                && state.failure == nil
+                && state.clarificationMessage == nil
+        case .validating, .accepted, .leader, .queued, .cancelling,
+             .paused, .backgrounded:
+            return state.requestID != nil
+                && state.stage == nil
+                && state.failure == nil
+                && state.clarificationMessage == nil
+        case .generating:
+            return state.requestID != nil
+                && state.stage != nil
+                && state.failure == nil
+                && state.clarificationMessage == nil
+        case .clarification:
+            return state.requestID != nil
+                && state.stage == nil
+                && state.failure == nil
+                && state.clarificationMessage?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        case .retryableFailure:
+            return state.requestID != nil
+                && state.epoch != nil
+                && state.stage == nil
+                && state.failure?.isRetryable == true
+                && state.clarificationMessage == nil
+        case .terminalFailure:
+            guard let failure = state.failure else { return false }
+            let hasIdentity = state.requestID != nil && state.epoch != nil
+            let isPreRequestEmptyInput = failure == .emptyInput && !hasIdentity
+            let isPostSubmitFailure = failure != .emptyInput && hasIdentity
+            return state.stage == nil
+                && (isPreRequestEmptyInput || isPostSubmitFailure)
+                && failure.isRetryable == false
+                && state.clarificationMessage == nil
+        case .success:
+            return state.requestID != nil
+                && state.stage == nil
+                && state.failure == nil
+                && state.clarificationMessage == nil
+        }
+    }
+
+    private static func stageRank(_ stage: SceneGenerationStage) -> Int {
+        switch stage {
+        case .reading: 0
+        case .planning: 1
+        case .placing: 2
+        }
+    }
+}
+
 enum SceneGeneratorExecutionMode: String, Codable, Equatable {
     case monolithic
     case chunkedThermalAware

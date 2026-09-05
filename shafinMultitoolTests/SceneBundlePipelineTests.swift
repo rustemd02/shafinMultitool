@@ -1994,9 +1994,12 @@ final class SceneBundlePipelineTests: XCTestCase {
         let viewModel = SceneGeneratorViewModel(projectName: "input-validation-\(UUID().uuidString)")
 
         viewModel.sceneDescription = " \n\t"
+        XCTAssertEqual(viewModel.generationRequestState.phase, .input)
         XCTAssertEqual(viewModel.inputValidationMessage, viewModel.localizedCopy(.generatorInputInvalid))
         await viewModel.generateScene()
 
+        XCTAssertEqual(viewModel.generationRequestState.phase, .terminalFailure)
+        XCTAssertEqual(viewModel.generationRequestState.failure, .emptyInput)
         XCTAssertEqual(viewModel.inputValidationMessage, viewModel.localizedCopy(.generatorInputInvalid))
         XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorInputInvalid))
 
@@ -2006,8 +2009,439 @@ final class SceneBundlePipelineTests: XCTestCase {
         viewModel.sceneDescription = "Актёр входит в кадр"
         await viewModel.generateScene()
 
+        let firstRequestID = viewModel.generationRequestState.requestID
+        let firstEpoch = viewModel.generationRequestState.epoch
+        XCTAssertEqual(viewModel.generationRequestState.phase, .retryableFailure)
+        XCTAssertEqual(viewModel.generationRequestState.failure, .arNotReady)
         XCTAssertNil(viewModel.inputValidationMessage)
         XCTAssertEqual(viewModel.errorMessage, viewModel.localizedCopy(.generatorErrorARNotReady))
+
+        viewModel.showInput()
+        viewModel.sceneDescription = "Второй актёр входит в кадр"
+        await viewModel.generateScene()
+
+        XCTAssertEqual(viewModel.generationRequestState.phase, .retryableFailure)
+        XCTAssertEqual(viewModel.generationRequestState.failure, .arNotReady)
+        XCTAssertNotEqual(viewModel.generationRequestState.requestID, firstRequestID)
+        XCTAssertNotEqual(viewModel.generationRequestState.epoch, firstEpoch)
+        XCTAssertTrue(viewModel.testingGenerationStateTrace.contains { $0.phase == .terminalFailure })
+    }
+
+    func testSceneGenerationRequestStateTransitionMatrixIsExhaustive() throws {
+        let requestID = UUID()
+        let epoch: UInt = 17
+        let states: [SceneGenerationRequestState.Phase: SceneGenerationRequestState] = [
+            .idle: .idle,
+            .input: .input(),
+            .validating: .validating(requestID: requestID, epoch: epoch),
+            .clarification: .clarification(requestID: requestID, epoch: epoch, message: "Уточните объект."),
+            .accepted: .accepted(requestID: requestID, epoch: epoch),
+            .leader: .leader(requestID: requestID, epoch: epoch),
+            .queued: .queued(requestID: requestID, epoch: epoch),
+            .generating: .generating(requestID: requestID, epoch: epoch, stage: .reading),
+            .cancelling: .cancelling(requestID: requestID, epoch: epoch),
+            .paused: .paused(requestID: requestID, epoch: epoch),
+            .backgrounded: .backgrounded(requestID: requestID, epoch: epoch),
+            .retryableFailure: .retryableFailure(requestID: requestID, epoch: epoch, failure: .arNotReady),
+            .terminalFailure: .terminalFailure(requestID: requestID, epoch: epoch, failure: .parse),
+            .success: .success(requestID: requestID, epoch: epoch),
+        ]
+        let phases = SceneGenerationRequestState.Phase.allCases
+        let expectedTransitions: [SceneGenerationRequestState.Phase: Set<SceneGenerationRequestState.Phase>] = [
+            .idle: [.input],
+            .input: [.validating, .terminalFailure, .idle],
+            .validating: [.clarification, .accepted, .cancelling, .retryableFailure, .terminalFailure],
+            .clarification: [.input, .accepted, .validating, .idle],
+            .accepted: [.queued, .cancelling, .retryableFailure],
+            .leader: [.generating, .paused, .backgrounded, .cancelling, .retryableFailure, .terminalFailure],
+            .queued: [.leader, .paused, .backgrounded, .cancelling, .retryableFailure, .terminalFailure],
+            .generating: [.clarification, .paused, .backgrounded, .cancelling, .retryableFailure, .terminalFailure, .success],
+            .cancelling: [.input, .idle, .backgrounded, .terminalFailure],
+            .paused: [.queued, .generating, .backgrounded, .cancelling, .retryableFailure, .terminalFailure],
+            .backgrounded: [.accepted, .queued, .generating, .paused, .cancelling, .retryableFailure, .terminalFailure, .input, .idle],
+            .retryableFailure: [.validating, .input, .idle],
+            .terminalFailure: [.input, .idle],
+            .success: [.input, .idle],
+        ]
+
+        XCTAssertEqual(Set(states.keys), Set(phases))
+        XCTAssertEqual(Set(expectedTransitions.keys), Set(phases))
+        XCTAssertEqual(SceneGenerationRequestState.transitionTable, expectedTransitions)
+
+        let wellFormedStates: [SceneGenerationRequestState.Phase: [SceneGenerationRequestState]] = [
+            .idle: [.idle],
+            .input: [.input()],
+            .validating: [.validating(requestID: requestID, epoch: epoch)],
+            .clarification: [.clarification(requestID: requestID, epoch: epoch, message: "Уточните объект.")],
+            .accepted: [.accepted(requestID: requestID, epoch: epoch)],
+            .leader: [.leader(requestID: requestID, epoch: epoch)],
+            .queued: [.queued(requestID: requestID, epoch: epoch)],
+            .generating: [
+                .generating(requestID: requestID, epoch: epoch, stage: .reading),
+                .generating(requestID: requestID, epoch: epoch, stage: .planning),
+                .generating(requestID: requestID, epoch: epoch, stage: .placing),
+            ],
+            .cancelling: [.cancelling(requestID: requestID, epoch: epoch)],
+            .paused: [.paused(requestID: requestID, epoch: epoch)],
+            .backgrounded: [.backgrounded(requestID: requestID, epoch: epoch)],
+            .retryableFailure: [
+                .retryableFailure(requestID: requestID, epoch: epoch, failure: .arNotReady),
+                .retryableFailure(requestID: requestID, epoch: epoch, failure: .network),
+            ],
+            .terminalFailure: [
+                .emptyInputFailure(),
+                .terminalFailure(requestID: requestID, epoch: epoch, failure: .parse),
+                .terminalFailure(requestID: requestID, epoch: epoch, failure: .malformed),
+                .terminalFailure(requestID: requestID, epoch: epoch, failure: .cancelled),
+            ],
+            .success: [.success(requestID: requestID, epoch: epoch)],
+        ]
+
+        func representativeState(
+            for phase: SceneGenerationRequestState.Phase
+        ) -> SceneGenerationRequestState {
+            if phase == .terminalFailure {
+                return .terminalFailure(requestID: requestID, epoch: epoch, failure: .parse)
+            }
+            return wellFormedStates[phase]!.first!
+        }
+
+        func validTarget(
+            from fromPhase: SceneGenerationRequestState.Phase,
+            to toPhase: SceneGenerationRequestState.Phase
+        ) -> SceneGenerationRequestState {
+            switch toPhase {
+            case .idle:
+                return .idle
+            case .input:
+                return .input()
+            case .validating:
+                return .validating(requestID: requestID, epoch: epoch)
+            case .clarification:
+                return .clarification(requestID: requestID, epoch: epoch, message: "Уточните объект.")
+            case .accepted:
+                return .accepted(requestID: requestID, epoch: epoch)
+            case .leader:
+                return .leader(requestID: requestID, epoch: epoch)
+            case .queued:
+                return .queued(requestID: requestID, epoch: epoch)
+            case .generating:
+                return .generating(requestID: requestID, epoch: epoch, stage: .reading)
+            case .cancelling:
+                return .cancelling(requestID: requestID, epoch: epoch)
+            case .paused:
+                return .paused(requestID: requestID, epoch: epoch)
+            case .backgrounded:
+                return .backgrounded(requestID: requestID, epoch: epoch)
+            case .retryableFailure:
+                return .retryableFailure(requestID: requestID, epoch: epoch, failure: .arNotReady)
+            case .terminalFailure:
+                if fromPhase == .input {
+                    return .emptyInputFailure()
+                }
+                return .terminalFailure(requestID: requestID, epoch: epoch, failure: .parse)
+            case .success:
+                return .success(requestID: requestID, epoch: epoch)
+            }
+        }
+
+        func stageRank(_ stage: SceneGenerationStage) -> Int {
+            switch stage {
+            case .reading: return 0
+            case .planning: return 1
+            case .placing: return 2
+            }
+        }
+
+        // Every literal graph edge gets a concrete, well-formed payload pair.
+        // This prevents an identity mask from making an impossible edge look
+        // accepted merely because its phase bit is listed.
+        for fromPhase in phases {
+            for toPhase in expectedTransitions[fromPhase] ?? [] {
+                let from = representativeState(for: fromPhase)
+                let to = validTarget(from: fromPhase, to: toPhase)
+                XCTAssertTrue(
+                    SceneGenerationRequestState.canTransition(from: from, to: to),
+                    "Listed edge is not realizable: \(fromPhase.rawValue) -> \(toPhase.rawValue)"
+                )
+            }
+        }
+
+        // Distinct unlisted phase pairs must reject every well-formed payload
+        // variant, including stage and identityless empty-input variants.
+        for fromPhase in phases {
+            for toPhase in phases where fromPhase != toPhase {
+                guard expectedTransitions[fromPhase]?.contains(toPhase) != true else { continue }
+                for from in try XCTUnwrap(wellFormedStates[fromPhase]) {
+                    for to in try XCTUnwrap(wellFormedStates[toPhase]) {
+                        XCTAssertFalse(
+                            SceneGenerationRequestState.canTransition(from: from, to: to),
+                            "Unlisted edge admitted: \(fromPhase.rawValue) -> \(toPhase.rawValue)"
+                        )
+                    }
+                }
+            }
+        }
+
+        // Same-state updates are intentionally outside the phase graph.
+        for phase in phases {
+            for from in try XCTUnwrap(wellFormedStates[phase]) {
+                for to in try XCTUnwrap(wellFormedStates[phase]) {
+                    let expected: Bool
+                    switch phase {
+                    case .input, .cancelling:
+                        expected = true
+                    case .generating:
+                        let fromRank = stageRank(try XCTUnwrap(from.stage))
+                        let toRank = stageRank(try XCTUnwrap(to.stage))
+                        expected = toRank >= fromRank
+                    default:
+                        expected = false
+                    }
+                    XCTAssertEqual(
+                        SceneGenerationRequestState.canTransition(from: from, to: to),
+                        expected,
+                        "Unexpected same-state update for \(phase.rawValue)"
+                    )
+                }
+            }
+        }
+
+        let reading = states[.generating]!
+        let planning: SceneGenerationRequestState = .generating(
+            requestID: requestID,
+            epoch: epoch,
+            stage: .planning
+        )
+        let placing: SceneGenerationRequestState = .generating(
+            requestID: requestID,
+            epoch: epoch,
+            stage: .placing
+        )
+        XCTAssertTrue(SceneGenerationRequestState.canTransition(from: reading, to: planning))
+        XCTAssertTrue(SceneGenerationRequestState.canTransition(from: planning, to: placing))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: planning, to: reading))
+        XCTAssertTrue(
+            SceneGenerationRequestState.canTransition(
+                from: states[.input]!,
+                to: .emptyInputFailure()
+            )
+        )
+        XCTAssertTrue(
+            SceneGenerationRequestState.canTransition(
+                from: states[.validating]!,
+                to: .retryableFailure(requestID: requestID, epoch: epoch, failure: .arNotReady)
+            )
+        )
+        XCTAssertTrue(
+            SceneGenerationRequestState.canTransition(
+                from: states[.validating]!,
+                to: .terminalFailure(requestID: requestID, epoch: epoch, failure: .parse)
+            )
+        )
+        XCTAssertTrue(
+            SceneGenerationRequestState.canTransition(
+                from: states[.validating]!,
+                to: .cancelling(requestID: requestID, epoch: epoch)
+            )
+        )
+        for phase in phases where states[phase]!.isExecutionInFlight && phase != .cancelling {
+            XCTAssertTrue(
+                SceneGenerationRequestState.canTransition(
+                    from: states[phase]!,
+                    to: .cancelling(requestID: requestID, epoch: epoch)
+                ),
+                "Teardown cannot cancel in-flight phase \(phase.rawValue)"
+            )
+        }
+        XCTAssertTrue(
+            SceneGenerationRequestState.canTransition(
+                from: states[.cancelling]!,
+                to: states[.cancelling]!
+            )
+        )
+
+        for state in states.values {
+            let encoded = try JSONEncoder().encode(state)
+            XCTAssertEqual(try JSONDecoder().decode(SceneGenerationRequestState.self, from: encoded), state)
+        }
+    }
+
+    func testSceneGenerationRequestStateRejectsInvalidAndStaleIdentityTransitions() {
+        let requestID = UUID()
+        let staleRequestID = UUID()
+        let epoch: UInt = 23
+        let current = SceneGenerationRequestState.generating(
+            requestID: requestID,
+            epoch: epoch,
+            stage: .planning
+        )
+        let staleRequest = SceneGenerationRequestState.generating(
+            requestID: staleRequestID,
+            epoch: epoch,
+            stage: .placing
+        )
+        let staleEpoch = SceneGenerationRequestState.generating(
+            requestID: requestID,
+            epoch: epoch + 1,
+            stage: .placing
+        )
+        let malformedFailure = SceneGenerationRequestState(
+            phase: .terminalFailure,
+            requestID: requestID,
+            epoch: epoch,
+            failure: nil
+        )
+        let identitylessRetryableFailure = SceneGenerationRequestState(
+            phase: .retryableFailure,
+            failure: .arNotReady
+        )
+        let postSubmitRetryableFailure = SceneGenerationRequestState.retryableFailure(
+            requestID: requestID,
+            epoch: epoch,
+            failure: .arNotReady
+        )
+        let identitylessParseFailure = SceneGenerationRequestState(
+            phase: .terminalFailure,
+            failure: .parse
+        )
+        let identityBearingEmptyInput = SceneGenerationRequestState(
+            phase: .terminalFailure,
+            requestID: requestID,
+            epoch: epoch,
+            failure: .emptyInput
+        )
+        let mismatchedIdentity = SceneGenerationRequestState(
+            phase: .generating,
+            requestID: requestID,
+            stage: .placing
+        )
+        let identityBearingInput = SceneGenerationRequestState(
+            phase: .input,
+            requestID: requestID,
+            epoch: epoch
+        )
+        let preRequestInput = SceneGenerationRequestState.input()
+
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: current, to: staleRequest))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: current, to: staleEpoch))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: current, to: malformedFailure))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: current, to: identitylessRetryableFailure))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: preRequestInput, to: postSubmitRetryableFailure))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: current, to: identitylessParseFailure))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: current, to: identityBearingEmptyInput))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: current, to: mismatchedIdentity))
+        XCTAssertFalse(SceneGenerationRequestState.canTransition(from: preRequestInput, to: identityBearingInput))
+        XCTAssertNil(SceneGenerationRequestState.transition(from: current, to: staleRequest))
+        XCTAssertEqual(current.phase, .generating)
+        XCTAssertEqual(current.requestID, requestID)
+        XCTAssertEqual(current.epoch, epoch)
+    }
+
+    @MainActor
+    func testSceneGeneratorPublishesReadingPlanningPlacingAndSuccessTrace() async throws {
+        let projectName = "generation-success-state-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        addTeardownBlock { @MainActor in
+            _ = await viewModel.teardownAndWait()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in
+                    continuation.resume()
+                }
+            }
+        }
+
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.sceneDescription = "Марина стоит."
+        viewModel.testingResetGenerationStateTrace()
+
+        await viewModel.generateScene()
+
+        XCTAssertEqual(viewModel.generationRequestState.phase, .success)
+        XCTAssertNotNil(viewModel.generationRequestState.requestID)
+        XCTAssertNotNil(viewModel.generationRequestState.epoch)
+        XCTAssertFalse(viewModel.isGenerating)
+        XCTAssertNil(viewModel.generationStage)
+        XCTAssertNotNil(viewModel.plannedScene)
+
+        let trace = viewModel.testingGenerationStateTrace
+        let traceSignature = trace.map { state in
+            "\(state.phase.rawValue):\(state.stage?.rawValue ?? "-")"
+        }
+        XCTAssertEqual(
+            traceSignature,
+            [
+                "input:-",
+                "input:-",
+                "validating:-",
+                "accepted:-",
+                "queued:-",
+                "leader:-",
+                "generating:reading",
+                "generating:reading",
+                "generating:reading",
+                "generating:planning",
+                "generating:placing",
+                "success:-",
+            ]
+        )
+    }
+
+    @MainActor
+    func testSceneGeneratorMapsMissingCameraTransformToRetryableState() async {
+        let viewModel = SceneGeneratorViewModel(projectName: "camera-position-state-\(UUID().uuidString)")
+        viewModel.testingMarkARSessionReady()
+        viewModel.sceneDescription = "Марина входит в кадр."
+        viewModel.testingResetGenerationStateTrace()
+
+        await viewModel.generateScene()
+
+        XCTAssertEqual(viewModel.generationRequestState.phase, .retryableFailure)
+        XCTAssertEqual(viewModel.generationRequestState.failure, .cameraPosition)
+        XCTAssertFalse(viewModel.isGenerating)
+        XCTAssertTrue(viewModel.testingGenerationStateTrace.contains { $0.phase == .validating })
+    }
+
+    @MainActor
+    func testSceneGeneratorClarificationTraceIsTypedAndNotTerminalError() async {
+        let viewModel = SceneGeneratorViewModel(projectName: "clarification-state-\(UUID().uuidString)")
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.sceneDescription = "Марина подходит к одному из стульев."
+        viewModel.testingSetGenerationDelay(60)
+        viewModel.testingResetGenerationStateTrace()
+
+        let generation = Task { @MainActor in
+            await viewModel.generateScene()
+        }
+        for _ in 0..<100 where viewModel.generationStage != .reading {
+            await Task.yield()
+        }
+        XCTAssertEqual(viewModel.generationStage, .reading)
+
+        XCTAssertTrue(
+            viewModel.testingPublishParserClarification(
+                message: "Уточните, какой стул имеется в виду."
+            )
+        )
+        XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
+        XCTAssertNotNil(viewModel.generationRequestState.clarificationMessage)
+        XCTAssertNil(viewModel.generationRequestState.failure)
+        XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .terminalFailure })
+
+        _ = await viewModel.teardownAndWait()
+        await generation.value
+        XCTAssertTrue(viewModel.testingGenerationStateTrace.contains { $0.phase == .clarification })
+        XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
     }
 
     @MainActor

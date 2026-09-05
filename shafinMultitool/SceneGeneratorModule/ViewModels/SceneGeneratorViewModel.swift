@@ -182,7 +182,7 @@ enum SceneRecordingPermissionRecovery: Equatable {
     case recheck
 }
 
-enum SceneGenerationStage: Equatable {
+enum SceneGenerationStage: String, Codable, CaseIterable, Equatable {
     case reading
     case planning
     case placing
@@ -310,8 +310,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Размеченные пользователем объекты в реальном пространстве
     @Published var markedObjects: [MarkedObject] = []
     
-    /// Статус генерации
-    @Published var isGenerating: Bool = false
+    /// The request-owned generator state. Compatibility projections below are
+    /// updated only by the state owner so a stale task cannot contradict them.
+    @Published private(set) var generationRequestState: SceneGenerationRequestState = .idle
+
+    /// Статус генерации (compatibility projection of `generationRequestState`).
+    @Published private(set) var isGenerating: Bool = false
 
     /// Этап генерации, независимый от локализованного текста статуса.
     @Published private(set) var generationStage: SceneGenerationStage?
@@ -704,6 +708,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var storyboardDebugMutationDelay: TimeInterval = 0
     private var generationDebugDelay: TimeInterval = 0
     private(set) var testingGenerationOwnerCount = 0
+    private(set) var testingGenerationStateTrace: [SceneGenerationRequestState] = [.idle]
 #endif
     
     // MARK: - Cancellables
@@ -781,6 +786,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
 #endif
         setupBindings()
+        if !sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            enterGenerationInputState()
+        }
 #if DEBUG
         if launchFixtureID == "sheet.decision-trace" {
             seedDebugDecisionTraceFixture()
@@ -819,10 +827,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             .dropFirst()
             .sink { [weak self] description in
                 guard let self else { return }
-                inputValidationMessage = description.isEmpty
-                    || !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? nil
-                    : localizedCopy(.generatorInputInvalid)
+                updateGenerationInputState(for: description)
                 sceneChunkState = nil
                 refreshIdleStatusMessage()
                 persistProjectMetadata()
@@ -1188,17 +1193,40 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         clearHintPresentation()
         suppressAutomaticPersistence = true
 
+        let generationWasInFlight = generationRequestState.isExecutionInFlight
+        let cancellationPublished: Bool
+        if generationWasInFlight,
+           let requestID = generationRequestState.requestID,
+           let epoch = generationRequestState.epoch {
+            cancellationPublished = publishGenerationState(
+                .cancelling(requestID: requestID, epoch: epoch),
+                expectedRequestID: requestID,
+                expectedEpoch: epoch
+            )
+        } else {
+            cancellationPublished = !generationWasInFlight
+        }
         generationEpoch &+= 1
         generationTask?.cancel()
         if let generationTask {
             await generationTask.value
             self.generationTask = nil
         }
-        if isGenerating {
-            isGenerating = false
-            generationStage = nil
-            refreshWorkspaceMode()
-            refreshIdleStatusMessage()
+        if !cancellationPublished {
+            diagnosticsLog("[GENERATION] cancellation publication failed during teardown; retiring request")
+        }
+        if generationRequestState.phase != .idle {
+            // Teardown clears any non-running draft/result as well. This keeps
+            // a released workspace from retaining a request state that cannot
+            // accept a later completion. The explicit reset also guarantees
+            // projections are inactive if the cancellation edge was rejected.
+            let retired = publishGenerationState(.idle, allowTeardownReset: true)
+            if !retired {
+                diagnosticsLog("[GENERATION] teardown could not retire request state")
+            } else {
+                refreshWorkspaceMode()
+                refreshIdleStatusMessage()
+            }
         }
 
         await releaseRecordingPlaybackLease()
@@ -1420,6 +1448,154 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             && !isMarkingMode
     }
 
+    private func updateGenerationInputState(for description: String) {
+        guard !generationRequestState.isExecutionInFlight else { return }
+
+        let isWhitespaceOnly = !description.isEmpty
+            && description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if isWhitespaceOnly {
+            let message = localizedCopy(.generatorInputInvalid)
+            enterGenerationInputState()
+            _ = publishGenerationState(
+                .input(),
+                validation: message
+            )
+        } else {
+            enterGenerationInputState(clearValidation: true)
+        }
+    }
+
+    private func enterGenerationInputState(clearValidation: Bool = false) {
+        _ = publishGenerationState(.input(), clearValidation: clearValidation)
+    }
+
+    /// The only writer for generator state and its compatibility projections.
+    /// A rejected transition leaves every projection untouched. Teardown may
+    /// explicitly retire to `idle` after the cancellation edge is unavailable
+    /// (for example, if a future state was malformed); that is a lifecycle
+    /// reset, not a normal transition, and still goes through this owner.
+    @discardableResult
+    private func publishGenerationState(
+        _ next: SceneGenerationRequestState,
+        expectedRequestID: UUID? = nil,
+        expectedEpoch: UInt? = nil,
+        status: String? = nil,
+        error: String? = nil,
+        validation: String? = nil,
+        clearError: Bool = false,
+        clearValidation: Bool = false,
+        allowTeardownReset: Bool = false
+    ) -> Bool {
+        if let expectedRequestID, generationRequestState.requestID != expectedRequestID {
+            return false
+        }
+        if let expectedEpoch,
+           (generationRequestState.epoch != expectedEpoch || generationEpoch != expectedEpoch) {
+            return false
+        }
+        let isTeardownReset = allowTeardownReset && next.phase == .idle
+        let validTransition = SceneGenerationRequestState.transition(
+            from: generationRequestState,
+            to: next
+        ) != nil
+        guard validTransition || isTeardownReset else {
+            diagnosticsLog(
+                "[GENERATION] rejected transition \(generationRequestState.phase.rawValue) -> \(next.phase.rawValue)"
+            )
+            return false
+        }
+
+        generationRequestState = next
+        isGenerating = next.isExecutionInFlight
+        generationStage = next.stage
+#if DEBUG
+        testingGenerationStateTrace.append(next)
+#endif
+        if let status {
+            statusMessage = status
+        }
+        if clearError {
+            errorMessage = nil
+        } else if let error {
+            errorMessage = error
+        }
+        if clearValidation {
+            inputValidationMessage = nil
+        } else if let validation {
+            inputValidationMessage = validation
+        }
+        return true
+    }
+
+    @discardableResult
+    private func publishGenerationFailure(
+        _ failure: SceneGenerationFailureKind,
+        retryable: Bool,
+        message: String,
+        expectedRequestID: UUID? = nil,
+        expectedEpoch: UInt? = nil,
+        validation: String? = nil
+    ) -> Bool {
+        let next: SceneGenerationRequestState
+        if !retryable,
+           failure == .emptyInput,
+           generationRequestState.requestID == nil,
+           generationRequestState.epoch == nil {
+            next = .emptyInputFailure()
+        } else {
+            guard let requestID = generationRequestState.requestID,
+                  let epoch = generationRequestState.epoch else {
+                return false
+            }
+            next = retryable
+                ? .retryableFailure(requestID: requestID, epoch: epoch, failure: failure)
+                : .terminalFailure(requestID: requestID, epoch: epoch, failure: failure)
+        }
+        return publishGenerationState(
+            next,
+            expectedRequestID: expectedRequestID,
+            expectedEpoch: expectedEpoch,
+            status: message,
+            error: message,
+            validation: validation
+        )
+    }
+
+    @discardableResult
+    private func publishGenerationStage(
+        _ stage: SceneGenerationStage,
+        status: String,
+        requestID: UUID,
+        generationToken: UInt
+    ) -> Bool {
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return false }
+        return publishGenerationState(
+            .generating(requestID: requestID, epoch: generationToken, stage: stage),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken,
+            status: status
+        )
+    }
+
+    @discardableResult
+    private func publishGenerationStatus(
+        _ status: String,
+        requestID: UUID,
+        generationToken: UInt
+    ) -> Bool {
+        guard generationIsCurrent(generationToken, requestID: requestID),
+              generationRequestState.phase == .generating,
+              let stage = generationRequestState.stage else {
+            return false
+        }
+        return publishGenerationState(
+            .generating(requestID: requestID, epoch: generationToken, stage: stage),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken,
+            status: status
+        )
+    }
+
     /// Генерирует сцену из текстового описания
     func generateScene() async {
         if let generationTask {
@@ -1432,37 +1608,85 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return
         }
 
+        // A submit always starts from the editable draft, including after a
+        // terminal/retryable result. This clears the previous request identity
+        // before issuing the next epoch.
+        enterGenerationInputState()
         let trimmedDescription = sceneDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedDescription.isEmpty else {
             let message = localizedCopy(.generatorInputInvalid)
-            inputValidationMessage = message
-            errorMessage = message
+            _ = publishGenerationFailure(
+                .emptyInput,
+                retryable: false,
+                message: message,
+                validation: message
+            )
             return
         }
         let submittedDescription = sceneDescription
 
+        generationEpoch &+= 1
+        let generationToken = generationEpoch
+        let requestID = UUID()
+        guard publishGenerationState(
+            .validating(requestID: requestID, epoch: generationToken),
+            status: localizedCopy(.generatorStatusAnalyzing),
+            clearError: true,
+            clearValidation: true
+        ) else {
+            return
+        }
+
         guard isARSessionReady else {
-            errorMessage = localizedCopy(.generatorErrorARNotReady)
+            _ = publishGenerationFailure(
+                .arNotReady,
+                retryable: true,
+                message: localizedCopy(.generatorErrorARNotReady),
+                expectedRequestID: requestID,
+                expectedEpoch: generationToken
+            )
             return
         }
 
         guard let cameraTransform = currentCameraTransform else {
-            errorMessage = localizedCopy(.generatorErrorCameraPosition)
+            _ = publishGenerationFailure(
+                .cameraPosition,
+                retryable: true,
+                message: localizedCopy(.generatorErrorCameraPosition),
+                expectedRequestID: requestID,
+                expectedEpoch: generationToken
+            )
             return
         }
 
         generationLogCounter += 1
         let generationID = "generation_\(generationLogCounter)"
-        generationEpoch &+= 1
-        let generationToken = generationEpoch
         let submittedMarkedObjects = markedObjects
         let submittedDetectedObjects = detectedObjects
         let submittedDetectedPlanes = detectedPlanes
 
-        isGenerating = true
-        generationStage = nil
-        errorMessage = nil
-        statusMessage = localizedCopy(.generatorStatusAnalyzing)
+        // These seams are request-owned even though the current local parser
+        // has no separate queue/leader backend yet.
+        guard publishGenerationState(
+            .accepted(requestID: requestID, epoch: generationToken),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken
+        ), publishGenerationState(
+            .queued(requestID: requestID, epoch: generationToken),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken
+        ), publishGenerationState(
+            .leader(requestID: requestID, epoch: generationToken),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken
+        ), publishGenerationState(
+            .generating(requestID: requestID, epoch: generationToken, stage: .reading),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken,
+            status: localizedCopy(.generatorStatusAnalyzing)
+        ) else {
+            return
+        }
 
         #if DEBUG
         testingGenerationOwnerCount += 1
@@ -1472,6 +1696,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             guard let self else { return }
             await self.performGeneration(
                 generationID: generationID,
+                requestID: requestID,
                 generationToken: generationToken,
                 submittedDescription: submittedDescription,
                 cameraTransform: cameraTransform,
@@ -1489,6 +1714,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func performGeneration(
         generationID: String,
+        requestID: UUID,
         generationToken: UInt,
         submittedDescription: String,
         cameraTransform: simd_float4x4,
@@ -1496,7 +1722,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         detectedObjects: [DetectedObject],
         detectedPlanes: [ScenePlaneSnapshot]
     ) async {
-        guard generationIsCurrent(generationToken) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         // Логирование входных данных
         print("🔍 [VIEWMODEL][\(generationID)] === НАЧАЛО ГЕНЕРАЦИИ СЦЕНЫ ===")
@@ -1509,20 +1735,24 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         // 1. Парсим описание с учётом markedObjects (async — поддержка LLM fallback)
         print("🔍 [VIEWMODEL] Вызов parserService.parseAsync()...")
-        generationStage = .reading
-        statusMessage = localizedCopy(.generatorStatusReading)
-        #if DEBUG
+        guard publishGenerationStage(
+            .reading,
+            status: localizedCopy(.generatorStatusReading),
+            requestID: requestID,
+            generationToken: generationToken
+        ) else { return }
+#if DEBUG
         if generationDebugDelay > 0 {
             let delay = UInt64(generationDebugDelay * 1_000_000_000)
             try? await Task.sleep(nanoseconds: delay)
-            guard generationIsCurrent(generationToken) else { return }
+            guard generationIsCurrent(generationToken, requestID: requestID) else { return }
         }
-        #endif
+#endif
         await Task.yield()
-        guard generationIsCurrent(generationToken) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         let result = await parserService.parseAsync(submittedDescription, markedObjects: markedObjects)
-        guard generationIsCurrent(generationToken) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
         parserService.releaseLocalModelResources(reason: "scene_generation_parse_complete")
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] parser finished and LLM resources requested for release")
         let script = result.script
@@ -1553,44 +1783,77 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
 
         // Отображаем диагностику в статусе
-        if runtimeTrace?.route == .needsClarification, let clarification = parserService.clarificationMessage(for: runtimeTrace) {
-            statusMessage = localizedCopy(.generatorClarification)
-            errorMessage = clarification
+        if runtimeTrace?.route == .needsClarification {
+            let clarification = parserService.clarificationMessage(for: runtimeTrace)
+                ?? localizedCopy(.generatorClarification)
+            guard publishGenerationState(
+                .clarification(
+                    requestID: requestID,
+                    epoch: generationToken,
+                    message: clarification
+                ),
+                expectedRequestID: requestID,
+                expectedEpoch: generationToken,
+                status: localizedCopy(.generatorClarification),
+                error: clarification
+            ) else { return }
+            SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] awaiting clarification")
+            SceneGeneratorDiagnosticsLogger.shared.flush()
+            return
         } else if runtimeTrace?.route == .offloadRemote {
-            statusMessage = localizedCopy(.generatorStatusParserFallback)
+            guard publishGenerationStatus(
+                localizedCopy(.generatorStatusParserFallback),
+                requestID: requestID,
+                generationToken: generationToken
+            ) else { return }
         } else if result.diagnostics.confidence < 0.6 {
-            statusMessage = localizedCopy(
-                .generatorStatusLowConfidence,
-                arguments: [Int(result.diagnostics.confidence * 100)]
-            )
+            guard publishGenerationStatus(
+                localizedCopy(
+                    .generatorStatusLowConfidence,
+                    arguments: [Int(result.diagnostics.confidence * 100)]
+                ),
+                requestID: requestID,
+                generationToken: generationToken
+            ) else { return }
             // M1-018 ErrorPresentationOwner: parse notes are internal English
             // diagnostics ("router=…", "trace:…"); the localized low-confidence
             // status is the user-facing signal. Notes stay in the diagnostics
             // log and the debug decision trace, never in production errors.
         } else {
-            statusMessage = localizedCopy(
-                .generatorStatusParsed,
-                arguments: [Int(result.diagnostics.confidence * 100)]
-            )
+            guard publishGenerationStatus(
+                localizedCopy(
+                    .generatorStatusParsed,
+                    arguments: [Int(result.diagnostics.confidence * 100)]
+                ),
+                requestID: requestID,
+                generationToken: generationToken
+            ) else { return }
         }
 
         if script.isEmpty {
             let message = localizedCopy(.generatorErrorParseEmpty)
-            if sceneDescription == submittedDescription {
-                inputValidationMessage = message
-            }
-            errorMessage = message
-            isGenerating = false
-            generationStage = nil
+            let validation = sceneDescription == submittedDescription ? message : nil
+            _ = publishGenerationFailure(
+                .parse,
+                retryable: false,
+                message: message,
+                expectedRequestID: requestID,
+                expectedEpoch: generationToken,
+                validation: validation
+            )
             SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] failed empty script")
             SceneGeneratorDiagnosticsLogger.shared.flush()
             return
         }
 
-        generationStage = .planning
-        statusMessage = localizedCopy(.generatorStatusPlanning)
+        guard publishGenerationStage(
+            .planning,
+            status: localizedCopy(.generatorStatusPlanning),
+            requestID: requestID,
+            generationToken: generationToken
+        ) else { return }
         await Task.yield()
-        guard generationIsCurrent(generationToken) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         // 2. Сопоставляем объекты с размеченными (приоритет) и детекциями
         // Объекты из markedObjects уже включены в script.objects с detectedPosition
@@ -1628,7 +1891,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             availablePlanes: detectedPlanes,
             markedObjects: markedObjects
         )
-        guard generationIsCurrent(generationToken) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         print("🔍 [VIEWMODEL] Результат планирования:")
         print("🔍 [VIEWMODEL]   PlacedActors: \(planned.placedActors.count)")
@@ -1641,10 +1904,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         logPlannedSceneDetails(planned, script: updatedScript, generationID: generationID)
 
-        generationStage = .placing
-        statusMessage = localizedCopy(.generatorStatusPlacing)
+        guard publishGenerationStage(
+            .placing,
+            status: localizedCopy(.generatorStatusPlacing),
+            requestID: requestID,
+            generationToken: generationToken
+        ) else { return }
         await Task.yield()
-        guard generationIsCurrent(generationToken) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         // The model and AR replacement stay in one MainActor commit block.
         cancelAllAnimations()
@@ -1663,23 +1930,37 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // 4. Создаём 3D объекты в AR
         placeObjectsInAR(planned)
 
-        inputValidationMessage = nil
-        isGenerating = false
-        generationStage = nil
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
+        // The success edge is published only after the existing atomic
+        // model/AR commit and persistence handoff have both been reached.
+        persistProjectMetadata()
+        guard generationIsCurrent(generationToken, requestID: requestID),
+              publishGenerationState(
+                  .success(requestID: requestID, epoch: generationToken),
+                  expectedRequestID: requestID,
+                  expectedEpoch: generationToken,
+                  clearError: true,
+                  clearValidation: true
+              ) else { return }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        guard generationIsCurrent(generationToken) else { return }
-        persistProjectMetadata()
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] complete actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count)")
         SceneGeneratorDiagnosticsLogger.shared.flush()
-        guard generationIsCurrent(generationToken) else { return }
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         // Закрываем sheet
         showInputSheet = false
     }
 
-    private func generationIsCurrent(_ generationToken: UInt) -> Bool {
-        !Task.isCancelled && !isWorkspaceReleased && generationEpoch == generationToken
+    private func generationIsCurrent(_ generationToken: UInt, requestID: UUID? = nil) -> Bool {
+        guard !Task.isCancelled,
+              !isWorkspaceReleased,
+              generationEpoch == generationToken else {
+            return false
+        }
+        guard let requestID else { return true }
+        return generationRequestState.requestID == requestID
+            && generationRequestState.epoch == generationToken
     }
 
     /// Запускает воспроизведение анимации
@@ -1921,6 +2202,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         isHintsEnabled = false
         clearHintPresentation()
         resetPlaybackUIState(clearTimeline: true)
+        if !generationRequestState.isExecutionInFlight {
+            _ = publishGenerationState(.idle)
+        }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
         Task { _ = await persistProjectSnapshot() }
@@ -1928,7 +2212,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Показывает sheet ввода
     func showInput() {
-        inputValidationMessage = nil
+        enterGenerationInputState(clearValidation: true)
         showInputSheet = true
     }
     
@@ -5612,6 +5896,28 @@ extension SceneGeneratorViewModel {
 
     func testingSetGenerationDelay(_ delay: TimeInterval) {
         generationDebugDelay = max(0, delay)
+    }
+
+    func testingResetGenerationStateTrace() {
+        testingGenerationStateTrace = [generationRequestState]
+    }
+
+    /// Test-only parser seam: drives the same request-owned clarification edge
+    /// while an active request is fenced by its real ID/epoch.
+    @discardableResult
+    func testingPublishParserClarification(message: String) -> Bool {
+        guard let requestID = generationRequestState.requestID,
+              let epoch = generationRequestState.epoch,
+              generationRequestState.phase == .generating else {
+            return false
+        }
+        return publishGenerationState(
+            .clarification(requestID: requestID, epoch: epoch, message: message),
+            expectedRequestID: requestID,
+            expectedEpoch: epoch,
+            status: localizedCopy(.generatorClarification),
+            error: message
+        )
     }
 
 }

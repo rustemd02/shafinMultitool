@@ -323,6 +323,7 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
             return .success(nil)
         }
         viewModel.showInput()
+        viewModel.testingResetGenerationStateTrace()
         let oldStoryboardItems = viewModel.storyboardBeatItems
         XCTAssertFalse(oldStoryboardItems.isEmpty)
 
@@ -366,6 +367,9 @@ final class SceneWorkspaceTeardownTests: XCTestCase {
         XCTAssertEqual(teardownResult, .released)
         XCTAssertEqual(viewModel.testingProjectSnapshotSaveCount, 1)
         XCTAssertFalse(viewModel.isGenerating)
+        XCTAssertEqual(viewModel.generationRequestState.phase, .idle)
+        XCTAssertTrue(viewModel.testingGenerationStateTrace.contains { $0.phase == .cancelling })
+        XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
         XCTAssertTrue(viewModel.isWorkspaceReleased)
         XCTAssertEqual(viewModel.plannedScene, oldPlannedScene)
         XCTAssertEqual(viewModel.storyboardBeatItems, oldStoryboardItems)
