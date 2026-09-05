@@ -130,7 +130,12 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                       overlayAnnotations: [OverlayAnnotationPresentation] = [],
                       debugSignals: DecisionTraceDebugSignals = .empty,
                       locale: Locale = Locale(identifier: "ru")) -> DecisionTracePresentation {
-        let reasonLines = pauseReasonLines(for: critique, locale: locale)
+        let explanation = pauseExplanation(for: critique, locale: locale)
+        let reasonLines = pauseReasonLines(
+            for: critique,
+            explanation: explanation,
+            locale: locale
+        )
         let evidenceRows = pauseEvidenceRows(for: critique, locale: locale)
         let actionRows = pauseActionRows(for: critique, locale: locale)
         let limitations = limitationRows(
@@ -149,7 +154,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             id: "pause_\(critique.frameId)_\(critique.summaryId)",
             modeLabel: copy(.traceModePause, locale: locale),
             verdictLabel: verdictTitle(for: critique.verdict, locale: locale),
-            headline: critique.shortVerdict,
+            headline: explanation ?? verdictTitle(for: critique.verdict, locale: locale),
             confidence: .make(critique.verdictConfidence),
             reasonLines: reasonLines,
             evidenceRows: evidenceRows,
@@ -168,13 +173,15 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                      overlayAnnotations: [OverlayAnnotationPresentation] = [],
                      debugSignals: DecisionTraceDebugSignals = .empty,
                      locale: Locale = Locale(identifier: "ru")) -> DecisionTracePresentation {
-        let reasonLines = liveReasonLines(for: hint, locale: locale)
+        let explanation = liveExplanation(for: hint, locale: locale)
+        let reasonLines = liveReasonLines(explanation: explanation, locale: locale)
         let actionRows = liveActionRows(for: hint, locale: locale)
+        let linkedIssueIDs = hint.linkedIssueIds.filter(isUsableIdentifier)
         let limitations = limitationRows(
             fallbackUsed: hint.isFallback || hint.expandedVerdict?.fallbackUsed == true,
-            assumptions: hint.linkedIssueIds.isEmpty
+            assumptions: linkedIssueIDs.isEmpty
                 ? []
-                : [format(.traceAssumptionLinkedIssues, locale: locale, arguments: [hint.linkedIssueIds.joined(separator: ", ")])],
+                : [format(.traceAssumptionLinkedIssues, locale: locale, arguments: [linkedIssueIDs.joined(separator: ", ")])],
             locale: locale
         )
 
@@ -182,10 +189,10 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             id: "live_\(hint.frameId)_\(hint.id)",
             modeLabel: copy(.traceModeLive, locale: locale),
             verdictLabel: copy(.traceVerdictLive, locale: locale),
-            headline: hint.text,
+            headline: liveHeadline(for: hint, locale: locale),
             confidence: .make(hint.confidence),
             reasonLines: reasonLines,
-            evidenceRows: [],
+            evidenceRows: liveEvidenceRows(for: hint, locale: locale),
             actionRows: actionRows,
             signalRows: signalRows(
                 overlayAnnotations: overlayAnnotations,
@@ -286,32 +293,80 @@ struct DecisionTracePresentation: Identifiable, Equatable {
     }
 #endif
 
-    private static func pauseReasonLines(for critique: PauseCritiquePresentation,
-                                         locale: Locale) -> [ReasonLine] {
-        var rows: [ReasonLine] = []
-        if critique.verdict == .good {
-            appendReason(&rows, id: "why_good", title: copy(.traceReasonWorked, locale: locale), text: critique.whyGood)
-            appendReason(&rows, id: "no_change", title: copy(.traceReasonKeep, locale: locale), text: critique.noChangeRationale)
-        } else {
-            appendReason(&rows, id: "why_problematic", title: copy(.traceReasonProblematic, locale: locale), text: critique.whyProblematic)
-            appendReason(&rows, id: "why_good", title: copy(.traceReasonWorked, locale: locale), text: critique.whyGood)
+    private static func pauseExplanation(for critique: PauseCritiquePresentation,
+                                         locale: Locale) -> String? {
+        let actions = critique.actions.sorted { lhs, rhs in
+            if lhs.priority != rhs.priority {
+                return lhs.priority < rhs.priority
+            }
+            return lhs.actionId < rhs.actionId
         }
-        if rows.isEmpty {
-            appendReason(&rows, id: "summary", title: copy(.traceReasonSummary, locale: locale), text: critique.shortVerdict)
+
+        if let action = actions.first(where: { $0.semanticActionType != .keepCurrentSetup }),
+           let issue = critique.issues.first(where: { issue in
+               action.linkedIssueIds.contains(issue.issueId)
+                   && isUsableIdentifier(issue.issueId)
+           }) {
+            return issueTitle(issue.type, locale: locale)
         }
-        return rows
+
+        // KEEP is the only non-corrective state that may carry a positive
+        // explanation. A good verdict without structured strength evidence
+        // remains deliberately silent.
+        guard critique.verdict == .good,
+              let strength = critique.strengths.first else {
+            return nil
+        }
+        return strengthTitle(strength.type, locale: locale)
     }
 
-    private static func liveReasonLines(for hint: LiveHintPresentation,
+    private static func pauseReasonLines(for critique: PauseCritiquePresentation,
+                                         explanation: String?,
+                                         locale: Locale) -> [ReasonLine] {
+        guard let explanation else { return [] }
+        let title = critique.verdict == .good
+            ? copy(.traceReasonWorked, locale: locale)
+            : copy(.traceReasonProblematic, locale: locale)
+        return [ReasonLine(id: "linked_evidence", title: title, text: explanation)]
+    }
+
+    private static func liveExplanation(for hint: LiveHintPresentation,
+                                        locale: Locale) -> String? {
+        let hasExplanationPayload = hint.expandedVerdict.map { expanded in
+            safeExplanationText(expanded.supportingText) != nil
+                || safeExplanationText(expanded.actionText) != nil
+        } ?? false
+        return DeterministicCritiqueSummaryBuilder().makeExplanation(
+            action: hint.semanticActionType ?? hint.actionType?.semanticActionType,
+            linkedIssueIDs: hint.linkedIssueIds,
+            technicalIssue: hint.technicalIssueType,
+            evidencePayloadAvailable: hasExplanationPayload,
+            locale: locale
+        )
+    }
+
+    private static func liveReasonLines(explanation: String?,
                                         locale: Locale) -> [ReasonLine] {
-        var rows: [ReasonLine] = []
-        appendReason(&rows, id: "short_verdict", title: copy(.traceReasonSignal, locale: locale), text: hint.expandedVerdict?.shortVerdict)
-        appendReason(&rows, id: "supporting_text", title: copy(.traceReasonWhy, locale: locale), text: hint.expandedVerdict?.supportingText)
-        appendReason(&rows, id: "action_text", title: copy(.traceReasonAction, locale: locale), text: hint.expandedVerdict?.actionText)
-        if rows.isEmpty {
-            appendReason(&rows, id: "hint", title: copy(.traceReasonHint, locale: locale), text: hint.text)
+        guard let explanation else { return [] }
+        return [
+            ReasonLine(
+                id: "linked_evidence",
+                title: copy(.traceReasonWhy, locale: locale),
+                text: explanation
+            )
+        ]
+    }
+
+    private static func liveHeadline(for hint: LiveHintPresentation,
+                                     locale: Locale) -> String {
+        let semanticAction = hint.semanticActionType ?? hint.actionType?.semanticActionType
+        if semanticAction == .keepCurrentSetup || hint.actionType == .leaveFrameAsIs {
+            return copy(.cameraKeep, locale: locale)
         }
-        return rows
+        if semanticAction != nil || hint.technicalIssueType != nil {
+            return copy(.cameraCorrectiveObservation, locale: locale)
+        }
+        return copy(.cameraSeeking, locale: locale)
     }
 
     private static func pauseEvidenceRows(for critique: PauseCritiquePresentation,
@@ -322,7 +377,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 sourceId: issue.issueId,
                 kindLabel: copy(.traceKindIssue, locale: locale),
                 title: issueTitle(issue.type, locale: locale),
-                text: issue.rationale,
+                text: issueTitle(issue.type, locale: locale),
                 confidence: .make(issue.confidence),
                 severity: .make(issue.severity),
                 regionDescription: regionDescription(issue.affectedRegion, locale: locale),
@@ -335,7 +390,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 sourceId: strength.strengthId,
                 kindLabel: copy(.traceKindStrength, locale: locale),
                 title: strengthTitle(strength.type, locale: locale),
-                text: strength.rationale,
+                text: strengthTitle(strength.type, locale: locale),
                 confidence: .make(strength.confidence),
                 severity: nil,
                 regionDescription: regionDescription(strength.supportingRegion, locale: locale),
@@ -358,7 +413,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 title: semanticActionTitle(action.semanticActionType, locale: locale),
                 semanticActionId: action.semanticActionType.rawValue,
                 coarseActionId: action.actionType.rawValue,
-                detail: action.expectedOutcome,
+                detail: semanticActionTitle(action.semanticActionType, locale: locale),
                 linkedEvidenceIds: action.linkedIssueIds,
                 confidence: .make(action.confidence),
                 targetDescription: regionDescription(action.targetRegion, locale: locale),
@@ -369,7 +424,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         if !rows.isEmpty {
             return rows
         }
-        guard let rationale = nonEmpty(critique.noChangeRationale) else {
+        guard critique.verdict == .good, !critique.strengths.isEmpty else {
             return []
         }
         return [
@@ -378,7 +433,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 title: semanticActionTitle(.keepCurrentSetup, locale: locale),
                 semanticActionId: SemanticActionType.keepCurrentSetup.rawValue,
                 coarseActionId: ActionTypeV1.leaveFrameAsIs.rawValue,
-                detail: rationale,
+                detail: semanticActionTitle(.keepCurrentSetup, locale: locale),
                 linkedEvidenceIds: critique.strengths.map(\.strengthId),
                 confidence: .make(critique.verdictConfidence),
                 targetDescription: nil,
@@ -400,7 +455,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 title: semanticActionTitle(semanticAction, locale: locale),
                 semanticActionId: semanticAction.rawValue,
                 coarseActionId: actionType.rawValue,
-                detail: hint.expandedVerdict?.actionText ?? hint.text,
+                detail: semanticActionTitle(semanticAction, locale: locale),
                 linkedEvidenceIds: hint.linkedIssueIds,
                 confidence: .make(hint.confidence),
                 targetDescription: regionDescription(hint.targetRegion, locale: locale),
@@ -408,6 +463,34 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 traceId: nil
             )
         ]
+    }
+
+    private static func liveEvidenceRows(for hint: LiveHintPresentation,
+                                         locale: Locale) -> [EvidenceRow] {
+        let linkedSourceIDs = hint.linkedIssueIds.filter(isUsableIdentifier)
+        let sourceIDs: [String]
+        if !linkedSourceIDs.isEmpty {
+            sourceIDs = linkedSourceIDs
+        } else if let technicalIssue = hint.technicalIssueType {
+            sourceIDs = ["technical_quality_\(technicalIssue.rawValue)"]
+        } else {
+            return []
+        }
+
+        let text = copy(.cameraExplanation, locale: locale)
+        return sourceIDs.map { sourceID in
+            EvidenceRow(
+                id: "live_evidence_\(sourceID)",
+                sourceId: sourceID,
+                kindLabel: copy(.traceEvidence, locale: locale),
+                title: copy(.traceEvidence, locale: locale),
+                text: text,
+                confidence: .make(hint.confidence),
+                severity: nil,
+                regionDescription: nil,
+                traceId: nil
+            )
+        }
     }
 
     private static func signalRows(overlayAnnotations: [OverlayAnnotationPresentation],
@@ -547,14 +630,6 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             )
         }
         return rows
-    }
-
-    private static func appendReason(_ rows: inout [ReasonLine],
-                                     id: String,
-                                     title: String,
-                                     text: String?) {
-        guard let text = nonEmpty(text) else { return }
-        rows.append(ReasonLine(id: id, title: title, text: text))
     }
 
     private static func orderedTraceIds(_ values: [String]) -> [String] {
@@ -741,9 +816,32 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         String(format: "%.2f", value)
     }
 
+    private static func safeExplanationText(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= 240 else { return nil }
+        guard !text.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            return nil
+        }
+
+        let lowered = text.lowercased()
+        let forbiddenFragments = [
+            "%", "trace", "semantic", "reserve", "confidence", "pipeline", "good", "review",
+            "трейс", "семантик", "резерв", "уверенност", "пайплайн", "ревью", "доверител"
+        ]
+        guard !forbiddenFragments.contains(where: { lowered.contains($0) }) else { return nil }
+        return text
+    }
+
     private static func nonEmpty(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func isUsableIdentifier(_ raw: String) -> Bool {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !value.isEmpty
+            && !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
     }
 }

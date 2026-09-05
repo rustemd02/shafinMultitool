@@ -822,13 +822,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "More space will make the shot read calmer"
+            "value": "Linked frame evidence supports this step"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Больше воздуха сделает кадр спокойнее"
+            "value": "Связанные данные кадра подтверждают этот шаг"
           }
         }
       }

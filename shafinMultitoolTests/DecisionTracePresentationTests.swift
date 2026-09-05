@@ -81,17 +81,40 @@ final class DecisionTracePresentationTests: XCTestCase {
 
         XCTAssertEqual(trace.modeLabel, "Пауза")
         XCTAssertEqual(trace.verdictLabel, "Можно улучшить")
-        XCTAssertEqual(trace.headline, "Кадр можно улучшить: фон спорит с главным объектом.")
+        XCTAssertEqual(
+            trace.headline,
+            SETCopyKey.traceIssueBackgroundCompetes.localizedString(locale: Locale(identifier: "ru"))
+        )
         XCTAssertEqual(trace.confidence.percent, 74)
-        XCTAssertTrue(trace.reasonLines.map(\.text).contains("Фон конкурирует с главным объектом и забирает внимание."))
+        XCTAssertEqual(
+            trace.reasonLines.map(\.text),
+            [SETCopyKey.traceIssueBackgroundCompetes.localizedString(locale: Locale(identifier: "ru"))]
+        )
 
         XCTAssertEqual(trace.evidenceRows.map(\.sourceId), ["iss_background", "str_focus"])
         XCTAssertEqual(trace.evidenceRows.first?.title, "Фон конкурирует с субъектом")
+        XCTAssertEqual(trace.evidenceRows.first?.text, "Фон конкурирует с субъектом")
         XCTAssertEqual(trace.evidenceRows.first?.traceId, "trace_issue_background")
 
         XCTAssertEqual(trace.actionRows.first?.semanticActionId, "simplify_background")
         XCTAssertEqual(trace.actionRows.first?.linkedEvidenceIds, ["iss_background"])
+        XCTAssertEqual(trace.actionRows.first?.detail, "Упростить фон")
         XCTAssertEqual(trace.actionRows.first?.traceId, "trace_action_simplify")
+
+        let rawNeuralCopy = [
+            critique.shortVerdict,
+            critique.whyGood ?? "",
+            critique.whyProblematic ?? "",
+            critique.issues[0].rationale,
+            critique.actions[0].expectedOutcome
+        ]
+        let renderedCopy = [trace.headline]
+            + trace.reasonLines.map(\.text)
+            + trace.evidenceRows.map(\.text)
+            + trace.actionRows.map(\.detail)
+        for rawCopy in rawNeuralCopy where !rawCopy.isEmpty {
+            XCTAssertFalse(renderedCopy.contains(rawCopy), rawCopy)
+        }
 
         XCTAssertTrue(trace.signalRows.contains(where: { $0.title == "DETR objects" && $0.value == "2" }))
         XCTAssertTrue(trace.signalRows.contains(where: { $0.title == "Overlay annotations" && $0.value == "1" }))
@@ -135,11 +158,69 @@ final class DecisionTracePresentationTests: XCTestCase {
 
         XCTAssertEqual(trace.modeLabel, "Live")
         XCTAssertEqual(trace.verdictLabel, "Текущая подсказка")
-        XCTAssertEqual(trace.headline, "Смести кадр чуть вправо.")
+        XCTAssertEqual(
+            trace.headline,
+            SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "ru"))
+        )
         XCTAssertEqual(trace.actionRows.first?.semanticActionId, "shift_frame_right")
-        XCTAssertTrue(trace.reasonLines.map(\.text).contains("Главный объект слишком близко к краю."))
-        XCTAssertTrue(trace.reasonLines.map(\.text).contains("Стабильность сигнала средняя, поэтому совет показан как осторожный."))
+        XCTAssertEqual(
+            trace.actionRows.first?.detail,
+            SETCopyKey.traceActionShiftRight.localizedString(locale: Locale(identifier: "ru"))
+        )
+        XCTAssertEqual(
+            trace.reasonLines.map(\.text),
+            [SETCopyKey.cameraExplanation.localizedString(locale: Locale(identifier: "ru"))]
+        )
+        XCTAssertEqual(trace.evidenceRows.map(\.sourceId), ["iss_edge"])
         XCTAssertTrue(trace.limitationRows.contains(where: { $0.text.contains("fallback") }))
         XCTAssertEqual(trace.traceIds, ["trace_live_root"])
+
+        let rawNeuralCopy = [
+            hint.text,
+            hint.expandedVerdict?.shortVerdict ?? "",
+            hint.expandedVerdict?.supportingText ?? "",
+            hint.expandedVerdict?.actionText ?? ""
+        ]
+        let renderedCopy = [trace.headline]
+            + trace.reasonLines.map(\.text)
+            + trace.evidenceRows.map(\.text)
+            + trace.actionRows.map(\.detail)
+        for rawCopy in rawNeuralCopy where !rawCopy.isEmpty {
+            XCTAssertFalse(renderedCopy.contains(rawCopy), rawCopy)
+        }
+    }
+
+    func testLiveTraceOmitsExplanationWhenEvidenceIsUnlinked() {
+        let hint = LiveHintPresentation(
+            id: "unlinked_hint",
+            frameId: "unlinked_frame",
+            text: "Neural text must not be rendered.",
+            confidence: 0.8,
+            actionType: .moveFrameLeft,
+            actionId: "unlinked_action",
+            linkedIssueIds: [],
+            summaryId: "unlinked_summary",
+            traceRootIds: [],
+            targetRegion: nil,
+            overlayHint: nil,
+            isFallback: false,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: "Unsupported speculation.",
+                supportingText: "Unsupported speculation.",
+                actionText: "Unsupported speculation.",
+                fallbackUsed: false
+            )
+        )
+
+        let trace = DecisionTracePresentation.live(
+            hint: hint,
+            locale: Locale(identifier: "en")
+        )
+
+        XCTAssertEqual(trace.headline, SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "en")))
+        XCTAssertTrue(trace.reasonLines.isEmpty)
+        XCTAssertTrue(trace.evidenceRows.isEmpty)
+        XCTAssertEqual(trace.actionRows.first?.detail, "Move your subject right")
+        XCTAssertFalse(trace.headline.contains("Unsupported speculation"))
     }
 }

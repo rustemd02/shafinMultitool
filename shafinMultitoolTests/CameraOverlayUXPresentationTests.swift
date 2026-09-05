@@ -39,10 +39,37 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
                     actionType.rawValue
                 )
                 XCTAssertTrue(presentation.showsWhy, actionType.rawValue)
-                XCTAssertNotNil(presentation.explanation, actionType.rawValue)
+                XCTAssertEqual(
+                    presentation.explanation,
+                    SETCopyKey.cameraExplanation.localizedString(locale: locale),
+                    actionType.rawValue
+                )
                 XCTAssertFalse(containsCyrillic(presentation.visibleCopy.joined(separator: " ")))
             }
         }
+    }
+
+    func testLinkedExplanationUsesRequestedLocale() {
+        let english = Locale(identifier: "en")
+        let russian = Locale(identifier: "ru")
+        let englishPresentation = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(actionType: .moveFrameLeft),
+            locale: english
+        )
+        let russianPresentation = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(actionType: .moveFrameLeft),
+            locale: russian
+        )
+
+        XCTAssertEqual(
+            englishPresentation.explanation,
+            SETCopyKey.cameraExplanation.localizedString(locale: english)
+        )
+        XCTAssertEqual(
+            russianPresentation.explanation,
+            SETCopyKey.cameraExplanation.localizedString(locale: russian)
+        )
+        XCTAssertFalse(containsCyrillic(englishPresentation.visibleCopy.joined(separator: " ")))
     }
 
     func testObjectInstructionIsNotRewrittenFromActionEnum() {
@@ -158,6 +185,27 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             presentation.actionInstruction,
             SETCopyKey.cameraCorrectiveMoveLeft.localizedString(locale: Locale(identifier: "en"))
         )
+        XCTAssertNil(presentation.explanation)
+        XCTAssertFalse(presentation.showsWhy)
+    }
+
+    func testUnlinkedEvidenceHidesWhyEvenWhenFreeformTextExists() {
+        let presentation = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(
+                actionType: .moveFrameLeft,
+                linkedIssueIDs: [],
+                expandedVerdict: LiveExpandedVerdictPresentation(
+                    shortVerdict: "Unsupported speculation.",
+                    supportingText: "Unsupported speculation.",
+                    actionText: "Unsupported speculation.",
+                    fallbackUsed: false
+                )
+            ),
+            isExpanded: true,
+            locale: Locale(identifier: "en")
+        )
+
+        XCTAssertEqual(presentation.state, .stableTip)
         XCTAssertNil(presentation.explanation)
         XCTAssertFalse(presentation.showsWhy)
     }
@@ -494,6 +542,20 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         XCTAssertNil(failed.markerEventID)
     }
 
+    func testFailClosedDecisionsNeverShowActionOrExplanation() {
+        for decision in [CameraCoachDecisionV2.wait, .selectSubject, .abstain] {
+            let presentation = CameraOverlayUXPresentation.make(
+                liveHint: makeLiveHint(actionType: .moveFrameLeft),
+                context: CameraOverlayUXContext(decision: decision)
+            )
+
+            XCTAssertEqual(presentation.state, .liveSeeking, decision.rawValue)
+            XCTAssertNil(presentation.actionInstruction, decision.rawValue)
+            XCTAssertNil(presentation.explanation, decision.rawValue)
+            XCTAssertFalse(presentation.showsWhy, decision.rawValue)
+        }
+    }
+
     func testCorrectiveGeometryUsesSubjectAndTargetAndStaysInsideSafeRect() {
         let sizes = [
             CGSize(width: 390, height: 844),
@@ -686,6 +748,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         overlayHint: OverlayHint? = nil,
         semanticActionType: SemanticActionType? = nil,
         technicalIssueType: TechnicalQualityIssueType? = nil,
+        linkedIssueIDs: [String] = ["issue-1"],
         expandedVerdict: LiveExpandedVerdictPresentation? = LiveExpandedVerdictPresentation(
             shortVerdict: "Главный объект теряется у края.",
             supportingText: "Слева осталось мало свободного пространства.",
@@ -700,7 +763,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             confidence: confidence,
             actionType: actionType,
             actionId: "action-1",
-            linkedIssueIds: ["issue-1"],
+            linkedIssueIds: linkedIssueIDs,
             summaryId: "summary-1",
             traceRootIds: ["trace-1"],
             targetRegion: targetRegion,

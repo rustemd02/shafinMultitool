@@ -465,11 +465,16 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             return nil
         }
 
-        let hasExplanation = safeText(expandedVerdict.supportingText) != nil
+        let hasExplanationPayload = safeText(expandedVerdict.supportingText) != nil
             || safeText(expandedVerdict.actionText) != nil
-        let explanation = hasExplanation
-            ? SETCopyKey.cameraExplanation.localizedString(locale: locale)
-            : nil
+        let explanation = DeterministicCritiqueSummaryBuilder().makeExplanation(
+            action: liveHint.semanticActionType ?? liveHint.actionType?.semanticActionType,
+            linkedIssueIDs: liveHint.linkedIssueIds,
+            technicalIssue: liveHint.technicalIssueType,
+            evidencePayloadAvailable: hasExplanationPayload,
+            locale: locale
+        )
+        let hasExplanation = explanation != nil
         return MappedCopy(
             state: isExpanded && explanation != nil ? .explanation : .stableTip,
             baseState: .stableTip,
