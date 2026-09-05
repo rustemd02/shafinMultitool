@@ -3683,4 +3683,472 @@ final class SceneBundlePipelineTests: XCTestCase {
             originalDescription: "Марина и Олег идут навстречу друг другу. Олег смотрит на телефон и передаёт его Марине."
         )
     }
+
+    func testObjectBindingMatrixUsesExplicitIdentityAndTypedFailures() {
+        let marker = makeMarkedObject(
+            idSeed: "00000001-0000-0000-0000-000000000101",
+            name: "стол",
+            type: .table,
+            position: Position3D(x: 1, y: 0, z: -1)
+        )
+        let detection = makeDetectedObject(
+            idSeed: "00000000-0000-0000-0000-000000000201",
+            label: "chair",
+            confidence: 0.82,
+            box: CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4),
+            position: Position3D(x: -1, y: 0, z: -2)
+        )
+        let resolver = SceneAnchorExtractor()
+        let requestID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+
+        let manualResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр подходит к столу",
+            markers: [marker],
+            detections: [],
+            objects: [
+                SceneObject(
+                    id: marker.canonicalMarkedObjectID,
+                    type: .table,
+                    relativePosition: .center
+                ),
+            ]
+        )
+        let manual = manualResult.resolution(for: marker.canonicalMarkedObjectID)
+        XCTAssertEqual(manual?.state, .bound)
+        XCTAssertEqual(manual?.binding?.canonicalID, marker.canonicalMarkedObjectID)
+        XCTAssertEqual(manual?.binding?.source, .marked)
+        XCTAssertEqual(manual?.binding?.confidence, 1)
+        XCTAssertEqual(manual?.binding?.name, "стол")
+
+        let detectedReference = "object_chair_slot"
+        let detectedResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр садится на стул",
+            markers: [],
+            detections: [detection],
+            objects: [
+                SceneObject(
+                    id: detectedReference,
+                    type: .chair,
+                    name: "стул",
+                    relativePosition: .center
+                ),
+            ]
+        )
+        let detected = detectedResult.resolution(for: detectedReference)
+        XCTAssertEqual(detected?.state, .bound)
+        XCTAssertEqual(detected?.binding?.canonicalID, detectedReference)
+        XCTAssertEqual(detected?.binding?.source, .detected)
+        XCTAssertEqual(detected?.binding?.detectionID, detection.id)
+        XCTAssertEqual(detected?.binding?.confidence, 0.82)
+        XCTAssertEqual(detected?.binding?.name, "стул")
+
+        let parserAliasResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр садится на chair",
+            markers: [],
+            detections: [detection],
+            aliasToObjectRef: ["chair": "object_scene1_chair_1"],
+            objects: [
+                SceneObject(
+                    id: detectedReference,
+                    type: .chair,
+                    name: "chair",
+                    relativePosition: .center
+                ),
+            ]
+        )
+        XCTAssertEqual(parserAliasResult.resolution(for: detectedReference)?.state, .bound)
+        XCTAssertEqual(parserAliasResult.resolution(for: detectedReference)?.binding?.source, .detected)
+
+        let conflictingAliasResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр садится на chair",
+            markers: [],
+            detections: [detection],
+            aliasToObjectRef: [
+                "chair": "object_scene1_chair_1",
+                "CHAIR": "object_scene1_other_chair",
+            ],
+            objects: [
+                SceneObject(
+                    id: detectedReference,
+                    type: .chair,
+                    name: "chair",
+                    relativePosition: .center
+                ),
+            ]
+        )
+        XCTAssertEqual(conflictingAliasResult.resolution(for: detectedReference)?.state, .ambiguous)
+        XCTAssertTrue(conflictingAliasResult.diagnostics.contains("ambiguous_alias:chair"))
+
+        let aliasResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр подходит к столу",
+            markers: [marker],
+            detections: [],
+            objects: [
+                SceneObject(
+                    id: "object_table_alias",
+                    type: .table,
+                    name: "TABLE",
+                    relativePosition: .center
+                ),
+            ]
+        )
+        XCTAssertEqual(
+            aliasResult.resolution(for: "object_table_alias")?.binding?.canonicalID,
+            marker.canonicalMarkedObjectID
+        )
+
+        let repeatedDetections = [
+            detection,
+            makeDetectedObject(
+                idSeed: "00000002-0000-0000-0000-000000000202",
+                label: "chair",
+                confidence: 0.81,
+                box: CGRect(x: 0.5, y: 0.2, width: 0.3, height: 0.4),
+                position: Position3D(x: 1, y: 0, z: -2)
+            ),
+        ]
+        let repeatedReference = "object_repeated_chair"
+        let repeatedResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "два стула",
+            markers: [],
+            detections: repeatedDetections,
+            objects: [
+                SceneObject(id: repeatedReference, type: .chair, relativePosition: .center),
+            ]
+        )
+        XCTAssertEqual(repeatedResult.resolution(for: repeatedReference)?.state, .ambiguous)
+        XCTAssertEqual(repeatedResult.resolution(for: repeatedReference)?.candidateIDs.count, 2)
+
+        let numberedMarkers = [
+            makeMarkedObject(
+                idSeed: "00000031-0000-0000-0000-000000000301",
+                name: "стол_1",
+                type: .table,
+                position: Position3D(x: -1, y: 0, z: -1)
+            ),
+            makeMarkedObject(
+                idSeed: "00000032-0000-0000-0000-000000000302",
+                name: "стол_2",
+                type: .table,
+                position: Position3D(x: 1, y: 0, z: -1)
+            ),
+        ]
+        let numberedObjects = numberedMarkers.map { marker in
+            SceneObject(
+                id: "object_\(marker.name)",
+                type: .table,
+                name: marker.name,
+                relativePosition: .center
+            )
+        }
+        let numberedForward = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "использовать стол_1 и стол_2",
+            markers: numberedMarkers,
+            detections: [],
+            objects: numberedObjects
+        )
+        let numberedReverse = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "использовать стол_1 и стол_2",
+            markers: numberedMarkers.reversed(),
+            detections: [],
+            objects: numberedObjects.reversed()
+        )
+        XCTAssertEqual(numberedForward, numberedReverse)
+        for marker in numberedMarkers {
+            XCTAssertEqual(
+                numberedForward.resolution(for: "object_\(marker.name)")?.binding?.canonicalID,
+                marker.canonicalMarkedObjectID
+            )
+        }
+
+        let missingReference = "object_marked_ffffffff"
+        let missingResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр подходит к столу",
+            markers: [],
+            detections: [],
+            objects: [
+                SceneObject(id: missingReference, type: .table, relativePosition: .center),
+            ]
+        )
+        XCTAssertEqual(missingResult.resolution(for: missingReference)?.state, .missing)
+
+        let ambiguousMarkers = [
+            makeMarkedObject(
+                idSeed: "00000041-0000-0000-0000-000000000401",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: -1, y: 0, z: -1)
+            ),
+            makeMarkedObject(
+                idSeed: "00000042-0000-0000-0000-000000000402",
+                name: "стул",
+                type: .chair,
+                position: Position3D(x: 1, y: 0, z: -1)
+            ),
+        ]
+        let ambiguousReference = "object_ambiguous_chair"
+        let ambiguousResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр подходит к стулу",
+            markers: ambiguousMarkers,
+            detections: [],
+            objects: [
+                SceneObject(
+                    id: ambiguousReference,
+                    type: .chair,
+                    name: "стул",
+                    relativePosition: .center
+                ),
+            ]
+        )
+        XCTAssertEqual(ambiguousResult.resolution(for: ambiguousReference)?.state, .ambiguous)
+
+        let duplicateDetection = makeDetectedObject(
+            idSeed: "00000000-0000-0000-0000-000000000203",
+            label: "dining table",
+            confidence: 0.77,
+            box: CGRect(x: 0.2, y: 0.3, width: 0.4, height: 0.3),
+            position: marker.worldPosition
+        )
+        let convergedReference = "object_table_converged"
+        let convergedResult = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "актёр подходит к столу",
+            markers: [marker],
+            detections: [duplicateDetection],
+            objects: [
+                SceneObject(
+                    id: convergedReference,
+                    type: .table,
+                    name: "table",
+                    relativePosition: .center
+                ),
+            ]
+        )
+        XCTAssertEqual(convergedResult.resolution(for: convergedReference)?.state, .bound)
+        XCTAssertEqual(
+            convergedResult.resolution(for: convergedReference)?.binding?.canonicalID,
+            marker.canonicalMarkedObjectID
+        )
+        XCTAssertEqual(convergedResult.resolution(for: convergedReference)?.binding?.source, .marked)
+        XCTAssertEqual(
+            Set(convergedResult.request.candidates.map(\.canonicalID)).count,
+            convergedResult.request.candidates.count
+        )
+    }
+
+    func testObjectBindingCanonicalIDsSurviveDetectionReloadRepresentation() {
+        let requestID = UUID(uuidString: "00000000-0000-0000-0000-000000000011")!
+        let resolver = SceneAnchorExtractor()
+        let firstDetection = makeDetectedObject(
+            idSeed: "00000000-0000-0000-0000-000000000501",
+            label: "chair",
+            confidence: 0.8,
+            box: CGRect(x: 0.12, y: 0.24, width: 0.32, height: 0.38),
+            position: Position3D(x: 0, y: 0, z: -2)
+        )
+        let reloadedDetection = makeDetectedObject(
+            idSeed: "00000000-0000-0000-0000-000000000599",
+            label: "chair",
+            confidence: 0.8,
+            box: CGRect(x: 0.12, y: 0.24, width: 0.32, height: 0.38),
+            position: Position3D(x: 0, y: 0, z: -2)
+        )
+        let object = SceneObject(
+            id: "object_stable_chair",
+            type: .chair,
+            name: "стул",
+            relativePosition: .center
+        )
+        let first = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "стул",
+            markers: [],
+            detections: [firstDetection],
+            objects: [object]
+        )
+        let reloaded = resolveBindings(
+            resolver: resolver,
+            requestID: requestID,
+            description: "стул",
+            markers: [],
+            detections: [reloadedDetection],
+            objects: [object]
+        )
+        XCTAssertEqual(first.request.candidates.map(\.canonicalID), reloaded.request.candidates.map(\.canonicalID))
+        XCTAssertEqual(
+            first.resolution(for: object.id)?.binding?.canonicalID,
+            reloaded.resolution(for: object.id)?.binding?.canonicalID
+        )
+        XCTAssertNotEqual(first.resolution(for: object.id)?.binding?.detectionID, reloaded.resolution(for: object.id)?.binding?.detectionID)
+    }
+
+    @MainActor
+    func testUnresolvedObjectBindingStopsBeforeSceneCommitOrSuccess() async {
+        let projectName = "binding-clarification-\(UUID().uuidString)"
+        let viewModel = SceneGeneratorViewModel(projectName: projectName)
+        addTeardownBlock { @MainActor in
+            _ = await viewModel.teardownAndWait()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in
+                    continuation.resume()
+                }
+            }
+        }
+
+        var cameraTransform = matrix_identity_float4x4
+        cameraTransform.columns.3 = SIMD4<Float>(0, 1.5, 0, 1)
+        viewModel.testingSetPlanningContext(
+            cameraTransform: cameraTransform,
+            planes: [ScenePlaneSnapshot(alignment: .horizontal, y: 0)]
+        )
+        viewModel.sceneDescription = "актёр подходит к одному из стульев"
+        viewModel.testingSetGenerationDelay(60)
+        viewModel.testingResetGenerationStateTrace()
+
+        let generation = Task { @MainActor in
+            await viewModel.generateScene()
+        }
+        for _ in 0..<100 where viewModel.generationStage != .reading {
+            await Task.yield()
+        }
+        XCTAssertEqual(viewModel.generationStage, .reading)
+        let requestID = try! XCTUnwrap(viewModel.generationRequestState.requestID)
+        let epoch = try! XCTUnwrap(viewModel.generationRequestState.epoch)
+        let markerA = makeMarkedObject(
+            idSeed: "00000061-0000-0000-0000-000000000601",
+            name: "стул",
+            type: .chair,
+            position: Position3D(x: -1, y: 0, z: -1)
+        )
+        let markerB = makeMarkedObject(
+            idSeed: "00000062-0000-0000-0000-000000000602",
+            name: "стул",
+            type: .chair,
+            position: Position3D(x: 1, y: 0, z: -1)
+        )
+        let unresolved = resolveBindings(
+            resolver: SceneAnchorExtractor(),
+            requestID: requestID,
+            epoch: epoch,
+            description: "актёр подходит к одному из стульев",
+            markers: [markerA, markerB],
+            detections: [],
+            objects: [
+                SceneObject(
+                    id: "object_ambiguous_chair",
+                    type: .chair,
+                    name: "стул",
+                    relativePosition: .center
+                ),
+            ]
+        )
+        let stale = resolveBindings(
+            resolver: SceneAnchorExtractor(),
+            requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000099")!,
+            epoch: epoch,
+            description: "актёр подходит к одному из стульев",
+            markers: [markerA, markerB],
+            detections: [],
+            objects: [
+                SceneObject(
+                    id: "object_ambiguous_chair",
+                    type: .chair,
+                    name: "стул",
+                    relativePosition: .center
+                ),
+            ]
+        )
+
+        XCTAssertFalse(viewModel.testingPublishObjectBindingResult(stale))
+        XCTAssertEqual(viewModel.generationRequestState.phase, .generating)
+        XCTAssertNil(viewModel.objectBindingResult)
+
+        XCTAssertTrue(viewModel.testingPublishObjectBindingResult(unresolved))
+        XCTAssertEqual(viewModel.generationRequestState.phase, .clarification)
+        XCTAssertEqual(viewModel.objectBindingResult, unresolved)
+        XCTAssertNil(viewModel.parsedScript)
+        XCTAssertNil(viewModel.parsingResult)
+        XCTAssertNil(viewModel.plannedScene)
+        XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
+
+        _ = await viewModel.teardownAndWait()
+        await generation.value
+        XCTAssertFalse(viewModel.testingGenerationStateTrace.contains { $0.phase == .success })
+    }
+
+    private func resolveBindings(
+        resolver: SceneAnchorExtractor,
+        requestID: UUID,
+        epoch: UInt = 9,
+        description: String,
+        markers: [MarkedObject],
+        detections: [DetectedObject],
+        aliasToObjectRef: [String: String] = [:],
+        objects: [SceneObject]
+    ) -> SceneObjectBindingResult {
+        let request = resolver.makeObjectBindingRequestSnapshot(
+            requestID: requestID,
+            epoch: epoch,
+            description: description,
+            markedObjects: Array(markers),
+            detectedObjects: Array(detections),
+            aliasToObjectRef: aliasToObjectRef
+        )
+        return resolver.resolveObjectBindings(scriptObjects: Array(objects), request: request)
+    }
+
+    private func makeMarkedObject(
+        idSeed: String,
+        name: String,
+        type: SceneObject.ObjectType,
+        position: Position3D
+    ) -> MarkedObject {
+        var payload = try! JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(MarkedObject(name: name, position: position))
+        ) as! [String: Any]
+        payload["id"] = idSeed
+        payload["type"] = type.rawValue
+        return try! JSONDecoder().decode(
+            MarkedObject.self,
+            from: JSONSerialization.data(withJSONObject: payload)
+        )
+    }
+
+    private func makeDetectedObject(
+        idSeed: String,
+        label: String,
+        confidence: Float,
+        box: CGRect,
+        position: Position3D
+    ) -> DetectedObject {
+        DetectedObject(
+            id: UUID(uuidString: idSeed)!,
+            label: label,
+            confidence: confidence,
+            boundingBox: box,
+            worldPosition: position
+        )
+    }
 }

@@ -324,6 +324,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Размеченные пользователем объекты в реальном пространстве
     @Published var markedObjects: [MarkedObject] = []
+
+    /// Immutable object binding result for the active generator request.
+    /// Missing/ambiguous entries remain typed and are never replaced by a
+    /// guessed placeholder or array-position match.
+    @Published private(set) var objectBindingResult: SceneObjectBindingResult?
     
     /// The request-owned generator state. Compatibility projections below are
     /// updated only by the state owner so a stale task cannot contradict them.
@@ -559,6 +564,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     // MARK: - Services
     
     private let parserService = SceneParserService.shared
+    private let objectBindingExtractor = SceneAnchorExtractor()
     private let plannerService = SpatialPlannerService.shared
     private let projectStore: DBService
     private let permissionClient: any PermissionClient
@@ -1214,6 +1220,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private func performTeardown() async -> SceneWorkspaceTeardownResult {
         clearHintPresentation()
         suppressAutomaticPersistence = true
+        objectBindingResult = nil
 
         let generationWasInFlight = generationRequestState.isExecutionInFlight
         let cancellationPublished: Bool
@@ -1723,6 +1730,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         let submittedDescription = sceneDescription
 
+        objectBindingResult = nil
         generationEpoch &+= 1
         let generationToken = generationEpoch
         let requestID = UUID()
@@ -1762,6 +1770,16 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let submittedMarkedObjects = markedObjects
         let submittedDetectedObjects = detectedObjects
         let submittedDetectedPlanes = detectedPlanes
+        let bindingRequestSnapshot = objectBindingExtractor.makeObjectBindingRequestSnapshot(
+            requestID: requestID,
+            epoch: generationToken,
+            description: submittedDescription,
+            markedObjects: submittedMarkedObjects,
+            detectedObjects: submittedDetectedObjects,
+            aliasToObjectRef: MarkedObjectMatcher.uniqueAliasBindings(
+                submittedMarkedObjects.map { ($0.name, $0.canonicalMarkedObjectID) }
+            )
+        )
 
         // These seams are request-owned even though the current local parser
         // has no separate queue/leader backend yet.
@@ -1800,7 +1818,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 cameraTransform: cameraTransform,
                 markedObjects: submittedMarkedObjects,
                 detectedObjects: submittedDetectedObjects,
-                detectedPlanes: submittedDetectedPlanes
+                detectedPlanes: submittedDetectedPlanes,
+                bindingRequestSnapshot: bindingRequestSnapshot
             )
         }
         generationTask = task
@@ -1818,7 +1837,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         cameraTransform: simd_float4x4,
         markedObjects: [MarkedObject],
         detectedObjects: [DetectedObject],
-        detectedPlanes: [ScenePlaneSnapshot]
+        detectedPlanes: [ScenePlaneSnapshot],
+        bindingRequestSnapshot: SceneObjectBindingRequestSnapshot
     ) async {
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
@@ -1944,6 +1964,36 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return
         }
 
+        let parserAliasBindings: [String: String] = {
+            guard let bundleResult = parserService.lastBundleResult else { return [:] }
+            let bundlePlan = bundleResult.documentState.bundlePlan
+            guard bundlePlan.scenes.indices.contains(bundlePlan.activeSceneIndex) else { return [:] }
+            return bundlePlan.scenes[bundlePlan.activeSceneIndex].plan.referenceBindings.aliasToObjectRef
+        }()
+        let bindingAliasPairs = Array(bindingRequestSnapshot.aliasToObjectRef.map { ($0.key, $0.value) })
+            + Array(parserAliasBindings.map { ($0.key, $0.value) })
+        let requestForBinding = bindingRequestSnapshot.withAliasBindingPairs(bindingAliasPairs)
+        let resolvedObjectBindings = objectBindingExtractor.resolveObjectBindings(
+            scriptObjects: script.objects,
+            request: requestForBinding
+        )
+        guard generationIsCurrent(generationToken, requestID: requestID) else { return }
+        objectBindingResult = resolvedObjectBindings
+        diagnosticsLog(
+            "[GENERATION][\(generationID)] object binding bound=\(resolvedObjectBindings.boundBindings.count), diagnostics=\(resolvedObjectBindings.diagnostics.count)"
+        )
+        if stopForUnresolvedObjectBindings(
+            resolvedObjectBindings,
+            requestID: requestID,
+            generationToken: generationToken
+        ) {
+            SceneGeneratorDiagnosticsLogger.shared.log(
+                "[GENERATION][\(generationID)] stopped before planning because object binding was unresolved"
+            )
+            SceneGeneratorDiagnosticsLogger.shared.flush()
+            return
+        }
+
         guard publishGenerationStage(
             .planning,
             status: localizedCopy(.generatorStatusPlanning),
@@ -1959,8 +2009,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         print("🔍 [VIEWMODEL]   До сопоставления: objects.count=\(script.objects.count)")
         let matchedObjects = matchObjectsWithMarkedAndDetected(
             script.objects,
-            markedObjects: markedObjects,
-            detectedObjects: detectedObjects
+            bindingResult: resolvedObjectBindings
         )
         print("🔍 [VIEWMODEL]   После сопоставления: objects.count=\(matchedObjects.count)")
         for (index, object) in matchedObjects.enumerated() {
@@ -1985,22 +2034,29 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let planned = plannerService.planScene(
             script: updatedScript,
             cameraTransform: cameraTransform,
-            detectedObjects: detectedObjects,
+            // All real-world inputs were resolved above.  Passing the raw
+            // arrays here would re-enable SpatialPlanner's historical
+            // first-same-type fallback for ambiguous objects.
+            detectedObjects: [],
             availablePlanes: detectedPlanes,
-            markedObjects: markedObjects
+            markedObjects: []
+        )
+        let plannedWithBindingSources = applyBindingSources(
+            to: planned,
+            bindingResult: resolvedObjectBindings
         )
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         print("🔍 [VIEWMODEL] Результат планирования:")
-        print("🔍 [VIEWMODEL]   PlacedActors: \(planned.placedActors.count)")
-        for (index, actor) in planned.placedActors.enumerated() {
+        print("🔍 [VIEWMODEL]   PlacedActors: \(plannedWithBindingSources.placedActors.count)")
+        for (index, actor) in plannedWithBindingSources.placedActors.enumerated() {
             print("🔍 [VIEWMODEL]     PlacedActor[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), name='\(actor.name ?? "nil")', label='\(displayName(for: actor))', path.count=\(actor.path.count)")
         }
-        print("🔍 [VIEWMODEL]   PlacedObjects: \(planned.placedObjects.count)")
-        for (index, object) in planned.placedObjects.enumerated() {
+        print("🔍 [VIEWMODEL]   PlacedObjects: \(plannedWithBindingSources.placedObjects.count)")
+        for (index, object) in plannedWithBindingSources.placedObjects.enumerated() {
             print("🔍 [VIEWMODEL]     PlacedObject[\(index)]: id='\(object.id)', objectId='\(object.objectId)', type=\(object.type.rawValue), isRealWorld=\(object.isRealWorld), placementSource=\(object.placementSource.rawValue)")
         }
-        logPlannedSceneDetails(planned, script: updatedScript, generationID: generationID)
+        logPlannedSceneDetails(plannedWithBindingSources, script: updatedScript, generationID: generationID)
 
         guard publishGenerationStage(
             .placing,
@@ -2019,14 +2075,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         parsingResult = result
         sceneChunkState = parserService.lastChunkState
         visualOverlays = parserService.lastBundleResult?.visualOverlays ?? []
-        plannedScene = planned
-        beatTimelineItems = buildBeatTimelineItems(for: planned, script: updatedScript)
+        plannedScene = plannedWithBindingSources
+        beatTimelineItems = buildBeatTimelineItems(for: plannedWithBindingSources, script: updatedScript)
         refreshStoryboardBeatItems()
         activeStoryboardEditDraft = nil
         storyboardDragFeedback = nil
 
         // 4. Создаём 3D объекты в AR
-        placeObjectsInAR(planned)
+        placeObjectsInAR(plannedWithBindingSources)
 
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
         // The success edge is published only after the existing atomic
@@ -2042,7 +2098,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
               ) else { return }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] complete actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count)")
+        SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] complete actors=\(plannedWithBindingSources.placedActors.count), objects=\(plannedWithBindingSources.placedObjects.count)")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
@@ -2059,6 +2115,34 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard let requestID else { return true }
         return generationRequestState.requestID == requestID
             && generationRequestState.epoch == generationToken
+    }
+
+    /// Missing/ambiguous real-world references are a closed gate for the
+    /// current request. M5-017 may consume objectBindingResult to present
+    /// clarification, but no planning, AR replacement, persistence, or
+    /// success edge is allowed past this method.
+    @discardableResult
+    private func stopForUnresolvedObjectBindings(
+        _ result: SceneObjectBindingResult,
+        requestID: UUID,
+        generationToken: UInt
+    ) -> Bool {
+        let unresolved = result.resolutions.filter { $0.state != .bound }
+        guard !unresolved.isEmpty else { return false }
+        let message = localizedCopy(.generatorClarification)
+        let detail = unresolved
+            .map { "\($0.reference)=\($0.state.rawValue)" }
+            .sorted()
+            .joined(separator: ",")
+        diagnosticsLog("[GENERATION] object binding clarification required: \(detail)")
+        _ = publishGenerationState(
+            .clarification(requestID: requestID, epoch: generationToken, message: message),
+            expectedRequestID: requestID,
+            expectedEpoch: generationToken,
+            status: message,
+            error: message
+        )
+        return true
     }
 
     /// Запускает воспроизведение анимации
@@ -3893,13 +3977,26 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             resetPlaybackUIState(clearTimeline: true)
         }
 
+        let editBindingResult = makeObjectBindingResult(
+            scriptObjects: script.objects,
+            markedObjects: markedObjects,
+            detectedObjects: detectedObjects
+        )
+        guard editBindingResult.resolutions.allSatisfy(\.isBound) else {
+            let message = localizedCopy(.generatorClarification)
+            storyboardValidationMessage = message
+            errorMessage = message
+            diagnosticsLog("[STORYBOARD_EDIT] object binding clarification required; edit not committed")
+            return false
+        }
+
         let editedScript = SceneScript(
             sceneHeading: script.sceneHeading,
             locationName: script.locationName,
             interiorExterior: script.interiorExterior,
             timeOfDay: script.timeOfDay,
             actors: script.actors,
-            objects: matchObjectsWithMarkedAndDetected(script.objects),
+            objects: matchObjectsWithMarkedAndDetected(script.objects, bindingResult: editBindingResult),
             beats: beats,
             spatialRelations: script.spatialRelations,
             originalDescription: script.originalDescription
@@ -3907,18 +4004,24 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let planned = plannerService.planScene(
             script: editedScript,
             cameraTransform: cameraTransform,
-            detectedObjects: detectedObjects,
+            // The object resolver above is the only source of physical
+            // positions; raw arrays would re-enable first-same-type fallback.
+            detectedObjects: [],
             availablePlanes: detectedPlanes,
-            markedObjects: markedObjects
+            markedObjects: []
+        )
+        let plannedWithBindingSources = applyBindingSources(
+            to: planned,
+            bindingResult: editBindingResult
         )
 
         parsedScript = editedScript
         if let parsingResult {
             self.parsingResult = ParsingResult(script: editedScript, diagnostics: parsingResult.diagnostics)
         }
-        plannedScene = planned
-        placeObjectsInAR(planned)
-        beatTimelineItems = buildBeatTimelineItems(for: planned, script: editedScript)
+        plannedScene = plannedWithBindingSources
+        placeObjectsInAR(plannedWithBindingSources)
+        beatTimelineItems = buildBeatTimelineItems(for: plannedWithBindingSources, script: editedScript)
         refreshStoryboardBeatItems()
         activeStoryboardEditDraft = nil
         storyboardValidationMessage = nil
@@ -3926,7 +4029,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
         persistProjectMetadata()
-        diagnosticsLog("[STORYBOARD_EDIT] replan complete reason=\(reason), beats=\(editedScript.beats.count), visible=\(storyboardBeatItems.count), actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count)")
+        diagnosticsLog("[STORYBOARD_EDIT] replan complete reason=\(reason), beats=\(editedScript.beats.count), visible=\(storyboardBeatItems.count), actors=\(plannedWithBindingSources.placedActors.count), objects=\(plannedWithBindingSources.placedObjects.count)")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         return true
     }
@@ -4692,51 +4795,97 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     // MARK: - Object Matching
     
-    /// Сопоставляет объекты скрипта с размеченными и обнаруженными объектами
-    /// Приоритет: 1) Размеченные объекты, 2) Детекции, 3) Виртуальные
+    /// Applies the typed resolver output to persisted-compatible SceneObject
+    /// values.  A parser-provided position is cleared before the result is
+    /// consulted so an ambiguous marker can never leak through the old parser
+    /// fallback.
     private func matchObjectsWithMarkedAndDetected(
         _ scriptObjects: [SceneObject],
-        markedObjects: [MarkedObject]? = nil,
-        detectedObjects: [DetectedObject]? = nil
+        bindingResult: SceneObjectBindingResult
     ) -> [SceneObject] {
-        var unusedMarkers = markedObjects ?? self.markedObjects
-        let availableDetections = detectedObjects ?? self.detectedObjects
-        
-        return scriptObjects.map { scriptObject in
+        scriptObjects.map { scriptObject in
             var updatedObject = scriptObject
-            
-            // 1. Сначала ищем среди размеченных объектов (высший приоритет)
-            if let markerIndex = indexOfMatchingMarker(for: scriptObject, in: unusedMarkers) {
-                let marker = unusedMarkers.remove(at: markerIndex)
-                updatedObject.detectedPosition = marker.worldPosition
+            updatedObject.detectedPosition = nil
+            guard let resolution = bindingResult.resolution(for: scriptObject.id),
+                  resolution.state == .bound,
+                  let binding = resolution.binding else {
                 return updatedObject
             }
-            
-            // 2. Затем ищем в детекциях
-            if let detection = availableDetections.first(where: { $0.objectType == scriptObject.type })
-                ?? detectionBridge?.findObject(ofType: scriptObject.type),
-               let worldPosition = detection.worldPosition {
-                updatedObject.detectedPosition = worldPosition
-                return updatedObject
+            updatedObject.name = binding.name
+            if binding.source != .virtual {
+                updatedObject.detectedPosition = binding.worldPosition
             }
-            
-            // 3. Если не найдено - остаётся виртуальным
             return updatedObject
         }
     }
 
-    private func indexOfMatchingMarker(for scriptObject: SceneObject, in markers: [MarkedObject]) -> Int? {
-        if let markedShortID = scriptObject.markedObjectShortID,
-           let exactIndex = markers.firstIndex(where: { $0.id.uuidString.prefix(8).lowercased() == markedShortID.lowercased() }) {
-            return exactIndex
-        }
+    private func makeObjectBindingResult(
+        scriptObjects: [SceneObject],
+        markedObjects: [MarkedObject],
+        detectedObjects: [DetectedObject]
+    ) -> SceneObjectBindingResult {
+        let requestID = generationRequestState.requestID ?? UUID()
+        let epoch = generationRequestState.epoch ?? generationEpoch
+        let snapshot = objectBindingExtractor.makeObjectBindingRequestSnapshot(
+            requestID: requestID,
+            epoch: epoch,
+            description: sceneDescription,
+            markedObjects: markedObjects,
+            detectedObjects: detectedObjects,
+            aliasToObjectRef: MarkedObjectMatcher.uniqueAliasBindings(
+                markedObjects.map { ($0.name, $0.canonicalMarkedObjectID) }
+            )
+        )
+        return objectBindingExtractor.resolveObjectBindings(
+            scriptObjects: scriptObjects,
+            request: snapshot
+        )
+    }
 
-        let sameTypeIndices = markers.indices.filter { markers[$0].type == scriptObject.type }
-        if sameTypeIndices.count == 1 {
-            return sameTypeIndices.first
-        }
+    /// Reattaches source metadata after planning.  SpatialPlanner uses the
+    /// already-resolved positions but has no knowledge of binding provenance.
+    private func applyBindingSources(
+        to plannedScene: PlannedScene,
+        bindingResult: SceneObjectBindingResult
+    ) -> PlannedScene {
+        let placedObjects = plannedScene.placedObjects.map { placedObject in
+            guard let resolution = bindingResult.resolution(for: placedObject.objectId),
+                  resolution.state == .bound,
+                  let binding = resolution.binding else {
+                return PlannedScene.PlacedObject(
+                    id: placedObject.id,
+                    objectId: placedObject.objectId,
+                    type: placedObject.type,
+                    position: placedObject.position,
+                    rotation: placedObject.rotation,
+                    isDetected: false,
+                    placementSource: .virtual
+                )
+            }
 
-        return nil
+            let source: PlannedScene.PlacedObject.PlacementSource
+            switch binding.source {
+            case .marked:
+                source = .marked
+            case .detected:
+                source = .detected
+            case .virtual:
+                source = .virtual
+            }
+            return PlannedScene.PlacedObject(
+                id: placedObject.id,
+                objectId: placedObject.objectId,
+                type: placedObject.type,
+                position: binding.worldPosition ?? placedObject.position,
+                rotation: placedObject.rotation,
+                isDetected: source != .virtual,
+                placementSource: source
+            )
+        }
+        return PlannedScene(
+            placedActors: plannedScene.placedActors,
+            placedObjects: placedObjects
+        )
     }
     
     /// Устаревший метод - теперь addObjectsFromMarkedObjects выполняется внутри парсера
@@ -6022,6 +6171,26 @@ extension SceneGeneratorViewModel {
             expectedEpoch: epoch,
             status: localizedCopy(.generatorClarification),
             error: message
+        )
+    }
+
+    /// Test-only seam for the same unresolved-binding gate used by
+    /// performGeneration. It enforces request identity before publication and
+    /// deliberately does not perform any planning or commit work.
+    @discardableResult
+    func testingPublishObjectBindingResult(_ result: SceneObjectBindingResult) -> Bool {
+        guard let requestID = generationRequestState.requestID,
+              let epoch = generationRequestState.epoch,
+              generationRequestState.phase == .generating,
+              result.requestID == requestID,
+              result.epoch == epoch else {
+            return false
+        }
+        objectBindingResult = result
+        return stopForUnresolvedObjectBindings(
+            result,
+            requestID: requestID,
+            generationToken: epoch
         )
     }
 

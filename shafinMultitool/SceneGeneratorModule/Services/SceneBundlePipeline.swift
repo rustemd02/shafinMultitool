@@ -760,6 +760,7 @@ final class ChunkCanonicalizer {
         var existingObjectMap = Dictionary(uniqueKeysWithValues: (stitchState?.objects ?? []).map { ($0.ref, $0) })
         var actorAliasMap = stitchState?.registry.actorAliasMap ?? [:]
         var objectAliasMap = stitchState?.registry.objectAliasMap ?? [:]
+        var ambiguousObjectAliases: Set<String> = []
         var speakerAliasMap = stitchState?.registry.speakerAliasMap ?? [:]
         var createdActors: [ScenePlanIR.Actor] = []
         var createdObjects: [ScenePlanIR.Object] = []
@@ -777,6 +778,19 @@ final class ChunkCanonicalizer {
             sourceText: draft.sourceText,
             reasonCodes: &reasonCodes
         )
+
+        func registerObjectAlias(_ alias: String, ref: String) {
+            guard !ambiguousObjectAliases.contains(alias) else { return }
+            if let existing = objectAliasMap[alias], existing != ref {
+                objectAliasMap.removeValue(forKey: alias)
+                ambiguousObjectAliases.insert(alias)
+                if !reasonCodes.contains("v9.ambiguous_object_alias") {
+                    reasonCodes.append("v9.ambiguous_object_alias")
+                }
+                return
+            }
+            objectAliasMap[alias] = ref
+        }
 
         for (index, actor) in plan.actors.enumerated() {
             let normalizedName = normalizeAlias(actor.name)
@@ -893,7 +907,7 @@ final class ChunkCanonicalizer {
 
             objectRefMap[object.ref] = stableRef
             if let normalizedName {
-                objectAliasMap[normalizedName] = stableRef
+                registerObjectAlias(normalizedName, ref: stableRef)
             }
         }
 
@@ -2381,7 +2395,30 @@ final class SceneStitcher {
             state.registry.objects.append(object)
         }
         state.registry.actorAliasMap.merge(patch.actorAliasMap) { _, new in new }
-        state.registry.objectAliasMap.merge(patch.objectAliasMap) { _, new in new }
+        for (alias, ref) in patch.objectAliasMap {
+            let normalizedAlias = alias.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let refsAlreadyNamed = Set<String>(
+                state.objects.compactMap { object in
+                    guard object.name?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == normalizedAlias else { return nil }
+                    return object.ref
+                }
+            )
+            if refsAlreadyNamed.count > 1 {
+                state.registry.objectAliasMap.removeValue(forKey: alias)
+                if !state.continuityDiagnostics.contains("v9.ambiguous_object_alias") {
+                    state.continuityDiagnostics.append("v9.ambiguous_object_alias")
+                }
+                continue
+            }
+            if let existing = state.registry.objectAliasMap[alias], existing != ref {
+                state.registry.objectAliasMap.removeValue(forKey: alias)
+                if !state.continuityDiagnostics.contains("v9.ambiguous_object_alias") {
+                    state.continuityDiagnostics.append("v9.ambiguous_object_alias")
+                }
+            } else if state.registry.objectAliasMap[alias] == nil {
+                state.registry.objectAliasMap[alias] = ref
+            }
+        }
         state.registry.speakerAliasMap.merge(patch.speakerAliasMap) { _, new in new }
         if let lastSpeaker = patch.speakerAliasMap.values.sorted().last {
             state.registry.lastResolvedSpeaker = lastSpeaker
@@ -2839,10 +2876,12 @@ final class SceneBundlePipeline {
                     referenceBindings: .init(
                         actorBindings: Dictionary(uniqueKeysWithValues: actorRefs.enumerated().map { ($0.element, "actor_\($0.offset + 1)") }),
                         markedObjectIDs: objects.compactMap(\.markedObjectID),
-                        aliasToObjectRef: Dictionary(uniqueKeysWithValues: objects.compactMap { object in
-                            guard let name = object.name else { return nil }
-                            return (name.lowercased(), object.ref)
-                        })
+                        aliasToObjectRef: MarkedObjectMatcher.uniqueAliasBindings(
+                            objects.compactMap { object in
+                                guard let name = object.name else { return nil }
+                                return (name, object.ref)
+                            }
+                        )
                     )
                 )
                 renderableSceneEntries = [
@@ -4430,9 +4469,11 @@ final class SceneBundlePipeline {
         }
 
         let markedObjectIDs = objects.compactMap { $0.markedObjectID ?? ($0.ref.hasPrefix("object_marked_") ? $0.ref : nil) }
-        let aliasBindings = Dictionary(uniqueKeysWithValues: markedObjects.map { marker in
-            (marker.name.lowercased(), marker.canonicalMarkedObjectID)
-        })
+        let aliasBindings = MarkedObjectMatcher.uniqueAliasBindings(
+            markedObjects.map { marker in
+                (marker.name, marker.canonicalMarkedObjectID)
+            }
+        )
 
         return ScenePlanIR(
             actors: actors,
@@ -4513,7 +4554,10 @@ final class SceneBundlePipeline {
         markedObjects: [MarkedObject]
     ) -> SceneBundleScript {
         guard !markedObjects.isEmpty else { return bundleScript }
-        let markerMap = Dictionary(uniqueKeysWithValues: markedObjects.map { ($0.canonicalMarkedObjectID, $0) })
+        let markerMap = Dictionary(grouping: markedObjects, by: \.canonicalMarkedObjectID)
+            .compactMapValues { markers in
+                markers.count == 1 ? markers.first : nil
+            }
         let hydratedScenes = bundleScript.scenes.map { scene in
             let hydratedObjects = scene.objects.map { object in
                 guard let marker = markerMap[object.id] else { return object }

@@ -77,6 +77,36 @@ final class SceneAnchorExtractor {
         )
     }
 
+    /// Samples all object inputs at the request boundary.  The resulting
+    /// snapshot is immutable and can safely outlive AR callbacks while a
+    /// parser request is in flight.
+    func makeObjectBindingRequestSnapshot(
+        requestID: UUID,
+        epoch: UInt,
+        description: String,
+        markedObjects: [MarkedObject],
+        detectedObjects: [DetectedObject],
+        aliasToObjectRef: [String: String] = [:]
+    ) -> SceneObjectBindingRequestSnapshot {
+        MarkedObjectMatcher.makeRequestSnapshot(
+            requestID: requestID,
+            epoch: epoch,
+            description: description,
+            markedObjects: markedObjects,
+            detectedObjects: detectedObjects,
+            aliasToObjectRef: aliasToObjectRef
+        )
+    }
+
+    /// Binds parser output to a previously sampled request.  No live
+    /// ViewModel arrays are consulted here.
+    func resolveObjectBindings(
+        scriptObjects: [SceneObject],
+        request: SceneObjectBindingRequestSnapshot
+    ) -> SceneObjectBindingResult {
+        markedObjectMatcher.resolveObjectBindings(scriptObjects: scriptObjects, request: request)
+    }
+
     private func extractActorCountHint(from text: String) -> Int {
         let patterns = [
             #"(\d+)\s*(?:актёр|актер|актёра|актера|актёров|актеров)"#,

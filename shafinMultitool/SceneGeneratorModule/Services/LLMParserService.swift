@@ -1726,9 +1726,11 @@ final class LLMParserService: LocalScenePlanProvider {
         }
 
         let markedObjectIDs = objects.compactMap { $0.markedObjectID ?? ($0.ref.hasPrefix("object_marked_") ? $0.ref : nil) }
-        let aliasBindings = Dictionary(uniqueKeysWithValues: markedObjects.map { marker in
-            (marker.name.lowercased(), marker.canonicalMarkedObjectID)
-        })
+        let aliasBindings = MarkedObjectMatcher.uniqueAliasBindings(
+            markedObjects.map { marker in
+                (marker.name, marker.canonicalMarkedObjectID)
+            }
+        )
 
         return repairScenePlanIR(
             ScenePlanIR(
