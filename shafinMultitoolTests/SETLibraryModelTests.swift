@@ -397,16 +397,18 @@ final class SETLibraryModelTests: XCTestCase {
 
     func testDeleteConfirmationReloadsOnlyOnSuccess() async {
         let provider = MockProvider()
-        provider.summaries = [makeSummary("А"), makeSummary("Б")]
+        let expectedID = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+        let secondID = UUID(uuidString: "00000000-0000-4000-8000-000000000002")!
+        provider.summaries = [makeSummary("А", id: expectedID), makeSummary("Б", id: secondID)]
         let model = SETLibraryModel(controlling: provider)
         model.reload()
-        model.select(model.scenes[0].id)
+        model.select(expectedID)
         model.beginDelete(sceneName: "А")
         let expectedUpdatedAt = provider.summaries[0].updatedAt
 
         XCTAssertEqual(
             model.flow,
-            .deleting(sceneID: model.scenes[0].id, sceneName: "А", expectedUpdatedAt: expectedUpdatedAt)
+            .deleting(sceneID: expectedID, sceneName: "А", expectedUpdatedAt: expectedUpdatedAt)
         )
 
         provider.deleteResult = true

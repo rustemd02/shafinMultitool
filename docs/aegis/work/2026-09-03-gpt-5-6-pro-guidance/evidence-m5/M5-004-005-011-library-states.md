@@ -92,7 +92,7 @@ Correction focused unit/integration command (with diagnostics disabled to
 avoid the simulator diagnostic subprocess hanging after a failed test):
 
 ```text
-xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath /tmp/setos-m5-004-005-011-correction-dd -resultBundlePath /tmp/setos-m5-004-005-011-correction-unit-2.xcresult -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 -collect-test-diagnostics never -only-testing:shafinMultitoolTests/SETLibraryModelTests -only-testing:shafinMultitoolTests/SETLibraryInteractorOutcomeTests -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath /tmp/setos-m5-004-005-011-correction-dd -resultBundlePath /tmp/setos-m5-004-005-011-correction-unit-3.xcresult -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 -collect-test-diagnostics never -only-testing:shafinMultitoolTests/SETLibraryModelTests -only-testing:shafinMultitoolTests/SETLibraryInteractorOutcomeTests -only-testing:shafinMultitoolTests/DBServiceConcurrencyTests
 ```
 
 Result: `** TEST SUCCEEDED **`; xcresult summary reports 37/37 passed, 0
@@ -103,10 +103,11 @@ failed, 0 skipped on iPhone 17 iOS 26.5:
   `testOpenRetrySuccessReturnsToIdleAndClearsRetry`.
 - `SETLibraryInteractorOutcomeTests`: 2/2.
 
-The first correction run without `-collect-test-diagnostics never` reported
-36 passed and one failure in the pre-existing random-UUID delete-test setup;
-the failed test passed on its isolated rerun, and the final correction run
-above passed all 37 selected tests. No delete production code was changed.
+An initial correction run exposed a batch-induced test-fixture mismatch: the
+delete test generated equal-timestamp random UUIDs while assuming name “А” was
+first under the UUID tie-break. The fixture now uses explicit ordered IDs and
+asserts “А”’s UUID; the final correction run above passed all 37 selected tests.
+No delete production code was changed.
 
 Production fixture UI command:
 
