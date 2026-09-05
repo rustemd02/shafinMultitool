@@ -329,37 +329,40 @@ class _InvertedResidual(nn.Module):
 
 
 _LARGE_CONFIG = (
-    # kernel, expansion, raw output, squeeze-excitation, activation, stride
-    (3, 1.0, 16, False, "RE", 1),
-    (3, 4.0, 24, False, "RE", 2),
-    (3, 3.0, 24, False, "RE", 1),
-    (5, 3.0, 40, True, "RE", 2),
-    (5, 3.0, 40, True, "RE", 1),
-    (5, 3.0, 40, True, "RE", 1),
-    (3, 6.0, 80, False, "HS", 2),
-    (3, 2.5, 80, False, "HS", 1),
-    (3, 2.5, 80, False, "HS", 1),
-    (3, 2.5, 80, False, "HS", 1),
-    (3, 6.0, 112, True, "HS", 1),
-    (3, 6.0, 112, True, "HS", 1),
-    (5, 6.0, 160, True, "HS", 2),
-    (5, 6.0, 160, True, "HS", 1),
-    (5, 6.0, 160, True, "HS", 1),
+    # kernel, raw expanded channels, raw output, squeeze-excitation,
+    # activation, stride.  Keep canonical raw channels explicit: the two
+    # 80-channel 2.3x blocks expand to 184, not 2.5x80=200.
+    (3, 16, 16, False, "RE", 1),
+    (3, 64, 24, False, "RE", 2),
+    (3, 72, 24, False, "RE", 1),
+    (5, 72, 40, True, "RE", 2),
+    (5, 120, 40, True, "RE", 1),
+    (5, 120, 40, True, "RE", 1),
+    (3, 240, 80, False, "HS", 2),
+    (3, 200, 80, False, "HS", 1),
+    (3, 184, 80, False, "HS", 1),
+    (3, 184, 80, False, "HS", 1),
+    (3, 480, 112, True, "HS", 1),
+    (3, 672, 112, True, "HS", 1),
+    (5, 672, 160, True, "HS", 2),
+    (5, 960, 160, True, "HS", 1),
+    (5, 960, 160, True, "HS", 1),
 )
 
 _SMALL_CONFIG = (
-    # kernel, expansion, raw output, squeeze-excitation, activation, stride
-    (3, 1.0, 16, True, "RE", 2),
-    (3, 4.5, 24, False, "RE", 2),
-    (3, 3.67, 24, False, "RE", 1),
-    (5, 4.0, 40, True, "HS", 2),
-    (5, 6.0, 40, True, "HS", 1),
-    (5, 6.0, 40, True, "HS", 1),
-    (5, 3.0, 48, True, "HS", 1),
-    (5, 3.0, 48, True, "HS", 1),
-    (5, 6.0, 96, True, "HS", 2),
-    (5, 6.0, 96, True, "HS", 1),
-    (5, 6.0, 96, True, "HS", 1),
+    # kernel, raw expanded channels, raw output, squeeze-excitation,
+    # activation, stride.
+    (3, 16, 16, True, "RE", 2),
+    (3, 72, 24, False, "RE", 2),
+    (3, 88, 24, False, "RE", 1),
+    (5, 96, 40, True, "HS", 2),
+    (5, 240, 40, True, "HS", 1),
+    (5, 240, 40, True, "HS", 1),
+    (5, 120, 48, True, "HS", 1),
+    (5, 144, 48, True, "HS", 1),
+    (5, 288, 96, True, "HS", 2),
+    (5, 576, 96, True, "HS", 1),
+    (5, 576, 96, True, "HS", 1),
 )
 
 
@@ -379,10 +382,10 @@ class _MobileNetV3Backbone(nn.Module):
         raw_input = 16
         current = stem_channels
         block_schedule: list[tuple[int, int, int, int, int, bool, str]] = []
-        for kernel, expansion, raw_out, use_se, activation, stride in config:
+        for kernel, raw_expanded, raw_out, use_se, activation, stride in config:
             block_input_channels = _make_divisible(raw_input * width_multiplier)
             out_channels = _make_divisible(raw_out * width_multiplier)
-            expanded = _make_divisible(raw_input * expansion * width_multiplier)
+            expanded = _make_divisible(raw_expanded * width_multiplier)
             if block_input_channels != current:
                 raise ContractError(
                     f"{family} MobileNetV3 schedule lost channel continuity at raw input {raw_input}"

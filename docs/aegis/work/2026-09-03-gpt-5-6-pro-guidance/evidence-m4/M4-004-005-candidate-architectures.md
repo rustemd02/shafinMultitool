@@ -34,6 +34,16 @@ Absent ROI gates the subject crop and ROI mask to zero deterministically.
 Candidate B is deliberately only a capacity/MAC ablation. It is not evidence
 that it will coach better than A.
 
+The raw expansion-channel schedules are frozen explicitly in code and checked
+independently by the self-check:
+
+- Large: `[16, 64, 72, 72, 120, 120, 240, 200, 184, 184, 480, 672, 672, 960, 960]`.
+- Small: `[16, 72, 88, 96, 240, 240, 120, 144, 288, 576, 576]`.
+
+The two Large `80 → 80` blocks at positions 9–10 therefore scale to 136
+channels at width 0.75; the preceding 2.5× block remains 200 raw / 152
+scaled.
+
 ## Verification receipt
 
 Environment and reproducibility:
@@ -66,10 +76,10 @@ features, nine heads, all synthetic hashes, and all mutation probes rejected.
 
 | Measurement | Candidate A | Candidate B |
 |---|---:|---:|
-| Parameters | 1,529,069 | 322,309 |
-| Conv2d + Linear MACs (batch 1) | 296,298,656 | 39,156,928 |
-| B / A MAC ratio | — | `0.13215357952889265` |
-| Deterministic output receipt hash | `4b129bc7ee9e0c30e14282c70cf6f933c76efd82b484894abd434298a4e8579d` | `81058ac35c4df0f2fc0d78d4d9f90aa33e44d1f889708bbcee7cc2ecf9b957cd` |
+| Parameters | 1,524,557 | 322,309 |
+| Conv2d + Linear MACs (batch 1) | 294,545,056 | 39,156,928 |
+| B / A MAC ratio | — | `0.13294036753412694` |
+| Deterministic output receipt hash | `0a9c6e6e0b7bb6affa32003f0e8a38f3c52e7db81232d5631a6dd76fb995bc6d` | `81058ac35c4df0f2fc0d78d4d9f90aa33e44d1f889708bbcee7cc2ecf9b957cd` |
 
 The measured ratio is `13.26%`, satisfying the required `B ≤ 70% of A`
 threshold. The counter includes convolution multiply-accumulates and linear
