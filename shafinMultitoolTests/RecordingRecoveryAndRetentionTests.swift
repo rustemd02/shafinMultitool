@@ -304,6 +304,38 @@ final class RecordingRecoveryAndRetentionTests: XCTestCase {
             .appendingPathExtension("mov")
     }
 
+    // MARK: - M7-021/M7-023 cold-launch maintenance entry point
+
+    func testColdLaunchMaintenanceConvergesJournalAndSweepsOnlyExpiredPending() throws {
+        let resumableID = UUID()
+        makePendingFile(recordingID: resumableID)
+        try journalEntry(recordingID: resumableID, projectID: projectID, state: .promoting)
+
+        let expiredID = UUID()
+        let expiredURL = makePendingFile(recordingID: expiredID)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-8 * 24 * 3600)],
+            ofItemAtPath: expiredURL.path
+        )
+
+        let projectFile = try makeProjectFile(recordingID: UUID())
+
+        let (outcomes, removedCount) = store.performColdLaunchMaintenance(
+            mediaMetadata: { _ in (duration: 12.5, hasAudio: true) }
+        )
+
+        XCTAssertTrue(outcomes.contains { $0 == .completed(SceneRecordingReference(
+            recordingID: resumableID,
+            relativePath: "Recordings/Projects/\(projectID.uuidString)/\(resumableID.uuidString).mov",
+            duration: 12.5,
+            hasAudio: true
+        )) })
+        XCTAssertEqual(removedCount, 1)
+        XCTAssertNil(try store.journal.entry(for: resumableID))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: expiredURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: projectFile.path))
+    }
+
     // MARK: - M7-025 project media deletion with journal cleanup
 
     func testProjectDeletionRemovesOwnedMediaAndLeftoverJournalRecords() async throws {

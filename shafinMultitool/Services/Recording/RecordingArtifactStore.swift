@@ -89,6 +89,10 @@ final class RecordingArtifactStore: @unchecked Sendable {
 
     var recordingRootURL: URL { recordingsDirectoryURL }
 
+    /// M7-023: production retention window for transient pending artifacts
+    /// that have no live journal record (or sit behind a failed tombstone).
+    static let defaultPendingRetentionWindow: TimeInterval = 7 * 24 * 3600
+
     private let fileManager: FileManager
 
 #if DEBUG
@@ -442,6 +446,48 @@ final class RecordingArtifactStore: @unchecked Sendable {
         // lives inside the finish helper).
         try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
         return reference
+    }
+
+    // MARK: - M7-021/M7-023 cold-launch maintenance
+
+    /// The single cold-launch maintenance entry point: converges every
+    /// journal record (M7-021) and then sweeps expired transient pending
+    /// artifacts through the dry-run retention inventory (M7-023). Best-effort
+    /// by contract: classification/retention failures are logged and never
+    /// fatal, never touching project-owned media. Returns the recovery
+    /// outcomes and the number of retention-removed recordings.
+    @discardableResult
+    func performColdLaunchMaintenance(
+        maxRetryCount: Int = PendingRecordingJournalEntry.maxRetryCount,
+        mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))? = AppleRecordingMediaMetadataProbe.probe
+    ) -> (recoveryOutcomes: [RecordingRecoveryOutcome], removedExpiredCount: Int) {
+        var outcomes: [RecordingRecoveryOutcome] = []
+        do {
+            outcomes = try recoverPendingRecordings(
+                maxRetryCount: maxRetryCount,
+                mediaMetadata: mediaMetadata
+            )
+            for outcome in outcomes {
+                print("Recording recovery: \(outcome)")
+            }
+        } catch {
+            print("Recording recovery deferred to next launch: \(error)")
+        }
+        var removedCount = 0
+        do {
+            let candidates = try retentionInventory(
+                now: Date(),
+                pendingMaxAge: Self.defaultPendingRetentionWindow
+            )
+            let removed = try applyRetention(removing: candidates)
+            removedCount = removed.count
+            if !removed.isEmpty {
+                print("Recording retention removed \(removed.count) expired pending artifact(s)")
+            }
+        } catch {
+            print("Recording retention sweep deferred to next launch: \(error)")
+        }
+        return (outcomes, removedCount)
     }
 
     // MARK: - M7-021 cold-launch recovery

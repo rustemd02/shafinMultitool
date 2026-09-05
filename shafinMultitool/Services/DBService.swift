@@ -131,14 +131,7 @@ class DBService {
                 // promotions converge here — before any workspace can observe
                 // a half-promoted take. Best-effort: classification failures
                 // are logged and leave the journal for the next launch.
-                do {
-                    let outcomes = try store.recoverPendingRecordings()
-                    for outcome in outcomes {
-                        print("Recording recovery: \(outcome)")
-                    }
-                } catch {
-                    print("Recording recovery deferred to next launch: \(error)")
-                }
+                store.performColdLaunchMaintenance()
             } catch {
                 self.recordingArtifactStore = .failure(error)
             }
