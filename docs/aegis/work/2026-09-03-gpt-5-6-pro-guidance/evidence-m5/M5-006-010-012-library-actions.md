@@ -98,4 +98,6 @@ media checks are simulator evidence on ordinary iPhone 17/iOS 26.5. Physical
 VoiceOver behavior and camera-produced media playback remain external acceptance
 boundaries; no iPhone 17 Pro or physical iPhone 13 was used.
 
-Correction commit: `bb5c1e04f96692eb9e4cf20a7d7e545da775fca9`.
+Correction receipt is finalized on this branch; the implementation and final
+receipt commit hashes are returned in the handoff so the receipt never embeds
+a self-referential hash.
