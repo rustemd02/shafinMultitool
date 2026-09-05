@@ -214,6 +214,10 @@ final class CameraViewModel: ObservableObject {
     private var lifecycleIntent = UUID()
     private var lensSwitchTask: Task<Void, Never>?
     private var lensSwitchIntent = UUID()
+    /// A route exit is terminal for this Camera Coach instance. The shell owns
+    /// the replacement route, so a late view/presentation callback must not
+    /// restart capture after this owner has begun releasing its session.
+    private var routeExitRequested = false
     private var pauseDisplayRenderTask: Task<Void, Never>?
     private var pendingPauseAnalysis: PendingPauseAnalysis?
     private var releaseOperation: ReleaseOperation?
@@ -306,6 +310,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func start() {
+        guard !routeExitRequested else { return }
         clearAnalysisFailureForNewCapture()
         resetCoachingEpisodeForNewCapture()
         let intent = beginLifecycleRequest(.starting)
@@ -330,6 +335,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func startAndWait() async {
+        guard !routeExitRequested else { return }
         clearAnalysisFailureForNewCapture()
         resetCoachingEpisodeForNewCapture()
         let intent = beginLifecycleRequest(.starting)
@@ -375,6 +381,28 @@ final class CameraViewModel: ObservableObject {
             guard !Task.isCancelled, lifecycleIntent == intent else { return }
         }
         await performStop(intent: intent)
+    }
+
+    /// Closes the Camera Coach restart boundary before route teardown begins.
+    /// This is intentionally separate from ordinary `releaseAndWait()`: a
+    /// normal release may be followed by a user retry, while a route release
+    /// must leave the old child unable to reacquire the camera.
+    func beginRouteExit() {
+        guard !routeExitRequested else { return }
+        routeExitRequested = true
+
+        lifecycleTask?.cancel()
+        lifecycleTask = nil
+        lensSwitchTask?.cancel()
+        lensSwitchTask = nil
+        lensSwitchIntent = UUID()
+        lifecycleIntent = UUID()
+
+        cancelCoachingEpisode(reason: .routeExit)
+        stopFeaturePolling()
+        clearPresentationProjection()
+        lifecycleState = .stopping
+        lifecycleError = nil
     }
 
     /// The production surface calls this for a non-active scene. AVFoundation
@@ -664,6 +692,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func togglePause() {
+        guard !routeExitRequested else { return }
         analysisPipeline.clearLivePresentationState()
         if isPaused {
             pauseDisplayRenderTask?.cancel()
@@ -798,6 +827,7 @@ final class CameraViewModel: ObservableObject {
     }
     
     func switchLens(to lens: CameraLens) {
+        guard !routeExitRequested else { return }
         // Invalidate the current episode before the asynchronous lens switch
         // starts. A delayed result from the old lens must not remain eligible
         // while CameraManager is changing the capture input.

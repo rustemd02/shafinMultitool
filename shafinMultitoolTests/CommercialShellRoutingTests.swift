@@ -1,4 +1,6 @@
 import Foundation
+import ARKit
+import AVFoundation
 import UIKit
 import XCTest
 @testable import shafinMultitool
@@ -76,46 +78,149 @@ final class CommercialShellRoutingTests: XCTestCase {
         ])
     }
 
-    func testMutualExclusionFenceWaitsForPreviousOwnerRelease() async throws {
-        let cameraReleaseGate = CommercialTestGate()
-        let sceneReleaseGate = CommercialTestGate()
-        let (shell, factory) = makeShell(plans: [
-            .camera: [CommercialRoutePlan(gate: cameraReleaseGate)],
-            .scenes: [CommercialRoutePlan(gate: sceneReleaseGate)]
-        ])
-        let cameraRoute = try XCTUnwrap(factory.route(for: .camera))
+    func testProductionCameraARBoundaryAwaitsTerminalOwnersAndRetriesSafely() async throws {
+        let firstCamera = makeCameraARInteropFixture()
+        let secondCamera = makeCameraARInteropFixture()
+        let arRuntime = CameraARInteropRuntime()
+        let arOwner = ARSceneContainer.Coordinator(
+            viewModel: SceneGeneratorViewModel(
+                projectName: "m6-004-interop-\(UUID().uuidString)",
+                presentationLocale: Locale(identifier: "en")
+            ),
+            capabilityProvider: CameraARInteropCapabilities(),
+            sessionRuntime: arRuntime
+        )
+        let sceneLibraryRoot = UIViewController()
+        let sceneWorkspaceHost = CameraARInteropWorkspaceViewController()
 
+        var persistenceAttempt = 0
+        let persistenceStarted = CommercialTestGate()
+        let retryPersistenceStarted = CommercialTestGate()
+        let persistenceCompletion = CommercialTestGate()
+        let workspaceTeardown = SceneWorkspaceTeardownCoordinator(
+            stopRecordingIfNeeded: {},
+            stopPlaybackIfNeeded: {},
+            persist: {
+                persistenceAttempt += 1
+                persistenceStarted.open()
+                if persistenceAttempt == 1 {
+                    return .failure(.persistenceFailed)
+                }
+                retryPersistenceStarted.open()
+                await persistenceCompletion.wait()
+                return .success(())
+            },
+            pauseAndDetach: {
+                arOwner.releaseSession()
+            }
+        )
+        sceneWorkspaceHost.sceneWorkspaceTeardownProvider = workspaceTeardown
+
+        var cameraConstructionCount = 0
+        let sceneBuilder: @MainActor () -> UIViewController = {
+            arOwner.attachSession(runtime: arRuntime)
+            arOwner.configureSessionIfNeeded(
+                request: ARWorldTrackingConfigurationRequest(depthRequested: false, initialWorldMap: nil),
+                force: true
+            )
+            return sceneLibraryRoot
+        }
+        let composition = CommercialShellComposition(
+            cameraCoachBuilder: {
+                cameraConstructionCount += 1
+                let fixture = cameraConstructionCount == 1 ? firstCamera : secondCamera
+                if cameraConstructionCount == 2 {
+                    // A real camera child may resume/start from a delayed
+                    // presentation callback while it is being installed. The
+                    // route fence must make this harmless after the first exit.
+                    fixture.viewModel.start()
+                }
+                return CommercialCameraCoachRoute(
+                    viewController: UIViewController(),
+                    cameraViewModel: fixture.viewModel
+                )
+            },
+            sceneLibraryBuilder: sceneBuilder,
+            historyBuilder: { UIViewController() }
+        )
+        let shell = composition.makeShell()
+        let cameraRoute = try XCTUnwrap(shell.activeRoute as? CommercialCameraCoachRoute)
+        await firstCamera.viewModel.startAndWait()
+
+        XCTAssertEqual(cameraConstructionCount, 1)
+        XCTAssertEqual(firstCamera.runner.startCount, 1)
+
+        // Camera -> Scene: route teardown must hold the shell at the current
+        // route until CameraManager.stop/release has crossed its terminal gate.
         shell.select(.scenes)
-        await cameraRoute.deactivationStarted.wait()
+        await firstCamera.runner.stopStarted.wait()
+        shell.select(.scenes)
+        shell.select(.history)
+        shell.select(.scenes)
 
-        // AR construction is fenced by the Camera Coach release boundary.
-        XCTAssertEqual(factory.constructedSections, [.camera])
-        cameraReleaseGate.open()
-        await shell.waitForTransition()
-
-        let sceneRoute = try XCTUnwrap(factory.route(for: .scenes))
-        XCTAssertEqual(factory.constructedSections, [.camera, .scenes])
-
-        shell.select(.camera)
-        await sceneRoute.deactivationStarted.wait()
-
-        // Camera construction is fenced by the Scene/AR release boundary.
-        XCTAssertEqual(factory.constructedSections, [.camera, .scenes])
-        sceneReleaseGate.open()
-        await shell.waitForTransition()
-
-        XCTAssertEqual(factory.constructedSections, [.camera, .scenes, .camera])
+        // The old child is still retained by the shell while release is blocked.
+        // Its late start/resume/lens callbacks must not reacquire the camera.
+        firstCamera.viewModel.start()
+        await firstCamera.viewModel.startAndWait()
+        firstCamera.viewModel.togglePause()
+        firstCamera.viewModel.switchLens(to: .telephoto)
         XCTAssertEqual(shell.selectedSection, .camera)
+        XCTAssertIdentical(shell.activeRoute as AnyObject?, cameraRoute)
+        XCTAssertEqual(cameraConstructionCount, 1)
+        XCTAssertEqual(firstCamera.runner.startCount, 1)
+        XCTAssertEqual(arRuntime.runCount, 0)
+
+        firstCamera.runner.allowStop()
+        await shell.waitForTransition()
+
+        XCTAssertEqual(cameraConstructionCount, 1)
+        XCTAssertEqual(firstCamera.runner.startCount, 1)
+        XCTAssertEqual(firstCamera.manager.configurationState, .unconfigured)
+        XCTAssertEqual(arRuntime.runCount, 1)
+        let sceneRoute = try XCTUnwrap(shell.activeRoute as? CommercialSceneLibraryRoute)
+        sceneRoute.navigationController.pushViewController(sceneWorkspaceHost, animated: false)
+
+        // AR -> Camera: the first persistence attempt is blocked/failed, so the
+        // route and AR owner remain active and no replacement Camera is started.
+        shell.select(.camera)
+        await persistenceStarted.wait()
+        await shell.waitForTransition()
+        XCTAssertEqual(shell.selectedSection, .scenes)
+        XCTAssertIdentical(shell.activeRoute as AnyObject?, sceneRoute)
+        XCTAssertEqual(cameraConstructionCount, 1)
+        XCTAssertEqual(secondCamera.runner.startCount, 0)
+        XCTAssertEqual(arOwner.releaseCount, 0)
+        XCTAssertEqual(
+            sceneRoute.lastSceneWorkspaceTeardownResult,
+            .blocked(.persistenceFailed)
+        )
+        XCTAssertEqual(
+            sceneRoute.deactivationBlockReason,
+            .sceneWorkspaceTeardownFailed(.persistenceFailed)
+        )
+
+        // Retry through the shell owner. Persistence may now be held to prove
+        // that AR pause/detach and replacement Camera construction are ordered.
+        shell.select(.camera)
+        await retryPersistenceStarted.wait()
+        XCTAssertEqual(shell.selectedSection, .scenes)
+        XCTAssertEqual(cameraConstructionCount, 1)
+        XCTAssertEqual(secondCamera.runner.startCount, 0)
+        XCTAssertEqual(arRuntime.pauseCount, 0)
+
+        persistenceCompletion.open()
+        await shell.waitForTransition()
+        await secondCamera.runner.startCompleted.wait()
+
+        XCTAssertEqual(shell.selectedSection, .camera)
+        XCTAssertEqual(cameraConstructionCount, 2)
+        XCTAssertEqual(arRuntime.pauseCount, 1)
+        XCTAssertTrue(arOwner.isReleased)
+        XCTAssertEqual(secondCamera.runner.startCount, 1)
         XCTAssertEqual(shell.children.count, 1)
-        XCTAssertEqual(factory.events, [
-            .constructed(.camera, 1),
-            .deactivationStarted(.camera, 1),
-            .deactivationFinished(.camera, 1),
-            .constructed(.scenes, 2),
-            .deactivationStarted(.scenes, 2),
-            .deactivationFinished(.scenes, 2),
-            .constructed(.camera, 3)
-        ])
+
+        secondCamera.runner.allowStop()
+        await shell.releaseAndWait()
     }
 
     func testBlockedDeactivationRetainsChildAndSelection() async throws {
@@ -498,4 +603,150 @@ private final class CommercialTestGate: @unchecked Sendable {
     deinit {
         open()
     }
+}
+
+private struct CameraARInteropFixture {
+    let runner: CameraARInteropSessionRunner
+    let manager: CameraManager
+    let viewModel: CameraViewModel
+}
+
+private final class CameraARInteropSessionRunner: CameraSessionRunner {
+    private let lock = NSLock()
+    private var running = false
+    private var starts = 0
+    private var stops = 0
+    private var stopWasAllowed = false
+    private let stopCompletion = DispatchSemaphore(value: 0)
+
+    let startCompleted = CommercialTestGate()
+    let stopStarted = CommercialTestGate()
+
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return running
+    }
+
+    var startCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return starts
+    }
+
+    func startRunning() {
+        lock.lock()
+        starts += 1
+        running = true
+        lock.unlock()
+        startCompleted.open()
+    }
+
+    func stopRunning() {
+        lock.lock()
+        stops += 1
+        running = false
+        lock.unlock()
+
+        stopStarted.open()
+        stopCompletion.wait()
+    }
+
+    func allowStop() {
+        lock.lock()
+        guard !stopWasAllowed else {
+            lock.unlock()
+            return
+        }
+        stopWasAllowed = true
+        lock.unlock()
+        stopCompletion.signal()
+    }
+
+    deinit {
+        allowStop()
+    }
+}
+
+private final class CameraARInteropRuntime: ARSessionRuntime {
+    private let identity = NSObject()
+    private let lock = NSLock()
+    private var storedRunCount = 0
+    private var storedPauseCount = 0
+
+    var sessionIdentifier: ObjectIdentifier { ObjectIdentifier(identity) }
+    let videoFormatFramesPerSecond: Int? = 60
+    weak var delegate: ARSessionDelegate?
+
+    var runCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedRunCount
+    }
+
+    var pauseCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedPauseCount
+    }
+
+    func run(_ configuration: ARConfiguration, options: ARSession.RunOptions) {
+        lock.lock()
+        storedRunCount += 1
+        lock.unlock()
+    }
+
+    func pause() {
+        lock.lock()
+        storedPauseCount += 1
+        lock.unlock()
+    }
+}
+
+private struct CameraARInteropCapabilities: ARWorldTrackingCapabilityProviding {
+    let evidence = ARWorldTrackingCapabilityEvidence(
+        supportsWorldTracking: true,
+        supportsHorizontalPlaneDetection: true,
+        supportsGravityAlignment: true,
+        supportsSmoothedSceneDepth: false,
+        supportsSceneDepth: false
+    )
+}
+
+@MainActor
+private final class CameraARInteropWorkspaceViewController: UIViewController,
+    @MainActor SceneWorkspaceHostingControllerProviding {
+    var sceneWorkspaceTeardownProvider: (any SceneWorkspaceTeardownProviding)?
+}
+
+@MainActor
+private func makeCameraARInteropFixture() -> CameraARInteropFixture {
+    let scheduler = RealtimeScheduler()
+    let thermalGovernor = ThermalGovernor(
+        thermalStateProvider: { .nominal },
+        batteryLevelProvider: { 1.0 }
+    )
+    let runner = CameraARInteropSessionRunner()
+    let manager = CameraManager(
+        scheduler: scheduler,
+        thermalGovernor: thermalGovernor,
+        motionGate: MotionGate(startMotionUpdates: false),
+        sessionRunner: runner,
+        configuration: .ready,
+        notificationCenter: NotificationCenter()
+    )
+    let pipeline = AnalysisPipeline(
+        reasoningProvider: nil,
+        visualEvidenceProvider: nil,
+        neuralEvidenceService: nil,
+        thermalGovernor: thermalGovernor,
+        neuralHeavyModelsEnabledProvider: { true },
+        liveHybridFusionEnabled: false,
+        demoLiveCoachEnabled: false
+    )
+    return CameraARInteropFixture(
+        runner: runner,
+        manager: manager,
+        viewModel: CameraViewModel(cameraManager: manager, analysisPipeline: pipeline)
+    )
 }
