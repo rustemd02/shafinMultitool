@@ -52,3 +52,15 @@ simulator iOS 26.5 (xcresult `/private/tmp/m7-pkgA-tests-r3.xcresult`).
   configuration is physical-device acceptance (tracker: "physical playback
   matrix later"); simulator evidence proves metadata correctness, not display
   uprightness.
+
+
+## Acceptance addendum (coordinator integration, 2026-09-05)
+
+The acknowledged production-wiring gap is closed: `SceneGeneratorViewModel`'s
+start path now derives `RecordingTrackTransformMetadata` from the current
+device orientation via `currentRecordingTrackTransform()` (flat/unknown
+postures fall back to the portrait baseline; no mirroring on the AR
+world-tracking path) and passes it through `controller.start(trackTransform:)`
+into the writer configuration. Pinned by
+`testCurrentRecordingTrackTransformIsAlwaysValid`. Physical uprightness per
+device/lens remains M13.

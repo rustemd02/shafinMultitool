@@ -50,3 +50,13 @@ cadence is a one-line call site for the main flow (SceneDelegate-type owners
 are outside this lane's file list); the policy itself is complete and tested.
 Retention windows are a parameter; no product default beyond the API is
 claimed.
+
+
+## Acceptance addendum (coordinator integration, 2026-09-05)
+
+The production sweep caller gap is closed: `RecordingArtifactStore
+.performColdLaunchMaintenance()` converges journal records (M7-021) and then
+sweeps expired pending artifacts through the dry-run retention inventory with
+the documented 7-day default window (`defaultPendingRetentionWindow`);
+`DBService.init` invokes it at its existing cold-launch recovery boundary.
+Test: `testColdLaunchMaintenanceConvergesJournalAndSweepsOnlyExpiredPending`.

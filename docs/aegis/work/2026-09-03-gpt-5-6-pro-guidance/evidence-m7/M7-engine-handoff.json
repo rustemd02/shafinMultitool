@@ -11,33 +11,60 @@
     {
       "sha": "164d8f1228bd08fade585a56408f2ba5b5edc5d3",
       "short": "164d8f1",
-      "task_ids": ["M7-005", "M7-006", "M7-007"],
+      "task_ids": [
+        "M7-005",
+        "M7-006",
+        "M7-007"
+      ],
       "subject": "writer configuration, master timebase, orientation metadata",
       "note": "one package commit: the three tasks land in the same contract/writer/recorder structures and were verified together"
     },
     {
       "sha": "8d5548396649086e1f512233c2660569554736c1",
       "short": "8d55483",
-      "task_ids": ["M7-008", "M7-009", "M7-010", "M7-011", "M7-012", "M7-013"],
+      "task_ids": [
+        "M7-008",
+        "M7-009",
+        "M7-010",
+        "M7-011",
+        "M7-012",
+        "M7-013"
+      ],
       "subject": "recording preflight, admission ledger, backpressure policy, finalization timeout",
       "note": "M7-009 and M7-012 are evidence-only verification of the existing serialized owners (no production change); M7-017 disk-budget core landed here because M7-008 consumes it"
     },
     {
       "sha": "2330621a648adf94556e3aec4a30fd062c23c121",
       "short": "2330621",
-      "task_ids": ["M7-016", "M7-017", "M7-018", "M7-019", "M7-020"],
+      "task_ids": [
+        "M7-016",
+        "M7-017",
+        "M7-018",
+        "M7-019",
+        "M7-020"
+      ],
       "subject": "A/V sync report, disk budget, ENOSPC typing, pending journal, journaled promotion"
     },
     {
       "sha": "8fc14d17eac41abe93d891d859522844d32dded5",
       "short": "8fc14d1",
-      "task_ids": ["M7-021", "M7-022", "M7-023", "M7-024", "M7-025", "M7-029", "M7-030"],
+      "task_ids": [
+        "M7-021",
+        "M7-022",
+        "M7-023",
+        "M7-024",
+        "M7-025",
+        "M7-029",
+        "M7-030"
+      ],
       "subject": "cold recovery, kill fixtures, retention, orphan cleanup, deletion journals, file policy, diagnostics"
     },
     {
       "sha": "a61169dd9f0552058aec22bdc5eace333af8f202",
       "short": "a61169d",
-      "task_ids": ["M7-008"],
+      "task_ids": [
+        "M7-008"
+      ],
       "subject": "fix: availability-neutral default preflight for the unit seam",
       "note": "combined-lane review finding: default controller preflight must not read the host's real privacy state; production convenience wiring keeps the real checkers"
     }
@@ -139,28 +166,65 @@
   ],
   "test_results": {
     "package_A_focused": {
-      "suites": ["AppleRecordingAdaptersTests", "SerializedMediaRecorderTests", "RecordingLifecycleTransitionTests", "RecordingContractV1Tests", "SceneRecordingControllerTests"],
+      "suites": [
+        "AppleRecordingAdaptersTests",
+        "SerializedMediaRecorderTests",
+        "RecordingLifecycleTransitionTests",
+        "RecordingContractV1Tests",
+        "SceneRecordingControllerTests"
+      ],
       "result": "93/93 PASS",
       "xcresult": "/private/tmp/m7-pkgA-tests-r3.xcresult"
     },
     "package_B_focused": {
-      "suites": ["SerializedMediaRecorderTests", "RecordingPreflightTests", "SceneRecordingControllerTests", "RecordingStartTeardownRaceTests"],
+      "suites": [
+        "SerializedMediaRecorderTests",
+        "RecordingPreflightTests",
+        "SceneRecordingControllerTests",
+        "RecordingStartTeardownRaceTests"
+      ],
       "result": "79/79 PASS",
       "xcresult": "/private/tmp/m7-pkgB-tests-r2.xcresult"
     },
     "package_C_focused": {
-      "suites": ["SerializedMediaRecorderTests", "RecordingPreflightTests", "PendingRecordingJournalTests", "RecordingArtifactPromotionTests"],
+      "suites": [
+        "SerializedMediaRecorderTests",
+        "RecordingPreflightTests",
+        "PendingRecordingJournalTests",
+        "RecordingArtifactPromotionTests"
+      ],
       "result": "70/70 PASS",
       "xcresult": "/private/tmp/m7-pkgC-tests.xcresult"
     },
     "package_D_focused": {
-      "suites": ["RecordingRecoveryAndRetentionTests", "RecordingDiagnosticsTests", "PendingRecordingJournalTests", "DBServiceConcurrencyTests"],
+      "suites": [
+        "RecordingRecoveryAndRetentionTests",
+        "RecordingDiagnosticsTests",
+        "PendingRecordingJournalTests",
+        "DBServiceConcurrencyTests"
+      ],
       "result": "16/16 PASS (r3) + 41/41 PASS regression (r2)",
       "xcresult": "/private/tmp/m7-pkgD-tests-r3.xcresult",
       "xcresult_regression": "/private/tmp/m7-pkgD-tests-r2.xcresult"
     },
     "final_combined_M7_lane": {
-      "suites": ["SerializedMediaRecorderTests", "AppleRecordingAdaptersTests", "SceneRecordingControllerTests", "RecordingLifecycleTransitionTests", "RecordingContractV1Tests", "RecordingStartTeardownRaceTests", "RecordingArtifactPromotionTests", "RecordingPreflightTests", "PendingRecordingJournalTests", "RecordingRecoveryAndRetentionTests", "RecordingDiagnosticsTests", "AudioSessionCoordinatorTests", "DBServiceConcurrencyTests", "SubsystemErrorMappingTests", "SceneWorkspaceTeardownTests"],
+      "suites": [
+        "SerializedMediaRecorderTests",
+        "AppleRecordingAdaptersTests",
+        "SceneRecordingControllerTests",
+        "RecordingLifecycleTransitionTests",
+        "RecordingContractV1Tests",
+        "RecordingStartTeardownRaceTests",
+        "RecordingArtifactPromotionTests",
+        "RecordingPreflightTests",
+        "PendingRecordingJournalTests",
+        "RecordingRecoveryAndRetentionTests",
+        "RecordingDiagnosticsTests",
+        "AudioSessionCoordinatorTests",
+        "DBServiceConcurrencyTests",
+        "SubsystemErrorMappingTests",
+        "SceneWorkspaceTeardownTests"
+      ],
       "result": "191/191 PASS, 0 failures",
       "xcresult": "/private/tmp/m7-final-regression-r2.xcresult",
       "log_sha256": "c6a93fd8f122067b1e74ece6a183579a7b2b04bc (/private/tmp/m7-final-regression-r2.log)"
@@ -227,11 +291,39 @@
   },
   "cleanup_status": {
     "derived_data": "/private/tmp/m7-external-dd removed after final evidence capture",
-    "xcresults_retained": ["/private/tmp/m7-pkgA-tests-r3.xcresult", "/private/tmp/m7-pkgB-tests-r2.xcresult", "/private/tmp/m7-pkgC-tests.xcresult", "/private/tmp/m7-pkgD-tests-r2.xcresult", "/private/tmp/m7-pkgD-tests-r3.xcresult", "/private/tmp/m7-final-regression-r2.xcresult"],
+    "xcresults_retained": [
+      "/private/tmp/m7-pkgA-tests-r3.xcresult",
+      "/private/tmp/m7-pkgB-tests-r2.xcresult",
+      "/private/tmp/m7-pkgC-tests.xcresult",
+      "/private/tmp/m7-pkgD-tests-r2.xcresult",
+      "/private/tmp/m7-pkgD-tests-r3.xcresult",
+      "/private/tmp/m7-final-regression-r2.xcresult"
+    ],
     "user_files_touched": "none",
     "other_worktrees_touched": "none",
     "main_checkout_edits": "none (read-only authority reads)"
   },
   "integration_instruction": "Проверь полный diff BASE_HEAD..EXTERNAL_HEAD (02f03f6..a61169d плюс handoff-коммит на вершине ветки); не интегрируй по одному последнему коммиту.",
-  "honest_verdict": "All 21 assigned task IDs have code/verification evidence or an explicitly documented boundary. This is engine/media source closure only. No App Store readiness and no physical-device readiness is claimed; M7-014/015/026/027/028/031/032 and M7-GATE remain with their owners."
+  "honest_verdict": "All 21 assigned task IDs have code/verification evidence or an explicitly documented boundary. This is engine/media source closure only. No App Store readiness and no physical-device readiness is claimed; M7-014/015/026/027/028/031/032 and M7-GATE remain with their owners.",
+  "acceptance_result": {
+    "status": "accepted_with_integration_fixes",
+    "audited_by": "coordinator (solo-handoff session 2026-09-05)",
+    "range_reconciliation": {
+      "handoff_said": "38 files, +4366/-77 (code range to a61169d)",
+      "actual_tip_range": "39 files, +4603/-77",
+      "classification": "the 39th file and +237 lines are this handoff artifact itself; arithmetic reconciles exactly (4366+237=4603)"
+    },
+    "final_log_sha": {
+      "handoff_recorded": "c6a93fd8f122067b1e74ece6a183579a7b2b04bc",
+      "reproduced_at_acceptance": true,
+      "note": "coordinator audit note recorded a different sha (393d4b3f...) which does not reproduce against the retained file; the handoff value is the reproducible one"
+    },
+    "xcresult_independent_parse": "191/191 PASS, 0 failed, 0 skipped (m7-final-regression-r2)",
+    "integration_fixes": [
+      "M7-030 thermal diagnostics event (thermal column closed)",
+      "M7-007 production orientation wiring from device posture",
+      "M7-023 cold-launch retention sweep caller (performColdLaunchMaintenance)"
+    ],
+    "integration_lane": "194/194 PASS, 0 failures (15 suites + 3 new tests), iPhone 17e iOS 26.5, /private/tmp/m7-int-fixes-r3.xcresult and m7-int-final-r2"
+  }
 }
