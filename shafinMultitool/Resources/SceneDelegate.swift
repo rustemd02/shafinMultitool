@@ -37,8 +37,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     scheduler: RealtimeScheduler(),
                     thermalGovernor: thermal,
                     motionGate: MotionGate(),
-                    sessionRunner: AVCaptureSessionRunner(session: AVCaptureSession()),
-                    configuration: .failure(.noWideCamera)
+                    sessionRunner: CameraCoachUITestingSessionRunner(),
+                    configuration: .ready,
+                    notificationCenter: NotificationCenter()
                 )
                 let analysisPipeline = AnalysisPipeline(
                     thermalGovernor: thermal,
@@ -383,6 +384,18 @@ private actor CameraCoachUITestingPermissionClient: PermissionClient {
                 authorization: .unknown,
                 availability: .available
             )
+    }
+}
+
+private final class CameraCoachUITestingSessionRunner: CameraSessionRunner {
+    private(set) var isRunning = false
+
+    func startRunning() {
+        isRunning = true
+    }
+
+    func stopRunning() {
+        isRunning = false
     }
 }
 
