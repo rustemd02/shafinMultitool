@@ -210,6 +210,7 @@ final class SETLibraryModel: ObservableObject {
     }
 
     @Published private(set) var scenes: [SceneRow] = []
+    @Published private(set) var hasLoadedSuccessfully = false
     @Published private(set) var selectedSceneID: UUID?
     @Published private(set) var flow: FlowState = .idle
     @Published var createDraft: String = ""
@@ -240,13 +241,14 @@ final class SETLibraryModel: ObservableObject {
     }
 
     var shouldShowEmptyState: Bool {
-        scenes.isEmpty && loadFailure == nil
+        hasLoadedSuccessfully && scenes.isEmpty && flow == .idle && loadFailure == nil
     }
 
     func reload() {
         switch controlling.librarySceneSnapshots() {
         case .success(let snapshots):
-            scenes = snapshots.map(SceneRow.init)
+            hasLoadedSuccessfully = true
+            scenes = orderedRows(from: snapshots)
             if case .failure(.load) = flow {
                 pendingRetry = nil
                 flow = .idle
@@ -263,6 +265,13 @@ final class SETLibraryModel: ObservableObject {
         }
         if case .deleting(let id, _, _) = flow, !scenes.contains(where: { $0.id == id }) {
             flow = .idle
+        }
+    }
+
+    private func orderedRows(from snapshots: [SETLibrarySceneSnapshot]) -> [SceneRow] {
+        snapshots.map(SceneRow.init).sorted {
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+            return $0.id.uuidString < $1.id.uuidString
         }
     }
 
@@ -312,7 +321,10 @@ final class SETLibraryModel: ObservableObject {
         case .success(let snapshot):
             scenes.removeAll { $0.id == snapshot.id }
             scenes.append(SceneRow(snapshot: snapshot))
-            scenes.sort { $0.updatedAt > $1.updatedAt }
+            scenes.sort {
+                if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
             selectedSceneID = snapshot.id
             switch controlling.libraryOpenSceneResult(id: snapshot.id) {
             case .success:
@@ -343,6 +355,7 @@ final class SETLibraryModel: ObservableObject {
 
     func beginDelete(sceneID: UUID) {
         guard flow == .idle, let scene = scenes.first(where: { $0.id == sceneID }) else { return }
+        selectedSceneID = scene.id
         flow = .deleting(sceneID: scene.id, sceneName: scene.name, expectedUpdatedAt: scene.updatedAt)
     }
 
@@ -367,9 +380,10 @@ final class SETLibraryModel: ObservableObject {
         sceneName: String,
         expectedUpdatedAt: Date
     ) {
-        guard case .deleting(let flowID, let flowName, _) = flow,
+        guard case .deleting(let flowID, let flowName, let flowUpdatedAt) = flow,
               flowID == id,
-              flowName == sceneName else { return }
+              flowName == sceneName,
+              flowUpdatedAt == expectedUpdatedAt else { return }
         switch result {
         case .success:
             flow = .idle
@@ -382,6 +396,7 @@ final class SETLibraryModel: ObservableObject {
 
     func beginRename(sceneID: UUID) {
         guard flow == .idle, let scene = scenes.first(where: { $0.id == sceneID }) else { return }
+        selectedSceneID = scene.id
         renameDraft = scene.name
         flow = .renaming(sceneID: scene.id, sceneName: scene.name)
     }
@@ -422,6 +437,10 @@ final class SETLibraryModel: ObservableObject {
         switch controlling.libraryRenameSceneResult(id: id, to: name, expectedUpdatedAt: expectedUpdatedAt) {
         case .success(let snapshot):
             scenes = scenes.map { $0.id == id ? SceneRow(snapshot: snapshot) : $0 }
+            scenes.sort {
+                if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+                return $0.id.uuidString < $1.id.uuidString
+            }
             renameDraft = ""
             pendingRetry = nil
             flow = .idle
@@ -455,7 +474,7 @@ final class SETLibraryModel: ObservableObject {
         case .create(let name):
             createDraft = name
             flow = .creating
-            confirmCreate()
+            performCreate(named: name)
         case .rename(let id, let name, let expectedUpdatedAt):
             renameDraft = name
             flow = .renaming(sceneID: id, sceneName: name)
@@ -637,11 +656,18 @@ enum SETLibraryFixtureData {
         Date(timeIntervalSince1970: 1_787_134_700)
     ]
 
+    static let ids = [
+        UUID(uuidString: "00000000-0000-4000-8000-000000000001")!,
+        UUID(uuidString: "00000000-0000-4000-8000-000000000002")!,
+        UUID(uuidString: "00000000-0000-4000-8000-000000000003")!
+    ]
+
     static func summaries(locale: Locale) -> [UnifiedSceneProjectSummary] {
         let nameKeys: [SETCopyKey] = [.librarySceneOne, .librarySceneTwo, .librarySceneThree]
-        return zip(nameKeys, dates).map { key, date in
-            UnifiedSceneProjectSummary(
-                id: UUID(),
+        return zip(zip(nameKeys, dates), ids).map { value, id in
+            let (key, date) = value
+            return UnifiedSceneProjectSummary(
+                id: id,
                 name: SETLibraryLocalizedCopy.string(key, locale: locale),
                 updatedAt: date
             )
@@ -686,6 +712,42 @@ enum SETLibraryLocalizedCopy {
     static func countLabel(_ count: Int, locale: Locale) -> String {
         formatted(.libraryCount, locale: locale, arguments: [count])
     }
+
+    static func sceneAccessibilityValue(
+        scene: SETLibraryModel.SceneRow,
+        locale: Locale
+    ) -> String {
+        "\(scene.id.uuidString) · \(previewStatus(scene.preview, locale: locale)) · " +
+            "\(artifactStatus(scene.artifactHealth, locale: locale)) · " +
+            updatedLabel(for: scene.updatedAt, locale: locale)
+    }
+
+    private static func previewStatus(
+        _ preview: SETLibraryPreviewMetadata,
+        locale: Locale
+    ) -> String {
+        let isRussian = locale.language.languageCode?.identifier == "ru"
+        switch preview.kind {
+        case .storyboard: return isRussian ? "РАСКАДРОВКА" : "STORYBOARD"
+        case .screenplay: return isRussian ? "СЦЕНАРИЙ" : "SCREENPLAY"
+        case .metadataOnly: return isRussian ? "ТОЛЬКО МЕТАДАННЫЕ" : "METADATA ONLY"
+        case .unavailable: return isRussian ? "ПРЕВЬЮ НЕДОСТУПНО" : "PREVIEW UNAVAILABLE"
+        }
+    }
+
+    private static func artifactStatus(
+        _ health: SETLibraryArtifactHealth,
+        locale: Locale
+    ) -> String {
+        let isRussian = locale.language.languageCode?.identifier == "ru"
+        switch health {
+        case .none: return isRussian ? "МЕДИА НЕТ" : "NO MEDIA"
+        case .healthy: return isRussian ? "МЕДИА ГОТОВО" : "MEDIA READY"
+        case .missing: return isRussian ? "МЕДИА НЕ НАЙДЕНО" : "MEDIA MISSING"
+        case .corrupt: return isRussian ? "МЕДИА ПОВРЕЖДЕНО" : "MEDIA CORRUPT"
+        case .unavailable: return isRussian ? "СОСТОЯНИЕ МЕДИА НЕДОСТУПНО" : "MEDIA STATUS UNAVAILABLE"
+        }
+    }
 }
 
 // MARK: - Accessibility identifiers
@@ -701,6 +763,8 @@ enum SETLibraryAccessibilityID {
     static let createConfirm = "library_create_confirm"
     static let createCancel = "library_create_cancel"
     static let duplicateNotice = "library_duplicate_notice"
+    static let failureTitle = "library_failure_title"
+    static let failureDetail = "library_failure_detail"
     static let sceneDelete = "library_scene_delete"
     static let sceneOpen = "library_scene_open"
     static let deleteConfirm = "library_delete_confirm"
@@ -771,8 +835,11 @@ private struct SETLibraryFixtureSurface: View {
 
     init(configuration: SETLibraryFixtureConfiguration) {
         self.configuration = configuration
+        let scenes = configuration.fixtureID == "library.empty"
+            ? []
+            : SETLibraryFixtureData.summaries(locale: configuration.locale)
         let provider = SETLibraryFixtureProvider(
-            scenes: SETLibraryFixtureData.summaries(locale: configuration.locale),
+            scenes: scenes,
             failCreate: configuration.fixtureID == "library.persistence-failure"
         )
         _model = StateObject(wrappedValue: SETLibraryModel(controlling: provider))
@@ -792,8 +859,7 @@ private struct SETLibraryFixtureSurface: View {
         model.reload()
         switch configuration.fixtureID {
         case "library.empty":
-            provider.scenes = []
-            model.reload()
+            break
         case "library.selected":
             model.select(provider.scenes[1].id)
         case "library.create-name":
@@ -834,12 +900,18 @@ private struct SETLibraryContactSheet: View {
                 } else if model.shouldShowEmptyState {
                     SETLibraryEmptyState(model: model)
                         .frame(maxHeight: .infinity)
+                } else if !model.hasLoadedSuccessfully || model.scenes.isEmpty {
+                    // A pre-load or mutation-failure surface has no honest row
+                    // content to render. Keep the empty hero reserved for a
+                    // successful zero-project load.
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     SETLibrarySceneList(model: model, locale: locale)
                         .frame(maxHeight: .infinity)
                 }
 
-                if model.loadFailure == nil {
+                if model.hasLoadedSuccessfully && model.loadFailure == nil {
                     flowPanel
                 }
             }
@@ -923,6 +995,8 @@ private struct SETLibraryEmptyState: View {
                     helper: .libraryCreatePlaceholder,
                     action: { model.beginCreate() }
                 )
+                .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                .contentShape(Rectangle())
                 .accessibilityIdentifier(SETLibraryAccessibilityID.emptyCreate)
                 .accessibilityLabel(Text(SETCopyKey.accessibilityLibraryCreate.localizedTextKey))
 
@@ -1021,6 +1095,11 @@ private struct SETLibrarySceneRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text(scene.name))
+            .accessibilityValue(
+                Text(SETLibraryLocalizedCopy.sceneAccessibilityValue(scene: scene, locale: locale))
+            )
+            .accessibilityIdentifier(SETLibraryAccessibilityID.sceneRow(at: position))
 
             if isSelected {
                 selectedContent
@@ -1047,7 +1126,6 @@ private struct SETLibrarySceneRow: View {
                 : SETMotion.reflowSpring,
             value: isSelected
         )
-        .accessibilityIdentifier(SETLibraryAccessibilityID.sceneRow(at: position))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -1055,17 +1133,21 @@ private struct SETLibrarySceneRow: View {
     private var selectedContent: some View {
         HStack(spacing: SETSpacing.x4) {
             SETDigitalAction(title: .libraryOpen, action: onOpen)
+                .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                .contentShape(Rectangle())
                 .accessibilityIdentifier(SETLibraryAccessibilityID.sceneOpen)
 
-                        Button(action: onDelete) {
+            Button(action: onDelete) {
                 Text(SETCopyKey.libraryDelete.localizedTextKey)
                     .font(SETTypography.uiBodyFont(weight: .semibold))
                     .foregroundStyle(.setTextSecondary)
                     .underline()
                     .padding(.horizontal, SETSpacing.x3)
-                        .frame(minHeight: SETComponentMetric.minimumHitTarget)
+                    .frame(minHeight: SETComponentMetric.minimumHitTarget)
             }
             .buttonStyle(.plain)
+            .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+            .contentShape(Rectangle())
             .accessibilityIdentifier(SETLibraryAccessibilityID.sceneDelete)
             .accessibilityLabel(
                 Text(
@@ -1172,6 +1254,8 @@ private struct SETLibraryCreatePanel: View {
 
             HStack(spacing: SETSpacing.x4) {
                 SETDigitalAction(title: .libraryCreateConfirm, action: { model.confirmCreate() })
+                    .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                    .contentShape(Rectangle())
                     .accessibilityIdentifier(SETLibraryAccessibilityID.createConfirm)
 
                 Button(action: { model.cancelCreate() }) {
@@ -1183,6 +1267,8 @@ private struct SETLibraryCreatePanel: View {
                         .frame(minHeight: SETComponentMetric.minimumHitTarget)
                 }
                 .buttonStyle(.plain)
+                .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                .contentShape(Rectangle())
                 .accessibilityIdentifier(SETLibraryAccessibilityID.createCancel)
             }
         }
@@ -1236,6 +1322,8 @@ private struct SETLibraryDeletePanel: View {
 
             HStack(spacing: SETSpacing.x4) {
                 SETDigitalAction(title: .libraryDelete, action: { model.confirmDelete() })
+                    .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                    .contentShape(Rectangle())
                     .accessibilityIdentifier(SETLibraryAccessibilityID.deleteConfirm)
 
                 Button(action: { model.cancelDelete() }) {
@@ -1247,6 +1335,8 @@ private struct SETLibraryDeletePanel: View {
                         .frame(minHeight: SETComponentMetric.minimumHitTarget)
                 }
                 .buttonStyle(.plain)
+                .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                .contentShape(Rectangle())
                 .accessibilityIdentifier(SETLibraryAccessibilityID.deleteCancel)
             }
         }
@@ -1275,14 +1365,18 @@ private struct SETLibraryFailurePanel: View {
                 .fontWeight(.bold)
                 .setDisplayTracking()
                 .foregroundStyle(.setTextPrimary)
+                .accessibilityIdentifier(SETLibraryAccessibilityID.failureTitle)
 
             Text(detailKey.localizedTextKey)
                 .font(SETTypography.uiBodyFont())
                 .foregroundStyle(.setTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(SETLibraryAccessibilityID.failureDetail)
 
             ZStack(alignment: .bottom) {
                 SETDigitalAction(title: .retry, action: { model.retry() })
+                    .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                    .contentShape(Rectangle())
                     .accessibilityIdentifier(SETLibraryAccessibilityID.failureRetry)
 
                 // One underline annotation on the recovery action.

@@ -12,6 +12,9 @@ final class SETLibraryModelTests: XCTestCase {
         private(set) var createdNames: [String] = []
         private(set) var deletedNames: [String] = []
         private(set) var openedNames: [String] = []
+        private(set) var snapshotCallCount = 0
+        private(set) var renameRequests: [(id: UUID, name: String, expectedUpdatedAt: Date)] = []
+        private(set) var deleteRequests: [(id: UUID, expectedUpdatedAt: Date)] = []
 
         func librarySceneSummaries() -> [UnifiedSceneProjectSummary] {
             summaries
@@ -19,9 +22,11 @@ final class SETLibraryModelTests: XCTestCase {
 
         func libraryCreateScene(named name: String) -> SETLibraryCreateOutcome {
             createdNames.append(name)
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return .invalidName }
             if createOutcome == .created {
                 summaries.append(
-                    UnifiedSceneProjectSummary(id: UUID(), name: name, updatedAt: Date(timeIntervalSince1970: 1_787_000_000))
+                    UnifiedSceneProjectSummary(id: UUID(), name: trimmed, updatedAt: Date(timeIntervalSince1970: 1_787_000_000))
                 )
             }
             return createOutcome
@@ -40,6 +45,7 @@ final class SETLibraryModelTests: XCTestCase {
         }
 
         func librarySceneSnapshots() -> Result<[SETLibrarySceneSnapshot], SETLibraryFailure> {
+            snapshotCallCount += 1
             if let snapshotsResult { return snapshotsResult }
             return .success(summaries.map {
                 SETLibrarySceneSnapshot(id: $0.id, name: $0.name, updatedAt: $0.updatedAt)
@@ -62,6 +68,7 @@ final class SETLibraryModelTests: XCTestCase {
             to name: String,
             expectedUpdatedAt: Date
         ) -> Result<SETLibrarySceneSnapshot, SETLibraryFailure> {
+            renameRequests.append((id: id, name: name, expectedUpdatedAt: expectedUpdatedAt))
             if let renameResult { return renameResult }
             guard let index = summaries.firstIndex(where: { $0.id == id }) else { return .failure(.missingProject(id: id)) }
             guard summaries[index].updatedAt == expectedUpdatedAt else {
@@ -82,6 +89,7 @@ final class SETLibraryModelTests: XCTestCase {
             expectedUpdatedAt: Date,
             completion: @escaping (Result<Void, SETLibraryFailure>) -> Void
         ) {
+            deleteRequests.append((id: id, expectedUpdatedAt: expectedUpdatedAt))
             guard let scene = summaries.first(where: { $0.id == id }) else {
                 completion(.failure(.missingProject(id: id)))
                 return
@@ -132,6 +140,69 @@ final class SETLibraryModelTests: XCTestCase {
         XCTAssertEqual(model.flow, .failure(.load(.persistence)))
         XCTAssertFalse(model.shouldShowEmptyState, "Load failure must replace the empty-state hero.")
         XCTAssertNotNil(model.loadFailure)
+    }
+
+    func testEmptyStateRequiresSuccessfulZeroProjectLoad() {
+        let provider = MockProvider()
+        let model = SETLibraryModel(controlling: provider)
+
+        XCTAssertFalse(model.shouldShowEmptyState, "A pre-load empty array is not an empty-store result.")
+
+        provider.snapshotsResult = .success([])
+        model.reload()
+        XCTAssertTrue(model.shouldShowEmptyState)
+
+        provider.snapshotsResult = .failure(.persistence)
+        model.reload()
+        XCTAssertFalse(model.shouldShowEmptyState, "A later load failure must hide the empty hero.")
+    }
+
+    func testReloadOrdersDuplicateNamesByUpdatedAtThenUUIDAndKeepsMetadata() {
+        let provider = MockProvider()
+        let olderID = UUID(uuidString: "00000000-0000-4000-8000-000000000010")!
+        let firstTieID = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+        let secondTieID = UUID(uuidString: "00000000-0000-4000-8000-000000000002")!
+        let older = Date(timeIntervalSince1970: 100)
+        let newer = Date(timeIntervalSince1970: 200)
+        provider.snapshotsResult = .success([
+            SETLibrarySceneSnapshot(
+                id: olderID,
+                name: "ДУБЛЬ",
+                updatedAt: older,
+                preview: .unavailable,
+                artifactHealth: .missing
+            ),
+            SETLibrarySceneSnapshot(
+                id: secondTieID,
+                name: "ДУБЛЬ",
+                updatedAt: newer,
+                preview: SETLibraryPreviewMetadata(
+                    kind: .storyboard,
+                    beatCount: 3,
+                    actorCount: 2,
+                    objectCount: 1,
+                    recordingCount: 1
+                ),
+                artifactHealth: .healthy
+            ),
+            SETLibrarySceneSnapshot(
+                id: firstTieID,
+                name: "ТРЕТИЙ",
+                updatedAt: newer,
+                preview: .unavailable,
+                artifactHealth: .none
+            )
+        ])
+        let model = SETLibraryModel(controlling: provider)
+
+        model.reload()
+
+        XCTAssertEqual(model.scenes.map(\.id), [firstTieID, secondTieID, olderID])
+        XCTAssertEqual(model.scenes[0].name, "ТРЕТИЙ")
+        XCTAssertEqual(model.scenes[1].name, "ДУБЛЬ")
+        XCTAssertEqual(model.scenes[1].preview.beatCount, 3)
+        XCTAssertEqual(model.scenes[1].artifactHealth, .healthy)
+        XCTAssertEqual(model.scenes[2].artifactHealth, .missing)
     }
 
     func testSelectRequiresIdleFlow() {
@@ -209,6 +280,7 @@ final class SETLibraryModelTests: XCTestCase {
         model.retry()
         XCTAssertEqual(provider.createdNames, ["СЦЕНА", "СЦЕНА"], "Retry must honestly re-run the failed create.")
         XCTAssertEqual(provider.openedNames, ["СЦЕНА"])
+        XCTAssertEqual(provider.snapshotCallCount, 0, "Create retry must not perform an unrelated reload.")
         XCTAssertEqual(model.flow, .idle)
     }
 
@@ -262,6 +334,42 @@ final class SETLibraryModelTests: XCTestCase {
         XCTAssertEqual(provider.summaries.map(\.name), ["А", "Б"])
     }
 
+    func testRenameRetryRetainsIDDraftAndExpectedTimestampAfterReload() {
+        let provider = MockProvider()
+        let id = UUID()
+        let expectedUpdatedAt = Date(timeIntervalSince1970: 1_787_000_000)
+        provider.summaries = [UnifiedSceneProjectSummary(id: id, name: "СТАРОЕ", updatedAt: expectedUpdatedAt)]
+        provider.renameResult = .failure(.persistence)
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+        model.beginRename(sceneID: id)
+        model.renameDraft = "НОВОЕ"
+        model.confirmRename()
+
+        XCTAssertEqual(model.renameDraft, "НОВОЕ")
+        provider.summaries = [
+            UnifiedSceneProjectSummary(
+                id: id,
+                name: "ИЗМЕНЕНО СНАРУЖИ",
+                updatedAt: expectedUpdatedAt.addingTimeInterval(1)
+            )
+        ]
+        model.reload()
+        provider.renameResult = .success(
+            SETLibrarySceneSnapshot(id: id, name: "НОВОЕ", updatedAt: expectedUpdatedAt.addingTimeInterval(2))
+        )
+
+        model.retry()
+
+        XCTAssertEqual(provider.renameRequests.count, 2)
+        XCTAssertEqual(provider.renameRequests[1].id, id)
+        XCTAssertEqual(provider.renameRequests[1].name, "НОВОЕ")
+        XCTAssertEqual(provider.renameRequests[1].expectedUpdatedAt, expectedUpdatedAt)
+        XCTAssertEqual(model.selectedSceneID, id)
+        XCTAssertEqual(model.selectedScene?.name, "НОВОЕ")
+        XCTAssertEqual(model.flow, .idle)
+    }
+
     func testDeleteConfirmationReloadsOnlyOnSuccess() async {
         let provider = MockProvider()
         provider.summaries = [makeSummary("А"), makeSummary("Б")]
@@ -269,8 +377,8 @@ final class SETLibraryModelTests: XCTestCase {
         model.reload()
         model.select(model.scenes[0].id)
         model.beginDelete(sceneName: "А")
-
         let expectedUpdatedAt = provider.summaries[0].updatedAt
+
         XCTAssertEqual(
             model.flow,
             .deleting(sceneID: model.scenes[0].id, sceneName: "А", expectedUpdatedAt: expectedUpdatedAt)
@@ -291,6 +399,8 @@ final class SETLibraryModelTests: XCTestCase {
         model.reload()
         model.select(model.scenes[0].id)
         model.beginDelete(sceneName: "А")
+        let expectedID = model.scenes[0].id
+        let expectedUpdatedAt = provider.summaries[0].updatedAt
         model.confirmDelete()
         await drainMainActor()
 
@@ -301,6 +411,9 @@ final class SETLibraryModelTests: XCTestCase {
         model.retry()
         await drainMainActor()
         XCTAssertEqual(provider.deletedNames, ["А", "А"], "Retry must re-run the failed delete.")
+        XCTAssertEqual(provider.deleteRequests.count, 2)
+        XCTAssertEqual(provider.deleteRequests[1].id, expectedID)
+        XCTAssertEqual(provider.deleteRequests[1].expectedUpdatedAt, expectedUpdatedAt)
         XCTAssertEqual(model.flow, .idle)
     }
 

@@ -33,6 +33,46 @@ final class DBServiceConcurrencyTests: XCTestCase {
 
     // MARK: - Creation serialization
 
+    func testTypedEmptyLoadIsARealZeroProjectResult() {
+        XCTAssertEqual(dbService.loadLibrarySceneSnapshots(), .success([]))
+    }
+
+    func testMalformedProjectLoadFailsInsteadOfMasqueradingAsEmpty() throws {
+        let directory = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ).appendingPathComponent("UnifiedSceneProjects", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let id = UUID()
+        let fileURL = directory.appendingPathComponent("\(id.uuidString)_project.json")
+        try Data("{\"schemaVersion\": 99}".utf8).write(to: fileURL, options: [.atomic])
+
+        guard case .failure(.persistence) = dbService.loadLibrarySceneSnapshots() else {
+            return XCTFail("A malformed persisted project must be a typed load failure.")
+        }
+    }
+
+    func testTypedLoadPreservesDuplicateNamesAndOrdersTimestampTiesByUUID() throws {
+        let firstID = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+        let secondID = UUID(uuidString: "00000000-0000-4000-8000-000000000002")!
+        let updatedAt = Date(timeIntervalSince1970: 1_787_000_000)
+        try dbService.saveUnifiedSceneProject(
+            UnifiedSceneProject(id: secondID, name: "ОДНО ИМЯ", updatedAt: updatedAt),
+            worldMap: nil
+        )
+        try dbService.saveUnifiedSceneProject(
+            UnifiedSceneProject(id: firstID, name: "ОДНО ИМЯ", updatedAt: updatedAt),
+            worldMap: nil
+        )
+
+        let snapshots = try XCTUnwrap(dbService.loadLibrarySceneSnapshots().successValue)
+        XCTAssertEqual(snapshots.map(\.id), [firstID, secondID])
+        XCTAssertEqual(snapshots.map(\.name), ["ОДНО ИМЯ", "ОДНО ИМЯ"])
+        XCTAssertEqual(snapshots.map(\.updatedAt), [updatedAt, updatedAt])
+    }
+
     func testConcurrentCreatesWithSameNameCreateExactlyOneProject() {
         let results = concurrentPerform(8) { _ in
             try? self.dbService.createUnifiedSceneProject(named: "dup-project")

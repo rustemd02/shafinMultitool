@@ -394,7 +394,10 @@ class DBService {
                     }
                     return stored.project
                 }
-                .sorted { $0.updatedAt > $1.updatedAt }
+                .sorted {
+                    if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+                    return $0.id.uuidString < $1.id.uuidString
+                }
             return projects.map(\.summary)
         } catch {
             print("Error listing unified scene projects: \(error)")
