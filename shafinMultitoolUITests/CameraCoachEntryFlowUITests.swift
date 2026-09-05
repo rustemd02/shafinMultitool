@@ -55,6 +55,7 @@ final class CameraCoachEntryFlowUITests: XCTestCase {
         XCTAssertTrue(element(withIdentifier: "commercial-shell").waitForExistence(timeout: launchTimeout))
         XCTAssertTrue(element(withIdentifier: "camera_coach_pause").waitForExistence(timeout: launchTimeout))
         XCTAssertTrue(element(withIdentifier: "camera_coach_live_surface").waitForExistence(timeout: launchTimeout))
+        XCTAssertFalse(element(withIdentifier: "camera_coach_close").exists)
         XCTAssertFalse(element(withIdentifier: "camera-coach-entry-intro").exists)
         capturePortraitScreenshot(named: "CC-008 live ready portrait")
     }

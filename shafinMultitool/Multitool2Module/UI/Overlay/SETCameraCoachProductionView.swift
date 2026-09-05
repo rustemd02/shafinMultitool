@@ -94,12 +94,12 @@ struct SETCameraCoachProductionView: View {
     }
 
     private let source: Source
-    private let onDismiss: () -> Void
+    private let onDismiss: (() -> Void)?
 
     init(
         viewModel: CameraViewModel,
         cameraManager: CameraManager,
-        onDismiss: @escaping () -> Void = {}
+        onDismiss: (() -> Void)? = nil
     ) {
         source = .runtime(viewModel, cameraManager)
         self.onDismiss = onDismiss
@@ -107,7 +107,7 @@ struct SETCameraCoachProductionView: View {
 
     init(fixtureConfiguration: SETCameraCoachFixtureConfiguration) {
         source = .fixture(fixtureConfiguration)
-        onDismiss = {}
+        onDismiss = nil
     }
 
     var body: some View {
@@ -134,7 +134,7 @@ struct SETCameraCoachProductionView: View {
 private struct SETCameraCoachRuntimeSurface: View {
     @ObservedObject var viewModel: CameraViewModel
     let cameraManager: CameraManager
-    let onDismiss: () -> Void
+    let onDismiss: (() -> Void)?
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -407,7 +407,7 @@ private struct SETCameraCoachFixtureSurface: View {
 
                 SETCameraTopChrome(
                     isPaused: fixtureIsPaused,
-                    onDismiss: {},
+                    onDismiss: nil,
                     onTogglePause: toggleFixturePause
                 )
 
@@ -461,22 +461,24 @@ private struct SETCameraCoachFixtureSurface: View {
 
 private struct SETCameraTopChrome: View {
     let isPaused: Bool
-    let onDismiss: () -> Void
+    let onDismiss: (() -> Void)?
     let onTogglePause: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: SETSpacing.x3) {
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.setTextPrimary)
-                    .frame(width: SETComponentMetric.minimumHitTarget,
-                           height: SETComponentMetric.minimumHitTarget)
-                    .background(.setHUDScrim)
-                    .overlay { Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline) }
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.setTextPrimary)
+                        .frame(width: SETComponentMetric.minimumHitTarget,
+                               height: SETComponentMetric.minimumHitTarget)
+                        .background(.setHUDScrim)
+                        .overlay { Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline) }
+                }
+                .accessibilityIdentifier("camera_coach_close")
+                .accessibilityLabel(Text(SETCopyKey.cameraClose.localizedTextKey))
             }
-            .accessibilityIdentifier("camera_coach_close")
-            .accessibilityLabel(Text(SETCopyKey.cameraClose.localizedTextKey))
 
             Spacer(minLength: SETSpacing.x2)
 

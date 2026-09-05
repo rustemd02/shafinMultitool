@@ -7,7 +7,6 @@ import Combine
 /// SETCameraCoachProductionView; this wrapper retains the existing lifecycle
 /// and teardown boundary owned by the camera route.
 struct OverlayView: View {
-    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: CameraViewModel
     let cameraManager: CameraManager
 
@@ -20,8 +19,7 @@ struct OverlayView: View {
         ZStack {
             SETCameraCoachProductionView(
                 viewModel: viewModel,
-                cameraManager: cameraManager,
-                onDismiss: { dismiss() }
+                cameraManager: cameraManager
             )
 
 #if DEBUG

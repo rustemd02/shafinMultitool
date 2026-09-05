@@ -80,6 +80,42 @@ final class CameraCoachProductionUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    func testDecisionAndRecoveryFixturesReachProductionSurfaceInBothOrientations() {
+        // These are DEBUG-only launch fixtures for the fixed Camera Coach
+        // state families. They intentionally enter the shipped production
+        // monitor surface in a separate app process; the owner-chain unit
+        // suite proves the underlying planner/episode/verifier transitions.
+        let fixtures: [(String, UIDeviceOrientation)] = [
+            ("camera.select-subject", .portrait),
+            ("camera.wait", .landscapeLeft),
+            ("camera.abstain", .portrait),
+            ("camera.corrective", .landscapeLeft),
+            ("camera.explanation", .portrait),
+            ("camera.movement", .landscapeLeft),
+            ("camera.verification", .portrait),
+            ("camera.keep", .landscapeLeft),
+            ("camera.interrupted", .portrait),
+            ("camera.recovery", .landscapeLeft)
+        ]
+
+        for (fixture, orientation) in fixtures {
+            let app = launch(fixture: fixture, locale: "en", orientation: orientation)
+            assertRoot(fixture, in: app)
+            assertStableCameraIdentifiers(in: app)
+            XCTAssertTrue(
+                app.otherElements["camera_coach_live_surface"].waitForExistence(timeout: 3),
+                "Missing production monitor surface for (fixture)"
+            )
+            if fixture == "camera.explanation" {
+                XCTAssertTrue(app.descendants(matching: .any)["camera_coach_explanation"].exists)
+            }
+            attachScreenshot(app, named: "camera-decision-\(fixture.replacingOccurrences(of: ".", with: "-"))")
+            app.terminate()
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     func testProductionInterruptedFixtureUsesLifecycleCopy() {
         let app = launch(
             fixture: "camera.interrupted",
@@ -236,7 +272,12 @@ final class CameraCoachProductionUITests: XCTestCase {
     }
 
     private func assertStableCameraIdentifiers(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(app.buttons["camera_coach_close"].exists, file: file, line: line)
+        XCTAssertFalse(
+            app.buttons["camera_coach_close"].exists,
+            "Camera Coach is the CommercialShell root; a close control would be nonfunctional.",
+            file: file,
+            line: line
+        )
         XCTAssertTrue(app.buttons["camera_coach_pause"].exists, file: file, line: line)
         XCTAssertTrue(app.otherElements["camera_coach_live_surface"].exists, file: file, line: line)
     }
