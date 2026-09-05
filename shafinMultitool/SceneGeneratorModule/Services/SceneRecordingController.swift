@@ -55,6 +55,9 @@ final class SceneRecordingController: @unchecked Sendable {
     )
     private let artifactStore: RecordingArtifactStore
     private let makeRecorder: RecorderFactory
+    /// M7-008: mandatory start preconditions are validated before any
+    /// recorder is created or the lifecycle leaves idle.
+    private let preflight: any RecordingStartPreflighting
 
     // Every property below is accessed through `withState`; no await occurs
     // inside that synchronous critical section.
@@ -77,17 +80,36 @@ final class SceneRecordingController: @unchecked Sendable {
 
     init(artifactStore: RecordingArtifactStore,
          sourceOwnerID: UUID = UUID(),
+         preflight: (any RecordingStartPreflighting)? = nil,
          makeRecorder: @escaping RecorderFactory) {
         self.artifactStore = artifactStore
         self.sourceOwnerID = sourceOwnerID
+        self.preflight = preflight ?? StandardRecordingStartPreflight()
         self.makeRecorder = makeRecorder
     }
 
     /// Production wiring for a fresh AVAssetWriter + optional capture-audio
     /// driver. Permission is intentionally owned by the ViewModel before this
-    /// initializer is used for a required-audio take.
+    /// initializer is used for a required-audio take; the preflight adds a
+    /// read-only last-line defense (denied permission, interrupted audio
+    /// session, disk budget) before any writer is created.
     convenience init(artifactStore: RecordingArtifactStore) {
-        self.init(artifactStore: artifactStore) { configuration in
+        let store = artifactStore
+        self.init(
+            artifactStore: artifactStore,
+            preflight: StandardRecordingStartPreflight(
+                diskBudget: { context in
+                    try store.diskBudgetEstimate(
+                        width: context.width,
+                        height: context.height,
+                        fps: context.fps,
+                        codec: context.codec,
+                        audioMode: context.audioMode,
+                        durationLimitSeconds: context.durationLimitSeconds
+                    )
+                }
+            )
+        ) { configuration in
             SerializedMediaRecorder(
                 writerFactory: AVAssetWriterRecordingWriterFactory(),
                 audioDriverFactory: configuration.audioMode == .required
@@ -409,6 +431,20 @@ final class SceneRecordingController: @unchecked Sendable {
             let height = CVPixelBufferGetHeight(initialPayload.pixelBuffer)
             guard width > 0, height > 0 else {
                 throw RecorderFailure.writerInputRejected
+            }
+
+            // M7-008: mandatory preconditions gate the start before any
+            // recorder is created, any output URL is allocated, and the
+            // lifecycle leaves its between-takes idle state.
+            if let preflightFailure = await preflight.validate(RecordingStartPreflightContext(
+                width: width,
+                height: height,
+                fps: max(1, requestedFPS),
+                codec: videoCodec,
+                pixelFormatFourCC: CVPixelBufferGetPixelFormatType(initialPayload.pixelBuffer),
+                audioMode: audioMode
+            )) {
+                throw preflightFailure
             }
 
             let outputURL = try artifactStore.makePendingURL()

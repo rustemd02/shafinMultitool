@@ -97,6 +97,55 @@ final class SceneRecordingControllerTests: XCTestCase {
         _ = await controller.releaseAndWait()
     }
 
+    /// M7-008: a failed mandatory precondition is rejected before any
+    /// recorder is created and before the lifecycle enters recording; the
+    /// typed failure is thrown to the caller and the controller returns to
+    /// its between-takes idle state.
+    func testStartPreflightRejectionHappensBeforeRecorderCreation() async throws {
+        struct FailingPreflight: RecordingStartPreflighting {
+            let failure: RecorderFailure
+
+            func validate(_ context: RecordingStartPreflightContext) async -> RecorderFailure? {
+                failure
+            }
+        }
+
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-recording-preflight-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        let artifactStore = try RecordingArtifactStore(applicationSupportDirectoryURL: temporaryDirectory)
+        let box = ControllerRecorderBox()
+        let controller = SceneRecordingController(
+            artifactStore: artifactStore,
+            preflight: FailingPreflight(failure: .insufficientStorage)
+        ) { configuration in
+            let recorder = ControllerTestRecorder(
+                stopGate: nil,
+                fenceProvider: { box.currentFence() },
+                initialEnqueueObserver: nil
+            )
+            box.append(recorder)
+            return recorder
+        }
+        box.attach(controller)
+
+        let pixelBuffer = try makePixelBuffer(width: 640, height: 480)
+        controller.enqueueVideo(pixelBuffer, at: 0)
+
+        do {
+            try await controller.start(requestedFPS: 30, audioMode: .disabled)
+            XCTFail("A failed preflight must reject the start")
+        } catch let failure as RecorderFailure {
+            XCTAssertEqual(failure, .insufficientStorage)
+        }
+        XCTAssertEqual(box.count, 0)
+        XCTAssertNil(controller.recordingSourceToken)
+        XCTAssertEqual(controller.canonicalLifecycleState, .idle)
+
+        _ = await controller.releaseAndWait()
+    }
+
     func testCoordinatorRebindPreservesActiveSourceAndForeignCoordinatorCannotBorrowToken() async throws {
         let (controller, box, temporaryDirectory) = try makeController()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }

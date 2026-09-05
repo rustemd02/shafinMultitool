@@ -1034,6 +1034,105 @@ final class SerializedMediaRecorderTests: XCTestCase {
         XCTAssertEqual(report.lastVideoTimestamp! - report.videoOrigin!, 8.5, accuracy: 1e-9)
     }
 
+    // MARK: - M7-010 sample admission
+
+    func testStaleSourceAndOutsideWindowSamplesAreRejectedAndCounted() async throws {
+        let fixture = makeFixture()
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+        let staleFence = RecordingFrameFence(
+            recordingID: fence.recordingID,
+            generation: fence.generation &+ 1,
+            ownerToken: fence.ownerToken
+        )
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: staleFence, timestamp: 2.0))
+        let result = await fixture.recorder.stop(reason: .user)
+        assertFinalized(result)
+
+        // After the stop boundary the same take's fence cannot revive the
+        // sample path; the sample is counted as outside the window.
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 3.0))
+
+        let report = await fixture.recorder.timebaseReport()
+        XCTAssertEqual(report.acceptedVideoCount, 1)
+        XCTAssertEqual(report.rejectedStaleSourceCount, 1)
+        XCTAssertEqual(report.rejectedInactiveCount, 1)
+    }
+
+    // MARK: - M7-011 backpressure policy
+
+    func testConsecutiveWriterBackpressureDropsTriggerExplicitFailurePolicy() async throws {
+        let fixture = makeFixture(maxConsecutiveDroppedFrames: 2)
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+        fixture.writer.videoAppendResult = .dropped
+
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+        let stateDuringPressure = await fixture.recorder.state
+        XCTAssertEqual(stateDuringPressure, .recording)
+
+        // The second consecutive drop reaches the policy limit (2) and fires
+        // the explicit failure; the third submission arrives after the
+        // boundary closed and is counted as outside the recording window.
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 2.0))
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 3.0))
+
+        let stateAfterPolicy = await fixture.recorder.state
+        XCTAssertEqual(stateAfterPolicy, .failed)
+
+        let result = await fixture.recorder.stop(reason: .user)
+        switch result {
+        case .finalized:
+            XCTFail("Sustained writer backpressure must fail the take explicitly")
+        case let .failed(failure, recoverableArtifact):
+            XCTAssertEqual(failure, .videoAppendFailed)
+            XCTAssertNil(recoverableArtifact)
+        }
+        let report = await fixture.recorder.timebaseReport()
+        XCTAssertEqual(report.droppedVideoCount, 2)
+        XCTAssertEqual(report.rejectedInactiveCount, 1)
+    }
+
+    // MARK: - M7-013 finalization timeout
+
+    func testFinalizationTimeoutFailsTypedAndLateCallbackCannotReviveTheTake() async throws {
+        let fixture = makeFixture(finalizationTimeout: 0.2)
+        try await fixture.recorder.prepare(makeConfiguration())
+        try await fixture.recorder.start()
+        let snapshot = await fixture.recorder.stateSnapshot()
+        let fence = try XCTUnwrap(snapshot.frameFence)
+        fixture.recorder.enqueueVideo(RecordingVideoFrame(fence: fence, timestamp: 1.0))
+        fixture.writer.holdFinish = true
+
+        let stopTask = Task { await fixture.recorder.stop(reason: .user) }
+        let result = await stopTask.value
+
+        switch result {
+        case .finalized:
+            XCTFail("A timed-out writer finish must not report success")
+        case let .failed(failure, recoverableArtifact):
+            XCTAssertEqual(failure, .finishFailed)
+            XCTAssertNil(recoverableArtifact)
+        }
+        let stateAfterTimeout = await fixture.recorder.state
+        XCTAssertEqual(stateAfterTimeout, .failed)
+        XCTAssertGreaterThanOrEqual(fixture.writer.discardCount, 1)
+
+        // The late writer callback must not revive the failed take or
+        // replace the terminal result.
+        fixture.writer.completeFinishTwice(with: .success(RecordingWriterFinish(duration: 5.0)))
+        let repeatedStop = await fixture.recorder.stop(reason: .background)
+        XCTAssertEqual(repeatedStop, result)
+        let stateAfterLateCallback = await fixture.recorder.state
+        XCTAssertEqual(stateAfterLateCallback, .failed)
+    }
+
     private func makeConfiguration(
         id: RecordingID = RecordingID(rawValue: UUID()),
         audioMode: RecordingAudioMode = .disabled
@@ -1062,7 +1161,9 @@ final class SerializedMediaRecorderTests: XCTestCase {
         )
     }
 
-    private func makeFixture(audioMode: RecordingAudioMode = .disabled) -> RecorderFixture {
+    private func makeFixture(audioMode: RecordingAudioMode = .disabled,
+                             maxConsecutiveDroppedFrames: Int = 900,
+                             finalizationTimeout: TimeInterval = 10) -> RecorderFixture {
         let writer = FakeWriter()
         let writerFactory = FakeWriterFactory(writer: writer)
         let audioDriver = FakeAudioDriver()
@@ -1072,7 +1173,9 @@ final class SerializedMediaRecorderTests: XCTestCase {
         let recorder = SerializedMediaRecorder(
             writerFactory: writerFactory,
             audioDriverFactory: audioFactory,
-            outputChecker: outputChecker
+            outputChecker: outputChecker,
+            maxConsecutiveDroppedFrames: maxConsecutiveDroppedFrames,
+            finalizationTimeout: finalizationTimeout
         )
         return RecorderFixture(
             recorder: recorder,

@@ -17,6 +17,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     private let writerFactory: any RecordingWriterFactory
     private let audioDriverFactory: (any RecordingAudioDriverFactory)?
     private let outputChecker: any RecordingOutputChecking
+    private let maxConsecutiveDroppedFrames: Int
+    private let finalizationTimeout: TimeInterval
 
     // All properties below are queue-confined. Do not access them from a
     // callback or caller without first dispatching to `queue`.
@@ -44,12 +46,20 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     init(writerFactory: any RecordingWriterFactory,
          audioDriverFactory: (any RecordingAudioDriverFactory)? = nil,
          outputChecker: any RecordingOutputChecking = LocalRecordingOutputChecker(),
-         queueLabel: String = "com.shafinMultitool.serializedMediaRecorder") {
+         queueLabel: String = "com.shafinMultitool.serializedMediaRecorder",
+         maxConsecutiveDroppedFrames: Int = 900,
+         finalizationTimeout: TimeInterval = 10) {
         self.writerFactory = writerFactory
         self.audioDriverFactory = audioDriverFactory
         self.outputChecker = outputChecker
         self.queue = DispatchQueue(label: queueLabel, qos: .userInitiated)
         self.queue.setSpecific(key: Self.queueSpecificKey, value: UUID())
+        // M7-011: ≈15 s of continuous writer backpressure at 60 fps before
+        // the explicit failure policy fires. Configurable for fixtures.
+        self.maxConsecutiveDroppedFrames = max(1, maxConsecutiveDroppedFrames)
+        // M7-013: the writer must deliver its finish callback within this
+        // bound or the take fails typed and its resources are closed.
+        self.finalizationTimeout = max(0.05, finalizationTimeout)
     }
 
     var state: RecorderState {
@@ -331,11 +341,46 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
     // MARK: - Frame queue
 
+    /// M7-010: sample admission reasons. Every rejected sample is counted by
+    /// its reason and never reaches the writer.
+    private enum SampleAdmission {
+        case accept
+        case rejectInactive
+        case rejectStaleSource
+    }
+
+    private func admissionVerdict(_ recordingID: RecordingID,
+                                  generation: UInt64,
+                                  ownerToken: RecordingOwnerToken?) -> SampleAdmission {
+        guard acceptingFrames,
+              stateStorage == .recording,
+              let configuration = currentConfiguration else {
+            return .rejectInactive
+        }
+        let matchesSource = configuration.id == recordingID
+            && activeGeneration == generation
+            && RecordingSourceFence.accepts(
+                frameOwnerToken: ownerToken,
+                activeOwnerToken: activeSourceOwnerToken
+            )
+        return matchesSource ? .accept : .rejectStaleSource
+    }
+
     private func appendVideoOnQueue(_ frame: RecordingVideoFrame) {
-        guard canAccept(frame.recordingID,
-                        generation: frame.generation,
-                        ownerToken: frame.ownerToken),
-              let writer else {
+        switch admissionVerdict(frame.recordingID,
+                                generation: frame.generation,
+                                ownerToken: frame.ownerToken) {
+        case .rejectInactive:
+            timebase.recordAdmissionRejection(.inactive, stream: .video)
+            return
+        case .rejectStaleSource:
+            timebase.recordAdmissionRejection(.staleSource, stream: .video)
+            return
+        case .accept:
+            break
+        }
+        guard let writer else {
+            timebase.recordAdmissionRejection(.inactive, stream: .video)
             return
         }
 
@@ -353,6 +398,12 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             markAppendFailureOnQueue(.videoAppendFailed)
             return
         case .dropped:
+            // M7-011: bounded backpressure accounting. The capture queue is
+            // never blocked (submission is nonblocking); continuous writer
+            // pressure beyond the policy limit fails the take explicitly.
+            if timebase.recordDroppedVideo() >= maxConsecutiveDroppedFrames {
+                markAppendFailureOnQueue(.videoAppendFailed)
+            }
             return
         case .appended:
             break
@@ -363,12 +414,23 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
     private func appendAudioOnQueue(_ frame: RecordingAudioFrame) {
         guard let configuration = currentConfiguration,
-              configuration.audioMode == .required,
-              canAccept(frame.recordingID,
-                        generation: frame.generation,
-                        ownerToken: frame.ownerToken),
-              audioStarted,
-              let writer else {
+              configuration.audioMode == .required else {
+            return
+        }
+        switch admissionVerdict(frame.recordingID,
+                                generation: frame.generation,
+                                ownerToken: frame.ownerToken) {
+        case .rejectInactive:
+            timebase.recordAdmissionRejection(.inactive, stream: .audio)
+            return
+        case .rejectStaleSource:
+            timebase.recordAdmissionRejection(.staleSource, stream: .audio)
+            return
+        case .accept:
+            break
+        }
+        guard audioStarted, let writer else {
+            timebase.recordAdmissionRejection(.inactive, stream: .audio)
             return
         }
 
@@ -386,28 +448,16 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             markAppendFailureOnQueue(.audioAppendFailed)
             return
         case .dropped:
+            // M7-011: audio backpressure is counted but does not fail the
+            // take; AAC input pressure degrades sound, it does not corrupt
+            // the timeline, and the video policy is the explicit trigger.
+            _ = timebase.recordDroppedAudio()
             return
         case .appended:
             break
         }
 
         timebase.commitAudio(timestamp: frame.timestamp)
-    }
-
-    private func canAccept(_ recordingID: RecordingID,
-                           generation: UInt64,
-                           ownerToken: RecordingOwnerToken?) -> Bool {
-        guard acceptingFrames,
-              stateStorage == .recording,
-              let configuration = currentConfiguration else {
-            return false
-        }
-        return configuration.id == recordingID
-            && activeGeneration == generation
-            && RecordingSourceFence.accepts(
-                frameOwnerToken: ownerToken,
-                activeOwnerToken: activeSourceOwnerToken
-            )
     }
 
     private func markAppendFailureOnQueue(_ failure: RecorderFailure) {
@@ -503,6 +553,37 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
                 self.finishCompletedOnQueue(result)
             }
         }
+
+        // M7-013: a writer that never delivers its finish callback must not
+        // hold stop/release waiters forever. The watchdog runs on this same
+        // serialized queue; a completed finish sets finishInFlight to false
+        // so a fired watchdog is a no-op, and a fired watchdog makes any
+        // late callback a no-op in the same way.
+        let timeout = finalizationTimeout
+        queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+            self?.finalizationWatchdogFiredOnQueue()
+        }
+    }
+
+    private func finalizationWatchdogFiredOnQueue() {
+        guard finishInFlight else { return }
+
+        writer?.discard()
+        writer = nil
+        audioDriver = nil
+        audioStarted = false
+        acceptingFrames = false
+        finishInFlight = false
+
+        let result = terminalFailureResultOnQueue(pendingFailure ?? .finishFailed)
+        lastStopResult = result
+        if releaseRequested {
+            setStateOnQueue(.released)
+        } else {
+            setStateOnQueue(.failed)
+        }
+        resolveStopWaitersOnQueue(with: result)
+        resolveReleaseWaitersOnQueue(with: result)
     }
 
     private func finishCompletedOnQueue(_ writerResult: Result<RecordingWriterFinish, RecordingWriterError>) {
@@ -740,6 +821,49 @@ private struct RecordingMediaTimebase {
     private(set) var rejectedNonMonotonicAudioCount = 0
     private(set) var rejectedBeforeOriginAudioCount = 0
     private(set) var discontinuityCount = 0
+    /// M7-010: samples arriving outside the recording window (before start,
+    /// after the stop boundary, or with no writer attached).
+    private(set) var rejectedInactiveCount = 0
+    /// M7-010: samples from a stale/foreign source identity.
+    private(set) var rejectedStaleSourceCount = 0
+    /// M7-011: writer backpressure drops.
+    private(set) var droppedVideoCount = 0
+    private(set) var droppedAudioCount = 0
+    private var consecutiveDroppedVideoCount = 0
+    private var consecutiveDroppedAudioCount = 0
+
+    enum RejectionReason {
+        case inactive
+        case staleSource
+    }
+
+    enum SampleStream {
+        case video
+        case audio
+    }
+
+    mutating func recordAdmissionRejection(_ reason: RejectionReason, stream: SampleStream) {
+        switch (reason, stream) {
+        case (.inactive, .video), (.inactive, .audio):
+            rejectedInactiveCount += 1
+        case (.staleSource, .video), (.staleSource, .audio):
+            rejectedStaleSourceCount += 1
+        }
+    }
+
+    /// M7-011: records one video backpressure drop and returns the current
+    /// consecutive-drop streak for the policy decision.
+    mutating func recordDroppedVideo() -> Int {
+        droppedVideoCount += 1
+        consecutiveDroppedVideoCount += 1
+        return consecutiveDroppedVideoCount
+    }
+
+    mutating func recordDroppedAudio() -> Int {
+        droppedAudioCount += 1
+        consecutiveDroppedAudioCount += 1
+        return consecutiveDroppedAudioCount
+    }
 
     enum Admission {
         case accept
@@ -756,6 +880,10 @@ private struct RecordingMediaTimebase {
             rejectedNonMonotonicAudioCount: rejectedNonMonotonicAudioCount,
             rejectedBeforeOriginAudioCount: rejectedBeforeOriginAudioCount,
             discontinuityCount: discontinuityCount,
+            rejectedInactiveCount: rejectedInactiveCount,
+            rejectedStaleSourceCount: rejectedStaleSourceCount,
+            droppedVideoCount: droppedVideoCount,
+            droppedAudioCount: droppedAudioCount,
             lastVideoTimestamp: lastVideoTimestamp,
             lastAudioTimestamp: lastAudioTimestamp
         )
@@ -797,6 +925,7 @@ private struct RecordingMediaTimebase {
         }
         lastVideoTimestamp = timestamp
         acceptedVideoCount += 1
+        consecutiveDroppedVideoCount = 0
     }
 
     mutating func admitAudio(timestamp: TimeInterval) -> Admission {
@@ -828,5 +957,6 @@ private struct RecordingMediaTimebase {
     mutating func commitAudio(timestamp: TimeInterval) {
         lastAudioTimestamp = timestamp
         acceptedAudioCount += 1
+        consecutiveDroppedAudioCount = 0
     }
 }

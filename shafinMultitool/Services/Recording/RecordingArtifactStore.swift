@@ -14,6 +14,67 @@ enum RecordingArtifactStoreError: Error, Equatable, Sendable {
     case deletionRollbackFailure
 }
 
+/// M7-017: conservative free-space requirement for one planned take. The
+/// estimate deliberately over-reserves: it assumes maximum duration at a
+/// constant worst-case bitrate and doubles the result so pending and final
+/// storage can coexist without ever pressuring existing project media.
+struct RecordingDiskBudgetEstimate: Sendable, Equatable {
+    /// Bytes that must be free before recording may start.
+    let requiredFreeBytes: Int64
+    /// Bytes currently free on the recordings volume.
+    let availableBytes: Int64
+
+    var isSatisfied: Bool { availableBytes >= requiredFreeBytes }
+}
+
+/// M7-017: documented bitrate model constants. Bits per pixel per frame are
+/// intentionally conservative upper bounds (a full-quality encode at the
+/// selected format, not an observed average).
+enum RecordingDiskBudgetModel {
+    /// Worst-case encoded bits per pixel per frame by codec.
+    static func bitsPerPixel(codec: RecordingQuickTimeCodec) -> Double {
+        switch codec {
+        case .h264: return 0.12
+        case .hevc: return 0.07
+        }
+    }
+
+    /// Audio keeps the fixed v1 AAC 48 kHz mono format at 128 kbps; the
+    /// estimate adds container/fragment overhead on top.
+    static let audioBitsPerSecond: Double = 128_000
+    /// Pending file plus finalized file must be able to coexist.
+    static let duplicationMargin: Double = 2.0
+    /// Fixed safety floor (metadata, container, fragmentation headroom).
+    static let safetyFloorBytes: Int64 = 50_000_000
+    /// Default maximum planned take duration when the caller has no shorter
+    /// budget.
+    static let defaultDurationLimitSeconds: TimeInterval = 600
+
+    static func requiredFreeBytes(width: Int,
+                                  height: Int,
+                                  fps: Int,
+                                  codec: RecordingQuickTimeCodec,
+                                  audioMode: RecordingAudioMode,
+                                  durationLimitSeconds: TimeInterval) -> Int64 {
+        let clampedWidth = max(0, width)
+        let clampedHeight = max(0, height)
+        let clampedFPS = max(0, fps)
+        let clampedDuration = max(0, durationLimitSeconds)
+
+        let videoBitsPerSecond = Double(clampedWidth)
+            * Double(clampedHeight)
+            * Double(clampedFPS)
+            * bitsPerPixel(codec: codec)
+        var bitsPerSecond = videoBitsPerSecond
+        if audioMode == .required {
+            bitsPerSecond += audioBitsPerSecond
+        }
+        let estimatedBytes = bitsPerSecond / 8 * clampedDuration
+        let reserved = estimatedBytes * duplicationMargin + Double(safetyFloorBytes)
+        return Int64(reserved.rounded(.up))
+    }
+}
+
 /// Owns the only filesystem boundary for recording artifacts. Pending files
 /// are never exposed as project media; promotion moves them into a deterministic
 /// project directory and references store only a relative path.
@@ -134,6 +195,48 @@ final class RecordingArtifactStore: @unchecked Sendable {
                 return candidate
             }
         }
+    }
+
+    /// M7-017: free-space check against the conservative budget model. The
+    /// query uses the important-usage capacity when the platform exposes it
+    /// (it accounts for purgeable behavior honestly) and falls back to the
+    /// raw free size. A capacity query failure fails closed.
+    func diskBudgetEstimate(width: Int,
+                            height: Int,
+                            fps: Int,
+                            codec: RecordingQuickTimeCodec,
+                            audioMode: RecordingAudioMode,
+                            durationLimitSeconds: TimeInterval
+                                = RecordingDiskBudgetModel.defaultDurationLimitSeconds) throws
+        -> RecordingDiskBudgetEstimate {
+        let required = RecordingDiskBudgetModel.requiredFreeBytes(
+            width: width,
+            height: height,
+            fps: fps,
+            codec: codec,
+            audioMode: audioMode,
+            durationLimitSeconds: durationLimitSeconds
+        )
+
+        let volumeURL = recordingsDirectoryURL
+        let available: Int64?
+        if let values = try? urlResourceValues(forVolumeAt: volumeURL) {
+            available = values.volumeAvailableCapacityForImportantUsage
+                ?? values.volumeAvailableCapacity.map(Int64.init)
+        } else {
+            available = nil
+        }
+        guard let availableBytes = available, availableBytes >= 0 else {
+            throw RecordingArtifactStoreError.fileSystemFailure
+        }
+        return RecordingDiskBudgetEstimate(requiredFreeBytes: required, availableBytes: availableBytes)
+    }
+
+    private func urlResourceValues(forVolumeAt url: URL) throws -> URLResourceValues {
+        try url.resourceValues(forKeys: [
+            .volumeAvailableCapacityForImportantUsageKey,
+            .volumeAvailableCapacityKey,
+        ])
     }
 
     /// Moves a finalized Pending artifact into project-owned storage. A

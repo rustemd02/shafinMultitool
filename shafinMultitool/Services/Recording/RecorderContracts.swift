@@ -98,6 +98,17 @@ enum RecorderFailure: Error, Sendable, Equatable {
     case noVideoFrames
     case finishFailed
     case sourceClaimRejected
+    /// M7-008: microphone permission is denied while the take requires sound.
+    /// Recoverable: the user can grant access (Settings) or explicitly choose
+    /// a video-only take.
+    case microphoneDenied
+    /// M7-008/M7-017: free space is below the conservative requirement for
+    /// the selected format and duration budget. Existing project media is
+    /// never touched by this failure.
+    case insufficientStorage
+    /// M7-008: the serialized audio session is interrupted/reset, so a take
+    /// requiring sound cannot start until the session recovers.
+    case audioSessionUnavailable
 }
 
 enum RecordingStopResult: Sendable, Equatable {
@@ -366,6 +377,14 @@ struct RecordingTimebaseReport: Sendable, Equatable {
     /// Forward gaps larger than the documented discontinuity threshold that
     /// were tolerated while keeping the timeline monotonic.
     let discontinuityCount: Int
+    /// M7-010: samples outside the recording window (before start, after the
+    /// stop boundary, or with no writer attached).
+    let rejectedInactiveCount: Int
+    /// M7-010: samples from a stale or foreign source identity.
+    let rejectedStaleSourceCount: Int
+    /// M7-011: writer backpressure drops per stream.
+    let droppedVideoCount: Int
+    let droppedAudioCount: Int
     let lastVideoTimestamp: TimeInterval?
     let lastAudioTimestamp: TimeInterval?
 }
