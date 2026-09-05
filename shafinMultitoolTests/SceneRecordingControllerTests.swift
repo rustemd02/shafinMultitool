@@ -89,7 +89,7 @@ final class SceneRecordingControllerTests: XCTestCase {
         )
 
         let pixelBuffer = try makePixelBuffer(width: 320, height: 240)
-        controller.enqueueVideo(pixelBuffer, at: 1)
+        firstCoordinator.testingForwardRecordingFrame(pixelBuffer, at: 1)
         try await controller.start(requestedFPS: 30, audioMode: .disabled)
         let activeToken = try XCTUnwrap(controller.recordingSourceToken)
         XCTAssertEqual(activeToken.source, .arWorkspace)

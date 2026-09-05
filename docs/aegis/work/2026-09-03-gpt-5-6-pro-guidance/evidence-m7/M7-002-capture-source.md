@@ -116,7 +116,20 @@ B replacement, a stale A callback after the swap, and B's fresh timestamp 4.
 `testTerminalStopInvalidatesPreviousOwnerCacheBeforeReplacement` covers the
 same boundary after a terminal writer stop. The existing coordinator rebind,
 foreign-active rejection, and CameraService compare-and-clear tests remain
-unchanged.
+production regressions; the coordinator rebind test seeds its first frame
+through the production coordinator forwarding boundary so it carries the
+explicit owner claim required by the cache fence.
+
+## FIX-FIRST test-fixture correction evidence
+
+The broad post-cache-correction run exposed one stale test setup: after an
+explicit coordinator owner binding, the rebind regression still seeded its
+initial frame through the legacy unowned `enqueueVideo` compatibility path.
+That path is intentionally rejected once an owner is bound. The test now uses
+the coordinator's existing production forwarding seam, preserving the
+same-owner active rebind assertion and the foreign-coordinator rejection
+without weakening the owner fence. No production code changed in this
+correction.
 
 ## Verification record
 
@@ -174,6 +187,14 @@ and expanded M6-004 run were blocked after test launch by the host's orphaned
 xcodebuild/diagnostics processes were terminated. Root/coordinator integration
 must rerun the focused and expanded commands cleanly before claiming final
 verification for this correction.
+
+The fourth-correction targeted run covered the coordinator rebind regression
+and both owner-replacement cache regressions: **3/3 passed**, 0 failures, 0
+skips, on iPhone Air iOS 26.5. Its retained result bundle is
+`/private/tmp/setos-m7-002-correction4-reg-20260905.xcresult`. The expanded
+route/teardown verification remains owned by root after integration; no broad
+worker suite was launched in this correction. `git diff --check` passed before
+commit.
 
 This lane did not use, boot, target, shut down, or erase an iPhone 17 Pro,
 physical iPhone 13, or any physical device. Simulator evidence does not qualify
