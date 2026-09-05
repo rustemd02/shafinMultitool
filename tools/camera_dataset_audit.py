@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field, replace
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -72,7 +73,7 @@ FORBIDDEN_FIELDS = {
 }
 ALLOWED_RIGHTS = {"approved", "fixture_only"}
 CAMERA_RECORD_SCHEMA_IDS = {"camera-label-v1", "camera-temporal-v1", "camera-episode-v1"}
-RESOLVED_REVIEW_STATUSES = {"dual_reviewed", "adjudicated", "resolved", "resolved_human_review", "approved", "reviewed"}
+RESOLVED_REVIEW_STATUSES = {"dual_reviewed", "adjudicated"}
 SPLIT_PATH_FIELDS = {
     "path",
     "media_path",
@@ -86,10 +87,27 @@ SPLIT_PATH_FIELDS = {
     "media_uri",
     "asset_uri",
 }
+SPLIT_CONTENT_FIELDS = {
+    "label",
+    "labels",
+    "locked_label",
+    "locked_labels",
+    "content",
+    "content_bytes",
+    "content_sha256",
+    "raw_content",
+    "raw_media",
+    "media_bytes",
+    "pixels",
+    "image",
+}
 
 
 class AuditInputError(ValueError):
     """Raised when an audit input cannot be safely interpreted."""
+
+
+_CAMERA_COACH_CHECK: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -717,6 +735,20 @@ def _split_no_media_paths(value: Any, path: str = "manifest") -> None:
             _split_no_media_paths(child, f"{path}[{index}]")
 
 
+def _split_no_content_payloads(value: Any, path: str = "manifest") -> None:
+    """Reject labels, raw content, and pixel payloads from split inputs."""
+
+    if isinstance(value, dict):
+        for key, child in value.items():
+            lowered = key.lower() if isinstance(key, str) else ""
+            if lowered in SPLIT_CONTENT_FIELDS:
+                raise AuditInputError(f"content_payload_in_split_input: {path}.{key}")
+            _split_no_content_payloads(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _split_no_content_payloads(child, f"{path}[{index}]")
+
+
 def _split_consistent_field(
     entry: dict[str, Any],
     key: str,
@@ -817,27 +849,43 @@ def _split_asset_values(entry: dict[str, Any], provenance: dict[str, Any] | None
     return result
 
 
+def _release_review_checker() -> Any:
+    global _CAMERA_COACH_CHECK
+    if _CAMERA_COACH_CHECK is not None:
+        return _CAMERA_COACH_CHECK
+    checker_path = ROOT / "tools/dataset/camera_coach_check.py"
+    try:
+        spec = importlib.util.spec_from_file_location("_camera_coach_check_for_split", checker_path)
+        if spec is None or spec.loader is None:
+            raise AuditInputError("release_review_validator_unavailable")
+        checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checker)
+    except (ImportError, OSError, ValueError) as exc:
+        raise AuditInputError("release_review_validator_unavailable") from exc
+    _CAMERA_COACH_CHECK = checker
+    return checker
+
+
 def _split_review_status(entry: dict[str, Any]) -> str:
     review = entry.get("review")
-    if review is not None and not isinstance(review, dict):
-        raise AuditInputError("invalid_review")
-    status = _split_consistent_field(entry, "review_status", review)
-    nested_status = review.get("status") if isinstance(review, dict) else None
-    if status is not None and nested_status is not None and status != nested_status:
-        raise AuditInputError("review_status_conflict")
-    if status is None:
-        status = nested_status
+    if not isinstance(review, dict):
+        if "review_status" in entry:
+            raise AuditInputError("review_status_only_not_admissible")
+        raise AuditInputError("review_not_admissible")
+    if "review_status" in entry:
+        raise AuditInputError("review_status_only_not_admissible")
+    checker = _release_review_checker()
+    errors: list[str] = []
+    checker._validate_closed_keys(review, "review", "review", errors)
+    checker._validate_review(review, errors)
+    # The release helper has identical admission rules for train and
+    # calibration; use train as the unassigned-input gate.
+    checker._validate_release_review(review, "train", errors)
+    status = review.get("status")
     if not isinstance(status, str) or status not in RESOLVED_REVIEW_STATUSES:
-        raise AuditInputError("review_not_resolved")
-    decisions: list[Any] = []
-    for source in (entry, review):
-        if isinstance(source, dict):
-            for key in ("decision", "outcome", "adjudication"):
-                if key in source:
-                    decisions.append(source[key])
-    for decision in decisions:
-        if not isinstance(decision, str) or decision not in {"accept", "accepted", "approved", "pass", "resolved"}:
-            raise AuditInputError("review_not_resolved")
+        errors.append("review_not_admissible: requires dual_reviewed or adjudicated")
+    if errors:
+        raise AuditInputError(f"review_not_admissible: {errors[0]}")
     return status
 
 
@@ -961,13 +1009,22 @@ def load_split_manifest(path: Path) -> list[SplitRecord]:
 
     path = Path(path)
     payload = _read_json_or_jsonl(path)
+    _split_no_content_payloads(payload, str(path))
     _reject_forbidden(payload, str(path))
     _split_no_media_paths(payload, str(path))
     entries, header = _container_entries(payload, str(path))
+    if isinstance(payload, list):
+        if not payload or not isinstance(payload[0], dict) or "record_id" in payload[0]:
+            raise AuditInputError(f"missing_split_manifest_header: {path}")
+        header = payload[0]
+        entries = payload[1:]
     _validate_header(header, str(path))
-    schema_id = header.get("schema_id")
-    if schema_id is not None and schema_id not in ({SPLIT_INPUT_SCHEMA_ID} | CAMERA_RECORD_SCHEMA_IDS):
+    if header.get("schema_id") != SPLIT_INPUT_SCHEMA_ID:
         raise AuditInputError(f"invalid_split_schema_id: {path}")
+    if header.get("schema_version") != SCHEMA_VERSION or (
+        "manifest_version" in header and header.get("manifest_version") != SCHEMA_VERSION
+    ):
+        raise AuditInputError(f"invalid_split_schema_version: {path}")
     records: list[SplitRecord] = []
     for entry in entries:
         if entry.get("record_count") is not None and "record_id" not in entry:
@@ -1055,6 +1112,35 @@ def _split_targets(count: int, ratios: dict[str, float]) -> dict[str, int]:
     for _, _, split in fractions[:remainder]:
         bases[split] += 1
     return bases
+
+
+def _seeded_component_assignments(
+    components: list[dict[str, Any]],
+    *,
+    algorithm_id: str,
+    seed: int,
+    bucket_target_component_counts: dict[str, dict[str, int]],
+) -> dict[str, str]:
+    """Derive component splits from the declared seeded assignment contract."""
+
+    assigned: dict[str, str] = {}
+    for bucket in BUCKETS:
+        bucket_components = [component for component in components if component["bucket"] == bucket]
+        bucket_components.sort(
+            key=lambda component: (
+                hashlib.sha256(
+                    f"{algorithm_id}|{seed}|{bucket}|{component['component_id']}".encode("utf-8")
+                ).hexdigest(),
+                component["component_id"],
+            )
+        )
+        offset = 0
+        for split in SPLITS:
+            target_count = bucket_target_component_counts[bucket][split]
+            for component in bucket_components[offset : offset + target_count]:
+                assigned[component["component_id"]] = split
+            offset += target_count
+    return assigned
 
 
 def split_records(
@@ -1159,6 +1245,9 @@ def split_records(
             for category in PROTECTED_CATEGORIES
             for value in sorted(component_families.get(category, set()))
         ]
+        family_hashes.sort(
+            key=lambda family: (PROTECTED_CATEGORIES.index(family["category"]), family["hash"])
+        )
         components.append(
             {
                 "component_id": _split_component_id(record_ids),
@@ -1175,22 +1264,12 @@ def split_records(
     components.sort(key=lambda component: component["component_id"])
     ratios = {split: float(ratio_values[split]) for split in SPLITS}
     targets = {bucket: _split_targets(sum(component["bucket"] == bucket for component in components), ratios) for bucket in BUCKETS}
-    assigned: dict[str, str] = {}
-    for bucket in BUCKETS:
-        bucket_components = [component for component in components if component["bucket"] == bucket]
-        bucket_components.sort(
-            key=lambda component: (
-                hashlib.sha256(
-                    f"{SPLIT_ALGORITHM_ID}|{seed}|{bucket}|{component['component_id']}".encode("utf-8")
-                ).hexdigest(),
-                component["component_id"],
-            )
-        )
-        offset = 0
-        for split in SPLITS:
-            for component in bucket_components[offset : offset + targets[bucket][split]]:
-                assigned[component["component_id"]] = split
-            offset += targets[bucket][split]
+    assigned = _seeded_component_assignments(
+        components,
+        algorithm_id=SPLIT_ALGORITHM_ID,
+        seed=seed,
+        bucket_target_component_counts=targets,
+    )
 
     for component in components:
         split = assigned[component["component_id"]]
@@ -1637,12 +1716,164 @@ def _validate_json_schema(output: dict[str, Any], schema_path: Path, label: str)
         raise AuditInputError(f"{label}_schema_invalid: {path}: {error.message}")
 
 
+def _validate_split_semantics(output: dict[str, Any]) -> None:
+    """Recompute receipt identities and cross-check all redundant counts."""
+
+    manifest_body = {key: value for key, value in output.items() if key != "manifest_sha256"}
+    if _json_digest(manifest_body) != output["manifest_sha256"]:
+        raise AuditInputError("split_receipt_drift: manifest_sha256")
+
+    config = output["config"]
+    config_body = {key: value for key, value in config.items() if key != "config_sha256"}
+    if _json_digest(config_body) != config["config_sha256"]:
+        raise AuditInputError("split_receipt_drift: config_sha256")
+    ratios = {
+        split: _ensure_finite_number(config["ratios"][split], f"config.ratios.{split}")
+        for split in SPLITS
+    }
+    if not math.isclose(sum(ratios.values()), 1.0, rel_tol=0.0, abs_tol=1e-9):
+        raise AuditInputError("split_receipt_drift: ratios")
+
+    input_data = output["input"]
+    input_body = {
+        "records_manifest_sha256": input_data["records_manifest_sha256"],
+        "clusters_receipt_sha256": input_data["clusters_receipt_sha256"],
+    }
+    if _json_digest(input_body) != input_data["input_sha256"]:
+        raise AuditInputError("split_receipt_drift: input_sha256")
+
+    components = output["components"]
+    if [component["component_id"] for component in components] != sorted(component["component_id"] for component in components):
+        raise AuditInputError("split_receipt_drift: component_order")
+    component_by_id: dict[str, dict[str, Any]] = {}
+    record_owner: dict[str, str] = {}
+    family_owner: dict[tuple[str, str], set[str]] = {}
+    for component in components:
+        component_id = component["component_id"]
+        if component_id in component_by_id:
+            raise AuditInputError(f"split_receipt_drift: duplicate_component_id:{component_id}")
+        record_ids = component["record_ids"]
+        if record_ids != sorted(record_ids):
+            raise AuditInputError(f"split_receipt_drift: component_record_order:{component_id}")
+        if len(record_ids) != component["record_count"] or len(set(record_ids)) != len(record_ids):
+            raise AuditInputError(f"split_receipt_drift: component_record_count:{component_id}")
+        if _split_component_id(record_ids) != component_id:
+            raise AuditInputError(f"split_receipt_drift: component_id:{component_id}")
+        family_pairs = {
+            (family["category"], family["hash"])
+            for family in component["protected_family_hashes"]
+        }
+        family_order = [
+            (family["category"], family["hash"])
+            for family in component["protected_family_hashes"]
+        ]
+        expected_family_order = sorted(
+            family_pairs,
+            key=lambda item: (PROTECTED_CATEGORIES.index(item[0]), item[1]),
+        )
+        if family_order != expected_family_order:
+            raise AuditInputError(f"split_receipt_drift: family_order:{component_id}")
+        if len(family_pairs) != len(component["protected_family_hashes"]):
+            raise AuditInputError(f"split_receipt_drift: duplicate_family_hash:{component_id}")
+        if not {category for category, _ in family_pairs}.issuperset(
+            {"source_shoot", "scene", "person", "location", "time", "derivation"}
+        ):
+            raise AuditInputError(f"split_receipt_drift: missing_protected_family:{component_id}")
+        if component["family_count"] != len(family_pairs):
+            raise AuditInputError(f"split_receipt_drift: family_count:{component_id}")
+        if component["dedup_cluster_count"] != sum(category == "dedup_cluster" for category, _ in family_pairs):
+            raise AuditInputError(f"split_receipt_drift: dedup_cluster_count:{component_id}")
+        if component["sequence_count"] != sum(category == "sequence" for category, _ in family_pairs):
+            raise AuditInputError(f"split_receipt_drift: sequence_count:{component_id}")
+        component_by_id[component_id] = component
+        for record_id in record_ids:
+            if record_id in record_owner:
+                raise AuditInputError(f"split_receipt_drift: duplicate_record_id:{record_id}")
+            record_owner[record_id] = component_id
+        for family_pair in family_pairs:
+            family_owner.setdefault(family_pair, set()).add(component["split"])
+
+    assignments = output["assignments"]
+    assignment_by_record: dict[str, dict[str, Any]] = {}
+    for assignment in assignments:
+        record_id = assignment["record_id"]
+        if record_id in assignment_by_record:
+            raise AuditInputError(f"split_receipt_drift: duplicate_assignment_id:{record_id}")
+        component = component_by_id.get(assignment["component_id"])
+        if component is None:
+            raise AuditInputError(f"split_receipt_drift: assignment_component:{record_id}")
+        if record_id not in component["record_ids"]:
+            raise AuditInputError(f"split_receipt_drift: assignment_membership:{record_id}")
+        if assignment["split"] != component["split"] or assignment["bucket"] != component["bucket"]:
+            raise AuditInputError(f"split_receipt_drift: assignment_component_metadata:{record_id}")
+        assignment_by_record[record_id] = assignment
+    if [assignment["record_id"] for assignment in assignments] != sorted(assignment["record_id"] for assignment in assignments):
+        raise AuditInputError("split_receipt_drift: assignment_order")
+    if set(assignment_by_record) != set(record_owner):
+        raise AuditInputError("split_receipt_drift: assignment_record_set")
+    if input_data["record_count"] != len(record_owner):
+        raise AuditInputError("split_receipt_drift: input_record_count")
+
+    counts = output["counts"]
+    if counts["component_count"] != len(components) or counts["record_count"] != len(assignments):
+        raise AuditInputError("split_receipt_drift: aggregate_count")
+    expected_family_counts = {
+        category: len({family_hash for (family_category, family_hash) in family_owner if family_category == category})
+        for category in PROTECTED_CATEGORIES
+    }
+    if counts["family_counts"] != expected_family_counts:
+        raise AuditInputError("split_receipt_drift: family_counts")
+    expected_dedup_count = sum(component["dedup_cluster_count"] for component in components)
+    expected_sequence_count = sum(component["sequence_count"] for component in components)
+    if counts["dedup_cluster_count"] != expected_dedup_count or counts["sequence_count"] != expected_sequence_count:
+        raise AuditInputError("split_receipt_drift: family_aggregate_counts")
+    if config["bucket_target_component_counts"] != {
+        bucket: _split_targets(sum(component["bucket"] == bucket for component in components), ratios)
+        for bucket in BUCKETS
+    }:
+        raise AuditInputError("split_receipt_drift: bucket_targets")
+
+    expected_assignments = _seeded_component_assignments(
+        components,
+        algorithm_id=output["algorithm"]["algorithm_id"],
+        seed=config["seed"],
+        bucket_target_component_counts=config["bucket_target_component_counts"],
+    )
+    for component in components:
+        if expected_assignments.get(component["component_id"]) != component["split"]:
+            raise AuditInputError(f"split_receipt_drift: seeded_assignment:{component['component_id']}")
+
+    for split in SPLITS:
+        split_components = [component for component in components if component["split"] == split]
+        split_assignments = [assignment for assignment in assignments if assignment["split"] == split]
+        expected = {
+            "component_count": len(split_components),
+            "record_count": len(split_assignments),
+            "buckets": {
+                bucket: {
+                    "component_count": sum(component["bucket"] == bucket for component in split_components),
+                    "record_count": sum(
+                        assignment["bucket"] == bucket for assignment in split_assignments
+                    ),
+                }
+                for bucket in BUCKETS
+            },
+        }
+        if counts["per_split"][split] != expected:
+            raise AuditInputError(f"split_receipt_drift: per_split:{split}")
+
+    cross_split_leak_count = sum(len(splits) > 1 for splits in family_owner.values())
+    if output["cross_split_leak_count"] != cross_split_leak_count or cross_split_leak_count != 0:
+        raise AuditInputError("split_receipt_drift: cross_split_leak_count")
+
+
 def validate_cluster_output(output: dict[str, Any]) -> None:
     _validate_json_schema(output, SCHEMA_PATH, "cluster")
 
 
 def validate_split_output(output: dict[str, Any]) -> None:
     _validate_json_schema(output, SPLIT_SCHEMA_PATH, "split")
+    _validate_split_semantics(output)
 
 
 def _self_test() -> None:

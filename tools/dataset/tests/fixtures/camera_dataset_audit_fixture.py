@@ -279,13 +279,38 @@ def run() -> None:
                 "time_family_id": f"split-time-{suffix}",
                 "derivation_family_id": derivation_family_id or f"split-derivation-{suffix}",
                 "rights_disposition": "fixture_only" if bucket == "synthetic" else "approved",
-                "review_status": "resolved_human_review",
+                "review": {
+                    "status": "dual_reviewed",
+                    "vote_history": [
+                        {
+                            "vote_id": f"vote-{suffix}-a",
+                            "annotator_id": f"annotator-{suffix}-a",
+                            "submitted_at": "2026-09-05T00:00:00Z",
+                            "decision": "accept",
+                        },
+                        {
+                            "vote_id": f"vote-{suffix}-b",
+                            "annotator_id": f"annotator-{suffix}-b",
+                            "submitted_at": "2026-09-05T00:00:01Z",
+                            "decision": "accept",
+                        },
+                    ],
+                    "adjudication_history": [],
+                },
             }
             if source_kind is not None:
                 entry["source_kind"] = source_kind
             if sequence_id is not None:
                 entry["sequence_id"] = sequence_id
             return entry
+
+        def split_document(entries: list[dict]) -> dict:
+            return {
+                "manifest_type": "camera_split_input",
+                "schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID,
+                "schema_version": AUDIT.SCHEMA_VERSION,
+                "entries": entries,
+            }
 
         sequence_receipt = next(item for item in output["sequence_families"] if item["sequence_id"] == "sequence-fixture")
         split_entries = [
@@ -303,12 +328,7 @@ def run() -> None:
         split_manifest = root / "split-input.json"
         split_manifest.write_text(
             json.dumps(
-                {
-                    "manifest_type": "camera_split_input",
-                    "schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID,
-                    "manifest_version": AUDIT.SCHEMA_VERSION,
-                    "entries": split_entries,
-                }
+                split_document(split_entries)
             ),
             encoding="utf-8",
         )
@@ -378,6 +398,50 @@ def run() -> None:
         )
         AUDIT.validate_split_output(json.loads(json.dumps(split_output)))
 
+        split_jsonl = root / "split-input.jsonl"
+        split_jsonl.write_text(
+            "\n".join(json.dumps(row) for row in [split_document([]), *split_entries]) + "\n",
+            encoding="utf-8",
+        )
+        assert AUDIT.load_split_manifest(split_jsonl) == split_records
+        for header_mutation, expected in (
+            (lambda value: value.pop("schema_id"), "invalid_split_schema_id"),
+            (lambda value: value.pop("schema_version"), "invalid_split_schema_version"),
+            (lambda value: value.__setitem__("schema_version", "v0.0.0"), "invalid_split_schema_version"),
+        ):
+            bad_header = split_document([])
+            header_mutation(bad_header)
+            bad_header_path = root / f"bad-header-{expected}.jsonl"
+            bad_header_path.write_text(
+                "\n".join(json.dumps(row) for row in [bad_header, split_entries[0]]) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                AUDIT.load_split_manifest(bad_header_path)
+            except AUDIT.AuditInputError as exc:
+                assert expected in str(exc), (expected, exc)
+            else:
+                raise AssertionError(f"split header mutation {expected} was accepted")
+        unversioned_path = root / "unversioned-split.json"
+        unversioned_path.write_text(json.dumps({"entries": split_entries}), encoding="utf-8")
+        try:
+            AUDIT.load_split_manifest(unversioned_path)
+        except AUDIT.AuditInputError as exc:
+            assert "invalid_split_schema_id" in str(exc)
+        else:
+            raise AssertionError("unversioned split input was accepted")
+        for forbidden_field in ("label", "locked_label", "content", "content_sha256"):
+            forbidden_entry = copy.deepcopy(split_entries[0])
+            forbidden_entry[forbidden_field] = "must-not-enter"
+            forbidden_path = root / f"forbidden-{forbidden_field}.json"
+            forbidden_path.write_text(json.dumps(split_document([forbidden_entry])), encoding="utf-8")
+            try:
+                AUDIT.load_split_manifest(forbidden_path)
+            except AUDIT.AuditInputError as exc:
+                assert "content_payload_in_split_input" in str(exc), (forbidden_field, exc)
+            else:
+                raise AssertionError(f"split input field {forbidden_field} was accepted")
+
         seed_five = AUDIT.split_records(
             split_records,
             output,
@@ -410,7 +474,7 @@ def run() -> None:
             right[field] = left[field]
             leakage_path = root / f"leak-{category}.json"
             leakage_path.write_text(
-                json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [left, right]}),
+                json.dumps(split_document([left, right])),
                 encoding="utf-8",
             )
             leakage_records = AUDIT.load_split_manifest(leakage_path)
@@ -426,10 +490,27 @@ def run() -> None:
             component_for = {row["record_id"]: row["component_id"] for row in leakage_output["assignments"]}
             assert component_for[left["record_id"]] == component_for[right["record_id"]]
 
+        for category, field in (("take", "take_family_id"), ("device", "device_family_id")):
+            left = split_entry(f"leak-{category}-left", ["asset-base"], f"leak-{category}-left")
+            right = split_entry(f"leak-{category}-right", ["asset-far"], f"leak-{category}-right")
+            left[field] = right[field] = f"split-{category}-shared"
+            leakage_path = root / f"leak-{category}.json"
+            leakage_path.write_text(json.dumps(split_document([left, right])), encoding="utf-8")
+            leakage_output = AUDIT.split_records(
+                AUDIT.load_split_manifest(leakage_path),
+                output,
+                seed=1,
+                train_ratio=0.5,
+                calibration_ratio=0.5,
+                locked_test_ratio=0.0,
+            )
+            component_for = {row["record_id"]: row["component_id"] for row in leakage_output["assignments"]}
+            assert component_for[left["record_id"]] == component_for[right["record_id"]]
+
         dedup_left = split_entry("leak-dedup-left", ["asset-base"], "leak-dedup-left")
         dedup_right = split_entry("leak-dedup-right", ["asset-exact"], "leak-dedup-right")
         dedup_path = root / "leak-dedup-cluster.json"
-        dedup_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [dedup_left, dedup_right]}), encoding="utf-8")
+        dedup_path.write_text(json.dumps(split_document([dedup_left, dedup_right])), encoding="utf-8")
         dedup_output = AUDIT.split_records(AUDIT.load_split_manifest(dedup_path), output, train_ratio=0.5, calibration_ratio=0.5, locked_test_ratio=0.0)
         dedup_components = {row["record_id"]: row["component_id"] for row in dedup_output["assignments"]}
         assert dedup_components[dedup_left["record_id"]] == dedup_components[dedup_right["record_id"]]
@@ -439,21 +520,68 @@ def run() -> None:
             split_entry("leak-sequence-right", ["asset-seq-f1"], "leak-sequence-right", sequence_id="sequence-fixture", derivation_family_id=sequence_receipt["derivation_family_id"]),
         ]
         sequence_path = root / "leak-sequence.json"
-        sequence_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": sequence_entries}), encoding="utf-8")
+        sequence_path.write_text(json.dumps(split_document(sequence_entries)), encoding="utf-8")
         sequence_output = AUDIT.split_records(AUDIT.load_split_manifest(sequence_path), output, train_ratio=0.5, calibration_ratio=0.5, locked_test_ratio=0.0)
         sequence_components = {row["record_id"]: row["component_id"] for row in sequence_output["assignments"]}
         assert sequence_components[sequence_entries[0]["record_id"]] == sequence_components[sequence_entries[1]["record_id"]]
 
+        assert split_records[0].review_status == "dual_reviewed"
+        valid_adjudicated = copy.deepcopy(split_entries[0])
+        valid_adjudicated["record_id"] = "review-adjudicated"
+        valid_adjudicated["review"]["status"] = "adjudicated"
+        valid_adjudicated["review"]["vote_history"][1]["decision"] = "reject"
+        valid_adjudicated["review"]["adjudication_history"] = [
+            {
+                "adjudication_id": "adjudication-fixture-001",
+                "adjudicator_id": "adjudicator-fixture-001",
+                "occurred_at": "2026-09-05T00:00:02Z",
+                "based_on_vote_ids": ["vote-base-a", "vote-base-b"],
+                "outcome": "accepted",
+            }
+        ]
+        adjudicated_path = root / "valid-adjudicated.json"
+        adjudicated_path.write_text(json.dumps(split_document([valid_adjudicated])), encoding="utf-8")
+        adjudicated_records = AUDIT.load_split_manifest(adjudicated_path)
+        assert adjudicated_records[0].review_status == "adjudicated"
+
+        review_cases = []
+        conflicting = copy.deepcopy(split_entries[0])
+        conflicting["record_id"] = "review-conflicting"
+        conflicting["review"]["vote_history"][1]["decision"] = "reject"
+        review_cases.append((conflicting, "review_conflict_unresolved"))
+        rejected_adjudication = copy.deepcopy(valid_adjudicated)
+        rejected_adjudication["record_id"] = "review-rejected-adjudication"
+        rejected_adjudication["review"]["adjudication_history"][0]["outcome"] = "rejected"
+        review_cases.append((rejected_adjudication, "release adjudication"))
+        bad_scope = copy.deepcopy(valid_adjudicated)
+        bad_scope["record_id"] = "review-bad-scope"
+        bad_scope["review"]["adjudication_history"][0]["based_on_vote_ids"] = ["vote-base-a"]
+        review_cases.append((bad_scope, "invalid_adjudication_scope"))
+        bare_status = copy.deepcopy(split_entries[0])
+        bare_status["record_id"] = "review-bare-status"
+        bare_status.pop("review")
+        bare_status["review_status"] = "reviewed"
+        review_cases.append((bare_status, "review_status_only_not_admissible"))
+        for review_entry, expected in review_cases:
+            review_path = root / f"{review_entry['record_id']}.json"
+            review_path.write_text(json.dumps(split_document([review_entry])), encoding="utf-8")
+            try:
+                AUDIT.load_split_manifest(review_path)
+            except AUDIT.AuditInputError as exc:
+                assert expected in str(exc), (expected, exc)
+            else:
+                raise AssertionError(f"review case {review_entry['record_id']} was accepted")
+
         for mutation, expected in (
             (lambda value: value.pop("source_shoot_id"), "missing_protected_id"),
             (lambda value: value.__setitem__("rights_disposition", "unresolved"), "rights_not_admissible"),
-            (lambda value: value.__setitem__("review_status", "unreviewed"), "review_not_resolved"),
+            (lambda value: (value.pop("review"), value.__setitem__("review_status", "unreviewed")), "review_status_only_not_admissible"),
             (lambda value: value.__setitem__("split", "train"), "preassigned_split_not_allowed"),
         ):
             mutated = copy.deepcopy(split_entries[0])
             mutation(mutated)
             mutation_path = root / f"bad-split-{expected}.json"
-            mutation_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [mutated]}), encoding="utf-8")
+            mutation_path.write_text(json.dumps(split_document([mutated])), encoding="utf-8")
             try:
                 AUDIT.load_split_manifest(mutation_path)
             except AUDIT.AuditInputError as exc:
@@ -462,7 +590,7 @@ def run() -> None:
                 raise AssertionError(f"split mutation {expected} was accepted")
 
         duplicate_path = root / "duplicate-split-record.json"
-        duplicate_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [split_entries[0], copy.deepcopy(split_entries[0])]}), encoding="utf-8")
+        duplicate_path.write_text(json.dumps(split_document([split_entries[0], copy.deepcopy(split_entries[0])])), encoding="utf-8")
         try:
             AUDIT.load_split_manifest(duplicate_path)
         except AUDIT.AuditInputError as exc:
@@ -474,7 +602,7 @@ def run() -> None:
         bucket_conflict["bucket"] = "organic"
         bucket_conflict["source_kind"] = "synthetic_fixture"
         bucket_path = root / "bucket-conflict.json"
-        bucket_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [bucket_conflict]}), encoding="utf-8")
+        bucket_path.write_text(json.dumps(split_document([bucket_conflict])), encoding="utf-8")
         try:
             AUDIT.load_split_manifest(bucket_path)
         except AUDIT.AuditInputError as exc:
@@ -485,7 +613,7 @@ def run() -> None:
         missing_cluster = copy.deepcopy(split_entries[0])
         missing_cluster["asset_ids"] = ["asset-not-in-receipt"]
         missing_cluster_path = root / "missing-cluster-asset.json"
-        missing_cluster_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [missing_cluster]}), encoding="utf-8")
+        missing_cluster_path.write_text(json.dumps(split_document([missing_cluster])), encoding="utf-8")
         try:
             AUDIT.split_records(AUDIT.load_split_manifest(missing_cluster_path), output)
         except AUDIT.AuditInputError as exc:
@@ -496,7 +624,7 @@ def run() -> None:
         raw_path_entry = copy.deepcopy(split_entries[0])
         raw_path_entry["media_path"] = "../outside.png"
         raw_path_path = root / "raw-path-split.json"
-        raw_path_path.write_text(json.dumps({"schema_id": AUDIT.SPLIT_INPUT_SCHEMA_ID, "entries": [raw_path_entry]}), encoding="utf-8")
+        raw_path_path.write_text(json.dumps(split_document([raw_path_entry])), encoding="utf-8")
         try:
             AUDIT.load_split_manifest(raw_path_path)
         except AUDIT.AuditInputError as exc:
@@ -551,6 +679,197 @@ def run() -> None:
         else:
             raise AssertionError("schema non-finite number was accepted")
 
+        tampered_hash = copy.deepcopy(split_output)
+        tampered_hash["assignments"][0]["split"] = "locked_test"
+        try:
+            AUDIT.validate_split_output(tampered_hash)
+        except AUDIT.AuditInputError as exc:
+            assert "manifest_sha256" in str(exc)
+        else:
+            raise AssertionError("assignment tamper with retained manifest hash was accepted")
+
+        tampered_config = copy.deepcopy(split_output)
+        tampered_config["config"]["seed"] = 9
+        tampered_config["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_config.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_config)
+        except AUDIT.AuditInputError as exc:
+            assert "config_sha256" in str(exc)
+        else:
+            raise AssertionError("config hash drift was accepted")
+
+        tampered_input = copy.deepcopy(split_output)
+        tampered_input["input"]["records_manifest_sha256"] = "0" * 64
+        tampered_input["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_input.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_input)
+        except AUDIT.AuditInputError as exc:
+            assert "input_sha256" in str(exc)
+        else:
+            raise AssertionError("input hash drift was accepted")
+
+        tampered_input_count = copy.deepcopy(split_output)
+        tampered_input_count["input"]["record_count"] += 1
+        tampered_input_count["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_input_count.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_input_count)
+        except AUDIT.AuditInputError as exc:
+            assert "input_record_count" in str(exc)
+        else:
+            raise AssertionError("input record-count drift was accepted")
+
+        tampered_duplicate_assignment = copy.deepcopy(split_output)
+        tampered_duplicate_assignment["assignments"].append(copy.deepcopy(tampered_duplicate_assignment["assignments"][0]))
+        tampered_duplicate_assignment["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_duplicate_assignment.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_duplicate_assignment)
+        except AUDIT.AuditInputError as exc:
+            assert "duplicate_assignment_id" in str(exc)
+        else:
+            raise AssertionError("duplicate assignment was accepted")
+
+        tampered_missing_assignment = copy.deepcopy(split_output)
+        del tampered_missing_assignment["assignments"][0]
+        tampered_missing_assignment["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_missing_assignment.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_missing_assignment)
+        except AUDIT.AuditInputError as exc:
+            assert "assignment_record_set" in str(exc)
+        else:
+            raise AssertionError("missing assignment was accepted")
+
+        tampered_per_split = copy.deepcopy(split_output)
+        tampered_per_split["counts"]["per_split"]["train"]["record_count"] += 1
+        tampered_per_split["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_per_split.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_per_split)
+        except AUDIT.AuditInputError as exc:
+            assert "per_split:train" in str(exc)
+        else:
+            raise AssertionError("per-split count drift was accepted")
+
+        tampered_component = copy.deepcopy(split_output)
+        tampered_component["components"][0]["record_count"] += 1
+        tampered_component["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_component.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_component)
+        except AUDIT.AuditInputError as exc:
+            assert "component_record_count" in str(exc)
+        else:
+            raise AssertionError("inconsistent component count was accepted after hash recompute")
+
+        tampered_counts = copy.deepcopy(split_output)
+        tampered_counts["counts"]["record_count"] += 1
+        tampered_counts["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_counts.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_counts)
+        except AUDIT.AuditInputError as exc:
+            assert "aggregate_count" in str(exc)
+        else:
+            raise AssertionError("inconsistent aggregate count was accepted after hash recompute")
+
+        tampered_assignment = copy.deepcopy(split_output)
+        organic_components = [component for component in tampered_assignment["components"] if component["bucket"] == "organic"]
+        assert len(organic_components) == 2 and organic_components[0]["split"] != organic_components[1]["split"]
+        first_split, second_split = organic_components[0]["split"], organic_components[1]["split"]
+        organic_components[0]["split"], organic_components[1]["split"] = second_split, first_split
+        for assignment in tampered_assignment["assignments"]:
+            if assignment["component_id"] == organic_components[0]["component_id"]:
+                assignment["split"] = second_split
+            elif assignment["component_id"] == organic_components[1]["component_id"]:
+                assignment["split"] = first_split
+        for split in AUDIT.SPLITS:
+            split_components = [component for component in tampered_assignment["components"] if component["split"] == split]
+            split_assignments = [assignment for assignment in tampered_assignment["assignments"] if assignment["split"] == split]
+            tampered_assignment["counts"]["per_split"][split] = {
+                "component_count": len(split_components),
+                "record_count": len(split_assignments),
+                "buckets": {
+                    bucket: {
+                        "component_count": sum(component["bucket"] == bucket for component in split_components),
+                        "record_count": sum(assignment["bucket"] == bucket for assignment in split_assignments),
+                    }
+                    for bucket in AUDIT.BUCKETS
+                },
+            }
+        tampered_assignment["counts"]["component_count"] = len(tampered_assignment["components"])
+        tampered_assignment["counts"]["record_count"] = len(tampered_assignment["assignments"])
+        tampered_assignment["counts"]["family_counts"] = {
+            category: len({
+                family["hash"]
+                for component in tampered_assignment["components"]
+                for family in component["protected_family_hashes"]
+                if family["category"] == category
+            })
+            for category in AUDIT.PROTECTED_CATEGORIES
+        }
+        tampered_assignment["counts"]["dedup_cluster_count"] = sum(
+            component["dedup_cluster_count"] for component in tampered_assignment["components"]
+        )
+        tampered_assignment["counts"]["sequence_count"] = sum(
+            component["sequence_count"] for component in tampered_assignment["components"]
+        )
+        config_body = {
+            key: value for key, value in tampered_assignment["config"].items() if key != "config_sha256"
+        }
+        tampered_assignment["config"]["config_sha256"] = AUDIT._json_digest(config_body)
+        input_body = {
+            "records_manifest_sha256": tampered_assignment["input"]["records_manifest_sha256"],
+            "clusters_receipt_sha256": tampered_assignment["input"]["clusters_receipt_sha256"],
+        }
+        tampered_assignment["input"]["input_sha256"] = AUDIT._json_digest(input_body)
+        tampered_assignment["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_assignment.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_assignment)
+        except AUDIT.AuditInputError as exc:
+            assert "seeded_assignment" in str(exc)
+        else:
+            raise AssertionError("seeded component reassignment was accepted after all count/hash recomputes")
+
+        organic_components = [component for component in split_output["components"] if component["bucket"] == "organic"]
+        assert len({component["split"] for component in organic_components}) > 1
+        source_hashes = {
+            component["component_id"]: next(
+                family["hash"] for family in component["protected_family_hashes"] if family["category"] == "source_shoot"
+            )
+            for component in organic_components
+        }
+        leak_left, leak_right = organic_components[0], organic_components[1]
+        tampered_family = copy.deepcopy(split_output)
+        target = next(component for component in tampered_family["components"] if component["component_id"] == leak_right["component_id"])
+        replacement = source_hashes[leak_left["component_id"]]
+        for family in target["protected_family_hashes"]:
+            if family["category"] == "source_shoot":
+                family["hash"] = replacement
+        tampered_family["counts"]["family_counts"]["source_shoot"] -= 1
+        tampered_family["manifest_sha256"] = AUDIT._json_digest(
+            {key: value for key, value in tampered_family.items() if key != "manifest_sha256"}
+        )
+        try:
+            AUDIT.validate_split_output(tampered_family)
+        except AUDIT.AuditInputError as exc:
+            assert "cross_split_leak_count" in str(exc)
+        else:
+            raise AssertionError("cross-split family-hash tamper was accepted after hash recompute")
+
         print(
             "M3-008 split seed=1 output_sha256=" + split_output["manifest_sha256"] +
             " seed5_output_sha256=" + seed_five["manifest_sha256"] +
@@ -565,7 +884,7 @@ def run() -> None:
         "sequence_family input_order_independent malformed_rejected rights_required media_map_conflict "
         "schema_round_trip ssim_review_only typed_parameters phash64 decompression_bomb_rejected "
         "M3-008 split_components protected_family_leakage bucket_isolation changed_seed_integrity "
-        "split_schema_negative_cases"
+        "split_schema_negative_cases review_history_contract seeded_assignment_receipt_tamper"
     )
 
 
