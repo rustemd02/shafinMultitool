@@ -2,9 +2,10 @@
 
 ## Status
 
-Complete for the current quota-admission correction batch. This receipt documents
-contracts and validator evidence only; it is not a collection, rights grant,
-human calibration result, or model-quality claim.
+Complete for the current dataset-admission correction batch; M3-005 remains
+HUMAN pending. This receipt documents contracts and validator evidence only; it
+is not a collection, rights grant, human calibration result, or model-quality
+claim.
 
 ## Changes
 
@@ -16,7 +17,8 @@ human calibration result, or model-quality claim.
   `docs/implementation/camera-coach-contract-v2.json` (26 IDs); legacy-only
   aliases are rejected.
 - `datasets/camera-coach/v1/temporal-schema.json` — monotonic timestamped
-  sequence extension with one-take timeline.
+  sequence extension with one-take timeline and validator-enforced unique
+  `frame_id` values within each sequence.
 - `datasets/camera-coach/v1/episode-schema.json` — before/action/after
   extension with correct, no-op, opposite, overshoot, track-loss, and
   incomparable outcomes.
@@ -25,10 +27,12 @@ human calibration result, or model-quality claim.
   `derivation-manifest.jsonl` — versioned, content-addressed, template-only
   JSONL headers; no raw or synthetic production records are committed. Consent
   entries resolve source/asset scope and admissible disposition before rights
-  admission.
+  admission. Source-shoot entries explicitly require `source_owner_id`,
+  `operator_id`, UTC `captured_at`, and non-empty
+  `provenance_receipt_ref`.
 - `datasets/camera-coach/v1/capture-manifest-template.json` — auditable
-  capture-entry fields and pilot checklist including consent and device-family
-  split checks.
+  capture-entry fields and pilot checklist including source ownership/operator/
+  timestamp/receipt metadata, consent, and device-family split checks.
 - `datasets/camera-coach/v1/capture-protocol.md` — independent still,
   temporal, and before/after procedures; burst-frame inflation prevention;
   closed derivation kinds and quota rules; strict integer temporal fields and
@@ -36,7 +40,9 @@ human calibration result, or model-quality claim.
   measurable episode verification with subject continuity; source/consent/rights/
   family/review gates;
   seven-class and capture-dimension coverage; explicit external-manifest batch
-  admission invocations and duplicate guards.
+  admission invocations and duplicate guards. Single-record CLI validation is
+  explicitly schema-only and non-admitting; only a complete batch can claim
+  split/quota admission.
 - `datasets/camera-coach/v1/annotation-guide.md` — operational rubric for
   subject, canonical SELECT_SUBJECT/fail-closed encoding, issue, action, KEEP,
   ABSTAIN with or without a selected subject, intentional style, verification,
@@ -59,11 +65,12 @@ human calibration result, or model-quality claim.
   declared hostile corpus, normalized list consumption at every validator
   boundary, direct validation of every source-shoot manifest field (including
   unused entries), and action-specific verifier checks. Production
-  `--record` and batch admission require explicit source/consent/rights/
-  derivation manifests; embedded synthetic manifests are used only by
-  `--self-test`.
+  source-shoot metadata validation (`source_owner_id`, `operator_id`, UTC
+  `captured_at`, and `provenance_receipt_ref`), unique temporal `frame_id`
+  enforcement, and a non-admitting `--record` schema-only mode; embedded
+  synthetic manifests are used only by `--self-test`.
 - `tools/dataset/tests/fixtures/camera-coach-fixtures.json` — explicitly
-  synthetic valid still/temporal/episode records and 84 declared negative
+  synthetic valid still/temporal/episode records and 90 declared negative
   mutation cases, including source relabel, media asset authority, recursive
   unknown fields, subject/ABSTAIN semantics, consent resolution, derivation
   kind/independence/quota, temporal timeline, review status/conflict/
@@ -75,7 +82,8 @@ human calibration result, or model-quality claim.
   source-asset owner conflicts, category-keyed family namespace probes, exact
   issue/global action consistency (including orphan globals with no issue or
   evidence rows and issue actions missing globally), closed issue evidence,
-  and episode outcome/subject-continuity probes. Every
+  source-shoot owner/operator/timestamp/receipt failures, duplicate temporal
+  frame IDs, and episode outcome/subject-continuity probes. Every
   hostile mutation is asserted to return validation errors without raising.
   The self-test additionally builds a two-record quota fixture with unique
   assets, rejects its second counted decision, and admits the same pair when
@@ -96,26 +104,26 @@ PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/m3-dataset-foundation/d
 
 $ python3 tools/dataset/camera_coach_check.py --self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=84
-PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=90 source_metadata=owner/operator/captured_at/receipt_required
+PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap unique_frame_ids=required episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed separate_record_admission=non_admitting
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=84
+PASS camera-coach self-test valid=3 invalid=90
 
 $ python3 tools/dataset/camera_coach_check.py --self-test  # repeated deterministic run
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=84
-PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=90 source_metadata=owner/operator/captured_at/receipt_required
+PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap unique_frame_ids=required episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed separate_record_admission=non_admitting
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=84
+PASS camera-coach self-test valid=3 invalid=90
 
 $ PYTHONHASHSEED=1..5 deterministic validator/order and namespace probe
-PASS cross_seed_determinism seeds=1,2,3,4,5 cases=capture_review_source_asset_owner split_namespace label_action_consistency quota_batch probe_sha256=8b9396002a8c13a8
+PASS cross_seed_determinism seeds=1,2,3,4,5 cases=capture_review_source_asset_owner split_namespace label_action_consistency quota_batch source_metadata temporal_frame_id separate_record_cli output_identical=true probe_sha256=b040ce33bb97861c
 
 $ in-memory approved-manifest release-gate smoke (three distinct release splits, two accepting votes per record)
-PASS positive_release_batch records=3 splits=train,calibration,holdout errors=0
+PASS positive_release_batch records=3 splits=train,calibration,holdout source_metadata=required errors=0
 
-$ malformed label boundary totality quick probe
-PASS malformed_totality cases=7
+$ malformed source-metadata/temporal-frame boundary totality quick probe
+PASS malformed_totality cases=12 source_metadata_and_temporal_frame_id=covered
 
 $ python3 -c 'import json; from pathlib import Path; a=json.loads(Path("docs/implementation/camera-coach-contract-v2.json").read_text()); s=json.loads(Path("datasets/camera-coach/v1/label-schema.json").read_text()); assert set(a["approvedActionIDs"]) == set(s["$defs"]["actionId"]["enum"]); assert set(s["$defs"]["verificationActionId"]["enum"]) == set(a["approvedActionIDs"]) | {"abstain"}; e=s["$defs"]["issue"]["properties"]["evidence"]["items"]["enum"]; assert e == list(dict.fromkeys(e)); print("PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8")'
 PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8
@@ -139,7 +147,7 @@ for case in fixture["invalid_cases"]:
     assert errors and any(case["declared_reason"] in error for error in errors), (case["case_id"], case["declared_reason"], errors)
 print(f"PASS declared_hostile_probes={len(fixture['invalid_cases'])} exact_declared_reasons={len({case['declared_reason'] for case in fixture['invalid_cases']})}")
 PY
-PASS declared_hostile_probes=84 exact_declared_reasons=38
+PASS declared_hostile_probes=90 exact_declared_reasons=41
 
 $ deterministic AST audit of every `_check_list` call (no files written)
 PASS check_list_calls=25 assigned_calls=25 discarded_calls=0
@@ -147,9 +155,9 @@ PASS check_list_calls=25 assigned_calls=25 discarded_calls=0
 $ deterministic schema-invalid scalar/list boundary matrix and unused-source
   manifest-field matrix (each case returned errors without raising)
 PASS normalized_list_matrix cases=70 targets=14 values=5
-PASS unused_source_field_matrix cases=16 fields=16
+PASS unused_source_field_matrix cases=20 fields=20
 
-The self-test and hostile probe loop require every one of the 84 declared
+The self-test and hostile probe loop require every one of the 90 declared
 negative fixtures to fail for its declared reason and to return validation
 errors without raising an exception. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
@@ -168,7 +176,8 @@ review, exact issue evidence (`model_output` and unknown strings), malformed
 subject IDs, malformed action/provenance source-asset/capture person-family/
 temporal asset/manifest source IDs, scalar list-valued abstention/verification
 fields, unused source-shoot family IDs and orientation/lens/lighting fields,
-source-asset owner conflicts, category-keyed family namespace probes, exact
+source-shoot owner/operator/timestamp/receipt metadata, duplicate temporal
+frame IDs, source-asset owner conflicts, category-keyed family namespace probes, exact
 issue/global action consistency in both directions (including orphan global
 actions with no issue/evidence rows), the two-record quota duplicate fixture
 with unique assets and non-quota duplicate allowance, and measurable outcomes
@@ -223,9 +232,19 @@ $ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/test
 FAIL duplicate_derivation_record: cam-still-fixture-001
 exit=1
 
-$ python3 tools/dataset/camera_coach_check.py --record tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl
-input_error: explicit --source-shoots, --consent-manifest, --rights-manifest, and --derivation-manifest are required for admission
-exit=1 (expected: no implicit fixture manifests)
+$ python3 - <<'PY'
+import json, subprocess, sys, tempfile
+from pathlib import Path
+records = [json.loads(line) for line in Path("tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl").read_text().splitlines()]
+with tempfile.TemporaryDirectory(prefix="camera-coach-cli-probe-") as temp_dir:
+    for index, record in enumerate(records):
+        path = Path(temp_dir) / f"record-{index}.json"
+        path.write_text(json.dumps(record), encoding="utf-8")
+        result = subprocess.run([sys.executable, "tools/dataset/camera_coach_check.py", "--record", str(path), "--fixture-mode"], text=True, capture_output=True, check=False)
+        assert result.returncode == 0 and "schema_only=non_admitting" in result.stdout and "camera-coach-batch" not in result.stdout
+print("PASS separate_record_cli records=2 admission=non_admitting")
+PY
+PASS separate_record_cli records=2 admission=non_admitting
 
 $ python3 -m py_compile tools/dataset/camera_coach_check.py
 (no output); exit=0
@@ -250,7 +269,7 @@ $ git diff --check
 (no output); exit=0
 ```
 
-The self-test and hostile probe loop require every one of the 84 declared
+The self-test and hostile probe loop require every one of the 90 declared
 negative fixtures to fail for its declared reason and to return validation
 errors without raising an exception. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
@@ -270,7 +289,8 @@ quota duplicate ownership and non-quota derivative allowance, malformed
 subject IDs, malformed action/provenance
 source-asset/capture person-family/temporal asset/manifest source IDs, scalar
 abstention/verification lists, unused source-shoot family and closed-enum
-fields, source-asset owner conflicts, and measurable outcome subject-continuity
+fields, source-shoot owner/operator/timestamp/receipt metadata, duplicate
+temporal frame IDs, source-asset owner conflicts, and measurable outcome subject-continuity
 failures. The same ID is allowed across distinct family categories but remains
 blocked within one category across release splits. The hostile source case still fails because the
 resolved source entry remains
@@ -286,7 +306,9 @@ structural, closed-key, and referential gates required for this batch.
 - Production JSONL manifests are empty headers (`record_count=0`) until real
   source shoots, consent, and rights evidence exist. Batch admission requires
   caller-supplied manifests and applies the same source/consent/rights/
-  derivation and family gates across the complete collection.
+  derivation, family, and quota gates across the complete collection. A single
+  `--record` check is schema-only and explicitly non-admitting, including when
+  all four manifests are supplied.
 - The checker derives its action catalog from the read-only contract authority
   and deterministically rejects drift between that catalog, schema enums, and
   verifier coverage.
@@ -302,6 +324,8 @@ structural, closed-key, and referential gates required for this batch.
 - Review timestamp and append-order checks cover only the current record's
   history; cross-snapshot append-only continuity is explicitly deferred to
   M3-006.
+- Empty batch semantics and rights-before-consent ordering remain residual
+  policy questions; this correction adds no inferred semantics for either.
 - The required two-annotator, 35-case calibration and disagreement report
   remain pending HUMAN work; no human agreement, calibration quality, or release
   readiness claim is made.

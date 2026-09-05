@@ -13,6 +13,11 @@ The atomic capture unit is a deliberate source decision, not a file count.
 Every entry receives stable IDs for:
 
 - `source_shoot_id`: one controlled session with one source owner;
+- `source_owner_id`: the privacy-safe owner identity for the source shoot;
+- `operator_id`: the privacy-safe capture-operator identity;
+- `captured_at`: the UTC capture timestamp for the source shoot;
+- `provenance_receipt_ref`: an external receipt or hash reference for the
+  source metadata and custody trail;
 - `scene_family_id`: the same physical scene and layout;
 - `take_family_id`: one continuous take or still decision window;
 - `time_family_id`: a bounded lighting/people/time condition;
@@ -81,9 +86,10 @@ timestamps, frame ordinals, asset IDs, and a state timeline such as
 
 The sequence remains one record and one split. `frame_count`, frame `ordinal`
 and `timestamp_ms`, and timeline `start_frame`/`end_frame` must be JSON
-integers; strings, floating-point values, and booleans are invalid. Timeline
-segments must be ordered, non-overlapping, contiguous from frame 0 through the
-final frame, and cover every frame exactly once. Never split frames into
+integers; strings, floating-point values, and booleans are invalid. Every
+`frame_id` is unique within its sequence. Timeline segments must be ordered,
+non-overlapping, contiguous from frame 0 through the final frame, and cover
+every frame exactly once. Never split frames into
 separate partitions,
 count each frame as an independent still, or use a later frame as a new source
 shoot. Device family is also a protected split key even when scene,
@@ -124,7 +130,8 @@ failure/abstention evidence, never silently converted to `no_op`.
 Before a record can enter train, calibration, or holdout, the validator must
 resolve:
 
-1. `source_shoot_id` and every source asset ID in `source-shoots.jsonl`;
+1. `source_shoot_id`, `source_owner_id`, `operator_id`, `captured_at`,
+   `provenance_receipt_ref`, and every source asset ID in `source-shoots.jsonl`;
 2. `consent_record_id` in `consent-manifest.jsonl`, with a matching source-shoot
    and asset scope, explicit admissible disposition, allowed use, evidence
    reference, and `recorded_at`;
@@ -155,10 +162,13 @@ audit, but that status never satisfies a later train/calibration/holdout gate.
 
 Admission reads a caller-supplied record collection and four caller-supplied
 JSON/JSONL manifests: source shoots, consent, rights, and derivation. It never
-falls back to the embedded synthetic fixture manifests. A single `--record`
-invocation likewise requires all four explicit manifest arguments;
-`--fixture-mode` is an explicit test-only opt-in for the synthetic `fixture`
-split.
+falls back to the embedded synthetic fixture manifests. Only `--batch-records`
+can claim admission because split isolation and quota ownership require the
+complete collection. A single `--record` invocation is schema-only and always
+prints `schema_only=non_admitting`; it may be run without manifests or with all
+four manifests for syntax checks, but it cannot claim source, rights, split, or
+quota admission. `--fixture-mode` is an explicit test-only opt-in for the
+synthetic `fixture` split.
 
 Positive synthetic fixture-path smoke check (the flag is intentionally
 explicit):
@@ -201,10 +211,11 @@ python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/
 
 ## Auditable pilot manifest
 
-Start from `capture-manifest-template.json`. For every entry, retain the
-operator, UTC timestamp, family IDs, device/lens/light/orientation fields,
-asset IDs, derivation classification, rights and consent record IDs, and an external
-receipt/hash reference. A pilot audit is incomplete until each checklist item
+Start from `capture-manifest-template.json`. For every entry, retain
+`source_owner_id`, `operator_id`, the UTC `captured_at` timestamp, family IDs,
+device/lens/light/orientation fields, asset IDs, derivation classification,
+rights and consent record IDs, and the external `provenance_receipt_ref`.
+A pilot audit is incomplete until each checklist item
 in that template has a recorded pass/fail/blocked result and an evidence
 location. Empty or unobserved fields are not passes.
 

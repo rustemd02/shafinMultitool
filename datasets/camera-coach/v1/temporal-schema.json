@@ -3,7 +3,7 @@
   "$id": "https://set-os.local/datasets/camera-coach/v1/temporal-schema.json",
   "schema_version": "v1.0.0",
   "title": "Camera Coach temporal sequence record v1",
-  "description": "Temporal extension of the shared Camera Coach label contract. A sequence is one take/family and is never partitioned frame-by-frame.",
+  "description": "Temporal extension of the shared Camera Coach label contract. A sequence is one take/family and is never partitioned frame-by-frame; frame_id values are unique within each sequence (enforced by the validator).",
   "allOf": [
     {"$ref": "label-schema.json"},
     {

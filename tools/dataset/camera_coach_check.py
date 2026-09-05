@@ -5,13 +5,16 @@ from __future__ import annotations
 
 import argparse
 import copy
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 import hashlib
+from io import StringIO
 import json
 import math
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 
@@ -70,7 +73,7 @@ CLOSED_KEYS = {
     "episode": {"episode_id", "before", "action_step", "after", "outcome", "outcome_verifier", "subject_continuity"},
     "episode_asset": {"asset_id", "captured_at"},
     "action_step": {"action_id", "performed_at"},
-    "source_shoot_entry": {"manifest_type", "schema_id", "manifest_version", "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "asset_ids", "storage", "source_kind"},
+    "source_shoot_entry": {"manifest_type", "schema_id", "manifest_version", "source_shoot_id", "source_owner_id", "operator_id", "captured_at", "provenance_receipt_ref", "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "asset_ids", "storage", "source_kind"},
     "consent_entry": {"manifest_type", "schema_id", "manifest_version", "consent_record_id", "source_shoot_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"},
     "rights_entry": {"manifest_type", "schema_id", "manifest_version", "rights_record_id", "source_shoot_id", "consent_record_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"},
     "derivation_entry": {"manifest_type", "schema_id", "manifest_version", "derivation_id", "source_shoot_id", "record_id", "input_asset_ids", "output_asset_ids", "derivation_family_id", "derivation_kind", "is_independent", "counts_toward_quota"},
@@ -174,6 +177,13 @@ REQUIRED_CAPTURE_FIELDS = {
     "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids",
     "device_family_id", "orientation", "lens", "lighting", "capture_mode",
 }
+SOURCE_SHOOT_ENTRY_FIELDS = (
+    "manifest_type", "schema_id", "manifest_version", "source_shoot_id", "source_owner_id",
+    "operator_id", "captured_at", "provenance_receipt_ref", "scene_family_id", "take_family_id",
+    "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation",
+    "lens", "lighting", "asset_ids", "storage", "source_kind",
+)
+SOURCE_SHOOT_REQUIRED_FIELDS = set(SOURCE_SHOOT_ENTRY_FIELDS)
 SOURCE_FAMILY_ID_FIELDS = (
     "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id",
     "location_family_id", "device_family_id",
@@ -676,6 +686,7 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
     if len(frames) < 2:
         errors.append(_error("invalid_sequence_length", "temporal sequence requires at least two frames"))
     frame_assets: list[str] = []
+    frame_ids: set[str] = set()
     ordinals: list[int] = []
     timestamps: list[int] = []
     for index, frame in enumerate(frames):
@@ -683,7 +694,12 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
         _require(frame, {"frame_id", "ordinal", "timestamp_ms", "asset_id", "state"}, path, errors)
         if not isinstance(frame, dict):
             continue
-        _check_id(frame.get("frame_id"), f"{path}.frame_id", errors)
+        frame_id = frame.get("frame_id")
+        _check_id(frame_id, f"{path}.frame_id", errors)
+        if isinstance(frame_id, str):
+            if frame_id in frame_ids:
+                errors.append(_error("duplicate_frame_id", f"{path}.frame_id {frame_id}"))
+            frame_ids.add(frame_id)
         asset_id = frame.get("asset_id")
         _check_id(asset_id, f"{path}.asset_id", errors)
         if isinstance(asset_id, str):
@@ -939,7 +955,20 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
             errors.append(_error("provenance_mismatch", "derivation output assets"))
 
 
-def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, fixture_mode: bool = False) -> list[str]:
+def validate_record(
+    record: Any,
+    manifests: dict[str, list[dict[str, Any]]],
+    *,
+    fixture_mode: bool = False,
+    admission: bool = True,
+) -> list[str]:
+    """Validate one record, optionally including collection-backed admission references.
+
+    ``admission=False`` is deliberately schema-only: it validates the closed
+    record shape and local semantics but never claims source, rights, consent,
+    derivation, split, or quota admission. Batch validation keeps the default
+    admission path and performs the cross-record guards.
+    """
     if not isinstance(record, dict):
         return [_error("invalid_object", "record")]
     errors: list[str] = []
@@ -1005,7 +1034,8 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
             _validate_episode(record.get("episode"), accepted, verifications, media_assets, source_assets, errors)
         if "sequence" in record:
             errors.append(_error("unexpected_record_extension", "episode record"))
-    _validate_manifest_references(record, manifests, errors, fixture_mode=fixture_mode)
+    if admission:
+        _validate_manifest_references(record, manifests, errors, fixture_mode=fixture_mode)
     return errors
 
 
@@ -1059,13 +1089,19 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
     source_asset_owners: dict[str, str] = {}
     for index, entry in enumerate(entries("source_shoots")):
         path = f"manifests.source_shoots[{index}]"
-        _require(entry, {"manifest_type", "schema_id", "manifest_version", "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "asset_ids", "storage", "source_kind"}, path, errors)
+        _require(entry, SOURCE_SHOOT_REQUIRED_FIELDS, path, errors)
         if not isinstance(entry, dict):
             continue
         _validate_closed_keys(entry, "source_shoot_entry", path, errors)
         if entry.get("manifest_type") != "source_shoot_entry" or entry.get("schema_id") != "camera-source-shoot-v1" or entry.get("manifest_version") != SCHEMA_VERSION:
             errors.append(_error("invalid_manifest_entry", path))
         source_id = entry.get("source_shoot_id")
+        _check_id(entry.get("source_owner_id"), f"{path}.source_owner_id", errors)
+        _check_id(entry.get("operator_id"), f"{path}.operator_id", errors)
+        _check_timestamp(entry.get("captured_at"), f"{path}.captured_at", errors)
+        receipt_ref = entry.get("provenance_receipt_ref")
+        if not isinstance(receipt_ref, str) or not receipt_ref.strip():
+            errors.append(_error("invalid_source_receipt", f"{path}.provenance_receipt_ref"))
         for field in SOURCE_FAMILY_ID_FIELDS:
             _check_id(entry.get(field), f"{path}.{field}", errors)
         _check_enum(entry.get("orientation"), ORIENTATIONS, f"{path}.orientation", errors)
@@ -1256,6 +1292,8 @@ def _validate_manifest_header(path: Path, expected_type: str) -> list[str]:
         errors.append(_error("stale_manifest_hash", str(path)))
     if header.get("record_count") != 0 or header.get("hash_algorithm") != "sha256":
         errors.append(_error("invalid_manifest_template", str(path)))
+    if expected_type == "source_shoots" and header.get("entry_required_fields") != list(SOURCE_SHOOT_ENTRY_FIELDS):
+        errors.append(_error("invalid_manifest_template", f"{path}.entry_required_fields"))
     if header.get("raw_data_location") != "outside_git" or header.get("rights_uncleared_location") != "outside_git":
         errors.append(_error("raw_media_inside_git", str(path)))
     if header.get("template_only") is not True:
@@ -1576,6 +1614,22 @@ def self_test() -> None:
         derivation["counts_toward_quota"] = False
     non_quota_errors = validate_batch(quota_records, quota_manifests, fixture_mode=True)
     assert not non_quota_errors, non_quota_errors
+    separate_record_outputs: list[str] = []
+    with TemporaryDirectory(prefix="camera-coach-self-test-") as temp_dir:
+        for index, schema_only_record in enumerate(quota_records):
+            schema_only_record["split"] = "train"
+            schema_only_record["review"] = copy.deepcopy(resolved_review)
+            record_path = Path(temp_dir) / f"record-{index}.json"
+            record_path.write_text(json.dumps(schema_only_record), encoding="utf-8")
+            stdout = StringIO()
+            stderr = StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                status = main(["--record", record_path.as_posix()])
+            assert status == 0, (status, stdout.getvalue(), stderr.getvalue())
+            output = stdout.getvalue()
+            assert "schema_only=non_admitting" in output and "camera-coach-batch" not in output, output
+            separate_record_outputs.append(output)
+    assert len(separate_record_outputs) == 2
     invalid_passes = 0
     for case in fixture["invalid_cases"]:
         base = next(record for record in valid_records if record["record_id"] == case["base_record_id"])
@@ -1592,8 +1646,8 @@ def self_test() -> None:
         invalid_passes += 1
     assert invalid_passes == len(fixture["invalid_cases"]), (invalid_passes, len(fixture["invalid_cases"]))
     print(f"PASS M3-002 schemas matrix_classes={len(MATRIX_CLASSES)} actions={len(ACTION_IDS)} keep=1 abstain=1")
-    print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes}")
-    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed")
+    print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes} source_metadata=owner/operator/captured_at/receipt_required")
+    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap unique_frame_ids=required episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed separate_record_admission=non_admitting")
     print("PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending")
     print(f"PASS camera-coach self-test valid={len(valid_records)} invalid={invalid_passes}")
 
@@ -1601,7 +1655,7 @@ def self_test() -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
-    parser.add_argument("--record", type=Path)
+    parser.add_argument("--record", type=Path, help="schema-only single record; never an admission claim")
     parser.add_argument("--batch-records", type=Path, help="caller-supplied JSON/JSONL record collection")
     parser.add_argument("--source-shoots", type=Path, help="caller-supplied source-shoot manifest JSON/JSONL")
     parser.add_argument("--consent-manifest", type=Path, help="caller-supplied consent manifest JSON/JSONL")
@@ -1611,6 +1665,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     manifest_paths = (args.source_shoots, args.consent_manifest, args.rights_manifest, args.derivation_manifest)
     has_all_manifests = all(path is not None for path in manifest_paths)
+    has_any_manifests = any(path is not None for path in manifest_paths)
     if args.self_test:
         self_test()
         return 0
@@ -1620,18 +1675,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.record is not None and args.batch_records is not None:
         print(_error("input_error", "--record and --batch-records are mutually exclusive"), file=sys.stderr)
         return 1
-    if not has_all_manifests:
+    if args.batch_records is not None and not has_all_manifests:
         print(_error("input_error", "explicit --source-shoots, --consent-manifest, --rights-manifest, and --derivation-manifest are required for admission"), file=sys.stderr)
         return 1
+    if args.record is not None and has_any_manifests and not has_all_manifests:
+        print(_error("input_error", "single-record schema-only mode accepts no manifests or all four manifests; partial manifest context is ambiguous"), file=sys.stderr)
+        return 1
     try:
-        manifests = _load_external_manifests(args.source_shoots, args.consent_manifest, args.rights_manifest, args.derivation_manifest)
         if args.batch_records is not None:
+            manifests = _load_external_manifests(args.source_shoots, args.consent_manifest, args.rights_manifest, args.derivation_manifest)
             records = _read_collection(args.batch_records)
             errors = validate_batch(records, manifests, fixture_mode=args.fixture_mode)
         else:
             record = _read_json(args.record)
-            errors = _validate_fixture_manifests(manifests)
-            errors.extend(validate_record(record, manifests, fixture_mode=args.fixture_mode))
+            if has_all_manifests:
+                manifests = _load_external_manifests(args.source_shoots, args.consent_manifest, args.rights_manifest, args.derivation_manifest)
+                errors = _validate_fixture_manifests(manifests)
+            else:
+                manifests = {"source_shoots": [], "consents": [], "rights": [], "derivations": []}
+                errors = []
+            errors.extend(validate_record(record, manifests, fixture_mode=args.fixture_mode, admission=False))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(_error("input_error", str(exc)), file=sys.stderr)
         return 1
@@ -1647,7 +1710,8 @@ def main(argv: list[str] | None = None) -> int:
             f"derivations={len(manifests['derivations'])}"
         )
     else:
-        print(f"PASS {args.record} camera-coach-record")
+        manifest_status = "validated" if has_all_manifests else "none"
+        print(f"PASS {args.record} camera-coach-record schema_only=non_admitting manifests={manifest_status}")
     return 0
 
 

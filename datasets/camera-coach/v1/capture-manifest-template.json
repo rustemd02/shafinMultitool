@@ -8,7 +8,8 @@
   "template_only": true,
   "raw_storage": "outside_git",
   "required_entry_fields": [
-    "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "person_family_ids",
+    "source_shoot_id", "source_owner_id", "operator_id", "captured_at", "provenance_receipt_ref",
+    "scene_family_id", "take_family_id", "time_family_id", "person_family_ids",
     "location_family_id", "device_family_id", "orientation", "lens", "lighting", "capture_mode",
     "asset_ids", "derivation_family_id", "rights_record_id", "consent_record_id"
   ],
@@ -45,6 +46,7 @@
     {"id":"rights","check":"A rights_record_id and consent_record_id are present; both dispositions and allowed uses resolve before admission."},
     {"id":"action_episodes","check":"Before/after pilot includes correct, no-op, and opposite outcomes for each exercised action."},
     {"id":"split_isolation","check":"A source shoot, scene, take, time, person, location, device, and derivation family occurs in one split only."},
-    {"id":"audit_receipt","check":"Manifest entry hashes and operator/date are retained outside raw media storage."}
+    {"id":"source_metadata","check":"Each source shoot records source_owner_id, operator_id, captured_at in UTC, and a non-empty provenance_receipt_ref outside raw media storage."},
+    {"id":"audit_receipt","check":"Manifest entry hashes and the source metadata receipt are retained outside raw media storage."}
   ]
 }
