@@ -15,6 +15,11 @@ enablement, or iOS change is claimed.
 - Public `load_m3_authority` is not exported from `ml.camera_coach.data` and
   always raises.  Caller-provided records, seeds, ratios, receipts, or source
   subsets can never issue a production authority.
+- A single iterative plain-JSON preflight runs before source validation/
+  deepcopy, fixture-receipt deepcopy, and manifest parsing/canonicalization;
+  it bounds raw bytes, strings, depth, nodes, object keys, and field-specific
+  collection sizes (`candidates`, `issues`, verification/review/timeline,
+  frames/assets, and receipt collections).
 - Private `_load_fixture_authority` is test-only by contract and accepts only
   the exact three pinned fixture record IDs, with split `fixture`, source kind
   `synthetic_fixture`, rights disposition `fixture_only`, and the exact pinned
@@ -68,11 +73,11 @@ enablement, or iOS change is claimed.
 ## Frozen bindings
 
 ```text
-augmentation_config_sha256=cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b
+augmentation_config_sha256=43ca4871ed1f2c60e4fc5b157842402cd943e67a59daf9265ef3f84c09ae9623
 schedule_authority_sha256=9b916392542ffc2145f4e19e6251254a8f9c6dfbfe31eb7011ecfb8d29a93d18
 cluster_receipt_sha256=f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1
 split_manifest_sha256=580d4bbf6b1238adace00b95de9511e6c8b851c6cc1a92640a5106d92e2af7b
-manifest_sha256=40b99ecec2af343d8aff1eb8e4e66dca40d353ca08fca008baf118068e664e73
+manifest_sha256=f78c1b0efd002ad923bd486e6a5c98cd42309527897fd8a81a011c63b4821e17
 ```
 
 ## Exact verification
@@ -117,17 +122,17 @@ PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap unique_frame_ids=requir
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
 PASS camera-coach self-test valid=3 invalid=90
 preprocessing parity status=pass case_count=50 case_image_digest_count=50 mirrored_cases=25 canonical_digest=2795a72659873d369581b686f29d3fe0b70aa7513db98a28374de3cdb581f26a swift_image_digest=962ee64634f9ccb52d91971fa247e141e7800014609963c54e123b2c225c49a1
-manifest_sha256=40b99ecec2af343d8aff1eb8e4e66dca40d353ca08fca008baf118068e664e73
+manifest_sha256=f78c1b0efd002ad923bd486e6a5c98cd42309527897fd8a81a011c63b4821e17
 diff_check=pass
 ```
 
 Both checker runs produced the same canonical JSON and reported:
 
 ```json
-{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"e34c6be0a6d71b8449657d35348fada05e1d8df0c8b47b9a19e3850b956e109a","identity_receipt_sha256":"b21e11e54ebea56da7deeeef0cce7c9ad32440f2c8120bc7165828d93a12515e","job_count":6,"negative_probe_count":63,"protected_category_count":10,"schedule_sha256":"9534b79f8845b9183e441ae9ba2ded68aea3b88baf998f05643e41f9fe7f51ef","split_manifest_sha256":"580d4bbf6b1238adace00b95bde9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23,"verifier_pair_count":3}
+{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"43ca4871ed1f2c60e4fc5b157842402cd943e67a59daf9265ef3f84c09ae9623","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"d41f2a39d762117bd85c5b5509e64ceee76cee7d56f9081ee85e238baabace3a","identity_receipt_sha256":"d53493ec7e3290605470be688f78803cda730213c1de8992c34ebb6c03a30595","job_count":6,"negative_probe_count":75,"protected_category_count":10,"schedule_sha256":"7c2764d7579803d5fc29ed5ff1f5dc9b5d0c6549be6a542154eb51ff874aacb7","split_manifest_sha256":"580d4bbf6b1238adace00b95bde9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23,"verifier_pair_count":3}
 ```
 
-The 63 negative probes include the reviewer attacks: public production-loader
+The 75 negative probes include the reviewer attacks: public production-loader
 rejection; fixture/production separation; mismatched record/media bytes;
 missing, extra, or one-of-many grouped assets; forged/rehashed output,
 families, split, seed, counter, and transform; unknown record/label fields;
@@ -138,8 +143,9 @@ bool/non-finite/range/unknown transforms; empty/incomplete/duplicate/extra
 lineage batches; cross-split lineage and authority mismatch; mixed
 train/fixture provenance; caller-selected fixture seed/ratios; aggregate
 bundle/output caps; exact RGB cell/channel validation including a 1 MB string
-attack; generator/iterable over-cardinality rejection; and manifest
-reorder/hash/duplicate records.
+attack; generator/iterable over-cardinality rejection; 100k candidate and
+oversized-ID preflight; receipt collection/string/depth preflight; and
+over-byte manifest plus reorder/hash/duplicate records.
 
 ## Scope, judgments, and gaps
 
@@ -158,9 +164,9 @@ Pillow).  No model-quality or production-enablement evidence exists.
 Final pre-commit line counts:
 
 ```text
-1549 ml/camera_coach/data/augmentations.py
-544 ml/camera_coach/data/check_augmentations.py
+1626 ml/camera_coach/data/augmentations.py
+582 ml/camera_coach/data/check_augmentations.py
 21 ml/camera_coach/data/__init__.py
 1 datasets/camera-coach/v1/derivation-manifest.jsonl
-166 docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-008-augmentation-policy.md
+172 docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-008-augmentation-policy.md
 ```

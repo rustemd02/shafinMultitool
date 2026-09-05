@@ -388,6 +388,22 @@ def _run() -> dict:
     unknown_label = copy.deepcopy(records[0])
     unknown_label["label"]["selected_action_id"] = "unknown_action"
     reject(aug.make_source_bundle, unknown_label, {still_id: asset_bytes[still_id]})
+    oversized_id = copy.deepcopy(records[0])
+    oversized_id["record_id"] = "a" * 100_000
+    reject(aug.make_source_bundle, oversized_id, {still_id: asset_bytes[still_id]})
+    many_candidates = copy.deepcopy(records[0])
+    many_candidates["subject"]["candidates"] = [many_candidates["subject"]["candidates"][0]] * 100_000
+    reject(aug.make_source_bundle, many_candidates, {still_id: asset_bytes[still_id]})
+    for field, count in (("issues", 65), ("verification", 65)):
+        oversized_label = copy.deepcopy(records[0])
+        oversized_label["label"][field] = [oversized_label["label"][field][0]] * count
+        reject(aug.make_source_bundle, oversized_label, {still_id: asset_bytes[still_id]})
+    oversized_review = copy.deepcopy(records[0])
+    oversized_review["review"]["vote_history"] = [oversized_review["review"]["vote_history"]] * 129
+    reject(aug.make_source_bundle, oversized_review, {still_id: asset_bytes[still_id]})
+    oversized_timeline = copy.deepcopy(records[1])
+    oversized_timeline["sequence"]["timeline"] = [oversized_timeline["sequence"]["timeline"][0]] * 257
+    reject(aug.make_source_bundle, oversized_timeline, temporal_assets)
 
     # Production authority loading is hard-disabled; only the private
     # fixture-only path above can issue an in-repo authority.
@@ -418,6 +434,21 @@ def _run() -> dict:
         bad_fixture_split = authority.split_receipt()
         bad_fixture_split["config"][field] = value
         reject(aug._load_fixture_authority, records, authority.cluster_receipt(), bad_fixture_split)
+    receipt_collection = authority.cluster_receipt()
+    receipt_collection["clusters"] = [{}] * 100_000
+    reject(aug._load_fixture_authority, records, receipt_collection, authority.split_receipt())
+    receipt_string = authority.cluster_receipt()
+    receipt_string["clusters"][0]["cluster_id"] = "x" * 100_000
+    reject(aug._load_fixture_authority, records, receipt_string, authority.split_receipt())
+    receipt_keys = authority.cluster_receipt()
+    receipt_keys["oversized"] = {str(index): 0 for index in range(129)}
+    reject(aug._load_fixture_authority, records, receipt_keys, authority.split_receipt())
+    receipt_depth = authority.cluster_receipt()
+    nested = None
+    for _ in range(aug._PINNED_MAX_JSON_DEPTH + 1):
+        nested = {"nested": nested}
+    receipt_depth["oversized"] = nested
+    reject(aug._load_fixture_authority, records, receipt_depth, authority.split_receipt())
 
     # No caller can inject an alternative/partial schedule or transform spec.
     reject(aug.make_trusted_schedule, bundles)
@@ -516,6 +547,13 @@ def _run() -> dict:
         path.write_text(line.replace(manifest["manifest_sha256"], "0" * 64), encoding="utf-8")
         reject(aug.validate_derivation_manifest, path)
         path.write_text(line + line, encoding="utf-8")
+        reject(aug.validate_derivation_manifest, path)
+        path.write_bytes(b"{" + b"x" * (aug._PINNED_MAX_MANIFEST_BYTES + 1))
+        reject(aug.validate_derivation_manifest, path)
+        nested = None
+        for _ in range(aug._PINNED_MAX_JSON_DEPTH + 1):
+            nested = {"nested": nested}
+        path.write_text(json.dumps(nested), encoding="utf-8")
         reject(aug.validate_derivation_manifest, path)
 
     return {

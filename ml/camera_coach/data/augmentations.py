@@ -69,6 +69,33 @@ _PINNED_MAX_ASSETS_PER_BUNDLE = 16
 _PINNED_MAX_BUNDLE_ENCODED_BYTES = 16 * 1024 * 1024
 _PINNED_MAX_BUNDLE_PIXELS = 512 * 512
 _PINNED_MAX_BUNDLE_OUTPUT_BYTES = _PINNED_MAX_BUNDLE_PIXELS * 3
+_PINNED_MAX_JSON_BYTES = 1 * 1024 * 1024
+_PINNED_MAX_MANIFEST_BYTES = 64 * 1024
+_PINNED_MAX_JSON_STRING_BYTES = 4096
+_PINNED_MAX_JSON_DEPTH = 32
+_PINNED_MAX_JSON_KEYS = 128
+_PINNED_MAX_JSON_NODES = 20_000
+_PINNED_MAX_JSON_COLLECTION = 256
+_PINNED_JSON_COLLECTION_LIMITS = (
+    ("asset_ids", _PINNED_MAX_ASSETS_PER_BUNDLE),
+    ("source_asset_ids", _PINNED_MAX_ASSETS_PER_BUNDLE),
+    ("frames", _PINNED_MAX_ASSETS_PER_BUNDLE),
+    ("candidates", 64),
+    ("issues", 64),
+    ("verification", 64),
+    ("vote_history", 128),
+    ("adjudication_history", 128),
+    ("timeline", 256),
+    ("evidence", 128),
+    ("person_family_ids", 64),
+    ("acceptable_action_ids", 26),
+    ("forbidden_action_ids", 26),
+    ("reasons", 64),
+    ("assignments", 256),
+    ("clusters", 256),
+    ("members", 256),
+    ("record_ids", 256),
+)
 PILLOW_VERSION_PIN = _PINNED_PILLOW_VERSION_PIN
 DECODER_NAME = _PINNED_DECODER_NAME
 MAX_ENCODED_BYTES = _PINNED_MAX_ENCODED_BYTES
@@ -285,6 +312,16 @@ def _config() -> dict[str, Any]:
             "pixels": _PINNED_MAX_BUNDLE_PIXELS,
             "output_bytes": _PINNED_MAX_BUNDLE_OUTPUT_BYTES,
         },
+        "json_limits": {
+            "source_receipt_bytes": _PINNED_MAX_JSON_BYTES,
+            "manifest_bytes": _PINNED_MAX_MANIFEST_BYTES,
+            "string_bytes": _PINNED_MAX_JSON_STRING_BYTES,
+            "depth": _PINNED_MAX_JSON_DEPTH,
+            "object_keys": _PINNED_MAX_JSON_KEYS,
+            "nodes": _PINNED_MAX_JSON_NODES,
+            "collection_items": _PINNED_MAX_JSON_COLLECTION,
+            "field_collections": {key: value for key, value in _PINNED_JSON_COLLECTION_LIMITS},
+        },
         "source_authority": "fixture-only-in-repository; production-artifact-required",
         "eligible_split_owners": ["train", "calibration"],
         "protected_categories": list(_PINNED_PROTECTED_CATEGORIES),
@@ -300,7 +337,7 @@ def _freeze(value: Any) -> Any:
 
 
 # Replaced with the independently computed digest after this file is written.
-_PINNED_CONFIG_SHA256 = "cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b"
+_PINNED_CONFIG_SHA256 = "43ca4871ed1f2c60e4fc5b157842402cd943e67a59daf9265ef3f84c09ae9623"
 AUGMENTATION_CONFIG = _freeze(_config())
 AUGMENTATION_CONFIG_SHA256 = _PINNED_CONFIG_SHA256
 
@@ -336,26 +373,59 @@ def _finite(value: Any, label: str) -> float:
     return float(value)
 
 
-def _preflight_record_budget(record: Any) -> None:
-    """Reject unbounded grouped shapes before validation/deepcopy."""
-    if type(record) is not dict:
-        raise AugmentationError("source record must be a plain object")
-    media = record.get("media")
-    if type(media) is dict and type(media.get("asset_ids")) is list and len(media["asset_ids"]) > _PINNED_MAX_ASSETS_PER_BUNDLE:
-        raise AugmentationError("source record exceeds asset-count cap")
-    provenance = record.get("provenance")
-    if type(provenance) is dict and type(provenance.get("source_asset_ids")) is list and len(provenance["source_asset_ids"]) > _PINNED_MAX_ASSETS_PER_BUNDLE:
-        raise AugmentationError("source record exceeds source-asset cap")
-    record_type = record.get("record_type")
-    sequence = record.get("sequence")
-    if record_type == "temporal" and type(sequence) is dict and type(sequence.get("frames")) is list and len(sequence["frames"]) > _PINNED_MAX_ASSETS_PER_BUNDLE:
-        raise AugmentationError("source temporal group exceeds asset-count cap")
+def _preflight_plain_json(
+    value: Any,
+    label: str,
+    *,
+    raw_bytes: bytes | None = None,
+    raw_limit: int = _PINNED_MAX_JSON_BYTES,
+) -> None:
+    """Bound plain JSON without recursion or schema-specific traversal."""
+    if raw_bytes is not None:
+        if type(raw_bytes) is not bytes or len(raw_bytes) > raw_limit:
+            raise AugmentationError(f"{label} exceeds the raw byte cap")
+    stack: list[tuple[Any, tuple[str | int, ...], int]] = [(value, (), 0)]
+    nodes = 0
+    while stack:
+        current, path, depth = stack.pop()
+        nodes += 1
+        if nodes > _PINNED_MAX_JSON_NODES or depth > _PINNED_MAX_JSON_DEPTH:
+            raise AugmentationError(f"{label} exceeds JSON depth/node limits")
+        if type(current) is dict:
+            if len(current) > _PINNED_MAX_JSON_KEYS:
+                raise AugmentationError(f"{label} exceeds object-key limit")
+            for key, child in current.items():
+                if type(key) is not str or len(key.encode("utf-8")) > _PINNED_MAX_JSON_STRING_BYTES:
+                    raise AugmentationError(f"{label} has an invalid or oversized object key")
+                stack.append((child, path + (key,), depth + 1))
+        elif type(current) is list:
+            limit = _PINNED_MAX_JSON_COLLECTION
+            if path:
+                for field, field_limit in _PINNED_JSON_COLLECTION_LIMITS:
+                    if path[-1] == field:
+                        limit = field_limit
+                        break
+            if len(current) > limit:
+                raise AugmentationError(f"{label} exceeds collection limit")
+            for index, child in enumerate(current):
+                stack.append((child, path + (index,), depth + 1))
+        elif type(current) is str:
+            if len(current) > _PINNED_MAX_JSON_STRING_BYTES:
+                raise AugmentationError(f"{label} has an oversized string")
+        elif type(current) is int:
+            if current.bit_length() > 63:
+                raise AugmentationError(f"{label} has an oversized integer")
+        elif type(current) is float:
+            if not math.isfinite(current):
+                raise AugmentationError(f"{label} has a non-finite number")
+        elif current is None or type(current) is bool:
+            continue
+        else:
+            raise AugmentationError(f"{label} is not plain JSON")
 
 
 def _record(record: Any) -> dict[str, Any]:
-    _preflight_record_budget(record)
-    if type(record) is not dict:
-        raise AugmentationError("source record must be a plain object")
+    _preflight_plain_json(record, "source record")
     errors = validate_record(record, {}, admission=False)
     if errors:
         raise AugmentationError(f"source record is not canonical-valid: {errors[0]}")
@@ -810,6 +880,7 @@ def _load_fixture_authority(
 
     if type(records) is not list or len(records) != len(_PINNED_FIXTURE_RECORD_IDS):
         raise AugmentationError("external M3 authority records must be a non-empty list")
+    _preflight_plain_json(records, "fixture authority records")
     source_records = tuple(sorted((_record(record) for record in records), key=lambda item: item["record_id"]))
     record_ids = tuple(record["record_id"] for record in source_records)
     if len(set(record_ids)) != len(record_ids):
@@ -823,10 +894,12 @@ def _load_fixture_authority(
         for record in source_records
     ):
         raise AugmentationError("fixture authority accepts only fixture-only records")
-    cluster = copy.deepcopy(dict(cluster_receipt)) if type(cluster_receipt) is dict else None
-    split = copy.deepcopy(dict(split_receipt)) if type(split_receipt) is dict else None
-    if cluster is None or split is None:
+    if type(cluster_receipt) is not dict or type(split_receipt) is not dict:
         raise AugmentationError("external M3 authority receipts must be plain objects")
+    _preflight_plain_json(cluster_receipt, "fixture cluster receipt")
+    _preflight_plain_json(split_receipt, "fixture split receipt")
+    cluster = copy.deepcopy(cluster_receipt)
+    split = copy.deepcopy(split_receipt)
     cluster_index = _cluster_index(cluster)
     if digest(cluster) != _PINNED_FIXTURE_CLUSTER_SHA256:
         raise AugmentationError("fixture authority cluster receipt is not the pinned receipt")
@@ -1505,11 +1578,15 @@ _MANIFEST_KEYS = frozenset(
 def validate_derivation_manifest(path: Path | str = DERIVATION_MANIFEST_PATH) -> dict[str, Any]:
     manifest_path = Path(path)
     try:
-        lines = manifest_path.read_text(encoding="utf-8").splitlines()
+        with manifest_path.open("rb") as handle:
+            raw = handle.read(_PINNED_MAX_MANIFEST_BYTES + 1)
+        _preflight_plain_json(None, "derivation manifest bytes", raw_bytes=raw, raw_limit=_PINNED_MAX_MANIFEST_BYTES)
+        lines = raw.decode("utf-8").splitlines()
         if len(lines) != 1 or not lines[0]:
             raise AugmentationError("derivation manifest must contain one JSONL header")
         payload = json.loads(lines[0], object_pairs_hook=_manifest_pairs)
-    except (OSError, json.JSONDecodeError) as exc:
+        _preflight_plain_json(payload, "derivation manifest")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise AugmentationError(f"invalid derivation manifest: {manifest_path}") from exc
     if type(payload) is not dict or set(payload) != _MANIFEST_KEYS:
         raise AugmentationError("derivation manifest has unknown or missing keys")
