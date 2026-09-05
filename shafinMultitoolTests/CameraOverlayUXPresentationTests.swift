@@ -41,7 +41,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
                 XCTAssertTrue(presentation.showsWhy, actionType.rawValue)
                 XCTAssertEqual(
                     presentation.explanation,
-                    SETCopyKey.cameraExplanation.localizedString(locale: locale),
+                    SETCopyKey.traceIssueSubjectEdge.localizedString(locale: locale),
                     actionType.rawValue
                 )
                 XCTAssertFalse(containsCyrillic(presentation.visibleCopy.joined(separator: " ")))
@@ -63,11 +63,11 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
 
         XCTAssertEqual(
             englishPresentation.explanation,
-            SETCopyKey.cameraExplanation.localizedString(locale: english)
+            SETCopyKey.traceIssueSubjectEdge.localizedString(locale: english)
         )
         XCTAssertEqual(
             russianPresentation.explanation,
-            SETCopyKey.cameraExplanation.localizedString(locale: russian)
+            SETCopyKey.traceIssueSubjectEdge.localizedString(locale: russian)
         )
         XCTAssertFalse(containsCyrillic(englishPresentation.visibleCopy.joined(separator: " ")))
     }
@@ -158,7 +158,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         }
     }
 
-    func testActionableHintWithoutExplanationRemainsStableWithWhyHidden() {
+    func testActionableHintUsesLinkedEvidenceWithoutFreeformExplanationText() {
         let liveText = "Сдвиньте предмет левее."
         let hint = makeLiveHint(
             text: liveText,
@@ -176,7 +176,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             isExpanded: true,
             locale: Locale(identifier: "en")
         )
-        XCTAssertEqual(presentation.state, .stableTip)
+        XCTAssertEqual(presentation.state, .explanation)
         XCTAssertEqual(
             presentation.observation,
             SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "en"))
@@ -185,8 +185,11 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             presentation.actionInstruction,
             SETCopyKey.cameraCorrectiveMoveLeft.localizedString(locale: Locale(identifier: "en"))
         )
-        XCTAssertNil(presentation.explanation)
-        XCTAssertFalse(presentation.showsWhy)
+        XCTAssertEqual(
+            presentation.explanation,
+            SETCopyKey.traceIssueSubjectEdge.localizedString(locale: Locale(identifier: "en"))
+        )
+        XCTAssertTrue(presentation.showsWhy)
     }
 
     func testUnlinkedEvidenceHidesWhyEvenWhenFreeformTextExists() {
@@ -210,6 +213,48 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.showsWhy)
     }
 
+    func testUnknownOrStaleEvidenceNeverShowsWhy() {
+        let unknown = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(
+                actionType: .moveFrameLeft,
+                linkedIssueIDs: ["missing"],
+                includeLinkedEvidence: false,
+                expandedVerdict: LiveExpandedVerdictPresentation(
+                    shortVerdict: "Safe arbitrary text.",
+                    supportingText: "Safe arbitrary support.",
+                    actionText: "Safe arbitrary action.",
+                    fallbackUsed: false
+                )
+            ),
+            isExpanded: true,
+            locale: Locale(identifier: "en")
+        )
+        XCTAssertEqual(unknown.state, .stableTip)
+        XCTAssertNil(unknown.explanation)
+        XCTAssertFalse(unknown.showsWhy)
+
+        let staleProjection = CameraLinkedEvidenceProjection(
+            frameID: "different-frame",
+            actionID: "action-1",
+            actionType: .moveFrameLeft,
+            semanticActionType: .shiftFrameLeft,
+            issueID: "issue-1",
+            issueType: .subjectTooCloseToEdge,
+            evidence: [EvidenceRef(source: .snapshot, key: "subject.edge", value: "observed")]
+        )
+        let stale = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(
+                actionType: .moveFrameLeft,
+                linkedEvidence: staleProjection
+            ),
+            isExpanded: true,
+            locale: Locale(identifier: "en")
+        )
+        XCTAssertEqual(stale.state, .stableTip)
+        XCTAssertNil(stale.explanation)
+        XCTAssertFalse(stale.showsWhy)
+    }
+
     func testTechnicalHintUsesLiveTextAndExpandsWhenExplanationExists() {
         let liveText = "Проверьте фокус на объекте."
         let hint = makeLiveHint(
@@ -228,8 +273,8 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         XCTAssertEqual(collapsed.state, .stableTip)
         XCTAssertEqual(collapsed.observation, SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "en")))
         XCTAssertEqual(collapsed.actionInstruction, SETCopyKey.cameraTechnicalRefocusSubject.localizedString(locale: Locale(identifier: "en")))
-        XCTAssertEqual(collapsed.explanation, SETCopyKey.cameraExplanation.localizedString(locale: Locale(identifier: "en")))
-        XCTAssertTrue(collapsed.showsWhy)
+        XCTAssertNil(collapsed.explanation)
+        XCTAssertFalse(collapsed.showsWhy)
         XCTAssertFalse(containsCyrillic(collapsed.visibleCopy.joined(separator: " ")))
         XCTAssertNil(collapsed.overlayHint)
         XCTAssertNil(collapsed.targetRegion)
@@ -239,12 +284,12 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             isExpanded: true,
             locale: Locale(identifier: "en")
         )
-        XCTAssertEqual(expanded.state, .explanation)
+        XCTAssertEqual(expanded.state, .stableTip)
         XCTAssertEqual(
             expanded.actionInstruction,
             SETCopyKey.cameraTechnicalRefocusSubject.localizedString(locale: Locale(identifier: "en"))
         )
-        XCTAssertEqual(expanded.explanation, collapsed.explanation)
+        XCTAssertNil(expanded.explanation)
         XCTAssertNil(expanded.overlayHint)
     }
 
@@ -749,6 +794,8 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         semanticActionType: SemanticActionType? = nil,
         technicalIssueType: TechnicalQualityIssueType? = nil,
         linkedIssueIDs: [String] = ["issue-1"],
+        includeLinkedEvidence: Bool = true,
+        linkedEvidence: CameraLinkedEvidenceProjection? = nil,
         expandedVerdict: LiveExpandedVerdictPresentation? = LiveExpandedVerdictPresentation(
             shortVerdict: "Главный объект теряется у края.",
             supportingText: "Слева осталось мало свободного пространства.",
@@ -756,7 +803,25 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             fallbackUsed: false
         )
     ) -> LiveHintPresentation {
-        LiveHintPresentation(
+        let resolvedLinkedEvidence: CameraLinkedEvidenceProjection?
+        if let linkedEvidence {
+            resolvedLinkedEvidence = linkedEvidence
+        } else if includeLinkedEvidence,
+                  linkedIssueIDs == ["issue-1"],
+                  let actionType {
+            resolvedLinkedEvidence = CameraLinkedEvidenceProjection(
+                frameID: frameId,
+                actionID: "action-1",
+                actionType: actionType,
+                semanticActionType: semanticActionType ?? actionType.semanticActionType,
+                issueID: "issue-1",
+                issueType: .subjectTooCloseToEdge,
+                evidence: [EvidenceRef(source: .snapshot, key: "subject.edge", value: "observed")]
+            )
+        } else {
+            resolvedLinkedEvidence = nil
+        }
+        return LiveHintPresentation(
             id: id,
             frameId: frameId,
             text: text,
@@ -771,7 +836,8 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             isFallback: false,
             expandedVerdict: expandedVerdict,
             semanticActionType: semanticActionType,
-            technicalIssueType: technicalIssueType
+            technicalIssueType: technicalIssueType,
+            linkedEvidence: resolvedLinkedEvidence
         )
     }
 

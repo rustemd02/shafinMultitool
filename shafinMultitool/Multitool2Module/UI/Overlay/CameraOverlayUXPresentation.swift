@@ -465,15 +465,16 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             return nil
         }
 
-        let hasExplanationPayload = safeText(expandedVerdict.supportingText) != nil
-            || safeText(expandedVerdict.actionText) != nil
-        let explanation = DeterministicCritiqueSummaryBuilder().makeExplanation(
-            action: liveHint.semanticActionType ?? liveHint.actionType?.semanticActionType,
-            linkedIssueIDs: liveHint.linkedIssueIds,
-            technicalIssue: liveHint.technicalIssueType,
-            evidencePayloadAvailable: hasExplanationPayload,
-            locale: locale
-        )
+        let explanation: String?
+        if let linkedEvidence = liveHint.linkedEvidence,
+           isLinkedEvidence(linkedEvidence, to: liveHint) {
+            explanation = DeterministicCritiqueSummaryBuilder().makeExplanation(
+                for: linkedEvidence,
+                locale: locale
+            )
+        } else {
+            explanation = nil
+        }
         let hasExplanation = explanation != nil
         return MappedCopy(
             state: isExpanded && explanation != nil ? .explanation : .stableTip,
@@ -488,6 +489,25 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
 
     private static func isValidIdentity(_ liveHint: LiveHintPresentation) -> Bool {
         isUsableIdentifier(liveHint.id) && isUsableIdentifier(liveHint.frameId)
+    }
+
+    private static func isLinkedEvidence(
+        _ projection: CameraLinkedEvidenceProjection,
+        to liveHint: LiveHintPresentation
+    ) -> Bool {
+        guard let actionType = liveHint.actionType,
+              let actionID = liveHint.actionId,
+              isUsableIdentifier(actionID),
+              projection.frameID == liveHint.frameId,
+              projection.actionID == actionID,
+              projection.actionType == actionType,
+              liveHint.linkedIssueIds.count == 1,
+              liveHint.linkedIssueIds.first == projection.issueID else {
+            return false
+        }
+        let semanticActionType = liveHint.semanticActionType ?? actionType.semanticActionType
+        return projection.semanticActionType == semanticActionType
+            && semanticActionType != .keepCurrentSetup
     }
 
     private static func isUsableIdentifier(_ raw: String) -> Bool {

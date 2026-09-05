@@ -83,21 +83,14 @@ final class DecisionTracePresentationTests: XCTestCase {
         XCTAssertEqual(trace.verdictLabel, "Можно улучшить")
         XCTAssertEqual(
             trace.headline,
-            SETCopyKey.traceIssueBackgroundCompetes.localizedString(locale: Locale(identifier: "ru"))
+            SETCopyKey.traceVerdictMixed.localizedString(locale: Locale(identifier: "ru"))
         )
         XCTAssertEqual(trace.confidence.percent, 74)
-        XCTAssertEqual(
-            trace.reasonLines.map(\.text),
-            [SETCopyKey.traceIssueBackgroundCompetes.localizedString(locale: Locale(identifier: "ru"))]
-        )
-
-        XCTAssertEqual(trace.evidenceRows.map(\.sourceId), ["iss_background", "str_focus"])
-        XCTAssertEqual(trace.evidenceRows.first?.title, "Фон конкурирует с субъектом")
-        XCTAssertEqual(trace.evidenceRows.first?.text, "Фон конкурирует с субъектом")
-        XCTAssertEqual(trace.evidenceRows.first?.traceId, "trace_issue_background")
+        XCTAssertTrue(trace.reasonLines.isEmpty)
+        XCTAssertTrue(trace.evidenceRows.isEmpty)
 
         XCTAssertEqual(trace.actionRows.first?.semanticActionId, "simplify_background")
-        XCTAssertEqual(trace.actionRows.first?.linkedEvidenceIds, ["iss_background"])
+        XCTAssertTrue(trace.actionRows.first?.linkedEvidenceIds.isEmpty == true)
         XCTAssertEqual(trace.actionRows.first?.detail, "Упростить фон")
         XCTAssertEqual(trace.actionRows.first?.traceId, "trace_action_simplify")
 
@@ -119,7 +112,7 @@ final class DecisionTracePresentationTests: XCTestCase {
         XCTAssertTrue(trace.signalRows.contains(where: { $0.title == "DETR objects" && $0.value == "2" }))
         XCTAssertTrue(trace.signalRows.contains(where: { $0.title == "Overlay annotations" && $0.value == "1" }))
         XCTAssertTrue(trace.limitationRows.contains(where: { $0.text.contains("fallback") }))
-        XCTAssertTrue(trace.limitationRows.contains(where: { $0.text == "Субъект считается главным объектом кадра." }))
+        XCTAssertFalse(trace.limitationRows.contains(where: { $0.text == "Субъект считается главным объектом кадра." }))
         XCTAssertEqual(trace.traceIds, [
             "trace_root_pause",
             "trace_issue_background",
@@ -147,6 +140,16 @@ final class DecisionTracePresentationTests: XCTestCase {
                 supportingText: "Стабильность сигнала средняя, поэтому совет показан как осторожный.",
                 actionText: "Смести камеру вправо на небольшой шаг.",
                 fallbackUsed: true
+            ),
+            semanticActionType: .shiftFrameRight,
+            linkedEvidence: CameraLinkedEvidenceProjection(
+                frameID: "frame_trace_live",
+                actionID: "act_live_right",
+                actionType: .moveFrameRight,
+                semanticActionType: .shiftFrameRight,
+                issueID: "iss_edge",
+                issueType: .subjectTooCloseToEdge,
+                evidence: [EvidenceRef(source: .snapshot, key: "subject.edge", value: "observed")]
             )
         )
 
@@ -169,9 +172,11 @@ final class DecisionTracePresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             trace.reasonLines.map(\.text),
-            [SETCopyKey.cameraExplanation.localizedString(locale: Locale(identifier: "ru"))]
+            [SETCopyKey.traceIssueSubjectEdge.localizedString(locale: Locale(identifier: "ru"))]
         )
         XCTAssertEqual(trace.evidenceRows.map(\.sourceId), ["iss_edge"])
+        XCTAssertEqual(trace.evidenceRows.first?.kindLabel, SETCopyKey.traceKindIssue.localizedString(locale: Locale(identifier: "ru")))
+        XCTAssertEqual(trace.evidenceRows.first?.title, SETCopyKey.traceIssueSubjectEdge.localizedString(locale: Locale(identifier: "ru")))
         XCTAssertTrue(trace.limitationRows.contains(where: { $0.text.contains("fallback") }))
         XCTAssertEqual(trace.traceIds, ["trace_live_root"])
 
@@ -190,7 +195,7 @@ final class DecisionTracePresentationTests: XCTestCase {
         }
     }
 
-    func testLiveTraceOmitsExplanationWhenEvidenceIsUnlinked() {
+    func testLiveTraceOmitsExplanationWhenIssueIDIsUnknown() {
         let hint = LiveHintPresentation(
             id: "unlinked_hint",
             frameId: "unlinked_frame",
@@ -198,7 +203,7 @@ final class DecisionTracePresentationTests: XCTestCase {
             confidence: 0.8,
             actionType: .moveFrameLeft,
             actionId: "unlinked_action",
-            linkedIssueIds: [],
+            linkedIssueIds: ["missing"],
             summaryId: "unlinked_summary",
             traceRootIds: [],
             targetRegion: nil,
@@ -221,6 +226,162 @@ final class DecisionTracePresentationTests: XCTestCase {
         XCTAssertTrue(trace.reasonLines.isEmpty)
         XCTAssertTrue(trace.evidenceRows.isEmpty)
         XCTAssertEqual(trace.actionRows.first?.detail, "Move your subject right")
+        XCTAssertTrue(trace.actionRows.first?.linkedEvidenceIds.isEmpty == true)
         XCTAssertFalse(trace.headline.contains("Unsupported speculation"))
+    }
+
+    func testEvidenceProjectionLocalizesObservedIssueAndRejectsNeuralOnlyEvidence() {
+        let builder = DeterministicCritiqueSummaryBuilder()
+        let observedIssue = FrameIssue(
+            id: "issue_projection",
+            type: .subjectTooCloseToEdge,
+            severity: 0.78,
+            confidence: 0.84,
+            rationale: "Opaque rationale.",
+            evidence: [EvidenceRef(source: .snapshot, key: "subject.edge", value: "observed")]
+        )
+        let critique = CritiqueReport(
+            frameId: "frame_projection",
+            mode: .live,
+            verdict: .needsFix,
+            verdictConfidence: 0.84,
+            strengths: [],
+            issues: [observedIssue],
+            summary: CritiqueSummary(id: "summary_projection", shortVerdict: "Opaque summary."),
+            traceRefs: [],
+            fallbackUsed: false
+        )
+        let action = RecommendationAction(
+            id: "action_projection",
+            actionType: .moveFrameLeft,
+            priority: 1,
+            targetRegion: nil,
+            linkedIssueIds: ["issue_projection"],
+            expectedOutcome: "Opaque outcome.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.5,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        guard let observed = builder.makeEvidenceProjection(
+            frameID: "frame_projection",
+            action: action,
+            semanticActionType: .shiftFrameLeft,
+            critique: critique
+        ) else {
+            XCTFail("same-frame linked observed evidence should project")
+            return
+        }
+
+        XCTAssertEqual(observed.issueID, "issue_projection")
+        XCTAssertNil(builder.makeEvidenceProjection(frameID: "stale_frame", action: action, critique: critique))
+
+        let unknownAction = RecommendationAction(
+            id: action.id,
+            actionType: action.actionType,
+            priority: action.priority,
+            targetRegion: action.targetRegion,
+            linkedIssueIds: ["missing"],
+            expectedOutcome: action.expectedOutcome,
+            guardrail: action.guardrail,
+            overlayHint: action.overlayHint
+        )
+        XCTAssertNil(builder.makeEvidenceProjection(frameID: critique.frameId, action: unknownAction, critique: critique))
+
+        XCTAssertEqual(
+            builder.makeExplanation(for: observed, locale: Locale(identifier: "ru")),
+            SETCopyKey.traceIssueSubjectEdge.localizedString(locale: Locale(identifier: "ru"))
+        )
+        XCTAssertEqual(
+            builder.makeExplanation(for: observed, locale: Locale(identifier: "en")),
+            SETCopyKey.traceIssueSubjectEdge.localizedString(locale: Locale(identifier: "en"))
+        )
+
+        let neuralOnly = CameraLinkedEvidenceProjection(
+            frameID: observed.frameID,
+            actionID: observed.actionID,
+            actionType: observed.actionType,
+            semanticActionType: observed.semanticActionType,
+            issueID: observed.issueID,
+            issueType: observed.issueType,
+            evidence: [EvidenceRef(source: .neuralEvidence, key: "subject.edge", value: "model-only")]
+        )
+        XCTAssertNil(builder.makeExplanation(for: neuralOnly, locale: Locale(identifier: "en")))
+
+        let neuralIssue = FrameIssue(
+            id: observed.issueID,
+            type: observed.issueType,
+            severity: 0.78,
+            confidence: 0.84,
+            rationale: "Neural-only rationale.",
+            evidence: [EvidenceRef(source: .neuralEvidence, key: "subject.edge", value: "model-only")]
+        )
+        let neuralCritique = CritiqueReport(
+            frameId: critique.frameId,
+            mode: critique.mode,
+            verdict: critique.verdict,
+            verdictConfidence: critique.verdictConfidence,
+            strengths: [],
+            issues: [neuralIssue],
+            summary: critique.summary,
+            traceRefs: [],
+            fallbackUsed: false
+        )
+        XCTAssertNil(builder.makeEvidenceProjection(frameID: critique.frameId, action: action, critique: neuralCritique))
+
+        let summaryOnly = CameraLinkedEvidenceProjection(
+            frameID: observed.frameID,
+            actionID: observed.actionID,
+            actionType: observed.actionType,
+            semanticActionType: observed.semanticActionType,
+            issueID: observed.issueID,
+            issueType: observed.issueType,
+            evidence: [EvidenceRef(source: .derivedRule, key: "summary.shortVerdict", value: "opaque summary")]
+        )
+        XCTAssertNil(builder.makeExplanation(for: summaryOnly, locale: Locale(identifier: "en")))
+    }
+
+    func testLiveTraceUsesExplicitSemanticObjectActionWhenCoarseActionDiffers() {
+        let hint = LiveHintPresentation(
+            id: "object_action_hint",
+            frameId: "object_action_frame",
+            text: "Переместите объект вправо.",
+            confidence: 0.82,
+            actionType: .moveFrameLeft,
+            actionId: "object_action",
+            linkedIssueIds: ["object_issue"],
+            summaryId: "object_summary",
+            traceRootIds: [],
+            targetRegion: nil,
+            overlayHint: nil,
+            isFallback: false,
+            expandedVerdict: LiveExpandedVerdictPresentation(
+                shortVerdict: "Объект требует смещения.",
+                supportingText: "Свободное пространство справа подтверждено.",
+                actionText: "Переместите объект вправо.",
+                fallbackUsed: false
+            ),
+            semanticActionType: .moveObjectRight,
+            linkedEvidence: CameraLinkedEvidenceProjection(
+                frameID: "object_action_frame",
+                actionID: "object_action",
+                actionType: .moveFrameLeft,
+                semanticActionType: .moveObjectRight,
+                issueID: "object_issue",
+                issueType: .subjectTooCloseToEdge,
+                evidence: [EvidenceRef(source: .snapshot, key: "subject.edge", value: "observed")]
+            )
+        )
+
+        let trace = DecisionTracePresentation.live(hint: hint, locale: Locale(identifier: "en"))
+        XCTAssertEqual(trace.actionRows.first?.coarseActionId, ActionTypeV1.moveFrameLeft.rawValue)
+        XCTAssertEqual(trace.actionRows.first?.semanticActionId, SemanticActionType.moveObjectRight.rawValue)
+        XCTAssertEqual(
+            trace.actionRows.first?.detail,
+            SETCopyKey.traceActionMoveObjectRight.localizedString(locale: Locale(identifier: "en"))
+        )
+        XCTAssertEqual(trace.evidenceRows.map(\.sourceId), ["object_issue"])
     }
 }

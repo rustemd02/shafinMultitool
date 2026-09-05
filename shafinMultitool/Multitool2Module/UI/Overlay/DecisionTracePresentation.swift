@@ -130,17 +130,9 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                       overlayAnnotations: [OverlayAnnotationPresentation] = [],
                       debugSignals: DecisionTraceDebugSignals = .empty,
                       locale: Locale = Locale(identifier: "ru")) -> DecisionTracePresentation {
-        let explanation = pauseExplanation(for: critique, locale: locale)
-        let reasonLines = pauseReasonLines(
-            for: critique,
-            explanation: explanation,
-            locale: locale
-        )
-        let evidenceRows = pauseEvidenceRows(for: critique, locale: locale)
         let actionRows = pauseActionRows(for: critique, locale: locale)
         let limitations = limitationRows(
             fallbackUsed: critique.fallbackUsed,
-            assumptions: critique.assumptions,
             locale: locale
         )
         let traceIds = orderedTraceIds(
@@ -154,10 +146,13 @@ struct DecisionTracePresentation: Identifiable, Equatable {
             id: "pause_\(critique.frameId)_\(critique.summaryId)",
             modeLabel: copy(.traceModePause, locale: locale),
             verdictLabel: verdictTitle(for: critique.verdict, locale: locale),
-            headline: explanation ?? verdictTitle(for: critique.verdict, locale: locale),
+            // Pause rows currently do not carry typed same-frame evidence
+            // provenance. Keep Why/evidence empty until that handoff is
+            // owned by the pause contract (M2-031).
+            headline: verdictTitle(for: critique.verdict, locale: locale),
             confidence: .make(critique.verdictConfidence),
-            reasonLines: reasonLines,
-            evidenceRows: evidenceRows,
+            reasonLines: [],
+            evidenceRows: [],
             actionRows: actionRows,
             signalRows: signalRows(
                 overlayAnnotations: overlayAnnotations,
@@ -176,12 +171,8 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         let explanation = liveExplanation(for: hint, locale: locale)
         let reasonLines = liveReasonLines(explanation: explanation, locale: locale)
         let actionRows = liveActionRows(for: hint, locale: locale)
-        let linkedIssueIDs = hint.linkedIssueIds.filter(isUsableIdentifier)
         let limitations = limitationRows(
             fallbackUsed: hint.isFallback || hint.expandedVerdict?.fallbackUsed == true,
-            assumptions: linkedIssueIDs.isEmpty
-                ? []
-                : [format(.traceAssumptionLinkedIssues, locale: locale, arguments: [linkedIssueIDs.joined(separator: ", ")])],
             locale: locale
         )
 
@@ -293,54 +284,13 @@ struct DecisionTracePresentation: Identifiable, Equatable {
     }
 #endif
 
-    private static func pauseExplanation(for critique: PauseCritiquePresentation,
-                                         locale: Locale) -> String? {
-        let actions = critique.actions.sorted { lhs, rhs in
-            if lhs.priority != rhs.priority {
-                return lhs.priority < rhs.priority
-            }
-            return lhs.actionId < rhs.actionId
-        }
-
-        if let action = actions.first(where: { $0.semanticActionType != .keepCurrentSetup }),
-           let issue = critique.issues.first(where: { issue in
-               action.linkedIssueIds.contains(issue.issueId)
-                   && isUsableIdentifier(issue.issueId)
-           }) {
-            return issueTitle(issue.type, locale: locale)
-        }
-
-        // KEEP is the only non-corrective state that may carry a positive
-        // explanation. A good verdict without structured strength evidence
-        // remains deliberately silent.
-        guard critique.verdict == .good,
-              let strength = critique.strengths.first else {
-            return nil
-        }
-        return strengthTitle(strength.type, locale: locale)
-    }
-
-    private static func pauseReasonLines(for critique: PauseCritiquePresentation,
-                                         explanation: String?,
-                                         locale: Locale) -> [ReasonLine] {
-        guard let explanation else { return [] }
-        let title = critique.verdict == .good
-            ? copy(.traceReasonWorked, locale: locale)
-            : copy(.traceReasonProblematic, locale: locale)
-        return [ReasonLine(id: "linked_evidence", title: title, text: explanation)]
-    }
-
     private static func liveExplanation(for hint: LiveHintPresentation,
                                         locale: Locale) -> String? {
-        let hasExplanationPayload = hint.expandedVerdict.map { expanded in
-            safeExplanationText(expanded.supportingText) != nil
-                || safeExplanationText(expanded.actionText) != nil
-        } ?? false
+        guard let projection = validatedLinkedEvidence(for: hint, locale: locale) else {
+            return nil
+        }
         return DeterministicCritiqueSummaryBuilder().makeExplanation(
-            action: hint.semanticActionType ?? hint.actionType?.semanticActionType,
-            linkedIssueIDs: hint.linkedIssueIds,
-            technicalIssue: hint.technicalIssueType,
-            evidencePayloadAvailable: hasExplanationPayload,
+            for: projection,
             locale: locale
         )
     }
@@ -369,37 +319,6 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         return copy(.cameraSeeking, locale: locale)
     }
 
-    private static func pauseEvidenceRows(for critique: PauseCritiquePresentation,
-                                          locale: Locale) -> [EvidenceRow] {
-        let issueRows = critique.issues.map { issue in
-            EvidenceRow(
-                id: "issue_\(issue.issueId)",
-                sourceId: issue.issueId,
-                kindLabel: copy(.traceKindIssue, locale: locale),
-                title: issueTitle(issue.type, locale: locale),
-                text: issueTitle(issue.type, locale: locale),
-                confidence: .make(issue.confidence),
-                severity: .make(issue.severity),
-                regionDescription: regionDescription(issue.affectedRegion, locale: locale),
-                traceId: issue.traceRefId
-            )
-        }
-        let strengthRows = critique.strengths.map { strength in
-            EvidenceRow(
-                id: "strength_\(strength.strengthId)",
-                sourceId: strength.strengthId,
-                kindLabel: copy(.traceKindStrength, locale: locale),
-                title: strengthTitle(strength.type, locale: locale),
-                text: strengthTitle(strength.type, locale: locale),
-                confidence: .make(strength.confidence),
-                severity: nil,
-                regionDescription: regionDescription(strength.supportingRegion, locale: locale),
-                traceId: strength.traceRefId
-            )
-        }
-        return issueRows + strengthRows
-    }
-
     private static func pauseActionRows(for critique: PauseCritiquePresentation,
                                         locale: Locale) -> [ActionRow] {
         let rows = critique.actions.sorted { lhs, rhs in
@@ -414,7 +333,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 semanticActionId: action.semanticActionType.rawValue,
                 coarseActionId: action.actionType.rawValue,
                 detail: semanticActionTitle(action.semanticActionType, locale: locale),
-                linkedEvidenceIds: action.linkedIssueIds,
+                linkedEvidenceIds: [],
                 confidence: .make(action.confidence),
                 targetDescription: regionDescription(action.targetRegion, locale: locale),
                 overlayHintId: action.overlayHintId,
@@ -434,7 +353,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 semanticActionId: SemanticActionType.keepCurrentSetup.rawValue,
                 coarseActionId: ActionTypeV1.leaveFrameAsIs.rawValue,
                 detail: semanticActionTitle(.keepCurrentSetup, locale: locale),
-                linkedEvidenceIds: critique.strengths.map(\.strengthId),
+                linkedEvidenceIds: [],
                 confidence: .make(critique.verdictConfidence),
                 targetDescription: nil,
                 overlayHintId: nil,
@@ -448,7 +367,9 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         guard let actionType = hint.actionType else {
             return []
         }
-        let semanticAction = actionType.semanticActionType
+        let semanticAction = hint.semanticActionType ?? actionType.semanticActionType
+        let linkedEvidenceIds = validatedLinkedEvidence(for: hint, locale: locale)
+            .map { [$0.issueID] } ?? []
         return [
             ActionRow(
                 id: hint.actionId ?? "live_action",
@@ -456,7 +377,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 semanticActionId: semanticAction.rawValue,
                 coarseActionId: actionType.rawValue,
                 detail: semanticActionTitle(semanticAction, locale: locale),
-                linkedEvidenceIds: hint.linkedIssueIds,
+                linkedEvidenceIds: linkedEvidenceIds,
                 confidence: .make(hint.confidence),
                 targetDescription: regionDescription(hint.targetRegion, locale: locale),
                 overlayHintId: hint.overlayHint?.id,
@@ -467,30 +388,60 @@ struct DecisionTracePresentation: Identifiable, Equatable {
 
     private static func liveEvidenceRows(for hint: LiveHintPresentation,
                                          locale: Locale) -> [EvidenceRow] {
-        let linkedSourceIDs = hint.linkedIssueIds.filter(isUsableIdentifier)
-        let sourceIDs: [String]
-        if !linkedSourceIDs.isEmpty {
-            sourceIDs = linkedSourceIDs
-        } else if let technicalIssue = hint.technicalIssueType {
-            sourceIDs = ["technical_quality_\(technicalIssue.rawValue)"]
-        } else {
+        guard let projection = validatedLinkedEvidence(for: hint, locale: locale) else {
             return []
         }
-
-        let text = copy(.cameraExplanation, locale: locale)
-        return sourceIDs.map { sourceID in
+        let title = issueTitle(projection.issueType, locale: locale)
+        return [
             EvidenceRow(
-                id: "live_evidence_\(sourceID)",
-                sourceId: sourceID,
-                kindLabel: copy(.traceEvidence, locale: locale),
-                title: copy(.traceEvidence, locale: locale),
-                text: text,
+                id: "live_evidence_\(projection.issueID)",
+                sourceId: projection.issueID,
+                kindLabel: copy(.traceKindIssue, locale: locale),
+                title: title,
+                text: title,
                 confidence: .make(hint.confidence),
                 severity: nil,
                 regionDescription: nil,
                 traceId: nil
             )
+        ]
+    }
+
+    private static func validatedLinkedEvidence(
+        for hint: LiveHintPresentation,
+        locale: Locale
+    ) -> CameraLinkedEvidenceProjection? {
+        guard let projection = linkedEvidenceProjection(for: hint),
+              DeterministicCritiqueSummaryBuilder().makeExplanation(
+                  for: projection,
+                  locale: locale
+              ) != nil else {
+            return nil
         }
+        return projection
+    }
+
+    private static func linkedEvidenceProjection(
+        for hint: LiveHintPresentation
+    ) -> CameraLinkedEvidenceProjection? {
+        guard let projection = hint.linkedEvidence,
+              let actionType = hint.actionType,
+              let actionID = hint.actionId,
+              isUsableIdentifier(actionID),
+              actionType != .leaveFrameAsIs,
+              projection.frameID == hint.frameId,
+              projection.actionID == actionID,
+              projection.actionType == actionType,
+              hint.linkedIssueIds.count == 1,
+              hint.linkedIssueIds.first == projection.issueID else {
+            return nil
+        }
+        let semanticActionType = hint.semanticActionType ?? actionType.semanticActionType
+        guard semanticActionType != .keepCurrentSetup,
+              projection.semanticActionType == semanticActionType else {
+            return nil
+        }
+        return projection
     }
 
     private static func signalRows(overlayAnnotations: [OverlayAnnotationPresentation],
@@ -606,7 +557,6 @@ struct DecisionTracePresentation: Identifiable, Equatable {
     }
 
     private static func limitationRows(fallbackUsed: Bool,
-                                       assumptions: [String],
                                        locale: Locale) -> [LimitationRow] {
         var rows: [LimitationRow] = []
         if fallbackUsed {
@@ -617,10 +567,6 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                 )
             )
         }
-        rows.append(contentsOf: assumptions.enumerated().compactMap { index, assumption in
-            guard let text = nonEmpty(assumption) else { return nil }
-            return LimitationRow(id: "assumption_\(index)", text: text)
-        })
         if rows.isEmpty {
             rows.append(
                 LimitationRow(
@@ -814,23 +760,6 @@ struct DecisionTracePresentation: Identifiable, Equatable {
 
     private static func decimalString(_ value: Double) -> String {
         String(format: "%.2f", value)
-    }
-
-    private static func safeExplanationText(_ raw: String?) -> String? {
-        guard let raw else { return nil }
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= 240 else { return nil }
-        guard !text.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
-            return nil
-        }
-
-        let lowered = text.lowercased()
-        let forbiddenFragments = [
-            "%", "trace", "semantic", "reserve", "confidence", "pipeline", "good", "review",
-            "трейс", "семантик", "резерв", "уверенност", "пайплайн", "ревью", "доверител"
-        ]
-        guard !forbiddenFragments.contains(where: { lowered.contains($0) }) else { return nil }
-        return text
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

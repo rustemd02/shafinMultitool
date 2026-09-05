@@ -49,6 +49,7 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     /// fields instead of parsing IDs or displaying domain text.
     let semanticActionType: SemanticActionType?
     let technicalIssueType: TechnicalQualityIssueType?
+    let linkedEvidence: CameraLinkedEvidenceProjection?
 
     init(id: String,
          frameId: String,
@@ -64,7 +65,8 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
          isFallback: Bool,
          expandedVerdict: LiveExpandedVerdictPresentation?,
          semanticActionType: SemanticActionType? = nil,
-         technicalIssueType: TechnicalQualityIssueType? = nil) {
+         technicalIssueType: TechnicalQualityIssueType? = nil,
+         linkedEvidence: CameraLinkedEvidenceProjection? = nil) {
         self.id = id
         self.frameId = frameId
         self.text = text
@@ -80,6 +82,7 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
         self.expandedVerdict = expandedVerdict
         self.semanticActionType = semanticActionType
         self.technicalIssueType = technicalIssueType
+        self.linkedEvidence = linkedEvidence
     }
 }
 
@@ -7245,7 +7248,13 @@ final class AnalysisPipeline: ObservableObject {
                     primaryText: semanticTip.liveText,
                     fallbackUsed: fallbackUsed
                 ),
-                semanticActionType: semanticTip.actionType
+                semanticActionType: semanticTip.actionType,
+                linkedEvidence: DeterministicCritiqueSummaryBuilder().makeEvidenceProjection(
+                    frameID: frameId,
+                    action: linkedAction,
+                    semanticActionType: semanticTip.actionType,
+                    critique: critique
+                )
             )
         }
 
@@ -7332,6 +7341,7 @@ final class AnalysisPipeline: ObservableObject {
             let targetRegion = primaryAction.targetRegion ?? firstIssueRegion(linkedIssueIds: primaryAction.linkedIssueIds, critique: critique)
             let id = "lh_live_action_\(primaryAction.actionType.rawValue)_\(issueSignature)_\(quantizedRegionKey(for: targetRegion))"
             let text = nonEmpty(primaryAction.expectedOutcome) ?? critique.summary.shortVerdict
+            let semanticActionType = primaryAction.actionType.semanticActionType
             return LiveHintPresentation(
                 id: id,
                 frameId: frameId,
@@ -7351,6 +7361,13 @@ final class AnalysisPipeline: ObservableObject {
                     semanticTip: nil,
                     primaryText: text,
                     fallbackUsed: fallbackUsed
+                ),
+                semanticActionType: semanticActionType,
+                linkedEvidence: DeterministicCritiqueSummaryBuilder().makeEvidenceProjection(
+                    frameID: frameId,
+                    action: primaryAction,
+                    semanticActionType: semanticActionType,
+                    critique: critique
                 )
             )
         }
@@ -8729,7 +8746,8 @@ final class AnalysisPipeline: ObservableObject {
                 isFallback: candidate.isFallback,
                 expandedVerdict: candidate.expandedVerdict,
                 semanticActionType: candidate.semanticActionType,
-                technicalIssueType: candidate.technicalIssueType
+                technicalIssueType: candidate.technicalIssueType,
+                linkedEvidence: candidate.linkedEvidence
             )
             liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
             return
