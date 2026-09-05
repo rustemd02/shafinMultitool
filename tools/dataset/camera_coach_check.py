@@ -251,6 +251,26 @@ def _check_list(value: Any, path: str, errors: list[str], *, nonempty: bool = Fa
     return value
 
 
+def _string_values(value: Any) -> list[str]:
+    """Return only JSON string members before any set/map operation."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _string_set(value: Any) -> set[str]:
+    """Build an ID/set-like value without hashing schema-invalid members."""
+    return set(_string_values(value))
+
+
+def _manifest_entries(manifests: Any, name: str) -> list[Any]:
+    """Read a manifest collection defensively; callers validate its shape."""
+    if not isinstance(manifests, dict):
+        return []
+    entries = manifests.get(name)
+    return entries if isinstance(entries, list) else []
+
+
 def _check_no_locked_outputs(value: Any, path: str, errors: list[str]) -> None:
     forbidden = {"candidate", "candidate_output", "locked_label", "model_output", "prediction", "oracle"}
     if isinstance(value, dict):
@@ -311,7 +331,7 @@ def _validate_provenance(provenance: Any, errors: list[str]) -> set[str]:
     _check_enum(provenance.get("source_kind"), SOURCE_KINDS, "provenance.source_kind", errors)
     if provenance.get("raw_storage") != "outside_git":
         errors.append(_error("raw_media_inside_git", "provenance.raw_storage"))
-    return set(assets)
+    return {asset_id for asset_id in assets if isinstance(asset_id, str)}
 
 
 def _validate_subject(subject: Any, errors: list[str]) -> None:
@@ -348,7 +368,7 @@ def _validate_subject(subject: Any, errors: list[str]) -> None:
     status = subject.get("status")
     if status == "selected" and (len(candidate_ids) != 1 or not isinstance(selected, str) or selected != candidate_ids[0]):
         errors.append(_error("invalid_subject_reference", "selected subject requires exactly one matching candidate"))
-    if status in {"ambiguous", "none", "abstain"} and selected is not None:
+    if isinstance(status, str) and status in {"ambiguous", "none", "abstain"} and selected is not None:
         errors.append(_error("invalid_subject_reference", "non-selected status cannot name a subject"))
     if status == "ambiguous" and len(candidate_ids) < 2:
         errors.append(_error("invalid_subject_reference", "ambiguous subject needs at least two candidates"))
@@ -363,9 +383,9 @@ def _validate_label(label: Any, errors: list[str]) -> None:
     accepted = _check_list(label.get("acceptable_action_ids"), "label.acceptable_action_ids", errors)
     forbidden = _check_list(label.get("forbidden_action_ids"), "label.forbidden_action_ids", errors)
     for action in accepted + forbidden:
-        if action not in ACTION_IDS:
+        if not isinstance(action, str) or action not in ACTION_IDS:
             errors.append(_error("invalid_action_id", "label action list"))
-    if set(accepted) & set(forbidden):
+    if set(_string_values(accepted)) & set(_string_values(forbidden)):
         errors.append(_error("contradictory_actions", "label action lists overlap"))
     for index, issue in enumerate(issues):
         path = f"label.issues[{index}]"
@@ -381,13 +401,15 @@ def _validate_label(label: Any, errors: list[str]) -> None:
         _check_list(issue.get("forbidden_action_ids"), f"{path}.forbidden_action_ids", errors)
         if not evidence:
             errors.append(_error("missing_issue_evidence", path))
-        for action in issue.get("acceptable_action_ids", []):
-            if action not in ACTION_IDS:
+        issue_accepted = issue.get("acceptable_action_ids") if isinstance(issue.get("acceptable_action_ids"), list) else []
+        issue_forbidden = issue.get("forbidden_action_ids") if isinstance(issue.get("forbidden_action_ids"), list) else []
+        for action in issue_accepted:
+            if not isinstance(action, str) or action not in ACTION_IDS:
                 errors.append(_error("invalid_action_id", f"{path}.acceptable_action_ids"))
             if action not in accepted:
                 errors.append(_error("action_issue_mismatch", path))
-        for action in issue.get("forbidden_action_ids", []):
-            if action not in ACTION_IDS:
+        for action in issue_forbidden:
+            if not isinstance(action, str) or action not in ACTION_IDS:
                 errors.append(_error("invalid_action_id", f"{path}.forbidden_action_ids"))
             if action not in forbidden:
                 errors.append(_error("action_issue_mismatch", path))
@@ -434,21 +456,22 @@ def _validate_label(label: Any, errors: list[str]) -> None:
             continue
         action = verification.get("action_id")
         verifier = verification.get("verifier_id")
-        if action != "abstain" and action not in ACTION_IDS:
+        if action != "abstain" and (not isinstance(action, str) or action not in ACTION_IDS):
             errors.append(_error("invalid_action_verifier", f"{path}.action_id"))
-        if verifier not in VERIFIER_IDS:
+        if not isinstance(verifier, str) or verifier not in VERIFIER_IDS:
             errors.append(_error("invalid_action_verifier", f"{path}.verifier_id"))
-        elif action in VERIFIER_BY_ACTION and verifier != VERIFIER_BY_ACTION[action]:
+        elif isinstance(action, str) and action in VERIFIER_BY_ACTION and verifier != VERIFIER_BY_ACTION[action]:
             errors.append(_error("invalid_action_verifier", f"{path}: {action} requires {VERIFIER_BY_ACTION[action]}"))
         elif action == "abstain" and verifier != "insufficient_evidence":
             errors.append(_error("invalid_action_verifier", f"{path}: abstain requires insufficient_evidence"))
-        if action in seen_actions:
+        if isinstance(action, str) and action in seen_actions:
             errors.append(_error("duplicate_action_verification", path))
-        seen_actions.add(action)
+        if isinstance(action, str):
+            seen_actions.add(action)
         _check_enum(verification.get("result"), {"pass", "fail", "inconclusive", "not_run"}, f"{path}.result", errors)
         _check_enum(verification.get("measurement"), {"single_frame", "before_after", "temporal_timeline", "not_observed"}, f"{path}.measurement", errors)
     is_abstention = status == "abstain" or abstention_status == "abstain"
-    expected_actions = {"abstain"} if is_abstention else set(accepted)
+    expected_actions = {"abstain"} if is_abstention else set(_string_values(accepted))
     if not expected_actions.issubset(seen_actions):
         errors.append(_error("missing_action_verification", "every accepted action needs a verifier"))
     if is_abstention:
@@ -489,7 +512,11 @@ def _validate_subject_label_semantics(subject: Any, label: Any, errors: list[str
         or abstention_status != "none"
         or abstention_reasons
         or any(
-            isinstance(item, dict) and item.get("action_id") not in {"keep_current_setup"}
+            isinstance(item, dict)
+            and (
+                not isinstance(item.get("action_id"), str)
+                or item.get("action_id") != "keep_current_setup"
+            )
             for item in verifications
         )
     ):
@@ -578,7 +605,7 @@ def _validate_review(review: Any, errors: list[str]) -> None:
 
 def _validate_release_review(review: Any, split: Any, errors: list[str]) -> None:
     """Require a resolved independent human review before release admission."""
-    if split not in RELEASE_SPLITS:
+    if not isinstance(split, str) or split not in RELEASE_SPLITS:
         return
     if not isinstance(review, dict):
         errors.append(_error("review_not_admissible", f"{split} requires resolved human review"))
@@ -597,7 +624,7 @@ def _validate_release_review(review: Any, split: Any, errors: list[str]) -> None
     if status == "dual_reviewed":
         if adjudications:
             errors.append(_error("review_not_admissible", "dual_reviewed release review cannot include adjudication history"))
-        if len(set(decisions)) > 1:
+        if len(_string_set(decisions)) > 1:
             errors.append(_error("review_conflict_unresolved", "conflicting independent votes require adjudication"))
         elif decisions != ["accept"] * len(decisions):
             errors.append(_error("review_not_admissible", "release review votes must all accept"))
@@ -636,8 +663,9 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
         _check_id(frame.get("frame_id"), f"{path}.frame_id", errors)
         asset_id = frame.get("asset_id")
         _check_id(asset_id, f"{path}.asset_id", errors)
-        frame_assets.append(asset_id)
-        if asset_id not in source_assets:
+        if isinstance(asset_id, str):
+            frame_assets.append(asset_id)
+        if isinstance(asset_id, str) and asset_id not in source_assets:
             errors.append(_error("missing_source_asset", f"{path}.asset_id"))
         ordinal = frame.get("ordinal")
         timestamp = frame.get("timestamp_ms")
@@ -704,7 +732,7 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
             continue
         asset_id = value.get("asset_id")
         _check_id(asset_id, f"{path}.asset_id", errors)
-        if asset_id not in source_assets:
+        if isinstance(asset_id, str) and asset_id not in source_assets:
             errors.append(_error("missing_source_asset", f"{path}.asset_id"))
         _check_timestamp(value.get("captured_at"), f"{path}.captured_at", errors)
     if isinstance(before, dict) and isinstance(after, dict) and before.get("asset_id") == after.get("asset_id"):
@@ -714,7 +742,7 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
     action = None
     if isinstance(action_step, dict):
         action = action_step.get("action_id")
-        if action not in ACTION_IDS or action not in accepted:
+        if not isinstance(action, str) or action not in ACTION_IDS or action not in accepted:
             errors.append(_error("invalid_action_id", "episode.action_step.action_id must be acceptable"))
         _check_timestamp(action_step.get("performed_at"), "episode.action_step.performed_at", errors)
     before_at = _parse_timestamp(before.get("captured_at")) if isinstance(before, dict) else None
@@ -728,12 +756,20 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
     ):
         errors.append(_error("invalid_episode_order", "chronology requires before < action_step < after"))
     verifier = episode.get("outcome_verifier")
-    if action in VERIFIER_BY_ACTION and verifier != VERIFIER_BY_ACTION[action]:
+    if isinstance(action, str) and action in VERIFIER_BY_ACTION and verifier != VERIFIER_BY_ACTION[action]:
         errors.append(_error("invalid_action_verifier", "episode.outcome_verifier"))
     _check_enum(episode.get("outcome"), {"correct", "no_op", "opposite", "overshoot", "track_loss", "incomparable"}, "episode.outcome", errors)
     _check_enum(episode.get("outcome_verifier"), VERIFIER_IDS, "episode.outcome_verifier", errors)
     _check_enum(episode.get("subject_continuity"), {"same", "changed", "lost", "unknown"}, "episode.subject_continuity", errors)
-    if isinstance(before, dict) and isinstance(after, dict) and {before.get("asset_id"), after.get("asset_id")} - media_assets:
+    episode_asset_refs = {
+        asset_id
+        for asset_id in (
+            before.get("asset_id") if isinstance(before, dict) else None,
+            after.get("asset_id") if isinstance(after, dict) else None,
+        )
+        if isinstance(asset_id, str)
+    }
+    if episode_asset_refs - media_assets:
         errors.append(_error("episode_asset_mismatch", "before/after assets must be in media.asset_ids"))
     matching = [
         item for item in verifications
@@ -741,26 +777,41 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
     ]
     measurable = {"correct", "no_op", "opposite", "overshoot"}
     has_passed_before_after = any(item.get("result") == "pass" and item.get("measurement") == "before_after" for item in matching)
-    if episode.get("outcome") in measurable and not has_passed_before_after:
+    outcome = episode.get("outcome")
+    is_measurable = isinstance(outcome, str) and outcome in measurable
+    if is_measurable and not has_passed_before_after:
         errors.append(_error("invalid_episode_outcome", f"{episode.get('outcome')} requires matching action verification pass/before_after"))
-    if episode.get("outcome") in measurable and episode.get("subject_continuity") != "same":
+    if is_measurable and episode.get("subject_continuity") != "same":
         errors.append(_error("invalid_episode_outcome", f"{episode.get('outcome')} requires subject_continuity=same"))
-    if episode.get("outcome") not in measurable and has_passed_before_after:
+    if not is_measurable and has_passed_before_after:
         errors.append(_error("contradictory_episode_outcome", "non-measurable outcome cannot have a matching pass/before_after verification"))
 
 
 def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, list[dict[str, Any]]], errors: list[str], *, fixture_mode: bool) -> None:
-    source_by_id = {entry.get("source_shoot_id"): entry for entry in manifests.get("source_shoots", [])}
-    consent_by_id = {entry.get("consent_record_id"): entry for entry in manifests.get("consents", [])}
-    rights_by_id = {entry.get("rights_record_id"): entry for entry in manifests.get("rights", [])}
-    derivation_by_record: dict[Any, dict[str, Any]] = {}
-    for entry in manifests.get("derivations", []):
-        derivation_by_record.setdefault(entry.get("record_id"), entry)
+    source_by_id = {
+        entry.get("source_shoot_id"): entry
+        for entry in _manifest_entries(manifests, "source_shoots")
+        if isinstance(entry, dict) and isinstance(entry.get("source_shoot_id"), str)
+    }
+    consent_by_id = {
+        entry.get("consent_record_id"): entry
+        for entry in _manifest_entries(manifests, "consents")
+        if isinstance(entry, dict) and isinstance(entry.get("consent_record_id"), str)
+    }
+    rights_by_id = {
+        entry.get("rights_record_id"): entry
+        for entry in _manifest_entries(manifests, "rights")
+        if isinstance(entry, dict) and isinstance(entry.get("rights_record_id"), str)
+    }
+    derivation_by_record: dict[str, dict[str, Any]] = {}
+    for entry in _manifest_entries(manifests, "derivations"):
+        if isinstance(entry, dict) and isinstance(entry.get("record_id"), str):
+            derivation_by_record.setdefault(entry["record_id"], entry)
     provenance = record.get("provenance")
     if not isinstance(provenance, dict):
         return
     source_id = provenance.get("source_shoot_id")
-    source = source_by_id.get(source_id)
+    source = source_by_id.get(source_id) if isinstance(source_id, str) else None
     if source is None:
         errors.append(_error("missing_source_shoot", str(source_id)))
         return
@@ -770,14 +821,14 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
     split = record.get("split")
     # Admission is based on the resolved source authority. A claimant cannot
     # relabel a synthetic source as owned/licensed to bypass release gates.
-    if source_kind == "synthetic_fixture" and split not in {"fixture", "quarantine"}:
+    if source_kind == "synthetic_fixture" and isinstance(split, str) and split not in {"fixture", "quarantine"}:
         errors.append(_error("synthetic_source_not_admissible", "resolved source_shoot source_kind is synthetic_fixture"))
     if split == "fixture" and (not fixture_mode or source_kind != "synthetic_fixture"):
         errors.append(_error("synthetic_data_not_admitted", "fixture split requires a resolved synthetic_fixture source"))
-    source_assets = set(source.get("asset_ids", []))
-    record_source_assets = set(provenance.get("source_asset_ids", []))
+    source_assets = _string_set(source.get("asset_ids"))
+    record_source_assets = _string_set(provenance.get("source_asset_ids"))
     media = record.get("media") if isinstance(record.get("media"), dict) else {}
-    media_asset_ids = {asset_id for asset_id in media.get("asset_ids", []) if isinstance(asset_id, str)}
+    media_asset_ids = _string_set(media.get("asset_ids"))
     # Temporal/episode records may use an aggregate primary asset not repeated
     # in asset_ids; both fields still need independent authority resolution.
     media_asset_refs = media_asset_ids | ({media.get("asset_id")} if isinstance(media.get("asset_id"), str) else set())
@@ -791,13 +842,13 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
     for field in ("scene_family_id", "take_family_id", "time_family_id", "location_family_id", "device_family_id"):
         if capture.get(field) != source.get(field):
             errors.append(_error("family_mismatch", f"capture.{field}"))
-    if set(capture.get("person_family_ids", [])) != set(source.get("person_family_ids", [])):
+    if _string_set(capture.get("person_family_ids")) != _string_set(source.get("person_family_ids")):
         errors.append(_error("family_mismatch", "capture.person_family_ids"))
     for field in ("orientation", "lens", "lighting"):
         if capture.get(field) != source.get(field):
             errors.append(_error("capture_context_mismatch", f"capture.{field}"))
     rights_id = provenance.get("rights_record_id")
-    rights = rights_by_id.get(rights_id)
+    rights = rights_by_id.get(rights_id) if isinstance(rights_id, str) else None
     if rights is None:
         errors.append(_error("missing_rights_record", str(rights_id)))
     else:
@@ -805,38 +856,40 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
         if rights.get("source_shoot_id") != source_id:
             errors.append(_error("provenance_mismatch", "rights source_shoot_id"))
         consent_id = rights.get("consent_record_id")
-        consent = consent_by_id.get(consent_id)
+        consent = consent_by_id.get(consent_id) if isinstance(consent_id, str) else None
+        rights_assets = _string_set(rights.get("asset_ids"))
         if consent is None:
             errors.append(_error("missing_consent_record", str(consent_id)))
         else:
             _check_enum(consent.get("disposition"), RIGHTS_DISPOSITIONS, "consent.disposition", errors)
             if consent.get("source_shoot_id") != source_id:
                 errors.append(_error("provenance_mismatch", "consent source_shoot_id"))
-            consent_assets = {asset_id for asset_id in consent.get("asset_ids", []) if isinstance(asset_id, str)}
-            if not set(rights.get("asset_ids", [])).issubset(consent_assets):
+            consent_assets = _string_set(consent.get("asset_ids"))
+            if not rights_assets.issubset(consent_assets):
                 errors.append(_error("consent_scope_mismatch", "consent asset_ids"))
             if consent.get("disposition") != rights.get("disposition"):
                 errors.append(_error("provenance_mismatch", "consent disposition"))
-            if not set(rights.get("allowed_uses", [])).issubset(set(consent.get("allowed_uses", []))):
+            rights_allowed = _string_set(rights.get("allowed_uses"))
+            consent_allowed = _string_set(consent.get("allowed_uses"))
+            if not rights_allowed.issubset(consent_allowed):
                 errors.append(_error("consent_scope_mismatch", "consent allowed_uses"))
-            consent_allowed = set(consent.get("allowed_uses", []))
-            if split in RELEASE_SPLITS and (consent.get("disposition") != "approved" or split not in consent_allowed):
+            if isinstance(split, str) and split in RELEASE_SPLITS and (consent.get("disposition") != "approved" or split not in consent_allowed):
                 errors.append(_error("consent_not_admissible", f"{split} requires approved consent and allowed use"))
             if split == "fixture" and (not fixture_mode or consent.get("disposition") != "fixture_only" or "fixture" not in consent_allowed):
                 errors.append(_error("consent_not_admissible", "fixture split is synthetic-test-only"))
-        rights_assets = set(rights.get("asset_ids", []))
         if not record_source_assets.issubset(rights_assets) or not media_asset_refs.issubset(rights_assets):
             errors.append(_error("rights_scope_mismatch", "rights asset_ids"))
         if rights.get("disposition") != provenance.get("rights_disposition"):
             errors.append(_error("provenance_mismatch", "rights disposition"))
-        allowed = set(rights.get("allowed_uses", []))
-        if split in {"train", "calibration", "holdout"} and (rights.get("disposition") != "approved" or split not in allowed):
+        allowed = _string_set(rights.get("allowed_uses"))
+        if isinstance(split, str) and split in RELEASE_SPLITS and (rights.get("disposition") != "approved" or split not in allowed):
             errors.append(_error("rights_not_approved", f"{split} requires approved rights and allowed use"))
         if split == "fixture" and (not fixture_mode or rights.get("disposition") != "fixture_only" or "fixture" not in allowed):
             errors.append(_error("rights_not_approved", "fixture split is synthetic-test-only"))
-    derivation = derivation_by_record.get(record.get("record_id"))
+    record_id = record.get("record_id")
+    derivation = derivation_by_record.get(record_id) if isinstance(record_id, str) else None
     if derivation is None:
-        errors.append(_error("missing_derivation_record", record.get("record_id", "")))
+        errors.append(_error("missing_derivation_record", record_id if isinstance(record_id, str) else ""))
     else:
         if derivation.get("source_shoot_id") != source_id or derivation.get("derivation_family_id") != provenance.get("derivation_family_id"):
             errors.append(_error("family_mismatch", "derivation family/source shoot"))
@@ -844,16 +897,21 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
         _check_enum(derivation_kind, DERIVATION_KINDS, "derivation.derivation_kind", errors, code="invalid_derivation_kind")
         independent = derivation.get("is_independent")
         counts_toward_quota = derivation.get("counts_toward_quota")
-        if independent is not True or derivation_kind in NON_INDEPENDENT_DERIVATION_KINDS:
-            errors.append(_error("non_independent_derivation", record.get("record_id", "")))
-        expected_kind = {"still": "original_still", "temporal": "original_temporal_sequence", "episode": "original_before_after_episode"}.get(record.get("record_type"))
+        if independent is not True or (isinstance(derivation_kind, str) and derivation_kind in NON_INDEPENDENT_DERIVATION_KINDS):
+            errors.append(_error("non_independent_derivation", record_id if isinstance(record_id, str) else ""))
+        record_type = record.get("record_type")
+        expected_kind = (
+            {"still": "original_still", "temporal": "original_temporal_sequence", "episode": "original_before_after_episode"}.get(record_type)
+            if isinstance(record_type, str)
+            else None
+        )
         if independent is True and derivation_kind != expected_kind:
             errors.append(_error("invalid_derivation_kind", "independent derivation kind does not match record type"))
-        if split in RELEASE_SPLITS and independent is True and counts_toward_quota is not True:
+        if isinstance(split, str) and split in RELEASE_SPLITS and independent is True and counts_toward_quota is not True:
             errors.append(_error("invalid_quota_semantics", f"{split} independent record must count toward quota"))
-        if split in {"fixture", "quarantine"} and counts_toward_quota is True:
+        if isinstance(split, str) and split in {"fixture", "quarantine"} and counts_toward_quota is True:
             errors.append(_error("invalid_quota_semantics", f"{split} record cannot count toward release quota"))
-        derivation_outputs = set(derivation.get("output_asset_ids", []))
+        derivation_outputs = _string_set(derivation.get("output_asset_ids"))
         if not record_source_assets.issubset(derivation_outputs) or not media_asset_refs.issubset(derivation_outputs):
             errors.append(_error("provenance_mismatch", "derivation output assets"))
 
@@ -868,7 +926,11 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
     _require(record, required, "record", errors)
     record_type = record.get("record_type")
     _check_enum(record_type, RECORD_TYPES, "record.record_type", errors)
-    expected_schema = {"still": "camera-label-v1", "temporal": "camera-temporal-v1", "episode": "camera-episode-v1"}.get(record_type)
+    expected_schema = (
+        {"still": "camera-label-v1", "temporal": "camera-temporal-v1", "episode": "camera-episode-v1"}.get(record_type)
+        if isinstance(record_type, str)
+        else None
+    )
     if record.get("schema_id") != expected_schema:
         errors.append(_error("schema_record_type_mismatch", "record.schema_id"))
     if record.get("schema_version") != SCHEMA_VERSION:
@@ -895,7 +957,7 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
     _validate_subject_label_semantics(subject, label, errors)
     _validate_review(record.get("review"), errors)
     _validate_release_review(record.get("review"), record.get("split"), errors)
-    accepted = set(label.get("acceptable_action_ids", [])) if isinstance(label, dict) else set()
+    accepted = _string_set(label.get("acceptable_action_ids")) if isinstance(label, dict) else set()
     if record_type == "still":
         if capture.get("capture_mode") != "still":
             errors.append(_error("capture_context_mismatch", "still capture_mode"))
@@ -932,11 +994,24 @@ def validate_split_isolation(records: list[dict[str, Any]]) -> list[str]:
             continue
         provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
         capture = record.get("capture") if isinstance(record.get("capture"), dict) else {}
-        families = [provenance.get("source_shoot_id"), capture.get("scene_family_id"), capture.get("take_family_id"), capture.get("time_family_id"), capture.get("location_family_id"), capture.get("device_family_id"), provenance.get("derivation_family_id")]
-        families += capture.get("person_family_ids", []) if isinstance(capture.get("person_family_ids"), list) else []
+        families = [
+            value
+            for value in (
+                provenance.get("source_shoot_id"),
+                capture.get("scene_family_id"),
+                capture.get("take_family_id"),
+                capture.get("time_family_id"),
+                capture.get("location_family_id"),
+                capture.get("device_family_id"),
+                provenance.get("derivation_family_id"),
+            )
+            if isinstance(value, str)
+        ]
+        families += _string_values(capture.get("person_family_ids"))
+        split = record.get("split")
         for family in families:
-            if family:
-                family_splits.setdefault(family, set()).add(record.get("split"))
+            if family and isinstance(split, str):
+                family_splits.setdefault(family, set()).add(split)
     for family, splits in family_splits.items():
         admitted = splits & {"train", "calibration", "holdout"}
         if len(admitted) > 1:
@@ -946,9 +1021,19 @@ def validate_split_isolation(records: list[dict[str, Any]]) -> list[str]:
 
 def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> list[str]:
     errors: list[str] = []
+    if not isinstance(manifests, dict):
+        return [_error("invalid_object", "manifests")]
+
+    def entries(name: str) -> list[Any]:
+        value = manifests.get(name, [])
+        if not isinstance(value, list):
+            errors.append(_error("invalid_list", f"manifests.{name}"))
+            return []
+        return value
+
     source_ids: set[str] = set()
     source_assets: dict[str, set[str]] = {}
-    for index, entry in enumerate(manifests.get("source_shoots", [])):
+    for index, entry in enumerate(entries("source_shoots")):
         path = f"manifests.source_shoots[{index}]"
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "asset_ids", "storage", "source_kind"}, path, errors)
         if not isinstance(entry, dict):
@@ -958,23 +1043,29 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             errors.append(_error("invalid_manifest_entry", path))
         source_id = entry.get("source_shoot_id")
         _check_id(source_id, f"{path}.source_shoot_id", errors)
-        if source_id in source_ids:
+        if isinstance(source_id, str) and source_id in source_ids:
             errors.append(_error("duplicate_manifest_id", path))
-        source_ids.add(source_id)
+        if isinstance(source_id, str):
+            source_ids.add(source_id)
         assets = _check_list(entry.get("asset_ids"), f"{path}.asset_ids", errors, nonempty=True)
-        asset_set = set(assets)
-        if len(asset_set) != len(assets):
+        asset_ids = _string_values(assets)
+        asset_set = set(asset_ids)
+        if len(asset_set) != len(asset_ids):
             errors.append(_error("duplicate_manifest_id", f"{path}.asset_ids"))
         for asset_id in assets:
             _check_id(asset_id, f"{path}.asset_ids", errors)
-        source_assets[source_id] = asset_set
+        if isinstance(source_id, str):
+            source_assets[source_id] = asset_set
+        person_ids = _check_list(entry.get("person_family_ids"), f"{path}.person_family_ids", errors)
+        for person_id in person_ids:
+            _check_id(person_id, f"{path}.person_family_ids", errors)
         _check_enum(entry.get("source_kind"), SOURCE_KINDS, f"{path}.source_kind", errors)
         if entry.get("storage") != "outside_git":
             errors.append(_error("raw_media_inside_git", path))
     consent_ids: set[str] = set()
     consent_by_id: dict[str, dict[str, Any]] = {}
     consent_assets: dict[str, set[str]] = {}
-    for index, entry in enumerate(manifests.get("consents", [])):
+    for index, entry in enumerate(entries("consents")):
         path = f"manifests.consents[{index}]"
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "consent_record_id", "source_shoot_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"}, path, errors)
         if not isinstance(entry, dict):
@@ -984,18 +1075,23 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             errors.append(_error("invalid_manifest_entry", path))
         consent_id = entry.get("consent_record_id")
         _check_id(consent_id, f"{path}.consent_record_id", errors)
-        if consent_id in consent_ids:
+        if isinstance(consent_id, str) and consent_id in consent_ids:
             errors.append(_error("duplicate_manifest_id", path))
-        consent_ids.add(consent_id)
-        consent_by_id[consent_id] = entry
+        if isinstance(consent_id, str):
+            consent_ids.add(consent_id)
+            consent_by_id[consent_id] = entry
         source_id = entry.get("source_shoot_id")
-        if source_id not in source_ids:
+        _check_id(source_id, f"{path}.source_shoot_id", errors)
+        if not isinstance(source_id, str) or source_id not in source_ids:
             errors.append(_error("missing_source_shoot", path))
         assets = _check_list(entry.get("asset_ids"), f"{path}.asset_ids", errors, nonempty=True)
         asset_set = {asset_id for asset_id in assets if isinstance(asset_id, str)}
-        if source_id in source_assets and not asset_set.issubset(source_assets[source_id]):
+        for asset_id in assets:
+            _check_id(asset_id, f"{path}.asset_ids", errors)
+        if isinstance(source_id, str) and source_id in source_assets and not asset_set.issubset(source_assets[source_id]):
             errors.append(_error("missing_source_asset", path))
-        consent_assets[consent_id] = asset_set
+        if isinstance(consent_id, str):
+            consent_assets[consent_id] = asset_set
         _check_enum(entry.get("disposition"), RIGHTS_DISPOSITIONS, f"{path}.disposition", errors)
         allowed_uses = _check_list(entry.get("allowed_uses"), f"{path}.allowed_uses", errors, nonempty=True)
         for use in allowed_uses:
@@ -1004,7 +1100,7 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             errors.append(_error("missing_consent_evidence", path))
         _check_timestamp(entry.get("recorded_at"), f"{path}.recorded_at", errors)
     rights_ids: set[str] = set()
-    for index, entry in enumerate(manifests.get("rights", [])):
+    for index, entry in enumerate(entries("rights")):
         path = f"manifests.rights[{index}]"
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "rights_record_id", "source_shoot_id", "consent_record_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"}, path, errors)
         if not isinstance(entry, dict):
@@ -1014,14 +1110,17 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             errors.append(_error("invalid_manifest_entry", path))
         rights_id = entry.get("rights_record_id")
         _check_id(rights_id, f"{path}.rights_record_id", errors)
-        if rights_id in rights_ids:
+        if isinstance(rights_id, str) and rights_id in rights_ids:
             errors.append(_error("duplicate_manifest_id", path))
-        rights_ids.add(rights_id)
+        if isinstance(rights_id, str):
+            rights_ids.add(rights_id)
         source_id = entry.get("source_shoot_id")
-        if source_id not in source_ids:
+        _check_id(source_id, f"{path}.source_shoot_id", errors)
+        if not isinstance(source_id, str) or source_id not in source_ids:
             errors.append(_error("missing_source_shoot", path))
         consent_id = entry.get("consent_record_id")
-        consent = consent_by_id.get(consent_id)
+        _check_id(consent_id, f"{path}.consent_record_id", errors)
+        consent = consent_by_id.get(consent_id) if isinstance(consent_id, str) else None
         if consent is None:
             errors.append(_error("missing_consent_record", str(consent_id)))
         else:
@@ -1029,16 +1128,17 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
                 errors.append(_error("provenance_mismatch", f"{path}.consent source_shoot_id"))
         assets = _check_list(entry.get("asset_ids"), f"{path}.asset_ids", errors, nonempty=True)
         asset_set = {asset_id for asset_id in assets if isinstance(asset_id, str)}
-        if source_id in source_assets and not asset_set.issubset(source_assets[source_id]):
+        for asset_id in assets:
+            _check_id(asset_id, f"{path}.asset_ids", errors)
+        if isinstance(source_id, str) and source_id in source_assets and not asset_set.issubset(source_assets[source_id]):
             errors.append(_error("missing_source_asset", path))
         if consent is not None:
             if not asset_set.issubset(consent_assets.get(consent_id, set())):
                 errors.append(_error("consent_scope_mismatch", path))
             if consent.get("disposition") != entry.get("disposition"):
                 errors.append(_error("provenance_mismatch", f"{path}.consent disposition"))
-            if not set(entry.get("allowed_uses", [])).issubset(set(consent.get("allowed_uses", []))):
+            if not _string_set(entry.get("allowed_uses")).issubset(_string_set(consent.get("allowed_uses"))):
                 errors.append(_error("consent_scope_mismatch", f"{path}.consent allowed_uses"))
-        _check_id(entry.get("consent_record_id"), f"{path}.consent_record_id", errors)
         _check_enum(entry.get("disposition"), RIGHTS_DISPOSITIONS, f"{path}.disposition", errors)
         allowed_uses = _check_list(entry.get("allowed_uses"), f"{path}.allowed_uses", errors, nonempty=True)
         for use in allowed_uses:
@@ -1048,7 +1148,7 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         _check_timestamp(entry.get("recorded_at"), f"{path}.recorded_at", errors)
     derivation_ids: set[str] = set()
     derivation_record_ids: set[str] = set()
-    for index, entry in enumerate(manifests.get("derivations", [])):
+    for index, entry in enumerate(entries("derivations")):
         path = f"manifests.derivations[{index}]"
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "derivation_id", "source_shoot_id", "record_id", "input_asset_ids", "output_asset_ids", "derivation_family_id", "derivation_kind", "is_independent", "counts_toward_quota"}, path, errors)
         if not isinstance(entry, dict):
@@ -1058,23 +1158,32 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             errors.append(_error("invalid_manifest_entry", path))
         derivation_id = entry.get("derivation_id")
         _check_id(derivation_id, f"{path}.derivation_id", errors)
-        if derivation_id in derivation_ids:
+        if isinstance(derivation_id, str) and derivation_id in derivation_ids:
             errors.append(_error("duplicate_manifest_id", path))
-        derivation_ids.add(derivation_id)
+        if isinstance(derivation_id, str):
+            derivation_ids.add(derivation_id)
         source_id = entry.get("source_shoot_id")
-        if source_id not in source_ids:
+        _check_id(source_id, f"{path}.source_shoot_id", errors)
+        if not isinstance(source_id, str) or source_id not in source_ids:
             errors.append(_error("missing_source_shoot", path))
         output_assets = _check_list(entry.get("output_asset_ids"), f"{path}.output_asset_ids", errors, nonempty=True)
         input_assets = _check_list(entry.get("input_asset_ids"), f"{path}.input_asset_ids", errors, nonempty=True)
-        if source_id in source_assets and not set(output_assets).issubset(source_assets[source_id]):
+        for asset_id in output_assets:
+            _check_id(asset_id, f"{path}.output_asset_ids", errors)
+        for asset_id in input_assets:
+            _check_id(asset_id, f"{path}.input_asset_ids", errors)
+        output_asset_set = _string_set(output_assets)
+        input_asset_set = _string_set(input_assets)
+        if isinstance(source_id, str) and source_id in source_assets and not output_asset_set.issubset(source_assets[source_id]):
             errors.append(_error("missing_source_asset", path))
-        if not set(input_assets).issubset(set(output_assets)):
+        if not input_asset_set.issubset(output_asset_set):
             errors.append(_error("provenance_mismatch", path))
-        _check_id(entry.get("record_id"), f"{path}.record_id", errors)
         record_id = entry.get("record_id")
-        if record_id in derivation_record_ids:
+        _check_id(record_id, f"{path}.record_id", errors)
+        if isinstance(record_id, str) and record_id in derivation_record_ids:
             errors.append(_error("duplicate_derivation_record", record_id))
-        derivation_record_ids.add(record_id)
+        if isinstance(record_id, str):
+            derivation_record_ids.add(record_id)
         _check_id(entry.get("derivation_family_id"), f"{path}.derivation_family_id", errors)
         derivation_kind = entry.get("derivation_kind")
         _check_enum(derivation_kind, DERIVATION_KINDS, f"{path}.derivation_kind", errors, code="invalid_derivation_kind")
@@ -1241,6 +1350,9 @@ def _apply_mutations(record: dict[str, Any], manifests: dict[str, list[dict[str,
             target_object = next(item for item in manifests["consents"] if item["consent_record_id"] == rights["consent_record_id"])
         elif target == "derivation":
             target_object = next(item for item in manifests["derivations"] if item["record_id"] == record["record_id"])
+        elif target == "source":
+            source_id = record["provenance"]["source_shoot_id"]
+            target_object = next(item for item in manifests["source_shoots"] if item["source_shoot_id"] == source_id)
         else:
             raise ValueError(f"unknown fixture mutation target: {target}")
         _set_path(target_object, mutation["path"], mutation.get("value"), remove=mutation.get("operation") == "remove")
@@ -1251,16 +1363,18 @@ def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict
     errors = _validate_fixture_manifests(manifests)
     record_ids: set[str] = set()
     for record in records:
-        record_id = record.get("record_id")
+        record_id = record.get("record_id") if isinstance(record, dict) else None
         if isinstance(record_id, str):
             if record_id in record_ids:
                 errors.append(_error("duplicate_record_id", record_id))
             record_ids.add(record_id)
         errors.extend(validate_record(record, manifests, fixture_mode=fixture_mode))
     errors.extend(validate_split_isolation(records))
-    for entry in manifests.get("derivations", []):
-        if entry.get("record_id") not in record_ids:
-            errors.append(_error("orphan_derivation_record", str(entry.get("record_id"))))
+    for entry in _manifest_entries(manifests, "derivations"):
+        if isinstance(entry, dict):
+            record_id = entry.get("record_id")
+            if not isinstance(record_id, str) or record_id not in record_ids:
+                errors.append(_error("orphan_derivation_record", str(record_id)))
     return errors
 
 
@@ -1363,8 +1477,11 @@ def self_test() -> None:
         record = copy.deepcopy(base)
         case_manifests = copy.deepcopy(manifests)
         _apply_mutations(record, case_manifests, case["mutations"])
-        errors = _validate_fixture_manifests(case_manifests)
-        errors.extend(validate_record(record, case_manifests, fixture_mode=True))
+        try:
+            errors = _validate_fixture_manifests(case_manifests)
+            errors.extend(validate_record(record, case_manifests, fixture_mode=True))
+        except Exception as exc:  # hostile JSON must fail validation, never crash
+            raise AssertionError(f"{case['case_id']} raised {type(exc).__name__}") from exc
         reason = case["declared_reason"]
         assert errors and any(reason in error for error in errors), (case["case_id"], reason, errors)
         invalid_passes += 1
