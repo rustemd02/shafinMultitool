@@ -414,20 +414,25 @@ final class LatestFrameEvidenceStoreTests: XCTestCase {
 
     func testDetrProvenanceMustMatchFrameGenerationAndOrientation() {
         let measuredAt = Date(timeIntervalSince1970: 50)
+        let samplePTS = CMTime(value: 1, timescale: 30)
         let provenance = FeatureSampleProvenance(
             frameID: "frame-a",
             captureGeneration: 7,
-            orientation: .up
+            orientation: .up,
+            samplePresentationTimestamp: samplePTS,
+            sessionGeneration: 4
         )
         let state = makeDetrAdapterState(measuredAt: measuredAt, provenance: provenance)
-        let cases: [(String, UInt64, CGImagePropertyOrientation, Bool)] = [
-            ("frame-a", 7, .up, true),
-            ("frame-b", 7, .up, false),
-            ("frame-a", 8, .up, false),
-            ("frame-a", 7, .right, false)
+        let cases: [(String, UInt64, CGImagePropertyOrientation, CMTime, UInt64, Bool)] = [
+            ("frame-a", 7, .up, samplePTS, 4, true),
+            ("frame-a", 7, .up, CMTime(value: 2, timescale: 30), 4, false),
+            ("frame-a", 7, .up, samplePTS, 5, false),
+            ("frame-b", 7, .up, samplePTS, 4, false),
+            ("frame-a", 8, .up, samplePTS, 4, false),
+            ("frame-a", 7, .right, samplePTS, 4, false)
         ]
 
-        for (frameID, generation, orientation, shouldKeepDetr) in cases {
+        for (frameID, generation, orientation, timestamp, sessionGeneration, shouldKeepDetr) in cases {
             let snapshot = LatestFrameEvidenceStore.Snapshot(
                 pixelBuffer: makePixelBuffer(),
                 orientation: orientation,
@@ -435,11 +440,21 @@ final class LatestFrameEvidenceStoreTests: XCTestCase {
                 capturedAt: measuredAt,
                 isStable: true,
                 adapterState: state,
-                lensGeneration: generation
+                lensGeneration: generation,
+                samplePresentationTimestamp: timestamp,
+                sessionGeneration: sessionGeneration
             )
 
-            XCTAssertEqual(snapshot?.adapterState?.detr != nil, shouldKeepDetr)
-            XCTAssertEqual(snapshot?.adapterState?.debugData.detrDetections.isEmpty, !shouldKeepDetr)
+            XCTAssertEqual(
+                snapshot?.adapterState?.detr != nil,
+                shouldKeepDetr,
+                "DETR must require frame/lens/orientation/PTS/session provenance to match"
+            )
+            XCTAssertEqual(
+                snapshot?.adapterState?.debugData.detrDetections.isEmpty,
+                !shouldKeepDetr,
+                "a mismatched DETR sample must fail closed without legacy fallback"
+            )
         }
     }
 

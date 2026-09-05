@@ -3874,13 +3874,17 @@ final class AnalysisPipeline: ObservableObject {
                                      evaluatedAt: Date? = nil,
                                      captureGeneration: UInt64? = nil,
                                      orientation: CGImagePropertyOrientation? = nil,
+                                     samplePresentationTimestamp: CMTime? = nil,
+                                     sessionGeneration: UInt64? = nil,
                                      adapterState: PipelineFeatureSnapshotAdapterState) -> FrameFeatureSnapshot {
         let expectedDetrProvenance: FeatureSampleProvenance?
         if let captureGeneration, let orientation {
             expectedDetrProvenance = FeatureSampleProvenance(
                 frameID: frameId,
                 captureGeneration: captureGeneration,
-                orientation: orientation
+                orientation: orientation,
+                samplePresentationTimestamp: samplePresentationTimestamp ?? .invalid,
+                sessionGeneration: sessionGeneration
             )
         } else {
             expectedDetrProvenance = nil
@@ -4893,6 +4897,8 @@ final class AnalysisPipeline: ObservableObject {
                     evaluatedAt: now,
                     captureGeneration: frameEvidence.lensGeneration,
                     orientation: frameEvidence.orientation,
+                    samplePresentationTimestamp: frameEvidence.samplePresentationTimestamp,
+                    sessionGeneration: frameEvidence.sessionGeneration,
                     adapterState: adapterState
                 )
                 let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
@@ -4946,6 +4952,8 @@ final class AnalysisPipeline: ObservableObject {
             evaluatedAt: now,
             captureGeneration: frameEvidence.lensGeneration,
             orientation: frameEvidence.orientation,
+            samplePresentationTimestamp: frameEvidence.samplePresentationTimestamp,
+            sessionGeneration: frameEvidence.sessionGeneration,
             adapterState: adapterState
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
@@ -7314,6 +7322,8 @@ final class AnalysisPipeline: ObservableObject {
                         capturedAt: analysisCapturedAt,
                         captureGeneration: frameEvidence.lensGeneration,
                         orientation: frameEvidence.orientation,
+                        samplePresentationTimestamp: frameEvidence.samplePresentationTimestamp,
+                        sessionGeneration: frameEvidence.sessionGeneration,
                         adapterState: pauseAdapterState
                     )
                     let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)

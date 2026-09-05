@@ -733,3 +733,80 @@ physical device was targeted.
 `git diff --check` passed after this update. Changed paths remain within the
 M2 correction scope; no Release fixture behavior, routes, teardown, or
 accessibility IDs changed.
+
+## P0 correction — complete DETR provenance tuple at the adapter boundary
+
+This section supersedes the preceding claim that the exact PTS/session tuple
+was fully validated for every attributed DETR sample. The prior production
+DETR sample carried the tuple, but `makeFeatureSnapshot` constructed its
+expected provenance with the legacy `.invalid` PTS and `nil` session. Exact
+equality therefore discarded every fully attributed production DETR sample.
+The bounded fix passes the accepted frame's exact PTS and session generation
+into the expected provenance for all three owner paths: live moving/stability,
+live still, and pause. Legacy callers without a capture context retain their
+existing compatibility behavior.
+
+The existing adapter test now covers a matching production tuple and rejects
+the same frame/lens/orientation when either PTS or session generation differs;
+the rejected path clears DETR instead of falling back to stale debug detections.
+
+### Focused DETR provenance run
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-auto-dd \
+  -resultBundlePath /private/tmp/m2-camera-detr-fix.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests/testDetrProvenanceMustMatchFrameGenerationAndOrientation \
+  -only-testing:shafinMultitoolTests/PipelineFeatureSnapshotAdapterTests/testAdapterDoesNotCreateFallbackSamplesWithoutMeasuredAt
+```
+
+Result: exit `0`; Air summary reports `totalTestCount: 2`, `passedTests: 2`,
+`failedTests: 0`, `skippedTests: 0`, `result: Passed` in
+`/private/tmp/m2-camera-detr-fix.xcresult`.
+
+### Affected closed-loop run after the P0 fix
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-auto-dd \
+  -resultBundlePath /private/tmp/m2-camera-detr-closedloop.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathAutomaticallyVerifiesCorrectiveEpisode \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionCapturePathPublishesCorrectiveAndHonestAbstention \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionOwnersAdvanceSubjectSelectionThroughStabilizedEpisode
+```
+
+Result: exit `0`; Air summary reports `totalTestCount: 4`, `passedTests: 4`,
+`failedTests: 0`, `skippedTests: 0`, `result: Passed` in
+`/private/tmp/m2-camera-detr-closedloop.xcresult`. These tests retain the real
+capture callback, scheduler, pipeline, and ViewModel path; no direct DETR or
+presentation injection was added.
+
+### Current-head Release compile and seam audit
+
+```text
+xcodebuild build -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -configuration Release \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-detr-release-dd \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Result: exit `0`; product:
+`/private/tmp/m2-camera-detr-release-dd/Build/Products/Release-iphonesimulator/shafinMultitool.app`.
+`strings` and `nm -gU` returned no matches for the selected DEBUG fixture/test
+seams (`SHAFIN_CAMERA_PRODUCTION_FIXTURE`, `testingPublishLivePresentation`,
+`testingLiveSceneIdentity`, `testingResetLiveSceneIdentity`,
+`previewGeometryForTesting`). The permitted destination was iPhone Air only;
+no iPhone 17 Pro or physical device was targeted.
+
+`git diff --check` passed for this P0 correction. The earlier `53/53` unit and
+retained `10/10` production-UI Air bundles remain applicable because this fix
+only restores exact DETR adapter attribution and does not alter their owned
+presentation/lifecycle contracts.
