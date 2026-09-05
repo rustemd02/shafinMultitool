@@ -2148,18 +2148,25 @@ final class SceneBundlePipelineTests: XCTestCase {
     @MainActor
     func testSceneGeneratorLeaderConsumesOneRequestEventAndCannotReplay() async {
         let viewModel = SceneGeneratorViewModel(projectName: "leader-event-\(UUID().uuidString)")
-        let requestID = UUID()
-        let epoch: UInt = 7
-        let eventID = "generator.leader.\(requestID.uuidString.lowercased()).\(epoch)"
+        viewModel.testingResetGenerationStateTrace()
+        viewModel.testingStartGenerationLeaderFixture()
 
-        XCTAssertTrue(viewModel.testingBeginGenerationLeader(requestID: requestID, epoch: epoch))
+        let eventID = try! XCTUnwrap(viewModel.generationLeaderEventID)
+
+        XCTAssertEqual(
+            viewModel.testingGenerationStateTrace.map(\.phase),
+            [.idle, .input, .validating, .accepted, .queued, .leader]
+        )
         XCTAssertEqual(viewModel.generationLeaderEventID, eventID)
         XCTAssertEqual(viewModel.generationLeaderPhase, .three)
         XCTAssertTrue(viewModel.generationMotionEventLedger.hasConsumed(eventID))
         let revision = viewModel.generationLeaderPresentationRevision
+        let requestID = try! XCTUnwrap(viewModel.generationRequestState.requestID)
+        let epoch = try! XCTUnwrap(viewModel.generationRequestState.epoch)
 
         // The clarification continuation reuses UUID+epoch. Its accepted
-        // edge therefore cannot replay or replace the active projection.
+        // edge therefore cannot replay or replace the active projection after
+        // the real input→validating→accepted→queued→leader path.
         XCTAssertFalse(viewModel.testingBeginGenerationLeader(requestID: requestID, epoch: epoch))
         XCTAssertEqual(viewModel.generationLeaderPresentationRevision, revision)
         XCTAssertEqual(viewModel.generationLeaderPhase, .three)
@@ -2171,24 +2178,24 @@ final class SceneBundlePipelineTests: XCTestCase {
     @MainActor
     func testSceneGeneratorLeaderReduceMotionStartsAtActionWithoutTravel() {
         let viewModel = SceneGeneratorViewModel(projectName: "leader-reduce-motion-\(UUID().uuidString)")
-        let requestID = UUID()
-        let epoch: UInt = 11
+        viewModel.updateGenerationMotionPreferences(reduceMotion: true)
+        viewModel.testingResetGenerationStateTrace()
+        viewModel.testingStartGenerationLeaderFixture()
 
-        XCTAssertTrue(
-            viewModel.testingBeginGenerationLeader(
-                requestID: requestID,
-                epoch: epoch,
-                reduceMotion: true
-            )
+        XCTAssertEqual(
+            viewModel.testingGenerationStateTrace.map(\.phase),
+            [.idle, .input, .validating, .accepted, .queued, .leader]
         )
         XCTAssertEqual(viewModel.generationLeaderPhase, .action)
-        XCTAssertFalse(
-            viewModel.testingBeginGenerationLeader(
-                requestID: requestID,
-                epoch: epoch,
-                reduceMotion: true
-            )
-        )
+        let eventID = try! XCTUnwrap(viewModel.generationLeaderEventID)
+        let requestID = try! XCTUnwrap(viewModel.generationRequestState.requestID)
+        let epoch = try! XCTUnwrap(viewModel.generationRequestState.epoch)
+        let revision = viewModel.generationLeaderPresentationRevision
+        // The same accepted fixture request cannot consume its event again,
+        // even when its owner is using the immediate Reduce Motion path.
+        XCTAssertFalse(viewModel.testingBeginGenerationLeader(requestID: requestID, epoch: epoch))
+        XCTAssertTrue(viewModel.generationMotionEventLedger.hasConsumed(eventID))
+        XCTAssertEqual(viewModel.generationLeaderPresentationRevision, revision)
         XCTAssertEqual(viewModel.generationLeaderPhase, .action)
         viewModel.testingClearGenerationLeader()
     }

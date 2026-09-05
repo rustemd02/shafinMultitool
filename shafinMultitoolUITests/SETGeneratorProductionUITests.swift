@@ -638,15 +638,40 @@ final class SETGeneratorProductionUITests: XCTestCase {
             .completed,
             "The accepted generator request must expose its owner-rendered leader."
         )
+        let eventID = leader.value as? String
+        XCTAssertFalse(
+            eventID?.isEmpty ?? true,
+            "The leader accessibility probe must expose its request event identity."
+        )
         attachScreenshot(named: "generator-leader-ru-landscape-left")
 
-        // The same request owner must survive a rotation without a second
-        // lifecycle-triggered leader. The unit seam asserts the event ledger;
-        // this route proves the production overlay remains discoverable.
+        // Wait for the device to finish the requested rotation before reading
+        // the overlay. The app frame is the existing stable orientation
+        // evidence used by this UI lane; no sleep or timing inflation is used.
         XCUIDevice.shared.orientation = .landscapeRight
         XCTAssertTrue(
-            leader.exists,
+            app.wait(for: .runningForeground, timeout: launchTimeout),
+            "The generator route must remain foregrounded through rotation."
+        )
+        let landscapeRight = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in
+                self.app.frame.width > self.app.frame.height
+            },
+            object: nil
+        )
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [landscapeRight], timeout: launchTimeout),
+            .completed,
+            "The requested landscapeRight orientation must settle before the leader is inspected."
+        )
+        XCTAssertTrue(
+            leader.waitForExistence(timeout: 1),
             "Rotation must not remove the request-owned leader before its sequence retires."
+        )
+        XCTAssertEqual(
+            leader.value as? String,
+            eventID,
+            "Rotation must preserve the same request event rather than replaying a new leader."
         )
         attachScreenshot(named: "generator-leader-ru-landscape-right")
     }

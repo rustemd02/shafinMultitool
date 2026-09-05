@@ -66,7 +66,7 @@ struct SceneGeneratorView: View {
 
             if let phase = viewModel.generationLeaderPhase,
                let eventID = viewModel.generationLeaderEventID {
-                GeneratorLeaderOverlay(phase: phase)
+                GeneratorLeaderOverlay(phase: phase, eventID: eventID)
                     .id(eventID)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
@@ -85,17 +85,16 @@ struct SceneGeneratorView: View {
         .onAppear {
             viewModel.updateGenerationMotionPreferences(reduceMotion: reduceMotion)
             viewModel.prepareWorkspace()
-#if DEBUG
-            // Publishing the fixture request synchronously from onAppear can
-            // occur inside SwiftUI's update pass. Defer one actor turn so the
-            // test-only request follows the same settled route lifecycle as a
-            // user submit without changing production timing or ownership.
-            Task { @MainActor in
-                await Task.yield()
-                viewModel.testingStartGenerationLeaderFixtureIfRequested()
-            }
-#endif
         }
+#if DEBUG
+        // `.task` is scheduled after the representable has completed its
+        // route-entry update. The fixture therefore publishes its valid
+        // input→leader sequence outside SwiftUI's body/onAppear transaction;
+        // production submission remains owned by the existing generation task.
+        .task { @MainActor in
+            viewModel.testingStartGenerationLeaderFixtureIfRequested()
+        }
+#endif
         .onDisappear {
             Task { @MainActor in
                 _ = await viewModel.teardownAndWait()
@@ -137,6 +136,7 @@ struct SceneGeneratorView: View {
 /// phase and owns the countdown task; this view has no timer or event ledger.
 private struct GeneratorLeaderOverlay: View {
     let phase: SETLeaderPhase
+    let eventID: String
 
     var body: some View {
         SETLeaderCountdown(phase: phase)
@@ -147,6 +147,11 @@ private struct GeneratorLeaderOverlay: View {
             // A containing wrapper would hide that label from XCTest on the
             // UIKit-hosted route.
             .accessibilityIdentifier("generator_leader")
+#if DEBUG
+            // Keep the request identity available to the deterministic UI
+            // probe without adding it to the release VoiceOver surface.
+            .accessibilityValue(Text(verbatim: eventID))
+#endif
             .transition(.opacity)
             .animation(
                 .easeOut(duration: SETMotion.reducedMotionCrossfadeDuration),
