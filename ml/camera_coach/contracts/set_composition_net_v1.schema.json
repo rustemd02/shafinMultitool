@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "setcompositionnet.output.v1.schema.json",
+  "title": "SETCompositionNet-v1 contract manifest",
+  "type": "object",
+  "required": [
+    "contract_id",
+    "contract_version",
+    "input_contract_version",
+    "preprocessing_version",
+    "feature_version",
+    "output_contract_version",
+    "inputs",
+    "preprocessing",
+    "outputs"
+  ],
+  "properties": {
+    "contract_id": { "const": "SETCompositionNet" },
+    "contract_version": { "const": "setcompositionnet.v1" },
+    "input_contract_version": { "const": "setcompositionnet.input.v1" },
+    "preprocessing_version": { "const": "setcompositionnet.preprocessing.v1" },
+    "feature_version": { "const": "setcompositionnet.features.v1" },
+    "output_contract_version": { "const": "setcompositionnet.output.v1" },
+    "tensor_layout": { "const": "HWC" },
+    "inputs": {
+      "type": "object",
+      "required": [
+        "full_frame_rgb",
+        "subject_crop_rgb",
+        "roi_normalized_xywh",
+        "roi_mask",
+        "scalar_features"
+      ]
+    },
+    "preprocessing": { "type": "object" },
+    "feature_normalization": { "type": "object" },
+    "outputs": {
+      "type": "object",
+      "required": ["head_order", "heads", "forbidden_outputs"]
+    }
+  },
+  "additionalProperties": true
+}

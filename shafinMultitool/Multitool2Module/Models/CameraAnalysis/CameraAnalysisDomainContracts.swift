@@ -1134,6 +1134,299 @@ struct RecommendationPlan: Codable, Equatable, Sendable {
 
 // MARK: - Contract H06: Neural Evidence
 
+/// Frozen machine-readable SETCompositionNet-v1 catalog. Keep these arrays in
+/// the same order as ml/camera_coach/contracts/set_composition_net_v1.json;
+/// the parity checker rejects drift until build-time code generation exists.
+enum SETCompositionNetContract {
+    static let contractVersion = "setcompositionnet.v1"
+    static let inputContractVersion = "setcompositionnet.input.v1"
+    static let preprocessingVersion = "setcompositionnet.preprocessing.v1"
+    static let featureVersion = "setcompositionnet.features.v1"
+    static let outputContractVersion = "setcompositionnet.output.v1"
+
+    static let fullFrameWidth = 320
+    static let fullFrameHeight = 320
+    static let subjectCropWidth = 192
+    static let subjectCropHeight = 192
+    static let roiMaskWidth = 320
+    static let roiMaskHeight = 320
+    static let scalarFeatureCount = 40
+    static let embeddingDimension = 128
+
+    static let featureNames = [
+        "subject_bbox_x", "subject_bbox_y", "subject_bbox_width", "subject_bbox_height",
+        "subject_area_ratio", "subject_edge_pressure_left", "subject_edge_pressure_right",
+        "subject_edge_pressure_top", "subject_edge_pressure_bottom", "person_count",
+        "face_count", "group_count", "person_confidence", "face_confidence", "group_confidence",
+        "saliency_left_right_balance", "saliency_top_bottom_balance", "saliency_subject_mean",
+        "saliency_background_mean", "saliency_subject_background_delta", "horizon_angle",
+        "horizon_confidence", "subject_mean_luma", "background_mean_luma", "subject_luma_delta",
+        "subject_clipped_ratio", "background_hotspot_ratio", "motion_shake", "motion_stability",
+        "focus_readability", "focus_confidence", "orientation_category", "mirroring_flag",
+        "lens_category", "format_aspect_ratio", "roi_present", "roi_area_ratio", "roi_mask_coverage",
+        "subject_separation", "camera_exposure_bias"
+    ]
+
+    static let sceneClassNames = [
+        "dialogue_closeup", "single_character_medium", "two_character_frame",
+        "object_insert", "establishing_like_frame", "moody_backlit_subject",
+        "unknown", "out_of_domain"
+    ]
+    static let subjectnessROIAgreementNames = ["subjectness", "roi_agreement", "ambiguity"]
+    static let issueNames = IssueTypeV1.allCases.map(\.rawValue)
+    static let actionUtilityNames = ActionTypeV1.allCases.map(\.rawValue)
+    static let targetDeltaNames = [
+        "delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta"
+    ]
+
+    static let outputHeadNames = [
+        "scene_class_logits", "subjectness_roi_agreement_logits", "issue_logits",
+        "action_utility_logits", "good_frame_probability", "abstention_probability",
+        "risk_probability", "continuous_target_deltas", "embedding"
+    ]
+
+    static let outputHeadShapes: [String: Int] = [
+        "scene_class_logits": sceneClassNames.count,
+        "subjectness_roi_agreement_logits": subjectnessROIAgreementNames.count,
+        "issue_logits": issueNames.count,
+        "action_utility_logits": actionUtilityNames.count,
+        "good_frame_probability": 1,
+        "abstention_probability": 1,
+        "risk_probability": 1,
+        "continuous_target_deltas": targetDeltaNames.count,
+        "embedding": embeddingDimension
+    ]
+
+    static func roiMask(for roi: SETCompositionNetROI) -> [Double] {
+        guard roi.present else {
+            return Array(repeating: 0.0, count: roiMaskWidth * roiMaskHeight)
+        }
+        return (0..<roiMaskHeight).flatMap { row in
+            let y = (Double(row) + 0.5) / Double(roiMaskHeight)
+            return (0..<roiMaskWidth).map { column in
+                let x = (Double(column) + 0.5) / Double(roiMaskWidth)
+                return roi.contains(x: x, y: y) ? 1.0 : 0.0
+            }
+        }
+    }
+}
+
+/// Raw ROI values are intentionally not clamped. Clamping at a constructor
+/// boundary would turn malformed model input into plausible geometry.
+struct SETCompositionNetROI: Equatable, Sendable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+    let present: Bool
+
+    init(x: Double, y: Double, width: Double, height: Double, present: Bool = true) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.present = present
+    }
+
+    init(_ normalizedRect: NormalizedRect?) {
+        guard let normalizedRect else {
+            self.init(x: 0, y: 0, width: 0, height: 0, present: false)
+            return
+        }
+        self.init(x: normalizedRect.x,
+                  y: normalizedRect.y,
+                  width: normalizedRect.width,
+                  height: normalizedRect.height,
+                  present: !normalizedRect.isDegenerate)
+    }
+
+    func validate() -> [String] {
+        var errors: [String] = []
+        let values = [x, y, width, height]
+        if values.contains(where: { !$0.isFinite }) {
+            errors.append("compositionNet.roi must contain only finite values")
+            return errors
+        }
+        if !present {
+            if values.contains(where: { $0 != 0 }) {
+                errors.append("compositionNet.roi must be zeroed when absent")
+            }
+            return errors
+        }
+        if x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > 1 || y + height > 1 {
+            errors.append("compositionNet.roi must be a non-degenerate top-left [0,1] rectangle")
+        }
+        return errors
+    }
+
+    fileprivate func contains(x pointX: Double, y pointY: Double) -> Bool {
+        present && pointX >= x && pointX < x + width && pointY >= y && pointY < y + height
+    }
+}
+
+/// Tensor payload owned by the model boundary. Values are logical RGB HWC
+/// tensors even though the current camera transport uses a BGRA pixel buffer.
+struct SETCompositionNetInputTensors: Equatable, Sendable {
+    let inputContractVersion: String
+    let preprocessingVersion: String
+    let featureVersion: String
+    let fullFrameRGB: [Double]
+    let subjectCropRGB: [Double]
+    let roi: SETCompositionNetROI
+    let roiMask: [Double]
+    let scalarFeatures: [Double]
+    let missingFeatureMask: [Double]
+
+    init(inputContractVersion: String = SETCompositionNetContract.inputContractVersion,
+         preprocessingVersion: String = SETCompositionNetContract.preprocessingVersion,
+         featureVersion: String = SETCompositionNetContract.featureVersion,
+         fullFrameRGB: [Double],
+         subjectCropRGB: [Double],
+         roi: SETCompositionNetROI,
+         roiMask: [Double],
+         scalarFeatures: [Double],
+         missingFeatureMask: [Double]) {
+        self.inputContractVersion = inputContractVersion
+        self.preprocessingVersion = preprocessingVersion
+        self.featureVersion = featureVersion
+        self.fullFrameRGB = fullFrameRGB
+        self.subjectCropRGB = subjectCropRGB
+        self.roi = roi
+        self.roiMask = roiMask
+        self.scalarFeatures = scalarFeatures
+        self.missingFeatureMask = missingFeatureMask
+    }
+
+    func validate() -> [String] {
+        var errors: [String] = []
+        if inputContractVersion != SETCompositionNetContract.inputContractVersion {
+            errors.append("compositionNet.inputContractVersion is unsupported")
+        }
+        if preprocessingVersion != SETCompositionNetContract.preprocessingVersion {
+            errors.append("compositionNet.preprocessingVersion is unsupported")
+        }
+        if featureVersion != SETCompositionNetContract.featureVersion {
+            errors.append("compositionNet.featureVersion is unsupported")
+        }
+
+        let fullFrameCount = SETCompositionNetContract.fullFrameWidth
+            * SETCompositionNetContract.fullFrameHeight * 3
+        let subjectCropCount = SETCompositionNetContract.subjectCropWidth
+            * SETCompositionNetContract.subjectCropHeight * 3
+        let maskCount = SETCompositionNetContract.roiMaskWidth * SETCompositionNetContract.roiMaskHeight
+        if fullFrameRGB.count != fullFrameCount {
+            errors.append("compositionNet.fullFrameRGB must contain \(fullFrameCount) values")
+        }
+        if subjectCropRGB.count != subjectCropCount {
+            errors.append("compositionNet.subjectCropRGB must contain \(subjectCropCount) values")
+        }
+        if roiMask.count != maskCount {
+            errors.append("compositionNet.roiMask must contain \(maskCount) values")
+        }
+        if scalarFeatures.count != SETCompositionNetContract.scalarFeatureCount {
+            errors.append("compositionNet.scalarFeatures must contain \(SETCompositionNetContract.scalarFeatureCount) values")
+        }
+        if missingFeatureMask.count != scalarFeatures.count {
+            errors.append("compositionNet.missingFeatureMask must match scalarFeatures count")
+        }
+
+        let pixelValues = fullFrameRGB + subjectCropRGB
+        if pixelValues.contains(where: { !$0.isFinite || $0 < 0 || $0 > 1 }) {
+            errors.append("compositionNet RGB tensors must be finite and within [0, 1]")
+        }
+        if scalarFeatures.contains(where: { !$0.isFinite }) {
+            errors.append("compositionNet.scalarFeatures must be finite")
+        } else if scalarFeatures.contains(where: { $0 < -1 || $0 > 1 }) {
+            errors.append("compositionNet.scalarFeatures must be normalized within [-1, 1]")
+        }
+        if missingFeatureMask.contains(where: { !$0.isFinite || ($0 != 0 && $0 != 1) }) {
+            errors.append("compositionNet.missingFeatureMask values must be finite 0/1")
+        }
+        if roiMask.contains(where: { !$0.isFinite || ($0 != 0 && $0 != 1) }) {
+            errors.append("compositionNet.roiMask values must be finite 0/1")
+        }
+        errors.append(contentsOf: roi.validate())
+        if roiMask.count == maskCount && roiMask != SETCompositionNetContract.roiMask(for: roi) {
+            errors.append("compositionNet.roiMask does not match normalized ROI rasterization")
+        }
+        return errors
+    }
+}
+
+/// Strict v1 output tensors. Dictionary keys are untrusted at the boundary,
+/// so validation rejects both missing and unsupported head names.
+struct SETCompositionNetOutputHeads: Equatable, Sendable {
+    let outputContractVersion: String
+    let tensors: [String: [Double]]
+
+    init(outputContractVersion: String = SETCompositionNetContract.outputContractVersion,
+         tensors: [String: [Double]]) {
+        self.outputContractVersion = outputContractVersion
+        self.tensors = tensors
+    }
+
+    init(sceneClassLogits: [Double],
+         subjectnessROIAgreementLogits: [Double],
+         issueLogits: [Double],
+         actionUtilityLogits: [Double],
+         goodFrameProbability: Double,
+         abstentionProbability: Double,
+         riskProbability: Double,
+         continuousTargetDeltas: [Double],
+         embedding: [Double],
+         outputContractVersion: String = SETCompositionNetContract.outputContractVersion) {
+        self.init(
+            outputContractVersion: outputContractVersion,
+            tensors: [
+                "scene_class_logits": sceneClassLogits,
+                "subjectness_roi_agreement_logits": subjectnessROIAgreementLogits,
+                "issue_logits": issueLogits,
+                "action_utility_logits": actionUtilityLogits,
+                "good_frame_probability": [goodFrameProbability],
+                "abstention_probability": [abstentionProbability],
+                "risk_probability": [riskProbability],
+                "continuous_target_deltas": continuousTargetDeltas,
+                "embedding": embedding
+            ]
+        )
+    }
+
+    func validate() -> [String] {
+        var errors: [String] = []
+        if outputContractVersion != SETCompositionNetContract.outputContractVersion {
+            errors.append("compositionNet.outputContractVersion is unsupported")
+        }
+        let expected = Set(SETCompositionNetContract.outputHeadNames)
+        let actual = Set(tensors.keys)
+        let missing = expected.subtracting(actual).sorted()
+        let unsupported = actual.subtracting(expected).sorted()
+        if !missing.isEmpty {
+            errors.append("compositionNet output is missing heads: \(missing.joined(separator: ", "))")
+        }
+        if !unsupported.isEmpty {
+            errors.append("compositionNet output contains unsupported heads: \(unsupported.joined(separator: ", "))")
+        }
+        for name in SETCompositionNetContract.outputHeadNames {
+            guard let values = tensors[name] else { continue }
+            if values.count != SETCompositionNetContract.outputHeadShapes[name] {
+                errors.append("compositionNet \(name) must contain \(SETCompositionNetContract.outputHeadShapes[name] ?? 0) values")
+            }
+            if values.contains(where: { !$0.isFinite }) {
+                errors.append("compositionNet \(name) values must be finite")
+            }
+            if ["good_frame_probability", "abstention_probability", "risk_probability"].contains(name),
+               values.contains(where: { $0 < 0 || $0 > 1 }) {
+                errors.append("compositionNet \(name) values must be within [0, 1]")
+            }
+            if name == "continuous_target_deltas",
+               values.contains(where: { $0 < -1 || $0 > 1 }) {
+                errors.append("compositionNet \(name) values must be within [-1, 1]")
+            }
+        }
+        return errors
+    }
+}
+
 enum EvidenceHeadStatus: String, Codable, CaseIterable, Sendable {
     case available
     case notApplicable = "not_applicable"

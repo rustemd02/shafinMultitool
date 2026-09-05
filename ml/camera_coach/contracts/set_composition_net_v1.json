@@ -1,0 +1,294 @@
+{
+  "contract_id": "SETCompositionNet",
+  "contract_version": "setcompositionnet.v1",
+  "input_contract_version": "setcompositionnet.input.v1",
+  "preprocessing_version": "setcompositionnet.preprocessing.v1",
+  "feature_version": "setcompositionnet.features.v1",
+  "output_contract_version": "setcompositionnet.output.v1",
+  "tensor_layout": "HWC",
+  "inputs": {
+    "full_frame_rgb": {
+      "dtype": "float32",
+      "shape": [320, 320, 3],
+      "channel_order": ["R", "G", "B"],
+      "value_range": [0.0, 1.0]
+    },
+    "subject_crop_rgb": {
+      "dtype": "float32",
+      "shape": [192, 192, 3],
+      "channel_order": ["R", "G", "B"],
+      "value_range": [0.0, 1.0]
+    },
+    "roi_normalized_xywh": {
+      "dtype": "float32",
+      "shape": [4],
+      "ordered_names": ["x", "y", "width", "height"],
+      "coordinate_space": "oriented_full_frame",
+      "origin": "top_left",
+      "axis_direction": ["right", "down"],
+      "value_range": [0.0, 1.0],
+      "bounds": ["x + width <= 1.0", "y + height <= 1.0"],
+      "missing_value": [0.0, 0.0, 0.0, 0.0]
+    },
+    "roi_mask": {
+      "dtype": "float32",
+      "shape": [320, 320, 1],
+      "value_range": [0.0, 1.0],
+      "values": [0.0, 1.0],
+      "rasterization": "one when pixel center is inside normalized xywh; zero otherwise",
+      "missing_value": 0.0
+    },
+    "scalar_features": {
+      "dtype": "float32",
+      "shape": [40],
+      "count": 40,
+      "ordered_names": [
+        "subject_bbox_x",
+        "subject_bbox_y",
+        "subject_bbox_width",
+        "subject_bbox_height",
+        "subject_area_ratio",
+        "subject_edge_pressure_left",
+        "subject_edge_pressure_right",
+        "subject_edge_pressure_top",
+        "subject_edge_pressure_bottom",
+        "person_count",
+        "face_count",
+        "group_count",
+        "person_confidence",
+        "face_confidence",
+        "group_confidence",
+        "saliency_left_right_balance",
+        "saliency_top_bottom_balance",
+        "saliency_subject_mean",
+        "saliency_background_mean",
+        "saliency_subject_background_delta",
+        "horizon_angle",
+        "horizon_confidence",
+        "subject_mean_luma",
+        "background_mean_luma",
+        "subject_luma_delta",
+        "subject_clipped_ratio",
+        "background_hotspot_ratio",
+        "motion_shake",
+        "motion_stability",
+        "focus_readability",
+        "focus_confidence",
+        "orientation_category",
+        "mirroring_flag",
+        "lens_category",
+        "format_aspect_ratio",
+        "roi_present",
+        "roi_area_ratio",
+        "roi_mask_coverage",
+        "subject_separation",
+        "camera_exposure_bias"
+      ],
+      "missing_mask": {
+        "dtype": "float32",
+        "shape": [40],
+        "ordered_names": "same_as_scalar_features",
+        "values": [0.0, 1.0],
+        "semantics": "one means the equally indexed scalar feature is missing"
+      }
+    }
+  },
+  "preprocessing": {
+    "source_color_space": "sRGB",
+    "source_pixel_format": "32BGRA",
+    "model_channel_order": ["R", "G", "B"],
+    "alpha": "discard",
+    "orientation": "apply the ImageIO orientation exactly once before crop and resize",
+    "mirroring": "honor ImageIO mirrored orientations; apply no additional mirror",
+    "resize_interpolation": "bilinear",
+    "resize_geometry": "independent_scale_to_target",
+    "normalization": {
+      "formula": "float8_channel / 255.0",
+      "value_range": [0.0, 1.0],
+      "per_channel_offset": [0.0, 0.0, 0.0],
+      "per_channel_scale": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098]
+    },
+    "subject_crop": {
+      "recipe_version": "square_expand_1.25.v1",
+      "square_side": "1.25 * max(roi.width_pixels, roi.height_pixels)",
+      "clipping": "clip padded square to oriented full-frame bounds before resize",
+      "missing_crop": "zero-filled 192x192x3 tensor"
+    }
+  },
+  "feature_normalization": {
+    "unit_interval": {
+      "formula": "clip(raw, 0.0, 1.0)",
+      "value_range": [0.0, 1.0]
+    },
+    "signed_unit_interval": {
+      "formula": "clip(raw, -1.0, 1.0)",
+      "value_range": [-1.0, 1.0]
+    },
+    "count_0_to_8": {
+      "formula": "clip(raw, 0.0, 8.0) / 8.0",
+      "value_range": [0.0, 1.0]
+    },
+    "angle_degrees_to_unit": {
+      "formula": "clip(raw_degrees / 180.0, -1.0, 1.0)",
+      "value_range": [-1.0, 1.0]
+    },
+    "categorical_index": {
+      "formula": "index / (category_count - 1)",
+      "value_range": [0.0, 1.0]
+    },
+    "aspect_ratio": {
+      "formula": "clip(raw_width / raw_height, 0.0, 4.0) / 4.0",
+      "value_range": [0.0, 1.0]
+    },
+    "feature_to_normalization": {
+      "subject_bbox_x": "unit_interval",
+      "subject_bbox_y": "unit_interval",
+      "subject_bbox_width": "unit_interval",
+      "subject_bbox_height": "unit_interval",
+      "subject_area_ratio": "unit_interval",
+      "subject_edge_pressure_left": "unit_interval",
+      "subject_edge_pressure_right": "unit_interval",
+      "subject_edge_pressure_top": "unit_interval",
+      "subject_edge_pressure_bottom": "unit_interval",
+      "person_count": "count_0_to_8",
+      "face_count": "count_0_to_8",
+      "group_count": "count_0_to_8",
+      "person_confidence": "unit_interval",
+      "face_confidence": "unit_interval",
+      "group_confidence": "unit_interval",
+      "saliency_left_right_balance": "signed_unit_interval",
+      "saliency_top_bottom_balance": "signed_unit_interval",
+      "saliency_subject_mean": "unit_interval",
+      "saliency_background_mean": "unit_interval",
+      "saliency_subject_background_delta": "signed_unit_interval",
+      "horizon_angle": "angle_degrees_to_unit",
+      "horizon_confidence": "unit_interval",
+      "subject_mean_luma": "unit_interval",
+      "background_mean_luma": "unit_interval",
+      "subject_luma_delta": "signed_unit_interval",
+      "subject_clipped_ratio": "unit_interval",
+      "background_hotspot_ratio": "unit_interval",
+      "motion_shake": "unit_interval",
+      "motion_stability": "unit_interval",
+      "focus_readability": "unit_interval",
+      "focus_confidence": "unit_interval",
+      "orientation_category": "categorical_index",
+      "mirroring_flag": "unit_interval",
+      "lens_category": "categorical_index",
+      "format_aspect_ratio": "aspect_ratio",
+      "roi_present": "unit_interval",
+      "roi_area_ratio": "unit_interval",
+      "roi_mask_coverage": "unit_interval",
+      "subject_separation": "unit_interval",
+      "camera_exposure_bias": "signed_unit_interval"
+    }
+  },
+  "outputs": {
+    "head_order": [
+      "scene_class_logits",
+      "subjectness_roi_agreement_logits",
+      "issue_logits",
+      "action_utility_logits",
+      "good_frame_probability",
+      "abstention_probability",
+      "risk_probability",
+      "continuous_target_deltas",
+      "embedding"
+    ],
+    "heads": [
+      {
+        "name": "scene_class_logits",
+        "dtype": "float32",
+        "shape": [8],
+        "ordered_names": [
+          "dialogue_closeup",
+          "single_character_medium",
+          "two_character_frame",
+          "object_insert",
+          "establishing_like_frame",
+          "moody_backlit_subject",
+          "unknown",
+          "out_of_domain"
+        ],
+        "value_semantics": "unbounded logits"
+      },
+      {
+        "name": "subjectness_roi_agreement_logits",
+        "dtype": "float32",
+        "shape": [3],
+        "ordered_names": ["subjectness", "roi_agreement", "ambiguity"],
+        "value_semantics": "unbounded logits"
+      },
+      {
+        "name": "issue_logits",
+        "dtype": "float32",
+        "shape": [8],
+        "ordered_names": [
+          "subject_too_close_to_edge",
+          "subject_not_prominent_enough",
+          "background_competes_with_subject",
+          "insufficient_look_space",
+          "backlight_hides_subject",
+          "scene_has_no_clear_focus",
+          "frame_visually_overloaded",
+          "horizon_distracts"
+        ],
+        "value_semantics": "bounded operational issue catalog logits"
+      },
+      {
+        "name": "action_utility_logits",
+        "dtype": "float32",
+        "shape": [10],
+        "ordered_names": [
+          "move_frame_left",
+          "move_frame_right",
+          "move_frame_up",
+          "move_frame_down",
+          "increase_subject_size",
+          "reduce_background_distractions",
+          "change_angle",
+          "improve_front_light",
+          "level_horizon",
+          "leave_frame_as_is"
+        ],
+        "value_semantics": "bounded ActionTypeV1 utility logits"
+      },
+      {
+        "name": "good_frame_probability",
+        "dtype": "float32",
+        "shape": [1],
+        "value_range": [0.0, 1.0]
+      },
+      {
+        "name": "abstention_probability",
+        "dtype": "float32",
+        "shape": [1],
+        "value_range": [0.0, 1.0]
+      },
+      {
+        "name": "risk_probability",
+        "dtype": "float32",
+        "shape": [1],
+        "value_range": [0.0, 1.0]
+      },
+      {
+        "name": "continuous_target_deltas",
+        "dtype": "float32",
+        "shape": [5],
+        "ordered_names": ["delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta"],
+        "value_range": [-1.0, 1.0],
+        "value_semantics": "bounded normalized target deltas"
+      },
+      {
+        "name": "embedding",
+        "dtype": "float32",
+        "shape": [128],
+        "value_semantics": "internal visual-semantic embedding only"
+      }
+    ],
+    "forbidden_outputs": [
+      "generated_text",
+      "arbitrary_object_name"
+    ]
+  }
+}

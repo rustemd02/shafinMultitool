@@ -18,6 +18,8 @@ import ImageIO
 /// Input boundary: everything the neural component may consume, with the
 /// provenance needed to attribute its outputs.
 struct SETCompositionNetInput {
+    let contractVersion: String
+    let inputContractVersion: String
     let frameId: String
     let generation: UInt64
     let mode: AnalysisMode
@@ -30,10 +32,15 @@ struct SETCompositionNetInput {
     let modelVersion: String
     let preprocessingVersion: String
     let bundleVersion: String
+    let featureVersion: String
+    let tensors: SETCompositionNetInputTensors?
 
     init(request: NeuralEvidenceProviderRequest,
          descriptor: NeuralEvidenceProviderDescriptor,
-         generation: UInt64) {
+         generation: UInt64,
+         tensors: SETCompositionNetInputTensors? = nil) {
+        self.contractVersion = SETCompositionNetContract.contractVersion
+        self.inputContractVersion = tensors?.inputContractVersion ?? SETCompositionNetContract.inputContractVersion
         self.frameId = request.frameId
         self.generation = generation
         self.mode = request.mode
@@ -44,6 +51,45 @@ struct SETCompositionNetInput {
         self.modelVersion = descriptor.modelVersion
         self.preprocessingVersion = descriptor.preprocessingVersion
         self.bundleVersion = descriptor.bundleVersion
+        self.featureVersion = tensors?.featureVersion ?? SETCompositionNetContract.featureVersion
+        self.tensors = tensors
+    }
+
+    /// Strict v1 validation is separate from the legacy M2 provenance fields.
+    /// A missing tensor payload or stale provider metadata keeps the candidate
+    /// unavailable rather than silently filling a default tensor.
+    func validate() -> [String] {
+        var errors: [String] = []
+        if contractVersion != SETCompositionNetContract.contractVersion {
+            errors.append("compositionNet.contractVersion is unsupported")
+        }
+        if inputContractVersion != SETCompositionNetContract.inputContractVersion {
+            errors.append("compositionNet.inputContractVersion is unsupported")
+        }
+        if modelFamily != "SETCompositionNet" {
+            errors.append("compositionNet.modelFamily is unsupported")
+        }
+        if modelVersion.isEmpty {
+            errors.append("compositionNet.modelVersion must be non-empty")
+        }
+        if preprocessingVersion != SETCompositionNetContract.preprocessingVersion {
+            errors.append("compositionNet.preprocessingVersion is unsupported")
+        }
+        if featureVersion != SETCompositionNetContract.featureVersion {
+            errors.append("compositionNet.featureVersion is unsupported")
+        }
+        if bundleVersion.isEmpty {
+            errors.append("compositionNet.bundleVersion must be non-empty")
+        }
+        guard let tensors else {
+            errors.append("compositionNet input tensors are missing")
+            return errors
+        }
+        if tensors.roi != SETCompositionNetROI(subjectROI) {
+            errors.append("compositionNet.roi does not match request subject ROI provenance")
+        }
+        errors.append(contentsOf: tensors.validate())
+        return errors
     }
 }
 
@@ -76,6 +122,14 @@ struct SETCompositionNetOutput {
     let abstentionScore: Double
     /// Good-frame score head output.
     let goodFrameScore: Double
+    /// Explicit v1 contract metadata and dense multi-task tensors. Nil means
+    /// this value uses the pre-M4 legacy H06 shape.
+    let contractVersion: String?
+    let inputContractVersion: String?
+    let preprocessingVersion: String?
+    let featureVersion: String?
+    let outputContractVersion: String?
+    let heads: SETCompositionNetOutputHeads?
 
     init(status: Status,
          frameId: String,
@@ -88,7 +142,13 @@ struct SETCompositionNetOutput {
          shotTypeAffinities: [EvidenceCategoryId: Double],
          riskScore: Double,
          abstentionScore: Double,
-         goodFrameScore: Double) {
+         goodFrameScore: Double,
+         contractVersion: String? = nil,
+         inputContractVersion: String? = nil,
+         preprocessingVersion: String? = nil,
+         featureVersion: String? = nil,
+         outputContractVersion: String? = nil,
+         heads: SETCompositionNetOutputHeads? = nil) {
         self.status = status
         self.frameId = frameId
         self.generation = generation
@@ -101,6 +161,12 @@ struct SETCompositionNetOutput {
         self.riskScore = riskScore
         self.abstentionScore = abstentionScore
         self.goodFrameScore = goodFrameScore
+        self.contractVersion = contractVersion
+        self.inputContractVersion = inputContractVersion
+        self.preprocessingVersion = preprocessingVersion
+        self.featureVersion = featureVersion
+        self.outputContractVersion = outputContractVersion ?? heads?.outputContractVersion
+        self.heads = heads
     }
 
     // MARK: Construction
@@ -146,6 +212,44 @@ struct SETCompositionNetOutput {
             abstentionScore: output.scalarConfidences.dropFirst().first ?? 0,
             goodFrameScore: output.shotTypeConfidence
         )
+    }
+
+    /// Constructor for the frozen M4 multi-task shape. The legacy provider
+    /// output remains supported only through the legacy constructor; this is
+    /// the explicit handoff for a versioned SETCompositionNet-v1 artifact.
+    static func availableV1(request: NeuralEvidenceProviderRequest,
+                            generation: UInt64,
+                            heads: SETCompositionNetOutputHeads) -> SETCompositionNetOutput {
+        SETCompositionNetOutput(
+            status: .available,
+            frameId: request.frameId,
+            generation: generation,
+            mode: request.mode,
+            subjectROI: request.primarySubjectRegion,
+            roiStrategy: request.roiStrategy,
+            issueActionLogits: [:],
+            continuousTargets: [:],
+            shotTypeAffinities: [:],
+            // Keep malformed heads non-plausible until strict validation runs;
+            // never turn a missing or wrong-sized probability into a default.
+            riskScore: requiredV1Probability(heads, name: "risk_probability"),
+            abstentionScore: requiredV1Probability(heads, name: "abstention_probability"),
+            goodFrameScore: requiredV1Probability(heads, name: "good_frame_probability"),
+            contractVersion: SETCompositionNetContract.contractVersion,
+            inputContractVersion: SETCompositionNetContract.inputContractVersion,
+            preprocessingVersion: SETCompositionNetContract.preprocessingVersion,
+            featureVersion: SETCompositionNetContract.featureVersion,
+            outputContractVersion: heads.outputContractVersion,
+            heads: heads
+        )
+    }
+
+    private static func requiredV1Probability(_ heads: SETCompositionNetOutputHeads,
+                                              name: String) -> Double {
+        guard let values = heads.tensors[name], values.count == 1 else {
+            return .nan
+        }
+        return values[0]
     }
 
     static func unavailable(request: NeuralEvidenceProviderRequest,
@@ -219,20 +323,23 @@ struct SETCompositionNetOutput {
             errors.append("compositionNet is missing the subject ROI provenance")
         }
 
-        for headId in EvidenceHeadId.allCases {
-            guard let logit = issueActionLogits[headId] else {
-                errors.append("compositionNet is missing the \(headId.rawValue) head")
-                continue
+        let isV1 = heads != nil || outputContractVersion != nil || contractVersion != nil
+        if !isV1 {
+            for headId in EvidenceHeadId.allCases {
+                guard let logit = issueActionLogits[headId] else {
+                    errors.append("compositionNet is missing the \(headId.rawValue) head")
+                    continue
+                }
+                if !logit.isFinite {
+                    errors.append("compositionNet \(headId.rawValue) logit is not finite")
+                }
             }
-            if !logit.isFinite {
-                errors.append("compositionNet \(headId.rawValue) logit is not finite")
+            for (tag, value) in continuousTargets where !value.isFinite {
+                errors.append("compositionNet continuous target \(tag.rawValue) is not finite")
             }
-        }
-        for (tag, value) in continuousTargets where !value.isFinite {
-            errors.append("compositionNet continuous target \(tag.rawValue) is not finite")
-        }
-        for (category, value) in shotTypeAffinities where !value.isFinite {
-            errors.append("compositionNet shot affinity \(category.rawValue) is not finite")
+            for (category, value) in shotTypeAffinities where !value.isFinite {
+                errors.append("compositionNet shot affinity \(category.rawValue) is not finite")
+            }
         }
         for (name, value) in [("riskScore", riskScore),
                               ("abstentionScore", abstentionScore),
@@ -247,6 +354,28 @@ struct SETCompositionNetOutput {
         }
         if goodFrameScore < 0 || goodFrameScore > 1 {
             errors.append("compositionNet goodFrameScore must be within [0, 1]")
+        }
+        if heads != nil || outputContractVersion != nil || contractVersion != nil {
+            guard let heads else {
+                errors.append("compositionNet v1 output heads are missing")
+                return errors
+            }
+            if contractVersion != SETCompositionNetContract.contractVersion {
+                errors.append("compositionNet.contractVersion is unsupported")
+            }
+            if inputContractVersion != SETCompositionNetContract.inputContractVersion {
+                errors.append("compositionNet.inputContractVersion is unsupported")
+            }
+            if preprocessingVersion != SETCompositionNetContract.preprocessingVersion {
+                errors.append("compositionNet.preprocessingVersion is unsupported")
+            }
+            if featureVersion != SETCompositionNetContract.featureVersion {
+                errors.append("compositionNet.featureVersion is unsupported")
+            }
+            if outputContractVersion != SETCompositionNetContract.outputContractVersion {
+                errors.append("compositionNet.outputContractVersion is unsupported")
+            }
+            errors.append(contentsOf: heads.validate())
         }
         return errors
     }
