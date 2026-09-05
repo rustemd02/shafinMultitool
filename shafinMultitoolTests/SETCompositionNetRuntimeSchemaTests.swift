@@ -250,6 +250,8 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
         defaultScalars[scalarIndexes["roi_mask_coverage"]!] = roi.present
             ? defaultROI.reduce(0.0, +) / Double(defaultROI.count)
             : 0.0
+        defaultScalars[scalarIndexes["orientation_category"]!] = 0.0
+        defaultScalars[scalarIndexes["lens_category"]!] = 0.5
 
         return SETCompositionNetInputTensors(
             inputContractVersion: inputContractVersion,
@@ -394,6 +396,22 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
             tensors: invalidMask
         )
         XCTAssertTrue(missingInput.validate().contains { $0.contains("roiMask") })
+
+        let nonZeroMissingCrop = makeV1Tensors(
+            roi: missingROI,
+            subjectCropRGB: [1.0] + Array(
+                repeating: 0.0,
+                count: SETCompositionNetContract.subjectCropWidth
+                    * SETCompositionNetContract.subjectCropHeight * 3 - 1
+            )
+        )
+        let missingCropInput = SETCompositionNetInput(
+            request: request,
+            descriptor: v1Descriptor,
+            generation: 5,
+            tensors: nonZeroMissingCrop
+        )
+        XCTAssertTrue(missingCropInput.validate().contains { $0.contains("zero-filled") })
     }
 
     func testV1InputRejectsFeatureRangeMissingFillAndROIScalarDrift() {
@@ -425,6 +443,19 @@ final class SETCompositionNetRuntimeSchemaTests: XCTestCase {
             )
         )
         XCTAssertTrue(nonZeroMissing.validate().contains { $0.contains("fill value") })
+
+        var invalidCategoricalScalars = makeV1Tensors(roi: roi).scalarFeatures
+        invalidCategoricalScalars[31] = 0.25
+        invalidCategoricalScalars[33] = 0.8461538461538461
+        let invalidCategorical = SETCompositionNetInput(
+            request: request,
+            descriptor: v1Descriptor,
+            generation: 5,
+            tensors: makeV1Tensors(roi: roi, scalarFeatures: invalidCategoricalScalars)
+        )
+        let categoricalErrors = invalidCategorical.validate()
+        XCTAssertTrue(categoricalErrors.contains { $0.contains("orientation_category") && $0.contains("unsupported") })
+        XCTAssertTrue(categoricalErrors.contains { $0.contains("lens_category") && $0.contains("unsupported") })
 
         var driftedScalars = makeV1Tensors(roi: roi).scalarFeatures
         driftedScalars[36] = 0.1
@@ -563,6 +594,7 @@ final class SETCompositionNetParityTests: XCTestCase {
         scalar[5] = 0.0
         scalar[17] = 0.0
         scalar[31] = 0.0
+        scalar[33] = 0.5
         scalar[35] = 1.0
         scalar[36] = 0.25
         scalar[37] = 0.25
@@ -582,7 +614,7 @@ final class SETCompositionNetParityTests: XCTestCase {
         )
         XCTAssertEqual(
             sha256Float32(scalar),
-            "b88d7c69932c3005c15018867013523b994651f75ace444d64cdc3de52b79292"
+            "d1106f1b49650a56e647a0e0a9ed83784e6c39483991dc12d1f20c6e7cd29d02"
         )
         XCTAssertEqual(
             sha256Float32(missing),
@@ -598,7 +630,7 @@ final class SETCompositionNetParityTests: XCTestCase {
             (
                 "top_left_padded_square_clip",
                 SETCompositionNetROI(x: 0.0, y: 0.0, width: 0.2, height: 0.2),
-                "49fe6bf5661eedfda2f2443cd97c2c89dc6e8414430a04713d7472a9f9492788"
+                "6d5ffae613c0ae9afe15391c69ce7eb536176de741e206afb16d3c0d22e1f793"
             ),
             (
                 "bottom_right_padded_square_clip",
@@ -616,6 +648,32 @@ final class SETCompositionNetParityTests: XCTestCase {
             }
             XCTAssertEqual(sha256Float32(edgeTensors.subjectCropRGB), expectedHash, fixtureID)
         }
+
+        let absentROI = SETCompositionNetROI(x: 0.0, y: 0.0, width: 0.0, height: 0.0, present: false)
+        guard let absentTensors = preprocessor.setCompositionNetRGBTensors(
+            from: sourceBuffer,
+            orientation: .up,
+            roi: absentROI
+        ) else {
+            return XCTFail("SETCompositionNet production absent-ROI tensors must be created")
+        }
+        XCTAssertTrue(absentTensors.subjectCropRGB.allSatisfy { $0 == 0.0 })
+        XCTAssertEqual(
+            sha256Float32(absentTensors.subjectCropRGB),
+            "ecdd54e7af52d8ca757fa4f6b58884c0d8b5c487abeebdf23a4008a3b1b810bf"
+        )
+        XCTAssertEqual(
+            sha256Float32(SETCompositionNetContract.roiMask(for: absentROI)),
+            "d58201a30b35a60612306667b083ca4dfaf9efa107386fff36188e42c34c3c19"
+        )
+        guard let absentBuffers = preprocessor.setCompositionNetPixelBuffers(
+            from: sourceBuffer,
+            orientation: .up,
+            roi: absentROI
+        ), let absentCropRGB = preprocessor.setCompositionNetRGBValues(from: absentBuffers.subjectCrop) else {
+            return XCTFail("SETCompositionNet production absent-ROI pixel buffers must be created")
+        }
+        XCTAssertTrue(absentCropRGB.allSatisfy { $0 == 0.0 })
     }
 
     private func makeSyntheticSourceBuffer() -> CVPixelBuffer? {

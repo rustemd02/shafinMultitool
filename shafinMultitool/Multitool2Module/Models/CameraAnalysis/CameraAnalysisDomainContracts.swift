@@ -1168,14 +1168,13 @@ enum SETCompositionNetContract {
         "subject_separation", "camera_exposure_bias"
     ]
 
-    /// Categorical values are indexed by these frozen catalogs. The values
-    /// intentionally mirror ImageIO's EXIF orientation order and
-    /// CameraLens.rawValue order; the manifest/checker reject reordering.
-    static let orientationCategoryNames = [
-        "up", "up_mirrored", "down", "down_mirrored",
-        "left_mirrored", "right", "right_mirrored", "left"
-    ]
+    /// Categorical values are indexed by these frozen catalogs. Mirroring is
+    /// a separate scalar feature, so orientation contains only the four
+    /// quarter-turn states and cannot silently absorb mirror state.
+    static let orientationCategoryNames = ["up", "right", "down", "left"]
+    static let orientationCategoryNormalizedValues = [0.0, 0.3333333333333333, 0.6666666666666666, 1.0]
     static let lensCategoryNames = ["ultra_wide", "wide", "tele"]
+    static let lensCategoryNormalizedValues = [0.0, 0.5, 1.0]
     static let signedFeatureNames = [
         "saliency_left_right_balance",
         "saliency_top_bottom_balance",
@@ -1367,6 +1366,19 @@ struct SETCompositionNetInputTensors: Equatable, Sendable {
                         "compositionNet scalar feature \(name) must be normalized within [\(lowerBound), 1]"
                     )
                 }
+                let allowedCategoricalValues: [Double]
+                switch name {
+                case "orientation_category":
+                    allowedCategoricalValues = SETCompositionNetContract.orientationCategoryNormalizedValues
+                case "lens_category":
+                    allowedCategoricalValues = SETCompositionNetContract.lensCategoryNormalizedValues
+                default:
+                    allowedCategoricalValues = []
+                }
+                if !allowedCategoricalValues.isEmpty,
+                   !allowedCategoricalValues.contains(where: { abs($0 - value) <= 0.000001 }) {
+                    errors.append("compositionNet categorical scalar feature \(name) has an unsupported normalized value")
+                }
             }
         }
         if missingFeatureMask.contains(where: { !$0.isFinite || ($0 != 0 && $0 != 1) }) {
@@ -1405,6 +1417,11 @@ struct SETCompositionNetInputTensors: Equatable, Sendable {
         }
         if roiMask.count == maskCount && roiMask != SETCompositionNetContract.roiMask(for: roi) {
             errors.append("compositionNet.roiMask does not match normalized ROI rasterization")
+        }
+        if !roi.present,
+           subjectCropRGB.count == subjectCropCount,
+           subjectCropRGB.contains(where: { $0 != 0.0 }) {
+            errors.append("compositionNet.subjectCropRGB must be zero-filled when ROI is absent")
         }
         return errors
     }

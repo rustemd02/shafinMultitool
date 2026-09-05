@@ -128,7 +128,7 @@
           "properties": {
             "recipe_version": { "const": "square_expand_1.25.v1" },
             "square_side": { "const": "1.25 * max(roi.width_pixels, roi.height_pixels)" },
-            "clipping": { "type": "string", "pattern": "clip padded square to oriented full-frame bounds" },
+            "clipping": { "type": "string", "pattern": "derive raw padded square bounds first.*clip padded square to oriented full-frame bounds.*intersection without shifting" },
             "missing_crop": { "const": "zero-filled 192x192x3 tensor" }
           },
           "additionalProperties": true
@@ -147,8 +147,46 @@
     },
     "feature_normalization": {
       "type": "object",
-      "required": ["feature_to_normalization"],
+      "required": [
+        "unit_interval",
+        "signed_unit_interval",
+        "count_0_to_8",
+        "angle_degrees_to_unit",
+        "categorical_index",
+        "aspect_ratio",
+        "feature_to_normalization"
+      ],
       "properties": {
+        "unit_interval": {
+          "type": "object",
+          "required": ["value_range"],
+          "properties": { "value_range": { "const": [0.0, 1.0] } }
+        },
+        "signed_unit_interval": {
+          "type": "object",
+          "required": ["value_range"],
+          "properties": { "value_range": { "const": [-1.0, 1.0] } }
+        },
+        "count_0_to_8": {
+          "type": "object",
+          "required": ["value_range"],
+          "properties": { "value_range": { "const": [0.0, 1.0] } }
+        },
+        "angle_degrees_to_unit": {
+          "type": "object",
+          "required": ["value_range"],
+          "properties": { "value_range": { "const": [-1.0, 1.0] } }
+        },
+        "categorical_index": {
+          "type": "object",
+          "required": ["value_range"],
+          "properties": { "value_range": { "const": [0.0, 1.0] } }
+        },
+        "aspect_ratio": {
+          "type": "object",
+          "required": ["value_range"],
+          "properties": { "value_range": { "const": [0.0, 1.0] } }
+        },
         "feature_to_normalization": {
           "type": "object",
           "minProperties": 40,
@@ -221,20 +259,22 @@
     },
     "orientationCatalog": {
       "type": "object",
-      "required": ["count", "ordered_names", "index_semantics"],
+      "required": ["count", "ordered_names", "allowed_normalized_values", "index_semantics"],
       "properties": {
-        "count": { "const": 8 },
-        "ordered_names": { "const": ["up", "up_mirrored", "down", "down_mirrored", "left_mirrored", "right", "right_mirrored", "left"] },
+        "count": { "const": 4 },
+        "ordered_names": { "const": ["up", "right", "down", "left"] },
+        "allowed_normalized_values": { "const": [0.0, 0.3333333333333333, 0.6666666666666666, 1.0] },
         "index_semantics": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": true
     },
     "lensCatalog": {
       "type": "object",
-      "required": ["count", "ordered_names", "index_semantics"],
+      "required": ["count", "ordered_names", "allowed_normalized_values", "index_semantics"],
       "properties": {
         "count": { "const": 3 },
         "ordered_names": { "const": ["ultra_wide", "wide", "tele"] },
+        "allowed_normalized_values": { "const": [0.0, 0.5, 1.0] },
         "index_semantics": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": true

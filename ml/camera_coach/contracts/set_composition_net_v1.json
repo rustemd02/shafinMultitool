@@ -112,28 +112,26 @@
     "subject_crop": {
       "recipe_version": "square_expand_1.25.v1",
       "square_side": "1.25 * max(roi.width_pixels, roi.height_pixels)",
-      "clipping": "clip padded square to oriented full-frame bounds before resize",
+      "clipping": "derive raw padded square bounds first; clip padded square to oriented full-frame bounds by intersection without shifting",
       "missing_crop": "zero-filled 192x192x3 tensor"
     }
   },
   "categorical_features": {
     "orientation_category": {
-      "count": 8,
+      "count": 4,
       "ordered_names": [
         "up",
-        "up_mirrored",
-        "down",
-        "down_mirrored",
-        "left_mirrored",
         "right",
-        "right_mirrored",
+        "down",
         "left"
       ],
-      "index_semantics": "ImageIO CGImagePropertyOrientation raw-value order 1 through 8"
+      "allowed_normalized_values": [0.0, 0.3333333333333333, 0.6666666666666666, 1.0],
+      "index_semantics": "oriented quarter-turn order up, right, down, left; mirror state is carried by mirroring_flag"
     },
     "lens_category": {
       "count": 3,
       "ordered_names": ["ultra_wide", "wide", "tele"],
+      "allowed_normalized_values": [0.0, 0.5, 1.0],
       "index_semantics": "CameraLens.rawValue order"
     }
   },

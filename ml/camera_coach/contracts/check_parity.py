@@ -66,6 +66,28 @@ def swift_int_constant(source: str, declaration: str) -> int:
     return int(match.group(1))
 
 
+def swift_string_constant(source: str, declaration: str) -> str:
+    match = re.search(rf'static let {re.escape(declaration)} = "([^"\\]*)"', source)
+    assert match, f"Swift contract declaration not found: {declaration}"
+    return match.group(1)
+
+
+def swift_number_constant(source: str, declaration: str) -> float:
+    match = re.search(rf"static let {re.escape(declaration)} = (-?\d+(?:\.\d+)?)", source)
+    assert match, f"Swift contract declaration not found: {declaration}"
+    return float(match.group(1))
+
+
+def swift_number_array(source: str, declaration: str) -> list[float]:
+    match = re.search(
+        rf"static let {re.escape(declaration)} = \[(.*?)\]",
+        source,
+        flags=re.DOTALL,
+    )
+    assert match, f"Swift contract declaration not found: {declaration}"
+    return [float(value) for value in re.findall(r"-?\d+(?:\.\d+)?", match.group(1))]
+
+
 def finite_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
 
@@ -105,10 +127,18 @@ def square_crop(source: list[float], width: int, height: int,
     raw_width = roi_width * width
     raw_height = roi_height * height
     side = max(raw_width, raw_height) * 1.25
-    left = max(0.0, raw_x + raw_width / 2.0 - side / 2.0)
-    top = max(0.0, raw_y + raw_height / 2.0 - side / 2.0)
-    right = min(float(width), left + side)
-    bottom = min(float(height), top + side)
+    # Intersect the raw padded square with frame bounds. Do not derive the
+    # far edge from a clipped near edge: that would shift the crop toward the
+    # frame interior and disagree with the production preprocessor.
+    raw_left = raw_x + raw_width / 2.0 - side / 2.0
+    raw_top = raw_y + raw_height / 2.0 - side / 2.0
+    raw_right = raw_x + raw_width / 2.0 + side / 2.0
+    raw_bottom = raw_y + raw_height / 2.0 + side / 2.0
+    left = max(0.0, raw_left)
+    top = max(0.0, raw_top)
+    right = min(float(width), raw_right)
+    bottom = min(float(height), raw_bottom)
+    assert right > left and bottom > top
 
     output: list[float] = []
     for target_y in range(target_height):
@@ -158,9 +188,17 @@ def validate_scalar_features(manifest: dict, scalar: object, missing: object,
     assert all(finite_number(value) and value in (0.0, 1.0) for value in missing)
     normalization = manifest["feature_normalization"]["feature_to_normalization"]
     ranges = manifest["feature_normalization"]
+    categorical_values = {
+        "orientation_category": manifest["categorical_features"]["orientation_category"]["allowed_normalized_values"],
+        "lens_category": manifest["categorical_features"]["lens_category"]["allowed_normalized_values"],
+    }
     for name, value, missing_value in zip(names, scalar, missing):
         lower, upper = ranges[normalization[name]]["value_range"]
         assert lower <= value <= upper, (name, value, lower, upper)
+        if name in categorical_values:
+            assert any(abs(value - allowed) <= tolerance for allowed in categorical_values[name]), (
+                name, value, categorical_values[name]
+            )
         if missing_value == 1.0:
             assert value == manifest["inputs"]["scalar_features"]["missing_mask"]["fill_value"]
 
@@ -242,13 +280,20 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert missing_mask["fill_value"] == 0.0
 
     categorical = manifest["categorical_features"]
-    assert categorical["orientation_category"]["count"] == 8
+    assert categorical["orientation_category"]["count"] == 4
     assert categorical["orientation_category"]["ordered_names"] == [
-        "up", "up_mirrored", "down", "down_mirrored",
-        "left_mirrored", "right", "right_mirrored", "left"
+        "up", "right", "down", "left"
+    ]
+    assert categorical["orientation_category"]["allowed_normalized_values"] == [
+        0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0
     ]
     assert categorical["lens_category"]["count"] == 3
     assert categorical["lens_category"]["ordered_names"] == ["ultra_wide", "wide", "tele"]
+    assert categorical["lens_category"]["allowed_normalized_values"] == [0.0, 0.5, 1.0]
+    assert len(categorical["orientation_category"]["ordered_names"]) == categorical["orientation_category"]["count"]
+    assert len(categorical["lens_category"]["ordered_names"]) == categorical["lens_category"]["count"]
+    assert len(categorical["orientation_category"]["allowed_normalized_values"]) == categorical["orientation_category"]["count"]
+    assert len(categorical["lens_category"]["allowed_normalized_values"]) == categorical["lens_category"]["count"]
 
     normalization = manifest["feature_normalization"]
     feature_to_normalization = normalization["feature_to_normalization"]
@@ -277,6 +322,8 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert preprocessing["normalization"]["value_range"] == [0.0, 1.0]
     assert preprocessing["subject_crop"]["recipe_version"] == "square_expand_1.25.v1"
     assert "clip padded square to oriented full-frame bounds" in preprocessing["subject_crop"]["clipping"]
+    assert "derive raw padded square bounds first" in preprocessing["subject_crop"]["clipping"]
+    assert "intersection without shifting" in preprocessing["subject_crop"]["clipping"]
     assert preprocessing["subject_crop"]["missing_crop"] == "zero-filled 192x192x3 tensor"
 
     outputs = manifest["outputs"]
@@ -315,6 +362,92 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
             assert head["value_range"] == [-1.0, 1.0]
             assert len(head["ordered_names"]) == expected_shapes[name]
 
+    # Validate nested schema constants as well as the manifest's top-level
+    # version constants. A paired manifest/schema edit must still fail if the
+    # runtime's frozen version, shape, range, or catalog is unchanged.
+    schema_inputs = schema["properties"]["inputs"]["properties"]
+    for input_name, expected_shape in {
+        "full_frame_rgb": [320, 320, 3],
+        "subject_crop_rgb": [192, 192, 3],
+        "roi_mask": [320, 320, 1],
+        "roi_normalized_xywh": [4],
+        "scalar_features": [40],
+    }.items():
+        assert schema_inputs[input_name]["properties"]["shape"]["const"] == expected_shape
+    schema_rgb = schema["$defs"]["rgbTensor"]["properties"]
+    assert schema_rgb["channel_order"]["const"] == ["R", "G", "B"]
+    assert schema_rgb["value_range"]["const"] == [0.0, 1.0]
+    schema_binary = schema["$defs"]["binaryTensor"]["properties"]
+    assert schema_binary["values"]["const"] == [0.0, 1.0]
+    assert schema_binary["missing_value"]["const"] == 0.0
+    assert schema_inputs["roi_normalized_xywh"]["properties"]["ordered_names"]["const"] == [
+        "x", "y", "width", "height"
+    ]
+    assert schema_inputs["roi_normalized_xywh"]["properties"]["coordinate_space"]["const"] == "oriented_full_frame"
+    assert schema_inputs["roi_normalized_xywh"]["properties"]["origin"]["const"] == "top_left"
+    assert schema_inputs["roi_normalized_xywh"]["properties"]["axis_direction"]["const"] == ["right", "down"]
+    assert schema_inputs["roi_normalized_xywh"]["properties"]["value_range"]["const"] == [0.0, 1.0]
+    assert schema_inputs["roi_normalized_xywh"]["properties"]["missing_value"]["const"] == [0.0, 0.0, 0.0, 0.0]
+    assert schema_inputs["scalar_features"]["properties"]["ordered_names"]["const"] == names
+    assert schema_inputs["scalar_features"]["properties"]["missing_mask"]["properties"]["shape"]["const"] == [40]
+    assert schema_inputs["scalar_features"]["properties"]["missing_mask"]["properties"]["ordered_names"]["const"] == "same_as_scalar_features"
+    assert schema_inputs["scalar_features"]["properties"]["missing_mask"]["properties"]["values"]["const"] == [0.0, 1.0]
+    assert schema_inputs["scalar_features"]["properties"]["missing_mask"]["properties"]["fill_value"]["const"] == 0.0
+
+    schema_preprocessing = schema["properties"]["preprocessing"]["properties"]
+    assert schema_preprocessing["source_color_space"]["const"] == preprocessing["source_color_space"]
+    assert schema_preprocessing["source_pixel_format"]["const"] == preprocessing["source_pixel_format"]
+    assert schema_preprocessing["model_channel_order"]["const"] == preprocessing["model_channel_order"]
+    assert schema_preprocessing["alpha"]["const"] == preprocessing["alpha"]
+    assert schema_preprocessing["resize_interpolation"]["const"] == preprocessing["resize_interpolation"]
+    assert schema_preprocessing["resize_geometry"]["const"] == preprocessing["resize_geometry"]
+    schema_normalization = schema_preprocessing["normalization"]["properties"]
+    assert schema_normalization["formula"]["const"] == preprocessing["normalization"]["formula"]
+    assert schema_normalization["value_range"]["const"] == preprocessing["normalization"]["value_range"]
+    assert schema_normalization["per_channel_offset"]["const"] == preprocessing["normalization"]["per_channel_offset"]
+    assert schema_normalization["per_channel_scale"]["const"] == preprocessing["normalization"]["per_channel_scale"]
+    schema_crop = schema_preprocessing["subject_crop"]["properties"]
+    assert schema_crop["recipe_version"]["const"] == preprocessing["subject_crop"]["recipe_version"]
+    assert schema_crop["square_side"]["const"] == preprocessing["subject_crop"]["square_side"]
+    assert schema_crop["clipping"]["pattern"] == "derive raw padded square bounds first.*clip padded square to oriented full-frame bounds.*intersection without shifting"
+    assert schema_crop["missing_crop"]["const"] == preprocessing["subject_crop"]["missing_crop"]
+
+    schema_orientation = schema["$defs"]["orientationCatalog"]["properties"]
+    schema_lens = schema["$defs"]["lensCatalog"]["properties"]
+    assert schema_orientation["count"]["const"] == categorical["orientation_category"]["count"]
+    assert schema_orientation["ordered_names"]["const"] == categorical["orientation_category"]["ordered_names"]
+    assert schema_orientation["allowed_normalized_values"]["const"] == categorical["orientation_category"]["allowed_normalized_values"]
+    assert schema_lens["count"]["const"] == categorical["lens_category"]["count"]
+    assert schema_lens["ordered_names"]["const"] == categorical["lens_category"]["ordered_names"]
+    assert schema_lens["allowed_normalized_values"]["const"] == categorical["lens_category"]["allowed_normalized_values"]
+
+    schema_ranges = schema["properties"]["feature_normalization"]["properties"]
+    for normalization_name, expected_range in allowed_normalizations.items():
+        assert schema_ranges[normalization_name]["properties"]["value_range"]["const"] == expected_range
+
+    schema_head_defs = {
+        "scene_class_logits": "headScene",
+        "subjectness_roi_agreement_logits": "headSubjectness",
+        "issue_logits": "headIssues",
+        "action_utility_logits": "headActions",
+        "good_frame_probability": "headGoodFrame",
+        "abstention_probability": "headAbstention",
+        "risk_probability": "headRisk",
+        "continuous_target_deltas": "headDeltas",
+        "embedding": "headEmbedding",
+    }
+    schema_head_properties = {
+        definition: schema["$defs"][definition]["allOf"][1]["properties"]
+        for definition in schema_head_defs.values()
+    }
+    for head_name, expected_shape in expected_shapes.items():
+        head_properties = schema_head_properties[schema_head_defs[head_name]]
+        assert head_properties["name"]["const"] == head_name
+        assert head_properties["shape"]["const"] == [expected_shape]
+        if head_name in {"good_frame_probability", "abstention_probability", "risk_probability", "continuous_target_deltas"}:
+            expected_range = [0.0, 1.0] if head_name != "continuous_target_deltas" else [-1.0, 1.0]
+            assert head_properties["value_range"]["const"] == expected_range
+
     # The Swift runtime intentionally has no build-time codegen dependency.
     # Keep the checked manifest canonical by comparing its ordered catalogs to
     # the runtime declarations on every deterministic parity run.
@@ -326,6 +459,8 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     swift_targets = swift_string_array(swift_source, "targetDeltaNames")
     swift_orientation = swift_string_array(swift_source, "orientationCategoryNames")
     swift_lenses = swift_string_array(swift_source, "lensCategoryNames")
+    swift_orientation_values = swift_number_array(swift_source, "orientationCategoryNormalizedValues")
+    swift_lens_values = swift_number_array(swift_source, "lensCategoryNormalizedValues")
     swift_signed_features = swift_string_array(swift_source, "signedFeatureNames")
     swift_issues = swift_enum_raw_values(swift_source, "IssueTypeV1")
     swift_actions = swift_enum_raw_values(swift_source, "SemanticActionType")
@@ -342,6 +477,22 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
     assert swift_int_constant(swift_source, "embeddingDimension") == 128
     assert swift_orientation == categorical["orientation_category"]["ordered_names"]
     assert swift_lenses == categorical["lens_category"]["ordered_names"]
+    assert len(swift_orientation_values) == categorical["orientation_category"]["count"]
+    assert len(swift_lens_values) == categorical["lens_category"]["count"]
+    assert all(
+        abs(actual - expected) <= 1e-12
+        for actual, expected in zip(
+            swift_orientation_values,
+            categorical["orientation_category"]["allowed_normalized_values"],
+        )
+    )
+    assert all(
+        abs(actual - expected) <= 1e-12
+        for actual, expected in zip(
+            swift_lens_values,
+            categorical["lens_category"]["allowed_normalized_values"],
+        )
+    )
     assert set(swift_signed_features) == {
         name for name, kind in feature_to_normalization.items()
         if kind in {"signed_unit_interval", "angle_degrees_to_unit"}
@@ -366,6 +517,18 @@ def validate_manifest(manifest: dict, schema: dict) -> None:
         for head in heads
         if head["name"] == "continuous_target_deltas"
     )
+    for declaration, manifest_key in {
+        "contractVersion": "contract_version",
+        "inputContractVersion": "input_contract_version",
+        "preprocessingVersion": "preprocessing_version",
+        "featureVersion": "feature_version",
+        "outputContractVersion": "output_contract_version",
+    }.items():
+        assert swift_string_constant(swift_source, declaration) == manifest[manifest_key]
+    assert abs(
+        swift_number_constant(swift_source, "scalarMissingFillValue")
+        - inputs["scalar_features"]["missing_mask"]["fill_value"]
+    ) <= 1e-12
 
 
 def validate_input_fixture(manifest: dict, fixture: dict) -> dict:
@@ -419,6 +582,21 @@ def validate_input_fixture(manifest: dict, fixture: dict) -> dict:
         x, y = (int(part) for part in coordinate.split(","))
         for actual, wanted in zip(pixel_at(crop, 192, x, y), sample):
             assert abs(actual - wanted) <= fixture["pixel_tolerance"]
+
+    absent = fixture["absent_roi_fixture"]
+    assert absent["roi_present"] is False
+    absent_roi = absent["roi_normalized_xywh"]
+    assert absent_roi == [0.0, 0.0, 0.0, 0.0]
+    absent_mask = normalized_mask(absent_roi, 320, 320)
+    absent_crop = [0.0] * (192 * 192 * 3)
+    assert absent["expected_roi_mask_shape"] == [320, 320, 1]
+    assert absent["expected_subject_crop_rgb_shape"] == [192, 192, 3]
+    assert absent["expected_roi_mask_sha256"] == packed_hash(absent_mask)
+    assert absent["expected_subject_crop_rgb_sha256"] == packed_hash(absent_crop)
+    assert all(value == 0.0 for value in absent_mask)
+    assert all(value == 0.0 for value in absent_crop)
+    actual_hashes["absent_roi_mask_sha256"] = packed_hash(absent_mask)
+    actual_hashes["absent_subject_crop_rgb_sha256"] = packed_hash(absent_crop)
 
     edge_hashes: dict[str, str] = {}
     for edge in fixture["edge_fixtures"]:
@@ -503,13 +681,54 @@ def validate_mutation_guards(manifest: dict, schema: dict,
         lambda: validate_manifest(manifest_embedding_short, schema),
     )
 
+    schema_embedding_short = deepcopy(schema)
+    schema_embedding_short["$defs"]["headEmbedding"]["allOf"][1]["properties"]["shape"]["const"] = [64]
+    assert_rejected(
+        "schema embedding dimension 64",
+        lambda: validate_manifest(manifest, schema_embedding_short),
+    )
+
+    paired_version_manifest = deepcopy(manifest)
+    paired_version_schema = deepcopy(schema)
+    paired_version_manifest["contract_version"] = "setcompositionnet.v2"
+    paired_version_schema["properties"]["contract_version"]["const"] = "setcompositionnet.v2"
+    assert_rejected(
+        "paired contract version drift",
+        lambda: validate_manifest(paired_version_manifest, paired_version_schema),
+    )
+
+    paired_signed_range_manifest = deepcopy(manifest)
+    paired_signed_range_schema = deepcopy(schema)
+    paired_signed_range_manifest["feature_normalization"]["signed_unit_interval"]["value_range"] = [-2.0, 2.0]
+    paired_signed_range_schema["properties"]["feature_normalization"]["properties"]["signed_unit_interval"]["properties"]["value_range"]["const"] = [-2.0, 2.0]
+    assert_rejected(
+        "paired signed feature range drift",
+        lambda: validate_manifest(paired_signed_range_manifest, paired_signed_range_schema),
+    )
+
     bad_roi = deepcopy(input_fixture)
     bad_roi["roi_normalized_xywh"] = [0.9, 0.9, 0.2, 0.2]
     assert_rejected(
         "out-of-bounds ROI",
         lambda: validate_input_fixture(manifest, bad_roi),
     )
-    return ["embedding_64", "risk_99", "removed_scene_head", "manifest_embedding_64", "roi_out_of_bounds"]
+    bad_categorical_scalar = deepcopy(input_fixture)
+    bad_categorical_scalar["scalar_features"][33] = 0.8461538461538461
+    assert_rejected(
+        "unsupported categorical scalar value",
+        lambda: validate_input_fixture(manifest, bad_categorical_scalar),
+    )
+    return [
+        "embedding_64",
+        "risk_99",
+        "removed_scene_head",
+        "manifest_embedding_64",
+        "schema_embedding_64",
+        "paired_contract_version_drift",
+        "paired_signed_range_drift",
+        "roi_out_of_bounds",
+        "unsupported_categorical_scalar",
+    ]
 
 
 def main() -> None:

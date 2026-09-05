@@ -374,10 +374,14 @@ final class MetalPreprocessor {
         let rawWidth = roi.width * width
         let rawHeight = roi.height * height
         let side = max(rawWidth, rawHeight) * 1.25
-        let left = max(0.0, rawX + rawWidth / 2.0 - side / 2.0)
-        let top = max(0.0, rawY + rawHeight / 2.0 - side / 2.0)
-        let right = min(width, left + side)
-        let bottom = min(height, top + side)
+        let rawLeft = rawX + rawWidth / 2.0 - side / 2.0
+        let rawTop = rawY + rawHeight / 2.0 - side / 2.0
+        let rawRight = rawX + rawWidth / 2.0 + side / 2.0
+        let rawBottom = rawY + rawHeight / 2.0 + side / 2.0
+        let left = max(0.0, rawLeft)
+        let top = max(0.0, rawTop)
+        let right = min(width, rawRight)
+        let bottom = min(height, rawBottom)
         guard right > left, bottom > top else { return nil }
         return (left: left, top: top, right: right, bottom: bottom)
     }
