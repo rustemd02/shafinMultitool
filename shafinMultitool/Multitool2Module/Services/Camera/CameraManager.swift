@@ -859,7 +859,11 @@ final class CameraManager: NSObject, @unchecked Sendable {
             session.addOutput(videoOutput)
         }
         currentInput = nil
-        setCurrentLens(nil)
+        // The ready test session represents one installed capture input. Keep
+        // its active lens provenance identical to the production wide-camera
+        // configuration so downstream episode verification can compare lens
+        // identity without inventing it in a test or view model.
+        setCurrentLens(.wide)
         setAvailableLenses([.wide])
         setLensDescriptors([.wide: CameraLens.wide.descriptor])
         // Mirror production configuration: the ready fixture represents one

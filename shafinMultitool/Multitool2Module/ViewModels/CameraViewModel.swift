@@ -770,6 +770,15 @@ final class CameraViewModel: ObservableObject {
         return true
     }
 
+#if DEBUG
+    /// Test-only read seam for the exact immutable pair owned by the live
+    /// coordinator. Production callers still receive verification only via
+    /// `applyVerificationResult`; tests must not reconstruct a token or pair.
+    var testingVerificationInput: ActionVerificationInput? {
+        coachingEpisodeCoordinator.verificationInput
+    }
+#endif
+
     /// Planner owner handoff for WAIT/SELECT_SUBJECT/ABSTAIN states that do
     /// not carry a human-facing live hint. The normal production path derives
     /// this same bounded decision from the pipeline's typed LiveHint output.

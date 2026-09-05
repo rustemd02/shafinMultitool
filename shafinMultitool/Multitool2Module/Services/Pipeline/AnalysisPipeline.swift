@@ -3604,6 +3604,32 @@ final class AnalysisPipeline: ObservableObject {
     private let demoLiveCoachEnabled: Bool
     private let pauseAnalysisAvailabilityProvider: () -> Bool
 
+    /// Episode-scoped scene provenance. `SubjectTrackLifecycleGuard` compares
+    /// the published value exactly, so this owner must not expose a raw
+    /// per-frame fingerprint. The reference samples stay frozen for the
+    /// episode; only a bounded material change rotates the opaque identity.
+    private struct LiveSceneIdentityState {
+        let identity: String
+        let width: Int
+        let height: Int
+        let referenceLuma: [Double]
+        let revision: Int
+    }
+
+    private struct LiveSceneMeasurement {
+        let width: Int
+        let height: Int
+        let luma: [Double]
+    }
+
+    // These values are deliberately bounded and device-independent for the
+    // first production seam. They need calibration against a physical-device
+    // capture corpus before release; they are not a license to relax the
+    // downstream fail-closed lifecycle guard.
+    private static let liveSceneDistanceThreshold = 0.12
+    private static let liveSceneExposureTolerance = 0.18
+    private static let liveSceneOutlierSampleCount = 4
+
     /// Main-actor owners for the live movement handoff. The accepted-frame
     /// callback builds one immutable observation after the existing bounded
     /// recommendation plan; no view or timer can manufacture episode
@@ -3619,6 +3645,7 @@ final class AnalysisPipeline: ObservableObject {
     private var liveEpisodeGeneration: UInt64?
     private var liveEpisodeOrientation: CameraCoachOrientation?
     private var liveEpisodeSource: FeatureSourceID?
+    private var liveSceneIdentityState: LiveSceneIdentityState?
 
     private let highQueue = DispatchQueue(label: "AnalysisPipeline.high", qos: .userInitiated)
     private let mediumQueue = DispatchQueue(label: "AnalysisPipeline.medium", qos: .userInitiated)
@@ -4886,14 +4913,6 @@ final class AnalysisPipeline: ObservableObject {
         // The episode handoff must not rescan the full-resolution buffer on
         // the main actor merely to recompute exposure contradiction.
         let technicalQualitySignal = technicalQualitySignal(for: frameEvidence.pixelBuffer)
-        publishLiveCoachingEpisodeObservation(
-            snapshot: snapshot,
-            semantics: semantics,
-            plan: plan,
-            frameEvidence: frameEvidence,
-            evaluatedAt: now,
-            technicalQualitySignal: technicalQualitySignal
-        )
         let semanticTips = semanticTipPlanner.plan(
             input: SemanticTipPlannerInput(
                 frameId: snapshot.frameId,
@@ -4932,6 +4951,18 @@ final class AnalysisPipeline: ObservableObject {
             structuredAvailable: structuredDecision.isAvailable,
             technicalQualitySignal: technicalQualitySignal,
             now: presentationNow
+        )
+        // Presentation owns admission for a new corrective episode. This
+        // keeps the typed verifier loop from starting work the user cannot
+        // currently see; the observation consumes the same frame after the
+        // spatial confirmation gate has accepted its marker.
+        publishLiveCoachingEpisodeObservation(
+            snapshot: snapshot,
+            semantics: semantics,
+            plan: plan,
+            frameEvidence: frameEvidence,
+            evaluatedAt: now,
+            technicalQualitySignal: technicalQualitySignal
         )
         let annotations = makeOverlayAnnotations(
             frameId: snapshot.frameId,
@@ -6008,6 +6039,7 @@ final class AnalysisPipeline: ObservableObject {
         liveSubjectTracker.reset()
         liveSubjectLifecycleContext = nil
         liveSubjectSource = nil
+        liveSceneIdentityState = nil
         resetLiveEpisodeStream()
         if !preservingPauseReview {
             currentPauseCritique = nil
@@ -6239,13 +6271,31 @@ final class AnalysisPipeline: ObservableObject {
             return
         }
 
+        // Keep the verifier's provenance pair grounded in the same immutable
+        // frame envelope as the subject binding. The pipeline does not know
+        // the eventual SwiftUI canvas size, so the analysis canvas is the
+        // source pixel size (an honest identity aspect-fill transform); the
+        // preview owner remains responsible for its display transform.
+        let verificationGeometry = makeLiveVerificationGeometry(
+            frameID: frameEvidence.sourceFrameId,
+            pixelBuffer: frameEvidence.pixelBuffer,
+            orientation: orientation
+        )
+
         let lifecycle = SubjectTrackLifecycleContext(
             generation: frameEvidence.lensGeneration,
             orientation: orientation,
-            lensID: nil,
+            // The camera owner is the source of lens identity. Do not invent
+            // a default here: a missing registration/active lens remains an
+            // honest fail-closed verification boundary.
+            lensID: registrationManager?.activeLens?.rawValue,
             routeActive: true,
             isAppBackgrounded: false,
-            sceneSignature: nil
+            // The producer owns a frozen, thresholded scene identity. Ordinary
+            // exposure drift and local motion retain it; a bounded material
+            // cut rotates it. If the buffer cannot be read, nil keeps
+            // ActionVerifier fail-closed instead of inventing identity.
+            sceneSignature: liveSceneSignature(for: frameEvidence.pixelBuffer)
         )
         if let previous = liveSubjectLifecycleContext,
            previous.generation != lifecycle.generation ||
@@ -6309,6 +6359,24 @@ final class AnalysisPipeline: ObservableObject {
             // the honest "recommendation disappeared" frame case.
             clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
             return
+        }
+
+        if liveEpisodeActionID == nil,
+           let candidate,
+           candidate.safetyFamily != .stability {
+            // A corrective episode is meaningful only when the just-produced
+            // live projection admits the same action on the same frame. The
+            // presentation runs immediately before this handoff; a missing,
+            // held, or differently mapped marker must not start invisible
+            // verification work.
+            guard let primaryAction = plan.primaryAction,
+                  let visibleHint = currentLiveHint,
+                  visibleHint.frameId == snapshot.frameId,
+                  visibleHint.actionType == primaryAction.actionType,
+                  visibleHint.actionId == primaryAction.id,
+                  visibleHint.semanticActionType?.rawValue == candidate.actionID else {
+                return
+            }
         }
 
         if let candidateActionID = candidate?.actionID,
@@ -6439,7 +6507,8 @@ final class AnalysisPipeline: ObservableObject {
                     stabilizedAdvice: stabilized,
                     subjectTrack: subjectTrack,
                     lifecycle: lifecycle,
-                    isStable: frameEvidence.isStable
+                    isStable: frameEvidence.isStable,
+                    geometryContext: verificationGeometry
                 ) else {
                     clearLiveCoachingEpisodeObservation(reason: "observation_rejected")
                     return
@@ -6468,12 +6537,179 @@ final class AnalysisPipeline: ObservableObject {
                 subjectTrack: subjectTrack,
                 lifecycle: lifecycle,
                 isStable: frameEvidence.isStable,
-                currentActionID: candidate?.actionID
+                currentActionID: candidate?.actionID,
+                geometryContext: verificationGeometry
               ) else {
             clearLiveCoachingEpisodeObservation(reason: "observation_rejected")
             return
         }
         publishLiveCoachingEpisodeEvent(.frame(frameEvidenceEvent))
+    }
+
+    private func makeLiveVerificationGeometry(
+        frameID: String,
+        pixelBuffer: CVPixelBuffer,
+        orientation: CameraCoachOrientation
+    ) -> ActionVerificationGeometryContext? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width > 0, height > 0 else { return nil }
+        let sourceSize = CGSize(width: width, height: height)
+        return ActionVerificationGeometryContext(
+            frameID: frameID,
+            displayTransform: CameraDisplayTransform(
+                orientation: orientation,
+                isMirrored: false
+            ),
+            aspectFillTransform: AspectFillTransform(
+                sourceSize: sourceSize,
+                destinationSize: sourceSize
+            )
+        )
+    }
+
+    /// Returns the current episode's stable scene provenance identity for the
+    /// immutable capture buffer. The lifecycle guard compares this value
+    /// exactly, so it is deliberately *not* a raw per-frame fingerprint:
+    /// ordinary luminance drift and a small local subject change retain the
+    /// frozen identity, while a bounded material distance rotates it.
+    /// Unsupported/read-failed pixel formats return nil; the verifier then
+    /// refuses a positive comparison rather than guessing.
+    private func liveSceneSignature(for pixelBuffer: CVPixelBuffer) -> String? {
+        guard let measurement = liveSceneMeasurement(for: pixelBuffer) else {
+            return nil
+        }
+
+        if let previous = liveSceneIdentityState,
+           previous.width == measurement.width,
+           previous.height == measurement.height,
+           previous.referenceLuma.count == measurement.luma.count {
+            let distance = liveSceneDistance(
+                reference: previous.referenceLuma,
+                current: measurement.luma
+            )
+            guard distance > Self.liveSceneDistanceThreshold else {
+                return previous.identity
+            }
+
+            let revision = previous.revision + 1
+            let identity = liveSceneIdentity(
+                width: measurement.width,
+                height: measurement.height,
+                revision: revision
+            )
+            liveSceneIdentityState = LiveSceneIdentityState(
+                identity: identity,
+                width: measurement.width,
+                height: measurement.height,
+                referenceLuma: measurement.luma,
+                revision: revision
+            )
+            return identity
+        }
+
+        let identity = liveSceneIdentity(
+            width: measurement.width,
+            height: measurement.height,
+            revision: 0
+        )
+        liveSceneIdentityState = LiveSceneIdentityState(
+            identity: identity,
+            width: measurement.width,
+            height: measurement.height,
+            referenceLuma: measurement.luma,
+            revision: 0
+        )
+        return identity
+    }
+
+    private func liveSceneMeasurement(for pixelBuffer: CVPixelBuffer) -> LiveSceneMeasurement? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width > 0, height > 0,
+              CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly) == kCVReturnSuccess else {
+            return nil
+        }
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        let gridSize = 4
+        let pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        let planeCount = CVPixelBufferGetPlaneCount(pixelBuffer)
+
+        func sampleLuma(x: Int, y: Int) -> Double? {
+            if planeCount > 0 {
+                guard let base = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0) else { return nil }
+                let planeWidth = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0)
+                let planeHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0)
+                let rowBytes = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
+                guard planeWidth > 0, planeHeight > 0 else { return nil }
+                let sampleX = min(planeWidth - 1, max(0, x * planeWidth / width))
+                let sampleY = min(planeHeight - 1, max(0, y * planeHeight / height))
+                let address = base
+                    .advanced(by: sampleY * rowBytes + sampleX)
+                    .assumingMemoryBound(to: UInt8.self)
+                return Double(address.pointee) / 255.0
+            }
+
+            guard pixelFormat == kCVPixelFormatType_32BGRA,
+                  let base = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+                return nil
+            }
+            let rowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
+            let sampleX = min(width - 1, max(0, x))
+            let sampleY = min(height - 1, max(0, y))
+            let address = base
+                .advanced(by: sampleY * rowBytes + sampleX * 4)
+                .assumingMemoryBound(to: UInt8.self)
+            let blue = Double(address[0])
+            let green = Double(address[1])
+            let red = Double(address[2])
+            return ((0.114 * blue) + (0.587 * green) + (0.299 * red)) / 255.0
+        }
+
+        var luma: [Double] = []
+        luma.reserveCapacity(gridSize * gridSize)
+        for row in 0..<gridSize {
+            for column in 0..<gridSize {
+                let x = min(width - 1, ((column * 2) + 1) * width / (gridSize * 2))
+                let y = min(height - 1, ((row * 2) + 1) * height / (gridSize * 2))
+                guard let sample = sampleLuma(x: x, y: y), sample.isFinite else { return nil }
+                luma.append(min(1.0, max(0.0, sample)))
+            }
+        }
+
+        guard luma.count == gridSize * gridSize else { return nil }
+        return LiveSceneMeasurement(width: width, height: height, luma: luma)
+    }
+
+    private func liveSceneDistance(reference: [Double], current: [Double]) -> Double {
+        guard reference.count == current.count, !reference.isEmpty else { return .infinity }
+
+        // Median alignment treats ordinary auto-exposure breathing as a
+        // global offset. The lifecycle contract is about scene identity, not
+        // whether the camera's exposure meter moved by a few stops.
+        let exposureOffset = liveMedian(current) - liveMedian(reference)
+        let deltas = zip(reference, current).map { referenceSample, currentSample in
+            abs((currentSample - exposureOffset) - referenceSample)
+        }.sorted()
+        let outlierCount = min(Self.liveSceneOutlierSampleCount, max(0, deltas.count - 1))
+        let retainedCount = max(1, deltas.count - outlierCount)
+        let structuralDistance = deltas.prefix(retainedCount).reduce(0, +) / Double(retainedCount)
+        let largeExposureJump = max(0, abs(exposureOffset) - Self.liveSceneExposureTolerance)
+        return max(structuralDistance, largeExposureJump)
+    }
+
+    private func liveMedian(_ values: [Double]) -> Double {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[middle - 1] + sorted[middle]) / 2
+        }
+        return sorted[middle]
+    }
+
+    private func liveSceneIdentity(width: Int, height: Int, revision: Int) -> String {
+        "scene_v2_\(width)x\(height)_\(revision)"
     }
 
     @MainActor
@@ -6706,6 +6942,7 @@ final class AnalysisPipeline: ObservableObject {
         liveSubjectTracker.reset()
         liveSubjectLifecycleContext = nil
         liveSubjectSource = nil
+        liveSceneIdentityState = nil
         resetLiveEpisodeStream()
     }
 
@@ -13810,6 +14047,19 @@ extension AnalysisPipeline {
             semantics: semantics,
             now: now
         )
+    }
+
+    /// Narrow DEBUG-only probe for the production scene-identity owner. It
+    /// deliberately returns the same opaque identity that the live lifecycle
+    /// handoff publishes; tests do not get a parallel fingerprint algorithm.
+    @MainActor
+    func testingLiveSceneIdentity(for pixelBuffer: CVPixelBuffer) -> String? {
+        liveSceneSignature(for: pixelBuffer)
+    }
+
+    @MainActor
+    func testingResetLiveSceneIdentity() {
+        liveSceneIdentityState = nil
     }
 
     @MainActor

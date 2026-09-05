@@ -85,20 +85,20 @@ final class CameraCoachProductionUITests: XCTestCase {
         // state families. They intentionally enter the shipped production
         // monitor surface in a separate app process; the owner-chain unit
         // suite proves the underlying planner/episode/verifier transitions.
-        let fixtures: [(String, UIDeviceOrientation)] = [
-            ("camera.select-subject", .portrait),
-            ("camera.wait", .landscapeLeft),
-            ("camera.abstain", .portrait),
-            ("camera.corrective", .landscapeLeft),
-            ("camera.explanation", .portrait),
-            ("camera.movement", .landscapeLeft),
-            ("camera.verification", .portrait),
-            ("camera.keep", .landscapeLeft),
-            ("camera.interrupted", .portrait),
-            ("camera.recovery", .landscapeLeft)
+        let fixtures: [(fixture: String, orientation: UIDeviceOrientation, state: String)] = [
+            ("camera.select-subject", .portrait, "select_subject"),
+            ("camera.wait", .landscapeLeft, "wait"),
+            ("camera.abstain", .portrait, "abstain"),
+            ("camera.corrective", .landscapeLeft, "corrective"),
+            ("camera.explanation", .portrait, "explanation"),
+            ("camera.movement", .landscapeLeft, "movement"),
+            ("camera.verification", .portrait, "verification"),
+            ("camera.keep", .landscapeLeft, "keep"),
+            ("camera.interrupted", .portrait, "interrupted"),
+            ("camera.recovery", .landscapeLeft, "recovery")
         ]
 
-        for (fixture, orientation) in fixtures {
+        for (fixture, orientation, state) in fixtures {
             let app = launch(fixture: fixture, locale: "en", orientation: orientation)
             assertRoot(fixture, in: app)
             assertStableCameraIdentifiers(in: app)
@@ -106,6 +106,7 @@ final class CameraCoachProductionUITests: XCTestCase {
                 app.otherElements["camera_coach_live_surface"].waitForExistence(timeout: 3),
                 "Missing production monitor surface for (fixture)"
             )
+            assertSemanticFixtureState(fixture, expectedState: state, in: app)
             if fixture == "camera.explanation" {
                 XCTAssertTrue(app.descendants(matching: .any)["camera_coach_explanation"].exists)
             }
@@ -280,6 +281,34 @@ final class CameraCoachProductionUITests: XCTestCase {
         )
         XCTAssertTrue(app.buttons["camera_coach_pause"].exists, file: file, line: line)
         XCTAssertTrue(app.otherElements["camera_coach_live_surface"].exists, file: file, line: line)
+    }
+
+    private func assertSemanticFixtureState(
+        _ fixtureID: String,
+        expectedState: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let matchingElements = app
+            .descendants(matching: .any)
+            .matching(identifier: fixtureID)
+        XCTAssertTrue(
+            matchingElements.firstMatch.waitForExistence(timeout: 3),
+            "Missing legacy command-band surface for \(fixtureID)",
+            file: file,
+            line: line
+        )
+        let matchingValues = (0..<matchingElements.count).compactMap { index in
+            matchingElements.element(boundBy: index).value as? String
+        }
+        XCTAssertEqual(
+            matchingValues.contains(expectedState),
+            true,
+            "Fixture \(fixtureID) must expose semantic state \(expectedState) via accessibilityValue",
+            file: file,
+            line: line
+        )
     }
 
     private func attachScreenshot(_ app: XCUIApplication, named name: String) {

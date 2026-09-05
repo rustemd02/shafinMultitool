@@ -872,6 +872,102 @@ private struct SETCameraLiveOverlay: View {
     }
 }
 
+/// The DEBUG fixture catalog is still rendered by the same production monitor
+/// surface, but each fixture now resolves to a typed semantic state before it
+/// reaches the command rail. Keeping this mapping here prevents newly added
+/// owner states from silently falling through to `camera.seeking` while
+/// preserving the runtime surface and its existing copy keys.
+private enum SETCameraFixtureSemanticState: String, CaseIterable, Sendable {
+    case starting = "starting"
+    case selectSubject = "select_subject"
+    case wait = "wait"
+    case abstain = "abstain"
+    case corrective = "corrective"
+    case explanation = "explanation"
+    case movement = "movement"
+    case verification = "verification"
+    case keep = "keep"
+    case interrupted = "interrupted"
+    case recovery = "recovery"
+    case failed = "failed"
+    case seeking = "seeking"
+    case fallback = "fallback"
+    case lensSwitching = "lens_switching"
+    case resuming = "resuming"
+    case eco = "eco"
+    case noisyFrame = "noisy_frame"
+
+    init?(fixtureID: String) {
+        switch fixtureID {
+        case "camera.starting": self = .starting
+        case "camera.select-subject": self = .selectSubject
+        case "camera.wait": self = .wait
+        case "camera.abstain": self = .abstain
+        case "camera.corrective": self = .corrective
+        case "camera.explanation": self = .explanation
+        case "camera.movement": self = .movement
+        case "camera.verification": self = .verification
+        case "camera.keep": self = .keep
+        case "camera.interrupted": self = .interrupted
+        case "camera.recovery": self = .recovery
+        case "camera.failed": self = .failed
+        case "camera.seeking": self = .seeking
+        case "camera.fallback": self = .fallback
+        case "camera.lens-switching": self = .lensSwitching
+        case "camera.resuming": self = .resuming
+        case "camera.eco": self = .eco
+        case "camera.noisy-frame": self = .noisyFrame
+        default: return nil
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        "camera_coach_fixture_state_\(rawValue)"
+    }
+
+    var isCorrective: Bool {
+        switch self {
+        case .corrective, .movement, .noisyFrame: return true
+        default: return false
+        }
+    }
+
+    var markerKind: SETMarkerKind? {
+        switch self {
+        case .corrective, .movement, .noisyFrame: return .arrow
+        case .explanation, .keep: return .underline
+        case .verification: return .outline
+        case .selectSubject: return .bracket
+        default: return nil
+        }
+    }
+
+    var isStandby: Bool {
+        switch self {
+        case .starting, .interrupted, .failed, .recovery, .lensSwitching:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var commandKey: SETCopyKey {
+        switch self {
+        case .starting: return .cameraPreparing
+        case .selectSubject, .wait, .seeking: return .cameraSeeking
+        case .abstain, .fallback: return .cameraFallback
+        case .corrective, .movement, .noisyFrame, .explanation:
+            return .cameraCorrectiveAction
+        case .verification, .keep: return .cameraKeep
+        case .interrupted: return .cameraInterrupted
+        case .failed: return .cameraFailed
+        case .recovery, .resuming: return .cameraResuming
+        case .lensSwitching: return .cameraLensSwitching
+        case .eco: return .cameraEco
+        }
+    }
+}
+
 private struct SETCameraFixtureLiveOverlay: View {
     let fixtureID: String
     let canvasSize: CGSize
@@ -885,14 +981,18 @@ private struct SETCameraFixtureLiveOverlay: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    private var semanticState: SETCameraFixtureSemanticState? {
+        SETCameraFixtureSemanticState(fixtureID: fixtureID)
+    }
+
     var body: some View {
         let railHeight = commandRailHeight
         let railWidth = commandRailWidth
         let preferredCommandSize = CGSize(
-            width: fixtureID == "camera.lens-switching"
+            width: semanticState == .lensSwitching
                 ? SETCameraCoachMetric.lensStatusWidth
                 : railWidth,
-            height: fixtureID == "camera.lens-switching"
+            height: semanticState == .lensSwitching
                 ? SETCameraCoachMetric.lensStatusHeight
                 : railHeight
         )
@@ -915,12 +1015,12 @@ private struct SETCameraFixtureLiveOverlay: View {
         ZStack {
             SETCameraHUDHeader(
                 tallyMode: tallyMode,
-                dimmed: fixtureID == "camera.fallback",
+                dimmed: semanticState == .fallback || semanticState == .abstain,
                 timecode: SETLiveMonitorFixtureMetric.timecode,
                 showsECO: effectivePerformance.mode == .eco
             )
 
-            if fixtureID == "camera.lens-switching" {
+            if semanticState == .lensSwitching {
                 SETCameraLensEdgeRail(
                     canvasSize: canvasSize,
                     availableLenses: availableLenses,
@@ -944,7 +1044,7 @@ private struct SETCameraFixtureLiveOverlay: View {
                 )
             }
 
-            if isCorrectiveFixture,
+            if semanticState?.isCorrective == true,
                analysisStatus == .healthy,
                !effectivePerformance.isLimited,
                let correctiveArrowGeometry {
@@ -956,7 +1056,7 @@ private struct SETCameraFixtureLiveOverlay: View {
                 )
                 .frame(width: canvasSize.width, height: canvasSize.height)
                 .accessibilityHidden(true)
-            } else if let markerKind {
+            } else if let markerKind = semanticState?.markerKind ?? markerKind {
                 SETMarkerDrawGuide(
                     kind: markerKind,
                     eventID: fixtureID,
@@ -974,10 +1074,11 @@ private struct SETCameraFixtureLiveOverlay: View {
                     SETCameraFixtureCommandBand(
                         fixtureID: fixtureID,
                         currentLens: .wide,
+                        semanticState: semanticState,
                         showsECO: effectivePerformance.mode == .eco,
                         analysisStatus: analysisStatus,
                         railHeight: placement.frame.height,
-                        isCompactStatus: fixtureID == "camera.lens-switching"
+                        isCompactStatus: semanticState == .lensSwitching
                     )
                     .frame(width: placement.frame.width, height: placement.frame.height)
                     .position(x: placement.frame.midX, y: placement.frame.midY)
@@ -995,24 +1096,15 @@ private struct SETCameraFixtureLiveOverlay: View {
               !effectivePerformance.isLimited,
               let targetRegion,
               !targetRegion.isDegenerate else { return nil }
-        switch fixtureID {
-        case "camera.corrective", "camera.noisy-frame": return .arrow
-        case "camera.keep", "camera.explanation": return .underline
-        default: return nil
-        }
+        return semanticState?.markerKind
     }
 
     private var isCorrectiveFixture: Bool {
-        fixtureID == "camera.corrective" || fixtureID == "camera.noisy-frame"
+        semanticState?.isCorrective == true
     }
 
     private var tallyMode: SETTallyMode {
-        switch fixtureID {
-        case "camera.starting", "camera.interrupted", "camera.failed", "camera.resuming", "camera.lens-switching":
-            return .standby
-        default:
-            return .live
-        }
+        semanticState?.isStandby == true ? .standby : .live
     }
 
     private var commandRailHeight: CGFloat {
@@ -1034,10 +1126,10 @@ private struct SETCameraFixtureLiveOverlay: View {
         CGRect(
             x: SETCameraCoachMetric.liveRailHorizontalInset,
             y: canvasSize.height - commandRailHeight - SETCameraCoachMetric.liveRailBottomInset,
-            width: fixtureID == "camera.lens-switching"
+            width: semanticState == .lensSwitching
                 ? SETCameraCoachMetric.lensStatusWidth
                 : commandRailWidth,
-            height: fixtureID == "camera.lens-switching"
+            height: semanticState == .lensSwitching
                 ? SETCameraCoachMetric.lensStatusHeight
                 : commandRailHeight
         )
@@ -1474,6 +1566,7 @@ private struct SETCameraCommandBand: View {
 private struct SETCameraFixtureCommandBand: View {
     let fixtureID: String
     let currentLens: CameraLens
+    let semanticState: SETCameraFixtureSemanticState?
     let showsECO: Bool
     let analysisStatus: CameraOverlayAnalysisStatus
     let railHeight: CGFloat
@@ -1487,7 +1580,7 @@ private struct SETCameraFixtureCommandBand: View {
                         .hudMono,
                         size: isCompactStatus ? SETTypographySize.label : SETTypographySize.body
                     ))
-                    .foregroundStyle((fixtureID == "camera.corrective" || fixtureID == "camera.noisy-frame") && analysisStatus == .healthy && !showsECO ? .setOrange : .setTextPrimary)
+                    .foregroundStyle(semanticState?.isCorrective == true && analysisStatus == .healthy && !showsECO ? .setOrange : .setTextPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .fixedSize(horizontal: !isCompactStatus, vertical: true)
@@ -1501,7 +1594,7 @@ private struct SETCameraFixtureCommandBand: View {
                 }
             }
 
-            if fixtureID == "camera.explanation" && !isCompactStatus {
+            if semanticState == .explanation && !isCompactStatus {
                 Text(SETCopyKey.cameraExplanation.localizedTextKey)
                     .font(SETTypography.uiBodyFont())
                     .foregroundStyle(.setTextSecondary)
@@ -1515,14 +1608,30 @@ private struct SETCameraFixtureCommandBand: View {
         .background(.setHUDScrim)
         .overlay(alignment: .topLeading) {
             Rectangle()
-                .fill(fixtureID == "camera.fallback" || analysisStatus == .failed ? Color.setWarmWhite : Color.setOrange)
+                .fill(semanticState == .fallback || semanticState == .abstain || analysisStatus == .failed ? Color.setWarmWhite : Color.setOrange)
                 .frame(width: SETStroke.standard)
         }
         .accessibilityElement(children: .contain)
+        // This is a production command-band element, not a fixture echo. The
+        // legacy fixture ID remains stable for existing automation, while the
+        // value lets UI tests verify the mapped production semantic state.
         .accessibilityIdentifier(fixtureID)
+        .accessibilityValue(Text(verbatim: semanticState?.rawValue ?? fixtureID))
     }
 
     private var commandKey: SETCopyKey {
+        if let semanticState {
+            if semanticState == .corrective || semanticState == .movement || semanticState == .noisyFrame,
+               analysisStatus == .failed {
+                return .cameraFallback
+            }
+            if semanticState == .corrective || semanticState == .movement || semanticState == .noisyFrame,
+               showsECO {
+                return .cameraEco
+            }
+            return semanticState.commandKey
+        }
+
         switch fixtureID {
         case "camera.starting": return .cameraPreparing
         case "camera.interrupted": return .cameraInterrupted
