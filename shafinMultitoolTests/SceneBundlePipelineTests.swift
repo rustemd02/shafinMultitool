@@ -2622,6 +2622,19 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     @MainActor
+    /// M6-002 requires failure callbacks to come from the attached session;
+    /// the fixture attaches a runtime owning the very ARSession it fails so
+    /// the generation fence accepts the callback.
+    private final class AttachedFailureRuntime: ARSessionRuntime {
+        let session = ARSession()
+        var sessionIdentifier: ObjectIdentifier { ObjectIdentifier(session) }
+        var delegate: ARSessionDelegate?
+        var videoFormatFramesPerSecond: Int? { 60 }
+        func run(_ configuration: ARConfiguration, options: ARSession.RunOptions) {}
+        func pause() {}
+    }
+
+    @MainActor
     func testARFailureMessageUsesContainerPresentationLocale() async {
         let viewModel = SceneGeneratorViewModel()
         let container = ARSceneContainer(
@@ -2630,14 +2643,21 @@ final class SceneBundlePipelineTests: XCTestCase {
         )
         viewModel.setPresentationLocale(Locale(identifier: "en"))
         let coordinator = container.makeCoordinator()
+        let runtime = AttachedFailureRuntime()
+        coordinator.attachSession(runtime: runtime)
         let error = NSError(
             domain: "ARSession",
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "Unsupported configuration."]
         )
 
-        coordinator.session(ARSession(), didFailWithError: error)
-        await Task.yield()
+        coordinator.session(runtime.session, didFailWithError: error)
+
+        // The publish hops through one MainActor turn; wait bounded.
+        let deadline = Date().addingTimeInterval(2)
+        while viewModel.errorMessage == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
 
         XCTAssertEqual(viewModel.errorMessage, "AR ERROR: Unsupported configuration.")
     }
