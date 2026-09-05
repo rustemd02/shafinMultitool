@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/datasets/camera-coach/v1/cluster-schema.json",
+  "schema_version": "v1.0.0",
+  "title": "Camera Coach deterministic derivation cluster receipt v1",
+  "description": "Content-addressed exact and near-duplicate audit output. Source paths and raw media are intentionally absent. Sequence frames are one derivation family. SSIM is review evidence only and never an admission oracle.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "algorithm", "input", "clusters", "sequence_families", "ssim_review", "audit"],
+  "properties": {
+    "schema_id": {"const": "camera-dedup-clusters-v1"},
+    "schema_version": {"const": "v1.0.0"},
+    "algorithm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm_id", "sha256", "perceptual_hash", "local_embedding", "ssim_review"],
+      "properties": {
+        "algorithm_id": {"const": "camera-dedup-v1"},
+        "sha256": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "role"],
+          "properties": {
+            "name": {"const": "sha256"},
+            "role": {"const": "exact_content_identity"}
+          }
+        },
+        "perceptual_hash": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "distance_metric", "max_hamming_distance", "min_descriptor_similarity"],
+          "properties": {
+            "name": {"const": "phash64_dct_v1"},
+            "distance_metric": {"const": "hamming"},
+            "max_hamming_distance": {"type": "integer", "minimum": 0, "maximum": 64},
+            "min_descriptor_similarity": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "local_embedding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "dimension", "similarity_metric", "min_similarity", "learned_model"],
+          "properties": {
+            "name": {"const": "local_descriptor_v1"},
+            "dimension": {"const": 64},
+            "similarity_metric": {"const": "cosine"},
+            "min_similarity": {"type": "number", "minimum": 0, "maximum": 1},
+            "learned_model": {"const": false}
+          }
+        },
+        "ssim_review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "name", "threshold", "admission_oracle"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "name": {"const": "ssim_grayscale_v1"},
+            "threshold": {"type": "number", "minimum": -1, "maximum": 1},
+            "admission_oracle": {"const": false}
+          }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest_schema_id", "asset_count", "manifest_sha256"],
+      "properties": {
+        "manifest_schema_id": {"const": "camera-dedup-input-v1"},
+        "asset_count": {"type": "integer", "minimum": 1},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "clusters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/cluster"}
+    },
+    "sequence_families": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/sequenceFamily"}
+    },
+    "ssim_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "admission_oracle", "pairs"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "admission_oracle": {"const": false},
+        "pairs": {"type": "array", "items": {"$ref": "#/$defs/ssimPair"}}
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "cluster_count", "exact_cluster_count", "near_cluster_count", "singleton_count", "sequence_family_inheritance", "input_order_independent", "raw_media_copied_to_git", "candidate_identity_leakage"],
+      "properties": {
+        "status": {"const": "pass"},
+        "cluster_count": {"type": "integer", "minimum": 1},
+        "exact_cluster_count": {"type": "integer", "minimum": 0},
+        "near_cluster_count": {"type": "integer", "minimum": 0},
+        "singleton_count": {"type": "integer", "minimum": 0},
+        "sequence_family_inheritance": {"const": "pass"},
+        "input_order_independent": {"const": true},
+        "raw_media_copied_to_git": {"const": false},
+        "candidate_identity_leakage": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cluster_id", "cluster_kind", "asset_ids", "record_ids", "sequence_ids", "derivation_family_id", "derivation_family_ids", "members", "edges"],
+      "properties": {
+        "cluster_id": {"type": "string", "pattern": "^cdc_[0-9a-f]{16}$"},
+        "cluster_kind": {"enum": ["singleton", "exact_duplicate", "near_duplicate", "sequence_family"]},
+        "asset_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "record_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "sequence_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "derivation_family_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "derivation_family_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "members": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/member"}},
+        "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}}
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_id", "content_sha256", "perceptual_hash", "local_embedding_sha256", "record_ids", "sequence_ids", "frame_ordinals", "derivation_family_ids"],
+      "properties": {
+        "asset_id": {"$ref": "#/$defs/id"},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "perceptual_hash": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+        "local_embedding_sha256": {"$ref": "#/$defs/sha256"},
+        "record_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "sequence_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "frame_ordinals": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 0}},
+        "derivation_family_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left_asset_id", "right_asset_id", "phash_hamming_distance", "local_embedding_similarity", "reasons"],
+      "properties": {
+        "left_asset_id": {"$ref": "#/$defs/id"},
+        "right_asset_id": {"$ref": "#/$defs/id"},
+        "phash_hamming_distance": {"type": "integer", "minimum": 0, "maximum": 64},
+        "local_embedding_similarity": {"type": "number", "minimum": -1, "maximum": 1},
+        "reasons": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["sha256_exact", "perceptual_hash", "local_embedding_similarity", "sequence_family_inheritance"]}}
+      }
+    },
+    "sequenceFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence_id", "cluster_id", "derivation_family_id", "derivation_family_ids", "asset_ids"],
+      "properties": {
+        "sequence_id": {"$ref": "#/$defs/id"},
+        "cluster_id": {"type": "string", "pattern": "^cdc_[0-9a-f]{16}$"},
+        "derivation_family_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "derivation_family_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "asset_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+      }
+    },
+    "ssimPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left_asset_id", "right_asset_id", "ssim", "review_signal"],
+      "properties": {
+        "left_asset_id": {"$ref": "#/$defs/id"},
+        "right_asset_id": {"$ref": "#/$defs/id"},
+        "ssim": {"type": "number", "minimum": -1, "maximum": 1},
+        "review_signal": {"enum": ["similar", "different"]}
+      }
+    }
+  }
+}
