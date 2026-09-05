@@ -1353,8 +1353,10 @@ private struct SETLibraryMarkerNote: View {
                 .padding(.horizontal, SETSpacing.x4)
         }
         .frame(width: 204, height: 52)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(SETCopyKey.accessibilityLibrarySelectedScene.localizedTextKey))
+        // This is visual annotation only. The selected row already owns the
+        // canonical `.isSelected` trait; exposing the marker creates a second
+        // VoiceOver element with the same meaning.
+        .accessibilityHidden(true)
     }
 }
 

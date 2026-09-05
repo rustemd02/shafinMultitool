@@ -176,15 +176,30 @@ final class SETLibraryProductionUITests: XCTestCase {
         XCTAssertTrue(rename.waitForExistence(timeout: 4))
         XCTAssertTrue(delete.waitForExistence(timeout: 4))
 
-        let actions = [open, rename, delete]
-        for index in actions.indices {
-            for otherIndex in actions.indices where otherIndex > index {
+        let hitRegions = [sceneRow, open, rename, delete]
+        for index in hitRegions.indices {
+            for otherIndex in hitRegions.indices where otherIndex > index {
                 XCTAssertFalse(
-                    actions[index].frame.intersects(actions[otherIndex].frame),
-                    "Sibling Library action hit regions must not overlap."
+                    hitRegions[index].frame.intersects(hitRegions[otherIndex].frame),
+                    "The selection row and each Library action must have independent hit regions."
                 )
             }
         }
+
+        let expectedTraversal = [
+            "library_scene_row_2",
+            "library_scene_open",
+            "library_scene_rename",
+            "library_scene_delete"
+        ]
+        let libraryTraversalIDs = app.descendants(matching: .any).allElementsBoundByIndex
+            .map { $0.identifier }
+            .filter { expectedTraversal.contains($0) }
+        XCTAssertEqual(
+            libraryTraversalIDs,
+            expectedTraversal,
+            "VoiceOver must traverse the selected row, then open, rename, and delete deterministically."
+        )
         XCTAssertGreaterThan(open.frame.minY, sceneRow.frame.minY)
         XCTAssertTrue(
             open.label.localizedCaseInsensitiveContains("open") || open.label.localizedCaseInsensitiveContains("открыть")

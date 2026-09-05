@@ -7,6 +7,8 @@
 //  without overwriting the stored write.
 //
 
+import AVFoundation
+import CoreVideo
 import XCTest
 @testable import shafinMultitool
 
@@ -121,7 +123,7 @@ final class DBServiceConcurrencyTests: XCTestCase {
         XCTAssertEqual(snapshot.artifactHealth, .none)
     }
 
-    func testLibrarySnapshotUsesOnlyOwnedRecordingForPreviewSource() throws {
+    func testLibrarySnapshotUsesOnlyOwnedRecordingForPreviewSource() async throws {
         let applicationSupportURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("scene-library-preview-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
@@ -137,7 +139,6 @@ final class DBServiceConcurrencyTests: XCTestCase {
             relativePath: "Recordings/Projects/\(project.id.uuidString)/\(recordingID.uuidString).mov"
         )
         var enriched = project
-        enriched.sceneDescription = "A real recorded scene"
         enriched.recordingReferences = [reference]
         try service.saveUnifiedSceneProject(enriched, worldMap: nil)
 
@@ -145,10 +146,11 @@ final class DBServiceConcurrencyTests: XCTestCase {
             .appendingPathComponent(project.id.uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: projectArtifactsURL, withIntermediateDirectories: true)
         let artifactURL = projectArtifactsURL.appendingPathComponent("\(recordingID.uuidString).mov")
-        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: Data("owned media".utf8)))
+        try await makeValidMovie(at: artifactURL, recordingID: recordingID)
 
         let valid = try XCTUnwrap(service.loadLibrarySceneSnapshots().successValue?.first)
         XCTAssertEqual(valid.preview.recordingReference, reference)
+        XCTAssertEqual(valid.preview.kind, .metadataOnly, "A valid recording is a preview source even without other metadata.")
         XCTAssertEqual(valid.artifactHealth, .healthy)
 
         try FileManager.default.removeItem(at: artifactURL)
@@ -156,10 +158,55 @@ final class DBServiceConcurrencyTests: XCTestCase {
         XCTAssertNil(deleted.preview.recordingReference, "Deleted media must use the metadata fallback.")
         XCTAssertEqual(deleted.artifactHealth, .missing)
 
-        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: Data()))
+        XCTAssertTrue(FileManager.default.createFile(atPath: artifactURL.path, contents: Data("not a movie".utf8)))
         let corrupt = try XCTUnwrap(service.loadLibrarySceneSnapshots().successValue?.first)
-        XCTAssertNil(corrupt.preview.recordingReference, "Zero-byte media must not enter preview rendering.")
+        XCTAssertNil(corrupt.preview.recordingReference, "Non-decodable media must not enter preview rendering.")
         XCTAssertEqual(corrupt.artifactHealth, .corrupt)
+    }
+
+    func testLibrarySnapshotRejectsValidMediaOutsideCanonicalProjectPath() async throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-library-preview-ownership-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let service = DBService(recordingArtifactStore: store)
+        let project = try service.createUnifiedSceneProject(named: "preview-ownership-\(UUID().uuidString)")
+        defer { service.deleteUnifiedSceneProject(named: project.name) { _ in } }
+
+        let recordingID = UUID()
+        let projectDirectory = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDirectory, withIntermediateDirectories: true)
+        let ownedURL = projectDirectory.appendingPathComponent("\(recordingID.uuidString).mov")
+        try await makeValidMovie(at: ownedURL, recordingID: recordingID)
+
+        let foreignProjectID = UUID()
+        let foreignDirectory = store.projectsDirectoryURL
+            .appendingPathComponent(foreignProjectID.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: foreignDirectory, withIntermediateDirectories: true)
+        let foreignURL = foreignDirectory.appendingPathComponent("\(recordingID.uuidString).mov")
+        try FileManager.default.copyItem(at: ownedURL, to: foreignURL)
+
+        let pendingURL = store.pendingDirectoryURL.appendingPathComponent("\(recordingID.uuidString).mov")
+        try FileManager.default.copyItem(at: ownedURL, to: pendingURL)
+
+        let paths = [
+            "Recordings/Projects/\(foreignProjectID.uuidString)/\(recordingID.uuidString).mov",
+            "Recordings/Pending/\(recordingID.uuidString).mov"
+        ]
+        for path in paths {
+            var enriched = project
+            enriched.recordingReferences = [SceneRecordingReference(
+                recordingID: recordingID,
+                relativePath: path
+            )]
+            try service.saveUnifiedSceneProject(enriched, worldMap: nil)
+
+            let snapshot = try XCTUnwrap(service.loadLibrarySceneSnapshots().successValue?.first)
+            XCTAssertNil(snapshot.preview.recordingReference, "A valid movie outside the project binding must not become a preview source.")
+            XCTAssertEqual(snapshot.artifactHealth, .missing, "An unowned reference must be unavailable, not healthy.")
+        }
     }
 
     // MARK: - Optimistic conflict behavior
@@ -338,6 +385,94 @@ final class DBServiceConcurrencyTests: XCTestCase {
         XCTAssertNotNil(service.loadUnifiedSceneProject(named: secondWithRecording.name))
     }
 
+    func testTypedDeleteRemovesPromotedArtifactsWhenReferencesAreNotPersisted() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-library-delete-promoted-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let service = DBService(recordingArtifactStore: store)
+        let project = try service.createUnifiedSceneProject(named: "delete-promoted-\(UUID().uuidString)")
+
+        let projectDirectory = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDirectory, withIntermediateDirectories: true)
+        let promotedRecordingID = UUID()
+        let promotedArtifact = projectDirectory.appendingPathComponent("\(promotedRecordingID.uuidString).mov")
+        let promotedData = Data("promoted before metadata".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: promotedArtifact.path, contents: promotedData))
+
+        let siblingProjectID = UUID()
+        let siblingDirectory = store.projectsDirectoryURL
+            .appendingPathComponent(siblingProjectID.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: siblingDirectory, withIntermediateDirectories: true)
+        let siblingArtifact = siblingDirectory.appendingPathComponent("\(UUID().uuidString).mov")
+        let siblingData = Data("sibling must remain".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: siblingArtifact.path, contents: siblingData))
+        let pendingArtifact = store.pendingDirectoryURL.appendingPathComponent("pending-promoted.mov")
+        let pendingData = Data("pending must remain".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: pendingArtifact.path, contents: pendingData))
+
+        var result: Result<Void, SETLibraryFailure>?
+        service.deleteUnifiedSceneProject(id: project.id, expectedUpdatedAt: project.updatedAt) {
+            result = $0
+        }
+
+        guard case .success = result else {
+            return XCTFail("expected promoted artifact cleanup to succeed, got \(String(describing: result))")
+        }
+        XCTAssertNil(service.loadUnifiedSceneProject(named: project.name))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: promotedArtifact.path))
+        XCTAssertEqual(try Data(contentsOf: siblingArtifact), siblingData)
+        XCTAssertEqual(try Data(contentsOf: pendingArtifact), pendingData)
+    }
+
+    func testTypedDeleteRollsBackPromotedArtifactWhenCommitFailsWithoutReference() throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scene-library-delete-promoted-rollback-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let service = DBService(recordingArtifactStore: store)
+        let project = try service.createUnifiedSceneProject(named: "delete-promoted-rollback-\(UUID().uuidString)")
+
+        let projectDirectory = store.projectsDirectoryURL
+            .appendingPathComponent(project.id.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDirectory, withIntermediateDirectories: true)
+        let promotedRecordingID = UUID()
+        let promotedArtifact = projectDirectory.appendingPathComponent("\(promotedRecordingID.uuidString).mov")
+        let promotedData = Data("promoted rollback bytes".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: promotedArtifact.path, contents: promotedData))
+
+        let siblingProjectID = UUID()
+        let siblingDirectory = store.projectsDirectoryURL
+            .appendingPathComponent(siblingProjectID.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: siblingDirectory, withIntermediateDirectories: true)
+        let siblingArtifact = siblingDirectory.appendingPathComponent("\(UUID().uuidString).mov")
+        let siblingData = Data("sibling rollback bytes".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: siblingArtifact.path, contents: siblingData))
+        let pendingArtifact = store.pendingDirectoryURL.appendingPathComponent("pending-promoted-rollback.mov")
+        let pendingData = Data("pending rollback bytes".utf8)
+        XCTAssertTrue(FileManager.default.createFile(atPath: pendingArtifact.path, contents: pendingData))
+
+        // Promotion may have succeeded before the project reference was
+        // persisted. A later artifact failure must restore both ownership
+        // metadata and that promoted file, while leaving unrelated media alone.
+        store.testArtifactCommitFailureAfterUnlinks = 0
+        var result: Result<Void, SETLibraryFailure>?
+        service.deleteUnifiedSceneProject(id: project.id, expectedUpdatedAt: project.updatedAt) {
+            result = $0
+        }
+
+        guard case .failure(.artifactCleanup) = result else {
+            return XCTFail("expected promoted artifact rollback failure, got \(String(describing: result))")
+        }
+        XCTAssertEqual(service.loadUnifiedSceneProject(named: project.name)?.0, project)
+        XCTAssertEqual(try Data(contentsOf: promotedArtifact), promotedData)
+        XCTAssertEqual(try Data(contentsOf: siblingArtifact), siblingData)
+        XCTAssertEqual(try Data(contentsOf: pendingArtifact), pendingData)
+    }
+
     func testTypedDeleteRollsBackMetadataWhenArtifactCommitFailsPartway() throws {
         let store = try RecordingArtifactStore()
         let service = DBService(recordingArtifactStore: store)
@@ -478,6 +613,61 @@ final class DBServiceConcurrencyTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func makeValidMovie(at outputURL: URL, recordingID: UUID) async throws {
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: recordingID),
+            outputURL: outputURL,
+            width: 320,
+            height: 240,
+            fps: 30,
+            audioMode: .disabled
+        )
+        let writer = try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)
+        guard writer.start() else {
+            throw NSError(domain: "DBServiceConcurrencyTests", code: 1)
+        }
+        for index in 0..<3 {
+            let pixelBuffer = try makePixelBuffer(width: configuration.width, height: configuration.height)
+            let disposition = writer.appendVideo(RecordingVideoFrame(
+                recordingID: configuration.id,
+                generation: 1,
+                timestamp: 10.0 + (Double(index) / Double(configuration.fps)),
+                payload: AppleRecordingVideoFramePayload(pixelBuffer: pixelBuffer)
+            ))
+            guard disposition == .appended else {
+                writer.discard()
+                throw NSError(domain: "DBServiceConcurrencyTests", code: 2)
+            }
+        }
+
+        let finishExpectation = expectation(description: "valid movie finished")
+        var finishResult: Result<RecordingWriterFinish, RecordingWriterError>?
+        writer.finishWriting { result in
+            finishResult = result
+            finishExpectation.fulfill()
+        }
+        await fulfillment(of: [finishExpectation], timeout: 10)
+        guard case .success = finishResult else {
+            throw NSError(domain: "DBServiceConcurrencyTests", code: 3)
+        }
+    }
+
+    private func makePixelBuffer(width: Int, height: Int) throws -> CVPixelBuffer {
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            nil,
+            &pixelBuffer
+        )
+        guard status == kCVReturnSuccess, let pixelBuffer else {
+            throw NSError(domain: "DBServiceConcurrencyTests", code: Int(status))
+        }
+        return pixelBuffer
+    }
 
     private func assertStagedDeleteRollsBack(
         after failurePoint: DBService.TestDeletionFailurePoint

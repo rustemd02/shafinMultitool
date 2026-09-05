@@ -7,6 +7,7 @@
 
 import Foundation
 import ARKit
+import AVFoundation
 
 /// M1-015 PersistenceOwner failure taxonomy. `staleSnapshot` is the recoverable
 /// optimistic-concurrency conflict: the caller's snapshot no longer matches the
@@ -589,12 +590,15 @@ class DBService {
             // Stage owned artifacts while their source paths remain intact.
             // Any later metadata failure can therefore restore the exact
             // recording files rather than trying to recreate media bytes.
-            if !stored.project.recordingReferences.isEmpty {
-                guard case .success(let artifactStore) = recordingArtifactStore else {
-                    return .failure(.artifactCleanup)
-                }
-                artifactStage = try artifactStore.stageProjectArtifacts(projectID: stored.project.id)
+            // Always stage the canonical project directory. Promotion can land
+            // the movie before its reference is persisted, so an empty
+            // reference list is not proof that the owned directory is empty.
+            // The artifact owner scopes this operation to this project ID and
+            // never traverses Pending, sibling projects, or user media.
+            guard case .success(let artifactStore) = recordingArtifactStore else {
+                return .failure(.artifactCleanup)
             }
+            artifactStage = try artifactStore.stageProjectArtifacts(projectID: stored.project.id)
             try consumeInjectedDeletionFailureOnQueue(.afterArtifactStage)
 
             if fileManager.fileExists(atPath: mapURL.path) {
@@ -792,12 +796,14 @@ class DBService {
     private func makeLibrarySnapshotOnQueue(for project: UnifiedSceneProject) -> SETLibrarySceneSnapshot {
         let recordingReference = project.recordingReferences.first { reference in
             guard case .success(let artifactStore) = recordingArtifactStore,
-                  let url = artifactStore.resolve(reference),
+                  let url = artifactStore.resolve(reference, ownedBy: project.id),
                   let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-                  let fileSize = attributes[.size] as? NSNumber else {
+                  let fileSize = attributes[.size] as? NSNumber,
+                  fileSize.int64Value > 0,
+                  isDecodableMovieOnQueue(at: url) else {
                 return false
             }
-            return fileSize.int64Value > 0
+            return true
         }
 
         let preview: SETLibraryPreviewMetadata
@@ -828,6 +834,17 @@ class DBService {
                 recordingCount: project.recordingReferences.count,
                 recordingReference: recordingReference
             )
+        } else if recordingReference != nil {
+            // A valid recording is an owned preview source even when the
+            // optional screenplay/storyboard metadata is still empty.
+            preview = SETLibraryPreviewMetadata(
+                kind: .metadataOnly,
+                beatCount: 0,
+                actorCount: 0,
+                objectCount: 0,
+                recordingCount: project.recordingReferences.count,
+                recordingReference: recordingReference
+            )
         } else {
             preview = .unavailable
         }
@@ -847,16 +864,31 @@ class DBService {
 
         var hasCorruptArtifact = false
         for reference in project.recordingReferences {
-            guard let url = artifactStore.resolve(reference) else { return .missing }
+            guard let url = artifactStore.resolve(reference, ownedBy: project.id) else { return .missing }
             guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
                   let fileSize = attributes[.size] as? NSNumber else {
                 return .missing
             }
-            if fileSize.int64Value <= 0 {
+            if fileSize.int64Value <= 0 || !isDecodableMovieOnQueue(at: url) {
                 hasCorruptArtifact = true
             }
         }
         return hasCorruptArtifact ? .corrupt : .healthy
+    }
+
+    /// A non-empty path is not media evidence. The native AVFoundation asset
+    /// probe validates a movie container/video track once while building the
+    /// persisted Library projection; poster-frame decoding remains async in
+    /// the SwiftUI preview and is never performed per frame.
+    private func isDecodableMovieOnQueue(at url: URL) -> Bool {
+        let asset = AVURLAsset(url: url)
+        let duration = asset.duration
+        return asset.isPlayable &&
+            asset.isReadable &&
+            duration.isNumeric &&
+            duration.seconds.isFinite &&
+            duration.seconds > 0 &&
+            !asset.tracks(withMediaType: .video).isEmpty
     }
 
     private func preservedWorldMapDataOnQueue(

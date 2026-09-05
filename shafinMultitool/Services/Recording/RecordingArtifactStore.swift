@@ -272,6 +272,17 @@ final class RecordingArtifactStore: @unchecked Sendable {
         return url
     }
 
+    /// Resolves a reference only when its persisted path is the canonical
+    /// project/recording binding produced by promotion. The regular `resolve`
+    /// method still protects the recordings root; this extra binding prevents
+    /// a reference from borrowing another project's or Pending's movie.
+    func resolve(_ reference: SceneRecordingReference, ownedBy projectID: UUID) -> URL? {
+        guard reference.relativePath == relativePath(for: reference.recordingID, projectID: projectID) else {
+            return nil
+        }
+        return resolve(reference)
+    }
+
     func resolveArtifact(_ reference: SceneRecordingReference) -> RecordingArtifact? {
         guard let localURL = resolve(reference) else { return nil }
         return RecordingArtifact(
