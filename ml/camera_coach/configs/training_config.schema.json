@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "camera_training.v1.schema.json",
+  "title": "M4-006 Camera training environment config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "config_version",
+    "seed",
+    "deterministic",
+    "device",
+    "candidate",
+    "dataset",
+    "model",
+    "runtime",
+    "lock_sha256",
+    "output_root",
+    "dry_run"
+  ],
+  "properties": {
+    "config_version": { "const": "camera_training.v1" },
+    "seed": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 },
+    "deterministic": { "const": true },
+    "device": { "const": "cpu" },
+    "candidate": {
+      "enum": [
+        "candidate_a_dual_branch",
+        "candidate_b_roi_conditioned_ablation"
+      ]
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "sha256"],
+      "properties": {
+        "kind": { "const": "synthetic" },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest_path", "manifest_sha256"],
+      "properties": {
+        "manifest_path": { "const": "ml/camera_coach/contracts/set_composition_net_v1.json" },
+        "manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python_version", "torch_version"],
+      "properties": {
+        "python_version": { "const": "3.11.9" },
+        "torch_version": { "const": "2.10.0" }
+      }
+    },
+    "lock_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "output_root": { "type": "string", "minLength": 1 },
+    "dry_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sample_count", "batch_size", "steps", "learning_rate"],
+      "properties": {
+        "sample_count": { "type": "integer", "minimum": 2, "maximum": 4 },
+        "batch_size": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "steps": { "const": 1 },
+        "learning_rate": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

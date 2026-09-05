@@ -1,0 +1,28 @@
+{
+  "config_version": "camera_training.v1",
+  "seed": 20260905,
+  "deterministic": true,
+  "device": "cpu",
+  "candidate": "candidate_b_roi_conditioned_ablation",
+  "dataset": {
+    "kind": "synthetic",
+    "path": "ml/camera_coach/configs/synthetic_dataset.json",
+    "sha256": "b79d47e6df6e4a808a8d30065ec163ed341db905659261559e2643f1e2806f7f"
+  },
+  "model": {
+    "manifest_path": "ml/camera_coach/contracts/set_composition_net_v1.json",
+    "manifest_sha256": "ef05756ac5c78d89d0ec9a14864d193357ced0e1925ef9759b6ab8e78c36e074"
+  },
+  "runtime": {
+    "python_version": "3.11.9",
+    "torch_version": "2.10.0"
+  },
+  "lock_sha256": "b3c308e04fc071402e14114e0fd43fd59677142f3e51a03bf2276c35b8ab0992",
+  "output_root": "/private/tmp/setos-m4-006-runs",
+  "dry_run": {
+    "sample_count": 4,
+    "batch_size": 2,
+    "steps": 1,
+    "learning_rate": 0.001
+  }
+}

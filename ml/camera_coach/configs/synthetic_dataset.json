@@ -1,0 +1,13 @@
+{
+  "dataset_id": "camera_synthetic_dry_run",
+  "dataset_version": "synthetic.v1",
+  "kind": "synthetic",
+  "approved_human_data": false,
+  "sample_ids": [
+    "synthetic-camera-0000",
+    "synthetic-camera-0001",
+    "synthetic-camera-0002",
+    "synthetic-camera-0003"
+  ],
+  "generator": "seeded_contract_tensors.v1"
+}
