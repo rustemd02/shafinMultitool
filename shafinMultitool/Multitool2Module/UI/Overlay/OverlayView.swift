@@ -156,6 +156,18 @@ struct CameraPreview: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
+        updatePreviewView(uiView)
+    }
+
+#if DEBUG
+    @MainActor
+    func updateUIViewForTesting(_ uiView: PreviewView) {
+        updatePreviewView(uiView)
+    }
+#endif
+
+    private func updatePreviewView(_ uiView: PreviewView) {
+        uiView.rebindIfNeeded(session: session, cameraManager: cameraManager)
         uiView.subjectRegions = subjectRegions
         uiView.correctiveTargetRegion = correctiveTargetRegion
         uiView.transformStore = transformStore
@@ -176,11 +188,39 @@ final class PreviewView: UIView {
         didSet { setNeedsLayout() }
     }
     private var lastOrientation: AVCaptureVideoOrientation?
+    private var lastPublishedPreviewGeometry: CameraPreviewGeometry?
+    private var hasPublishedPreviewGeometry = false
     private var orientationObserver: NSObjectProtocol?
     private var isGeneratingOrientationNotifications = false
+#if DEBUG
+    var interfaceOrientationOverrideForTesting: UIInterfaceOrientation?
+    var videoConnectionOverrideForTesting: AVCaptureConnection?
+#endif
+
+    func rebindIfNeeded(session: AVCaptureSession, cameraManager: CameraManager) {
+        let sessionChanged = videoPreviewLayer.session !== session
+        let managerChanged = self.cameraManager !== cameraManager
+        guard sessionChanged || managerChanged else { return }
+
+        self.cameraManager?.clearPreviewGeometry()
+        videoPreviewLayer.session = session
+        self.cameraManager = cameraManager
+        lastOrientation = nil
+        hasPublishedPreviewGeometry = false
+        lastPublishedPreviewGeometry = nil
+    }
 
     var videoPreviewLayer: AVCaptureVideoPreviewLayer {
         layer as! AVCaptureVideoPreviewLayer
+    }
+
+    private var previewConnection: AVCaptureConnection? {
+#if DEBUG
+        if let videoConnectionOverrideForTesting {
+            return videoConnectionOverrideForTesting
+        }
+#endif
+        return videoPreviewLayer.connection
     }
 
     override func didMoveToWindow() {
@@ -190,7 +230,7 @@ final class PreviewView: UIView {
             scheduleOrientationUpdate()
         } else {
             stopOrientationObservation()
-            cameraManager?.clearPreviewGeometry()
+            publishPreviewGeometry(nil)
         }
     }
 
@@ -201,7 +241,6 @@ final class PreviewView: UIView {
     }
 
     func updateMappedRegions() {
-        updatePreviewGeometry()
         let bounds = videoPreviewLayer.bounds
         guard bounds.width > 0, bounds.height > 0 else {
             transformStore?.clear()
@@ -221,39 +260,40 @@ final class PreviewView: UIView {
     }
 
     func updateOrientation(force: Bool = false) {
-        guard let connection = videoPreviewLayer.connection,
+        guard let connection = previewConnection,
               connection.isVideoOrientationSupported,
               let interfaceOrientation = currentInterfaceOrientation(),
               let coachOrientation = CameraCoachOrientation(interfaceOrientation: interfaceOrientation) else {
-            cameraManager?.clearPreviewGeometry()
+            publishPreviewGeometry(nil)
             return
         }
         let captureOrientation = coachOrientation.captureOrientation
 
         guard force || lastOrientation != captureOrientation else {
-            updatePreviewGeometry()
+            publishPreviewGeometryIfChanged()
             return
         }
 
         lastOrientation = captureOrientation
         connection.videoOrientation = captureOrientation
         cameraManager?.setVideoOrientation(captureOrientation)
-        updatePreviewGeometry()
+        publishPreviewGeometryIfChanged()
     }
 
     /// Publishes the actual preview-layer destination only after the layer is
     /// attached to a window, has non-zero bounds, and exposes a live video
     /// connection. A stale value is cleared whenever those facts disappear.
-    private func updatePreviewGeometry() {
+    private func publishPreviewGeometryIfChanged() {
+        let geometry: CameraPreviewGeometry?
         guard window != nil,
-              let connection = videoPreviewLayer.connection,
+              let connection = previewConnection,
               connection.isVideoOrientationSupported else {
-            cameraManager?.clearPreviewGeometry()
+            publishPreviewGeometry(nil)
             return
         }
         let bounds = videoPreviewLayer.bounds
         guard bounds.width > 0, bounds.height > 0,
-              let geometry = CameraPreviewGeometry(
+              let validGeometry = CameraPreviewGeometry(
                   destinationSize: bounds.size,
                   imageOrientation: CameraFrameDeliveryOrientationContract.imageOrientation(
                       for: connection.videoOrientation
@@ -261,10 +301,24 @@ final class PreviewView: UIView {
                   isMirrored: connection.isVideoMirroringSupported
                       && connection.isVideoMirrored
               ) else {
-            cameraManager?.clearPreviewGeometry()
+            publishPreviewGeometry(nil)
             return
         }
-        cameraManager?.updatePreviewGeometry(geometry)
+        geometry = validGeometry
+        publishPreviewGeometry(geometry)
+    }
+
+    private func publishPreviewGeometry(_ geometry: CameraPreviewGeometry?) {
+        guard !hasPublishedPreviewGeometry || lastPublishedPreviewGeometry != geometry else {
+            return
+        }
+        hasPublishedPreviewGeometry = true
+        lastPublishedPreviewGeometry = geometry
+        if let geometry {
+            cameraManager?.updatePreviewGeometry(geometry)
+        } else {
+            cameraManager?.clearPreviewGeometry()
+        }
     }
 
     private func startOrientationObservationIfNeeded() {
@@ -302,6 +356,11 @@ final class PreviewView: UIView {
     }
 
     private func currentInterfaceOrientation() -> UIInterfaceOrientation? {
+#if DEBUG
+        if let interfaceOrientationOverrideForTesting {
+            return interfaceOrientationOverrideForTesting
+        }
+#endif
         if let orientation = window?.windowScene?.interfaceOrientation,
            orientation != .unknown {
             return orientation

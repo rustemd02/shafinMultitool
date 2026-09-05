@@ -380,6 +380,9 @@ final class CameraManager: NSObject, @unchecked Sendable {
     /// geometry update and a frame provenance snapshot mutually exclusive.
     private let previewGeometryLock = NSLock()
     private var storedPreviewGeometry: CameraPreviewGeometry?
+#if DEBUG
+    private var previewGeometryMutationsForTestingStorage = 0
+#endif
 
     private let lensDescriptorsLock = NSLock()
     private var storedLensDescriptors: [CameraLens: CameraLensDescriptor] = [:]
@@ -451,11 +454,18 @@ final class CameraManager: NSObject, @unchecked Sendable {
     /// preview is not currently measurable (for example, no window or zero
     /// bounds), so subject-bound verification must not guess a transform.
     func updatePreviewGeometry(_ geometry: CameraPreviewGeometry?) {
+#if DEBUG
+        beforePreviewGeometryBoundaryForTesting?()
+#endif
         captureBoundaryLock.lock()
+        defer { captureBoundaryLock.unlock() }
         previewGeometryLock.lock()
+        defer { previewGeometryLock.unlock() }
+        guard storedPreviewGeometry != geometry else { return }
         storedPreviewGeometry = geometry
-        previewGeometryLock.unlock()
-        captureBoundaryLock.unlock()
+#if DEBUG
+        previewGeometryMutationsForTestingStorage += 1
+#endif
     }
 
     func clearPreviewGeometry() {
@@ -466,6 +476,15 @@ final class CameraManager: NSObject, @unchecked Sendable {
     var previewGeometryForTesting: CameraPreviewGeometry? {
         previewGeometrySnapshot()
     }
+
+    var previewGeometryMutationsForTesting: Int {
+        captureBoundaryLock.lock()
+        defer { captureBoundaryLock.unlock() }
+        return previewGeometryMutationsForTestingStorage
+    }
+
+    /// Deterministic race seam used only by lifecycle tests.
+    var beforePreviewGeometryBoundaryForTesting: (() -> Void)?
 #endif
 
     init(scheduler: RealtimeScheduler,

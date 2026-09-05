@@ -1,6 +1,8 @@
 import XCTest
 import AVFoundation
 import Combine
+import CoreMedia
+import CoreVideo
 import ImageIO
 import UIKit
 @testable import shafinMultitool
@@ -291,6 +293,209 @@ final class CameraManagerLifecycleTests: XCTestCase {
         XCTAssertNil(manager.previewGeometryForTesting)
     }
 
+    @MainActor
+    func testPreviewViewClearsStaleGeometryWhenRemovedFromWindow() {
+        let (manager, _) = makeManager()
+        let preview = PreviewView()
+        preview.cameraManager = manager
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.addSubview(preview)
+        XCTAssertNotNil(preview.window)
+
+        let staleGeometry = CameraPreviewGeometry(
+            destinationSize: CGSize(width: 390, height: 844),
+            imageOrientation: .right,
+            isMirrored: false
+        )!
+        manager.updatePreviewGeometry(staleGeometry)
+
+        preview.removeFromSuperview()
+
+        XCTAssertNil(
+            manager.previewGeometryForTesting,
+            "PreviewView removal must clear stale camera-owned geometry"
+        )
+    }
+
+    @MainActor
+    func testPreviewViewDoesNotRepublishGeometryForUnchangedRegionUpdate() async throws {
+        let (manager, _) = makeManager()
+        try await manager.startAndWait()
+        defer {
+            Task { @MainActor in
+                await manager.releaseAndWait()
+            }
+        }
+
+        let preview = PreviewView()
+        preview.cameraManager = manager
+        preview.interfaceOrientationOverrideForTesting = .portrait
+        preview.videoConnectionOverrideForTesting = AVCaptureConnection(
+            inputPorts: [],
+            output: AVCaptureVideoDataOutput()
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.addSubview(preview)
+        preview.frame = window.bounds
+        preview.layoutIfNeeded()
+        await Task.yield()
+        preview.layoutIfNeeded()
+
+        guard let geometry = manager.previewGeometryForTesting else {
+            return XCTFail("PreviewView must publish measurable geometry before region updates")
+        }
+        var boundaryCalls = 0
+        manager.beforePreviewGeometryBoundaryForTesting = { boundaryCalls += 1 }
+        let boundaryCallsBeforeRegionUpdate = boundaryCalls
+
+        preview.subjectRegions = [NormalizedRect(x: 0.20, y: 0.20, width: 0.30, height: 0.40)]
+        preview.layoutIfNeeded()
+        preview.updateOrientation()
+        preview.updateMappedRegions()
+
+        XCTAssertEqual(manager.previewGeometryForTesting, geometry)
+        XCTAssertEqual(
+            boundaryCalls,
+            boundaryCallsBeforeRegionUpdate,
+            "an unchanged region update must not cross the camera geometry boundary"
+        )
+        manager.beforePreviewGeometryBoundaryForTesting = nil
+    }
+
+    @MainActor
+    func testCameraPreviewRebindingClearsOldOwnerAndRepublishesGeometryToNewOwner() {
+        let (oldManager, _) = makeManager()
+        let (newManager, _) = makeManager()
+        let oldSession = AVCaptureSession()
+        let newSession = AVCaptureSession()
+        let preview = PreviewView()
+        preview.videoPreviewLayer.session = oldSession
+        preview.videoConnectionOverrideForTesting = AVCaptureConnection(
+            inputPorts: [],
+            output: AVCaptureVideoDataOutput()
+        )
+        preview.cameraManager = oldManager
+        preview.interfaceOrientationOverrideForTesting = .portrait
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.addSubview(preview)
+        preview.frame = window.bounds
+        preview.layoutIfNeeded()
+        guard let oldGeometry = oldManager.previewGeometryForTesting else {
+            return XCTFail("initial PreviewView owner must publish geometry")
+        }
+
+        let updatedPreview = CameraPreview(session: newSession, cameraManager: newManager)
+        updatedPreview.updateUIViewForTesting(preview)
+
+        XCTAssertNil(
+            oldManager.previewGeometryForTesting,
+            "rebinding must clear geometry retained by the previous camera owner"
+        )
+        XCTAssertEqual(
+            newManager.previewGeometryForTesting,
+            oldGeometry,
+            "rebinding must republish the same measurable geometry to the new owner"
+        )
+        XCTAssertTrue(preview.cameraManager === newManager)
+        XCTAssertTrue(preview.videoPreviewLayer.session === newSession)
+        preview.removeFromSuperview()
+    }
+
+    func testConcurrentPreviewGeometryUpdatesRevalidateEqualityAtCaptureBoundary() {
+        let (manager, _) = makeManager()
+        let geometry = CameraPreviewGeometry(
+            destinationSize: CGSize(width: 390, height: 844),
+            imageOrientation: .right,
+            isMirrored: false
+        )!
+        let firstEntered = DispatchSemaphore(value: 0)
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let hookLock = NSLock()
+        var shouldPause = true
+        manager.beforePreviewGeometryBoundaryForTesting = {
+            hookLock.lock()
+            let pause = shouldPause
+            shouldPause = false
+            hookLock.unlock()
+            if pause {
+                firstEntered.signal()
+                releaseFirst.wait()
+            }
+        }
+
+        let firstDone = DispatchSemaphore(value: 0)
+        let secondDone = DispatchSemaphore(value: 0)
+        let queue = DispatchQueue(
+            label: "CameraManagerLifecycleTests.ConcurrentPreviewGeometry",
+            attributes: .concurrent
+        )
+        queue.async {
+            manager.updatePreviewGeometry(geometry)
+            firstDone.signal()
+        }
+        XCTAssertEqual(firstEntered.wait(timeout: .now() + 1), .success)
+
+        queue.async {
+            manager.updatePreviewGeometry(geometry)
+            secondDone.signal()
+        }
+        XCTAssertEqual(secondDone.wait(timeout: .now() + 1), .success)
+
+        releaseFirst.signal()
+        XCTAssertEqual(firstDone.wait(timeout: .now() + 1), .success)
+        manager.beforePreviewGeometryBoundaryForTesting = nil
+
+        XCTAssertEqual(manager.previewGeometryForTesting, geometry)
+        XCTAssertEqual(
+            manager.previewGeometryMutationsForTesting,
+            1,
+            "capture-boundary equality must be revalidated after a concurrent update"
+        )
+    }
+
+    func testCaptureOutputBindsLensAndPreviewGeometryBeforeAnalysisPipelineReceivesFrame() async throws {
+        let (manager, _) = makeManager()
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil,
+            thermalGovernor: makeThermalGovernor(),
+            neuralHeavyModelsEnabledProvider: { true },
+            liveHybridFusionEnabled: false,
+            demoLiveCoachEnabled: false
+        )
+        XCTAssertTrue(pipeline.register(with: manager))
+        try await manager.startAndWait()
+
+        let geometry = CameraPreviewGeometry(
+            destinationSize: CGSize(width: 390, height: 844),
+            imageOrientation: .down,
+            isMirrored: true
+        )!
+        manager.updatePreviewGeometry(geometry)
+
+        let output = AVCaptureVideoDataOutput()
+        let connection = AVCaptureConnection(inputPorts: [], output: output)
+        let sampleBuffer = try makeVideoSampleBuffer(
+            pixelBuffer: makePixelBuffer(width: 16, height: 16),
+            timestamp: CMTime(value: 1, timescale: 30)
+        )
+        manager.captureOutput(output, didOutput: sampleBuffer, from: connection)
+
+        await manager.drainSchedulerAndWait()
+        await pipeline.testingDrainHighQueue()
+
+        let evidence = try XCTUnwrap(pipeline.testingLatestFrameEvidence)
+        XCTAssertEqual(evidence.lensID, CameraLens.wide.rawValue)
+        XCTAssertEqual(evidence.previewGeometry, geometry)
+        XCTAssertEqual(evidence.orientation, .down)
+        XCTAssertEqual(evidence.lensGeneration, 1)
+
+        await pipeline.releaseAndWait()
+        await manager.releaseAndWait()
+    }
+
     func testVideoDataConnectionConfiguratorRequestsNativeRotationAndNoMirroring() {
         let supported = CameraDataOutputConnectionFake(
             supportsRotation: true,
@@ -538,6 +743,52 @@ final class CameraManagerLifecycleTests: XCTestCase {
     private func makeThermalGovernor() -> ThermalGovernor {
         ThermalGovernor(thermalStateProvider: { .nominal },
                          batteryLevelProvider: { 1.0 })
+    }
+
+    private func makePixelBuffer(width: Int, height: Int) -> CVPixelBuffer {
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            nil,
+            &pixelBuffer
+        )
+        XCTAssertEqual(status, kCVReturnSuccess)
+        return pixelBuffer!
+    }
+
+    private func makeVideoSampleBuffer(
+        pixelBuffer: CVPixelBuffer,
+        timestamp: CMTime
+    ) throws -> CMSampleBuffer {
+        var timing = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: timestamp,
+            decodeTimeStamp: .invalid
+        )
+        var formatDescription: CMVideoFormatDescription?
+        let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescriptionOut: &formatDescription
+        )
+        guard formatStatus == noErr, let formatDescription else {
+            throw NSError(domain: "CameraManagerLifecycleTests", code: Int(formatStatus))
+        }
+        var sampleBuffer: CMSampleBuffer?
+        let status = CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescription: formatDescription,
+            sampleTiming: &timing,
+            sampleBufferOut: &sampleBuffer
+        )
+        guard status == noErr, let sampleBuffer else {
+            throw NSError(domain: "CameraManagerLifecycleTests", code: Int(status))
+        }
+        return sampleBuffer
     }
 }
 

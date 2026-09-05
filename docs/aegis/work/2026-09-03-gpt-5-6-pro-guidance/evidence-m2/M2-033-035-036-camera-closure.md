@@ -369,6 +369,128 @@ M2-033 composition and entry-flow bundles remain the previously recorded Air
 artifacts because this correction did not alter routes or root-control
 semantics.
 
+## Fresh Sol/High correction — atomic geometry publication and stale stream rejection
+
+The earlier `6/6` correction claim above is superseded for the camera
+boundary findings: it covered direct manager/store/coordinator seams but did
+not prove the real `CameraManager.captureOutput` or `PreviewView` lifecycle
+owners. The first boundary correction is also superseded where it described
+an unlocked manager equality fast path and did not prove stale pre-cut event
+rejection. This correction keeps the production changes narrow and adds the
+missing atomicity and pipeline-to-view-model assertions.
+
+- `CameraManagerLifecycleTests/testCaptureOutputBindsLensAndPreviewGeometryBeforeAnalysisPipelineReceivesFrame`
+  invokes the actual `CameraManager.captureOutput` with a real video sample
+  buffer, drains the production scheduler/pipeline, and verifies that the
+  accepted evidence retains the active lens, orientation, capture generation
+  and preview geometry.
+- `CameraManagerLifecycleTests/testPreviewViewClearsStaleGeometryWhenRemovedFromWindow`
+  attaches the real `PreviewView` to a `UIWindow`, seeds geometry through the
+  camera owner, removes the view, and verifies that the production
+  `didMoveToWindow` seam clears stale geometry.
+- `CameraManagerLifecycleTests/testPreviewViewDoesNotRepublishGeometryForUnchangedRegionUpdate`
+  exercises the real `PreviewView` with a synthetic video connection only for
+  the hardware-free lifecycle seam, then drives a region/layout update and
+  proves the manager boundary is not entered again for identical geometry.
+- `CameraManagerLifecycleTests/testCameraPreviewRebindingClearsOldOwnerAndRepublishesGeometryToNewOwner`
+  drives the shared `CameraPreview` owner-update path with a retained
+  `PreviewView`, replaces both its session and manager, and verifies the old
+  manager is cleared while the new manager receives the same geometry. This
+  closes the long-lived UIView identity/rebinding case without assuming that
+  SwiftUI always recreates the representable.
+- `CameraManagerLifecycleTests/testConcurrentPreviewGeometryUpdatesRevalidateEqualityAtCaptureBoundary`
+  overlaps two identical geometry publications using a DEBUG-only
+  synchronization hook. The capture-boundary mutation count is one, proving
+  equality is revalidated while the boundary lock is held; this is the
+  deterministic atomicity equivalent for concurrent clear/update ordering.
+- `CameraCoachClosedLoopTests/testProductionSceneCutFlowsThroughViewModelAndRetriesWithinSameCapture`
+  consumes `.sceneCut` through the actual `CameraViewModel` subscriber, then
+  publishes a valid late pre-cut `CoachingEpisodeFrameEvidence` through the
+  `AnalysisPipeline` typed event stream. It asserts phase, token, baseline,
+  last-frame ID and movement/stability counters remain unchanged. Fresh
+  post-cut frames then admit a new baseline and episode token within the same
+  capture. The test does not call the coordinator directly.
+- `CameraManager.updatePreviewGeometry` now takes the capture-boundary lock
+  before equality revalidation and mutation, matching the frame-provenance
+  ordering; concurrent clear/update cannot publish from an unlocked
+  time-of-check/time-of-use window. `PreviewView` locally publishes geometry
+  only when its immutable value changes, while real bounds, orientation and
+  mirroring changes still publish and invalid lifecycle state clears. The
+  `CameraPreview.updateUIView` owner path clears the old manager and resets
+  the local geometry/orientation cache whenever its manager or session
+  identity changes, so the new owner cannot inherit a skipped publication.
+  `PreviewView.updateMappedRegions` no longer republishes geometry during
+  region-only updates.
+
+Focused production-boundary command:
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-second-correction-focused-dd \
+  -resultBundlePath /private/tmp/m2-camera-second-correction-focused-final.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests/testPreviewViewDoesNotRepublishGeometryForUnchangedRegionUpdate \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests/testConcurrentPreviewGeometryUpdatesRevalidateEqualityAtCaptureBoundary \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests/testPreviewViewClearsStaleGeometryWhenRemovedFromWindow \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests/testCameraPreviewRebindingClearsOldOwnerAndRepublishesGeometryToNewOwner \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionSceneCutFlowsThroughViewModelAndRetriesWithinSameCapture
+```
+
+Result: exit `0`; the Air result summary reports 5/5 passed, 0 failed, 0
+skipped. Summary bundle:
+`/private/tmp/m2-camera-second-correction-focused-rebinding.xcresult`.
+
+Unit regression command:
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-second-correction-regression-dd \
+  -resultBundlePath /private/tmp/m2-camera-second-correction-regression-rebinding.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolTests/CameraManagerLifecycleTests \
+  -only-testing:shafinMultitoolTests/LatestFrameEvidenceStoreTests \
+  -only-testing:shafinMultitoolTests/CoachingEpisodeCoordinatorTests \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionOwnersAdvanceSubjectSelectionThroughStabilizedEpisode \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionSceneIdentityIgnoresNoiseAndLocalMotionButRotatesOnMaterialCut \
+  -only-testing:shafinMultitoolTests/CameraCoachClosedLoopTests/testProductionSceneCutFlowsThroughViewModelAndRetriesWithinSameCapture
+```
+
+Result: exit `0`; the Air result summary reports 53/53 passed, 0 failed, 0
+skipped. This is three tests larger than the prior 50-test command because it
+includes the two new PreviewView/manager atomicity tests and the retained
+UIView-owner rebinding test. Summary bundle:
+`/private/tmp/m2-camera-second-correction-regression-rebinding.xcresult`.
+
+Focused production UI command (required because the preview owner changed):
+
+```text
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -destination 'platform=iOS Simulator,id=A6E7238C-B4C6-4988-B399-8E127CA8683B' \
+  -derivedDataPath /private/tmp/m2-camera-second-correction-ui-dd \
+  -resultBundlePath /private/tmp/m2-camera-second-correction-ui-rebinding.xcresult \
+  CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+  -parallel-testing-enabled NO \
+  -only-testing:shafinMultitoolUITests/CameraCoachProductionUITests
+```
+
+Result: exit `0`; the Air result summary reports 10/10 passed, 0 failed, 0
+skipped, with retained accessibility-ID assertions. Summary bundle:
+`/private/tmp/m2-camera-second-correction-ui-rebinding.xcresult`. No iPhone 17 Pro
+target appears in any command or result summary; no Release fixture strings
+were touched by this correction.
+
+`git diff --check` passed, and the final changed paths remain within the
+specified owned set. No changes were needed in `AnalysisPipeline.swift`,
+`LatestFrameEvidenceStore.swift`, `CameraViewModel.swift`,
+`CoachingEpisodeCoordinatorTests.swift` or
+`LatestFrameEvidenceStoreTests.swift`; the existing frame-bound and retry
+contracts in those files were exercised by the new boundary tests and
+regression group.
+
 ## Remaining boundary
 
 Simulator and unit evidence cannot prove physical-device ARKit tracking,

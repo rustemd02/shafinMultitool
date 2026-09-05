@@ -364,6 +364,190 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         )
     }
 
+    func testProductionSceneCutFlowsThroughViewModelAndRetriesWithinSameCapture() async {
+        let thermal = ThermalGovernor(
+            thermalStateProvider: { .nominal },
+            batteryLevelProvider: { 1.0 }
+        )
+        let manager = CameraManager(
+            scheduler: RealtimeScheduler(),
+            thermalGovernor: thermal,
+            motionGate: MotionGate(startMotionUpdates: false),
+            sessionRunner: ClosedLoopSessionRunner(),
+            configuration: .ready,
+            notificationCenter: NotificationCenter()
+        )
+        let neuralService = NeuralEvidenceInferenceService(
+            configuration: makeNeuralConfiguration(),
+            provider: ClosedLoopNeuralEvidenceProvider()
+        )
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: neuralService,
+            thermalGovernor: thermal,
+            neuralHeavyModelsEnabledProvider: { true },
+            liveHybridFusionEnabled: true,
+            demoLiveCoachEnabled: false
+        )
+        let viewModel = CameraViewModel(cameraManager: manager, analysisPipeline: pipeline)
+        defer {
+            Task { @MainActor in
+                await viewModel.releaseAndWait()
+            }
+        }
+
+        await viewModel.startAndWait()
+
+        let baseDate = Date(timeIntervalSince1970: 1_771_111_100)
+        let baseLuma = [UInt8](repeating: 0, count: 16)
+        let cutLuma: [UInt8] = [
+            232, 176, 112, 48,
+            208, 144, 80, 24,
+            240, 184, 120, 56,
+            216, 152, 88, 40
+        ]
+        func publish(_ frame: ClosedLoopFrame) async {
+            let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
+            let deterministicCritique = FrameCritiqueEngine().analyze(
+                snapshot: frame.snapshot,
+                semantics: semantics
+            )
+            let (fusionOutput, neuralOutcome) = await pipeline.testingResolveCritiqueWithHybridFusion(
+                mode: .live,
+                capturedAt: frame.date,
+                pixelBuffer: frame.evidence.pixelBuffer,
+                orientation: frame.evidence.orientation,
+                snapshot: frame.snapshot,
+                semantics: semantics,
+                deterministicCritique: deterministicCritique,
+                forcePauseExecution: false
+            )
+            XCTAssertEqual(neuralOutcome?.kind, .executed)
+            let plan = RecommendationPlanner().makePlan(
+                snapshot: frame.snapshot,
+                critique: fusionOutput.critique
+            )
+            XCTAssertEqual(plan.primaryAction?.actionType, .moveFrameRight)
+            pipeline.testingPublishLivePresentation(
+                frameId: frame.snapshot.frameId,
+                snapshot: frame.snapshot,
+                critique: fusionOutput.critique,
+                plan: plan,
+                semantics: semantics,
+                legacySuggestion: nil,
+                structuredAvailable: true,
+                now: frame.date
+            )
+            pipeline.testingPublishLiveCoachingEpisodeObservation(
+                snapshot: frame.snapshot,
+                semantics: semantics,
+                plan: plan,
+                frameEvidence: frame.evidence,
+                evaluatedAt: frame.date
+            )
+        }
+
+        let baselineFrames = (0..<5).map { index in
+            makeFrame(
+                pipeline: pipeline,
+                id: index == 0
+                    ? "production-scene-baseline"
+                    : "production-scene-baseline-\(index)",
+                x: 0.80,
+                seconds: Double(index) * 0.01,
+                baseDate: baseDate,
+                lumaValues: baseLuma
+            )
+        }
+        for frame in baselineFrames {
+            await publish(frame)
+        }
+        let baselineAccepted = await waitUntil {
+            viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && viewModel.coachingEpisodeState.baseline?.frameID == baselineFrames.last?.snapshot.frameId
+        }
+        XCTAssertTrue(baselineAccepted)
+        guard case let .baseline(baselineObservation) = pipeline.currentCoachingEpisodeEvent else {
+            return XCTFail("production pipeline must retain the accepted baseline event")
+        }
+        let firstToken = viewModel.coachingEpisodeState.token
+
+        let cutFrame = makeFrame(
+            pipeline: pipeline,
+            id: "production-scene-cut",
+            x: 0.80,
+            seconds: 0.06,
+            baseDate: baseDate,
+            lumaValues: cutLuma
+        )
+        await publish(cutFrame)
+
+        let sceneCutConsumed = await waitUntil {
+            viewModel.coachingEpisodeState.phase == .cancelled
+                && viewModel.coachingEpisodeState.cancellationReason == .sceneCut
+        }
+        XCTAssertTrue(sceneCutConsumed)
+
+        let terminalState = viewModel.coachingEpisodeState
+        let staleFrame = makeFrame(
+            pipeline: pipeline,
+            id: "production-scene-late-pre-cut",
+            x: 0.80,
+            seconds: 0.05,
+            baseDate: baseDate,
+            lumaValues: baseLuma
+        )
+        guard let staleEvidence = makeProductionFrameEvidence(
+            frame: staleFrame,
+            baseline: baselineObservation
+        ) else {
+            return XCTFail("the late pre-cut fixture must form valid production frame evidence")
+        }
+        pipeline.publishCoachingEpisodeEvent(.frame(staleEvidence))
+        guard case let .frame(publishedStaleEvidence) = pipeline.currentCoachingEpisodeEvent else {
+            return XCTFail("pipeline must publish the late pre-cut frame through its typed stream")
+        }
+        XCTAssertEqual(publishedStaleEvidence.frame.frameID, staleFrame.snapshot.frameId)
+        try? await Task.sleep(nanoseconds: 10_000_000)
+        XCTAssertEqual(viewModel.coachingEpisodeState.phase, terminalState.phase)
+        XCTAssertEqual(viewModel.coachingEpisodeState.token, terminalState.token)
+        XCTAssertEqual(viewModel.coachingEpisodeState.baseline, terminalState.baseline)
+        XCTAssertEqual(viewModel.coachingEpisodeState.lastFrameID, terminalState.lastFrameID)
+        XCTAssertEqual(viewModel.coachingEpisodeState.movementFrames, terminalState.movementFrames)
+        XCTAssertEqual(viewModel.coachingEpisodeState.stableAfterFrames, terminalState.stableAfterFrames)
+        XCTAssertEqual(
+            viewModel.coachingEpisodeState.cancellationReason,
+            terminalState.cancellationReason
+        )
+
+        let freshBaselineFrames = (0..<5).map { index in
+            makeFrame(
+                pipeline: pipeline,
+                id: index == 0
+                    ? "production-scene-fresh-baseline"
+                    : "production-scene-fresh-baseline-\(index)",
+                x: 0.80,
+                seconds: 0.08 + (Double(index) * 0.01),
+                baseDate: baseDate,
+                lumaValues: cutLuma
+            )
+        }
+        for frame in freshBaselineFrames {
+            await publish(frame)
+        }
+
+        let retryAccepted = await waitUntil {
+            viewModel.coachingEpisodeState.phase == .awaitingMovement
+                && viewModel.coachingEpisodeState.baseline?.frameID == freshBaselineFrames[2].snapshot.frameId
+        }
+        XCTAssertTrue(retryAccepted)
+        XCTAssertNotEqual(viewModel.coachingEpisodeState.token, firstToken)
+        XCTAssertEqual(viewModel.coachingEpisodeState.cancellationReason, nil)
+
+        await viewModel.releaseAndWait()
+    }
+
     func testProtectedProductionOwnerDecisionsRemainFailClosed() {
         let valid = CameraAdviceSafetyInput(
             lensGenerationKnown: true,
@@ -647,7 +831,8 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         id: String,
         x: Double,
         seconds: TimeInterval,
-        baseDate: Date? = nil
+        baseDate: Date? = nil,
+        lumaValues: [UInt8]? = nil
     ) -> ClosedLoopFrame {
         let date = (baseDate ?? Date(timeIntervalSince1970: 1_771_111_100)).addingTimeInterval(seconds)
         let orientation: CGImagePropertyOrientation = .right
@@ -727,7 +912,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             adapterState: state
         )
         let evidence = LatestFrameEvidenceStore.Snapshot(
-            pixelBuffer: makePixelBuffer(),
+            pixelBuffer: lumaValues.map { makePixelBuffer(lumaValues: $0) } ?? makePixelBuffer(),
             orientation: orientation,
             sourceFrameId: id,
             capturedAt: date,
@@ -742,6 +927,63 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             lensGeneration: 1
         )!
         return ClosedLoopFrame(snapshot: snapshot, evidence: evidence, date: date)
+    }
+
+    private func makeProductionFrameEvidence(
+        frame: ClosedLoopFrame,
+        baseline: CoachingEpisodeObservation
+    ) -> CoachingEpisodeFrameEvidence? {
+        guard let baselineBinding = baseline.frame.evidence?.subjectBinding,
+              let source = frame.snapshot.subjectSignals.primaryCandidateSource,
+              let region = frame.snapshot.subjectSignals.primaryCandidateRegion,
+              let measuredAt = frame.evidence.featureSourceTimestamps[source],
+              let binding = UserMovementSubjectBinding(
+                  identity: baselineBinding.identity,
+                  frameID: frame.snapshot.frameId,
+                  region: region,
+                  source: source,
+                  coordinateSpace: .vision,
+                  measuredAt: measuredAt,
+                  confidence: frame.snapshot.subjectSignals.primaryCandidateConfidence ?? 0
+              ),
+              let userFrame = UserMovementFrame(
+                  snapshot: frame.snapshot,
+                  envelope: frame.evidence.makeEnvelope(),
+                  subjectBinding: binding,
+                  evaluatedAt: frame.date,
+                  isCalibrated: true,
+                  calibrationVersion: "bounded-plan-v1",
+                  orientation: .portrait
+              ) else {
+            return nil
+        }
+
+        let lifecycle = SubjectTrackLifecycleContext(
+            generation: frame.evidence.lensGeneration,
+            orientation: .portrait,
+            lensID: frame.evidence.lensID,
+            routeActive: true,
+            isAppBackgrounded: false,
+            sceneSignature: baseline.lifecycle.sceneSignature
+        )
+        let subjectTrack = SubjectTrackState(
+            identity: baselineBinding.identity,
+            phase: .active,
+            lastRegion: binding.region,
+            lastSeenFrameID: frame.snapshot.frameId,
+            lostSinceFrameID: nil,
+            missedFrames: 0,
+            reconciliations: 0,
+            redetectionDue: false
+        )
+        return CoachingEpisodeFrameEvidence(
+            frame: userFrame,
+            subjectTrack: subjectTrack,
+            lifecycle: lifecycle,
+            isStable: frame.evidence.isStable,
+            currentActionID: baseline.stabilizedAdvice.actionID,
+            geometryContext: makeVerificationGeometry(frameID: frame.snapshot.frameId)
+        )
     }
 
     private func critiqueFor(_ snapshot: FrameFeatureSnapshot) -> CritiqueReport {
