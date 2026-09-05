@@ -284,6 +284,8 @@ struct ARSceneContainer: UIViewRepresentable {
         private var isSessionPausedForGeneration = false
         private var sessionRuntime: (any ARSessionRuntime)?
         private var appliedConfigurationPlan: ARWorldTrackingConfigurationPlan?
+        private var lastConfigurationRequest: ARWorldTrackingConfigurationRequest?
+        private var lastPublishedConfigurationFailure: ARWorldTrackingConfigurationFailure?
         private var lastProcessedFrameTimestamp: TimeInterval = 0
         private var shouldForwardCapturedImage = false
         /// Cached on the MainActor during representable updates, then used
@@ -391,6 +393,8 @@ struct ARSceneContainer: UIViewRepresentable {
             sessionRuntime = runtime
             setActiveSession(identifier: runtime.sessionIdentifier)
             interruptionSafetyApplied = false
+            lastConfigurationRequest = nil
+            lastPublishedConfigurationFailure = nil
             runtime.delegate = self
             viewModel.setARSessionOwner(self)
             viewModel.setExpectedARSessionGeneration(currentSessionGeneration())
@@ -567,6 +571,8 @@ struct ARSceneContainer: UIViewRepresentable {
             isGenerationActive = true
             isSessionPausedForGeneration = false
             appliedConfigurationPlan = nil
+            lastConfigurationRequest = nil
+            lastPublishedConfigurationFailure = nil
             SceneGeneratorDiagnosticsLogger.shared.log("[AR] session paused and detached for workspace teardown")
         }
 
@@ -599,10 +605,18 @@ struct ARSceneContainer: UIViewRepresentable {
 
         @MainActor
         private func resolvedPlan(for request: ARWorldTrackingConfigurationRequest) -> ARWorldTrackingConfigurationPlan? {
+            if lastConfigurationRequest != request {
+                lastConfigurationRequest = request
+                lastPublishedConfigurationFailure = nil
+            }
+
             switch configurationPolicy.makePlan(for: request) {
             case .success(let plan):
+                lastPublishedConfigurationFailure = nil
                 return plan
             case .failure(let failure):
+                guard lastPublishedConfigurationFailure != failure else { return nil }
+                lastPublishedConfigurationFailure = failure
                 appliedConfigurationPlan = nil
                 releaseRecordingSource()
                 viewModel.handleARSessionConfigurationFailure(failure)
@@ -620,6 +634,8 @@ struct ARSceneContainer: UIViewRepresentable {
             runtime.delegate = nil
             releaseRecordingSource()
             appliedConfigurationPlan = nil
+            lastConfigurationRequest = nil
+            lastPublishedConfigurationFailure = nil
         }
 
         private func beginTerminalRelease() -> (runtime: (any ARSessionRuntime)?, generation: Int)? {

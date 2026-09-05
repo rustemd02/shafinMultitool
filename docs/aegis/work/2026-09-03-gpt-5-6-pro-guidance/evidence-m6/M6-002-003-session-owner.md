@@ -1,6 +1,6 @@
 # M6-002 → M6-003 — AR session owner and configuration policy
 
-Status: complete (correction)
+Status: complete (correction 2)
 
 Branch: `codex/set-os-m6-002-003`
 
@@ -8,8 +8,10 @@ Worktree: `/Users/unterlantas/.codex/worktrees/shafinMultitool/m6-002-003-sessio
 
 Base commit: `3ca091fb80d9fbde32f11082948c62364117170c`
 
-Correction commit: local follow-up commit (SHA is recorded in the worker
-report)
+Prior correction commit: `7b1919ff0611cef6f1e70238b6bf3f5b57691e45`
+
+Dedupe correction commit: local follow-up commit (SHA is recorded in the
+worker report)
 
 ## Implementation evidence
 
@@ -52,15 +54,21 @@ transition for its accepted latest generation when the earlier safety task was
 not observed, then enters recovery. A per-interruption latch makes that safety
 transition observable and exactly once.
 
+The correction also deduplicates an already-published equivalent capability
+failure at the owner boundary, before releasing source state or calling the
+ViewModel. The dedupe is keyed by the configuration request and failure; a
+supported plan, runtime replacement, teardown, or material request change
+clears it so a new recovery remains observable.
+
 ## Verification receipt
 
 Required bounded command (exit code 0):
 
 ```sh
-xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone Air,OS=26.5' -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 -only-testing:shafinMultitoolTests/ARSessionOwnershipTests -only-testing:shafinMultitoolTests/ARConfigurationPolicyTests -only-testing:shafinMultitoolTests/ARWorkspaceContractTests -only-testing:shafinMultitoolTests/SceneWorkspaceTeardownTests -derivedDataPath /private/tmp/setos-m6-002-003-correction-dd -resultBundlePath /private/tmp/setos-m6-002-003-correction.xcresult CODE_SIGNING_ALLOWED=NO
+xcodebuild test -quiet -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone Air,OS=26.5' -parallel-testing-enabled NO -maximum-parallel-testing-workers 1 -only-testing:shafinMultitoolTests/ARSessionOwnershipTests -only-testing:shafinMultitoolTests/ARConfigurationPolicyTests -only-testing:shafinMultitoolTests/ARWorkspaceContractTests -only-testing:shafinMultitoolTests/SceneWorkspaceTeardownTests -derivedDataPath /private/tmp/setos-m6-002-003-dedupe-dd -resultBundlePath /private/tmp/setos-m6-002-003-dedupe.xcresult CODE_SIGNING_ALLOWED=NO
 ```
 
-Result bundle: `/private/tmp/setos-m6-002-003-correction.xcresult`
+Result bundle: `/private/tmp/setos-m6-002-003-dedupe.xcresult`
 
 ```text
 device: iPhone Air, iOS Simulator, OS 26.5
@@ -72,16 +80,20 @@ total: 38 passed, 0 failed, 0 skipped, 0 expected failures
 result: Passed
 ```
 
-The focused owner/policy suites were also run before the final bounded command
-on the same simulator with result bundle
-`/private/tmp/setos-m6-002-003-correction-focused.xcresult`: 16 passed, 0
-failed, and 0 skipped (6 ownership and 10 workspace-contract tests).
+The focused ownership suite was also run before the final bounded command on
+the same simulator with result bundle
+`/private/tmp/setos-m6-002-003-dedupe-focused.xcresult`: 6 passed, 0 failed,
+and 0 skipped (ARSessionOwnershipTests).
 
 The correction tests pin both failure modes: a source contract confirms the
 constructor disables automatic session configuration before owner attachment,
 and the deterministic interruption ordering test sends interruption and
 ended callbacks before yielding to MainActor, proving one safety application,
 playback stop, and recovery for the latest generation.
+
+The unsupported-world-tracking test now performs three equivalent configure
+calls and observes exactly one `$errorMessage` publication, with zero runtime
+`run` calls.
 
 The required mutation grep (exit code 0; no output) was:
 

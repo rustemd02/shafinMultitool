@@ -1,5 +1,6 @@
 import XCTest
 import ARKit
+import Combine
 @testable import shafinMultitool
 
 @MainActor
@@ -185,11 +186,19 @@ final class ARSessionOwnershipTests: XCTestCase {
             capabilityProvider: makeCapabilities(worldTracking: false),
             sessionRuntime: runtime
         )
+        var errorPublications = 0
+        let subscription = viewModel.$errorMessage
+            .dropFirst()
+            .sink { _ in errorPublications += 1 }
+        defer { subscription.cancel() }
 
         owner.attachSession(runtime: runtime)
         owner.configureSessionIfNeeded(request: request(), force: true)
+        owner.configureSessionIfNeeded(request: request(), force: true)
+        owner.configureSessionIfNeeded(request: request())
 
         XCTAssertEqual(runtime.runCount, 0)
+        XCTAssertEqual(errorPublications, 1)
         XCTAssertEqual(
             viewModel.errorMessage,
             viewModel.localizedCopy(.generatorErrorARConfigurationUnsupported)
