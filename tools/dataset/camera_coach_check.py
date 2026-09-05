@@ -174,6 +174,16 @@ REQUIRED_CAPTURE_FIELDS = {
     "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids",
     "device_family_id", "orientation", "lens", "lighting", "capture_mode",
 }
+SOURCE_FAMILY_ID_FIELDS = (
+    "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id",
+    "location_family_id", "device_family_id",
+)
+ORIENTATIONS = {"portrait", "landscape", "square", "unknown"}
+LENSES = {"front", "ultrawide", "wide", "telephoto", "macro", "unknown"}
+LIGHTING_CONDITIONS = {
+    "daylight", "overcast", "tungsten", "mixed", "low_key", "backlit",
+    "high_key", "practical", "flicker", "unknown",
+}
 
 
 def _error(code: str, detail: str) -> str:
@@ -308,9 +318,9 @@ def _validate_capture(capture: Any, errors: list[str]) -> None:
     persons = _check_list(capture.get("person_family_ids"), "capture.person_family_ids", errors)
     for person in persons:
         _check_id(person, "capture.person_family_ids", errors)
-    _check_enum(capture.get("orientation"), {"portrait", "landscape", "square", "unknown"}, "capture.orientation", errors)
-    _check_enum(capture.get("lens"), {"front", "ultrawide", "wide", "telephoto", "macro", "unknown"}, "capture.lens", errors)
-    _check_enum(capture.get("lighting"), {"daylight", "overcast", "tungsten", "mixed", "low_key", "backlit", "high_key", "practical", "flicker", "unknown"}, "capture.lighting", errors)
+    _check_enum(capture.get("orientation"), ORIENTATIONS, "capture.orientation", errors)
+    _check_enum(capture.get("lens"), LENSES, "capture.lens", errors)
+    _check_enum(capture.get("lighting"), LIGHTING_CONDITIONS, "capture.lighting", errors)
     _check_enum(capture.get("capture_mode"), {"still", "temporal_sequence", "before_after_episode"}, "capture.capture_mode", errors)
 
 
@@ -397,12 +407,10 @@ def _validate_label(label: Any, errors: list[str]) -> None:
         evidence = _check_list(issue.get("evidence"), f"{path}.evidence", errors, nonempty=True)
         for evidence_id in evidence:
             _check_enum(evidence_id, ISSUE_EVIDENCE_IDS, f"{path}.evidence", errors, code="invalid_issue_evidence")
-        _check_list(issue.get("acceptable_action_ids"), f"{path}.acceptable_action_ids", errors)
-        _check_list(issue.get("forbidden_action_ids"), f"{path}.forbidden_action_ids", errors)
+        issue_accepted = _check_list(issue.get("acceptable_action_ids"), f"{path}.acceptable_action_ids", errors)
+        issue_forbidden = _check_list(issue.get("forbidden_action_ids"), f"{path}.forbidden_action_ids", errors)
         if not evidence:
             errors.append(_error("missing_issue_evidence", path))
-        issue_accepted = issue.get("acceptable_action_ids") if isinstance(issue.get("acceptable_action_ids"), list) else []
-        issue_forbidden = issue.get("forbidden_action_ids") if isinstance(issue.get("forbidden_action_ids"), list) else []
         for action in issue_accepted:
             if not isinstance(action, str) or action not in ACTION_IDS:
                 errors.append(_error("invalid_action_id", f"{path}.acceptable_action_ids"))
@@ -431,13 +439,14 @@ def _validate_label(label: Any, errors: list[str]) -> None:
     abstention = label.get("abstention")
     _require(abstention, {"status", "reasons"}, "label.abstention", errors)
     abstention_status = None
+    reasons: list[Any] = []
     if isinstance(abstention, dict):
         abstention_status = abstention.get("status")
         _check_enum(abstention_status, {"none", "abstain"}, "label.abstention.status", errors)
         reasons = _check_list(abstention.get("reasons"), "label.abstention.reasons", errors)
         if abstention_status == "none" and reasons:
             errors.append(_error("invalid_abstention", "abstention.status=none requires empty reasons"))
-        for reason in abstention.get("reasons", []):
+        for reason in reasons:
             _check_enum(reason, {"subject_unclear", "issue_unclear", "style_intent_unclear", "insufficient_visibility", "rights_or_privacy_blocker", "before_after_not_comparable", "other"}, "label.abstention.reasons", errors)
     if keep == "keep" and accepted != ["keep_current_setup"]:
         errors.append(_error("invalid_keep_label", "KEEP requires keep_current_setup only"))
@@ -445,7 +454,7 @@ def _validate_label(label: Any, errors: list[str]) -> None:
         errors.append(_error("invalid_keep_label", "no-change actions require KEEP"))
     if status == "abstain" and (abstention_status != "abstain" or keep != "uncertain"):
         errors.append(_error("invalid_abstention", "selection_status=abstain requires abstention.status=abstain and uncertain KEEP"))
-    if abstention_status == "abstain" and (status != "abstain" or keep != "uncertain" or not abstention.get("reasons")):
+    if abstention_status == "abstain" and (status != "abstain" or keep != "uncertain" or not reasons):
         errors.append(_error("invalid_abstention", "ABSTAIN requires uncertain/no-action label and a reason"))
     verifications = _check_list(label.get("verification"), "label.verification", errors, nonempty=True)
     seen_actions: set[str] = set()
@@ -978,7 +987,7 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
         if "episode" not in record:
             errors.append(_error("missing_episode", "episode.episode"))
         else:
-            verifications = label.get("verification", []) if isinstance(label, dict) else []
+            verifications = label.get("verification") if isinstance(label, dict) and isinstance(label.get("verification"), list) else []
             _validate_episode(record.get("episode"), accepted, verifications, media_assets, source_assets, errors)
         if "sequence" in record:
             errors.append(_error("unexpected_record_extension", "episode record"))
@@ -1042,7 +1051,11 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         if entry.get("manifest_type") != "source_shoot_entry" or entry.get("schema_id") != "camera-source-shoot-v1" or entry.get("manifest_version") != SCHEMA_VERSION:
             errors.append(_error("invalid_manifest_entry", path))
         source_id = entry.get("source_shoot_id")
-        _check_id(source_id, f"{path}.source_shoot_id", errors)
+        for field in SOURCE_FAMILY_ID_FIELDS:
+            _check_id(entry.get(field), f"{path}.{field}", errors)
+        _check_enum(entry.get("orientation"), ORIENTATIONS, f"{path}.orientation", errors)
+        _check_enum(entry.get("lens"), LENSES, f"{path}.lens", errors)
+        _check_enum(entry.get("lighting"), LIGHTING_CONDITIONS, f"{path}.lighting", errors)
         if isinstance(source_id, str) and source_id in source_ids:
             errors.append(_error("duplicate_manifest_id", path))
         if isinstance(source_id, str):
@@ -1353,6 +1366,8 @@ def _apply_mutations(record: dict[str, Any], manifests: dict[str, list[dict[str,
         elif target == "source":
             source_id = record["provenance"]["source_shoot_id"]
             target_object = next(item for item in manifests["source_shoots"] if item["source_shoot_id"] == source_id)
+        elif target == "unused_source":
+            target_object = manifests["source_shoots"][-1]
         else:
             raise ValueError(f"unknown fixture mutation target: {target}")
         _set_path(target_object, mutation["path"], mutation.get("value"), remove=mutation.get("operation") == "remove")
@@ -1485,6 +1500,7 @@ def self_test() -> None:
         reason = case["declared_reason"]
         assert errors and any(reason in error for error in errors), (case["case_id"], reason, errors)
         invalid_passes += 1
+    assert invalid_passes == len(fixture["invalid_cases"]), (invalid_passes, len(fixture["invalid_cases"]))
     print(f"PASS M3-002 schemas matrix_classes={len(MATRIX_CLASSES)} actions={len(ACTION_IDS)} keep=1 abstain=1")
     print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes}")
     print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation")

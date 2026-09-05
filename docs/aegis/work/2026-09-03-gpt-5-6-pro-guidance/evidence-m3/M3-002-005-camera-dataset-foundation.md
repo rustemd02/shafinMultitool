@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete for the autonomous seventh correction batch. This receipt documents
+Complete for the autonomous eighth correction batch. This receipt documents
 contracts and validator evidence only; it is not a collection, rights grant,
 human calibration result, or model-quality claim.
 
@@ -52,20 +52,24 @@ human calibration result, or model-quality claim.
   subject-continuity coupling, exact schema-derived issue evidence, resolved
   human-review admission with chronological and coherent adjudication checks,
   total malformed-ID handling for arbitrary schema-invalid JSON values in the
-  declared hostile corpus, and action-specific verifier checks. Production
+  declared hostile corpus, normalized list consumption at every validator
+  boundary, direct validation of every source-shoot manifest field (including
+  unused entries), and action-specific verifier checks. Production
   `--record` and batch admission require explicit source/consent/rights/
   derivation manifests; embedded synthetic manifests are used only by
   `--self-test`.
 - `tools/dataset/tests/fixtures/camera-coach-fixtures.json` — explicitly
-  synthetic valid still/temporal/episode records and 75 declared negative
+  synthetic valid still/temporal/episode records and 81 declared negative
   mutation cases, including source relabel, media asset authority, recursive
   unknown fields, subject/ABSTAIN semantics, consent resolution, derivation
   kind/independence/quota, temporal timeline, review status/conflict/
   adjudication outcome/chronology, impossible timestamps and reversed vote
   history, strict numeric types (including Python bool rejection), malformed
   subject IDs, malformed action/provenance source-asset/capture person-family/
-  temporal asset/manifest source IDs, closed issue evidence, and episode
-  outcome/subject-continuity probes.
+  temporal asset/manifest source IDs, scalar abstention reasons and
+  verification lists, unused source-shoot family IDs and closed enum fields,
+  closed issue evidence, and episode outcome/subject-continuity probes. Every
+  hostile mutation is asserted to return validation errors without raising.
 - `tools/dataset/tests/fixtures/camera-coach-batch-*.jsonl` — explicitly
   synthetic caller-supplied positive manifests, train/calibration protected-
   family crossing, device-family-only crossing, duplicate record, and duplicate
@@ -82,17 +86,17 @@ PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/m3-dataset-foundation/d
 
 $ python3 tools/dataset/camera_coach_check.py --self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=75
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=81
 PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=75
+PASS camera-coach self-test valid=3 invalid=81
 
 $ python3 tools/dataset/camera_coach_check.py --self-test  # repeated deterministic run
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=75
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=81
 PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=75
+PASS camera-coach self-test valid=3 invalid=81
 
 $ python3 -c 'import json; from pathlib import Path; a=json.loads(Path("docs/implementation/camera-coach-contract-v2.json").read_text()); s=json.loads(Path("datasets/camera-coach/v1/label-schema.json").read_text()); assert set(a["approvedActionIDs"]) == set(s["$defs"]["actionId"]["enum"]); assert set(s["$defs"]["verificationActionId"]["enum"]) == set(a["approvedActionIDs"]) | {"abstain"}; e=s["$defs"]["issue"]["properties"]["evidence"]["items"]["enum"]; assert e == list(dict.fromkeys(e)); print("PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8")'
 PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8
@@ -116,9 +120,17 @@ for case in fixture["invalid_cases"]:
     assert errors and any(case["declared_reason"] in error for error in errors), (case["case_id"], case["declared_reason"], errors)
 print(f"PASS declared_hostile_probes={len(fixture['invalid_cases'])} exact_declared_reasons={len({case['declared_reason'] for case in fixture['invalid_cases']})}")
 PY
-PASS declared_hostile_probes=75 exact_declared_reasons=33
+PASS declared_hostile_probes=81 exact_declared_reasons=35
 
-The self-test and hostile probe loop require every one of the 75 declared
+$ deterministic AST audit of every `_check_list` call (no files written)
+PASS check_list_calls=25 assigned_calls=25 discarded_calls=0
+
+$ deterministic schema-invalid scalar/list boundary matrix and unused-source
+  manifest-field matrix (each case returned errors without raising)
+PASS normalized_list_matrix cases=70 targets=14 values=5
+PASS unused_source_field_matrix cases=16 fields=16
+
+The self-test and hostile probe loop require every one of the 81 declared
 negative fixtures to fail for its declared reason and to return validation
 errors without raising an exception. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
@@ -135,8 +147,10 @@ unreviewed, conflicting, rejected-adjudication, before-vote adjudication,
 impossible-timestamp, reversed-vote-history, and missing-adjudication release
 review, exact issue evidence (`model_output` and unknown strings), malformed
 subject IDs, malformed action/provenance source-asset/capture person-family/
-temporal asset/manifest source IDs, and measurable outcomes with lost, changed,
-or unknown subject continuity. The release review gate accepts only two distinct
+temporal asset/manifest source IDs, scalar list-valued abstention/verification
+fields, unused source-shoot family IDs and orientation/lens/lighting fields,
+and measurable outcomes with lost, changed, or unknown subject continuity. The
+release review gate accepts only two distinct
 accepting votes or a latest accepted adjudication that chronologically follows
 every referenced vote, covers every vote, and has accepted outcome.
 
@@ -213,7 +227,7 @@ $ git diff --check
 (no output); exit=0
 ```
 
-The self-test and hostile probe loop require every one of the 75 declared
+The self-test and hostile probe loop require every one of the 81 declared
 negative fixtures to fail for its declared reason and to return validation
 errors without raising an exception. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
@@ -229,8 +243,9 @@ missing measured pass evidence for correct/no-op/opposite/overshoot outcomes,
 release review status/conflict/rejected-adjudication/before-vote chronology/
 impossible-timestamp/reversed-vote-history/missing-adjudication, exact closed
 issue evidence, malformed subject IDs, malformed action/provenance
-source-asset/capture person-family/temporal asset/manifest source IDs, and
-measurable outcome subject-continuity failures. The hostile source case still fails because the
+source-asset/capture person-family/temporal asset/manifest source IDs, scalar
+abstention/verification lists, unused source-shoot family and closed-enum
+fields, and measurable outcome subject-continuity failures. The hostile source case still fails because the
 resolved source entry remains
 `synthetic_fixture`; claimant fields cannot override source authority.
 
@@ -269,5 +284,5 @@ structural, closed-key, and referential gates required for this batch.
 
 ## Commit
 
-This receipt is included in the local seventh-correction commit; the worker
+This receipt is included in the local eighth-correction commit; the worker
 return reports its exact SHA.
