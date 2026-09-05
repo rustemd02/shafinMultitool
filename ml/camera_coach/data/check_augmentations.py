@@ -349,6 +349,11 @@ def _run() -> dict:
     forged = copy.deepcopy(directional)
     forged["lineage"]["transform"]["kind"] = "photometric_identity"
     reject(aug.validate_result, bundles[2], _rehashed(forged), authority=authority, schedule=schedule)
+    oversized_output = copy.deepcopy(directional)
+    directional_asset_id = next(iter(oversized_output["pixels_by_asset"]))
+    first_output = oversized_output["pixels_by_asset"][directional_asset_id]
+    oversized_output["pixels_by_asset"][directional_asset_id] = first_output + [first_output[0]]
+    reject(aug.validate_result, bundles[2], oversized_output, authority=authority, schedule=schedule)
     forged = copy.deepcopy(next(result for result in results if result["record_id"] == records[0]["record_id"]))
     forged["targets"]["label"]["keep_decision"] = "keep"
     reject(aug.validate_result, bundles[0], forged, authority=authority, schedule=schedule)
@@ -373,11 +378,30 @@ def _run() -> dict:
     production_still["provenance"]["source_kind"] = "owned"
     production_still["provenance"]["rights_disposition"] = "approved"
     reject(aug.make_source_bundle, production_still, {still_id: asset_bytes[still_id]})
+    mixed_fixture = copy.deepcopy(records[0])
+    mixed_fixture["split"] = "train"
+    reject(aug.make_source_bundle, mixed_fixture, {still_id: asset_bytes[still_id]})
+    wrong_fixture_id = copy.deepcopy(records[0])
+    wrong_fixture_id["record_id"] = "cam-still-fixture-forged"
+    reject(aug.make_source_bundle, wrong_fixture_id, {still_id: asset_bytes[still_id]})
+    mixed_records = copy.deepcopy(records)
+    mixed_records[0] = copy.deepcopy(production_still)
+    reject(aug._load_fixture_authority, mixed_records, authority.cluster_receipt(), authority.split_receipt())
+    bad_fixture_cluster = authority.cluster_receipt()
+    bad_fixture_cluster["clusters"][0]["members"][0]["content_sha256"] = "0" * 64
+    reject(aug._load_fixture_authority, records, bad_fixture_cluster, authority.split_receipt())
+    for field, value in (("seed", 1), ("ratios", {"train": 0.7, "calibration": 0.2, "locked_test": 0.1})):
+        bad_fixture_split = authority.split_receipt()
+        bad_fixture_split["config"][field] = value
+        reject(aug._load_fixture_authority, records, authority.cluster_receipt(), bad_fixture_split)
 
     # No caller can inject an alternative/partial schedule or transform spec.
     reject(aug.make_trusted_schedule, bundles)
     reject(aug.make_trusted_schedule, authority, [{"job_id": "forged"}])
     reject(aug._load_fixture_authority, records[:1], authority.cluster_receipt(), authority.split_receipt())
+    oversized_record = copy.deepcopy(records[1])
+    oversized_record["media"]["asset_ids"] = [f"asset-overflow-{index}" for index in range(aug.MAX_ASSETS_PER_BUNDLE + 1)]
+    reject(aug.make_source_bundle, oversized_record, {})
     reject(aug._validate_transform, "photometric", {})
     reject(aug._validate_transform, "crop", {})
     reject(aug._validate_transform, "unknown", {})
@@ -424,6 +448,13 @@ def _run() -> dict:
     # Fixture-only arbitrary bytes, oriented storage pixels, truncation, and
     # resource caps all fail before a training result exists.
     reject(aug.make_source_bundle, records[0], {still_id: _one_pixel_png()})
+    budget_asset = aug._DecodedAsset("budget", b"x", "0" * 64, 512, 512, b"\0\0\0")
+    reject(aug._check_bundle_budget, (budget_asset, budget_asset))
+    many_assets = tuple(
+        aug._DecodedAsset(f"budget-{index}", b"x", "0" * 64, 1, 1, b"\0\0\0")
+        for index in range(aug.MAX_ASSETS_PER_BUNDLE + 1)
+    )
+    reject(aug._check_bundle_budget, many_assets)
     one = Image.new("RGB", (2, 3), (1, 2, 3))
     exif = Image.Exif()
     exif[274] = 6

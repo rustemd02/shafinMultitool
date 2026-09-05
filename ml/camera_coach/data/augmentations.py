@@ -65,12 +65,20 @@ _PINNED_MAX_HEIGHT = 4096
 # materialized representation bounded; 512x512 is the largest admitted image
 # (262,144 pixels) and keeps a result/deepcopy well below workstation memory.
 _PINNED_MAX_PIXELS = 512 * 512
+_PINNED_MAX_ASSETS_PER_BUNDLE = 16
+_PINNED_MAX_BUNDLE_ENCODED_BYTES = 16 * 1024 * 1024
+_PINNED_MAX_BUNDLE_PIXELS = 512 * 512
+_PINNED_MAX_BUNDLE_OUTPUT_BYTES = _PINNED_MAX_BUNDLE_PIXELS * 3
 PILLOW_VERSION_PIN = _PINNED_PILLOW_VERSION_PIN
 DECODER_NAME = _PINNED_DECODER_NAME
 MAX_ENCODED_BYTES = _PINNED_MAX_ENCODED_BYTES
 MAX_WIDTH = _PINNED_MAX_WIDTH
 MAX_HEIGHT = _PINNED_MAX_HEIGHT
 MAX_PIXELS = _PINNED_MAX_PIXELS
+MAX_ASSETS_PER_BUNDLE = _PINNED_MAX_ASSETS_PER_BUNDLE
+MAX_BUNDLE_ENCODED_BYTES = _PINNED_MAX_BUNDLE_ENCODED_BYTES
+MAX_BUNDLE_PIXELS = _PINNED_MAX_BUNDLE_PIXELS
+MAX_BUNDLE_OUTPUT_BYTES = _PINNED_MAX_BUNDLE_OUTPUT_BYTES
 
 # This is intentionally duplicated from the frozen catalog as an explicit,
 # reviewable remap table.  All directional IDs in the frozen catalogs must be
@@ -131,6 +139,10 @@ _PINNED_FIXTURE_RECORD_IDS = (
     "cam-still-fixture-001",
     "cam-temporal-fixture-002",
 )
+_PINNED_FIXTURE_CLUSTER_SHA256 = "f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1"
+_PINNED_FIXTURE_SPLIT_SHA256 = "580d4bbf6b1238adace00b95bde9511e6c8b851c6cc1a92640a5106d92e2af7b"
+_PINNED_FIXTURE_SPLIT_SEED = 0
+_PINNED_FIXTURE_SPLIT_RATIOS = (("train", 0.8), ("calibration", 0.1), ("locked_test", 0.1))
 
 # Fixed schedule authority.  There is no public constructor that accepts
 # caller-provided jobs, ratios, seeds, counters, or source subsets.
@@ -239,6 +251,13 @@ def _config() -> dict[str, Any]:
         "remap_authority_sha256": REMAP_AUTHORITY_SHA256,
         "schedule_authority_sha256": SCHEDULE_AUTHORITY_SHA256,
         "fixture_asset_sha256": _fixture_map(),
+        "fixture_authority": {
+            "record_ids": list(_PINNED_FIXTURE_RECORD_IDS),
+            "cluster_receipt_sha256": _PINNED_FIXTURE_CLUSTER_SHA256,
+            "split_manifest_sha256": _PINNED_FIXTURE_SPLIT_SHA256,
+            "split_seed": _PINNED_FIXTURE_SPLIT_SEED,
+            "split_ratios": {key: value for key, value in _PINNED_FIXTURE_SPLIT_RATIOS},
+        },
         "production_authority_view": {
             "schema_id": PRODUCTION_AUTHORITY_VIEW_SCHEMA_ID,
             "schema_version": PRODUCTION_AUTHORITY_VIEW_VERSION,
@@ -260,6 +279,12 @@ def _config() -> dict[str, Any]:
             "orientation": "reject-EXIF-orientation-unless-1; preprocessing applies ImageIO orientation exactly once",
             "multi_frame": "reject",
         },
+        "bundle_caps": {
+            "asset_count": _PINNED_MAX_ASSETS_PER_BUNDLE,
+            "encoded_bytes": _PINNED_MAX_BUNDLE_ENCODED_BYTES,
+            "pixels": _PINNED_MAX_BUNDLE_PIXELS,
+            "output_bytes": _PINNED_MAX_BUNDLE_OUTPUT_BYTES,
+        },
         "source_authority": "fixture-only-in-repository; production-artifact-required",
         "eligible_split_owners": ["train", "calibration"],
         "protected_categories": list(_PINNED_PROTECTED_CATEGORIES),
@@ -275,7 +300,7 @@ def _freeze(value: Any) -> Any:
 
 
 # Replaced with the independently computed digest after this file is written.
-_PINNED_CONFIG_SHA256 = "3303ffdedd1796343ec5fce85d092c5ba7676e434fee65fb146a4ca5b0efe9a5"
+_PINNED_CONFIG_SHA256 = "cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b"
 AUGMENTATION_CONFIG = _freeze(_config())
 AUGMENTATION_CONFIG_SHA256 = _PINNED_CONFIG_SHA256
 
@@ -311,7 +336,24 @@ def _finite(value: Any, label: str) -> float:
     return float(value)
 
 
+def _preflight_record_budget(record: Any) -> None:
+    """Reject unbounded grouped shapes before validation/deepcopy."""
+    if type(record) is not dict:
+        raise AugmentationError("source record must be a plain object")
+    media = record.get("media")
+    if type(media) is dict and type(media.get("asset_ids")) is list and len(media["asset_ids"]) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+        raise AugmentationError("source record exceeds asset-count cap")
+    provenance = record.get("provenance")
+    if type(provenance) is dict and type(provenance.get("source_asset_ids")) is list and len(provenance["source_asset_ids"]) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+        raise AugmentationError("source record exceeds source-asset cap")
+    record_type = record.get("record_type")
+    sequence = record.get("sequence")
+    if record_type == "temporal" and type(sequence) is dict and type(sequence.get("frames")) is list and len(sequence["frames"]) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+        raise AugmentationError("source temporal group exceeds asset-count cap")
+
+
 def _record(record: Any) -> dict[str, Any]:
+    _preflight_record_budget(record)
     if type(record) is not dict:
         raise AugmentationError("source record must be a plain object")
     errors = validate_record(record, {}, admission=False)
@@ -382,6 +424,20 @@ class _DecodedAsset:
     height: int
     width: int
     pixels: bytes
+
+
+def _check_bundle_budget(assets: Sequence[_DecodedAsset]) -> None:
+    """Bound source and materialized output before nested HWC expansion."""
+    if len(assets) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+        raise AugmentationError("source bundle exceeds asset-count cap")
+    encoded_bytes = sum(len(asset.encoded) for asset in assets)
+    if encoded_bytes > _PINNED_MAX_BUNDLE_ENCODED_BYTES:
+        raise AugmentationError("source bundle exceeds encoded-byte cap")
+    pixels = sum(asset.width * asset.height for asset in assets)
+    if pixels > _PINNED_MAX_BUNDLE_PIXELS:
+        raise AugmentationError("source bundle exceeds aggregate pixel cap")
+    if pixels * 3 > _PINNED_MAX_BUNDLE_OUTPUT_BYTES:
+        raise AugmentationError("source bundle exceeds aggregate output-byte cap")
 
 
 def _asset_pixels_digest(assets: Sequence[_DecodedAsset]) -> str:
@@ -470,6 +526,7 @@ def _bundle_list(bundles: Any) -> list[SourceBundle]:
 def _m3_items(bundles: list[SourceBundle], root: Path) -> list[_m3.MediaItem]:
     merged: dict[str, dict[str, Any]] = {}
     for bundle in bundles:
+        _check_bundle_budget(tuple(bundle._decoded(asset_id) for asset_id in bundle.asset_ids))
         record = bundle.record
         for asset_id in bundle.asset_ids:
             asset = bundle._decoded(asset_id)
@@ -751,7 +808,7 @@ def _load_fixture_authority(
     its authority kind is retained in every schedule and lineage value.
     """
 
-    if type(records) is not list or not records:
+    if type(records) is not list or len(records) != len(_PINNED_FIXTURE_RECORD_IDS):
         raise AugmentationError("external M3 authority records must be a non-empty list")
     source_records = tuple(sorted((_record(record) for record in records), key=lambda item: item["record_id"]))
     record_ids = tuple(record["record_id"] for record in source_records)
@@ -771,9 +828,14 @@ def _load_fixture_authority(
     if cluster is None or split is None:
         raise AugmentationError("external M3 authority receipts must be plain objects")
     cluster_index = _cluster_index(cluster)
+    if digest(cluster) != _PINNED_FIXTURE_CLUSTER_SHA256:
+        raise AugmentationError("fixture authority cluster receipt is not the pinned receipt")
     expected_assets = tuple(sorted({asset_id for record in source_records for asset_id in _required_asset_ids(record)}))
-    if tuple(sorted(cluster_index)) != expected_assets:
+    pinned_assets = dict(_PINNED_FIXTURE_ASSET_SHA256)
+    if expected_assets != tuple(sorted(pinned_assets)) or tuple(sorted(cluster_index)) != expected_assets:
         raise AugmentationError("M3 cluster authority does not cover the exact source asset set")
+    if {asset_id: row[0] for asset_id, row in cluster_index.items()} != pinned_assets:
+        raise AugmentationError("fixture authority asset digests are not pinned")
     for asset_id, (_, _, member_records) in cluster_index.items():
         expected_members = tuple(sorted(record["record_id"] for record in source_records if asset_id in _required_asset_ids(record)))
         if member_records != expected_members:
@@ -790,6 +852,10 @@ def _load_fixture_authority(
         raise AugmentationError("M3 split authority does not cover the exact source record set")
     split_seed = _exact_int(split["config"]["seed"], "M3 split seed")
     ratios = tuple((name, _finite(split["config"]["ratios"][name], f"M3 split ratio {name}")) for name in _m3.SPLITS)
+    if split["manifest_sha256"] != _PINNED_FIXTURE_SPLIT_SHA256:
+        raise AugmentationError("fixture authority split receipt is not the pinned receipt")
+    if split_seed != _PINNED_FIXTURE_SPLIT_SEED or ratios != _PINNED_FIXTURE_SPLIT_RATIOS:
+        raise AugmentationError("fixture authority split configuration is not pinned")
     try:
         recomputed = _m3.split_records(
             _m3_records_from_records(source_records),
@@ -880,6 +946,10 @@ def make_source_bundle(
     supplied_ids = tuple(sorted(_id(key, "asset map key") for key in assets))
     if supplied_ids != expected_ids:
         raise AugmentationError("source asset bundle is missing or has extra assets")
+    if len(expected_ids) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+        raise AugmentationError("source bundle exceeds asset-count cap")
+    if all(type(value) is bytes for value in assets.values()) and sum(len(value) for value in assets.values()) > _PINNED_MAX_BUNDLE_ENCODED_BYTES:
+        raise AugmentationError("source bundle exceeds encoded-byte cap")
     if authority is not None and type(authority) is not M3Authority:
         raise AugmentationError("authority must be an externally loaded M3Authority")
     if authority is not None:
@@ -894,9 +964,21 @@ def make_source_bundle(
         if authority is not None and actual_sha != authority.asset_sha256(asset_id):
             raise AugmentationError(f"asset bytes disagree with external M3 authority: {asset_id}")
         decoded.append(_DecodedAsset(asset_id, value, actual_sha, height, width, pixels))
+    _check_bundle_budget(decoded)
     if source["record_type"] == "still" and source["media"]["content_sha256"] != decoded[0].encoded_sha256:
         raise AugmentationError("record media.content_sha256 does not match actual asset bytes")
-    fixture_only = source["provenance"]["source_kind"] == "synthetic_fixture" and source["provenance"]["rights_disposition"] == "fixture_only"
+    fixture_only = (
+        source["split"] == "fixture"
+        and source["record_id"] in _PINNED_FIXTURE_RECORD_IDS
+        and source["provenance"]["source_kind"] == "synthetic_fixture"
+        and source["provenance"]["rights_disposition"] == "fixture_only"
+    )
+    if authority is None and (
+        source["split"] == "fixture"
+        or source["provenance"]["source_kind"] == "synthetic_fixture"
+        or source["provenance"]["rights_disposition"] == "fixture_only"
+    ) and not fixture_only:
+        raise AugmentationError("fixture admission requires pinned split, record, provenance, and asset authority")
     if authority is None and not fixture_only:
         raise AugmentationError("requires_authenticated_production_authority")
     if authority is None and fixture_only:
@@ -1159,9 +1241,11 @@ def _validate_transform(kind: Any, parameters: Any) -> str:
 
 
 def _result_pixels(bundle: SourceBundle, kind: str) -> dict[str, list[list[list[int]]]]:
+    assets = tuple(bundle._decoded(asset_id) for asset_id in bundle.asset_ids)
+    _check_bundle_budget(assets)
     result: dict[str, list[list[list[int]]]] = {}
-    for asset_id in bundle.asset_ids:
-        asset = bundle._decoded(asset_id)
+    for asset in assets:
+        asset_id = asset.asset_id
         pixels = _flip_pixels(asset) if kind == "horizontal_flip" else asset.pixels
         result[asset_id] = _bytes_to_pixels(asset.height, asset.width, pixels)
     return result
@@ -1249,6 +1333,26 @@ def augment(bundle: SourceBundle, schedule: TrustedSchedule, job_id: str) -> dic
 _RESULT_KEYS = {"job_id", "record_id", "pixels_by_asset", "targets", "lineage"}
 
 
+def _check_result_budget(result: Mapping[str, Any], expected: Sequence[_DecodedAsset]) -> None:
+    """Bound untrusted nested output before canonical serialization/deepcopy."""
+    pixels_by_asset = result.get("pixels_by_asset")
+    if type(pixels_by_asset) is not dict or set(pixels_by_asset) != {asset.asset_id for asset in expected}:
+        raise AugmentationError("output pixels must cover exactly every source asset")
+    if len(pixels_by_asset) > _PINNED_MAX_ASSETS_PER_BUNDLE:
+        raise AugmentationError("output exceeds asset-count cap")
+    total_pixels = 0
+    for asset in expected:
+        pixels = pixels_by_asset[asset.asset_id]
+        if type(pixels) is not list or len(pixels) != asset.height:
+            raise AugmentationError("output pixel shape exceeds the bounded representation")
+        total_pixels += asset.width * asset.height
+        if total_pixels > _PINNED_MAX_BUNDLE_PIXELS or total_pixels * 3 > _PINNED_MAX_BUNDLE_OUTPUT_BYTES:
+            raise AugmentationError("output exceeds aggregate pixel/byte cap")
+        for row in pixels:
+            if type(row) is not list or len(row) != asset.width:
+                raise AugmentationError("output pixel row exceeds the bounded representation")
+
+
 def validate_result(
     bundle: SourceBundle,
     result: Mapping[str, Any],
@@ -1261,6 +1365,8 @@ def validate_result(
     _assert_authority(schedule, authority)
     if type(result) is not dict or set(result) != _RESULT_KEYS:
         raise AugmentationError("result has unknown or missing keys")
+    expected_assets = tuple(bundle._decoded(asset_id) for asset_id in bundle.asset_ids)
+    _check_result_budget(result, expected_assets)
     expected = _expected_result(bundle, schedule, authority, result["job_id"])
     if canonical_json(dict(result)) != canonical_json(expected):
         raise AugmentationError("result does not replay from the trusted source bundle and schedule")
@@ -1303,6 +1409,8 @@ def validate_lineage_batch(
     _assert_authority(schedule, authority)
     if type(bundles) is not list or type(results) is not list or not bundles or not results:
         raise AugmentationError("lineage batch must be a non-empty complete batch")
+    if len(bundles) != len(authority.record_ids):
+        raise AugmentationError("batch source set exceeds or omits the authority's bounded source set")
     checked = _bundle_list(bundles)
     by_id = {bundle.record["record_id"]: bundle for bundle in checked}
     if set(by_id) != set(authority.record_ids):

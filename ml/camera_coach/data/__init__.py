@@ -1,4 +1,8 @@
-"""Camera Coach data preprocessing and closed augmentation authorities."""
+"""Camera Coach data preprocessing.
+
+Augmentation authorities stay in the explicit submodule and are not imported
+by ordinary package initialization while production M3 authority is absent.
+"""
 
 from .preprocessing import (
     PreprocessingError,
@@ -7,36 +11,6 @@ from .preprocessing import (
     preprocess_frame,
     prepare_inputs,
 )
-from .augmentations import (
-    ACTION_PAIRS,
-    AUGMENTATION_CONFIG,
-    AUGMENTATION_CONFIG_SHA256,
-    AugmentationError,
-    AUTHORITY_SCHEMA_ID,
-    DECODER_NAME,
-    LINEAGE_SCHEMA_ID,
-    M3Authority,
-    MAX_ENCODED_BYTES,
-    MAX_HEIGHT,
-    MAX_PIXELS,
-    MAX_WIDTH,
-    PILLOW_VERSION_PIN,
-    POLICY_SCHEMA_ID,
-    REMAP_AUTHORITY_SHA256,
-    SCHEDULE_AUTHORITY_SHA256,
-    SCHEDULE_SCHEMA_ID,
-    SourceBundle,
-    TrustedSchedule,
-    VERIFIER_PAIRS,
-    augment,
-    canonical_json,
-    digest,
-    make_source_bundle,
-    make_trusted_schedule,
-    validate_derivation_manifest,
-    validate_lineage_batch,
-    validate_result,
-)
 
 __all__ = [
     "PreprocessingError",
@@ -44,32 +18,4 @@ __all__ = [
     "preprocess",
     "preprocess_frame",
     "prepare_inputs",
-    "ACTION_PAIRS",
-    "AUGMENTATION_CONFIG",
-    "AUGMENTATION_CONFIG_SHA256",
-    "AugmentationError",
-    "AUTHORITY_SCHEMA_ID",
-    "DECODER_NAME",
-    "LINEAGE_SCHEMA_ID",
-    "M3Authority",
-    "MAX_ENCODED_BYTES",
-    "MAX_HEIGHT",
-    "MAX_PIXELS",
-    "MAX_WIDTH",
-    "PILLOW_VERSION_PIN",
-    "POLICY_SCHEMA_ID",
-    "REMAP_AUTHORITY_SHA256",
-    "SCHEDULE_AUTHORITY_SHA256",
-    "SCHEDULE_SCHEMA_ID",
-    "SourceBundle",
-    "TrustedSchedule",
-    "VERIFIER_PAIRS",
-    "augment",
-    "canonical_json",
-    "digest",
-    "make_source_bundle",
-    "make_trusted_schedule",
-    "validate_derivation_manifest",
-    "validate_lineage_batch",
-    "validate_result",
 ]

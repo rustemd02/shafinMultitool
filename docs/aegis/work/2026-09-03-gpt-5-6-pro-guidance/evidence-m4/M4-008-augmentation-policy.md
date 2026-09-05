@@ -16,10 +16,11 @@ enablement, or iOS change is claimed.
   always raises.  Caller-provided records, seeds, ratios, receipts, or source
   subsets can never issue a production authority.
 - Private `_load_fixture_authority` is test-only by contract and accepts only
-  canonical records whose split is `fixture`, source kind is
-  `synthetic_fixture`, and rights disposition is `fixture_only`.  It copies
-  and replays the M3 receipts, but its resulting authority kind is permanently
-  `fixture`.
+  the exact three pinned fixture record IDs, with split `fixture`, source kind
+  `synthetic_fixture`, rights disposition `fixture_only`, and the exact pinned
+  six-asset SHA-256 map.  It copies and replays the M3 receipts, but its
+  resulting authority kind is permanently `fixture`; mixed train/fixture
+  provenance and caller-selected fixture seed/ratios/receipts reject.
 - The future production contract is named
   `camera-m3-redacted-train-calibration-view-v1`: an independently
   authenticated redacted view derived from the complete frozen M3 receipt,
@@ -41,11 +42,12 @@ enablement, or iOS change is claimed.
   still, temporal, or episode asset.  Actual bytes are hashed and decoded;
   caller-declared media hashes cannot override them.  Production bundles fail
   closed without the unavailable authenticated authority, including stills.
-- Existing M3 Pillow is reused with runtime pin `12.2.0`; encoded bytes are
-  capped at 8 MiB, dimensions at 4096×4096, and expanded HWC output at 512×512
-  (`262,144` pixels) to bound nested-list materialization and deepcopy memory.
-  Truncation, decompression bombs, multiframe media, and non-normalized EXIF
-  orientation reject before a training result exists.
+- Existing M3 Pillow is reused with runtime pin `12.2.0`; each encoded asset is
+  capped at 8 MiB and 4096×4096/`262,144` pixels, while each grouped bundle is
+  capped at 16 assets, 16 MiB encoded, and 512×512 aggregate pixels/output
+  bytes before nested-list materialization or result validation.  Truncation,
+  decompression bombs, multiframe media, and non-normalized EXIF orientation
+  reject before a training result exists.
 - Horizontal flip remains explicit and exhaustive for frozen directional
   action/verifier IDs, all label locations, episode fields, and normalized
   top-left subject regions.  Exact representable geometry double-flips; values
@@ -53,19 +55,21 @@ enablement, or iOS change is claimed.
 - Photometric policy is identity-only.  Non-identity photometric and all crop
   specifications reject with `requires_reannotation`; no label patch API
   exists.  Grouped transforms always transform every identified asset.
-- `validate_result` replays the transform from the source bundle and trusted
-  schedule.  `validate_lineage_batch` requires the authority's complete source
-  and job sets, replays M3 over every actual asset, and rejects duplicate,
-  missing, extra, empty, or cross-split family jobs.
+- `validate_result` bounds untrusted output and replays the transform from the
+  source bundle and trusted schedule.  `validate_lineage_batch` requires the
+  authority's complete source and job sets, replays M3 over every actual asset,
+  and rejects duplicate, missing, extra, empty, or cross-split family jobs.
+- `ml.camera_coach.data` lazily exports preprocessing only; importing the
+  package does not import Pillow or the unavailable augmentation authority.
 
 ## Frozen bindings
 
 ```text
-augmentation_config_sha256=3303ffdedd1796343ec5fce85d092c5ba7676e434fee65fb146a4ca5b0efe9a5
+augmentation_config_sha256=cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b
 schedule_authority_sha256=9b916392542ffc2145f4e19e6251254a8f9c6dfbfe31eb7011ecfb8d29a93d18
 cluster_receipt_sha256=f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1
 split_manifest_sha256=580d4bbf6b1238adace00b95de9511e6c8b851c6cc1a92640a5106d92e2af7b
-manifest_sha256=d105df0df2b98fe780fe3212623f0db1c2b722217a683623cb865aedcde3f040
+manifest_sha256=40b99ecec2af343d8aff1eb8e4e66dca40d353ca08fca008baf118068e664e73
 ```
 
 ## Exact verification
@@ -78,6 +82,13 @@ ruff check ml/camera_coach/data/augmentations.py ml/camera_coach/data/check_augm
 PYTHONHASHSEED=1 python3 -m ml.camera_coach.data.check_augmentations > /tmp/m4-008-correction-seed1.json
 PYTHONHASHSEED=777 python3 -m ml.camera_coach.data.check_augmentations > /tmp/m4-008-correction-seed777.json
 cmp -s /tmp/m4-008-correction-seed1.json /tmp/m4-008-correction-seed777.json
+python3 - <<'PY'
+import sys
+import ml.camera_coach.data
+assert "PIL" not in sys.modules
+assert "ml.camera_coach.data.augmentations" not in sys.modules
+print("package_import_without_augmentation=pass")
+PY
 python3 tools/camera_dataset_audit.py --self-test
 python3 tools/dataset/camera_coach_check.py --self-test
 python3 -m ml.camera_coach.data.check_preprocessing_parity
@@ -95,6 +106,7 @@ Results:
 py_compile=pass
 All checks passed!
 dual_seed=pass; output bytes=983
+package_import_without_augmentation=pass
 PASS M3-007 camera_dataset_audit self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
 PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=90 source_metadata=owner/operator/captured_at/receipt_required
@@ -102,17 +114,17 @@ PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap unique_frame_ids=requir
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
 PASS camera-coach self-test valid=3 invalid=90
 preprocessing parity status=pass case_count=50 case_image_digest_count=50 mirrored_cases=25 canonical_digest=2795a72659873d369581b686f29d3fe0b70aa7513db98a28374de3cdb581f26a swift_image_digest=962ee64634f9ccb52d91971fa247e141e7800014609963c54e123b2c225c49a1
-manifest_sha256=d105df0df2b98fe780fe3212623f0db1c2b722217a683623cb865aedcde3f040
+manifest_sha256=40b99ecec2af343d8aff1eb8e4e66dca40d353ca08fca008baf118068e664e73
 diff_check=pass
 ```
 
 Both checker runs produced the same canonical JSON and reported:
 
 ```json
-{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"3303ffdedd1796343ec5fce85d092c5ba7676e434fee65fb146a4ca5b0efe9a5","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"ec2dade8bd1c85176f0c4f2675a17bdb0573968032f52faba8dfaea2d3c6ebbb","identity_receipt_sha256":"527ac9fda12adbb5007bbb777f555d9633c9a7623d5098fcdcd3d8ccaa980515","job_count":6,"negative_probe_count":49,"protected_category_count":10,"schedule_sha256":"b4fd7f3fa7991be9f929d5d5a08f60d26a1114eee119625229d52cfc17553eda","split_manifest_sha256":"580d4bbf6b1238adace00b95de9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23}
+{"action_catalog_count":26,"action_pair_count":3,"augmentation_config_sha256":"cd6bc245669ea9de189c12f4428734d436a7fe01f8000b862c0ed669670e6b8b","cluster_receipt_sha256":"f02f386d3452a43c86a77a6d6550b0b0b8b825eed56bf5516a7eb51ccce39ff1","complete_asset_count":6,"complete_source_record_count":3,"flip_output_pixels_sha256":"3dae527250e395073975b86001420b809ee7b8f74ddd2702109346dcd154d8c2","flip_output_targets_sha256":"dc1161be4ec9eaad3be3326955450e6479f5b79cd4199157c0d5e07ae095f27b","flip_receipt_sha256":"e34c6be0a6d71b8449657d35348fada05e1d8df0c8b47b9a19e3850b956e109a","identity_receipt_sha256":"b21e11e54ebea56da7deeeef0cce7c9ad32440f2c8120bc7165828d93a12515e","job_count":6,"negative_probe_count":59,"protected_category_count":10,"schedule_sha256":"9534b79f8845b9183e441ae9ba2ded68aea3b88baf998f05643e41f9fe7f51ef","split_manifest_sha256":"580d4bbf6b1238adace00b95bde9511e6c8b851c6cc1a92640a5106d92e2af7b","status":"pass","verifier_catalog_count":23,"verifier_pair_count":3}
 ```
 
-The 49 negative probes include the reviewer attacks: public production-loader
+The 59 negative probes include the reviewer attacks: public production-loader
 rejection; fixture/production separation; mismatched record/media bytes;
 missing, extra, or one-of-many grouped assets; forged/rehashed output,
 families, split, seed, counter, and transform; unknown record/label fields;
@@ -120,8 +132,9 @@ alternate/partial schedule and authority calls; immutable authority/schedule
 and exported-config mutation; arbitrary 1×1 bytes; EXIF 90°; truncation;
 encoded, width, height, and expanded-pixel caps; multiframe media;
 bool/non-finite/range/unknown transforms; empty/incomplete/duplicate/extra
-lineage batches; cross-split lineage and authority mismatch; and manifest
-reorder/hash/duplicate records.
+lineage batches; cross-split lineage and authority mismatch; mixed
+train/fixture provenance; caller-selected fixture seed/ratios; aggregate
+bundle/output caps; and manifest reorder/hash/duplicate records.
 
 ## Scope, judgments, and gaps
 
@@ -140,9 +153,9 @@ Pillow).  No model-quality or production-enablement evidence exists.
 Final pre-commit line counts:
 
 ```text
-1395 ml/camera_coach/data/augmentations.py
-489 ml/camera_coach/data/check_augmentations.py
-75 ml/camera_coach/data/__init__.py
+1503 ml/camera_coach/data/augmentations.py
+520 ml/camera_coach/data/check_augmentations.py
+21 ml/camera_coach/data/__init__.py
 1 datasets/camera-coach/v1/derivation-manifest.jsonl
-148 docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-008-augmentation-policy.md
+161 docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m4/M4-008-augmentation-policy.md
 ```
