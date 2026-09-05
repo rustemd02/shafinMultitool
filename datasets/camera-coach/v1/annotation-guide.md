@@ -234,22 +234,26 @@ look like independent still evidence.
 ## 9. Review and disagreement
 
 `review.vote_history` is append-only. Each independent annotator submission is
-a new vote entry; do not replace a previous vote. `adjudication_history` is a
-separate append-only array and may reference prior vote IDs. Each adjudication
-event must occur strictly after every vote it references, and the array order
-must remain chronological. Candidate/model outputs are never written into
-either array. An `adjudicated` status requires the evidence of the votes and a
-separate adjudication event; it does not erase the disagreement history. For
-`train`, `calibration`, or `holdout`, admission requires either `dual_reviewed`
-with at least two distinct annotators whose votes all accept and no
-adjudication history, or `adjudicated` with at least two votes and a latest
-`accepted` adjudication that chronologically follows and references every
-vote. A rejected or quarantined latest adjudication is not release-admissible.
-Conflicting independent votes are not resolved by averaging; they require
-adjudication. Unreviewed, in-review, rejected, incomplete, or
-missing-adjudication records are not release-admissible. Fixture and
-quarantine records may retain unreviewed or partial review for audit, but they
-cannot be promoted without this gate.
+a new vote entry; do not replace a previous vote. Within one record, vote
+`submitted_at` instants must be valid UTC RFC3339 `Z` timestamps in strictly
+increasing event order; reverse or duplicate times are ambiguous and rejected.
+`adjudication_history` is a separate append-only array and may reference prior
+vote IDs. Each adjudication event must occur strictly after every vote it
+references, and the array order must remain chronological. Candidate/model
+outputs are never written into either array. An `adjudicated` status requires
+the evidence of the votes and a separate adjudication event; it does not erase
+the disagreement history. For `train`, `calibration`, or `holdout`, admission
+requires either `dual_reviewed` with at least two distinct annotators whose
+votes all accept and no adjudication history, or `adjudicated` with at least
+two votes and a latest `accepted` adjudication that chronologically follows
+and references every vote. A rejected or quarantined latest adjudication is
+not release-admissible. Conflicting independent votes are not resolved by
+averaging; they require adjudication. Unreviewed, in-review, rejected,
+incomplete, or missing-adjudication records are not release-admissible. Fixture
+and quarantine records may retain unreviewed or partial review for audit, but
+they cannot be promoted without this gate. Cross-snapshot append-only
+continuity is deferred to M3-006; this contract checks only the current
+record's history.
 
 Hard disagreements include subject identity mismatch, acceptable versus
 forbidden action conflict, KEEP versus corrective action, ABSTAIN versus a

@@ -137,7 +137,9 @@ resolve:
    that all accept and no adjudication history, or an accepted latest
    adjudication that occurs after every referenced vote and covers every vote;
    conflicting, unreviewed, rejected, quarantined, or missing-adjudication
-   records stop at quarantine.
+   records stop at quarantine. Within the current record, vote timestamps must
+   be valid UTC RFC3339 `Z` instants in strictly increasing history order;
+   cross-snapshot append-only continuity is deferred to M3-006.
 
 The resolved source-shoot entry is authoritative for `source_kind`; a record
 claiming a different kind is invalid. A resolved `synthetic_fixture` source is

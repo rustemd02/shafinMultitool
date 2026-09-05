@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete for the autonomous fifth correction batch. This receipt documents
+Complete for the autonomous sixth correction batch. This receipt documents
 contracts and validator evidence only; it is not a collection, rights grant,
 human calibration result, or model-quality claim.
 
@@ -47,20 +47,22 @@ human calibration result, or model-quality claim.
   record/manifest checks, source-authority and media-asset resolution,
   consent/rights resolution, derivation independence/quota and duplicate
   checks, subject/ABSTAIN semantics, family/device split isolation, temporal
-  chronology/full timeline with strict JSON integer typing, episode chronology/
-  measurable outcomes with subject-continuity coupling, exact schema-derived
-  issue evidence, resolved human-review admission with chronological and
-  coherent adjudication checks, and action-specific verifier checks. Production
+  chronology/full timeline with strict JSON integer typing, strict RFC3339 UTC
+  timestamp parsing, episode chronology/measurable outcomes with
+  subject-continuity coupling, exact schema-derived issue evidence, resolved
+  human-review admission with chronological and coherent adjudication checks,
+  total malformed-ID handling, and action-specific verifier checks. Production
   `--record` and batch admission require explicit source/consent/rights/
   derivation manifests; embedded synthetic manifests are used only by
   `--self-test`.
 - `tools/dataset/tests/fixtures/camera-coach-fixtures.json` — explicitly
-  synthetic valid still/temporal/episode records and 67 declared negative
+  synthetic valid still/temporal/episode records and 70 declared negative
   mutation cases, including source relabel, media asset authority, recursive
   unknown fields, subject/ABSTAIN semantics, consent resolution, derivation
   kind/independence/quota, temporal timeline, review status/conflict/
-  adjudication outcome/chronology, strict numeric types (including Python bool
-  rejection), closed issue evidence, and episode
+  adjudication outcome/chronology, impossible timestamps and reversed vote
+  history, strict numeric types (including Python bool rejection), malformed
+  subject IDs, closed issue evidence, and episode
   outcome/subject-continuity probes.
 - `tools/dataset/tests/fixtures/camera-coach-batch-*.jsonl` — explicitly
   synthetic caller-supplied positive manifests, train/calibration protected-
@@ -78,17 +80,17 @@ PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/m3-dataset-foundation/d
 
 $ python3 tools/dataset/camera_coach_check.py --self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=67
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=70
 PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=67
+PASS camera-coach self-test valid=3 invalid=70
 
 $ python3 tools/dataset/camera_coach_check.py --self-test  # repeated deterministic run
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
-PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=67
+PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=70
 PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
-PASS camera-coach self-test valid=3 invalid=67
+PASS camera-coach self-test valid=3 invalid=70
 
 $ python3 -c 'import json; from pathlib import Path; a=json.loads(Path("docs/implementation/camera-coach-contract-v2.json").read_text()); s=json.loads(Path("datasets/camera-coach/v1/label-schema.json").read_text()); assert set(a["approvedActionIDs"]) == set(s["$defs"]["actionId"]["enum"]); assert set(s["$defs"]["verificationActionId"]["enum"]) == set(a["approvedActionIDs"]) | {"abstain"}; e=s["$defs"]["issue"]["properties"]["evidence"]["items"]["enum"]; assert e == list(dict.fromkeys(e)); print("PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8")'
 PASS canonical_action_parity actions=26 verification_actions=27 issue_evidence=8
@@ -109,9 +111,9 @@ for case in fixture["invalid_cases"]:
     assert errors and any(case["declared_reason"] in error for error in errors), (case["case_id"], case["declared_reason"], errors)
 print(f"PASS declared_hostile_probes={len(fixture['invalid_cases'])} exact_declared_reasons={len({case['declared_reason'] for case in fixture['invalid_cases']})}")
 PY
-PASS declared_hostile_probes=67 exact_declared_reasons=31
+PASS declared_hostile_probes=70 exact_declared_reasons=33
 
-The self-test and hostile probe loop require every one of the 67 declared
+The self-test and hostile probe loop require every one of the 70 declared
 negative fixtures to fail for its declared reason. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
 assets, recursive unknown `candidate_identity`/`modelOutput`/`label` fields,
@@ -120,12 +122,14 @@ attempts, ABSTAIN status/reason/subject cross-semantics, consent absence and
 denial, closed derivation kinds and independence/quota semantics, duplicate
 record/derivation controls, temporal length/order/timestamps and full timeline
 overlap/gap plus strict integer typing for frame count, frame ordinals,
-timestamps, timeline indices, and subject-region numbers, all three episode timestamp boundaries, and
+timestamps, timeline indices, subject-region numbers, and valid UTC RFC3339
+timestamps, all three episode timestamp boundaries, and
 missing measured pass evidence for correct/no-op/opposite/overshoot outcomes,
-unreviewed, conflicting, rejected-adjudication, before-vote adjudication, and
-missing-adjudication release review, exact issue evidence (`model_output` and
-unknown strings), and measurable outcomes with lost, changed, or unknown
-subject continuity. The release review gate accepts only two distinct
+unreviewed, conflicting, rejected-adjudication, before-vote adjudication,
+impossible-timestamp, reversed-vote-history, and missing-adjudication release
+review, exact issue evidence (`model_output` and unknown strings), malformed
+subject IDs, and measurable outcomes with lost, changed, or unknown subject
+continuity. The release review gate accepts only two distinct
 accepting votes or a latest accepted adjudication that chronologically follows
 every referenced vote, covers every vote, and has accepted outcome.
 
@@ -202,7 +206,7 @@ $ git diff --check
 (no output); exit=0
 ```
 
-The self-test and hostile probe loop require every one of the 67 declared
+The self-test and hostile probe loop require every one of the 70 declared
 negative fixtures to fail for its declared reason. They cover missing source,
 denied/unresolved rights, source-kind relabeling, foreign primary/member media
 assets, recursive unknown `candidate_identity`/`modelOutput`/`label` fields,
@@ -211,10 +215,12 @@ attempts, ABSTAIN status/reason/subject cross-semantics, consent absence and
 denial, closed derivation kinds and independence/quota semantics, duplicate
 record/derivation controls, temporal length/order/timestamps and full timeline
 overlap/gap plus strict integer typing for frame count, frame ordinals,
-timestamps, timeline indices, and subject-region numbers, all three episode timestamp boundaries, and
+timestamps, timeline indices, subject-region numbers, and valid UTC RFC3339
+timestamps, all three episode timestamp boundaries, and
 missing measured pass evidence for correct/no-op/opposite/overshoot outcomes,
 release review status/conflict/rejected-adjudication/before-vote chronology/
-missing-adjudication, exact closed issue evidence, and measurable outcome
+impossible-timestamp/reversed-vote-history/missing-adjudication, exact closed
+issue evidence, malformed subject IDs, and measurable outcome
 subject-continuity failures. The hostile source case still fails because the
 resolved source entry remains
 `synthetic_fixture`; claimant fields cannot override source authority.
@@ -242,6 +248,9 @@ structural, closed-key, and referential gates required for this batch.
   vote and coherently covers every vote; rejected/quarantined adjudication
   outcomes are not admissible. Fixture/quarantine review may remain unreviewed
   for audit only. Review arrays are empty in fixtures.
+- Review timestamp and append-order checks cover only the current record's
+  history; cross-snapshot append-only continuity is explicitly deferred to
+  M3-006.
 - The required two-annotator, 35-case calibration and disagreement report
   remain pending HUMAN work; no human agreement, calibration quality, or release
   readiness claim is made.
@@ -251,5 +260,5 @@ structural, closed-key, and referential gates required for this batch.
 
 ## Commit
 
-This receipt is included in the local fifth-correction commit; the worker
+This receipt is included in the local sixth-correction commit; the worker
 return reports its exact SHA.

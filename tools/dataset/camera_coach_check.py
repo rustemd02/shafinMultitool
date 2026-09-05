@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -23,6 +24,7 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 RECORD_ID_RE = re.compile(r"^cam-[a-z0-9][a-z0-9._-]*$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
+TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 SCHEMA_VERSION = "v1.0.0"
 
 MATRIX_CLASSES = {
@@ -215,6 +217,23 @@ def _check_enum(value: Any, allowed: set[str], path: str, errors: list[str], cod
         errors.append(_error(code, path))
 
 
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse the contract's UTC timestamp shape and reject impossible values."""
+    if not isinstance(value, str) or not DATE_RE.fullmatch(value):
+        return None
+    try:
+        return datetime.strptime(value, TIMESTAMP_FORMAT).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _check_timestamp(value: Any, path: str, errors: list[str]) -> datetime | None:
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        errors.append(_error("invalid_timestamp", path))
+    return parsed
+
+
 def _is_strict_int(value: Any) -> bool:
     """Match JSON Schema integer semantics without Python's bool-as-int trap."""
     return type(value) is int
@@ -307,7 +326,8 @@ def _validate_subject(subject: Any, errors: list[str]) -> None:
         _require(candidate, {"subject_id", "kind", "reference"}, path, errors)
         if not isinstance(candidate, dict):
             continue
-        _check_id(candidate.get("subject_id"), f"{path}.subject_id", errors)
+        candidate_id = candidate.get("subject_id")
+        _check_id(candidate_id, f"{path}.subject_id", errors)
         _check_enum(candidate.get("kind"), {"face", "person", "object", "group", "scene", "unknown"}, f"{path}.kind", errors)
         _check_id(candidate.get("reference"), f"{path}.reference", errors)
         region = candidate.get("region")
@@ -318,7 +338,8 @@ def _validate_subject(subject: Any, errors: list[str]) -> None:
                 or any(not _is_json_number(value) or not 0 <= value <= 1 for value in region)
             ):
                 errors.append(_error("invalid_subject_region", f"{path}.region"))
-        candidate_ids.append(candidate.get("subject_id"))
+        if isinstance(candidate_id, str):
+            candidate_ids.append(candidate_id)
     if len(set(candidate_ids)) != len(candidate_ids):
         errors.append(_error("invalid_subject_reference", "subject.candidates duplicate subject_id"))
     selected = subject.get("selected_subject_id")
@@ -483,7 +504,8 @@ def _validate_review(review: Any, errors: list[str]) -> None:
     votes = _check_list(review.get("vote_history"), "review.vote_history", errors)
     vote_ids: set[str] = set()
     annotators: set[str] = set()
-    vote_times: dict[str, str] = {}
+    vote_times: dict[str, datetime] = {}
+    previous_vote_at: datetime | None = None
     for index, vote in enumerate(votes):
         path = f"review.vote_history[{index}]"
         _require(vote, {"vote_id", "annotator_id", "submitted_at", "decision"}, path, errors)
@@ -492,22 +514,27 @@ def _validate_review(review: Any, errors: list[str]) -> None:
         vote_id = vote.get("vote_id")
         annotator_id = vote.get("annotator_id")
         submitted_at = vote.get("submitted_at")
+        submitted_at_instant = _parse_timestamp(submitted_at)
         _check_id(vote_id, f"{path}.vote_id", errors)
         _check_id(annotator_id, f"{path}.annotator_id", errors)
         if isinstance(vote_id, str) and vote_id in vote_ids:
             errors.append(_error("duplicate_vote_id", path))
         if isinstance(vote_id, str):
             vote_ids.add(vote_id)
-            if isinstance(submitted_at, str) and DATE_RE.fullmatch(submitted_at):
-                vote_times[vote_id] = submitted_at
+            if submitted_at_instant is not None:
+                vote_times[vote_id] = submitted_at_instant
         if isinstance(annotator_id, str):
             annotators.add(annotator_id)
-        if not isinstance(submitted_at, str) or not DATE_RE.fullmatch(submitted_at):
+        if submitted_at_instant is None:
             errors.append(_error("invalid_timestamp", f"{path}.submitted_at"))
+        elif previous_vote_at is not None and submitted_at_instant <= previous_vote_at:
+            errors.append(_error("invalid_review_chronology", f"{path}.submitted_at must strictly follow prior vote"))
+        if submitted_at_instant is not None:
+            previous_vote_at = submitted_at_instant
         _check_enum(vote.get("decision"), {"accept", "reject", "abstain"}, f"{path}.decision", errors)
     adjudications = _check_list(review.get("adjudication_history"), "review.adjudication_history", errors)
     adjudication_ids: set[str] = set()
-    previous_adjudication_at: str | None = None
+    previous_adjudication_at: datetime | None = None
     for index, adjudication in enumerate(adjudications):
         path = f"review.adjudication_history[{index}]"
         _require(adjudication, {"adjudication_id", "adjudicator_id", "occurred_at", "based_on_vote_ids", "outcome"}, path, errors)
@@ -515,26 +542,27 @@ def _validate_review(review: Any, errors: list[str]) -> None:
             continue
         adjudication_id = adjudication.get("adjudication_id")
         occurred_at = adjudication.get("occurred_at")
+        occurred_at_instant = _parse_timestamp(occurred_at)
         _check_id(adjudication_id, f"{path}.adjudication_id", errors)
         _check_id(adjudication.get("adjudicator_id"), f"{path}.adjudicator_id", errors)
         if isinstance(adjudication_id, str) and adjudication_id in adjudication_ids:
             errors.append(_error("duplicate_adjudication_id", path))
         if isinstance(adjudication_id, str):
             adjudication_ids.add(adjudication_id)
-        if not isinstance(occurred_at, str) or not DATE_RE.fullmatch(occurred_at):
+        if occurred_at_instant is None:
             errors.append(_error("invalid_timestamp", f"{path}.occurred_at"))
-        elif previous_adjudication_at is not None and occurred_at <= previous_adjudication_at:
+        elif previous_adjudication_at is not None and occurred_at_instant <= previous_adjudication_at:
             errors.append(_error("invalid_review_chronology", f"{path}.occurred_at must follow prior adjudication"))
-        if isinstance(occurred_at, str) and DATE_RE.fullmatch(occurred_at):
-            previous_adjudication_at = occurred_at
+        if occurred_at_instant is not None:
+            previous_adjudication_at = occurred_at_instant
         based_on = _check_list(adjudication.get("based_on_vote_ids"), f"{path}.based_on_vote_ids", errors, nonempty=True)
         referenced_vote_ids = {vote_id for vote_id in based_on if isinstance(vote_id, str)}
         if len(referenced_vote_ids) != len(based_on) or not referenced_vote_ids.issubset(vote_ids):
             errors.append(_error("unknown_vote_reference", path))
-        if isinstance(occurred_at, str) and DATE_RE.fullmatch(occurred_at):
+        if occurred_at_instant is not None:
             for vote_id in referenced_vote_ids:
                 submitted_at = vote_times.get(vote_id)
-                if submitted_at is not None and occurred_at <= submitted_at:
+                if submitted_at is not None and occurred_at_instant <= submitted_at:
                     errors.append(_error("invalid_review_chronology", f"{path}.occurred_at must follow referenced vote {vote_id}"))
         _check_enum(adjudication.get("outcome"), {"accepted", "rejected", "quarantined"}, f"{path}.outcome", errors)
     status = review.get("status")
@@ -678,8 +706,7 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
         _check_id(asset_id, f"{path}.asset_id", errors)
         if asset_id not in source_assets:
             errors.append(_error("missing_source_asset", f"{path}.asset_id"))
-        if not DATE_RE.fullmatch(value.get("captured_at", "")):
-            errors.append(_error("invalid_timestamp", f"{path}.captured_at"))
+        _check_timestamp(value.get("captured_at"), f"{path}.captured_at", errors)
     if isinstance(before, dict) and isinstance(after, dict) and before.get("asset_id") == after.get("asset_id"):
         errors.append(_error("invalid_episode", "before and after assets must differ"))
     action_step = episode.get("action_step")
@@ -689,20 +716,15 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
         action = action_step.get("action_id")
         if action not in ACTION_IDS or action not in accepted:
             errors.append(_error("invalid_action_id", "episode.action_step.action_id must be acceptable"))
-        if not DATE_RE.fullmatch(action_step.get("performed_at", "")):
-            errors.append(_error("invalid_timestamp", "episode.action_step.performed_at"))
+        _check_timestamp(action_step.get("performed_at"), "episode.action_step.performed_at", errors)
+    before_at = _parse_timestamp(before.get("captured_at")) if isinstance(before, dict) else None
+    action_at = _parse_timestamp(action_step.get("performed_at")) if isinstance(action_step, dict) else None
+    after_at = _parse_timestamp(after.get("captured_at")) if isinstance(after, dict) else None
     if (
-        isinstance(before, dict)
-        and isinstance(action_step, dict)
-        and isinstance(after, dict)
-        and DATE_RE.fullmatch(before.get("captured_at", ""))
-        and DATE_RE.fullmatch(action_step.get("performed_at", ""))
-        and DATE_RE.fullmatch(after.get("captured_at", ""))
-        and not (
-            before.get("captured_at")
-            < action_step.get("performed_at")
-            < after.get("captured_at")
-        )
+        before_at is not None
+        and action_at is not None
+        and after_at is not None
+        and not (before_at < action_at < after_at)
     ):
         errors.append(_error("invalid_episode_order", "chronology requires before < action_step < after"))
     verifier = episode.get("outcome_verifier")
@@ -980,8 +1002,7 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             _check_enum(use, RIGHTS_USES, f"{path}.allowed_uses", errors)
         if not isinstance(entry.get("evidence_ref"), str) or not entry.get("evidence_ref"):
             errors.append(_error("missing_consent_evidence", path))
-        if not DATE_RE.fullmatch(entry.get("recorded_at", "")):
-            errors.append(_error("invalid_timestamp", f"{path}.recorded_at"))
+        _check_timestamp(entry.get("recorded_at"), f"{path}.recorded_at", errors)
     rights_ids: set[str] = set()
     for index, entry in enumerate(manifests.get("rights", [])):
         path = f"manifests.rights[{index}]"
@@ -1024,8 +1045,7 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
             _check_enum(use, RIGHTS_USES, f"{path}.allowed_uses", errors)
         if not isinstance(entry.get("evidence_ref"), str) or not entry.get("evidence_ref"):
             errors.append(_error("missing_rights_evidence", path))
-        if not DATE_RE.fullmatch(entry.get("recorded_at", "")):
-            errors.append(_error("invalid_timestamp", f"{path}.recorded_at"))
+        _check_timestamp(entry.get("recorded_at"), f"{path}.recorded_at", errors)
     derivation_ids: set[str] = set()
     derivation_record_ids: set[str] = set()
     for index, entry in enumerate(manifests.get("derivations", [])):
