@@ -5,7 +5,7 @@
 
 - Created (UTC): 2026-09-03T16:00:00Z
 - Branch: `store`
-- Last accepted task head: `aabcecd` (M5-006/M5-010/M5-012; no push)
+- Last accepted task head: `08d8120` (M2-027/M2-028/M2-029/M2-032; no push)
 - Upstream: `origin/store` (local checkpoint/integration commits ahead; exact count is read from Git, not duplicated here)
 - Active Git operations: none (no MERGE_HEAD/REBASE_HEAD/CHERRY_PICK_HEAD/MERGE_MSG; 1 stash entry `backup_dev_before_model_cleanup`, untouched)
 - Dirty-state summary (bootstrap):
@@ -13,9 +13,9 @@
   - Untracked (~27 paths): docs/aegis/plans/2026-08-17-set-os-v2-1-phase-0.md, docs/aegis/work/2026-08-17-set-os-redesign/, docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/ (plan+handoff), docs/implementation/ux/{set-os-policy-critique.md,set-os-visual-policy.md}, motion/, screenshots/, UI/DesignSystem/, SETCameraCoachProductionView.swift, Resources/{Fixtures,Fonts,InfoPlist.xcstrings,Localizable.xcstrings,Textures}, SceneRecordingController.swift, SETLibraryProductionView.swift, AppleRecordingAdapters.swift, RecordingArtifactStore.swift, new tests (AppleRecordingAdapters, DETRDetector, SETDesignSystemToken, SETFixtureCatalog, SETFontGlyphCoverage, SETLibraryModel, SceneRecordingController, CameraCoachProductionUI, SETDesignSystemGalleryUI, SETGeneratorProductionUI, SETLibraryProductionUI).
   - build/ is gitignored (`/build/`), contains prior artifacts; M0 evidence goes to `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m0/` (durable, inside untracked guidance dir) — deviation from plan's build/ path recorded in M0-001.
 - Current milestone: M2 camera closure in parallel with dependency-ready M3/M5/M7 contracts (M1 COMPLETE with GATE PASS)
-- Current task: M2-027/M2-028/M2-029/M2-032 Camera presentation; M5-013 Library downstream links; M7-002 canonical capture source
-- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-026, M3-001, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M6-001, M6-002, M6-003, M6-004, M7-001, M7-003, M7-004, M12-033]
-- In-progress: [M2-027, M2-028, M2-029, M2-032, M5-013, M7-002]
+- Current task: M5-013 Library downstream links; M7-002 canonical capture source
+- Completed: [M0-001…M0-014, M0-GATE=PASS, M1-001…M1-021, M1-GATE=PASS, M2-001…M2-029, M2-032, M3-001, M5-001, M5-002, M5-004, M5-005, M5-006, M5-010, M5-011, M5-012, M6-001, M6-002, M6-003, M6-004, M7-001, M7-003, M7-004, M12-033]
+- In-progress: [M5-013, M7-002]
 - Session recovery 2026-09-03T~19:45Z: HEAD unchanged c61e988; M1-004 implementation found complete in working tree (SceneDelegate sceneDidEnterBackground/didBecomeActive → CommercialShellViewController.handleSceneDidEnterBackground/handleAppDidBecomeActive → active-route-only dispatch; camera=reportSceneInactive idempotent; scenes=awaited handleDidEnterBackground single-flight; ContentView SwiftUI scenePhase duplicate removed; new shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift, auto-included via PBXFileSystemSynchronizedRootGroup — no pbxproj edit needed). Evidence evidence-m1/lifecycle-event-matrix.json written 19:38 (was newest artifact → interrupted at verification step).
 - M1-004 attempt 1 (test run): FAILED — used `-project` instead of `-workspace`: SnapKit (CocoaPods) unresolvable in default DerivedData. Root cause: CocoaPods workspace required. Fix: rerun with `-workspace shafinMultitool.xcworkspace -derivedDataPath build` (matches prior session products in build/Build/Products). Log: /private/tmp/shafin-m1-004-test.log.
 - Build/test command template (use for all future runs): `xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:<CLASS> -derivedDataPath build -resultBundlePath /private/tmp/<id>.xcresult`
@@ -449,3 +449,10 @@
 ### 2026-09-05T05:00+03:00 — M5-013 STARTED
 - The newly dependency-ready P0 open-boundary task validates stable project identity plus Generator, AR, Storyboard and recording references before navigation; healthy and compatible legacy projects open, while missing/corrupt links remain on Library with typed recoverable failure and no fixture substitution.
 - Dedicated Luna worktree owns only the existing Library router/module-builder open path, minimal Scene project validation projections, focused healthy/legacy/broken-link tests and evidence. It may not redesign routes, migrate unrelated schema, or pull in Generator/AR/Storyboard implementation tasks.
+
+### 2026-09-05T05:17+03:00 — M2-027/M2-028/M2-029/M2-032 CLOSED
+- Camera Coach now presents every production live state through one `CameraOverlayUXPresentation` projection. Action-linked marker identity is the domain `CoachingEpisodeToken`; target geometry is frozen from the episode baseline, separate from the subject region, clipped to the camera-safe viewport and not recomputed from noisy per-frame hints.
+- Real terminal neural-analysis failure is generation/lifecycle fenced, published once and clears stale advice, marker, fusion and episode state before the visible failure. Runtime ECO comes from the effective governor/scheduler budget, clears spatial advice and exposes localized visible plus accessibility state. Existing `routeExitRequested` protection still prevents late start, resume, pause or lens work from reviving a released Camera child.
+- Fresh Sol first returned `fix-first` for reused subject/target geometry, fixture-only failure publication, raw ViewModel-state projection, unstable marker ownership and missing runtime ECO semantics. Correction commit `08d8120` closed every finding; final fresh Sol verdict `SHIP` with no blockers.
+- Independent integrated verification on ordinary iPhone 17e simulator iOS 26.5: 62/62 focused presentation/governor/scheduler/lifecycle/routing tests and 9/9 production Camera UI tests PASS, 0 failed/skipped; xcresults `/private/tmp/setos-root-m2-027-029-032-r2-unit.xcresult` and `/private/tmp/setos-root-m2-027-029-032-r2-ui.xcresult`. Worker evidence retains 21 PNG attachments at `/private/tmp/setos-m2-027-029-032-correction-ui-final-attachments-v2/manifest.json`, including noisy-frame portrait and landscape captures.
+- Honest boundary: M11 still owns motion-video proof, and M2-036 owns true-process failure/ECO screenshot coverage; the nominal fixture is not runtime ECO proof. Tracker total: 85/424 completed, 339 remaining.
