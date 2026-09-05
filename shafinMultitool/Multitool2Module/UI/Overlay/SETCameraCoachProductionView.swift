@@ -287,13 +287,12 @@ private struct SETCameraCoachRuntimeSurface: View {
               critique.frameId == acceptedSnapshot.snapshotID,
               let projection = critique.linkedEvidence,
               projection.frameID == acceptedSnapshot.snapshotID,
-              let action = critique.actions.first(where: {
-                  $0.actionId == projection.actionID
-                      && $0.actionType == projection.actionType
-                      && $0.semanticActionType == projection.semanticActionType
-                      && $0.linkedIssueIds.count == 1
-                      && $0.linkedIssueIds.first == projection.issueID
-              }),
+              let action = critique.actions.first,
+              action.actionId == projection.actionID,
+              action.actionType == projection.actionType,
+              action.semanticActionType == projection.semanticActionType,
+              action.linkedIssueIds.count == 1,
+              action.linkedIssueIds.first == projection.issueID,
               let issue = critique.issues.first(where: {
                   $0.issueId == projection.issueID
                       && $0.type == projection.issueType

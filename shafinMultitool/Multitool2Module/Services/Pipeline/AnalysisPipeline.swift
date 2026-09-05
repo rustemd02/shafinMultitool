@@ -9094,35 +9094,34 @@ final class AnalysisPipeline: ObservableObject {
             + plan.deferredActions
         let builder = DeterministicCritiqueSummaryBuilder()
 
-        for row in actions where row.actionType != .leaveFrameAsIs {
-            let source = plannedActions.first { action in
-                action.actionType == row.actionType
-                    && action.linkedIssueIds == row.linkedIssueIds
-            }
-            let action = RecommendationAction(
-                id: row.actionId,
-                actionType: row.actionType,
-                priority: row.priority,
-                targetRegion: row.targetRegion,
-                linkedIssueIds: row.linkedIssueIds,
-                expectedOutcome: row.expectedOutcome,
-                guardrail: source?.guardrail ?? ActionGuardrail(
-                    requiresStillCamera: true,
-                    minConfidence: 0,
-                    suppressWhenMoving: true
-                ),
-                overlayHint: source?.overlayHint
-            )
-            if let projection = builder.makeEvidenceProjection(
-                frameID: critique.frameId,
-                action: action,
-                semanticActionType: row.semanticActionType,
-                critique: critique
-            ) {
-                return projection
-            }
+        // The first rendered row is the sole primary pause action. Never skip
+        // an unproven primary to borrow provenance from a later secondary row.
+        guard let row = actions.first,
+              row.actionType != .leaveFrameAsIs else { return nil }
+        let source = plannedActions.first { action in
+            action.actionType == row.actionType
+                && action.linkedIssueIds == row.linkedIssueIds
         }
-        return nil
+        let action = RecommendationAction(
+            id: row.actionId,
+            actionType: row.actionType,
+            priority: row.priority,
+            targetRegion: row.targetRegion,
+            linkedIssueIds: row.linkedIssueIds,
+            expectedOutcome: row.expectedOutcome,
+            guardrail: source?.guardrail ?? ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0,
+                suppressWhenMoving: true
+            ),
+            overlayHint: source?.overlayHint
+        )
+        return builder.makeEvidenceProjection(
+            frameID: critique.frameId,
+            action: action,
+            semanticActionType: row.semanticActionType,
+            critique: critique
+        )
     }
 
     private func pauseVerdictConfidence(verdict: FrameVerdict,

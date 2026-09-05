@@ -667,6 +667,7 @@ final class CameraViewModel: ObservableObject {
             let rollback = makeFailedStartRollback()
             await awaitFailedStartRollback(rollback)
             guard !Task.isCancelled, lifecycleIntent == intent else { return }
+            restorePauseReviewAfterResumeFailureIfNeeded()
             lifecycleState = .failed(error)
             lifecycleError = error
         } catch {
@@ -675,10 +676,24 @@ final class CameraViewModel: ObservableObject {
             let rollback = makeFailedStartRollback()
             await awaitFailedStartRollback(rollback)
             guard !Task.isCancelled, lifecycleIntent == intent else { return }
+            restorePauseReviewAfterResumeFailureIfNeeded()
             let typedError = CameraManagerError.startFailed
             lifecycleState = .failed(typedError)
             lifecycleError = typedError
         }
+    }
+
+    /// A failed resume must not strand an accepted review behind `.resuming`.
+    /// The camera lifecycle reports the start failure separately, while the
+    /// accepted pixels and critique remain inspectable and can be retried.
+    private func restorePauseReviewAfterResumeFailureIfNeeded() {
+        guard case .resuming(let snapshotID) = pausePresentationState,
+              let acceptedPauseSnapshot,
+              acceptedPauseSnapshot.snapshotID == snapshotID,
+              acceptedPauseSnapshot.displayImage != nil else { return }
+
+        isPaused = true
+        pausePresentationState = .failure(snapshotID: snapshotID)
     }
 
     private func makeFailedStartRollback() -> FailedStartRollbackOperation {

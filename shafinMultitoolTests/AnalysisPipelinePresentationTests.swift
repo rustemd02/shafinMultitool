@@ -2560,6 +2560,199 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertEqual(trace.actionRows.first?.linkedEvidenceIds, ["iss_background"])
     }
 
+    func testPauseProjectionFailsClosedWhenOnlySecondaryActionHasObservedEvidence() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let frameID = "pause-primary-provenance"
+        let critique = CritiqueReport(
+            frameId: frameID,
+            mode: .pause,
+            verdict: .mixed,
+            verdictConfidence: 0.81,
+            strengths: [],
+            issues: [
+                FrameIssue(
+                    id: "iss_primary_neural_only",
+                    type: .subjectTooCloseToEdge,
+                    severity: 0.81,
+                    confidence: 0.83,
+                    rationale: "Первичный совет не подтверждён наблюдаемым источником.",
+                    evidence: [
+                        EvidenceRef(
+                            source: .neuralEvidence,
+                            key: "neural.edge_probability",
+                            value: "0.91"
+                        )
+                    ],
+                    affectedRegion: NormalizedRect(x: 0.05, y: 0.20, width: 0.24, height: 0.42),
+                    suggestedFixTypes: [.reframing]
+                ),
+                FrameIssue(
+                    id: "iss_secondary_observed",
+                    type: .backgroundCompetesWithSubject,
+                    severity: 0.62,
+                    confidence: 0.71,
+                    rationale: "Вторичный совет подтверждён наблюдаемым источником.",
+                    evidence: [
+                        EvidenceRef(
+                            source: .snapshot,
+                            key: "background.clutter",
+                            value: "medium"
+                        )
+                    ],
+                    affectedRegion: NormalizedRect(x: 0.58, y: 0.18, width: 0.28, height: 0.40),
+                    suggestedFixTypes: [.reframing]
+                )
+            ],
+            summary: CritiqueSummary(
+                id: "summary_(frameID)",
+                shortVerdict: "Проверка кадра требует осторожности.",
+                whyGood: nil,
+                whyProblematic: "Только один из советов имеет наблюдаемое подтверждение."
+            ),
+            traceRefs: ["trace_(frameID)"],
+            fallbackUsed: false
+        )
+        let primaryAction = RecommendationAction(
+            id: "act_primary",
+            actionType: .moveFrameLeft,
+            priority: 1,
+            targetRegion: critique.issues[0].affectedRegion,
+            linkedIssueIds: ["iss_primary_neural_only"],
+            expectedOutcome: "Сместите камеру влево.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.4,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        let secondaryAction = RecommendationAction(
+            id: "act_secondary",
+            actionType: .reduceBackgroundDistractions,
+            priority: 2,
+            targetRegion: critique.issues[1].affectedRegion,
+            linkedIssueIds: ["iss_secondary_observed"],
+            expectedOutcome: "Упростите фон.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.4,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: frameID,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: primaryAction,
+            secondaryActions: [secondaryAction],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.81
+        )
+
+        let presentation = pipeline.testingMakePauseCritiquePresentation(
+            critique: critique,
+            plan: plan
+        )
+
+        XCTAssertEqual(presentation.actions.map(\.actionId), ["act_primary", "act_secondary"])
+        XCTAssertNil(presentation.linkedEvidence)
+        let trace = DecisionTracePresentation.pause(critique: presentation)
+        XCTAssertTrue(trace.reasonLines.isEmpty)
+        XCTAssertTrue(trace.evidenceRows.isEmpty)
+        XCTAssertTrue(trace.actionRows.allSatisfy { $0.linkedEvidenceIds.isEmpty })
+    }
+
+    func testCommittedPauseRotationReprojectsMarkerWithoutChangingProvenance() {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let frameID = "pause-rotation-identity"
+        let critique = makeMixedPauseCritique(
+            frameId: frameID,
+            verdictConfidence: 0.82
+        )
+        let targetRegion = NormalizedRect(x: 0.58, y: 0.18, width: 0.28, height: 0.40)
+        let action = RecommendationAction(
+            id: "act_rotation",
+            actionType: .reduceBackgroundDistractions,
+            priority: 1,
+            targetRegion: targetRegion,
+            linkedIssueIds: ["iss_background"],
+            expectedOutcome: "Упростите фон.",
+            guardrail: ActionGuardrail(
+                requiresStillCamera: true,
+                minConfidence: 0.4,
+                suppressWhenMoving: true
+            ),
+            overlayHint: nil
+        )
+        let plan = RecommendationPlan(
+            frameId: frameID,
+            mode: .pause,
+            inputVerdict: critique.verdict,
+            primaryAction: action,
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.82
+        )
+        let presentation = pipeline.testingMakePauseCritiquePresentation(
+            critique: critique,
+            plan: plan
+        )
+
+        guard let projection = presentation.linkedEvidence,
+              let pauseAction = presentation.actions.first,
+              let pauseTargetRegion = pauseAction.targetRegion else {
+            return XCTFail("a committed observed pause must retain its marker projection")
+        }
+        let store = LatestFrameEvidenceStore()
+        XCTAssertTrue(store.publish(
+            pixelBuffer: makePixelBuffer(width: 4, height: 2),
+            orientation: .right,
+            sourceFrameId: frameID,
+            capturedAt: Date(timeIntervalSince1970: 90),
+            isStable: true
+        ))
+        guard let accepted = store.acceptCurrentSnapshot(),
+              let rendered = store.renderDisplayImage(for: accepted) else {
+            return XCTFail("the accepted pause frame must render before rotation")
+        }
+
+        XCTAssertEqual(accepted.snapshotID, frameID)
+        XCTAssertEqual(rendered.snapshotID, frameID)
+        XCTAssertEqual(rendered.sourcePixelSize, accepted.sourcePixelSize)
+        XCTAssertEqual(rendered.orientation, accepted.orientation)
+        XCTAssertEqual(projection.frameID, frameID)
+        XCTAssertEqual(projection.actionID, pauseAction.actionId)
+        XCTAssertEqual(projection.actionID, action.id)
+        XCTAssertEqual(projection.issueID, pauseAction.linkedIssueIds.first)
+
+        let portraitMarker = SETAcceptedFrameRegionMapper.map(
+            pauseTargetRegion,
+            sourcePixelSize: rendered.sourcePixelSize,
+            orientation: rendered.orientation,
+            canvasSize: CGSize(width: 390, height: 844)
+        )
+        let landscapeMarker = SETAcceptedFrameRegionMapper.map(
+            pauseTargetRegion,
+            sourcePixelSize: rendered.sourcePixelSize,
+            orientation: rendered.orientation,
+            canvasSize: CGSize(width: 844, height: 390)
+        )
+        XCTAssertNotNil(portraitMarker)
+        XCTAssertNotNil(landscapeMarker)
+        XCTAssertNotEqual(portraitMarker, landscapeMarker)
+        XCTAssertTrue(portraitMarker.map(CGRect(origin: .zero, size: CGSize(width: 390, height: 844)).contains) == true)
+        XCTAssertTrue(landscapeMarker.map(CGRect(origin: .zero, size: CGSize(width: 844, height: 390)).contains) == true)
+
+        let portraitTrace = DecisionTracePresentation.pause(critique: presentation)
+        let landscapeTrace = DecisionTracePresentation.pause(critique: presentation)
+        XCTAssertEqual(portraitTrace, landscapeTrace)
+        XCTAssertEqual(portraitTrace.evidenceRows.map(\.sourceId), [projection.issueID])
+        XCTAssertEqual(portraitTrace.actionRows.first?.linkedEvidenceIds, [projection.issueID])
+    }
+
     func testLiveActionConfidenceDoesNotUseOptimisticMaximum() {
         let pipeline = AnalysisPipeline(reasoningProvider: nil)
         let critique = makeCritique(frameId: "live-confidence", verdict: .mixed)

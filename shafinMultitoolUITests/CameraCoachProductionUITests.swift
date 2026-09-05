@@ -131,6 +131,19 @@ final class CameraCoachProductionUITests: XCTestCase {
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "РАЗБОР")).firstMatch.waitForExistence(timeout: 3)
         )
 
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(
+            app.otherElements["camera_coach_pause_review"].waitForExistence(timeout: 3),
+            "the committed pause review must survive portrait-to-landscape rotation"
+        )
+        XCTAssertTrue(app.buttons["camera_coach_pause"].exists)
+
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "РАЗБОР")).firstMatch.waitForExistence(timeout: 3),
+            "the committed pause trace must remain inspectable after rotating back"
+        )
+
         app.buttons["camera_coach_pause"].tap()
         XCTAssertTrue(app.otherElements["camera_coach_live_surface"].waitForExistence(timeout: 3))
 

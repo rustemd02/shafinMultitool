@@ -640,6 +640,66 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         await fixture.viewModel.releaseAndWait()
     }
 
+    func testFailedResumeRestoresCommittedPauseReviewAndPresentation() async {
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: false)
+        ])
+
+        await fixture.viewModel.startAndWait()
+        fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 6))
+        let evidenceReady = await waitUntil {
+            fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_6000"
+        }
+        XCTAssertTrue(evidenceReady)
+
+        fixture.viewModel.togglePause()
+        let committed = await waitUntil {
+            guard fixture.viewModel.isPauseProjectionReady else { return false }
+            switch fixture.viewModel.pausePresentationState {
+            case .success, .empty, .failure:
+                return true
+            case .idle, .loading, .resuming:
+                return false
+            }
+        }
+        XCTAssertTrue(committed)
+
+        guard let acceptedBefore = fixture.viewModel.acceptedPauseSnapshot else {
+            return XCTFail("a committed pause must retain its accepted snapshot")
+        }
+        let committedSnapshotID = acceptedBefore.snapshotID
+        let committedSourceSize = acceptedBefore.sourcePixelSize
+        let committedOrientation = acceptedBefore.orientation
+        let committedCritique = fixture.viewModel.pauseCritique
+        let committedTrace = committedCritique.map { DecisionTracePresentation.pause(critique: $0) }
+
+        fixture.viewModel.togglePause()
+
+        let failed = await waitUntil {
+            fixture.viewModel.lifecycleState == .failed(.startFailed)
+                && fixture.viewModel.lifecycleError == .startFailed
+                && fixture.viewModel.isPaused
+                && fixture.viewModel.pausePresentationState == .failure(snapshotID: committedSnapshotID)
+        }
+        XCTAssertTrue(failed)
+        XCTAssertTrue(fixture.viewModel.isPaused)
+        XCTAssertEqual(fixture.viewModel.pausePresentationState, .failure(snapshotID: committedSnapshotID))
+        XCTAssertEqual(fixture.viewModel.acceptedPauseSnapshot?.snapshotID, committedSnapshotID)
+        XCTAssertEqual(fixture.viewModel.acceptedPauseSnapshot?.sourcePixelSize, committedSourceSize)
+        XCTAssertEqual(fixture.viewModel.acceptedPauseSnapshot?.orientation, committedOrientation)
+        XCTAssertNotNil(fixture.viewModel.acceptedPauseSnapshot?.displayImage)
+        XCTAssertEqual(fixture.viewModel.pauseCritique, committedCritique)
+        if let committedTrace {
+            XCTAssertEqual(
+                fixture.viewModel.pauseCritique.map { DecisionTracePresentation.pause(critique: $0) },
+                committedTrace
+            )
+        }
+
+        await fixture.viewModel.releaseAndWait()
+    }
+
     func testPrecommitPauseIsCanceledOnSceneInactive() async {
         let fixture = makeFixture(startPlans: [.init(succeeds: true)])
         await fixture.viewModel.startAndWait()
