@@ -1,0 +1,237 @@
+{
+  "schema_version": "m7-engine-handoff-v1",
+  "created_utc": "2026-09-05T19:45:00Z",
+  "base_head": "02f03f65d01ea56f94ca3cd16793a759bf13612e",
+  "external_head": "a61169dd9f0552058aec22bdc5eace333af8f202",
+  "external_head_note": "last code commit; the branch tip adds only this handoff artifact on top (integration diff = base_head..branch-tip)",
+  "branch": "codex/external-m7-recording",
+  "worktree": "/Users/unterlantas/.codex/worktrees/shafinMultitool/external-m7-recording",
+  "commit_range": "02f03f6..a61169d (code) + one handoff-artifact commit on top",
+  "commits_in_order": [
+    {
+      "sha": "164d8f1228bd08fade585a56408f2ba5b5edc5d3",
+      "short": "164d8f1",
+      "task_ids": ["M7-005", "M7-006", "M7-007"],
+      "subject": "writer configuration, master timebase, orientation metadata",
+      "note": "one package commit: the three tasks land in the same contract/writer/recorder structures and were verified together"
+    },
+    {
+      "sha": "8d5548396649086e1f512233c2660569554736c1",
+      "short": "8d55483",
+      "task_ids": ["M7-008", "M7-009", "M7-010", "M7-011", "M7-012", "M7-013"],
+      "subject": "recording preflight, admission ledger, backpressure policy, finalization timeout",
+      "note": "M7-009 and M7-012 are evidence-only verification of the existing serialized owners (no production change); M7-017 disk-budget core landed here because M7-008 consumes it"
+    },
+    {
+      "sha": "2330621a648adf94556e3aec4a30fd062c23c121",
+      "short": "2330621",
+      "task_ids": ["M7-016", "M7-017", "M7-018", "M7-019", "M7-020"],
+      "subject": "A/V sync report, disk budget, ENOSPC typing, pending journal, journaled promotion"
+    },
+    {
+      "sha": "8fc14d17eac41abe93d891d859522844d32dded5",
+      "short": "8fc14d1",
+      "task_ids": ["M7-021", "M7-022", "M7-023", "M7-024", "M7-025", "M7-029", "M7-030"],
+      "subject": "cold recovery, kill fixtures, retention, orphan cleanup, deletion journals, file policy, diagnostics"
+    },
+    {
+      "sha": "a61169dd9f0552058aec22bdc5eace333af8f202",
+      "short": "a61169d",
+      "task_ids": ["M7-008"],
+      "subject": "fix: availability-neutral default preflight for the unit seam",
+      "note": "combined-lane review finding: default controller preflight must not read the host's real privacy state; production convenience wiring keeps the real checkers"
+    }
+  ],
+  "task_verdicts": {
+    "M7-005": "done+verified",
+    "M7-006": "done+verified",
+    "M7-007": "done+verified_seam_only_production_orientation_value_not_yet_supplied_by_caller",
+    "M7-008": "done+verified",
+    "M7-009": "verified_existing_owner_no_production_change",
+    "M7-010": "done+verified",
+    "M7-011": "done+verified",
+    "M7-012": "verified_existing_owner_no_production_change",
+    "M7-013": "done+verified",
+    "M7-016": "done+verified_recorder_measurement_physical_content_markers_external",
+    "M7-017": "done+verified",
+    "M7-018": "done+verified_injected_fixtures_real_device_enospc_external",
+    "M7-019": "done+verified",
+    "M7-020": "done+verified",
+    "M7-021": "done+verified",
+    "M7-022": "done+verified_host_fixtures_only_physical_kill_is_M13",
+    "M7-023": "done+verified_policy_api_production_sweep_caller_deferred_to_main_flow",
+    "M7-024": "done+verified",
+    "M7-025": "done+verified_journal_cleanup_extension_existing_transaction_verified",
+    "M7-029": "done+verified_backup_exclusion_only_protection_values_device_only",
+    "M7-030": "done+verified"
+  },
+  "changed_files_by_commit": {
+    "164d8f1": [
+      "shafinMultitool/Services/Recording/RecorderContracts.swift",
+      "shafinMultitool/Services/Recording/AppleRecordingAdapters.swift",
+      "shafinMultitool/Services/Recording/SerializedMediaRecorder.swift",
+      "shafinMultitool/SceneGeneratorModule/Services/SceneRecordingController.swift",
+      "shafinMultitoolTests/AppleRecordingAdaptersTests.swift",
+      "shafinMultitoolTests/SerializedMediaRecorderTests.swift",
+      "shafinMultitoolTests/SceneRecordingControllerTests.swift"
+    ],
+    "8d55483": [
+      "shafinMultitool/Services/Recording/RecorderContracts.swift",
+      "shafinMultitool/Services/Recording/RecordingArtifactStore.swift",
+      "shafinMultitool/Services/Recording/RecordingPreflight.swift",
+      "shafinMultitool/Services/Recording/SerializedMediaRecorder.swift",
+      "shafinMultitool/SceneGeneratorModule/Services/SceneRecordingController.swift",
+      "shafinMultitoolTests/RecordingPreflightTests.swift",
+      "shafinMultitoolTests/SerializedMediaRecorderTests.swift",
+      "shafinMultitoolTests/SceneRecordingControllerTests.swift"
+    ],
+    "2330621": [
+      "shafinMultitool/Services/Recording/RecorderContracts.swift",
+      "shafinMultitool/Services/Recording/AppleRecordingAdapters.swift",
+      "shafinMultitool/Services/Recording/SerializedMediaRecorder.swift",
+      "shafinMultitool/Services/Recording/RecordingArtifactStore.swift",
+      "shafinMultitool/Services/Recording/PendingRecordingJournal.swift",
+      "shafinMultitoolTests/PendingRecordingJournalTests.swift",
+      "shafinMultitoolTests/RecordingArtifactPromotionTests.swift",
+      "shafinMultitoolTests/SerializedMediaRecorderTests.swift"
+    ],
+    "8fc14d1": [
+      "shafinMultitool/Services/Recording/RecordingArtifactStore.swift",
+      "shafinMultitool/Services/Recording/RecordingDiagnostics.swift",
+      "shafinMultitool/Services/Recording/AppleRecordingAdapters.swift",
+      "shafinMultitool/Services/Recording/SerializedMediaRecorder.swift",
+      "shafinMultitool/Services/DBService.swift",
+      "shafinMultitoolTests/RecordingRecoveryAndRetentionTests.swift",
+      "shafinMultitoolTests/RecordingDiagnosticsTests.swift"
+    ],
+    "a61169d": [
+      "shafinMultitool/Services/Recording/RecordingPreflight.swift",
+      "shafinMultitool/SceneGeneratorModule/Services/SceneRecordingController.swift",
+      "shafinMultitoolTests/RecordingPreflightTests.swift"
+    ]
+  },
+  "acceptance_evidence_index": [
+    "evidence-m7/M7-005-writer-configuration.md",
+    "evidence-m7/M7-006-master-timebase.md",
+    "evidence-m7/M7-007-orientation-metadata.md",
+    "evidence-m7/M7-008-recording-preflight.md",
+    "evidence-m7/M7-009-start-transition.md",
+    "evidence-m7/M7-010-sample-admission.md",
+    "evidence-m7/M7-011-backpressure-drop-policy.md",
+    "evidence-m7/M7-012-stop-transition.md",
+    "evidence-m7/M7-013-finalization.md",
+    "evidence-m7/M7-016-av-sync-report.md",
+    "evidence-m7/M7-017-disk-preflight.md",
+    "evidence-m7/M7-018-disk-exhaustion.md",
+    "evidence-m7/M7-019-pending-journal.md",
+    "evidence-m7/M7-020-atomic-promotion.md",
+    "evidence-m7/M7-021-cold-launch-recovery.md",
+    "evidence-m7/M7-022-os-kill-recovery-fixtures.md",
+    "evidence-m7/M7-023-retention-policy.md",
+    "evidence-m7/M7-024-orphan-cleanup.md",
+    "evidence-m7/M7-025-project-media-deletion.md",
+    "evidence-m7/M7-029-file-protection-backup-policy.md",
+    "evidence-m7/M7-030-recording-diagnostics.md"
+  ],
+  "test_commands": [
+    "xcodebuild build-for-testing -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination 'platform=iOS Simulator,name=iPhone Air,OS=26.5' -derivedDataPath /private/tmp/m7-external-dd",
+    "xcodebuild test-without-building ... -parallel-testing-enabled NO -derivedDataPath /private/tmp/m7-external-dd -resultBundlePath <path>"
+  ],
+  "test_results": {
+    "package_A_focused": {
+      "suites": ["AppleRecordingAdaptersTests", "SerializedMediaRecorderTests", "RecordingLifecycleTransitionTests", "RecordingContractV1Tests", "SceneRecordingControllerTests"],
+      "result": "93/93 PASS",
+      "xcresult": "/private/tmp/m7-pkgA-tests-r3.xcresult"
+    },
+    "package_B_focused": {
+      "suites": ["SerializedMediaRecorderTests", "RecordingPreflightTests", "SceneRecordingControllerTests", "RecordingStartTeardownRaceTests"],
+      "result": "79/79 PASS",
+      "xcresult": "/private/tmp/m7-pkgB-tests-r2.xcresult"
+    },
+    "package_C_focused": {
+      "suites": ["SerializedMediaRecorderTests", "RecordingPreflightTests", "PendingRecordingJournalTests", "RecordingArtifactPromotionTests"],
+      "result": "70/70 PASS",
+      "xcresult": "/private/tmp/m7-pkgC-tests.xcresult"
+    },
+    "package_D_focused": {
+      "suites": ["RecordingRecoveryAndRetentionTests", "RecordingDiagnosticsTests", "PendingRecordingJournalTests", "DBServiceConcurrencyTests"],
+      "result": "16/16 PASS (r3) + 41/41 PASS regression (r2)",
+      "xcresult": "/private/tmp/m7-pkgD-tests-r3.xcresult",
+      "xcresult_regression": "/private/tmp/m7-pkgD-tests-r2.xcresult"
+    },
+    "final_combined_M7_lane": {
+      "suites": ["SerializedMediaRecorderTests", "AppleRecordingAdaptersTests", "SceneRecordingControllerTests", "RecordingLifecycleTransitionTests", "RecordingContractV1Tests", "RecordingStartTeardownRaceTests", "RecordingArtifactPromotionTests", "RecordingPreflightTests", "PendingRecordingJournalTests", "RecordingRecoveryAndRetentionTests", "RecordingDiagnosticsTests", "AudioSessionCoordinatorTests", "DBServiceConcurrencyTests", "SubsystemErrorMappingTests", "SceneWorkspaceTeardownTests"],
+      "result": "191/191 PASS, 0 failures",
+      "xcresult": "/private/tmp/m7-final-regression-r2.xcresult",
+      "log_sha256": "c6a93fd8f122067b1e74ece6a183579a7b2b04bc (/private/tmp/m7-final-regression-r2.log)"
+    }
+  },
+  "known_failures": [
+    {
+      "id": "sim-flake-sbmainworkspace",
+      "description": "One transient FBSOpenApplicationServiceErrorDomain launch denial on iPhone Air after a 'Data Migration Failed' boot; resolved by fresh simctl boot + bootstatus (known simulator recipe, M1-011). Not a production defect.",
+      "resolution": "retried clean"
+    },
+    {
+      "id": "sim-mic-privacy-state",
+      "description": "The host simulator's real microphone privacy state for the test host flipped to denied across a reboot, failing one VM sound-on retry test through the new preflight's real SystemMicrophonePermissionChecker.",
+      "resolution": "production defect in the unit seam fixed by a61169d: default controller preflight is availability-neutral; production convenience wiring keeps the real checkers. simctl privacy grant microphone applied once in this worktree's simulator."
+    }
+  ],
+  "blocked_or_deferred": [
+    {
+      "task": "M7-007",
+      "gap": "ARSceneContainer/SceneGeneratorViewModel do not yet pass a real device-orientation-derived RecordingTrackTransformMetadata to controller.start; the parameter exists (optional, source-compatible). One-line call-site update owned by the main flow."
+    },
+    {
+      "task": "M7-021/M7-023",
+      "gap": "Cold-launch recovery runs from DBService.init (production wired, best-effort). The optional SceneDelegate launch hook and a scheduled retention sweep caller are outside this lane's file ownership; the APIs are public and tested."
+    },
+    {
+      "task": "M7-008",
+      "gap": "'Active project' precondition remains the ViewModel caller contract (SceneGeneratorViewModel is outside this lane's ownership)."
+    }
+  ],
+  "protected_invariants": [
+    "Single serialized recording/media owner: SerializedMediaRecorder queue + SceneRecordingController state queue; no second state machine introduced",
+    "One generation-tagged capture source (M7-002 fences unchanged and re-verified)",
+    "One monotonic media timebase (RecordingMediaTimebase) per take; strict per-stream monotonic admission with counted rejections",
+    "Recording active only after writer/session acceptance (snapshot verification before controller commit)",
+    "No sample admitted before start or after stop (typed verdicts, bounded ledger)",
+    "Stop/finalize/promotion/recovery idempotent (fault matrix K0-K6 + concurrent-stop regressions)",
+    "Late writer callback cannot revive a timed-out or released take",
+    "Existing user/project media never deleted by recording failures: retention/orphan candidates re-verified, project media never a candidate, promotion never touches sibling projects",
+    "Pending journal written atomically before promotion, tombstone removed only after commit",
+    "Kill points converge to one valid reference or one recoverable failure; no duplicate references or unbounded orphan temp data",
+    "All paths canonicalized/dirfd-relative; symlinks rejected or never followed; deletion limited to owned recording roots",
+    "Dry-run inventory precedes every deletion (retention + orphans)",
+    "ENOSPC typed (.insufficientStorage) and cannot damage earlier saved projects",
+    "Diagnostics versioned, redacted (no frames/audio/screenplay/paths), bounded to 200 events"
+  ],
+  "physical_device_gaps": [
+    "Hardware codec encode support and upright playback for every iPhone/iPad orientation/lens (M7-005/M7-007) - M13",
+    "Real capture-clock conversion, Bluetooth mic latency, drift (M7-006/M7-016) - M13",
+    "Physical clap/flash content-marker A/V validation (M7-016) - M13",
+    "Real ENOSPC fill during recording/finalization (M7-018) - M13",
+    "Actual SIGKILL timing on device during finalization/promotion (M7-022) - M13",
+    "FileProtectionType values and real iCloud backup behavior (M7-029) - M13",
+    "Sustained encoder backpressure/thermal behavior (M7-011) - M13"
+  ],
+  "merge_conflict_notes": {
+    "risk": "low",
+    "details": [
+      "All changes confined to recording owners + DBService init/deletion + directly related tests; no shared String Catalog, pbxproj (new files are auto-included via PBXFileSystemSynchronizedRootGroup), routes, or VM edits",
+      "DBService.swift: two narrow insertions (init recovery block, removeProjectJournalRecords after artifact commit) — if main flow touched the same init/deletion regions, re-apply语义 not lines",
+      "RecorderContracts/SerializedMediaRecorder/SceneRecordingController/AppleRecordingAdapters/RecordingArtifactStore have no known concurrent editors while the external-M7 reservation (EXECUTION_STATE 2026-09-05T20:30Z) holds"
+    ]
+  },
+  "cleanup_status": {
+    "derived_data": "/private/tmp/m7-external-dd removed after final evidence capture",
+    "xcresults_retained": ["/private/tmp/m7-pkgA-tests-r3.xcresult", "/private/tmp/m7-pkgB-tests-r2.xcresult", "/private/tmp/m7-pkgC-tests.xcresult", "/private/tmp/m7-pkgD-tests-r2.xcresult", "/private/tmp/m7-pkgD-tests-r3.xcresult", "/private/tmp/m7-final-regression-r2.xcresult"],
+    "user_files_touched": "none",
+    "other_worktrees_touched": "none",
+    "main_checkout_edits": "none (read-only authority reads)"
+  },
+  "integration_instruction": "Проверь полный diff BASE_HEAD..EXTERNAL_HEAD (02f03f6..a61169d плюс handoff-коммит на вершине ветки); не интегрируй по одному последнему коммиту.",
+  "honest_verdict": "All 21 assigned task IDs have code/verification evidence or an explicitly documented boundary. This is engine/media source closure only. No App Store readiness and no physical-device readiness is claimed; M7-014/015/026/027/028/031/032 and M7-GATE remain with their owners."
+}
