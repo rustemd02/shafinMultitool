@@ -1399,6 +1399,13 @@ def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict
     """Validate an externally supplied collection and isolate all families."""
     errors = _validate_fixture_manifests(manifests)
     record_ids: set[str] = set()
+    # The capture protocol's one-decision quota unit is source + take + derivation.
+    quota_owners: dict[tuple[str, str, str], str] = {}
+    derivation_by_record = {
+        entry.get("record_id"): entry
+        for entry in _manifest_entries(manifests, "derivations")
+        if isinstance(entry, dict) and isinstance(entry.get("record_id"), str)
+    }
     for record in records:
         record_id = record.get("record_id") if isinstance(record, dict) else None
         if isinstance(record_id, str):
@@ -1406,6 +1413,25 @@ def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict
                 errors.append(_error("duplicate_record_id", record_id))
             record_ids.add(record_id)
         errors.extend(validate_record(record, manifests, fixture_mode=fixture_mode))
+        derivation = derivation_by_record.get(record_id) if isinstance(record_id, str) else None
+        capture = record.get("capture") if isinstance(record, dict) and isinstance(record.get("capture"), dict) else {}
+        quota_key = (
+            derivation.get("source_shoot_id") if isinstance(derivation, dict) else None,
+            capture.get("take_family_id"),
+            derivation.get("derivation_family_id") if isinstance(derivation, dict) else None,
+        )
+        if (
+            isinstance(record_id, str)
+            and isinstance(derivation, dict)
+            and derivation.get("is_independent") is True
+            and derivation.get("counts_toward_quota") is True
+            and all(isinstance(value, str) for value in quota_key)
+        ):
+            owner = quota_owners.get(quota_key)
+            if owner is not None:
+                errors.append(_error("quota_duplicate_decision", f"{record_id} shares source/take/derivation {quota_key} with {owner}"))
+            else:
+                quota_owners[quota_key] = record_id
     errors.extend(validate_split_isolation(records))
     for entry in _manifest_entries(manifests, "derivations"):
         if isinstance(entry, dict):
@@ -1517,6 +1543,39 @@ def self_test() -> None:
     same_category_overlap = copy.deepcopy(namespace_overlap)
     same_category_overlap[1]["capture"]["scene_family_id"] = "shared-id"
     assert validate_split_isolation(same_category_overlap) == ["family_cross_split: shared-id"]
+    quota_records = [copy.deepcopy(valid_records[0]), copy.deepcopy(valid_records[0])]
+    quota_duplicate = quota_records[1]
+    quota_duplicate["record_id"] = "cam-still-fixture-001-quota-duplicate"
+    quota_duplicate["media"]["asset_id"] = "asset-still-fixture-001-quota-duplicate"
+    quota_duplicate["media"]["asset_ids"] = ["asset-still-fixture-001-quota-duplicate"]
+    quota_duplicate["media"]["content_sha256"] = "d" * 64
+    quota_duplicate["provenance"]["source_asset_ids"] = ["asset-still-fixture-001-quota-duplicate"]
+    assert quota_records[0]["media"]["asset_id"] != quota_duplicate["media"]["asset_id"]
+    quota_manifests = copy.deepcopy(manifests)
+    quota_source = quota_manifests["source_shoots"][0]
+    quota_source["asset_ids"].append("asset-still-fixture-001-quota-duplicate")
+    quota_rights = quota_manifests["rights"][0]
+    quota_rights["asset_ids"].append("asset-still-fixture-001-quota-duplicate")
+    quota_manifests["consents"][0]["asset_ids"].append("asset-still-fixture-001-quota-duplicate")
+    quota_manifests["source_shoots"] = [quota_source]
+    quota_manifests["rights"] = [quota_rights]
+    quota_manifests["consents"] = [quota_manifests["consents"][0]]
+    quota_derivation = quota_manifests["derivations"][0]
+    quota_derivation["counts_toward_quota"] = True
+    duplicate_derivation = copy.deepcopy(quota_derivation)
+    duplicate_derivation.update({
+        "derivation_id": "derivation-fixture-001-quota-duplicate",
+        "record_id": quota_duplicate["record_id"],
+        "input_asset_ids": ["asset-still-fixture-001-quota-duplicate"],
+        "output_asset_ids": ["asset-still-fixture-001-quota-duplicate"],
+    })
+    quota_manifests["derivations"] = [quota_derivation, duplicate_derivation]
+    quota_errors = validate_batch(quota_records, quota_manifests, fixture_mode=True)
+    assert any(error.startswith("quota_duplicate_decision:") for error in quota_errors), quota_errors
+    for derivation in quota_manifests["derivations"]:
+        derivation["counts_toward_quota"] = False
+    non_quota_errors = validate_batch(quota_records, quota_manifests, fixture_mode=True)
+    assert not non_quota_errors, non_quota_errors
     invalid_passes = 0
     for case in fixture["invalid_cases"]:
         base = next(record for record in valid_records if record["record_id"] == case["base_record_id"])
@@ -1534,7 +1593,7 @@ def self_test() -> None:
     assert invalid_passes == len(fixture["invalid_cases"]), (invalid_passes, len(fixture["invalid_cases"]))
     print(f"PASS M3-002 schemas matrix_classes={len(MATRIX_CLASSES)} actions={len(ACTION_IDS)} keep=1 abstain=1")
     print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes}")
-    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected")
+    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed")
     print("PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending")
     print(f"PASS camera-coach self-test valid={len(valid_records)} invalid={invalid_passes}")
 

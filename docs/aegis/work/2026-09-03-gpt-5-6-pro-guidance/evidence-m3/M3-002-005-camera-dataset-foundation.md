@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete for the current issue/global action-consistency correction batch. This receipt documents
+Complete for the current quota-admission correction batch. This receipt documents
 contracts and validator evidence only; it is not a collection, rights grant,
 human calibration result, or model-quality claim.
 
@@ -49,7 +49,8 @@ human calibration result, or model-quality claim.
   checks, subject/ABSTAIN semantics, category-keyed family/device split
   isolation and source-asset ownership, exact issue/global action-list
   consistency (issue rows authoritative in both directions; schema action
-  arrays compared as unordered unique-ID sets), temporal
+  arrays compared as unordered unique-ID sets), quota ownership keyed by
+  source/take/derivation with one counted independent decision, temporal
   chronology/full timeline with strict JSON integer typing, strict RFC3339 UTC
   timestamp parsing, episode chronology/measurable outcomes with
   subject-continuity coupling, exact schema-derived issue evidence, resolved
@@ -76,6 +77,9 @@ human calibration result, or model-quality claim.
   evidence rows and issue actions missing globally), closed issue evidence,
   and episode outcome/subject-continuity probes. Every
   hostile mutation is asserted to return validation errors without raising.
+  The self-test additionally builds a two-record quota fixture with unique
+  assets, rejects its second counted decision, and admits the same pair when
+  both derivations are non-quota.
 - `tools/dataset/tests/fixtures/camera-coach-batch-*.jsonl` — explicitly
   synthetic caller-supplied positive manifests, train/calibration protected-
   family crossing, device-family-only crossing, duplicate record, and duplicate
@@ -93,19 +97,19 @@ PASS /Users/unterlantas/.codex/worktrees/shafinMultitool/m3-dataset-foundation/d
 $ python3 tools/dataset/camera_coach_check.py --self-test
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
 PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=84
-PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected
+PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
 PASS camera-coach self-test valid=3 invalid=84
 
 $ python3 tools/dataset/camera_coach_check.py --self-test  # repeated deterministic run
 PASS M3-002 schemas matrix_classes=7 actions=26 keep=1 abstain=1
 PASS M3-003 references valid_records=3 rights_dispositions=fixture_only invalid_cases=84
-PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected
+PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot measurable_subject_continuity=same capture_families=scene/take/time/device/derivation family_namespace_keyed=category+id same_string_cross_category=allowed same_category_cross_split=rejected quota_key=source+take+derivation one_counted_decision=required quota_batch_records=2 second_counted_decision=rejected non_quota_duplicates=allowed
 PASS M3-005 fixture_review_status=unreviewed release_gate=resolved_human_review vote_history=append_only adjudication_history=separate human_calibration=pending
 PASS camera-coach self-test valid=3 invalid=84
 
 $ PYTHONHASHSEED=1..5 deterministic validator/order and namespace probe
-PASS cross_seed_determinism seeds=1,2,3,4,5 cases=capture_review_source_asset_owner split_namespace label_action_consistency
+PASS cross_seed_determinism seeds=1,2,3,4,5 cases=capture_review_source_asset_owner split_namespace label_action_consistency quota_batch probe_sha256=8b9396002a8c13a8
 
 $ in-memory approved-manifest release-gate smoke (three distinct release splits, two accepting votes per record)
 PASS positive_release_batch records=3 splits=train,calibration,holdout errors=0
@@ -166,8 +170,9 @@ temporal asset/manifest source IDs, scalar list-valued abstention/verification
 fields, unused source-shoot family IDs and orientation/lens/lighting fields,
 source-asset owner conflicts, category-keyed family namespace probes, exact
 issue/global action consistency in both directions (including orphan global
-actions with no issue/evidence rows), and measurable outcomes with lost,
-changed, or unknown subject continuity. The
+actions with no issue/evidence rows), the two-record quota duplicate fixture
+with unique assets and non-quota duplicate allowance, and measurable outcomes
+with lost, changed, or unknown subject continuity. The
 release review gate accepts only two distinct
 accepting votes or a latest accepted adjudication that chronologically follows
 every referenced vote, covers every vote, and has accepted outcome.
@@ -261,7 +266,8 @@ missing measured pass evidence for correct/no-op/opposite/overshoot outcomes,
 release review status/conflict/rejected-adjudication/before-vote chronology/
 impossible-timestamp/reversed-vote-history/missing-adjudication, exact closed
 issue evidence, exact issue/global action consistency in both directions,
-malformed subject IDs, malformed action/provenance
+quota duplicate ownership and non-quota derivative allowance, malformed
+subject IDs, malformed action/provenance
 source-asset/capture person-family/temporal asset/manifest source IDs, scalar
 abstention/verification lists, unused source-shoot family and closed-enum
 fields, source-asset owner conflicts, and measurable outcome subject-continuity
