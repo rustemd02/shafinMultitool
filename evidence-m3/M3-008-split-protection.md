@@ -85,7 +85,7 @@ PASS M3-007 fixture exact_sha near_crop_color near_blur far_discriminated sequen
 
 The fixture's CLI subprocess runs the same seed and ratios with
 `PYTHONHASHSEED=1` and `PYTHONHASHSEED=5`; the output bytes match exactly and
-have `cli_sha256=1095035ab72b3dfa1aaa3ea7b0159a5a0b1a45c0f6a2fc7734e4817af45a6200`.
+have `cli_sha256=d606a1de2ff128d0a1666cbe5e3a61f91a4805c5a33f3593c05ef0a184ce4346`.
 The API reverse-input run is byte/object-identical. `seed=1` and `seed=5`
 produce different fixture assignment receipts while preserving the same record
 set and `cross_split_leak_count=0`. The accepted receipt has three components,
