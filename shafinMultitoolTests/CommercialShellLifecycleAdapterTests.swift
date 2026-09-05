@@ -49,6 +49,53 @@ final class CommercialShellLifecycleAdapterTests: XCTestCase {
         XCTAssertEqual(workspace.teardownCallCount, 1)
     }
 
+    // MARK: - M7-015 background policy lease
+
+    func testBackgroundBeginsOneLeaseAndEndsItAfterSceneDispatch() async throws {
+        let shell = makeShell(cameraBackground: {})
+        let coordinator = FakeSceneBackgroundTaskCoordinator()
+        shell.backgroundTaskCoordinator = coordinator
+        await shell.selectAndWait(.scenes)
+        let route = try XCTUnwrap(shell.activeRoute as? CommercialSceneLibraryRoute)
+
+        let workspace = LifecycleFakeWorkspace()
+        let hostingController = LandscapeHostingController(rootView: Color.clear)
+        hostingController.sceneWorkspaceTeardownProvider = workspace
+        route.navigationController.pushViewController(hostingController, animated: false)
+
+        shell.handleSceneDidEnterBackground()
+        await fulfillment(of: [workspace.teardownEntered], timeout: 2.0)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(coordinator.beginCount, 1, "exactly one lease per background event")
+        XCTAssertEqual(coordinator.endedIdentifiers.count, 1, "the lease is ended after the dispatch flushes")
+        XCTAssertNotEqual(coordinator.endedIdentifiers.first, .invalid)
+    }
+
+    func testBackgroundWithoutRoutesBeginsAndImmediatelyEndsLease() {
+        let shell = makeShell(cameraBackground: {})
+        let coordinator = FakeSceneBackgroundTaskCoordinator()
+        shell.backgroundTaskCoordinator = coordinator
+
+        shell.handleSceneDidEnterBackground()
+
+        XCTAssertEqual(coordinator.beginCount, 1)
+        XCTAssertEqual(coordinator.endedIdentifiers.count, 1)
+    }
+
+    func testBackgroundLeaseEndsOnlyOncePerIdentifier() {
+        let shell = makeShell(cameraBackground: {})
+        let coordinator = FakeSceneBackgroundTaskCoordinator()
+        shell.backgroundTaskCoordinator = coordinator
+
+        shell.handleSceneDidEnterBackground()
+        shell.handleSceneDidEnterBackground()
+
+        XCTAssertEqual(coordinator.beginCount, 2)
+        XCTAssertEqual(coordinator.endedIdentifiers.count, 2)
+        XCTAssertEqual(Set(coordinator.endedIdentifiers).count, 2, "a stale lease cannot end a newer one")
+    }
+
     func testForegroundRecheckStillReachesBlockedCameraEntry() async {
         let client = LifecycleFakePermissionClient(snapshots: [
             LifecycleFakePermissionClient.snapshot(authorization: .denied),
@@ -151,4 +198,26 @@ private actor LifecycleFakePermissionClient: PermissionClient {
 private final class LifecycleFakeIntroStore: CameraCoachIntroStore {
     func hasSeenCameraCoachIntro() -> Bool { true }
     func markCameraCoachIntroSeen() {}
+}
+
+
+/// M7-015: deterministic background-task lease for lifecycle tests.
+private final class FakeSceneBackgroundTaskCoordinator: SceneBackgroundTaskCoordinating {
+    private(set) var beginCount = 0
+    private(set) var endedIdentifiers: [UIBackgroundTaskIdentifier] = []
+    private var nextIdentifier = UIBackgroundTaskIdentifier(rawValue: 77)
+
+    func begin(withName name: String) -> UIBackgroundTaskIdentifier {
+        beginCount += 1
+        defer {
+            nextIdentifier = UIBackgroundTaskIdentifier(
+                rawValue: nextIdentifier.rawValue + 1
+            ) ?? .invalid
+        }
+        return nextIdentifier
+    }
+
+    func end(_ identifier: UIBackgroundTaskIdentifier) {
+        endedIdentifiers.append(identifier)
+    }
 }

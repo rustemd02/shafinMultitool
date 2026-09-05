@@ -52,6 +52,11 @@ public final class CommercialShellViewController: UIViewController {
     private(set) var modeControl = CommercialShellModeControl()
 
     /// The route currently retained by the shell, if one has been installed.
+    /// M7-015: UIKit background task lease covering the background lifecycle
+    /// dispatch. `.invalid` means no live lease.
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    var backgroundTaskCoordinator: SceneBackgroundTaskCoordinating = UIKitSceneBackgroundTaskCoordinator()
+
     public var activeRoute: (any CommercialRoute)? {
         activeRouteStorage
     }
@@ -72,13 +77,33 @@ public final class CommercialShellViewController: UIViewController {
     /// same idempotent owners (reportSceneInactive guard, single-flight
     /// workspace teardown) rather than owning the event.
     func handleSceneDidEnterBackground() {
+        // M7-015: an in-flight recording finalize needs CPU time after the
+        // app backgrounds. One UIKit background task covers the whole
+        // lifecycle dispatch; expiration (or dispatch completion) ends it
+        // exactly once. The serialized owners make the flushed work itself
+        // idempotent, so expiration mid-dispatch cannot double-finalize.
+        let taskID = backgroundTaskCoordinator.begin(withName: "set-scene-background-flush")
+        backgroundTaskID = taskID
+        let finish = { [weak self] in
+            self?.endBackgroundTask(taskID)
+        }
         if let cameraRoute = activeRouteStorage as? CommercialCameraCoachRoute {
             cameraRoute.handleSceneDidEnterBackground()
+            finish()
         } else if let scenesRoute = activeRouteStorage as? CommercialSceneLibraryRoute {
             Task { @MainActor in
                 _ = await scenesRoute.handleDidEnterBackground()
+                finish()
             }
+        } else {
+            finish()
         }
+    }
+
+    private func endBackgroundTask(_ taskID: UIBackgroundTaskIdentifier) {
+        guard backgroundTaskID == taskID, taskID != .invalid else { return }
+        backgroundTaskID = .invalid
+        backgroundTaskCoordinator.end(taskID)
     }
 
     /// UIKit asks the container for the orientations supported by the currently
