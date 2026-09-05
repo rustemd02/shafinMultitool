@@ -38,7 +38,63 @@ SPLITS = {"train", "calibration", "holdout", "quarantine", "fixture"}
 RIGHTS_DISPOSITIONS = {"approved", "denied", "unresolved", "pending", "withdrawn", "fixture_only"}
 SOURCE_KINDS = {"owned", "licensed", "consented", "public", "runtime_export", "synthetic_fixture"}
 NON_INDEPENDENT_DERIVATION_KINDS = {"burst_frame", "crop", "resize", "color_variant", "temporal_frame", "episode_view"}
+INDEPENDENT_DERIVATION_KINDS = {"original_still", "original_temporal_sequence", "original_before_after_episode"}
+DERIVATION_KINDS = INDEPENDENT_DERIVATION_KINDS | NON_INDEPENDENT_DERIVATION_KINDS
 RIGHTS_USES = {"train", "calibration", "holdout", "fixture"}
+RELEASE_SPLITS = {"train", "calibration", "holdout"}
+
+# The JSON Schema files are intentionally closed. This small stdlib walker
+# keeps production admission closed even when a full JSON Schema engine is not
+# installed, including record extensions and every known nested object.
+CLOSED_KEYS = {
+    "record": {"schema_id", "schema_version", "record_id", "record_type", "matrix_class", "split", "media", "capture", "provenance", "subject", "style_intent", "label", "review", "sequence", "episode"},
+    "media": {"asset_id", "asset_ids", "content_sha256", "hash_algorithm", "storage"},
+    "capture": {"scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "capture_mode"},
+    "provenance": {"source_shoot_id", "source_asset_ids", "derivation_family_id", "rights_record_id", "rights_disposition", "source_kind", "raw_storage"},
+    "subject": {"status", "candidates", "selected_subject_id"},
+    "subject_candidate": {"subject_id", "kind", "reference", "region"},
+    "style_intent": {"style_id", "intentional", "basis"},
+    "label": {"issues", "acceptable_action_ids", "forbidden_action_ids", "selected_action_id", "selection_status", "keep_decision", "abstention", "verification"},
+    "issue": {"issue_id", "severity", "evidence", "acceptable_action_ids", "forbidden_action_ids"},
+    "abstention": {"status", "reasons"},
+    "verification": {"action_id", "verifier_id", "result", "measurement"},
+    "review": {"status", "vote_history", "adjudication_history"},
+    "vote": {"vote_id", "annotator_id", "submitted_at", "decision"},
+    "adjudication": {"adjudication_id", "adjudicator_id", "occurred_at", "based_on_vote_ids", "outcome"},
+    "sequence": {"sequence_id", "frame_count", "frames", "timeline"},
+    "frame": {"frame_id", "ordinal", "timestamp_ms", "asset_id", "state"},
+    "timeline_segment": {"state", "start_frame", "end_frame"},
+    "episode": {"episode_id", "before", "action_step", "after", "outcome", "outcome_verifier", "subject_continuity"},
+    "episode_asset": {"asset_id", "captured_at"},
+    "action_step": {"action_id", "performed_at"},
+    "source_shoot_entry": {"manifest_type", "schema_id", "manifest_version", "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "asset_ids", "storage", "source_kind"},
+    "consent_entry": {"manifest_type", "schema_id", "manifest_version", "consent_record_id", "source_shoot_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"},
+    "rights_entry": {"manifest_type", "schema_id", "manifest_version", "rights_record_id", "source_shoot_id", "consent_record_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"},
+    "derivation_entry": {"manifest_type", "schema_id", "manifest_version", "derivation_id", "source_shoot_id", "record_id", "input_asset_ids", "output_asset_ids", "derivation_family_id", "derivation_kind", "is_independent", "counts_toward_quota"},
+}
+CLOSED_CHILDREN = {
+    "record": {"media": ("media", False), "capture": ("capture", False), "provenance": ("provenance", False), "subject": ("subject", False), "style_intent": ("style_intent", False), "label": ("label", False), "review": ("review", False), "sequence": ("sequence", False), "episode": ("episode", False)},
+    "subject": {"candidates": ("subject_candidate", True)},
+    "label": {"issues": ("issue", True), "abstention": ("abstention", False), "verification": ("verification", True)},
+    "review": {"vote_history": ("vote", True), "adjudication_history": ("adjudication", True)},
+    "sequence": {"frames": ("frame", True), "timeline": ("timeline_segment", True)},
+    "episode": {"before": ("episode_asset", False), "action_step": ("action_step", False), "after": ("episode_asset", False)},
+}
+
+
+def _validate_closed_keys(value: Any, schema_name: str, path: str, errors: list[str]) -> None:
+    if not isinstance(value, dict):
+        return
+    for key in sorted(set(value) - CLOSED_KEYS[schema_name]):
+        errors.append(_error("unknown_field", f"{path}.{key}"))
+    for field, (child_schema, is_list) in CLOSED_CHILDREN.get(schema_name, {}).items():
+        child = value.get(field)
+        if is_list:
+            if isinstance(child, list):
+                for index, item in enumerate(child):
+                    _validate_closed_keys(item, child_schema, f"{path}.{field}[{index}]", errors)
+        elif child is not None:
+            _validate_closed_keys(child, child_schema, f"{path}.{field}", errors)
 
 
 def _load_canonical_action_ids() -> set[str]:
@@ -345,20 +401,34 @@ def _validate_label(label: Any, errors: list[str]) -> None:
 
 
 def _validate_subject_label_semantics(subject: Any, label: Any, errors: list[str]) -> None:
-    """Keep subject ABSTAIN and label ABSTAIN as one consistent safety outcome."""
+    """Keep SELECT_SUBJECT and ABSTAIN outcomes fail-closed and distinct."""
     if not isinstance(subject, dict) or not isinstance(label, dict):
         return
     subject_status = subject.get("status")
     selected_subject_id = subject.get("selected_subject_id")
     abstention = label.get("abstention")
     abstention_status = abstention.get("status") if isinstance(abstention, dict) else None
+    abstention_reasons = abstention.get("reasons") if isinstance(abstention, dict) else None
     label_status = label.get("selection_status")
     label_abstain = label_status == "abstain" or abstention_status == "abstain"
-    subject_abstain = subject_status == "abstain"
-    if subject_abstain and selected_subject_id is not None:
+    verifications = label.get("verification") if isinstance(label.get("verification"), list) else []
+    if subject_status == "abstain" and selected_subject_id is not None:
         errors.append(_error("invalid_subject_reference", "subject ABSTAIN requires selected_subject_id=null"))
-    if subject_abstain != label_abstain:
-        errors.append(_error("invalid_abstention", "subject ABSTAIN and label ABSTAIN must agree"))
+    if subject_status == "abstain" and not label_abstain:
+        errors.append(_error("invalid_abstention", "subject ABSTAIN requires label ABSTAIN"))
+    if subject_status == "ambiguous" and (
+        label_status != "no_action"
+        or label.get("acceptable_action_ids")
+        or label.get("selected_action_id") is not None
+        or label.get("keep_decision") != "uncertain"
+        or abstention_status != "none"
+        or abstention_reasons
+        or any(
+            isinstance(item, dict) and item.get("action_id") not in {"keep_current_setup"}
+            for item in verifications
+        )
+    ):
+        errors.append(_error("invalid_selection", "ambiguous subject requires SELECT_SUBJECT/no corrective action"))
 
 
 def _validate_review(review: Any, errors: list[str]) -> None:
@@ -452,7 +522,7 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
     if set(frame_assets) != media_assets or set(frame_assets) != source_assets:
         errors.append(_error("sequence_asset_mismatch", "sequence/source/media asset sets differ"))
     timeline = _check_list(sequence.get("timeline"), "sequence.timeline", errors, nonempty=True)
-    last_end = -1
+    expected_start = 0
     for index, segment in enumerate(timeline):
         path = f"sequence.timeline[{index}]"
         _require(segment, {"state", "start_frame", "end_frame"}, path, errors)
@@ -461,10 +531,18 @@ def _validate_sequence(sequence: Any, media_assets: set[str], source_assets: set
         _check_enum(segment.get("state"), {"acquire", "stable", "moving", "rotation", "lens_change", "lighting_transition", "scene_cut", "unknown"}, f"{path}.state", errors)
         start = segment.get("start_frame")
         end = segment.get("end_frame")
-        if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end < start or end >= len(frames) or start < last_end:
-            errors.append(_error("invalid_sequence_timeline", path))
+        if (
+            not isinstance(start, int)
+            or not isinstance(end, int)
+            or start != expected_start
+            or end < start
+            or end >= len(frames)
+        ):
+            errors.append(_error("invalid_sequence_timeline", f"{path}: segments must be non-overlapping and cover every frame"))
         else:
-            last_end = end
+            expected_start = end + 1
+    if timeline and expected_start != len(frames):
+        errors.append(_error("invalid_sequence_timeline", "segments must cover every frame exactly once"))
 
 
 def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any], media_assets: set[str], source_assets: set[str], errors: list[str]) -> None:
@@ -522,17 +600,21 @@ def _validate_episode(episode: Any, accepted: set[str], verifications: list[Any]
         item for item in verifications
         if isinstance(item, dict) and item.get("action_id") == action and item.get("verifier_id") == verifier
     ]
-    if episode.get("outcome") == "correct":
-        if not any(item.get("result") == "pass" and item.get("measurement") == "before_after" for item in matching):
-            errors.append(_error("invalid_episode_outcome", "correct requires matching action verification pass/before_after"))
-    elif any(item.get("result") == "pass" and item.get("measurement") == "before_after" for item in matching):
-        errors.append(_error("contradictory_episode_outcome", "non-correct outcome cannot have a matching pass/before_after verification"))
+    measurable = {"correct", "no_op", "opposite", "overshoot"}
+    has_passed_before_after = any(item.get("result") == "pass" and item.get("measurement") == "before_after" for item in matching)
+    if episode.get("outcome") in measurable and not has_passed_before_after:
+        errors.append(_error("invalid_episode_outcome", f"{episode.get('outcome')} requires matching action verification pass/before_after"))
+    elif episode.get("outcome") not in measurable and has_passed_before_after:
+        errors.append(_error("contradictory_episode_outcome", "non-measurable outcome cannot have a matching pass/before_after verification"))
 
 
 def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, list[dict[str, Any]]], errors: list[str], *, fixture_mode: bool) -> None:
     source_by_id = {entry.get("source_shoot_id"): entry for entry in manifests.get("source_shoots", [])}
+    consent_by_id = {entry.get("consent_record_id"): entry for entry in manifests.get("consents", [])}
     rights_by_id = {entry.get("rights_record_id"): entry for entry in manifests.get("rights", [])}
-    derivation_by_record = {entry.get("record_id"): entry for entry in manifests.get("derivations", [])}
+    derivation_by_record: dict[Any, dict[str, Any]] = {}
+    for entry in manifests.get("derivations", []):
+        derivation_by_record.setdefault(entry.get("record_id"), entry)
     provenance = record.get("provenance")
     if not isinstance(provenance, dict):
         return
@@ -581,6 +663,26 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
         _check_id(rights.get("consent_record_id"), "rights.consent_record_id", errors)
         if rights.get("source_shoot_id") != source_id:
             errors.append(_error("provenance_mismatch", "rights source_shoot_id"))
+        consent_id = rights.get("consent_record_id")
+        consent = consent_by_id.get(consent_id)
+        if consent is None:
+            errors.append(_error("missing_consent_record", str(consent_id)))
+        else:
+            _check_enum(consent.get("disposition"), RIGHTS_DISPOSITIONS, "consent.disposition", errors)
+            if consent.get("source_shoot_id") != source_id:
+                errors.append(_error("provenance_mismatch", "consent source_shoot_id"))
+            consent_assets = {asset_id for asset_id in consent.get("asset_ids", []) if isinstance(asset_id, str)}
+            if not set(rights.get("asset_ids", [])).issubset(consent_assets):
+                errors.append(_error("consent_scope_mismatch", "consent asset_ids"))
+            if consent.get("disposition") != rights.get("disposition"):
+                errors.append(_error("provenance_mismatch", "consent disposition"))
+            if not set(rights.get("allowed_uses", [])).issubset(set(consent.get("allowed_uses", []))):
+                errors.append(_error("consent_scope_mismatch", "consent allowed_uses"))
+            consent_allowed = set(consent.get("allowed_uses", []))
+            if split in RELEASE_SPLITS and (consent.get("disposition") != "approved" or split not in consent_allowed):
+                errors.append(_error("consent_not_admissible", f"{split} requires approved consent and allowed use"))
+            if split == "fixture" and (not fixture_mode or consent.get("disposition") != "fixture_only" or "fixture" not in consent_allowed):
+                errors.append(_error("consent_not_admissible", "fixture split is synthetic-test-only"))
         rights_assets = set(rights.get("asset_ids", []))
         if not record_source_assets.issubset(rights_assets) or not media_asset_refs.issubset(rights_assets):
             errors.append(_error("rights_scope_mismatch", "rights asset_ids"))
@@ -597,8 +699,19 @@ def _validate_manifest_references(record: dict[str, Any], manifests: dict[str, l
     else:
         if derivation.get("source_shoot_id") != source_id or derivation.get("derivation_family_id") != provenance.get("derivation_family_id"):
             errors.append(_error("family_mismatch", "derivation family/source shoot"))
-        if derivation.get("is_independent") is not True or derivation.get("derivation_kind") in NON_INDEPENDENT_DERIVATION_KINDS:
+        derivation_kind = derivation.get("derivation_kind")
+        _check_enum(derivation_kind, DERIVATION_KINDS, "derivation.derivation_kind", errors, code="invalid_derivation_kind")
+        independent = derivation.get("is_independent")
+        counts_toward_quota = derivation.get("counts_toward_quota")
+        if independent is not True or derivation_kind in NON_INDEPENDENT_DERIVATION_KINDS:
             errors.append(_error("non_independent_derivation", record.get("record_id", "")))
+        expected_kind = {"still": "original_still", "temporal": "original_temporal_sequence", "episode": "original_before_after_episode"}.get(record.get("record_type"))
+        if independent is True and derivation_kind != expected_kind:
+            errors.append(_error("invalid_derivation_kind", "independent derivation kind does not match record type"))
+        if split in RELEASE_SPLITS and independent is True and counts_toward_quota is not True:
+            errors.append(_error("invalid_quota_semantics", f"{split} independent record must count toward quota"))
+        if split in {"fixture", "quarantine"} and counts_toward_quota is True:
+            errors.append(_error("invalid_quota_semantics", f"{split} record cannot count toward release quota"))
         derivation_outputs = set(derivation.get("output_asset_ids", []))
         if not record_source_assets.issubset(derivation_outputs) or not media_asset_refs.issubset(derivation_outputs):
             errors.append(_error("provenance_mismatch", "derivation output assets"))
@@ -608,6 +721,7 @@ def validate_record(record: Any, manifests: dict[str, list[dict[str, Any]]], *, 
     if not isinstance(record, dict):
         return [_error("invalid_object", "record")]
     errors: list[str] = []
+    _validate_closed_keys(record, "record", "record", errors)
     _check_no_locked_outputs(record, "record", errors)
     required = {"schema_id", "schema_version", "record_id", "record_type", "matrix_class", "split", "media", "capture", "provenance", "subject", "style_intent", "label", "review"}
     _require(record, required, "record", errors)
@@ -697,6 +811,7 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "source_shoot_id", "scene_family_id", "take_family_id", "time_family_id", "location_family_id", "person_family_ids", "device_family_id", "orientation", "lens", "lighting", "asset_ids", "storage", "source_kind"}, path, errors)
         if not isinstance(entry, dict):
             continue
+        _validate_closed_keys(entry, "source_shoot_entry", path, errors)
         if entry.get("manifest_type") != "source_shoot_entry" or entry.get("schema_id") != "camera-source-shoot-v1" or entry.get("manifest_version") != SCHEMA_VERSION:
             errors.append(_error("invalid_manifest_entry", path))
         source_id = entry.get("source_shoot_id")
@@ -714,12 +829,46 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         _check_enum(entry.get("source_kind"), SOURCE_KINDS, f"{path}.source_kind", errors)
         if entry.get("storage") != "outside_git":
             errors.append(_error("raw_media_inside_git", path))
+    consent_ids: set[str] = set()
+    consent_by_id: dict[str, dict[str, Any]] = {}
+    consent_assets: dict[str, set[str]] = {}
+    for index, entry in enumerate(manifests.get("consents", [])):
+        path = f"manifests.consents[{index}]"
+        _require(entry, {"manifest_type", "schema_id", "manifest_version", "consent_record_id", "source_shoot_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"}, path, errors)
+        if not isinstance(entry, dict):
+            continue
+        _validate_closed_keys(entry, "consent_entry", path, errors)
+        if entry.get("manifest_type") != "consent_entry" or entry.get("schema_id") != "camera-consent-entry-v1" or entry.get("manifest_version") != SCHEMA_VERSION:
+            errors.append(_error("invalid_manifest_entry", path))
+        consent_id = entry.get("consent_record_id")
+        _check_id(consent_id, f"{path}.consent_record_id", errors)
+        if consent_id in consent_ids:
+            errors.append(_error("duplicate_manifest_id", path))
+        consent_ids.add(consent_id)
+        consent_by_id[consent_id] = entry
+        source_id = entry.get("source_shoot_id")
+        if source_id not in source_ids:
+            errors.append(_error("missing_source_shoot", path))
+        assets = _check_list(entry.get("asset_ids"), f"{path}.asset_ids", errors, nonempty=True)
+        asset_set = {asset_id for asset_id in assets if isinstance(asset_id, str)}
+        if source_id in source_assets and not asset_set.issubset(source_assets[source_id]):
+            errors.append(_error("missing_source_asset", path))
+        consent_assets[consent_id] = asset_set
+        _check_enum(entry.get("disposition"), RIGHTS_DISPOSITIONS, f"{path}.disposition", errors)
+        allowed_uses = _check_list(entry.get("allowed_uses"), f"{path}.allowed_uses", errors, nonempty=True)
+        for use in allowed_uses:
+            _check_enum(use, RIGHTS_USES, f"{path}.allowed_uses", errors)
+        if not isinstance(entry.get("evidence_ref"), str) or not entry.get("evidence_ref"):
+            errors.append(_error("missing_consent_evidence", path))
+        if not DATE_RE.fullmatch(entry.get("recorded_at", "")):
+            errors.append(_error("invalid_timestamp", f"{path}.recorded_at"))
     rights_ids: set[str] = set()
     for index, entry in enumerate(manifests.get("rights", [])):
         path = f"manifests.rights[{index}]"
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "rights_record_id", "source_shoot_id", "consent_record_id", "asset_ids", "disposition", "allowed_uses", "evidence_ref", "recorded_at"}, path, errors)
         if not isinstance(entry, dict):
             continue
+        _validate_closed_keys(entry, "rights_entry", path, errors)
         if entry.get("manifest_type") != "rights_entry" or entry.get("schema_id") != "camera-rights-entry-v1" or entry.get("manifest_version") != SCHEMA_VERSION:
             errors.append(_error("invalid_manifest_entry", path))
         rights_id = entry.get("rights_record_id")
@@ -730,9 +879,24 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         source_id = entry.get("source_shoot_id")
         if source_id not in source_ids:
             errors.append(_error("missing_source_shoot", path))
+        consent_id = entry.get("consent_record_id")
+        consent = consent_by_id.get(consent_id)
+        if consent is None:
+            errors.append(_error("missing_consent_record", str(consent_id)))
+        else:
+            if consent.get("source_shoot_id") != source_id:
+                errors.append(_error("provenance_mismatch", f"{path}.consent source_shoot_id"))
         assets = _check_list(entry.get("asset_ids"), f"{path}.asset_ids", errors, nonempty=True)
-        if source_id in source_assets and not set(assets).issubset(source_assets[source_id]):
+        asset_set = {asset_id for asset_id in assets if isinstance(asset_id, str)}
+        if source_id in source_assets and not asset_set.issubset(source_assets[source_id]):
             errors.append(_error("missing_source_asset", path))
+        if consent is not None:
+            if not asset_set.issubset(consent_assets.get(consent_id, set())):
+                errors.append(_error("consent_scope_mismatch", path))
+            if consent.get("disposition") != entry.get("disposition"):
+                errors.append(_error("provenance_mismatch", f"{path}.consent disposition"))
+            if not set(entry.get("allowed_uses", [])).issubset(set(consent.get("allowed_uses", []))):
+                errors.append(_error("consent_scope_mismatch", f"{path}.consent allowed_uses"))
         _check_id(entry.get("consent_record_id"), f"{path}.consent_record_id", errors)
         _check_enum(entry.get("disposition"), RIGHTS_DISPOSITIONS, f"{path}.disposition", errors)
         allowed_uses = _check_list(entry.get("allowed_uses"), f"{path}.allowed_uses", errors, nonempty=True)
@@ -743,11 +907,13 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         if not DATE_RE.fullmatch(entry.get("recorded_at", "")):
             errors.append(_error("invalid_timestamp", f"{path}.recorded_at"))
     derivation_ids: set[str] = set()
+    derivation_record_ids: set[str] = set()
     for index, entry in enumerate(manifests.get("derivations", [])):
         path = f"manifests.derivations[{index}]"
         _require(entry, {"manifest_type", "schema_id", "manifest_version", "derivation_id", "source_shoot_id", "record_id", "input_asset_ids", "output_asset_ids", "derivation_family_id", "derivation_kind", "is_independent", "counts_toward_quota"}, path, errors)
         if not isinstance(entry, dict):
             continue
+        _validate_closed_keys(entry, "derivation_entry", path, errors)
         if entry.get("manifest_type") != "derivation_entry" or entry.get("schema_id") != "camera-derivation-entry-v1" or entry.get("manifest_version") != SCHEMA_VERSION:
             errors.append(_error("invalid_manifest_entry", path))
         derivation_id = entry.get("derivation_id")
@@ -765,9 +931,23 @@ def _validate_fixture_manifests(manifests: dict[str, list[dict[str, Any]]]) -> l
         if not set(input_assets).issubset(set(output_assets)):
             errors.append(_error("provenance_mismatch", path))
         _check_id(entry.get("record_id"), f"{path}.record_id", errors)
+        record_id = entry.get("record_id")
+        if record_id in derivation_record_ids:
+            errors.append(_error("duplicate_derivation_record", record_id))
+        derivation_record_ids.add(record_id)
         _check_id(entry.get("derivation_family_id"), f"{path}.derivation_family_id", errors)
-        if not isinstance(entry.get("is_independent"), bool) or not isinstance(entry.get("counts_toward_quota"), bool):
+        derivation_kind = entry.get("derivation_kind")
+        _check_enum(derivation_kind, DERIVATION_KINDS, f"{path}.derivation_kind", errors, code="invalid_derivation_kind")
+        independent = entry.get("is_independent")
+        counts_toward_quota = entry.get("counts_toward_quota")
+        if not isinstance(independent, bool) or not isinstance(counts_toward_quota, bool):
             errors.append(_error("invalid_derivation_flag", path))
+        elif isinstance(derivation_kind, str):
+            expected_independent = derivation_kind in INDEPENDENT_DERIVATION_KINDS
+            if independent != expected_independent:
+                errors.append(_error("invalid_derivation_flag", f"{path}: derivation kind and independence disagree"))
+            if counts_toward_quota and not independent:
+                errors.append(_error("invalid_quota_semantics", f"{path}: non-independent derivation cannot count toward quota"))
     return errors
 
 
@@ -829,10 +1009,11 @@ def _read_collection(path: Path) -> list[dict[str, Any]]:
     return payload
 
 
-def _load_external_manifests(source_path: Path, rights_path: Path, derivation_path: Path) -> dict[str, list[dict[str, Any]]]:
+def _load_external_manifests(source_path: Path, consent_path: Path, rights_path: Path, derivation_path: Path) -> dict[str, list[dict[str, Any]]]:
     """Load only caller-supplied manifests for production/batch admission."""
     collections = {
         "source_shoots": _read_collection(source_path),
+        "consents": _read_collection(consent_path),
         "rights": _read_collection(rights_path),
         "derivations": _read_collection(derivation_path),
     }
@@ -911,6 +1092,10 @@ def _apply_mutations(record: dict[str, Any], manifests: dict[str, list[dict[str,
         elif target == "rights":
             rights_id = record["provenance"]["rights_record_id"]
             target_object = next(item for item in manifests["rights"] if item["rights_record_id"] == rights_id)
+        elif target == "consent":
+            rights_id = record["provenance"]["rights_record_id"]
+            rights = next(item for item in manifests["rights"] if item["rights_record_id"] == rights_id)
+            target_object = next(item for item in manifests["consents"] if item["consent_record_id"] == rights["consent_record_id"])
         elif target == "derivation":
             target_object = next(item for item in manifests["derivations"] if item["record_id"] == record["record_id"])
         else:
@@ -921,10 +1106,15 @@ def _apply_mutations(record: dict[str, Any], manifests: dict[str, list[dict[str,
 def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict[str, Any]]], *, fixture_mode: bool = False) -> list[str]:
     """Validate an externally supplied collection and isolate all families."""
     errors = _validate_fixture_manifests(manifests)
+    record_ids: set[str] = set()
     for record in records:
+        record_id = record.get("record_id")
+        if isinstance(record_id, str):
+            if record_id in record_ids:
+                errors.append(_error("duplicate_record_id", record_id))
+            record_ids.add(record_id)
         errors.extend(validate_record(record, manifests, fixture_mode=fixture_mode))
     errors.extend(validate_split_isolation(records))
-    record_ids = {record.get("record_id") for record in records}
     for entry in manifests.get("derivations", []):
         if entry.get("record_id") not in record_ids:
             errors.append(_error("orphan_derivation_record", str(entry.get("record_id"))))
@@ -934,7 +1124,7 @@ def validate_batch(records: list[dict[str, Any]], manifests: dict[str, list[dict
 def self_test() -> None:
     schema_errors = validate_schema_files()
     assert not schema_errors, schema_errors
-    for name, expected_type in (("source-shoots.jsonl", "source_shoots"), ("rights-manifest.jsonl", "rights"), ("derivation-manifest.jsonl", "derivation")):
+    for name, expected_type in (("source-shoots.jsonl", "source_shoots"), ("consent-manifest.jsonl", "consent"), ("rights-manifest.jsonl", "rights"), ("derivation-manifest.jsonl", "derivation")):
         errors = _validate_manifest_header(CAMERA_DIR / name, expected_type)
         assert not errors, errors
     fixture = _load_fixture()
@@ -946,6 +1136,11 @@ def self_test() -> None:
     for record in valid_records:
         errors = validate_record(record, manifests, fixture_mode=True)
         assert not errors, (record.get("record_id"), errors)
+    for outcome in ("correct", "no_op", "opposite", "overshoot"):
+        measurable_episode = copy.deepcopy(valid_records[2])
+        measurable_episode["episode"]["outcome"] = outcome
+        errors = validate_record(measurable_episode, manifests, fixture_mode=True)
+        assert not errors, (outcome, errors)
     keep = copy.deepcopy(valid_records[0])
     keep["label"] = {
         "issues": [],
@@ -958,9 +1153,8 @@ def self_test() -> None:
         "verification": [{"action_id": "keep_current_setup", "verifier_id": "frame_remains_acceptable", "result": "not_run", "measurement": "single_frame"}],
     }
     assert not validate_record(keep, manifests, fixture_mode=True)
-    abstain = copy.deepcopy(valid_records[0])
-    abstain["subject"] = {"status": "abstain", "candidates": [], "selected_subject_id": None}
-    abstain["label"] = {
+    abstain_selected_subject = copy.deepcopy(valid_records[0])
+    abstain_selected_subject["label"] = {
         "issues": [],
         "acceptable_action_ids": [],
         "forbidden_action_ids": [],
@@ -970,7 +1164,30 @@ def self_test() -> None:
         "abstention": {"status": "abstain", "reasons": ["subject_unclear"]},
         "verification": [{"action_id": "abstain", "verifier_id": "insufficient_evidence", "result": "inconclusive", "measurement": "not_observed"}],
     }
-    assert not validate_record(abstain, manifests, fixture_mode=True)
+    assert not validate_record(abstain_selected_subject, manifests, fixture_mode=True)
+    abstain_subject = copy.deepcopy(abstain_selected_subject)
+    abstain_subject["subject"] = {"status": "abstain", "candidates": [], "selected_subject_id": None}
+    assert not validate_record(abstain_subject, manifests, fixture_mode=True)
+    select_subject = copy.deepcopy(valid_records[0])
+    select_subject["subject"] = {
+        "status": "ambiguous",
+        "candidates": [
+            {"subject_id": "subject-fixture-001", "kind": "person", "reference": "subject-fixture-001"},
+            {"subject_id": "subject-fixture-001-b", "kind": "person", "reference": "subject-fixture-001-b"},
+        ],
+        "selected_subject_id": None,
+    }
+    select_subject["label"] = {
+        "issues": [],
+        "acceptable_action_ids": [],
+        "forbidden_action_ids": [],
+        "selected_action_id": None,
+        "selection_status": "no_action",
+        "keep_decision": "uncertain",
+        "abstention": {"status": "none", "reasons": []},
+        "verification": [{"action_id": "keep_current_setup", "verifier_id": "frame_remains_acceptable", "result": "not_run", "measurement": "single_frame"}],
+    }
+    assert not validate_record(select_subject, manifests, fixture_mode=True)
     assert not validate_split_isolation(valid_records)
     invalid_passes = 0
     for case in fixture["invalid_cases"]:
@@ -978,13 +1195,14 @@ def self_test() -> None:
         record = copy.deepcopy(base)
         case_manifests = copy.deepcopy(manifests)
         _apply_mutations(record, case_manifests, case["mutations"])
-        errors = validate_record(record, case_manifests, fixture_mode=True)
+        errors = _validate_fixture_manifests(case_manifests)
+        errors.extend(validate_record(record, case_manifests, fixture_mode=True))
         reason = case["declared_reason"]
         assert errors and any(reason in error for error in errors), (case["case_id"], reason, errors)
         invalid_passes += 1
     print(f"PASS M3-002 schemas matrix_classes={len(MATRIX_CLASSES)} actions={len(ACTION_IDS)} keep=1 abstain=1")
     print(f"PASS M3-003 references valid_records={len(valid_records)} rights_dispositions=fixture_only invalid_cases={invalid_passes}")
-    print("PASS M3-004 temporal_sequence=1 episode_outcomes=correct capture_families=scene/take/time/device/derivation")
+    print("PASS M3-004 temporal_sequence=1 timeline=full_nonoverlap episode_outcomes=correct/no_op/opposite/overshoot capture_families=scene/take/time/device/derivation")
     print("PASS M3-005 review_status=unreviewed vote_history=append_only adjudication_history=separate human_calibration=pending")
     print(f"PASS camera-coach self-test valid={len(valid_records)} invalid={invalid_passes}")
 
@@ -995,11 +1213,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--record", type=Path)
     parser.add_argument("--batch-records", type=Path, help="caller-supplied JSON/JSONL record collection")
     parser.add_argument("--source-shoots", type=Path, help="caller-supplied source-shoot manifest JSON/JSONL")
+    parser.add_argument("--consent-manifest", type=Path, help="caller-supplied consent manifest JSON/JSONL")
     parser.add_argument("--rights-manifest", type=Path, help="caller-supplied rights manifest JSON/JSONL")
     parser.add_argument("--derivation-manifest", type=Path, help="caller-supplied derivation manifest JSON/JSONL")
     parser.add_argument("--fixture-mode", action="store_true", help="explicitly admit synthetic_fixture records only for fixture tests")
     args = parser.parse_args(argv)
-    manifest_paths = (args.source_shoots, args.rights_manifest, args.derivation_manifest)
+    manifest_paths = (args.source_shoots, args.consent_manifest, args.rights_manifest, args.derivation_manifest)
     has_all_manifests = all(path is not None for path in manifest_paths)
     if args.self_test:
         self_test()
@@ -1011,16 +1230,17 @@ def main(argv: list[str] | None = None) -> int:
         print(_error("input_error", "--record and --batch-records are mutually exclusive"), file=sys.stderr)
         return 1
     if not has_all_manifests:
-        print(_error("input_error", "explicit --source-shoots, --rights-manifest, and --derivation-manifest are required for admission"), file=sys.stderr)
+        print(_error("input_error", "explicit --source-shoots, --consent-manifest, --rights-manifest, and --derivation-manifest are required for admission"), file=sys.stderr)
         return 1
     try:
-        manifests = _load_external_manifests(args.source_shoots, args.rights_manifest, args.derivation_manifest)
+        manifests = _load_external_manifests(args.source_shoots, args.consent_manifest, args.rights_manifest, args.derivation_manifest)
         if args.batch_records is not None:
             records = _read_collection(args.batch_records)
             errors = validate_batch(records, manifests, fixture_mode=args.fixture_mode)
         else:
             record = _read_json(args.record)
-            errors = validate_record(record, manifests, fixture_mode=args.fixture_mode)
+            errors = _validate_fixture_manifests(manifests)
+            errors.extend(validate_record(record, manifests, fixture_mode=args.fixture_mode))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(_error("input_error", str(exc)), file=sys.stderr)
         return 1
@@ -1032,7 +1252,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"PASS {args.batch_records} camera-coach-batch "
             f"records={len(records)} source_shoots={len(manifests['source_shoots'])} "
-            f"rights={len(manifests['rights'])} derivations={len(manifests['derivations'])}"
+            f"consents={len(manifests['consents'])} rights={len(manifests['rights'])} "
+            f"derivations={len(manifests['derivations'])}"
         )
     else:
         print(f"PASS {args.record} camera-coach-record")

@@ -40,11 +40,11 @@
   },
   "pilot_checklist": [
     {"id":"independent_decision","check":"Each counted record is a deliberate source decision, not a burst neighbour, crop, color variant, or duplicated frame."},
-    {"id":"family_keys","check":"scene_family_id, take_family_id, time_family_id, and derivation_family_id are present and stable."},
+    {"id":"family_keys","check":"scene_family_id, take_family_id, time_family_id, device_family_id, and derivation_family_id are present and stable."},
     {"id":"coverage","check":"Pilot spans multiple devices, people, locations, portrait/landscape orientations, lenses, and lighting conditions."},
-    {"id":"rights","check":"A rights_record_id is present and its disposition/allowed use is resolved before admission."},
+    {"id":"rights","check":"A rights_record_id and consent_record_id are present; both dispositions and allowed uses resolve before admission."},
     {"id":"action_episodes","check":"Before/after pilot includes correct, no-op, and opposite outcomes for each exercised action."},
-    {"id":"split_isolation","check":"A source shoot, take, time, person, location, and derivation family occurs in one split only."},
+    {"id":"split_isolation","check":"A source shoot, scene, take, time, person, location, device, and derivation family occurs in one split only."},
     {"id":"audit_receipt","check":"Manifest entry hashes and operator/date are retained outside raw media storage."}
   ]
 }

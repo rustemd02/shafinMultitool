@@ -22,8 +22,10 @@ Every entry receives stable IDs for:
   neighbours, sequence frames, and episode views derived from it.
 
 The family IDs are split-protection keys. A family must occur in exactly one of
-`train`, `calibration`, or `holdout`; ambiguous or rights-incomplete entries go
-to `quarantine`. A release owner, not the capture operator, assigns the split.
+`train`, `calibration`, or `holdout`; this includes `device_family_id` as well
+as source, scene, take, time, location, person, and derivation families.
+Ambiguous or rights-incomplete entries go to `quarantine`. A release owner,
+not the capture operator, assigns the split.
 
 ## Coverage matrix
 
@@ -56,7 +58,14 @@ missing dimension with a synthetic or assumed value.
 3. If a burst or rapid retry is used, keep every frame in the same
    `take_family_id` and `derivation_family_id`. Select at most one independent
    source decision. Mark adjacent frames, crops, resizes, and color variants as
-   non-independent derivatives in the derivation manifest.
+   non-independent derivatives in the derivation manifest. The only closed
+   derivation kinds are `original_still`, `original_temporal_sequence`,
+   `original_before_after_episode`, `burst_frame`, `crop`, `resize`,
+   `color_variant`, `temporal_frame`, and `episode_view`; original kinds are
+   independent, while non-independent kinds never count toward quota. For a
+   release split, an independent record must count toward quota; fixture and
+   quarantine records never do. Record and derivation IDs are unique within a
+   batch/manifest.
 4. Record the asset IDs and SHA-256 hashes without copying raw media into Git.
 5. Stop admission when source, rights, privacy, or family metadata is missing.
 
@@ -70,9 +79,11 @@ timestamps, frame ordinals, asset IDs, and a state timeline such as
 `acquire`, `stable`, `moving`, `rotation`, `lens_change`,
 `lighting_transition`, or `scene_cut`.
 
-The sequence remains one record and one split. Never split frames into separate
-partitions, count each frame as an independent still, or use a later frame as a
-new source shoot. Device family is also a protected split key even when scene,
+The sequence remains one record and one split. Timeline segments must be
+ordered, non-overlapping, contiguous from frame 0 through the final frame, and
+cover every frame exactly once. Never split frames into separate partitions,
+count each frame as an independent still, or use a later frame as a new source
+shoot. Device family is also a protected split key even when scene,
 take, time, location, and person families differ. Include sequences that
 exercise subject acquisition,
 tracking, motion, advice stability, device rotation, lens changes, lighting
@@ -98,8 +109,11 @@ after.captured_at`; failure or inconclusive evidence cannot be called correct:
 - `incomparable`: before and after cannot be compared safely.
 
 The pilot must exercise correct, no-op, and opposite outcomes for each action
-that it tests. Overshoot, track loss, and incomparable outcomes are preserved
-as failure/abstention evidence, never silently converted to `no_op`.
+that it tests. Every measurable outcome (`correct`, `no_op`, `opposite`, or
+`overshoot`) requires a matching action-specific verifier with `result=pass` and
+`measurement=before_after`; `track_loss` and `incomparable` are non-measurable
+outcomes. Overshoot, track loss, and incomparable outcomes are preserved as
+failure/abstention evidence, never silently converted to `no_op`.
 
 ## Rights and provenance gate
 
@@ -107,37 +121,41 @@ Before a record can enter train, calibration, or holdout, the validator must
 resolve:
 
 1. `source_shoot_id` and every source asset ID in `source-shoots.jsonl`;
-2. `rights_record_id`, source-shoot match, asset scope, explicit disposition,
-   and allowed use in `rights-manifest.jsonl` (including its consent record);
-3. `derivation_family_id`, record link, source-shoot link, and independence in
+2. `consent_record_id` in `consent-manifest.jsonl`, with a matching source-shoot
+   and asset scope, explicit admissible disposition, allowed use, evidence
+   reference, and `recorded_at`;
+3. `rights_record_id`, source-shoot match, asset scope, explicit disposition,
+   allowed use, and its resolved consent record in `rights-manifest.jsonl`;
+4. `derivation_family_id`, record link, source-shoot link, and independence in
    `derivation-manifest.jsonl`;
-4. all family fields against the source-shoot entry.
+5. all family fields against the source-shoot entry.
 
 The resolved source-shoot entry is authoritative for `source_kind`; a record
 claiming a different kind is invalid. A resolved `synthetic_fixture` source is
 never eligible for train, calibration, or holdout, regardless of claimant
-fields or a relabeled rights disposition. Only `approved` rights with the
-requested allowed use are eligible. Missing,
+fields or a relabeled rights disposition. Only `approved` rights and `approved`
+consent with the requested allowed use are eligible. Missing,
 `denied`, `unresolved`, `pending`, `withdrawn`, or `fixture_only` rights are
 not eligible for a release split. They remain quarantine/audit evidence only.
 
 ## Operational batch admission
 
-Admission reads a caller-supplied record collection and three caller-supplied
-JSON/JSONL manifests. It never falls back to the embedded synthetic fixture
-manifests. A single `--record` invocation likewise requires all three explicit
-manifest arguments; `--fixture-mode` is an explicit test-only opt-in for the
-synthetic `fixture` split.
+Admission reads a caller-supplied record collection and four caller-supplied
+JSON/JSONL manifests: source shoots, consent, rights, and derivation. It never
+falls back to the embedded synthetic fixture manifests. A single `--record`
+invocation likewise requires all four explicit manifest arguments;
+`--fixture-mode` is an explicit test-only opt-in for the synthetic `fixture`
+split.
 
 Positive synthetic fixture-path smoke check (the flag is intentionally
 explicit):
 
 ```text
-python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
 ```
 
 The checker must print `PASS ... camera-coach-batch` only when every record
-resolves source/rights/derivation references and no source, scene, take, time,
+resolves source/consent/rights/derivation references and no source, scene, take, time,
 location, person, device, or derivation family crosses train, calibration, or
 holdout. A protected-family crossing is a hard failure even if each record is
 otherwise structurally valid. The negative fixture
@@ -145,7 +163,7 @@ otherwise structurally valid. The negative fixture
 crossing and is run with its caller-supplied negative derivation manifest.
 
 ```text
-python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-family.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-negative-derivations.jsonl
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-family.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-negative-derivations.jsonl --fixture-mode
 ```
 
 The device-family isolation probe keeps every other protected family distinct
@@ -154,14 +172,25 @@ caller-supplied manifests and must fail on that device family crossing (the
 synthetic fixture source/rights gates also remain fail-closed):
 
 ```text
-python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-device.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-device.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
+```
+
+Duplicate guards run before any release use. A batch with a repeated
+`record_id` fails with `duplicate_record_id`; a derivation manifest with more
+than one entry for a record fails with `duplicate_derivation_record` rather
+than silently selecting the last entry. Both fixtures are synthetic and use
+the same four caller-supplied manifests:
+
+```text
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-negative-duplicates.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-derivations.jsonl --fixture-mode
+python3 tools/dataset/camera_coach_check.py --batch-records tools/dataset/tests/fixtures/camera-coach-batch-positive.jsonl --source-shoots tools/dataset/tests/fixtures/camera-coach-batch-source-shoots.jsonl --consent-manifest tools/dataset/tests/fixtures/camera-coach-batch-consents.jsonl --rights-manifest tools/dataset/tests/fixtures/camera-coach-batch-rights.jsonl --derivation-manifest tools/dataset/tests/fixtures/camera-coach-batch-duplicate-derivations.jsonl --fixture-mode
 ```
 
 ## Auditable pilot manifest
 
 Start from `capture-manifest-template.json`. For every entry, retain the
 operator, UTC timestamp, family IDs, device/lens/light/orientation fields,
-asset IDs, derivation classification, rights record ID, and an external
+asset IDs, derivation classification, rights and consent record IDs, and an external
 receipt/hash reference. A pilot audit is incomplete until each checklist item
 in that template has a recorded pass/fail/blocked result and an evidence
 location. Empty or unobserved fields are not passes.
@@ -173,7 +202,7 @@ Minimum pilot audit checklist:
 - temporal sequences have monotonic timestamps and remain one split group;
 - each exercised action has correct, no-op, and opposite episode rows;
 - device, person, location, orientation, lens, and light variation is recorded;
-- source, rights, and derivation references resolve before annotation;
+- source, consent, rights, and derivation references resolve before annotation;
 - unresolved privacy/rights/family issues are quarantined;
 - no locked labels, candidate outputs, human votes, or model-quality claims are
   written into capture manifests.

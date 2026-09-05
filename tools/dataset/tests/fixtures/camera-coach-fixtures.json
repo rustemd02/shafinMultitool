@@ -60,6 +60,44 @@
         "source_kind": "synthetic_fixture"
       }
     ],
+    "consents": [
+      {
+        "manifest_type": "consent_entry",
+        "schema_id": "camera-consent-entry-v1",
+        "manifest_version": "v1.0.0",
+        "consent_record_id": "consent-fixture-001",
+        "source_shoot_id": "shoot-fixture-001",
+        "asset_ids": ["asset-still-fixture-001"],
+        "disposition": "fixture_only",
+        "allowed_uses": ["fixture"],
+        "evidence_ref": "synthetic-fixture-only",
+        "recorded_at": "2026-09-05T00:00:00Z"
+      },
+      {
+        "manifest_type": "consent_entry",
+        "schema_id": "camera-consent-entry-v1",
+        "manifest_version": "v1.0.0",
+        "consent_record_id": "consent-fixture-002",
+        "source_shoot_id": "shoot-fixture-002",
+        "asset_ids": ["asset-seq-fixture-002", "asset-seq-fixture-002-f0", "asset-seq-fixture-002-f1", "asset-seq-fixture-002-f2"],
+        "disposition": "fixture_only",
+        "allowed_uses": ["fixture"],
+        "evidence_ref": "synthetic-fixture-only",
+        "recorded_at": "2026-09-05T00:00:00Z"
+      },
+      {
+        "manifest_type": "consent_entry",
+        "schema_id": "camera-consent-entry-v1",
+        "manifest_version": "v1.0.0",
+        "consent_record_id": "consent-fixture-003",
+        "source_shoot_id": "shoot-fixture-003",
+        "asset_ids": ["asset-episode-fixture-003", "asset-episode-fixture-003-before", "asset-episode-fixture-003-after"],
+        "disposition": "fixture_only",
+        "allowed_uses": ["fixture"],
+        "evidence_ref": "synthetic-fixture-only",
+        "recorded_at": "2026-09-05T00:00:00Z"
+      }
+    ],
     "rights": [
       {
         "manifest_type": "rights_entry",
@@ -263,11 +301,20 @@
     {"case_id":"episode-verifier-mismatch", "declared_reason":"invalid_action_verifier", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.outcome_verifier", "value":"object_position_improves_left"}]},
     {"case_id":"selection-abstain-without-abstention", "declared_reason":"invalid_abstention", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"label.selection_status", "value":"abstain"}]},
     {"case_id":"ambiguous-subject-selected", "declared_reason":"invalid_subject_reference", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"subject.status", "value":"ambiguous"}]},
+    {"case_id":"ambiguous-subject-corrective-action", "declared_reason":"invalid_selection", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"subject.status", "value":"ambiguous"},{"target":"record", "operation":"set", "path":"subject.candidates", "value":[{"subject_id":"subject-fixture-001", "kind":"person", "reference":"subject-fixture-001"},{"subject_id":"subject-fixture-001-b", "kind":"person", "reference":"subject-fixture-001-b"}]},{"target":"record", "operation":"set", "path":"subject.selected_subject_id", "value":null},{"target":"record", "operation":"set", "path":"label.acceptable_action_ids", "value":["step_back"]},{"target":"record", "operation":"set", "path":"label.selected_action_id", "value":"step_back"},{"target":"record", "operation":"set", "path":"label.selection_status", "value":"single"},{"target":"record", "operation":"set", "path":"label.keep_decision", "value":"not_keep"},{"target":"record", "operation":"set", "path":"label.verification", "value":[{"action_id":"step_back", "verifier_id":"framing_breathing_room_increases", "result":"not_run", "measurement":"single_frame"}]}]},
+    {"case_id":"unknown-candidate-identity", "declared_reason":"unknown_field", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"subject.candidates.0.candidate_identity", "value":{"modelOutput":"forbidden"}}]},
+    {"case_id":"unknown-model-output", "declared_reason":"unknown_field", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"modelOutput", "value":{"action":"step_back"}}]},
+    {"case_id":"unknown-label-field", "declared_reason":"unknown_field", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"label.unexpected", "value":true}]},
     {"case_id":"temporal-too-few-frames", "declared_reason":"invalid_sequence_length", "base_record_id":"cam-temporal-fixture-002", "mutations":[{"target":"record", "operation":"set", "path":"sequence.frames", "value":[{"frame_id":"frame-fixture-002-f0", "ordinal":0, "timestamp_ms":0, "asset_id":"asset-seq-fixture-002-f0", "state":"acquire"}]},{"target":"record", "operation":"set", "path":"sequence.frame_count", "value":1}]},
     {"case_id":"temporal-noncontiguous-ordinals", "declared_reason":"invalid_sequence_order", "base_record_id":"cam-temporal-fixture-002", "mutations":[{"target":"record", "operation":"set", "path":"sequence.frames.1.ordinal", "value":2}]},
     {"case_id":"temporal-nonincreasing-timestamps", "declared_reason":"invalid_sequence_timestamp", "base_record_id":"cam-temporal-fixture-002", "mutations":[{"target":"record", "operation":"set", "path":"sequence.frames.1.timestamp_ms", "value":0}]},
+    {"case_id":"temporal-timeline-overlap", "declared_reason":"invalid_sequence_timeline", "base_record_id":"cam-temporal-fixture-002", "mutations":[{"target":"record", "operation":"set", "path":"sequence.timeline.1.start_frame", "value":0}]},
+    {"case_id":"temporal-timeline-gap", "declared_reason":"invalid_sequence_timeline", "base_record_id":"cam-temporal-fixture-002", "mutations":[{"target":"record", "operation":"set", "path":"sequence.timeline.1.start_frame", "value":2}]},
     {"case_id":"episode-after-not-later", "declared_reason":"invalid_episode_order", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.after.captured_at", "value":"2026-09-05T00:00:00Z"}]},
     {"case_id":"episode-correct-failure-verification", "declared_reason":"invalid_episode_outcome", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"label.verification.0.result", "value":"fail"}]},
+    {"case_id":"episode-no-op-without-measured-pass", "declared_reason":"invalid_episode_outcome", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.outcome", "value":"no_op"},{"target":"record", "operation":"set", "path":"label.verification.0.result", "value":"fail"}]},
+    {"case_id":"episode-opposite-without-measured-pass", "declared_reason":"invalid_episode_outcome", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.outcome", "value":"opposite"},{"target":"record", "operation":"set", "path":"label.verification.0.result", "value":"fail"}]},
+    {"case_id":"episode-overshoot-without-measured-pass", "declared_reason":"invalid_episode_outcome", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.outcome", "value":"overshoot"},{"target":"record", "operation":"set", "path":"label.verification.0.result", "value":"fail"}]},
     {"case_id":"synthetic-source-relabelled-owned", "declared_reason":"synthetic_source_not_admissible", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"split", "value":"train"},{"target":"record", "operation":"set", "path":"provenance.source_kind", "value":"owned"},{"target":"record", "operation":"set", "path":"provenance.rights_disposition", "value":"approved"},{"target":"rights", "operation":"set", "path":"disposition", "value":"approved"},{"target":"rights", "operation":"set", "path":"allowed_uses", "value":["train"]}]},
     {"case_id":"media-primary-foreign", "declared_reason":"missing_source_asset", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"media.asset_id", "value":"asset-foreign"}]},
     {"case_id":"media-member-foreign", "declared_reason":"missing_source_asset", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"media.asset_ids", "value":["asset-still-fixture-001", "asset-foreign"]}]},
@@ -275,8 +322,13 @@
     {"case_id":"none-subject-selected", "declared_reason":"invalid_subject_reference", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"subject.status", "value":"none"}]},
     {"case_id":"abstain-subject-selected", "declared_reason":"invalid_subject_reference", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"subject.status", "value":"abstain"}]},
     {"case_id":"abstention-none-with-reason", "declared_reason":"invalid_abstention", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"label.abstention.reasons", "value":["other"]}]},
+    {"case_id":"abstention-status-without-label", "declared_reason":"invalid_abstention", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"label.abstention.status", "value":"abstain"},{"target":"record", "operation":"set", "path":"label.abstention.reasons", "value":["issue_unclear"]}]},
     {"case_id":"subject-abstain-label-mismatch", "declared_reason":"invalid_abstention", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"subject.status", "value":"abstain"},{"target":"record", "operation":"set", "path":"subject.selected_subject_id", "value":null}]},
-    {"case_id":"label-abstain-subject-mismatch", "declared_reason":"invalid_abstention", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"label.issues", "value":[]},{"target":"record", "operation":"set", "path":"label.acceptable_action_ids", "value":[]},{"target":"record", "operation":"set", "path":"label.selected_action_id", "value":null},{"target":"record", "operation":"set", "path":"label.selection_status", "value":"abstain"},{"target":"record", "operation":"set", "path":"label.keep_decision", "value":"uncertain"},{"target":"record", "operation":"set", "path":"label.abstention.status", "value":"abstain"},{"target":"record", "operation":"set", "path":"label.abstention.reasons", "value":["issue_unclear"]},{"target":"record", "operation":"set", "path":"label.verification", "value":[{"action_id":"abstain", "verifier_id":"insufficient_evidence", "result":"inconclusive", "measurement":"not_observed"}]}]},
+    {"case_id":"missing-consent-record", "declared_reason":"missing_consent_record", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"rights", "operation":"set", "path":"consent_record_id", "value":"consent-missing"}]},
+    {"case_id":"denied-consent-release", "declared_reason":"consent_not_admissible", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"record", "operation":"set", "path":"split", "value":"train"},{"target":"record", "operation":"set", "path":"provenance.rights_disposition", "value":"denied"},{"target":"rights", "operation":"set", "path":"disposition", "value":"denied"},{"target":"rights", "operation":"set", "path":"allowed_uses", "value":["train"]},{"target":"consent", "operation":"set", "path":"disposition", "value":"denied"},{"target":"consent", "operation":"set", "path":"allowed_uses", "value":["train"]}]},
+    {"case_id":"unknown-derivation-kind", "declared_reason":"invalid_derivation_kind", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"derivation", "operation":"set", "path":"derivation_kind", "value":"manual_magic"}]},
+    {"case_id":"derivation-independence-mismatch", "declared_reason":"invalid_derivation_flag", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"derivation", "operation":"set", "path":"is_independent", "value":false},{"target":"derivation", "operation":"set", "path":"counts_toward_quota", "value":false}]},
+    {"case_id":"non-independent-counts-toward-quota", "declared_reason":"invalid_quota_semantics", "base_record_id":"cam-still-fixture-001", "mutations":[{"target":"derivation", "operation":"set", "path":"derivation_kind", "value":"burst_frame"},{"target":"derivation", "operation":"set", "path":"is_independent", "value":false},{"target":"derivation", "operation":"set", "path":"counts_toward_quota", "value":true}]},
     {"case_id":"episode-action-at-before", "declared_reason":"invalid_episode_order", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.action_step.performed_at", "value":"2026-09-05T00:00:00Z"}]},
     {"case_id":"episode-action-at-after", "declared_reason":"invalid_episode_order", "base_record_id":"cam-episode-fixture-003", "mutations":[{"target":"record", "operation":"set", "path":"episode.action_step.performed_at", "value":"2026-09-05T00:00:02Z"}]}
   ]

@@ -7,6 +7,8 @@ directory. It is a rubric, not a taste poll. Annotators write only the
 approved IDs from `docs/implementation/camera-coach-contract-v2.json` as
 mirrored by `label-schema.json`; legacy aliases, free-form advice, model
 output, locked labels, and candidate identity are not part of this contract.
+The owned record schemas are closed: unknown fields and model/candidate output
+extensions are rejected recursively at admission.
 
 ## 0. Eligibility before looking at the label
 
@@ -28,6 +30,15 @@ to serve. Choose the smallest stable reference that can be checked again:
 For `ambiguous`, `none`, or `abstain`, leave `selected_subject_id` null. For
 `selected`, the ID must resolve to exactly one candidate; never use a guessed
 or unresolved reference as a selected subject.
+
+`ambiguous` is the canonical `SELECT_SUBJECT`/fail-closed outcome from the
+contract. Encode it with `label.selection_status=no_action`, empty acceptable
+and selected corrective actions, `keep_decision=uncertain`, and
+`abstention.status=none`; only the safe `keep_current_setup` verification may
+remain. Do not admit a corrective action while the subject is ambiguous. This
+is distinct from label ABSTAIN: a record may keep `subject.status=selected`
+and its one valid selected subject while ABSTAIN is used for unclear issue,
+style-intent, visibility, or before/after evidence.
 
 Candidate `kind` is `face`, `person`, `object`, `group`, `scene`, or `unknown`.
 The reference is an asset-local stable ID, not a guessed name. Do not select a
@@ -135,7 +146,11 @@ action or ABSTAIN.
 
 Use ABSTAIN instead of guessing when the subject or issue is unclear, visibility
 is insufficient, style intent cannot be separated from a defect, rights/privacy
-blocks review, or a before/after pair is not comparable. Encode:
+blocks review, or a before/after pair is not comparable. If the subject itself
+is safely selected but issue/style/pair evidence is insufficient, keep that
+selected subject and use the ABSTAIN label below. Use `subject.status=abstain`
+with no selected subject only when the subject reference itself is unsafe.
+Encode the label as:
 
 ```json
 {
@@ -151,7 +166,10 @@ blocks review, or a before/after pair is not comparable. Encode:
 
 Never convert `incomparable`, `track_loss`, or an unresolved hard disagreement
 into a corrective action. ABSTAIN is a valid safety outcome and remains
-quarantine/holdout evidence until human review resolves it.
+quarantine/holdout evidence until human review resolves it. `abstention.status`
+must be `none` with no reasons, or `abstain` with at least one reason; the
+selection status, selected action, KEEP decision, and insufficient-evidence
+verification must agree.
 
 ## 7. Action-specific verification
 
@@ -189,19 +207,21 @@ a model score. Use `not_run` for a still label without an after state,
 For an episode, `episode.action_step.action_id` must be one of the acceptable
 actions and `outcome_verifier` must be the matching predicate. All timestamps
 must satisfy `before.captured_at < action_step.performed_at <
-after.captured_at`. `correct` is valid only when that chronology holds and the
-matching label verification is `pass` with `before_after` measurement. Record
-the outcome as `correct`, `no_op`, `opposite`, `overshoot`, `track_loss`, or
-`incomparable`; failure or inconclusive verification cannot be relabeled as
-correct, and no outcome implies a model-quality metric.
+after.captured_at`. Every measurable outcome (`correct`, `no_op`, `opposite`,
+or `overshoot`) requires the matching label verification to be `pass` with
+`before_after` measurement; failure or inconclusive evidence is not measurable
+proof. Record the outcome as `correct`, `no_op`, `opposite`, `overshoot`,
+`track_loss`, or `incomparable`; no outcome implies a model-quality metric.
 
 ## 8. Temporal records
 
 Annotate the sequence as one record. Frame ordinals are contiguous, timestamps
 are strictly increasing, and all frames share the source shoot, take family,
-derivation family, and split. Use the timeline to mark acquisition, stable
-periods, movement, rotation, lens change, lighting transition, or scene cut.
-Never make a frame-by-frame vote look like independent still evidence.
+derivation family, and split. Timeline segments must be ordered, non-overlapping,
+contiguous, and cover every frame exactly once from frame 0 through the final
+frame. Use the timeline to mark acquisition, stable periods, movement, rotation,
+lens change, lighting transition, or scene cut. Never make a frame-by-frame vote
+look like independent still evidence.
 
 ## 9. Review and disagreement
 
