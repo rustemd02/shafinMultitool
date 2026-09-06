@@ -374,12 +374,16 @@ struct SETTallyBadge: View {
         }
         .foregroundStyle(dimmed ? .setTextSecondary : .setTextPrimary)
         .onAppear {
+            // M11-001: the live tally is a one-shot domain-event projection,
+            // not a per-frame decorative loop. Reduce Motion keeps the steady
+            // state; motion plays a single settle transition on appear.
             guard pulses, !isMotionReduced else {
-                pulseVisible = true
+                pulseVisible = pulses ? false : true
                 return
             }
-            withAnimation(.easeInOut(duration: SETMotion.tallyPulseDuration).repeatForever()) {
-                pulseVisible = false
+            pulseVisible = false
+            withAnimation(.easeInOut(duration: SETMotion.tallyPulseDuration)) {
+                pulseVisible = true
             }
         }
         .onChange(of: isMotionReduced) { _, isReduced in

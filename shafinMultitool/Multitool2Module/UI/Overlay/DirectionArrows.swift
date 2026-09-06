@@ -90,14 +90,14 @@ struct DirectionArrows: View {
         Image(systemName: "arrow.up.circle.fill")
             .font(.system(size: 48))
             .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
+            .background(Circle().fill(.black.opacity(0.55)))
     }
     
     private func rotationIndicator(clockwise: Bool) -> some View {
         Image(systemName: clockwise ? "arrow.clockwise.circle.fill" : "arrow.counterclockwise.circle.fill")
             .font(.system(size: 48))
             .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
+            .background(Circle().fill(.black.opacity(0.55)))
     }
 }
 

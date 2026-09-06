@@ -750,3 +750,6 @@
 
 ### 2026-09-06 (session) — M12-036, M12-037, M12-038 CLOSED
 - Bundled asset provenance closed: fonts (5 families with in-file license basis; Caveat honestly flagged for source verification, all consumed by typography roles — no replacement, no visual drift), AppIcon/branding (in-house authorship, keep), USDZ/media (unused Person/Circle assets excluded from release, design textures kept — behavior preserved). Manifests in `evidence-m12/`. Tracker total: 156/424 completed, 268 remaining.
+
+### 2026-09-06 (session) — M11-001 CLOSED
+- Visual authority closed with a fail-closed audit script over the 26-file SET OS production surface (legacy/benchmark/debug excluded by authority): no blur/shadow/gradient/system-blue/generic-cards/fake-thumbnails, ink+warm-white+single setOrange present. Fixed two real violations — tally `repeatForever` → one-shot settle, arrow drop shadows → solid scrim disc. Overlay presentation 25/25. Tracker total: 157/424 completed, 267 remaining.
