@@ -125,7 +125,7 @@ final class CameraCoachProductionUITests: XCTestCase {
         )
         assertRoot("camera.interrupted", in: app)
         assertStableCameraIdentifiers(in: app)
-        attachScreenshot(app, named: "camera-interrupted")
+        attachScreenshot(app, named: "camera-interrupted-ru-portrait")
         app.terminate()
         XCUIDevice.shared.orientation = .portrait
     }

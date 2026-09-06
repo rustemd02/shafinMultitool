@@ -20,7 +20,7 @@ final class CameraCoachLaunchUITests: XCTestCase {
     func testCameraPortraitShowsFullscreenFrameAndCompactScenesControl() {
         launchApp(orientation: .portrait)
         assertCameraCoachRoot()
-        captureScreenshot(named: "CC-007C Camera portrait", expectedShape: .portrait)
+        captureScreenshot(named: "CC-007C Camera portrait en", expectedShape: .portrait)
 
         XCTAssertFalse(
             element(withIdentifier: "deviceBenchmarkStatusLabel").exists,
@@ -31,13 +31,13 @@ final class CameraCoachLaunchUITests: XCTestCase {
     func testCameraLandscapeLeftHasPhysicalLandscapeGeometryAndReadableUprightUI() {
         launchApp(orientation: .landscapeLeft)
         assertCameraCoachRoot()
-        captureScreenshot(named: "CC-007C Camera landscape left", expectedShape: .landscape)
+        captureScreenshot(named: "CC-007C Camera landscape left en", expectedShape: .landscape)
     }
 
     func testCameraLandscapeRightHasPhysicalLandscapeGeometryAndReadableUprightUI() {
         launchApp(orientation: .landscapeRight)
         assertCameraCoachRoot()
-        captureScreenshot(named: "CC-007C Camera landscape right", expectedShape: .landscape)
+        captureScreenshot(named: "CC-007C Camera landscape right en", expectedShape: .landscape)
     }
 
     func testSceneLibraryLandscapeHasPhysicalLandscapeGeometryAndReturnsToCamera() {
@@ -72,7 +72,7 @@ final class CameraCoachLaunchUITests: XCTestCase {
         XCTAssertTrue(openScenesControl.waitForExistence(timeout: launchTimeout))
         XCTAssertEqual(openScenesControl.label, "Сцены")
         XCTAssertTrue(openScenesControl.isHittable)
-        captureScreenshot(named: "CC-007C Scene library landscape", expectedShape: .landscape)
+        captureScreenshot(named: "CC-007C Scene library landscape en", expectedShape: .landscape)
 
         returnCameraControl.tap()
         XCTAssertTrue(element(withIdentifier: "camera_coach_pause").waitForExistence(timeout: launchTimeout))

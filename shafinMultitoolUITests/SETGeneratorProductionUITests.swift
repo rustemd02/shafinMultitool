@@ -436,12 +436,12 @@ final class SETGeneratorProductionUITests: XCTestCase {
 
         let trayToggle = app.buttons["storyboard_tray_toggle"]
         XCTAssertTrue(trayToggle.waitForExistence(timeout: launchTimeout))
-        attachPackage6Screenshot(named: "storyboard-result-ru-tray-collapsed")
+        attachPackage6Screenshot(named: "storyboard-result-ru-landscape-tray-collapsed")
 
         trayToggle.tap()
         let firstBeat = app.descendants(matching: .any)["storyboard_beat_beat_1"]
         XCTAssertTrue(firstBeat.waitForExistence(timeout: launchTimeout))
-        attachPackage6Screenshot(named: "storyboard-result-ru-tray-expanded")
+        attachPackage6Screenshot(named: "storyboard-result-ru-landscape-tray-expanded")
 
         let secondBeat = app.descendants(matching: .any)["storyboard_beat_beat_2"].firstMatch
         XCTAssertTrue(secondBeat.waitForExistence(timeout: launchTimeout))
@@ -467,7 +467,7 @@ final class SETGeneratorProductionUITests: XCTestCase {
             app.descendants(matching: .any)["storyboard_editor_sheet"].waitForExistence(timeout: launchTimeout),
             "Reduce Motion selection must still hand off to the real editor."
         )
-        attachPackage6Screenshot(named: "storyboard-selection-reflow-en-reduce-motion")
+        attachPackage6Screenshot(named: "storyboard-selection-reflow-en-landscape-reduce-motion")
     }
 
     func testStoryboardFixtureValidationAndDeleteConfirmation() {
@@ -576,7 +576,7 @@ final class SETGeneratorProductionUITests: XCTestCase {
             largePNG,
             "Medium and XXL large-editor evidence must not be byte-for-byte identical."
         )
-        attachPackage6Screenshot(named: "storyboard-editor-large-en-reduce-motion-dynamic-type")
+        attachPackage6Screenshot(named: "storyboard-editor-large-en-landscape-reduce-motion-dynamic-type")
     }
 
     func testStoryboardFixtureSavingUsesOwnerBusyState() {

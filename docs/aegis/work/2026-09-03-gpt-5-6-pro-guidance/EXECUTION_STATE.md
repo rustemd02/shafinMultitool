@@ -918,3 +918,6 @@
 
 ### 2026-09-06 (session) — M11-014…M11-021 CLOSED (surface evidence coverage)
 - Eight surface-evidence tasks closed as coverage verification: Camera (12 attachments), Library (10), Generator incl. storyboard/decision-trace (27) across the UI suites, each state with RU/EN × orientations × reduce-motion/dynamic-type variants per the M11-013 coverage checker. Tracker total: 228/424 completed, 196 remaining.
+
+### 2026-09-06 (session) — M11-022 CLOSED
+- Screenshot orientation validator closed (`scripts/evidence/check_screenshot_matrix.py` green over 55 attachments): oriented + localized + deduplicated, interpolated names resolved at runtime, legacy CC-008 lane documented, 5 incompletely named attachments fixed. Tracker total: 229/424 completed, 195 remaining.
