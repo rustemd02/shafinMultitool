@@ -856,6 +856,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var testingParserResultOverride: ((String, [MarkedObject]) async -> ParsingResult)?
     private(set) var testingGenerationOwnerCount = 0
     private(set) var testingGenerationStateTrace: [SceneGenerationRequestState] = [.idle]
+    /// M5-019: ordered stage publications within the current request.
+    private(set) var testingGenerationStageTrace: [SceneGenerationStage] = []
 #endif
     
     // MARK: - Cancellables
@@ -1817,6 +1819,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         generationToken: UInt
     ) -> Bool {
         guard generationIsCurrent(generationToken, requestID: requestID) else { return false }
+#if DEBUG
+        testingGenerationStageTrace.append(stage)
+#endif
         return publishGenerationState(
             .generating(requestID: requestID, epoch: generationToken, stage: stage),
             expectedRequestID: requestID,
@@ -7003,6 +7008,7 @@ extension SceneGeneratorViewModel {
 
     func testingResetGenerationStateTrace() {
         testingGenerationStateTrace = [generationRequestState]
+        testingGenerationStageTrace = []
     }
 
     /// Test-only parser seam: drives the same request-owned clarification edge

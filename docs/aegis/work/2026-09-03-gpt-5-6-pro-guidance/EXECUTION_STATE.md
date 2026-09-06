@@ -837,3 +837,6 @@
 
 ### 2026-09-06 (session) — M2-035 CLOSED (verified)
 - Camera integration verified through production owners (8/8 closed-loop tests on permitted iPhone 17e). Tracker total: 190/424 completed, 234 remaining.
+
+### 2026-09-06 (session) — M5-019 CLOSED
+- Progress closed: monotonic stage publication with epoch fencing, actual-phase labels, reset on retry; DEBUG stage-trace hook added for the proof. 1/1 progress test. Tracker total: 191/424 completed, 233 remaining.
