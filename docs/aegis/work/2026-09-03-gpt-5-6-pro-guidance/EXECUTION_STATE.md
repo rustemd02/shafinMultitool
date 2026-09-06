@@ -840,3 +840,6 @@
 
 ### 2026-09-06 (session) — M5-019 CLOSED
 - Progress closed: monotonic stage publication with epoch fencing, actual-phase labels, reset on retry; DEBUG stage-trace hook added for the proof. 1/1 progress test. Tracker total: 191/424 completed, 233 remaining.
+
+### 2026-09-06 (session) — M10-003 + M10-021 CLOSED
+- Device family verified (universal binary, route-aware masks, shell delegation) and performance tiers locked with monotonic governor budgets across A12/compact-A15/M-series classes. 5/5 iPad tests. Tracker total: 193/424 completed, 231 remaining.
