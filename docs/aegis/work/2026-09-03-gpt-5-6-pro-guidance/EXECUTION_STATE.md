@@ -882,3 +882,6 @@
 
 ### 2026-09-06 (session) — M0-009 CLOSED (verified)
 - Persistence inventory verified: schema/version/owner/location/backup/migration/deletion for all six record families. Tracker total: 207/424 completed, 217 remaining.
+
+### 2026-09-06 (session) — M0-010 CLOSED
+- Test evidence tagged: 125 suites / 1474 tests with unit/integration/UI/simulator/device/research tags and explicit lane prerequisites. Tracker total: 208/424 completed, 216 remaining.

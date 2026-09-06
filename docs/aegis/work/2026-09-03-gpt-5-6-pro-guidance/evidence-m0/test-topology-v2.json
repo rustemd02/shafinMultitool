@@ -1,0 +1,2753 @@
+{
+ "generated": "2026-09-06",
+ "suites": [
+  {
+   "file": "shafinMultitoolTests/ARConfigurationPolicyTests.swift",
+   "tests": [
+    "testWorldTrackingUnsupportedFailsBeforeConfiguration",
+    "testBasePlanKeepsOnlySupportedBaseOptions",
+    "testRequestedDepthPrefersSmoothedSceneDepth",
+    "testRequestedDepthFallsBackToSceneDepth",
+    "testRequestedDepthUnavailableDegradesWithoutClaimingDepth",
+    "testBaseCapabilityFailureIsTypedAndDoesNotEnableUnsupportedOptions"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ARSessionOwnershipTests.swift",
+   "tests": [
+    "testOwnerAttachesRunsOnceAndRerunsOnlyForMaterialConfigurationChange",
+    "testGenerationPauseAndResumeUseTheSameRuntimeOwner",
+    "testOwnerReleaseIsTerminalIdempotentAndFencesWrongOrStaleCallbacks",
+    "testUnsupportedWorldTrackingPublishesRecoveryWithoutRunningSession",
+    "testDeinitPausesAndDetachesRuntime",
+    "testInterruptionEndedAppliesSafetyOnceBeforeLatestGenerationRecovery"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ARWorkspaceContractTests.swift",
+   "tests": [
+    "testProjectionIsExactlyTheOrderedSeventeenStates",
+    "testValidatorRejectsMissingDuplicateExtraAndReorderedStates",
+    "testTransitionQueryFencesOriginToARSubsetAndKeepsCanonicalExits",
+    "testTypedMetadataComesDirectlyFromProductionRows",
+    "testOwnershipMappingsAreExactAndSessionConformanceIsRuntimeConforming",
+    "testIdentityFencesAreExactAndGenerationSafe",
+    "testOrientationMatrixIsExactlyLandscapeForIPhoneAndIPad",
+    "testTeardownOrderAndAwaitedTerminalAreExact",
+    "testActiveRecordingCannotBypassCanonicalSafeStop",
+    "testARViewConstructionDisablesAutomaticSessionConfigurationBeforeOwnerAttach"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ActionVerifierTests.swift",
+   "tests": [
+    "testPlacementReturnsImprovedUnchangedAndWorse",
+    "testScaleAndDepthUseExistingObserverDeadbands",
+    "testHorizonAndStabilityUseObjectiveFixedPredicates",
+    "testExposureFaultAndFocusPredicatesCanReturnFixed",
+    "testFocusWithoutLiveProvenanceIsIncomparable",
+    "testSubjectIdentitySourceAndCoordinateSpaceMustContinue",
+    "testTokenGenerationOrientationLensAndCalibrationMismatchFailClosed",
+    "testSceneMismatchAndMissingProvenanceFailClosed",
+    "testFramingProvenanceBlocksCropChangeAndAllowsSameContext",
+    "testInvalidFramingProvenanceFailsClosed",
+    "testExposureAdjustmentEvidenceIsRequiredForLightActions",
+    "testSafetyRegressionBlocksPositiveAndKeepsMeasuredDelta",
+    "testDuplicateOutOfOrderAndTimeOnlyChangeNeverBecomePositive",
+    "testNonFiniteMetricAndMissingLifecycleAreIncomparable",
+    "testStaleAtEachFramesOwnEvaluationTimeRemainsIncomparable",
+    "testUnsupportedAndEmptyActionsDoNotProduceDeltas"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/AdviceStabilizerTests.swift",
+   "tests": [
+    "testFirstCorrectionNeedsHysteresisFrames",
+    "testSameSemanticActionRefreshesCurrentFrameProvenance",
+    "testNonCorrectionDecisionPublishesImmediately",
+    "testBriefJitterDoesNotChangePublishedAdvice",
+    "testAdviceChangesAtMostOncePerCooldownWindow",
+    "testMaterialChangeRemovesAdviceImmediatelyBypassingCooldown",
+    "testAdviceAfterInvalidationPublishesWithoutCooldownDebt",
+    "testSceneChangeSequenceMatchesSpec"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/AnalysisPipelinePresentationTests.swift",
+   "tests": [
+    "testExplicitPauseSnapshotUsesFreshDetrAndAestheticOverridesWithoutMutatingSharedState",
+    "testExplicitEmptyDetrSampleSuppressesStaleDebugFallback",
+    "testFeatureSnapshotCarriesDemoObjectRegionAheadOfBackgroundObjects",
+    "testSemanticEvalOutputEncodesLiveAndPauseRowsWithClosedCatalogActions",
+    "testSemanticEvalPauseGoodVerdictExportsKeepCurrentSetup",
+    "testSemanticEvalPauseExportsSemanticTipActionInsteadOfCoarseTransportAction",
+    "testSemanticEvalLiveDropsLeaveAsIsForDominantTechnicalFutureAction",
+    "testSemanticEvalPauseGoodVerdictDoesNotExportKeepCurrentSetupForDominantTechnicalFutureAction",
+    "testSemanticEvalPauseKeepsPositiveConfirmationForNonDominantTechnicalFutureAction",
+    "testSemanticEvalPauseConfidenceUsesTechnicalQualityFloor",
+    "testSemanticEvalPauseMixedCorrectiveConfidenceIsNotRaisedByTechnicalFloor",
+    "testSemanticEvalLiveHiddenRowDoesNotExportTechnicalConfidence",
+    "testSemanticEvalPauseDropsLeaveAsIsActionForDominantTechnicalFutureAction",
+    "testSemanticEvalHiddenRowsCanCarryFutureTechnicalActions",
+    "testSemanticEvalTechnicalQualityProbeDetectsExposureAndFocusActions",
+    "testSemanticEvalTechnicalQualityProbeDoesNotTreatLowKeyTextureAsDominantBlur",
+    "testSemanticEvalTechnicalQualityProbeKeepsModerateLowLightSoftnessDominant",
+    "testSemanticEvalTechnicalQualityProbeMarksModerateBrightHotspotAsDominant",
+    "testStillImageReplayPresentsDominantTechnicalQualityProblem",
+    "testStillImageReplayKeepsNoSubjectMotionBlurSilenceLowConfidence",
+    "testStillImageReplayKeepsNoSubjectMotionBlurHighConfidenceWhenExposureCorrectionIsPresent",
+    "testStillImageReplayMapsDominantHotspotToSemanticAction",
+    "testStillImageReplayMapsUnderlitReadablePortraitToFrontFill",
+    "testStillImageReplayDoesNotOvercorrectGoodLowKeyBookWithFrontFill",
+    "testStillImageReplayMapsDarkObjectClusterToBackgroundClearance",
+    "testStillImageReplayMapsStrongUnderexposedObjectToMediumFrontFill",
+    "testStillImageReplaySuppressesKeepForUnknownDarkTechnicalFrame",
+    "testStillImageReplaySuppressesKeepForMotionLikeFalsePositiveObjects",
+    "testStillImageReplayMapsWeakSubjectBacklightToSimplifyBackground",
+    "testStillImageReplayMapsSmallUnderlitLightObjectToFrontFill",
+    "testStillImageReplayMapsLowAestheticSingleObjectToBackgroundClearance",
+    "testStillImageReplayMapsUnknownGroupNoFocusToFramingActions",
+    "testStillImageReplayCapsMediumOverexposureBackgroundCorrectionConfidence",
+    "testStillImageReplayKeepsEmptyUnknownTechnicalSilenceLowConfidence",
+    "testStillImageReplayRecoversHorizonAndStreetBlurFutureActions",
+    "testStillImageReplayDoesNotMapExtremeTechnicalObjectFailureToFrontFill",
+    "testStillImageReplayCapsTechnicalFloorForMediumEvidenceKeepCurrentSetup",
+    "testStillImageReplayKeepsHighConfidenceWhenKeepEvidenceIsStrong",
+    "testStillImageReplayCalibratesResidualR20ConfidenceBands",
+    "testStillImageReplayPromotesWideUnknownGoodEstablishingConfidence",
+    "testStillImageReplayMapsUnknownNoisyLowLightFrameToStepBack",
+    "testStillImageReplayMapsReadableUnderlitObjectToFrontFill",
+    "testStillImageReplayDoesNotMapLightObjectKeepFrameToFrontFill",
+    "testStillImageReplayMapsLowAestheticObjectToBackgroundClearance",
+    "testStillImageReplayAddsClusterClearanceAndStabilization",
+    "testStillImageReplayMapsUnreadableLowLightObjectToCloserFill",
+    "testStillImageReplayMapsUnknownBlurToSimplifyBackground",
+    "testStillImageReplayPreservesGoodReadableKeepDespiteTechnicalSignal",
+    "testStillImageReplaySuppressesFalseKeepForBadTechnicalFrames",
+    "testStillImageReplayPreservesLowKeyMoodKeepDespiteTechnicalFuture",
+    "testStillImageReplayPreservesCinematicEstablishingDespiteTechnicalFuture",
+    "testStillImageReplayPreservesReadableObjectInsertDespiteWindowHotspot",
+    "testStillImageReplayMapsRegeneratedBadFramesToSemanticCorrections",
+    "testStillImageReplayMapsSyntheticHotspotToCorrectiveSemanticActions",
+    "testStillImageReplayMapsSyntheticEdgeCutoffToStepBackAndOcclusionFuture",
+    "testStillImageReplayMapsSyntheticUnderexposureToFrontFillAndSubjectRotation",
+    "testStillImageReplayMapsUnknownSyntheticUnderexposureAndOcclusionToLightingAndCleanup",
+    "testStillImageReplayKeepsSyntheticMotionBlurTechnicalOnly",
+    "testStillImageReplayMapsSyntheticSmallSubjectToStepCloser",
+    "testStillImageReplaySuppressesPreservationForReadableSyntheticSmallSubject",
+    "testStillImageReplayMapsSyntheticClutterToSemanticCleanup",
+    "testStillImageReplayMapsSyntheticCrookedFramesToLevelHorizon",
+    "testStillImageReplayMapsUnknownSyntheticUnderexposureToLightingAdvice",
+    "testStillImageReplayPreservesNarrativeEstablishingFramesWithKeepCurrentSetup",
+    "testStillImageReplayDoesNotOvercorrectCinematicGoodObjectInsertFrames",
+    "testStillImageReplayMapsDistanceAndColorCastSemanticFailures",
+    "testSemanticDemoScenarioPackReplaysExpectedPresentationActions",
+    "testStillImageReplayOptionsOnlyClaimRealRuntimeForHeavyModelPath",
+    "testStillImageReplayExportsRowsWithoutClaimingRealRuntimeWhenHeavyModelsAreDisabled",
+    "testConfidencePresentationMapsUserFacingBands",
+    "testPauseActionConfidenceIsCappedByPlanAndLinkedIssue",
+    "testPauseActionConfidenceCanUseSemanticTipIssueScope",
+    "testGoodPauseVerdictWithExplicitStrengthUsesHighConfidenceFloor",
+    "testGoodPauseVerdictWithoutStrengthKeepsConservativeConfidence",
+    "testMixedPauseCorrectiveVerdictConfidenceIsCappedToMedium",
+    "testPausePresentationKeepsActionIssueAndTraceOnOneFrameProjection",
+    "testPauseProjectionUsesDecisionTraceOrderWhenSemanticRankConflictsWithPriority",
+    "testPauseProjectionFailsClosedWhenOnlySecondaryActionHasObservedEvidence",
+    "testCommittedPauseRotationReprojectsMarkerWithoutChangingProvenance",
+    "testLiveActionConfidenceDoesNotUseOptimisticMaximum",
+    "testPipelineStoresRecordedNeuralEvidenceOutcome",
+    "testLiveHybridFusionAwaitsCurrentFrameNeuralOutcome",
+    "testLiveStructuredPathPublishesMatchingHintAndExpandedCritique",
+    "testLiveCompositionFallbackClearsPreviousHintWithoutPublishingReserveCard",
+    "testCriticalHorizonLegacyFallbackStillPublishesLiveHint",
+    "testDemoLiveSemanticActionWhitelistKeepsAmbiguousCompositionOutOfLive",
+    "testLivePositiveConfirmationWaitsForGroundedSubjectEvidence",
+    "testDemoObjectModePublishesCupBoundingBoxAndCorrectionInsteadOfFalseGood",
+    "testDemoAutoModeKeepsFaceAheadOfBackgroundObjectLabels",
+    "testDemoPortraitPrefersFaceRegionOverBodySemanticRegion",
+    "testDemoObjectModeFallsBackToPrimaryCandidateWhenDetectorLabelMissing",
+    "testDemoObjectModeRejectsOversizedPrimaryCandidateFallback",
+    "testDemoGoodFrameTurnsCheckOnlyAfterThreeStableFrames",
+    "testDemoObjectJitterStillReachesCheckOnlyGoodState",
+    "testDemoSubjectHoldKeepsLastBoundingBoxAcrossShortMiss",
+    "testDemoPortraitUsesSubjectLightingForBrightBackground",
+    "testDemoPortraitUsesSubjectLightingForOverexposedFace",
+    "testCinematicPortraitModeStartsWithDarkerBackgroundAdvice",
+    "testCinematicPortraitModeAdvancesThroughThreeLightingStages",
+    "testCinematicPortraitScreenDemoDoesNotSkipFirstAdviceWhenExposureLooksSeparated",
+    "testTextOnlyLiveRefreshKeepsStableIdentityButUpdatesCurrentPayload",
+    "testSpatialLiveHintsRequireThreeFramesForProductionAndDemo",
+    "testSpatialConfirmationResetsOnDuplicateDecreasingTimestampAndLargeGap",
+    "testSpatialConfirmationResetsAcrossLifecycleGeneration",
+    "testTwoUnconfirmedSpatialEvaluationsPreserveExistingNonspatialHint",
+    "testTechnicalLiveHintsRequireThreeQualifiedStillFramesAndResetOnIssueOrActionChange",
+    "testTechnicalLiveHintsSuppressMovingStaleAndUnqualifiedFrames",
+    "testTechnicalLiveHintsResetWhenProductionMotionStarts",
+    "testTechnicalLiveHintsResetWhenLivePresentationClears",
+    "testExportSemanticEvalCandidateOutputsFromStillImages"
+   ],
+   "tags": [
+    "device",
+    "integration",
+    "research",
+    "research-gated",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/AnalysisPipelineReleaseTests.swift",
+   "tests": [
+    "testRegisterTwiceKeepsExactlyOneThreeTokenSet",
+    "testReleaseUnregistersEveryTokenAndIsIdempotent",
+    "testReleaseThenRegisterCreatesOneFreshActiveSet",
+    "testReleaseClearsFrameAndFeatureEvidenceBeforeFreshRegistration",
+    "testHighEvidencePreservesCallbackCaptureTimeAndAdapterState",
+    "testOlderCaptureGenerationCannotReplaceNewLensEvidence",
+    "testNewerHighEvidenceCannotBeReplacedByOlderEvidence",
+    "testSuspendedLiveFusionCannotPublishAfterFrameReplacement",
+    "testTypedPauseResultDistinguishesMissingEvidenceAndStaleCancellation",
+    "testPauseTimeoutWinsExactlyOnceAndDoesNotBecomeEmpty",
+    "testPauseTimeoutClaimsBeforeLateTerminalPublication",
+    "testTypedPauseResultReportsPipelineUnavailableSeparatelyFromEmpty",
+    "testReleaseInvalidatesQueuedPresentationAndClearsLivePauseAndOverlayState",
+    "testReleaseCancelsAndClearsAllOwnedTaskSlots",
+    "testViewModelReleaseStopsCaptureBeforePipelineReleaseAndCanResume",
+    "testSupersededStartDuringReleaseKeepsReplacementRegistrations",
+    "testDirectSceneIngestRemainsAcceptedUntilFullRelease",
+    "testRegisterDuringReleaseIsRejectedAndSecondReleaseHasTerminalBoundary"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/AppleRecordingAdaptersTests.swift",
+   "tests": [
+    "testNativeWriterProducesLocalMovieWithVideoAndDuration",
+    "testNativeWriterRejectsInvalidVideoConfiguration",
+    "testNativeWriterReportsAudioTrackAfterAppendingSampleBuffer",
+    "testNativeWriterDropsAudioBeforeVideoOrigin",
+    "testAudioSampleBufferHostClockRetimingConvertsEveryTimingEntry",
+    "testCaptureQueueStopHelperDoesNotSynchronouslyReenter",
+    "testNativeWriterDiscardRemovesPartialOutput",
+    "testNativeWriterFailedFinishRemovesPartialOutput",
+    "testPendingArtifactStoreCreatesUniqueMovURLsWithoutDeletingFiles",
+    "testWriterFactoryRejectsUnsupportedCodecBeforeCreatingAnyWriter",
+    "testWriterFactoryRejectsExplicitZeroPixelFormat",
+    "testSerializedRecorderRejectsUnsupportedCodecAsTypedInputFailure",
+    "testWrittenAssetCarriesSelectedCodecAndPixelFormat",
+    "testTrackTransformMapperProducesDeterministicMetadataMatrices",
+    "testWrittenAssetTrackCarriesOrientationTransformWithoutRotatingDimensions",
+    "testPlaybackProbeAcceptsRealMovieAndRejectsMissingAndCorruptFiles"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/AudioSessionCoordinatorTests.swift",
+   "tests": [
+    "testRecordingAndPlaybackPoliciesAreAppliedInOrder",
+    "testSameOwnerAndPurposeAreIdempotentAndOtherOwnersAreBusy",
+    "testStaleDeactivateCannotAffectReplacementLease",
+    "testActivationFailureClearsLeaseAndBestEffortDeactivates",
+    "testInterruptionAndRouteEventsAreTypedWithoutAutoResume",
+    "testMediaServicesResetInvalidatesLeaseAndAdvancesGeneration"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraAdviceSafetyGateTests.swift",
+   "tests": [
+    "testHorizonFamilyRequiresAvailableHorizonEvidence",
+    "testFocusFamilyRequiresAdmittedFocusEvidence",
+    "testExposureCompositionAndKeepHaveNoFamilyForbiddenRules",
+    "testUnknownLensGenerationAbstainsEverything",
+    "testLostSubjectIdentityAbstainsCorrections",
+    "testFrameGlobalFamiliesDoNotRequireSubjectIdentity",
+    "testUnresolvedSubjectRequiresSelection",
+    "testMotionCannotProduceCorrection",
+    "testExposureContradictionWaits",
+    "testMissingCalibratedProbabilityAbstains",
+    "testLowCalibratedProbabilityWaits",
+    "testProbabilityAtThresholdAllows",
+    "testIdentityLossOverridesSubjectDependentFamilyGates"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraAnalysisDomainContractsTests.swift",
+   "tests": [
+    "testFrameFeatureSnapshotClampsNormalizedRanges",
+    "testNormalizedRectSanitizesNonFiniteValues",
+    "testFrameFeatureSnapshotInvariantsFaceImpliesPerson",
+    "testFrameFeatureSnapshotAllowsZeroPersonCountWhenFaceDetected",
+    "testFrameFeatureSnapshotPreservesTopObjectRegion",
+    "testFrameFeatureSnapshotPreservesFaceRegion",
+    "testFrameFeatureSnapshotPreservesSubjectLightingMetrics",
+    "testFrameFeatureSnapshotSupportsUnavailableSources",
+    "testSceneSemanticsSupportsUnknownSceneFallback",
+    "testSceneSemanticsAmbiguityWithCloseCandidates",
+    "testSceneSemanticsRejectsClearFocusConflict",
+    "testCritiqueRejectsGoodVerdictWithCriticalIssue",
+    "testRecommendationPlanRejectsConflictsAndUnknownIssueLinks",
+    "testRecommendationPlanAlsoValidatesDeferredActions",
+    "testRecommendationPlannerUsesPhysicalHorizontalCameraDirection",
+    "testContractsCodableRoundTrip",
+    "testNeuralEvidenceSnapshotRejectsNonCanonicalHeadOrdering",
+    "testNeuralEvidenceSnapshotRejectsPauseOnlyHeadInLiveMode",
+    "testFaceSaliencyApplicabilityUsesSemanticsPrimarySubjectKind",
+    "testFaceSaliencyRequiresUnavailableStatusWhenSemanticsAreMissing",
+    "testShotTypeConfidenceRequiresCompleteCanonicalAffinities",
+    "testSupportingSignalsEnforceCardinalityAndPerHeadVocabulary",
+    "testNeuralEvidenceRuntimeMetadataMustAlignWithSnapshotAndVersion",
+    "testNeuralEvidenceRejectsUnsupportedSchemaVersion",
+    "testHardFailureSnapshotRemainsValidEnvelope",
+    "testPolicySkippedRequiresFullyPolicyDegradedLiveSnapshot",
+    "testNeuralEvidenceExplainabilityKeysMatchScalarAndCategoricalContracts",
+    "testNeuralEvidenceCodableRoundTripUsesIsoDatesAndExplicitNulls",
+    "testNeuralEvidenceSnapshotEncodingCanonicalizesArrayOrdering",
+    "testSemanticCatalogCoversLegacyIssueAndStrengthAnchors",
+    "testSemanticCatalogDefinitionsCoverClosedTaxonomies",
+    "testSemanticCatalogCoversRequiredActionFramesAndObjectStaging",
+    "testSafeDisplayLabelPolicyGroundsKnownObjectsAndDegradesUnknownObjects",
+    "testSemanticTipCandidateValidationAcceptsEntityAwareActionableTip",
+    "testSemanticTipCandidateValidationRejectsUnsafeLabelsAndMismatchedWaitActions",
+    "testSemanticTipCandidateValidationRequiresFaceRelationForContourRemoval",
+    "testSemanticTipCandidateValidationRequiresGroundingForSpecificObjectLabels",
+    "testSemanticTipCandidateValidationRejectsCatalogDrift",
+    "testSemanticTipCandidateCodableRoundTripPreservesEntityFields",
+    "testValidProblemFrameResponseAcceptsStructuredEvidenceAndRelation",
+    "testUnknownActionIdFailsClosedAgainstAllowedCatalog",
+    "testLiveModeFailsClosed",
+    "testStructuredOnlyCannotIntroduceNewSpecificObjectLabel",
+    "testRedactedVisualRequiresAppliedRedaction",
+    "testRestrictedLabelCatalogFallsBackToGenericLabel",
+    "testProviderSafetyPassedDoesNotBypassLocalRelationValidation",
+    "testKeepCurrentSetupCannotCoexistWithCorrectiveAction",
+    "testTooManyTopLevelSuggestedActionsFailsClosed",
+    "testVLMVisualEvidenceResponseCodableRoundTripPreservesEntityFields",
+    "testExplainabilityTraceBundleValidatesDeterministicChain",
+    "testExplainabilityTraceRejectsRecommendationDependencyOnOptionalReasoning",
+    "testExplainabilityTraceRejectsRootSummaryWithoutSummaryLink",
+    "testExplainabilityTraceEnforcesFrameAndModeScoping",
+    "testExplainabilityTraceEnforcesIssueStrengthActionCoverage",
+    "testExplainabilityTraceRejectsDuplicateItemIDsWithoutCrashing",
+    "testExplainabilityTraceRejectsMissingCoreAudience",
+    "testExplainabilityTraceRejectsRootSummaryWithWrongSummaryID",
+    "testExplainabilityTraceResolvesIssueLinksWhenOnlyCritiqueProvided",
+    "testExplainabilityTraceResolvesActionLinksWhenOnlyPlanProvided",
+    "testExplainabilityTraceRejectsCyclicDependencies",
+    "testExplainabilityTraceRejectsNonMonotonicDependencyTimestamps",
+    "testExplainabilityTraceRejectsInvalidStageSourcePair",
+    "testExplainabilityTraceRejectsOptionalReasoningActionLink",
+    "testExplainabilityTraceRejectsUnknownLinksForAllKinds",
+    "testExplainabilityTraceRejectsConfidenceCapViolation",
+    "testExplainabilityTraceRejectsSpeculativeDeterministicRule",
+    "testExplainabilityTraceRejectsTooManyItemsInLiveMode",
+    "testExplainabilityTraceCodableRoundTrip",
+    "testAggregatorIsDeterministicForSameInput",
+    "testStaleVisionFallsBackToDetrPrimaryCandidate",
+    "testSaliencyRegionBecomesPrimaryCandidateWhenObjectDetectorIsUnavailable",
+    "testOversizedSaliencyRegionDoesNotBecomePrimaryObjectCandidate",
+    "testTieInEffectiveConfidencePrefersVisionCandidate",
+    "testDetrTieBreakIsDeterministicAcrossInputOrder",
+    "testDetrBackgroundSegmentsDoNotInflateObjectSummary",
+    "testFullFrameBackgroundOnlyDetrDoesNotBecomePrimarySubject",
+    "testEmptyInputUsesDefaultsAndComputesDeterministicFlags",
+    "testVisionVerticalOffsetUsesDisplayCoordinates",
+    "testFreshnessConfidenceMonotonicAndStaleEviction",
+    "testEvaluatedFreshnessIncludesFrameAgeWhenSampleWasMeasuredAtCapture",
+    "testPublishedSubjectConfidenceAppliesFreshnessOnceForVisionAndDetr",
+    "testNormalizationAndVisionPersonCountOwnership",
+    "testTechnicalFlagsPositiveAndNegativeMatrix",
+    "testFaceDetectionForcesPersonDetectedInvariant",
+    "testAdapterDoesNotCreateFallbackSamplesWithoutMeasuredAt",
+    "testPersonPortraitDoesNotReceiveLegacyVerticalLowerCameraTip",
+    "testPersonHorizontalCompositionTipStillWorks",
+    "testDialogueCloseupGoldenCase",
+    "testSingleCharacterMediumGoldenCase",
+    "testTwoCharacterFrameAndAmbiguityGoldenCase",
+    "testObjectInsertGoldenCase",
+    "testEstablishingLikeFrameGoldenCase",
+    "testMoodyBacklitSubjectGoldenCase",
+    "testSceneTypeTieCreatesAmbiguity",
+    "testWeakSignalFallbackWithNoSources",
+    "testWeakSignalFallbackWhenVisionAndDetrAreUnavailableOnly",
+    "testEmptyFrameIdTriggersWeakSignalFallback",
+    "testDegeneratePrimaryRegionAddsWeakSignalAmbiguity",
+    "testNonFinitePrimaryRegionAddsWeakSignalAmbiguity",
+    "testContractVersionMismatchFallbackAddsAssumption",
+    "testHighMotionGuardKeepsReadableWhenSeparationIsNotLow",
+    "testGroupCandidatePolicyWhenMultiplePeopleAndNoPrimaryRegion",
+    "testGroupCandidatePolicyWhenMultiplePeopleAndMalformedPrimaryRegion",
+    "testDeterministicReplayForSameSnapshot",
+    "testLowSubjectConfidenceInvariantsProduceUnknownPrimarySubject"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraAudioMeterTests.swift",
+   "tests": [
+    "testMeterUnavailableWithoutPermissionOrRunningOwner",
+    "testMeterClearsOnRelease"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraBoundedActionPlannerTests.swift",
+   "tests": [
+    "testSafetyWaitDecisionPassesThroughUnchanged",
+    "testSafetySelectSubjectPassesThrough",
+    "testSafetyAbstainPassesThrough",
+    "testHighestProbabilityCandidateWins",
+    "testProbabilityTieBreaksByPriorityBandThenStableId",
+    "testAllowWithNoCandidatesIsHonestWait",
+    "testGoodFrameScoreEmitsKeepInsteadOfCorrection",
+    "testGoodFrameBelowThresholdStillCorrects",
+    "testCorrectCarriesLinkedTargetPoint",
+    "testNonCorrectDecisionsCarryNoTarget"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraCoachClosedLoopTests.swift",
+   "tests": [
+    "testProductionOwnersAdvanceSubjectSelectionThroughStabilizedEpisode",
+    "testProductionSceneIdentityIgnoresNoiseAndLocalMotionButRotatesOnMaterialCut",
+    "testTypedSceneCutCoordinatorFixtureRetainsTerminalState",
+    "testProductionCapturePathPublishesCorrectiveAndHonestAbstention",
+    "testProductionCapturePathAutomaticallyVerifiesCorrectiveEpisode",
+    "testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries",
+    "testProtectedProductionOwnerDecisionsRemainFailClosed",
+    "testNeuralEvidenceMovementAndVerificationRemainProductionOwned"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraCoachContractV2Tests.swift",
+   "tests": [
+    "testDecisionSpaceIsExactlyTheFiveProductionDecisions",
+    "testDecisionCodableRoundTrip",
+    "testContractCodableRoundTrip",
+    "testApprovedActionIDsAreExactlyTheCanonicalSemanticCatalog",
+    "testEveryLegacyActionHasExactlyOneMigration",
+    "testLegacyMigrationsTargetApprovedActionsAndValidDecisions",
+    "testLegacyActionMigrationTable",
+    "testUnknownLegacyActionFailsClosedToWait",
+    "testFailClosedPolicyTargets",
+    "testJSONArtifactMatchesInCodeContract"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraCoachEntryFlowModelTests.swift",
+   "tests": [
+    "testFirstLaunchShowsIntroRegardlessOfCameraSnapshot",
+    "testReturningUserMapsEveryCameraStateWithoutImplicitRequest",
+    "testOpenCameraMarksIntroOnceAndMapsFreshSnapshotWithoutRequesting",
+    "testContinueRequestsCameraExactlyOnceAfterExplicitTap",
+    "testConcurrentContinueTapsShareOneRequest",
+    "testRecheckReadsSnapshotAndRecoversAfterSettingsWithoutRequest",
+    "testForegroundRecheckCannotSkipUnseenIntro",
+    "testForegroundRecheckWhileResolvingDoesNotStartAnotherSnapshot",
+    "testCancelledInitialResolutionCannotPublishLateReadyState",
+    "testCancelledPermissionRequestCannotPublishLateReadyState",
+    "testConcurrentRechecksShareOneSnapshotWithoutRequesting",
+    "testEntryFlowNeverRequestsMicrophoneSpeechOrPhotos",
+    "testPresentationEventIDAndRevisionStayStableWithoutAStateTransition",
+    "testEntryMarkerEventIsConsumedOnceAndReduceMotionPublishesFinalGeometry",
+    "testLeaderCannotReplayWithinOneRouteSessionAndReduceMotionUsesFinalAction"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraCoachEntryPresentationTests.swift",
+   "tests": [
+    "testCanonicalIntroCopyUsesCatalogKeys",
+    "testPermissionCopyUsesCameraOnlyCatalogKeys",
+    "testBlockedReasonsRemainDistinctAndTruthful",
+    "testCameraEntryCopyHasRussianAndEnglishVisibleAndAccessibilityValues",
+    "testEveryRenderedPhaseHasStableRootAndActionIdentifiers",
+    "testResolvingRequestingAndReadyHaveNoEntryAction",
+    "testEntryVisualContractUsesV26MarkersAndNoForbiddenLayers",
+    "testEntrySurfaceDoesNotExposeLiveControls",
+    "testEntryUsesGeometrySplitAndOwnerIssuedMarkerRail",
+    "testEntryCommandsUseTheSharedCommandLabelOwner"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraConfidenceCalibratorTests.swift",
+   "tests": [
+    "testNonMonotonicCurveIsRejected",
+    "testUnsortedKnotsAndNonFiniteAndBadDomainAreRejected",
+    "testIdentityCurveCalibratesWithinDomain",
+    "testOutOfDomainRawYieldsSelectiveAbstention",
+    "testMissingEntryAndNonFiniteRawAbstain",
+    "testOutcomeNeverExposesRawLogits",
+    "testPiecewiseCurveIsMonotonicAcrossGrid",
+    "testPerfectCalibrationYieldsZeroECE",
+    "testKnownOffsetYieldsExpectedECE",
+    "testSchemaCodableRoundTrip"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraCoordinateSpaceTests.swift",
+   "tests": [
+    "testEverySpaceAcceptsAndClampsToUnitSquare",
+    "testVerticalFlipIsItsOwnInverse",
+    "testVisionToSubjectTargetFlipMapsTopToBottom",
+    "testAspectFillRoundTripInsideCropWindow",
+    "testAspectFillBoundsHoldForAllSourcePoints",
+    "testAspectFillOutsideCropWindowIsNotInvertible",
+    "testDegenerateSizesFailClosedToIdentity",
+    "testAllSixCanonicalSpacesExist"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraDisplayTransformTests.swift",
+   "tests": [
+    "testGoldenMatricesMatchDocumentedConvention",
+    "testJSONArtifactMatchesGoldenMatrices",
+    "testInverseRoundTripIsIdentityForAllStates",
+    "testSubjectTargetPreviewAndCanvasShareOneMatrix",
+    "testMirroredTransformRestoresViaInverse",
+    "testPortraitMapsSensorRightEdgeToDisplayTop",
+    "testDisplayValuesStayOnUnitSquareForAllStates"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraLensSwitchTransactionTests.swift",
+   "tests": [
+    "testSuccessfulReplacementRemovesOldChecksNewAndAddsNew",
+    "testRejectedReplacementRestoresOldInput",
+    "testRejectedReplacementAndRejectedRestoreReportRollbackFailureWithoutAdding",
+    "testOldInputIsRemovedOnceAndEveryAddHasAPrecedingApproval"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraManagerLifecycleTests.swift",
+   "tests": [
+    "testPhysicalLensInventoryHasOneTruthfulTelephotoDescriptor",
+    "testConcurrentStartsInvokeRunnerOnceAndFinishRunning",
+    "testConcurrentStopsInvokeRunnerOnceAndFinishIdleConfigured",
+    "testStartStopStartUsesOneConfigurationAndTwoStarts",
+    "testReleaseIsIdempotentAndStartAfterReleaseReconfiguresOnce",
+    "testConfigurationFailureNeverStartsRunnerAndPublishesTypedError",
+    "testFrameDeliveryGateOnlyEnablesAfterStartAndFencesStopAndRelease",
+    "testExactSessionInterruptionAndRuntimeNotificationsFailOnceAndCloseFrameGate",
+    "testConcurrentSessionFailuresPublishOnlyOneClaim",
+    "testNotificationWinsFinalStartTransition",
+    "testOrientationMappingKeepsInterfaceCaptureAndImageSemanticsTogether",
+    "testPreviewGeometryIsValidatedAndClearedByItsCameraOwner",
+    "testPreviewViewClearsStaleGeometryWhenRemovedFromWindow",
+    "testPreviewViewDoesNotRepublishGeometryForUnchangedRegionUpdate",
+    "testCameraPreviewRebindingClearsOldOwnerAndRepublishesGeometryToNewOwner",
+    "testConcurrentPreviewGeometryUpdatesRevalidateEqualityAtCaptureBoundary",
+    "testCaptureOutputBindsLensAndPreviewGeometryBeforeAnalysisPipelineReceivesFrame",
+    "testVideoDataConnectionConfiguratorRequestsNativeRotationAndNoMirroring",
+    "testOrientationChangesInPlaceWithoutLifecycleReset",
+    "testOrientationSetBeforeStartIsAppliedWhenConfigurationIsCreated",
+    "testStaleStartCompletionCannotOverwriteNewerStopStateOrError",
+    "testStopDuringGatedStartFinishesIdleWithoutRevival",
+    "testStopRequestedBeforeStartReattachKeepsFrameGateClosed",
+    "testFailureDuringOrientationReattachCannotReopenFrameGate",
+    "testSessionGenerationBumpsOnStopAndReleaseOnly",
+    "testSequentialDoubleStopStopsRunnerOnceAndStaysIdle"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraModelRegistryTests.swift",
+   "tests": [
+    "testNoBundledArtifactIsUnavailable",
+    "testMatchingMetadataActivatesExactlyOneModel",
+    "testContractMismatchDisables",
+    "testCalibrationMismatchDisables",
+    "testMalformedReceiptDisables",
+    "testRollbackTargetsCompatiblePriorVersionOnly"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraOverlayUXPresentationTests.swift",
+   "tests": [
+    "testNoLiveHintMapsToSeekingState",
+    "testEverySupportedActionMapsToOnePhysicalInstruction",
+    "testLinkedExplanationUsesRequestedLocale",
+    "testObjectInstructionIsNotRewrittenFromActionEnum",
+    "testWhyExpansionAndCollapseRemainTheSameLiveTip",
+    "testIncompleteOrMalformedPayloadUsesOneSafeNontechnicalLine",
+    "testActionableHintUsesLinkedEvidenceWithoutFreeformExplanationText",
+    "testUnlinkedEvidenceHidesWhyEvenWhenFreeformTextExists",
+    "testUnknownOrStaleEvidenceNeverShowsWhy",
+    "testTechnicalHintUsesLiveTextAndExpandsWhenExplanationExists",
+    "testTechnicalHintWithoutExplanationRemainsStableWithWhyHidden",
+    "testCorrectiveGuideIsKeptOnlyForTheActiveAction",
+    "testRegionlessCorrectiveAdviceRemainsTextOnly",
+    "testForbiddenCopyNeverReachesTheSurface",
+    "testAccessibilityContractHasStableIdentifiersAndMinimumTargets",
+    "testPortraitAndLandscapeLayoutMetricsAreDeterministic",
+    "testSeekingKeepAndFallbackFollowRequestedLocale",
+    "testEverySemanticActionProjectsToCatalogCopyInEnglish",
+    "testEveryTechnicalIssueProjectsToCatalogCopyInEnglish",
+    "testOwnerContextMapsLifecyclePauseLensAndDegradationBoundaries",
+    "testFailClosedDecisionsNeverShowActionOrExplanation",
+    "testCorrectiveGeometryUsesSubjectAndTargetAndStaysInsideSafeRect",
+    "testOcclusionPlacementPrefersSafeCornersAndBoundsFallbackBand",
+    "testProductionPlannerCarriesSubjectDestinationInsteadOfAffectedRegion",
+    "testEpisodeTokenOwnsMarkerIdentityAndFrozenTargetGeometry"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraTorchTests.swift",
+   "tests": [
+    "testTorchUnsupportedWithoutConfiguredInput",
+    "testTorchStateResetsOnRelease"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraViewModelLensSwitchTests.swift",
+   "tests": [
+    "testProductionPipelineStreamReachesVerificationAfterRecommendationDisappears",
+    "testProductionTerminalCancellationResetsPipelineBeforeFreshBaseline",
+    "testProductionSubjectChangeResetsOwnerBeforeFreshResolutionBaseline",
+    "testProductionExpiryResetsPipelineBeforeFreshBaseline",
+    "testNoOpLensRequestCancelsPipelineStreamAndAllowsFreshBaselineToken",
+    "testLensSelectionHapticOnlyFiresAfterSuccessfulPhysicalChange",
+    "testRequestedLensWaitsForConfirmedSuccess",
+    "testUnavailableAndReplacementRejectedKeepReportedActiveLens",
+    "testNewestConfirmedLensWinsWhenOlderCompletionArrivesLate",
+    "testReleaseResetsLensPresentationAndFencesLateCompletion",
+    "testNoOpPublishesReportedActiveLens",
+    "testRollbackFailureClearsPresentationAndSynchronizesManagerLifecycle"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CameraViewModelLifecycleTests.swift",
+   "tests": [
+    "testFailedStartPublishesFailureOnlyAfterRegistrationRollback",
+    "testRetryStartedDuringFailedStartRollbackWaitsForFreshRegistrationSet",
+    "testSupersededStaleFailureCannotReleaseNewRunningRegistrationSet",
+    "testReleaseAndWaitSharesFailedStartRollbackBoundary",
+    "testSuccessfulStartRemainsRunningWithExactlyThreeRegistrations",
+    "testAnalysisFailureClearsStaleLiveAdviceAndPublishesFailure",
+    "testPipelineTerminalFailurePublishesOnceAndClearsViewModelProjection",
+    "testInterruptionClearsProjectionReleasesOnceAndRetryWaitsForCleanup",
+    "testLateStartCompletionCannotOverwriteInterruptionFailure",
+    "testStaleReleaseWaiterDoesNotClearReplacementReleaseOperation",
+    "testSupersededStopWaiterCannotStopRetry",
+    "testPauseUsesAcceptedTakeCountAndResumeProjectsUntilStartRuns",
+    "testCommittedPauseSurvivesSceneInactiveUntilSuccessfulResume",
+    "testFailedResumeRestoresCommittedPauseReviewAndPresentation",
+    "testPrecommitPauseIsCanceledOnSceneInactive",
+    "testSelectedTeleLensPresentationSurvivesPauseResumeUntilManagerReportsAgain",
+    "testPauseWithoutAcceptedEvidencePublishesRecoverableFailure"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CaptureConfigurationTests.swift",
+   "tests": [
+    "testFailedLensSwitchSurfacesTypedReason",
+    "testUIStateReadsBackFromDeviceAfterStart"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CaptureFormatTests.swift",
+   "tests": [
+    "testZeroDimensionsAndFPSAreRejected",
+    "testAbsurdFormatIsRejected",
+    "testCommonFormatAcceptedWhenDevicePresent"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CoachingEpisodeCoordinatorTests.swift",
+   "tests": [
+    "testRelevantMovementThenFreshStableFramesReachesVerification",
+    "testRecommendationDisappearanceDoesNotDiscardFrozenBaseline",
+    "testCompetingActionProducesTypedCancellation",
+    "testTypedTerminalBoundaryAllowsFreshBaselineButIgnoresLateFrameBeforeRetry",
+    "testFrameGlobalHorizonEpisodeNeedsNoSubjectBinding",
+    "testFrameGlobalStabilityEpisodeCanRecoverWithoutSubjectBinding",
+    "testMismatchedTrackGeometryIsRejected",
+    "testPersonAndDetrObjectBindingsRemainSourceSpecific",
+    "testOnlyStabilitySafetyFamilyCanBeAdmittedWhileMoving",
+    "testStabilityEpisodeCanBaselineWhileCameraIsUnstable",
+    "testNoOpOppositeUncertainAndStaleEvidenceNeverReady",
+    "testInvalidatingLifecycleChangesCancelTheEpisode",
+    "testSceneCutCancellationAdmitsFreshBaselineWithinSameCapture",
+    "testActionAndSubjectIdentityChangesCancelTheEpisode",
+    "testDuplicateDoesNotAdvanceAndOutOfOrderCancels",
+    "testExpiryRetryRequiresFreshBaselineAndToken"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CommercialShellLaunchCompositionTests.swift",
+   "tests": [
+    "testNormalCompositionSelectsCameraAndKeepsSecondaryRoutesLazy",
+    "testSharedCameraEntryFlowHidesChromeUntilEntryIsReady",
+    "testCameraChildFillsShellAndModeControlUsesTopSafeAreaOverlay",
+    "testScenesRouteUsesInjectedLibraryBuilderInsideNavigationContainer",
+    "testSwitchingSelectedRouteUpdatesShellOrientationPolicy",
+    "testCameraRouteUsesContentViewAndNotBenchmarkOrLegacyCameraScreen",
+    "testHistoryRouteIsExplicitEmptyStateWithoutPersistenceAction",
+    "testCameraReleaseWaitsForStopBeforeSceneConstructionAndDropsOldOwner",
+    "testCameraReleaseIsSharedAndIdempotentForReentrantCallers",
+    "testSceneRouteReleasesAtOriginalLibraryRoot",
+    "testSceneLibraryRootReleaseConstructsCameraRoute",
+    "testDeeperSceneWorkspaceBlocksAndDoesNotConstructCamera",
+    "testPresentedSceneModalBlocksAndDoesNotConstructCamera",
+    "testBenchmarkSelectionWinsBeforeCommercialComposition"
+   ],
+   "tags": [
+    "device",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CommercialShellLifecycleAdapterTests.swift",
+   "tests": [
+    "testBackgroundReachesActiveCameraRouteExactlyOncePerEvent",
+    "testBackgroundAfterRouteSwitchNeverReachesInactiveCameraRoute",
+    "testBackgroundReachesSceneWorkspaceProviderExactlyOnce",
+    "testBackgroundBeginsOneLeaseAndEndsItAfterSceneDispatch",
+    "testBackgroundWithoutRoutesBeginsAndImmediatelyEndsLease",
+    "testBackgroundLeaseEndsOnlyOncePerIdentifier",
+    "testForegroundRecheckStillReachesBlockedCameraEntry"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CommercialShellModeControlTests.swift",
+   "tests": [
+    "testABRollCapsuleHasTwoLabeledSegmentsAndSharedTargets",
+    "testCameraSelectionKeepsCameraBrightAndScenesTapEmitsOpenScenes",
+    "testScenesSelectionKeepsScenesBrightAndCameraTapReturns",
+    "testHistoryHasNoSelectedRollAndCameraReturnRemainsAvailable",
+    "testLockedDisablesBothSegmentsAndUnlockedRestoresBothIntents",
+    "testBothSegmentBoundsMeetTheMinimumInPortraitAndLandscape",
+    "testTitleAndCapsuleOccupyThePublishedControlContract",
+    "testControlHasNoForbiddenVisualLayers"
+   ],
+   "tags": [
+    "research-gated",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/CommercialShellRoutingTests.swift",
+   "tests": [
+    "testDefaultCameraIsEagerAndSecondaryRoutesAreLazy",
+    "testSelectingSecondaryRouteConstructsOnlyThatRoute",
+    "testSwitchKeepsExactlyOneContainedChild",
+    "testOldRouteReleasesBeforeNextRouteIsConstructed",
+    "testProductionCameraARBoundaryAwaitsTerminalOwnersAndRetriesSafely",
+    "testBlockedDeactivationRetainsChildAndSelection",
+    "testModeControlInteractionIsLockedDuringSwitch",
+    "testRapidSelectionsCoalesceToLastRequestedSection",
+    "testSelectingCurrentSectionIsANoOp",
+    "testContainmentLifecycleIsBalanced",
+    "testContainerTeardownReleasesActiveRoute",
+    "testContainerTeardownSuppressesStalePendingSelection"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ControlPersistenceTests.swift",
+   "tests": [
+    "testZeroValuesMapToDocumentedDefaults",
+    "testSupportedStoredValuesApply",
+    "testUnsupportedStoredValuesFallBackExplicitly"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ConverterTests.swift",
+   "tests": [
+    "testConvertUIColorToCGFloatComponents",
+    "testConvertInvalidColor",
+    "testConvertHDResolution",
+    "testConvertFullHDResolution",
+    "testConvert4KUHDResolution",
+    "testConvertAllResolutions",
+    "testConvertSimdFloat4x4ToArray",
+    "testConvertArrayToSimdFloat4x4",
+    "testConvertInvalidArraySize",
+    "testRoundTripConversion",
+    "testConvertVariousColors",
+    "testResolutionConversionCycle"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DBServiceConcurrencyTests.swift",
+   "tests": [
+    "testTypedEmptyLoadIsARealZeroProjectResult",
+    "testMalformedProjectLoadFailsInsteadOfMasqueradingAsEmpty",
+    "testTypedLoadPreservesDuplicateNamesAndOrdersTimestampTiesByUUID",
+    "testConcurrentCreatesWithSameNameCreateExactlyOneProject",
+    "testTypedConcurrentCreatesReturnOneSnapshotAndTypedDuplicates",
+    "testLibrarySnapshotReportsMetadataAndNoArtifactsTruthfully",
+    "testLibrarySnapshotUsesOnlyOwnedRecordingForPreviewSource",
+    "testLibrarySnapshotRejectsValidMediaOutsideCanonicalProjectPath",
+    "testStaleExpectedUpdatedAtThrowsRecoverableConflictAndKeepsStoredWrite",
+    "testTypedRenamePreservesAggregateAndReturnsNewSnapshot",
+    "testTypedRenameRejectsStaleSnapshotWithoutMutation",
+    "testTypedDeletePreservesProjectWhenArtifactCleanupFails",
+    "testTypedDeleteRemovesOnlyProjectAndOwnedArtifacts",
+    "testTypedDeleteRemovesPromotedArtifactsWhenReferencesAreNotPersisted",
+    "testTypedDeleteRollsBackPromotedArtifactWhenCommitFailsWithoutReference",
+    "testTypedDeleteRollsBackMetadataWhenArtifactCommitFailsPartway",
+    "testTypedDeleteCompletionCanSynchronouslyReloadWithoutDeadlock",
+    "testStagedDeleteRollsBackAfterWorldMapFailure",
+    "testStagedDeleteRollsBackAfterProjectFailure",
+    "testMissingStoredFileIsAnInitialWriteNotAConflict",
+    "testOverlappingSavesAlwaysLeaveOneDecodableProject",
+    "testLegacySceneSaveAndLoadStayConsistentUnderConcurrency"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DETRDetectorTests.swift",
+   "tests": [
+    "testDisconnectedSameClassComponentsBecomeSeparateBoxes",
+    "testTopOriginRowsConvertToVisionLowerLeftY",
+    "testSubThresholdNoiseIsDiscardedPerComponent",
+    "testNonInt32AndNonRankTwoInputsFailClosed",
+    "testNontrivialStridesDriveLogicalPixelExtraction",
+    "testFixture019ProducesTwoChairDetections"
+   ],
+   "tags": [
+    "device",
+    "research-gated",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DecisionTraceFixtureContractTests.swift",
+   "tests": [
+    "testSeededFixtureBuildsChosenActionContract",
+    "testSeededFixtureContractHoldsInEnglishLocale"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DecisionTracePresentationTests.swift",
+   "tests": [
+    "testPauseTraceConnectsVerdictEvidenceActionsAndLimitations",
+    "testLiveTraceExplainsCurrentHintAndFallbackBoundary",
+    "testLiveTraceOmitsExplanationWhenIssueIDIsUnknown",
+    "testEvidenceProjectionLocalizesObservedIssueAndRejectsNeuralOnlyEvidence",
+    "testLiveTraceUsesExplicitSemanticObjectActionWhenCoarseActionDiffers"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DeepCriticOffloadingCoordinatorTests.swift",
+   "tests": [
+    "testReturnsDisabledWhenFeatureIsDisabled",
+    "testReturnsNotTriggeredOutsidePause",
+    "testReturnsBlockedWhenNetworkUnavailable",
+    "testDropsForbiddenTeacherEvidenceButKeepsUsableAdvisory",
+    "testDropsForbiddenActionReviewsButKeepsUsableAdvisory",
+    "testFailsValidationWhenForbiddenTextRefinementIsOnlyAdvisoryContent",
+    "testDropsWholeExplanationPatchForStructuralViolations",
+    "testForcesAllowTextRefinementOffWhenReasoningProviderIsActive",
+    "testRejectsLowFaithfulnessExplanationPatch",
+    "testKeepsCalibratedHighConfidenceExplanationPatchWithSupportedRefs",
+    "testRejectsCertaintyMarkersAcrossExplanationPatchFields",
+    "testKeepsNegatedCalibratedAndNonAbsoluteWording",
+    "testRejectsExplanationPatchWithUnsupportedEvidenceRefs",
+    "testRejectsExplanationPatchWithOrphanedShortVerdictEvidenceRefs",
+    "testRejectsMalformedRefusedResponseEnvelope",
+    "testRejectsResponseWhenPauseStateChangesBeforeCompletion",
+    "testReturnsNotTriggeredWhenSceneSemanticsAreInvalid",
+    "testFailsValidationWhenResponseExceedsProviderByteLimit",
+    "testBlocksRedactedVisualWhenAttachmentSizeIsDegenerate",
+    "testBlocksRedactedVisualWhenLongEdgeExceedsCap"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DeviceBenchmarkHarnessTests.swift",
+   "tests": [
+    "testBenchmarkConfigEnvironmentTreatsAbsentAndEmptyValuesAsNotConfigured",
+    "testBenchmarkConfigEnvironmentRejectsInvalidBase64",
+    "testBenchmarkConfigEnvironmentRejectsBase64PayloadThatIsNotJSON",
+    "testBenchmarkConfigEnvironmentRejectsDecodableBase64WithInvalidConfig",
+    "testRunConfiguredDeviceBenchmark"
+   ],
+   "tags": [
+    "device",
+    "research-gated",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DeviceBenchmarkSupportTests.swift",
+   "tests": [
+    "testBenchmarkConfigRoundTripsExecutionModeAndThermalPolicy",
+    "testSceneExecutionAggregateComputesThermalAndLatencyMetrics"
+   ],
+   "tags": [
+    "device",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/DeviceBenchmarkUITests.swift",
+   "tests": [
+    "testBenchmarkModeLaunchesAndCompletesQuickRun"
+   ],
+   "tags": [
+    "device",
+    "research-gated",
+    "simulator",
+    "ui"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ExposureFeatureSignalsTests.swift",
+   "tests": [
+    "testDarkFrameIsUnderexposedAndOverexposureIsForbidden",
+    "testBrightClippedFrameIsOverexposedAndUnderexposureIsForbidden",
+    "testNormalFrameDeclaresNeither",
+    "testBoundaryMeanTieBreakResolvesToUnderexposureDeterministically",
+    "testReadableSubjectHasHighReadabilityAndDarkSubjectLow",
+    "testNoSubjectRegionFailsClosedToZeroReadability",
+    "testPixelBufferEntryPointMatchesGridSemantics"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ExposureWhiteBalanceTests.swift",
+   "tests": [
+    "testISOWithoutDeviceFailsClosed",
+    "testInvalidWhiteBalanceRejected",
+    "testShutterAngle180PresetConvertsToSupportedDuration"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/FocusEvidenceSignalsTests.swift",
+   "tests": [
+    "testSharpFrameIsNotDefocused",
+    "testBlurredFrameAdmitsRefocusAdviceWhenFocusLocked",
+    "testUnsupportedDeviceNeverAdmitsRefocusAdvice",
+    "testAdjustingFocusFailsClosed",
+    "testFailedFocusFailsClosed",
+    "testSharpFrameWithUnsupportedDeviceIsStillNotDefocused",
+    "testNearBlackFrameCannotClaimDefocus",
+    "testNoSubjectRegionYieldsZeroReadability",
+    "testPixelBufferEntryPointMatchesContract"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/FocusWhiteBalancePolicyTests.swift",
+   "tests": [
+    "testSubjectTapNeverChangesFocusSilently",
+    "testManualFocusAndWhiteBalanceAbsentFromCoachPath",
+    "testWhiteBalanceContractTiersAreHonest"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/FrameCritiqueEngineTests.swift",
+   "tests": [
+    "testDeterminismWithIdenticalInput",
+    "testGoldenSingleFaceNearEdgeAndBacklightProducesNeedsFix",
+    "testBacklightIssueSuppressesContradictoryGoodLightStrength",
+    "testReadableCinematicClutterDoesNotBecomeNoFocusOrStepCloser",
+    "testReadableMoodyBacklightDoesNotDemandFrontFill",
+    "testSoftAmbiguousSemanticIssuesPreferPositiveConfirmation",
+    "testBalancedReadableScenePreservesIntentDespiteSoftBackgroundIssues",
+    "testWeakObjectAnchorInEstablishingFrameDoesNotInventSubjectCorrections",
+    "testAestheticWeakEstablishingAnchorDoesNotBecomeVisualOverload",
+    "testAestheticUnknownLowClutterFrameDoesNotInventFrontFill",
+    "testReadableAestheticObjectEdgeCanBeIntentionalComposition",
+    "testReadableBackgroundLikeObjectAnchorDoesNotBecomeSubjectCorrection",
+    "testMultiPersonVisualOverloadDoesNotBecomePositiveConfirmation",
+    "testGoldenCenteredReadablePortraitProducesGood",
+    "testReadableIntentionalEdgeCompositionDoesNotBecomeCorrection",
+    "testAvailableLightingAndAestheticSourcesSupportConfidenceEvenWithoutBaseConfidence",
+    "testGoldenClutteredWeakSubjectProducesExpectedIssueSet",
+    "testHorizonDistractsRequiresReliableHorizonSignal",
+    "testLookSpaceAdequateNilDoesNotCreateInsufficientLookSpaceIssue",
+    "testDegradedModeOnlyUsesAllowedIssueSubsetAndForcesNonGood",
+    "testDegradedModeConvertsGoodToMixedWhenNoIssues",
+    "testIssueTypesAreUniqueAndSortedBySeverityDescending",
+    "testStrengthsAreSortedByConfidenceThenTypeAndSequentialIds",
+    "testTraceRefsContainIssueStrengthAndSummarySeeds",
+    "testInvalidExternalSemanticsGuardEnablesNoClearFocusIssue",
+    "testEvidenceAndFixTypesArePresentForAllIssues",
+    "testAmbiguityBoostCanPromoteNoClearFocusIssueByPointFifteen",
+    "testEstablishingLikeFrameModerateClutterAvoidsVisualOverloadIssue",
+    "testSceneTypeTieReducesConfidenceForSceneDependentIssueByTenPercent",
+    "testUnknownSubjectDoesNotCreateInsufficientLookSpaceIssue",
+    "testHighMotionInLiveReducesCompositionIssueSeverity",
+    "testGoodVerdictIsBlockedWhenCriticalIssueExists",
+    "testMismatchedFrameIdAndModeAreAlignedToSnapshot"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/GenerationBackgroundRecoveryTests.swift",
+   "tests": [
+    "testBackgroundTeardownCheckpointsDraftAndForegroundRestoresEditableInput"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/GenerationProgressTests.swift",
+   "tests": [
+    "testProgressIsMonotonicAndResetsOnNewRequest"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/GenerationRetryIdempotencyTests.swift",
+   "tests": [
+    "testDuplicateSubmitJoinsSingleFlightWithoutNewRequest",
+    "testResubmitAfterTerminalResultIssuesNewEpoch",
+    "testClarificationAnswerKeepsRequestIdentity"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/GenerationSuccessProvenanceTests.swift",
+   "tests": [
+    "testSuccessfulGenerationStampsProvenanceAtomically",
+    "testLegacyPlannedSceneDecodesWithoutProvenance"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/GoodFramePreservationPolicyTests.swift",
+   "tests": [
+    "testSustainedHighScoresWithoutDominantFailureEmitKeep",
+    "testKeepRequiresStreakNotSingleFlash",
+    "testShortHighHistoryAbstains",
+    "testScoreDipBreaksTheStreak",
+    "testDominantFailureOnStrongLookingFrameAbstainsInsteadOfInventingFix",
+    "testScoreAtThresholdCountsTowardStreak",
+    "testStreakOfOnePolicyKeepsImmediately",
+    "testEmptyHistoryAbstains"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/HorizonEstimatorTests.swift",
+   "tests": [
+    "testSceneAngleSignIsStableAcrossOrientations",
+    "testLowConfidenceHorizonIsUnavailable",
+    "testSyntheticLineFixtureIsDetectedOrHonestlyUnavailable",
+    "testIntentionalOverrideSuppressesCorrection"
+   ],
+   "tags": [
+    "research-gated",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/HybridFusionServiceTests.swift",
+   "tests": [
+    "testPauseFusionReordersStrengthsAndRebuildsSummary",
+    "testIssueRankingChangesOnlyInsideExactSeverityTies",
+    "testCalibratedNeuralReordersTiedRankingWithoutTouchingSeverity",
+    "testOutOfDomainHeadAbstainsFromRanking",
+    "testExactSeverityTieStaysDeterministicWhenFusionDoesNotApply",
+    "testMissingNeuralSnapshotPreservesCritiqueExactly",
+    "testDegradedFusionIgnoresPauseOnlyHeadsForHorizonIssue",
+    "testPauseTraceBundleIncludesNeuralObservationsAndFusionMetadata",
+    "testTraceMetadataUsesOriginalDeterministicConfidenceAtClampBoundary"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/LatestFrameEnvelopeTests.swift",
+   "tests": [
+    "testFreshSourceInsideWindowIsAvailable",
+    "testExpiredSourceIsUnavailableNotMixed",
+    "testEachSourceUsesItsDeclaredWindow",
+    "testMissingSourceTimestampIsUnavailable",
+    "testUnknownLensGenerationFailsClosedAllSourcesUnavailable",
+    "testFutureTimestampClampsToZeroAgeAndStaysAvailable",
+    "testFrameIDMatchIsWhitespaceTolerantAndMismatchDetects",
+    "testStoreSnapshotCarriesLensGenerationAndEnvelope"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/LatestFrameEvidenceStoreTests.swift",
+   "tests": [
+    "testConcurrentPublishAndSnapshotNeverTearsTheEnvelope",
+    "testClearReturnsNilAndReplacementIsVisible",
+    "testAcceptedSnapshotCopiesPixelsAndKeepsTheAnalysisBufferImmutable",
+    "testAcceptedSnapshotRendersPortraitAndLandscapeOrientationExactlyOnce",
+    "testAcceptedFrameKeepsPixelsAndAdapterSeedFromFrameAAfterFrameBPublishes",
+    "testAcceptedFrameKeepsFrameBoundLensAndPreviewGeometryAfterLensChanges",
+    "testKnownSamplePTSAndSessionGenerationRejectLateOlderEvidence",
+    "testEqualKnownPTSRejectsConflictingEvidenceWithoutMutation",
+    "testEqualKnownPTSAcceptsOnlyIdempotentRetransmissionWithoutReplacement",
+    "testMismatchedPreviewGeometryIsUnavailableAtImmutableBoundary",
+    "testDetrProvenanceMustMatchFrameGenerationAndOrientation"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/LemmatizerTests.swift",
+   "tests": [
+    "testLemmatizeTable",
+    "testLemmatizeWalk",
+    "testLemmatizeApproach",
+    "testLemmatizeEmptyString",
+    "testMatchesKeywordTable",
+    "testMatchesKeywordWalk",
+    "testTextContainsKeyword",
+    "testTextContainsKeywordWithPossessive",
+    "testPhoneDoesNotMatchTelevisionByShortRoot"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/LightingEstimatorTests.swift",
+   "tests": [
+    "testFrontLightSubjectBrighterThanBackground",
+    "testBacklightDetectsDarkSubjectOnBrightBackground",
+    "testBackgroundMeanExcludesSubjectPixels",
+    "testLowKeyFrameProducesFiniteNearZeroMetrics",
+    "testClippedSubjectSuppressesBacklightClaim",
+    "testUniformFrameIsNeutral",
+    "testDegenerateSubjectBoxKeepsAllOutputsFinite"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/MotionGateTests.swift",
+   "tests": [
+    "testInitialSnapshotIsStillStableAndCompatibilityReadsMatch",
+    "testMotionTransitionsUseExactMovingPanningAndStillHysteresisCounts",
+    "testExistingThresholdBoundariesRemainUnchanged",
+    "testConcurrentSyntheticUpdatesAndSnapshotReadsNeverTearThePublishedTuple"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/MotionGateTimelineTests.swift",
+   "tests": [
+    "testBriefNoiseDoesNotFlickerStillState",
+    "testSustainedMotionCommitsAndIsTimestamped",
+    "testStillToMovingToStillTransitionsAreAllRetained",
+    "testDwellSecondsMeasuresCurrentStateAge",
+    "testDwellIsNilBeforeTheStateStarted",
+    "testPanningRequiresLowAccelAndStaysThroughHysteresis"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/NeuralEvidenceInferenceServiceTests.swift",
+   "tests": [
+    "testMockProviderExecutesAndBuildsValidPauseSnapshot",
+    "testLiveCadenceSkipsSecondRequestWithinInterval",
+    "testConcurrentLiveRequestsReserveCadenceAtomically",
+    "testLiveStabilityGateSkipsWithoutCallingProvider",
+    "testPauseDegradedProfileStillExecutesWhenHeavyModelsDisabled",
+    "testDisabledFeatureReturnsDisabledWithoutSnapshot",
+    "testProviderFailureReturnsHardFailureSnapshot",
+    "testFaceSaliencyApplicabilityFollowsSemanticsAndMissingSemantics",
+    "testLiveModeKeepsPauseOnlyHeadsNotApplicableEvenWhenExecuted",
+    "testPauseTimeoutReturnsRuntimeTimeoutFailure",
+    "testExecutedMetadataUsesActualRoiStrategyFromProvider",
+    "testExecutedOutcomeUsesThresholdProfileFromProviderDescriptor",
+    "testFailureMetadataUsesActualRoiStrategyFromExecutionError"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/PauseEvidencePackageTests.swift",
+   "tests": [
+    "testNoRecomputeDeclaresSameFrame",
+    "testPauseTimeRecomputeDeclaresTemporalAggregate",
+    "testStaleBaseSourcesAreUnavailableAndExcluded",
+    "testMissingBaseSourceIsUnavailableWithNilAge",
+    "testFreshRecomputeCannotRescueStaleEnvelopeMixing",
+    "testUnknownLensGenerationFailsClosedForWholePackage"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/PauseReasoningCoordinatorTests.swift",
+   "tests": [
+    "testSkipsWhenProviderUnavailable",
+    "testAppliesValidRefinementPatch",
+    "testRejectsLowFaithfulnessAsFullReject",
+    "testAllowsPartialAcceptForUnknownRuntimeIds",
+    "testFailsOnTimeout",
+    "testRejectsWhenModeIsLive",
+    "testDoesNotInvokeProviderWhenModeIsLive",
+    "testRejectsWhenRequestOrFrameMismatch",
+    "testDropsUnsupportedTraceLinksWithPartialAccept",
+    "testRejectsMixedVerdictSemanticShift",
+    "testRejectsNoChangeOverrideWhenActionExists",
+    "testRejectsTaxonomyMutationFromSafetyReport",
+    "testTruncatesLongOutputWithPartialAccept",
+    "testAcceptsValidatedOptionalTraceItems",
+    "testRejectsOptionalTraceWithDeterministicCertainty",
+    "testMarksConflictMetadataForOptionalTrace",
+    "testFailsWhenCanceledDueToStateChange",
+    "testPipelineDeterminismWithoutProviderKeepsBaselinePausePresentation",
+    "testPipelineCancelsLateReasoningAfterPauseExit",
+    "testDeterministicBaselineRequestRemainsUnchangedWithoutProvider"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/PendingRecordingJournalTests.swift",
+   "tests": [
+    "testRecordAndReadBackIsLossless",
+    "testAtomicReplaceKeepsExactlyOneRecordPerRecording",
+    "testMissingRecordReadsAsNilNotAnError",
+    "testCorruptRecordIsATypedDetectableFailure",
+    "testRemoveIsIdempotentAndAllEntriesClassifiesStates"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/PerformanceTests.swift",
+   "tests": [
+    "testParseLargeScriptPerformance",
+    "testParseLargeScriptUnderOneSecond",
+    "testParseVeryLargeScriptPerformance",
+    "testSaveLargeARMapPerformance",
+    "testSaveLargeMapUnderFiveSeconds",
+    "testLoadLargeARMapPerformance",
+    "testConvertMultipleColorsPerformance",
+    "testConvertMultipleResolutionsPerformance",
+    "testEncodeDecodeLargeDataPerformance",
+    "testGetAllSceneNamesPerformance",
+    "testMultipleSettingsChangesPerformance",
+    "testFindActorInLargeListPerformance",
+    "testNoMemoryLeaksDuringLongRecording"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/PermissionCoordinatorTests.swift",
+   "tests": [
+    "testConcurrentRequestsCoalesceIntoOneClientRequestAndDeliverOnce",
+    "testSequentialRequestsAfterCompletionIssueNewClientRequests",
+    "testDifferentPermissionsDoNotCoalesceWithEachOther",
+    "testSnapshotAlwaysBypassesTheRequestFence",
+    "testEveryAuthorizationStateIsDeliveredVerbatim",
+    "testCancelledWaiterDoesNotAffectJoinedCallers"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/PermissionFoundationTests.swift",
+   "tests": [
+    "testCameraMappingPreservesAuthorizationWhenHardwareIsUnavailable",
+    "testMicrophoneMappingPreservesAuthorizationWhenHardwareIsUnavailable",
+    "testSpeechMappingPreservesAuthorizationWhenServiceIsUnavailable",
+    "testPhotosMappingIncludesLimitedAndAlwaysKeepsAvailabilitySeparate",
+    "testPhotosRequestUsesAddOnlyAndReturnsPostRequestSnapshot",
+    "testRequestDoesNotPromptForTerminalOrUnknownStates",
+    "testRequestReturnsCurrentPostRequestAuthorizationAndAvailability",
+    "testConcurrentRequestsForSamePermissionUseOnePlatformRequest",
+    "testDifferentPermissionsRemainIndependent",
+    "testDuplicateAndLateCallbacksDoNotResumeOrMutateCompletedRequest"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ProCameraControlContractsTests.swift",
+   "tests": [
+    "testContractCoversEveryControlExactlyOnce",
+    "testAvailableControlsNameRealOwners",
+    "testExcludedSurfacesHaveNoControlCase",
+    "testTorchIsAvailableOnLensOwner"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ProjectLifecycleRegistryTests.swift",
+   "tests": [
+    "testAcquireIsExclusiveAndReleaseIsTokenFenced",
+    "testConcurrentAcquireYieldsExactlyOneWinner",
+    "testDeletionIsRejectedWhileWorkspaceLeaseIsActiveAndSucceedsAfterRelease"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RealtimeSchedulerTests.swift",
+   "tests": [
+    "testLowPriorityConsumerIsSkippedWhenHeavyModelsAreDisabled",
+    "testStableConsumerIsSkippedForUnstableFrames",
+    "testZeroHighPriorityBudgetDoesNotDispatchHighConsumer",
+    "testZeroMediumPriorityBudgetDoesNotDispatchMediumConsumer",
+    "testZeroLowPriorityBudgetDoesNotDispatchLowConsumer",
+    "testSchedulerPublishesTheEffectiveModeOfTheBudgetItDispatches",
+    "testUnregisterIsIdempotentAndPostUnregisterDispatchDoesNotInvokeConsumer",
+    "testDrainAndWaitFencesQueuedDispatch"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RecordingArtifactPromotionTests.swift",
+   "tests": [
+    "testConcurrentPromotionOfSameArtifactStoresExactlyOneFileAndReturnsSameReference",
+    "testPromotionAfterInterruptionResumesIdempotentlyWhenDestinationExists",
+    "testPromotionWithNonRegularDestinationFailsWithConflictAndKeepsPendingSource",
+    "testPromotionWithMissingSourceAndMissingDestinationFailsWithType",
+    "testPromotionRecoversFromCrashBeforeJournalWrite",
+    "testPromotionRecoversFromCrashAfterJournalWrite",
+    "testPromotionRecoversFromCrashAfterRename",
+    "testPromotionRecoversFromCrashAfterJournalRemoval"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RecordingContractV1Tests.swift",
+   "tests": [
+    "testCameraAndARContractsAreValid",
+    "testIdentityAndFormatViolationsAreExactTypedRejections",
+    "testRequiredAudioCannotSilentlyDowngradeToVideoOnly",
+    "testCodecOrientationMirroringAndPromotionVariantsRemainTyped",
+    "testTerminalDispositionMatrixIsExhaustiveAndOneToOne",
+    "testTargetAwareMatrixRejectsIncompatibleAppLocalPromotion",
+    "testTerminalRowsEnforceArtifactAndTypedFailureInvariants",
+    "testTerminalPolicyShapeRejectsArtifactAndFailureRelationDrift",
+    "testValidatedReturnsTheSameImmutableContractOrTypedError"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RecordingDiagnosticsTests.swift",
+   "tests": [
+    "testRingBufferIsBoundedAndOrdered",
+    "testEventsCarryOnlyTypedFieldsAndNeverPayloads",
+    "testSerializedRecorderEmitsLifecycleAndTerminalDiagnostics",
+    "testThermalPostureIsEmittedAtStart",
+    "testStoragePressureAndDropPolicyAreEmitted"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RecordingLifecycleTransitionTests.swift",
+   "tests": [
+    "testTransitionTableMatchesSpecifiedAdjacency",
+    "testReleasedIsTerminalAndSameStateTransitionsAreRejected",
+    "testRecorderStateMapsOntoCanonicalLifecycle",
+    "testSerializedRecorderRejectsStartFromIdleAndStopFromIdle",
+    "testSerializedRecorderHappyPathFollowsCanonicalSequence",
+    "testControllerLifecycleProjectsCanonicalStatesAcrossOneTake"
+   ],
+   "tags": [
+    "integration",
+    "research-gated",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RecordingPreflightTests.swift",
+   "tests": [
+    "testInvalidDimensionsFailBeforeRecording",
+    "testUnsupportedCodecFailsBeforeRecording",
+    "testExplicitZeroPixelFormatFailsBeforeRecording",
+    "testDiskBudgetBelowRequirementFailsBeforeRecording",
+    "testDiskBudgetQueryFailureFailsClosed",
+    "testDeniedMicrophoneFailsSoundRequiredTake",
+    "testUnavailableAudioSessionFailsSoundRequiredTake",
+    "testSatisfiedPreconditionsAllowStart",
+    "testDefaultControllerPreflightIsAvailabilityNeutral",
+    "testCoordinatorAudioSessionCheckerAnswersAvailableWhenInactive",
+    "testCurrentRecordingTrackTransformIsAlwaysValid",
+    "testDiskBudgetModelIsConservativeAndMonotonic",
+    "testArtifactStoreDiskBudgetEstimateAnswersOnRealVolume"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RecordingRecoveryAndRetentionTests.swift",
+   "tests": [
+    "testResumablePromotionCompletesWithRealMetadataAndConsumesPending",
+    "testCrashAfterCommitConvergesToAlreadyPromotedWithoutTouchingDestination",
+    "testCorruptRecordIsReportedAndPreservedForHonestDiagnosis",
+    "testMissingSourceAndDestinationConvergesToMissingArtifact",
+    "testRetryBudgetExhaustionKeepsPendingAndMarksEntryFailed",
+    "testFailedEntryIsSurfacedAndPendingIsPreserved",
+    "testRecoveryNeverTouchesSiblingProjectMedia",
+    "testKillBeforeJournalWriteConvergesThroughOrphanCleanup",
+    "testRetentionIsClockControlledAndNeverTouchesLiveOrProjectMedia",
+    "testOrphanCleanupIsAttackSafeAndDryRunFirst",
+    "testColdLaunchMaintenanceConvergesJournalAndSweepsOnlyExpiredPending",
+    "testProjectDeletionRemovesOwnedMediaAndLeftoverJournalRecords",
+    "testTransientRootsAndPendingFilesAreExcludedFromBackup"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/RecordingStartTeardownRaceTests.swift",
+   "tests": [
+    "testTeardownDuringMicrophoneAwaitAbortsRecordingStartOnReleasedWorkspace",
+    "testStartAbortsWhenTeardownCompletesBeforePermissionRequest"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SETCompositionNetRuntimeSchemaTests.swift",
+   "tests": [
+    "testAvailableOutputValidatesCleanAgainstMatchingInput",
+    "testNaNInAnyHeadIsRejected",
+    "testNaNInContinuousTargetsIsRejected",
+    "testOutOfRangeScoresAreRejected",
+    "testMissingRequiredHeadIsRejected",
+    "testWrongFrameIdIsRejected",
+    "testWrongGenerationIsRejected",
+    "testMismatchedROIStrategyIsRejected",
+    "testMissingSubjectROIProvenanceIsRejected",
+    "testV1InputAndAllOutputHeadsValidateAgainstFrozenShapes",
+    "testV1InputRejectsWrongSizedNonFiniteAndMismatchedROIMask",
+    "testV1InputRejectsVersionMismatches",
+    "testV1InputRejectsInvalidROIAndNonZeroMissingMask",
+    "testV1InputRejectsFeatureRangeMissingFillAndROIScalarDrift",
+    "testV1OutputRejectsMissingWrongSizedNonFiniteUnsupportedAndVersionedHeads",
+    "testV1OutputRejectsEmbedding64AndRisk99Mutations",
+    "testAnyV1MetadataFieldForcesStrictValidation",
+    "testUnavailableStateCarriesNoScoresAndValidatesClean",
+    "testFailedStateCarriesTheReason",
+    "testMetalContractPreprocessorDimensionsAndRGBOrder",
+    "testSyntheticPythonSwiftParityFixtureHashes",
+    "testDeterministicPythonSwiftParityManifestCoversFiftyCases"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SETDesignSystemTokenTests.swift",
+   "tests": [
+    "testPaletteUsesThePublishedSETOSValues",
+    "testSemanticContrastPairsMeetTheirPublishedBounds",
+    "testMetricsKeepThePhaseZeroGeometryContract",
+    "testMotionAndTypographyPresetsStayTyped",
+    "testCommandTypographyUsesTheOwnedBoundedScale",
+    "testMarkerLedgerConsumesOneDomainEventAcrossRecomposition",
+    "testPauseCutMarkOwnerEmitsOneRigidHapticAcrossRecreatedViews",
+    "testCorrectiveArrowTerminatesAtTargetBoundaryWithoutCrossingPortraitSubject",
+    "testCorrectiveArrowTerminatesAtTargetBoundaryWithoutCrossingLandscapeSubject",
+    "testSubjectSafeControlChoosesOppositeTopEdgeInPortraitAndLandscape",
+    "testSubjectSafeControlReturnsNilWhenEveryEdgeOverlapsSubjectOrRail",
+    "testPreviewMappingConvertsVisionLowerLeftOnceForPortraitAndMirroredLandscape",
+    "testAcceptedFrameMapperUsesOrientedAspectFillPixelsAndMirrorsOnce",
+    "testPauseSummaryUsesLocalizedSemanticFallbackInsteadOfRawVerdict",
+    "testPauseSummaryPrefersNonEmptyExpectedOutcomeAndFallsBackWhenBlank",
+    "testNominalTimecodeUsesTwentyFourFramesAndFreezesAtWholeFrames"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SETFixtureCatalogTests.swift",
+   "tests": [
+    "testManifestCoversEveryPhaseZeroScreenFamilyAndState",
+    "testManifestHasUniqueIDsAndSafeOrientationContracts",
+    "testGalleryRequiresBothLocalesAndAccessibilityVariants",
+    "testCameraBitmapFixtureDecodesFromTheApplicationBundle",
+    "testGeneratorFixtureCatalogIncludesProductionDecisionTraceRoute",
+    "testGalleryRootPreemptsBenchmarkAndCommercialBuilders",
+    "testLaunchConfigurationParsesDeterministicGalleryArguments",
+    "testLaunchConfigurationDefaultsToRussianWithoutOptionalVariants"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SETFontGlyphCoverageTests.swift",
+   "tests": [
+    "testPinnedFontAssetsAreBundledWithExpectedHashesAndPostScriptNames",
+    "testLocalizedFontRolesCoverTheRequiredRussianAndEnglishCharacters"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SETLibraryModelTests.swift",
+   "tests": [
+    "testReloadProjectsSummariesAndDropsStaleSelection",
+    "testTypedLoadFailureIsNotPresentedAsEmptyLibrary",
+    "testEmptyStateRequiresSuccessfulZeroProjectLoad",
+    "testReloadOrdersDuplicateNamesByUpdatedAtThenUUIDAndKeepsMetadata",
+    "testSelectRequiresIdleFlow",
+    "testConfirmCreateTrimsDraftAndOpensSceneOnSuccess",
+    "testConfirmCreateReportsInvalidDraft",
+    "testOpenRetrySuccessReturnsToIdleAndClearsRetry",
+    "testLocalDuplicateEntersDuplicateFlowWithoutTouchingPersistence",
+    "testProviderDuplicateMapsToDuplicateFlow",
+    "testCreatePersistenceFailureShowsRecoveryAndRetrySucceeds",
+    "testReloadDoesNotEraseMutationFailureRecovery",
+    "testRenameUsesStableIDAndExpectedSnapshot",
+    "testRenameDuplicateIsTypedAndDoesNotMutateProvider",
+    "testRenameRetryRetainsIDDraftAndExpectedTimestampAfterReload",
+    "testDeleteConfirmationReloadsOnlyOnSuccess",
+    "testDeleteFailureKeepsSceneAndOffersRetry",
+    "testCancelDeleteDoesNotMutateSelectionOrInvokeProvider",
+    "testCancelFlowsReturnToIdleAndClearDraft",
+    "testCreateSceneMapsDBServiceOutcomes",
+    "testDeleteSceneCompletionReportsMissingProject"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneBundlePipelineTests.swift",
+   "tests": [
+    "testMonolithicExecutionWritesOnlyFinalCheckpoint",
+    "testChunkedThermalAwareWritesChunkCheckpointsAndSleepsOnSerious",
+    "testChunkedThermalAwareRecordsCriticalAsTelemetryOnly",
+    "testParseBundleReturnsMultipleScenesForHeadings",
+    "testParseCompatibilityReturnsActiveSceneFromBundle",
+    "testParseBundleProducesCanonicalStableRefsInChunks",
+    "testParseBundleAppendModeExtendsTailSceneWithoutChangingSceneCount",
+    "testParseBundleAppendModeCreatesNewSceneForNewHeading",
+    "testParseBundleSupportsNatHeadingAndGenericLocationDashTimeHeading",
+    "testParseBundlePreservesSplitHeadingPrefixLines",
+    "testParseBundleFullModeReusesUnchangedScenesFromPreviousState",
+    "testBundlePipelinePreservesDialogueThenPutDownPattern",
+    "testBundlePipelinePreservesDialoguePickUpGiveToThirdPattern",
+    "testDemoScenarioMaterializesNamedDialogueLookAtAndPhoneTransfer",
+    "testDemoScenarioProviderPathRepairsTransferObjectsAndSourceOrder",
+    "testPartialProviderDialogueIsRecoveredFromSpeakerCues",
+    "testRuleFallbackKeepsTwoActorMotionAndUnsupportedTextActionAcrossChunks",
+    "testRuleFallbackMaterializesActiveSceneForDialogueOnlyInput",
+    "testCollectivePassByGetsExpandedForBothActors",
+    "testPlannerPreservesDialogueAndDescribedActionAsPlaybackAnnotations",
+    "testBeatTimelineBuildsSegmentsProgressAndCaptionFlags",
+    "testBeatTimelineKeepsHiddenNoOpDurationForPlaybackSync",
+    "testActorRenderStylesAreDeterministicAndDistinctForHumans",
+    "testDialogueBeatSerializesSpeakerTurnsForPlayback",
+    "testCombinedPickUpGiveCaptionsAreActionSpecific",
+    "testPlannerDoesNotExposeRawInternalActionCaption",
+    "testV9RawDescribedActionRecoversHumanSourceSentence",
+    "testDemoActionBeatsAreVisibleAndPhoneSitsOnTable",
+    "testEnterWithoutTargetCreatesVisibleInitialStep",
+    "testOppositeSideTableCueMovesActorAcrossSupportObject",
+    "testPhoneOnMarkedTableUsesRaycastSurfaceY",
+    "testSpatialPlannerUsesLightweightPlaneSnapshots",
+    "testSceneGeneratorDoesNotAutoOpenScenarioEditorOnAppear",
+    "testSceneGeneratorInputValidationIsScopedAndWhitespaceAware",
+    "testSceneGeneratorDraftSurvivesSheetDismissalAndProjectReload",
+    "testSceneGeneratorInputValidationUsesCharacterBoundaryAndRejectsInvalidText",
+    "testSceneGeneratorRapidDoubleSubmitUsesOneRequestOwner",
+    "testSceneGeneratorLeaderConsumesOneRequestEventAndCannotReplay",
+    "testSceneGeneratorLeaderReduceMotionStartsAtActionWithoutTravel",
+    "testSceneGenerationRequestStateTransitionMatrixIsExhaustive",
+    "testSceneGenerationRequestStateRejectsInvalidAndStaleIdentityTransitions",
+    "testSceneGeneratorPublishesReadingPlanningPlacingAndSuccessTrace",
+    "testSceneGeneratorMapsMissingCameraTransformToRetryableState",
+    "testSceneGeneratorClarificationTraceIsTypedAndNotTerminalError",
+    "testARFailureMessageUsesContainerPresentationLocale",
+    "testSceneGeneratorOverlayPassesTouchesDuringMarkingButKeepsStoryboardEditorInteractive",
+    "testSceneGeneratorViewModelProcessesLightweightFrameSnapshotInDemoMode",
+    "testSceneGeneratorARInterruptionRecoveryRequiresPostInterruptionGenerationAndPlane",
+    "testSceneGeneratorCameraHintsMapARInterfaceOrientationLikeCameraManager",
+    "testSceneGeneratorHintPauseLifecycleStopsAndResumesLiveAnalysis",
+    "testSceneGeneratorHintPauseUsesOneAcceptedFrameForDisplayAndAnalysis",
+    "testLLMReleaseModelResourcesIsIdempotent",
+    "testV9FullSkipsLegacyPlanProviderAndUsesEventTableProvider",
+    "testSceneParserRuntimeModeAPIBackCompatRoundtrip",
+    "testV9FullBudgetKeepsSuccessfulProviderResultAndEmitsReasonCode",
+    "testV9FixableVerifierIssuePolicy",
+    "testScriptNormalizerSplitsInlineDialogueStageNotesAndScreenText",
+    "testScreenplayFragmentKeepsMontageOverlaysAndImplicitRustamShot",
+    "testV9CoverageVerifierEmitsSemanticIssues",
+    "testV9CoverageVerifierFlagsMissingTargetForPutPickAndCollectiveStopNear",
+    "testV9CoverageVerifierFlagsDialogueActionCollapsedWhenNoSeparateActionRow",
+    "testV9ContractsAcceptRowIdAndLegacyRowID",
+    "testStoryboardPhoneRenderStyleAndYawHelpers",
+    "testStoryboardPresentationBuildsVisibleSummaries",
+    "testStoryboardBeatInspectorShowsActorsTargetsAndDuration",
+    "testStoryboardBeatInspectorWarnsAboutMissingTargetAndEmptyText",
+    "testStoryboardActorDragCommitChangesOnlySelectedBeatPoints",
+    "testStoryboardActorTrackDragWithoutActiveBeatMovesWholeActorPath",
+    "testStoryboardActorDragRequiresActiveBeatAndBeatParticipation",
+    "testStoryboardManualEditChangesActionAndReplans",
+    "testStoryboardBeatEditFailsBeforeMutationWhenObjectIdentityIsUnavailable",
+    "testStoryboardManualEditRejectsSelfGive",
+    "testStoryboardSelectionOwnerCancelsAndConsumesOneStableEvent",
+    "testStoryboardMutationOwnerRejectsDuplicateSubmits",
+    "testStoryboardMoveAddAndDeleteReplans",
+    "testObjectBindingMatrixUsesExplicitIdentityAndTypedFailures",
+    "testObjectBindingDoesNotConvergeSpatiallyDistinctOrUnpositionedObservations",
+    "testObjectBindingRejectsTypeMismatchedExplicitAndAliasCandidates",
+    "testObjectBindingAliasesRemainScopedToSubmittedRequestSnapshot",
+    "testObjectBindingRejectsInvalidDetectionGeometryAndNormalizesSignedZero",
+    "testObjectBindingCanonicalIDsSurviveDetectionReloadRepresentation",
+    "testObjectBindingRejectsReuseOfDetectionProvenanceAcrossReferences",
+    "testChunkCanonicalizerPreservesRepeatedNonMarkedProviderObjects",
+    "testUnresolvedObjectBindingStopsBeforeSceneCommitOrSuccess",
+    "testRealGenerationPathStopsBeforeCommitForUnresolvedObjectBinding",
+    "testRealGenerationPathUsesNaturalLanguageMarkerAmbiguityGateWithoutOverride",
+    "testClarificationAnswerResumesSameRequestOnceAndCommits",
+    "testClarificationCancelReturnsDraftAndClearsRequest",
+    "testClarificationRejectsStaleRepeatedAndBoundedInvalidAnswers"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneJourneyContractTests.swift",
+   "tests": [
+    "testProductionContractIsCompleteAndTyped",
+    "testExpectedOwnerPersistenceAndArtifactMappings",
+    "testSuccessExportTraceUsesLegalTypedEdges",
+    "testFailureRecoveryAndTeardownTraces",
+    "testRecordingTransitionsAreExhaustiveAndTyped",
+    "testCustomContractValidationFailsClosed"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneParseRequestFenceTests.swift",
+   "tests": [
+    "testSupersededRequestIsNotCurrentWhileLatestIs",
+    "testResetInvalidatesEveryInFlightToken",
+    "testUnsupersededRequestStaysCurrent",
+    "testConcurrentBeginsIssueUniqueTokensAndOnlyLastIsCurrent",
+    "testDelayedStaleCompletionLosesToNewerRequest",
+    "testCurrentRequestStillPublishesParseContext",
+    "testResetRuntimeContextClearsContextAndInvalidatesInFlightWrites"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneParserBaselineTests.swift",
+   "tests": [
+    "testBaselineRuTwoActorsApproach",
+    "testBaselineRuOlegTakesPhoneFromTable",
+    "testBaselineRuMarkedTableApproach",
+    "testBaselineEnActionTokensWithSupportedNouns",
+    "testBaselineEnApproachActionWithSupportedObject",
+    "testBaselineEmptyDescriptionIsExplicitFailure",
+    "testBaselineGibberishIsNotRepairedIntoAScene",
+    "testBaselineUnresolvedPronounsFlagAmbiguity"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneParserServiceTests.swift",
+   "tests": [
+    "testParseSimpleScene",
+    "testParseWithMarkedObjects",
+    "testParseMultipleObjectsOfSameType",
+    "testParsePhoneObject",
+    "testParseEmptyDescription",
+    "testParseWithUnresolvedPronouns",
+    "testParseWithCustomMarkedObjectName",
+    "testSameNameMarkedObjectsAreCollisionSafeAndTypedAmbiguous",
+    "testDiagnosticsConfidence",
+    "testDiagnosticsCoverage",
+    "testDiagnosticsMissingActors",
+    "testDiagnosticsMissingObjects",
+    "testBackwardCompatibility",
+    "testParseExtractsTopLevelSceneMetadata"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ScenePhotosExportServiceTests.swift",
+   "tests": [
+    "testAuthorizedExportSucceedsOnlyAfterPhotosChangeCommits",
+    "testDeniedAuthorizationNeverTouchesTheLibrary",
+    "testRestrictedAuthorizationMapsToRestricted",
+    "testPhotosFailureMapsToFailedOutcome",
+    "testConcurrentExportReportsAlreadyInFlightWithoutDuplicatePerform"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneProjectOpenTests.swift",
+   "tests": [
+    "testProductionRouterOpensByStableIDAndPassesTheSameIDToWorkspace",
+    "testCompatibleLegacyOpensWithoutReadTimeMutation",
+    "testMissingCorruptAndFutureProjectsStayInLibraryAndDoNotConstructWorkspace",
+    "testRequiredRecordingLinksBlockButOptionalMediaAbsenceDoesNot",
+    "testMalformedDownstreamIdentityBlocksRouterBeforeWorkspaceConstruction",
+    "testMalformedActorPathDurationsBlockBeforeWorkspaceConstruction",
+    "testDuplicateScriptActorBindingBlocksBeforeWorkspaceConstruction",
+    "testMissingScriptObjectBindingBlocksBeforeWorkspaceConstruction",
+    "testOpenLeaseBarriersDeleteAndPreservesStableProject",
+    "testLibraryRetryRevalidatesTheSameImmutableProjectID"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneProjectSchemaMigrationTests.swift",
+   "tests": [
+    "testRawLegacyProjectRemainsByteIdenticalUntilSaveThenMigratesToV1",
+    "testUnversionedEnvelopeRemainsByteIdenticalUntilSaveThenMigratesToV1",
+    "testNewSaveIsV1AndRoundTripsAllSceneAggregateData",
+    "testFutureVersionWithUnknownFieldsFailsClosedAndDoesNotMutateHealthyRecords",
+    "testNegativeMalformedAndVersionedRawRecordsFailClosedWithoutFallback",
+    "testInvalidRecordingReferenceCannotOverwriteExistingV1Bytes",
+    "testUnsafeRecordingReferenceInPersistedProjectFailsClosedWithoutRewriting",
+    "testManuallyAuthoredV0GraphPreservesNestedDataThroughRawAndEnvelopeMigration"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneRecordingControllerTests.swift",
+   "tests": [
+    "testTimestampGateRejectsStaleFramesAndAllowsFreshTake",
+    "testStartThreadsActiveCaptureFormatAndOrientationMetadataIntoConfiguration",
+    "testStartPreflightRejectionHappensBeforeRecorderCreation",
+    "testCoordinatorRebindPreservesActiveSourceAndForeignCoordinatorCannotBorrowToken",
+    "testOwnerReplacementCannotStartFromPreviousIdleCache",
+    "testTerminalStopInvalidatesPreviousOwnerCacheBeforeReplacement",
+    "testCameraServiceStopPreservesReplacementClaimMadeDuringUnlockedCleanup",
+    "testConcurrentStopsShareOneFinalizationResult",
+    "testInitialFramePrecedesPublicationWhileConcurrentStopAndReleaseWait",
+    "testMicrophoneDenialDoesNotCreateOrStartARecorder",
+    "testMicrophoneRecoveryClearsWhenPermissionBecomesUnavailable",
+    "testMicrophoneRestrictionOffersRecheckRecovery",
+    "testMicrophoneUnavailableAndUnknownUseGenericRecorderErrorWithoutRecovery",
+    "testSoundOffSkipsMicrophoneAndAudioSessionAndUsesDisabledContract",
+    "testDeniedMicrophoneOffersExplicitSilentRetryWithoutPermissionRequest",
+    "testAuthorizedRetryClearsMicrophoneRecoveryAndStartsRecording",
+    "testPublishedRecordingSourceFPSIsExactAndUnavailableBlocksRecording",
+    "testRecordingSourceOwnershipRejectsStaleCoordinatorUpdatesAndRelease",
+    "testTeardownInFlightBlocksRecordingUntilPersistenceGateOpens",
+    "testFinalizedArtifactPromotionIsIdempotentAndResolvesProjectFile",
+    "testRecordingArtifactStoreRejectsOutsideAndSymlinkPaths",
+    "testRecordingArtifactStoreRemovesOnlyChosenProjectAndIsIdempotent",
+    "testStagedArtifactCommitRollsBackAfterInjectedPartialUnlink",
+    "testRecordingArtifactStoreFailsClosedForUnexpectedEntryWithoutTouchingExternalTarget",
+    "testRecordingArtifactStoreRejectsSymlinkedRootAndProjectDirectory",
+    "testInterruptionStopsTakeOnceAndRecoveryCannotCreateHiddenClip"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneSaveLoadTests.swift",
+   "tests": [
+    "testSaveARWorldMapWithValidData",
+    "testLoadExistingMetadataOnlyScene",
+    "testLoadNonExistentMap",
+    "testSaveSceneDataWithoutMap",
+    "testGetAllSceneNames",
+    "testDeleteExistingScene",
+    "testDeleteNonExistentScene",
+    "testCreateScenesDirectory",
+    "testSaveSceneWithoutActors",
+    "testSaveSceneWithoutScript",
+    "testSaveActorsWithAnchors",
+    "testDataIntegrityOnMultipleSaves",
+    "testNewMetadataOnlySceneIsListedButDoesNotLoadAsWorldMap",
+    "testMetadataOnlyUpdatePreservesExistingMapBytes",
+    "testAddingMapToMetadataOnlySceneProducesLoadableFilePair",
+    "testSceneTitlesAreDeduplicatedAndSortedAcrossMapAndDataFiles",
+    "testDeleteRemovesBothMapAndMetadataFiles",
+    "testCreateListAndDeleteUnifiedSceneProject",
+    "testDeleteUnifiedSceneProjectRemovesAuthoritativeRecordingArtifacts",
+    "testArtifactCleanupFailureDoesNotChangeSuccessfulMetadataDeletion",
+    "testSaveAndReloadUnifiedSceneProjectState",
+    "testUnifiedSceneProjectWithoutRecordingReferencesDecodesEmpty",
+    "testLegacyRawUnifiedSceneProjectLoadsAndMigratesOnSave",
+    "testNilMapEnvelopeIgnoresStaleLegacyWorldMapSidecar",
+    "testUnifiedProjectRejectsFilenameUUIDMismatchWithoutTouchingSidecar",
+    "testMismatchedUnifiedProjectMetadataPreservesRecordingArtifacts",
+    "testMalformedEnvelopeWithProjectKeyDoesNotFallbackToLegacy",
+    "testCorruptUnifiedProjectDoesNotHideHealthyProjectFromList",
+    "testCorruptUnifiedProjectDoesNotBlockHealthyLookupOrDeletion"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneScriptsMarkdownSmokeTests.swift",
+   "tests": [
+    "testRunLocalModelOnScriptsMarkdownCases"
+   ],
+   "tags": [
+    "research",
+    "research-gated",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneV8PipelineTests.swift",
+   "tests": [
+    "testCompilerPreservesMarkedObjectIdentityAndSymbolicActors",
+    "testCanonicalizerExpandsCollectiveTowardEachOtherBeatForBothActors",
+    "testCanonicalizerPreservesObjectTargetInsideCollectiveChunk",
+    "testCompilerDowngradesTargetlessRequiredActionAndEmitsNote",
+    "testCompilerSkipsInvalidSpatialRelationAndEmitsNote",
+    "testQualityGateRejectsUnresolvedMarkedObject",
+    "testAnchorExtractorFlagsSameTypeMarkerConflict",
+    "testQualityGatePrefersClarificationForAmbiguity",
+    "testQualityGateKeepsAcceptLocalWhenOnlyCompileNotesPresent",
+    "testQualityGateRejectsLegacyPlanStoppedByMaxTokens",
+    "testCoordinatorPropagatesClarificationTraceIntoDiagnostics",
+    "testMetadataExtractorParsesHeadingLocationAndTimeOfDay",
+    "testMetadataExtractorParsesSplitRussianHeadingWithCuePrefix",
+    "testMetadataExtractorMapsDawnToMorningForSplitHeading",
+    "testCoordinatorUsesRemotePlanWhenOffloadEnabled",
+    "testLiveLocalModelSmokeCases",
+    "testLiveLocalModelDatasetSampledCases"
+   ],
+   "tags": [
+    "research",
+    "research-gated",
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SceneWorkspaceTeardownTests.swift",
+   "tests": [
+    "testTeardownPersistsThenPausesWhenWorkspaceIsIdle",
+    "testTeardownStopsRecordingAndPlaybackBeforePersistence",
+    "testTeardownAwaitsRecordingFinalizationBeforePlaybackAndPersistence",
+    "testTeardownAwaitsPersistenceBeforeTerminalRecordingReleaseAndDetach",
+    "testConcurrentTeardownCallersShareOneOperation",
+    "testWorldMapCaptureTimeoutResumesExactlyOnceAndIgnoresLateCallback",
+    "testWorldMapCaptureCancellationResumesExactlyOnceAndIgnoresLateCallback",
+    "testWorldMapTimeoutUnblocksTeardownAndLateCallbackCannotOverwriteRetry",
+    "testTeardownCancelsGenerationAndPersistsExistingSceneOnce",
+    "testConcurrentProjectSnapshotsShareCaptureAndPersistLatestState",
+    "testPersistenceFailureCanRetryAndDetachExactlyOnce",
+    "testConcurrentPersistenceFailureCallersShareAttemptAndLaterRetry",
+    "testRouteBackgroundHookUsesTheSameIdempotentWorkspaceTeardown",
+    "testSceneRouteAwaitsInjectedWorkspaceBeforeConstructingCamera",
+    "testSceneWorkspaceFailureRetainsRouteAndDoesNotConstructCamera",
+    "testPresentedSceneModalBlocksWithoutStartingWorkspaceTeardown"
+   ],
+   "tags": [
+    "integration",
+    "simulator"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ScriptParsingTests.swift",
+   "tests": [
+    "testParseSimpleDialogue",
+    "testParseMultilineScript",
+    "testParseMultipleRepliesFromSameCharacter",
+    "testParseEmptyScript",
+    "testParseInvalidFormatWithoutColons",
+    "testExtractCharacterNames",
+    "testExtractPhrasesWithPunctuation",
+    "testParseScriptWithWhitespace",
+    "testParseLongDialogue",
+    "testParseScriptWithCommasInNames",
+    "testParseScriptWithNameOnly",
+    "testParseScriptWithMultipleSentences",
+    "testParseParallelNamesAcrossSpeakerTransition",
+    "testParseDialoguePreservesColonsInsidePhrase",
+    "testSubtitlePresentationRestoresStructuralSeparatorOutsideParsedPhrase"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SemanticDirectionBehaviorTests.swift",
+   "tests": [
+    "testCameraFramedInPlaneDirectionsInvertOptically",
+    "testNonCameraFramesPreserveDirection",
+    "testDepthAndNeutralDirectionsAreUnaffected",
+    "testCatalogCameraFramedTipsPublishInvertedSubjectDirection",
+    "testSubjectTargetPointAimsAtFrameEdgeMidpoint",
+    "testSceneDirectionInvariantAndArrowFollowsDisplayTransform",
+    "testShiftActionCopySpeaksInSubjectDisplacementSemantics"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SemanticTipPlannerTests.swift",
+   "tests": [
+    "testLivePlannerBuildsLookSpaceTipFromDeterministicIssue",
+    "testPersonEdgeTipsUsePhysicalCameraDirectionAndVisualCopy",
+    "testPausePlannerLocalizesFaceContourConflictWithValidatedVLMEntity",
+    "testPlannerFallsBackToGenericObjectLabelWithoutGrounding",
+    "testPlannerMapsLeftObjectEdgeToMovingObjectRight",
+    "testGoodFrameProducesPositiveTip",
+    "testWeakNoClearFocusDoesNotInventStepCloserOrSimplifyBackground",
+    "testStrongNoClearFocusStillProducesCorrectiveTip",
+    "testPipelineLivePresentationSuppressesNonWhitelistedSemanticTip",
+    "testPipelineLivePresentationSuppressesGenericObjectSemanticFallback",
+    "testLiveCoachQualityGateAcceptsFreshGroundedSingleSubject",
+    "testLiveCoachQualityGateRejectsStaleOrUnavailableVision",
+    "testLiveCoachQualityGateRejectsAmbiguousOrUngroundedSubject",
+    "testLiveCoachQualityGateRejectsAnySemanticAmbiguityForSpatialAction",
+    "testLiveCoachQualityGateRejectsContextualSpatialIntentHiddenByNonSpatialAction",
+    "testLiveCoachQualityGateRejectsUngroundedOrStaleContextualStepBack",
+    "testLiveCoachQualityGateRejectsMismatchedPrimaryRegions",
+    "testPipelineLivePresentationEmitsOnlyFreshGroundedDirectionalAction",
+    "testPipelineRejectsStaleOrMismatchedSecondarySpatialSemanticTip",
+    "testPipelineDoesNotPublishStaleSpatialDemoHint"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SerializedMediaRecorderTests.swift",
+   "tests": [
+    "testInitialStateIsIdle",
+    "testTypedSourceClaimAllowsOneOwnerAndRejectsTheOtherRoute",
+    "testExactSourceTokenIsRequiredForFramesAndStaleReleaseCannotClearOwner",
+    "testConcurrentSourceClaimsHaveExactlyOneWinner",
+    "testPrepareDoesNotStartAudio",
+    "testPrepareIsIdempotentForSameConfigurationAndRejectsDifferentID",
+    "testExistingOutputIsTypedFailure",
+    "testWriterInputRejectionIsTyped",
+    "testStartTwiceStartsWriterAndAudioOnce",
+    "testRequiredAudioFailureIsTyped",
+    "testAudioStartFailureIsTyped",
+    "testDisabledAudioNeverCreatesDriver",
+    "testAppendedAudioUsesWriterMetadataTrue",
+    "testAudioDriverCallbackUsesStartFence",
+    "testAppendedAudioCannotOverrideWriterMetadataFalse",
+    "testConcurrentAppendSubmissionsStayOnOneRecorderQueueAndFinishAfterAppends",
+    "testLateFrameDroppedAfterStopFence",
+    "testConcurrentStopSharesOneFinishAndResult",
+    "testRepeatedStopAfterCompletionReturnsCachedResultWithoutSecondFinish",
+    "testDuplicateWriterCallbackResolvesWaitersOnceAndKeepsStableResult",
+    "testConcurrentStopAndReleaseShareOneFinishAndExactResult",
+    "testVideoAppendFailureReturnsRecoverableArtifact",
+    "testDroppedVideoDoesNotFailOrCountAsAcceptedFrame",
+    "testAudioAppendFailureReturnsTypedFailure",
+    "testAppendFailureStopsAudioImmediatelyAndOnlyOnce",
+    "testFinishFailureDoesNotInventRecoverableArtifact",
+    "testFinishFailureUsesOnlyExplicitWriterAttestation",
+    "testStopWithoutVideoFramesNeverFinalizes",
+    "testReleaseIdleReturnsNilAndIsIdempotent",
+    "testReleasePreparedCleansResourcesAndIsIdempotent",
+    "testReleaseRecordingAwaitsOneFinish",
+    "testCancelledStopWaiterDoesNotCancelCleanup",
+    "testCancelledReleaseWaiterDoesNotCancelCleanup",
+    "testStopDoesNotAutomaticallyPrepareOrExport",
+    "testFirstAdmittedVideoSampleEstablishesSessionOrigin",
+    "testNonMonotonicVideoSampleIsRejectedAndCountedWithoutFailingTheTake",
+    "testNonFiniteVideoTimestampIsRejectedAndCountedNeverAppended",
+    "testAudioBeforeOriginAndOutOfOrderAudioIsRejectedAndCounted",
+    "testLargeForwardGapIsCountedAsDiscontinuityWhileStayingMonotonic",
+    "testStaleSourceAndOutsideWindowSamplesAreRejectedAndCounted",
+    "testConsecutiveWriterBackpressureDropsTriggerExplicitFailurePolicy",
+    "testFinalizationTimeoutFailsTypedAndLateCallbackCannotReviveTheTake",
+    "testSyncReportMeasuresStartAndEndDeltasAgainstTheEightyMillisecondCriterion",
+    "testSyncReportRejectsTimelineBeyondEightyMilliseconds",
+    "testSyncReportFailsOnMonotonicityFaultsEvenWithSmallDeltas",
+    "testVideoOnlyTakeSatisfiesSyncCriterionWithoutAudioEvidence",
+    "testStoragePressureAppendFailsTypedWithoutRecoverableArtifactAndLeavesNoFrames"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SettingsTests.swift",
+   "tests": [
+    "testChangeResolutionCycle",
+    "testChangeFPSCycle",
+    "testChangeSpeedCycle",
+    "testChangeISOThroughPicker",
+    "testChangeWhiteBalanceThroughPicker",
+    "testSaveSettingsToUserDefaults",
+    "testFetchSettingsFromUserDefaults",
+    "testGetPickerViewTitles",
+    "testGetSelectedRowForCurrentSettings",
+    "testSetDefaultSettingsOnFirstLaunch",
+    "testMultipleSettingsChanges",
+    "testSettingsPersistenceBetweenSessions"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SubjectResolutionContractsTests.swift",
+   "tests": [
+    "testAutomaticPersonResolutionIsValidWithConfidence",
+    "testAutomaticResolutionWithoutConfidenceThrows",
+    "testConfidenceOutOfRangeThrows",
+    "testUnknownResolutionRequiresReasonAndCarriesNoCandidate",
+    "testGroupUnionSpansMemberRegionsAndRequiresUnion",
+    "testTiedCandidatesResolveToUnknownWithReasonsNotToAGuess",
+    "testConfidenceAndAmbiguityAreSeparateAxes",
+    "testCodableRoundTripForAllResolutionShapes",
+    "testTrackIdentityValidation"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SubjectResolverTests.swift",
+   "tests": [
+    "testNoSubjectsFailsClosedToUnknownNoCandidate",
+    "testSinglePersonResolvesAutomatically",
+    "testSingleLowConfidencePersonResolvesWithLowConfidenceReason",
+    "testFaceInsidePersonMergesIntoOneSubject",
+    "testTwoSimilarlySalientPeopleResolveToGroupUnion",
+    "testSaliencyEndorsementPicksOneOfTwoPeople",
+    "testThreeSalientPeopleResolveToGroupUnion",
+    "testLowConfidenceConflictReturnsAmbiguityNotRandomPick",
+    "testTiedLowConfidenceReportsBothReasons",
+    "testDistinctSalienceGapResolvesHigherCandidate"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SubjectTapSelectorTests.swift",
+   "tests": [
+    "testPortraitDisplayTapMapsThroughInverseTransform",
+    "testSamePhysicalCandidateSelectedInAllEightDisplayStates",
+    "testTouchSlopIsForgivingAtRegionEdges",
+    "testNearestCenterWins",
+    "testEqualDistanceResolvesDeterministicallyById",
+    "testCandidatesWithoutRegionNeverHit",
+    "testClarificationEmptyTapProducesFeedbackAndNeverFocus",
+    "testNormalModeTapCoordinatesFocusExplicitly",
+    "testNormalModeTapWithoutFocusIsIgnored",
+    "testNonFiniteDisplayTapFailsClosedToCenter"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SubjectTrackLifecycleTests.swift",
+   "tests": [
+    "testEachInvalidatingChangeIsDetected",
+    "testUnchangedContextDoesNotInvalidate",
+    "testRouteRestartIsANewEpisodeWithoutRouteExitCause",
+    "testEpisodeTokenRotatesOnInvalidationAndOnlyThen",
+    "testVerifierResultCannotSurviveGenerationChange",
+    "testInvalidationLosesActiveTrackAndReportsIdentity",
+    "testSceneCutSequenceInvalidatesTrackAndEpisodeTogether"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SubjectTrackerTests.swift",
+   "tests": [
+    "testTrackIDStaysStableThroughModerateMotion",
+    "testPartialOcclusionWithinLimitKeepsTrackActive",
+    "testConsecutiveMissesBeyondLimitLoseTrackExplicitly",
+    "testMarkLostInvalidatesImmediately",
+    "testReconciliationNearOriginalRegionKeepsIdentity",
+    "testDistantCandidateAfterLossDoesNotAdoptOldIdentity",
+    "testCenterJumpBeyondThresholdIsRejectedAsIdentitySwap",
+    "testRedetectionDueFlagFollowsCadence",
+    "testUnknownResolutionBeginsNoTrack",
+    "testResetClearsTracking"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SubsystemErrorMappingTests.swift",
+   "tests": [
+    "testEveryReachableFailureMapsToFullyLocalizedRecoverableMessage",
+    "testTypedSubsystemErrorTaxonomiesAreEquatableAndExhaustive"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/SurfaceSearchPolicyTests.swift",
+   "tests": [
+    "testMarkingEntryBeforeReadyPublishesGuidanceInsteadOfEnteringSearch",
+    "testTrackingLimitationPublishesRetryGuidanceAndRestoreRenewsWindow",
+    "testEveryTrackingReasonMapsToOneBoundedGuidanceAction",
+    "testExpiredSearchWindowSurfacesTimeoutGuidanceWithoutSelectingSurface"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/ThermalGovernorTests.swift",
+   "tests": [
+    "testNominalBudgetAllowsOnlyReducedLiveCadenceWithHeavyModels",
+    "testFairBudgetDisablesHeavyModelsAndLowPriorityWork",
+    "testSeriousBudgetUsesConstrainedCadence",
+    "testCriticalBudgetKeepsOnlyMinimalHighPriorityWork",
+    "testLowBatteryCapsNominalThermalStateAtSeriousBudget",
+    "testNextBudgetPublishesEffectiveNominalAndEcoModes",
+    "testConcurrentFixedProviderGovernorsReturnExactPolicyBudgets"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/UserDefaultsTests.swift",
+   "tests": [
+    "testSaveCameraSettings",
+    "testLoadSettingsOnNextLaunch",
+    "testSetDefaultValuesOnFirstLaunch",
+    "testUpdateExistingSettings",
+    "testSaveDifferentResolutions",
+    "testSaveDifferentFPSValues",
+    "testSaveDifferentISOValues",
+    "testSaveDifferentWhiteBalanceValues",
+    "testSaveDifferentSpeedValues",
+    "testSaveAllSettingsSimultaneously",
+    "testDataIntegrityAfterMultipleChanges",
+    "testClearSettings"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/UserMovementObserverTests.swift",
+   "tests": [
+    "testRelevantDisplacementDetected",
+    "testOppositeDisplacementDetected",
+    "testNoOpBelowDeadband",
+    "testVerticalDisplacementJudgedAgainstVerticalAdvice",
+    "testVerticalRelevantMovement",
+    "testLumaChangeCountsAsRelevantForLightActions",
+    "testSmallLumaChangeIsNoOp",
+    "testCameraMotionMakesMovementUncertain",
+    "testMissingSubjectIsUncertain",
+    "testActionAwareTrajectoriesCoverAllSupportedFamilies",
+    "testActionFamilyMappingCoversEveryKnownActionID",
+    "testActionAwareTrajectoriesCoverEveryMappedDirectionalAndScalarAction",
+    "testActionAwareExposureAndDepthUseTheirOwnFeatureSignals",
+    "testProductionAdapterConvertsVisionYUpCoordinatesAndRetainsProvenance",
+    "testProductionAdapterUsesDETRTimestampAndConfidenceForDETRBinding",
+    "testProductionAdapterRejectsMixedSelectedSourceAndBinding",
+    "testProductionAdapterMarksLightingUnavailableWithoutProducerConfidence",
+    "testProductionAdapterRejectsUnboundOrMismatchedEvidence",
+    "testFrameGlobalHorizonAndStabilityObserveWithoutSubjectBinding",
+    "testProductionAdapterPreservesSharedCaptureGenerationInvariant",
+    "testActionAwareEvidenceRejectsOrientationChangesAndFreeTrackMetadata",
+    "testProductionAdapterDoesNotUseWholeFrameLumaAndLeavesFocusDepthUnavailable",
+    "testObserverUsesCanonicalPerSourceFreshnessWindows",
+    "testProductionAdapterLowConfidenceAndUncalibratedEvidenceStayUncertain",
+    "testActionAwareObservationFailsClosedForInvalidEvidence",
+    "testActionAwareTrackerDoesNotCompleteFromElapsedTime",
+    "testTrackerRequiresConsecutiveRelevantFrames",
+    "testUncertainFramesResetTheStreak",
+    "testNonPositiveRequiredRelevantFramesAreClamped",
+    "testResetClearsTracking"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/VisualEvidenceProviderFactoryTests.swift",
+   "tests": [
+    "testUnknownProviderYieldsNil",
+    "testMockProviderIsOfflineCapable"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/VisualSemanticEvidenceCoordinatorTests.swift",
+   "tests": [
+    "testSkipsWhenProviderUnavailable",
+    "testRejectsLiveModeWithoutCallingProvider",
+    "testAcceptsValidResponse",
+    "testRejectsInvalidResponseAndFallsBackDeterministically",
+    "testFailsOnTimeout",
+    "testPipelineIntegrationBuildsPauseRequestAndAcceptsProviderEvidence"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/iPadDeviceFamilyTests.swift",
+   "tests": [
+    "testCameraRouteSupportsAllOrientations",
+    "testSceneRouteIsLandscapeOnly",
+    "testShellDelegatesMaskToActiveRoute"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/iPadOverlayGeometryTests.swift",
+   "tests": [
+    "testSubjectBoxesStayInsideEveryCanvas",
+    "testTapSelectionSlopScalesWithCanvasNotDevice",
+    "testLayoutProfileResolvesWideOnIPadLandscape"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/iPadPerformanceTierTests.swift",
+   "tests": [
+    "testBudgetsDegradeMonotonicallyAcrossTiers",
+    "testSnapshotModeFollowsBudgetTruthfully"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/iPadPlatformContractTests.swift",
+   "tests": [
+    "testAppIsUniversalBinary",
+    "testAllFourOrientationsDeclared",
+    "testFullscreenOnlyWindowing",
+    "testMinimumOSVersion"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolTests/shafinMultitoolTests.swift",
+   "tests": [
+    "testExample",
+    "testPerformanceExample"
+   ],
+   "tags": [
+    "simulator",
+    "unit"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolUITests/CameraCoachEntryFlowUITests.swift",
+   "tests": [
+    "testNewUserIntroShowsOnePrimaryActionAndReachesPermissionContext",
+    "testAuthorizedReturningUserReachesExistingCameraCoachRoot",
+    "testDeniedStateShowsDistinctRecoveryWithoutLiveControls",
+    "testDeniedStateRechecksOnForegroundAndReachesExistingCameraCoachRoot",
+    "testRestrictedStateUsesOnlyRecheckRecovery",
+    "testUnavailableStateShowsTruthfulDeviceRecovery",
+    "testUnknownStateUsesTruthfulRecheckOnlyRecovery",
+    "testDeniedStateLandscapeUsesSplitLayoutAfterActiveRotation",
+    "testDeniedStateLandscapeAccessibilityXXXLContentRemainsReachableAfterScroll"
+   ],
+   "tags": [
+    "device",
+    "simulator",
+    "ui"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolUITests/CameraCoachProductionUITests.swift",
+   "tests": [
+    "testCorrectiveRUPortraitUsesProductionMonitorSurface",
+    "testCorrectiveENLandscapeUsesProductionMonitorSurface",
+    "testNoisyFrameOcclusionSignalKeepsAdviceOnSafeEdgeInBothOrientations",
+    "testProductionLiveStateMatrix",
+    "testDecisionAndRecoveryFixturesReachProductionSurfaceInBothOrientations",
+    "testProductionInterruptedFixtureUsesLifecycleCopy",
+    "testPauseLoadingSuccessEmptyFailureMatrix",
+    "testProductionPauseTransitionAndResumeRoute",
+    "testLensControlStartsCollapsedAndExpandsFromRealFixtureLenses",
+    "testReduceMotionAndDynamicTypeKeepProductionSurfaceReadable"
+   ],
+   "tags": [
+    "simulator",
+    "ui"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolUITests/SETDesignSystemGalleryUITests.swift",
+   "tests": [
+    "testOwnerApprovalScreenshotMatrix"
+   ],
+   "tags": [
+    "simulator",
+    "ui"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolUITests/SETGeneratorProductionUITests.swift",
+   "tests": [
+    "testCommercialRouteReachesSETGeneratorWorkspaceAndInputSheet",
+    "testWhitespaceInputShowsInlineValidation",
+    "testScreenplayDraftSurvivesCancelReopenAndKeyboardRecomposition",
+    "testErrorBandIsTheHonestFailureSurface",
+    "testRecordingSoundControlIsExplicitAndAccessible",
+    "testGeneratorAccessibilityVariantsENReduceMotionDynamicType",
+    "testGeneratorENErrorBandUsesProductionLocale",
+    "testStoryboardFixtureRUResultTrayAndSelectionReflow",
+    "testStoryboardFixtureReduceMotionSelectionReflow",
+    "testStoryboardFixtureValidationAndDeleteConfirmation",
+    "testStoryboardFixtureENReduceMotionDynamicTypeAndEditorDetents",
+    "testStoryboardFixtureSavingUsesOwnerBusyState",
+    "testDecisionTraceFixtureRUAndENReduceMotion",
+    "testGeneratorLeaderFixtureIsOwnedAcrossRotation",
+    "testGeneratorLeaderFixtureReduceMotionUsesImmediateAction"
+   ],
+   "tags": [
+    "device",
+    "simulator",
+    "ui"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolUITests/SETLibraryProductionUITests.swift",
+   "tests": [
+    "testLibraryEmptyStateBothLocalesLandscape",
+    "testContactSheetAndSelectionMatrix",
+    "testCreateDuplicateDeleteFailureMatrix",
+    "testSelectedActionHitRegionsDoNotOverlapAndKeepOrder",
+    "testDeleteCancelLeavesNamedSceneAndRowsVisible",
+    "testDuplicateCreateStateIsTypedAndReachable",
+    "testReduceMotionAndDynamicTypeKeepLibraryReadable"
+   ],
+   "tags": [
+    "simulator",
+    "ui"
+   ],
+   "evidence": "available"
+  },
+  {
+   "file": "shafinMultitoolUITests/UITests.swift",
+   "tests": [
+    "testCameraPortraitShowsFullscreenFrameAndCompactScenesControl",
+    "testCameraLandscapeLeftHasPhysicalLandscapeGeometryAndReadableUprightUI",
+    "testCameraLandscapeRightHasPhysicalLandscapeGeometryAndReadableUprightUI",
+    "testSceneLibraryLandscapeHasPhysicalLandscapeGeometryAndReturnsToCamera",
+    "testCameraCoachSurfaceSurvivesPortraitLandscapeRotation"
+   ],
+   "tags": [
+    "device",
+    "simulator",
+    "ui"
+   ],
+   "evidence": "available"
+  }
+ ],
+ "device_lane": "explicit (device benchmark harness, needs hardware)",
+ "release_lane": "explicit (release bundle/provenance gates, needs signed build)",
+ "research_lane": "explicit (eval corpus + replay config)"
+}
