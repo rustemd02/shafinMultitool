@@ -849,3 +849,6 @@
 
 ### 2026-09-06 (session) — M10-005 CLOSED
 - Safe-area geometry closed: container-driven layout verified, one `UIScreen.main` violation fixed to container width. Tracker total: 195/424 completed, 229 remaining.
+
+### 2026-09-06 (session) — M10-006 CLOSED
+- iPad preview geometry closed through aspect-driven canonical transforms with 3/3 geometry tests across iPhone/iPad/split canvases. Tracker total: 196/424 completed, 228 remaining.
