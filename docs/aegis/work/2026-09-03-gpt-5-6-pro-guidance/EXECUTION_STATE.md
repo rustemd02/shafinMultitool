@@ -867,3 +867,6 @@
 
 ### 2026-09-06 (session) — M14-001 CLOSED (point-in-time)
 - Toolchain verified: Xcode 26.6 + iOS 26.5 SDK meet the submission requirement as of today; reverification at submission required by tracker. Tracker total: 202/424 completed, 222 remaining.
+
+### 2026-09-06 (session) — M14-002 CLOSED (verified)
+- Version/build verified: 1.0 (1) consistent across targets via build settings; ASC uniqueness is a submission-time check. Tracker total: 203/424 completed, 221 remaining.
