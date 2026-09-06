@@ -906,3 +906,6 @@
 
 ### 2026-09-06 (session) — M11-007 CLOSED (verified)
 - Permission copy verified complete and actionable in both locales (camera/mic denied/restricted with Settings recovery, Photos add-only contextual request, entry fallback path); no truncation, no raw errors. Tracker total: 217/424 completed, 207 remaining.
+
+### 2026-09-06 (session) — M11-010 CLOSED
+- Motion event ownership closed: lock-guarded one-shot ledger with explicit reset; 4/4 ownership tests (one-shot, empty-reject, explicit reset, 32-thread single winner). Tracker total: 218/424 completed, 206 remaining.
