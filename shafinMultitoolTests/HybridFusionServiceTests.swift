@@ -191,6 +191,46 @@ final class HybridFusionServiceTests: XCTestCase {
                       "calibrated neural evidence must materially reorder the tie")
     }
 
+    /// M4-020: an out-of-domain head abstains — its evidence leaves the
+    /// ranking untouched instead of mixing raw confidence in.
+    func testOutOfDomainHeadAbstainsFromRanking() {
+        let schema = CameraActionCalibrationSchemaV1(entries: [
+            EvidenceHeadId.subjectProminence.rawValue: CameraCalibrationCurveV1(
+                actionID: EvidenceHeadId.subjectProminence.rawValue,
+                version: 1,
+                knots: [CameraCalibrationKnotV1(raw: 0.0, calibrated: 0.0),
+                        CameraCalibrationKnotV1(raw: 0.5, calibrated: 0.5)],
+                domainLow: 0.0, domainHigh: 0.5)
+        ])
+        let calibratedService = HybridFusionService(
+            headCalibrator: CameraConfidenceCalibrator(schema: schema))
+        let snapshot = makeSnapshot(mode: .pause, frameId: "fusion-abstain")
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: .pause)
+        // subjectProminence carries 0.92 confidence — outside the [0, 0.5]
+        // domain, so it must abstain; the input order survives.
+        let critique = CritiqueReport(
+            frameId: snapshot.frameId, mode: .pause, verdict: .needsFix,
+            verdictConfidence: 0.74, strengths: [],
+            issues: [
+                makeIssue(id: "iss_a", type: .subjectNotProminentEnough, severity: 0.63, confidence: 0.55, rationale: "A."),
+                makeIssue(id: "iss_b", type: .backgroundCompetesWithSubject, severity: 0.63, confidence: 0.54, rationale: "B.")
+            ],
+            summary: CritiqueSummary(id: "summary_\(snapshot.frameId)_main",
+                                     shortVerdict: "X.", whyGood: nil, whyProblematic: "Y."),
+            traceRefs: ["trc_\(snapshot.frameId)_crit_summary_main"],
+            fallbackUsed: false
+        )
+        let neuralSnapshot = makeNeuralSnapshot(
+            frameId: snapshot.frameId, mode: .pause,
+            scalarOverrides: [.subjectProminence: (0.18, 0.92, .available)])
+        let output = calibratedService.fuse(HybridFusionInput(
+            snapshot: snapshot, semantics: semantics, critique: critique,
+            neuralSnapshot: neuralSnapshot,
+            neuralMetadata: makeMetadata(frameId: snapshot.frameId, mode: .pause)))
+        XCTAssertEqual(output.critique.issues.map(\.id), ["iss_a", "iss_b"],
+                       "an abstaining head must not reorder the ranking")
+    }
+
     func testExactSeverityTieStaysDeterministicWhenFusionDoesNotApply() {
         let snapshot = makeSnapshot(mode: .pause, frameId: "fusion-no-effective-tie")
         let semantics = makeSemantics(frameId: snapshot.frameId, mode: .pause)

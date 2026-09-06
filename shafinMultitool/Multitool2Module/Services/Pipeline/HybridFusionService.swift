@@ -47,6 +47,16 @@ struct HybridFusionOutput: Sendable {
 }
 
 struct HybridFusionService {
+    /// M4-020: optional head-confidence calibrator. When present, each
+    /// neural head confidence passes through its calibration curve keyed by
+    /// head id; out-of-domain or unavailable heads abstain (the contribution
+    /// is dropped) instead of mixing raw logits into the ranking. Nil keeps
+    /// the legacy multiplier-only path for fixtures without calibration.
+    let headCalibrator: CameraConfidenceCalibrator?
+
+    init(headCalibrator: CameraConfidenceCalibrator? = nil) {
+        self.headCalibrator = headCalibrator
+    }
     private enum Constants {
         static let liveModeCap = 0.10
         static let pauseModeCap = 0.18
@@ -507,6 +517,19 @@ struct HybridFusionService {
               let multiplier = confidenceMultiplier(for: output.confidence, mode: input.snapshot.mode) else {
             return nil
         }
+        // M4-020: calibrated head confidence. An abstaining head contributes
+        // nothing — its evidence stays out of the ranking entirely.
+        let rawConfidence = output.confidence * multiplier
+        let confidence: Double
+        if let headCalibrator {
+            guard case let .calibrated(calibrated) = headCalibrator.calibratedProbability(
+                rawLogit: rawConfidence, actionID: headId.rawValue) else {
+                return nil
+            }
+            confidence = calibrated
+        } else {
+            confidence = rawConfidence
+        }
         if headId == .faceSaliency {
             let personCentricKinds: Set<SubjectKind> = [.face, .person, .group]
             guard personCentricKinds.contains(input.semantics.primarySubject.kind) else {
@@ -515,7 +538,6 @@ struct HybridFusionService {
         }
 
         let supportScore = clamp01(transform(score))
-        let confidence = output.confidence * multiplier
         return cappedContribution(
             headId: headId,
             role: role,
@@ -565,7 +587,18 @@ struct HybridFusionService {
             supportScore = clamp01(0.5 + (0.20 * affinity(category, in: output)))
         }
 
-        let confidence = output.confidence * multiplier
+        // M4-020: same calibrated-confidence rule as scalar heads.
+        let rawConfidence = output.confidence * multiplier
+        let confidence: Double
+        if let headCalibrator {
+            guard case let .calibrated(calibrated) = headCalibrator.calibratedProbability(
+                rawLogit: rawConfidence, actionID: EvidenceHeadId.shotTypeConfidence.rawValue) else {
+                return nil
+            }
+            confidence = calibrated
+        } else {
+            confidence = rawConfidence
+        }
         return cappedContribution(
             headId: .shotTypeConfidence,
             role: role,

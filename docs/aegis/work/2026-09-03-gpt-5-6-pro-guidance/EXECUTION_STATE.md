@@ -789,3 +789,6 @@
 
 ### 2026-09-06 (session) — M12-001 CLOSED
 - Backend decision locked in `docs/implementation/backend-decision-v1.md`: Live Camera LOCAL_ONLY, Generator BACKEND_REQUIRED with local structural fallback (remote seam defaults off, zero production implementations), Deep Review POST_1_0, model delivery LOCAL_ONLY bundled, telemetry OPTIONAL_REMOTE only under approved policy. Grep-verified no live remote paths. Tracker total: 172/424 completed, 252 remaining.
+
+### 2026-09-06 (session) — M4-020 CLOSED
+- Neural explainability closed: fusion routes every head confidence through its calibration curve (abstain on out-of-domain/unavailable), decisions carry head + calibrated confidence + model version + ROI + linked action, text stays deterministic/localized. 19/19 fusion+calibrator tests on permitted iPhone 17e. Tracker total: 173/424 completed, 251 remaining.
