@@ -819,3 +819,6 @@
 
 ### 2026-09-06 (session) — M12-002 CLOSED
 - Service boundary locked; found and closed a live remote VLM path by gating it DEBUG-only (Release can never construct it). 2/2 factory tests. Tracker total: 184/424 completed, 240 remaining.
+
+### 2026-09-06 (session) — M9-011 + M9-012 CLOSED
+- Focus/WB policy closed: explicit tap routing with no silent focus change, manual surfaces absent from the Coach path, WB honestly legacyOnly with future gain requirements recorded. 3/3 policy tests. Tracker total: 185/424 completed, 239 remaining.
