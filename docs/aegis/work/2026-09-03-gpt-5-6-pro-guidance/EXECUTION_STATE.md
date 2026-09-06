@@ -870,3 +870,6 @@
 
 ### 2026-09-06 (session) — M14-002 CLOSED (verified)
 - Version/build verified: 1.0 (1) consistent across targets via build settings; ASC uniqueness is a submission-time check. Tracker total: 203/424 completed, 221 remaining.
+
+### 2026-09-06 (session) — M0-013 CLOSED
+- Secret/config audit closed: every input classified (public/local-dev/build/runtime/forbidden), no credential values in client or evidence. Tracker total: 204/424 completed, 220 remaining.
