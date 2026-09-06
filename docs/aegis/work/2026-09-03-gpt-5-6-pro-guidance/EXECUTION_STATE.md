@@ -768,3 +768,6 @@
 
 ### 2026-09-06 (session) — M13-001 CLOSED
 - Test topology locked in `docs/implementation/device-tests/test-topology.md`: default production lane (workspace/scheme/simulator/single-batch/durable-xcresult contract), six explicit lanes with prerequisites (recording regression, device harness, replay export, release bundle/provenance gates, Python validators), and skip reporting via XCTSkip messages + xcresult summaries with the known-skip file list. Tracker total: 163/424 completed, 261 remaining.
+
+### 2026-09-06 (session) — M5-023 CLOSED
+- Retry/idempotency closed: transport retry N/A locally (no backend, no fake loop), clarification continuation keeps UUID+epoch (M5-017), edited resubmit issues a new epoch, duplicate submits coalesce into the single-flight task. New `GenerationRetryIdempotencyTests` 3/3 on permitted iPhone 17e. Tracker total: 164/424 completed, 260 remaining.
