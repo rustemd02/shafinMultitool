@@ -876,3 +876,6 @@
 
 ### 2026-09-06 (session) — M0-012 CLOSED (verified)
 - Toolchain receipt reverified live on this host: Xcode 26.6, macOS 27.0, iPhoneOS26.5 SDK, Swift 5.0, Python 3.11.9, CocoaPods 1.16.2, git 2.50.1, sim runtime iOS 26.5 — matches `evidence-m0/toolchain-receipt.json`, missing tools: none. Tracker total: 205/424 completed, 219 remaining.
+
+### 2026-09-06 (session) — M0-008 CLOSED (verified)
+- Route reachability verified: entry/build/owner/states/teardown/status for camera/scenes/history with 10 routing + 7 lifecycle tests. Tracker total: 206/424 completed, 218 remaining.
