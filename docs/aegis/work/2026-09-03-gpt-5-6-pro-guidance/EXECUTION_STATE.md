@@ -733,3 +733,7 @@
 
 ### 2026-09-06 (session) — M6-018 CLOSED
 - Tracking quality closed through the posture owner: exhaustive `ARKitTrackingLimitation` with one guidance action per reason (5 new EN+RU copy keys), delegate mapping every ARCamera tracking state including @unknown fail-closed, and capture controls disabled semantically+accessibly while tracking is unstable. `SurfaceSearchPolicyTests` 4/4 on permitted iPhone 17e (`/private/tmp/m6-018-tests.xcresult`). Physical behavior remains M13. Tracker total: 149/424 completed, 275 remaining.
+
+### 2026-09-06 (session) — M5-024 CLOSED
+- Closed silent semantic repair in the local parser through `32b8ad8`: no default actor on empty extraction, no phantom `actor_1` references in action assignment, both fallback-plan fabrications in `SceneBundlePipeline` removed, described actions bind only real entities, static object-only scenes compile honestly with empty beats, RU plural forms added. New `SceneParserBaselineTests` 8/8; parser lane 22/22 on permitted iPhone 17e. Affected lane 149/151 with one registered pre-existing store failure and one unrelated parser-independent save/load case under classification. Tracker total: 150/424 completed, 274 remaining.
+- Hygiene: ~360MB of untracked temp media removed from docs/motion/screenshots (old redesign motion, guidance visuals, UI-test screenshots); tracked evidence untouched.
