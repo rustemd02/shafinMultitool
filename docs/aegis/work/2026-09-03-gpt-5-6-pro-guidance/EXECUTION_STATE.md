@@ -777,3 +777,6 @@
 
 ### 2026-09-06 (session) — M5-007, M5-008, M5-009 CLOSED (verified)
 - Library mutations verified against the existing owner chain: creation (one project + select, invalid drafts rejected, no partial row on failure), duplicates (typed conflict flow with distinct IDs, deterministic ordering), rename (UUID-stable transactional rename with optimistic snapshot, duplicate typed without mutation, retry preserves draft). 41/41 on permitted iPhone 17e. Tracker total: 168/424 completed, 256 remaining.
+
+### 2026-09-06 (session) — M8-001 CLOSED (verified)
+- Storyboard contract audited against the canonical 96-state journey: all 13 verify dimensions map to typed states with owners/persistence/artifacts plus green behavior suites (table in evidence). Journey tests 6/6. Tracker total: 169/424 completed, 255 remaining.
