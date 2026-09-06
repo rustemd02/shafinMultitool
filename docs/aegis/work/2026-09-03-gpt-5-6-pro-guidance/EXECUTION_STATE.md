@@ -912,3 +912,6 @@
 
 ### 2026-09-06 (session) — M11-011 CLOSED
 - Reduce Motion global verified: audit script over 16 withAnimation sites (all guarded or crossfade); essential state changes instant, no action waits on decorative timing. Tracker total: 219/424 completed, 205 remaining.
+
+### 2026-09-06 (session) — M11-013 CLOSED
+- Screen evidence closed with a coverage checker over the 6 UI files (RU/EN, orientations, reduce-motion/dynamic-type, VoiceOver queries, screenshot attachments, leader motion seam) — all green. Tracker total: 220/424 completed, 204 remaining.
