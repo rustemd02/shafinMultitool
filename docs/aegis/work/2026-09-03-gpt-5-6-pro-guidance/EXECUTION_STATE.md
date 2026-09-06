@@ -903,3 +903,6 @@
 
 ### 2026-09-06 (session) — M11-006 CLOSED
 - Localization validation closed with a fail-closed checker (missing locale, placeholder mismatch, raw technical errors, control glyphs) — 441/441 keys pass. Tracker total: 216/424 completed, 208 remaining.
+
+### 2026-09-06 (session) — M11-007 CLOSED (verified)
+- Permission copy verified complete and actionable in both locales (camera/mic denied/restricted with Settings recovery, Photos add-only contextual request, entry fallback path); no truncation, no raw errors. Tracker total: 217/424 completed, 207 remaining.
