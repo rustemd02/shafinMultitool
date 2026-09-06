@@ -828,3 +828,6 @@
 
 ### 2026-09-06 (session) — M10-002 CLOSED (verified)
 - Deployment target verified: all-target agreement via the M0-006 matrix, availability guards with fallback paths on every newer-API site, minimum with hardware implications in the iPad contract. Tracker total: 187/424 completed, 237 remaining.
+
+### 2026-09-06 (session) — M12-021 CLOSED
+- Telemetry decision locked: nothing visual/audio leaves the device (only DEBUG-gated remote seam exists), diagnostics bounded/redacted/user-exported, future upload POST_1_0. Tracker total: 188/424 completed, 236 remaining.
