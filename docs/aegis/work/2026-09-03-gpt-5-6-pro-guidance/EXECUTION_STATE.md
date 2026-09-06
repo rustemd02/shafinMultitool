@@ -810,3 +810,6 @@
 
 ### 2026-09-06 (session) — M9-006 CLOSED
 - Pro Controls contract locked: 13 controls with honest tiers (available/legacyOnly/post10), real owners verified by grep, histogram/zebra/peaking excluded without cases. 4/4 contract tests. Tracker total: 181/424 completed, 243 remaining.
+
+### 2026-09-06 (session) — M9-007 CLOSED (verified)
+- Capture configuration verified singular on the session queue with generation fencing; UI reads back from the device; failures surface typed. 2/2 capture tests. Tracker total: 182/424 completed, 242 remaining.
