@@ -834,3 +834,6 @@
 
 ### 2026-09-06 (session) — M3-002 CLOSED (verified)
 - Camera data schema verified column-by-column against the versioned label schema plus green governance self-test. Tracker total: 189/424 completed, 235 remaining.
+
+### 2026-09-06 (session) — M2-035 CLOSED (verified)
+- Camera integration verified through production owners (8/8 closed-loop tests on permitted iPhone 17e). Tracker total: 190/424 completed, 234 remaining.
