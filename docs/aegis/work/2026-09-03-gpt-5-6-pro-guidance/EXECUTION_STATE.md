@@ -822,3 +822,6 @@
 
 ### 2026-09-06 (session) — M9-011 + M9-012 CLOSED
 - Focus/WB policy closed: explicit tap routing with no silent focus change, manual surfaces absent from the Coach path, WB honestly legacyOnly with future gain requirements recorded. 3/3 policy tests. Tracker total: 185/424 completed, 239 remaining.
+
+### 2026-09-06 (session) — M10-001 CLOSED
+- iPad contract locked and pinned against the built product plist (universal binary, 4 orientations, fullscreen-only, iPadOS 17.0). 4/4 contract tests. Tracker total: 186/424 completed, 238 remaining.
