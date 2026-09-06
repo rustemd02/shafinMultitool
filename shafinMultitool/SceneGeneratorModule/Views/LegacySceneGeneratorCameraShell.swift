@@ -713,8 +713,13 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         hintButton.alpha = hintButton.isEnabled ? 1 : 0.45
 
         recordButton.isHidden = viewModel.isRecording
-        recordButton.isEnabled = viewModel.canStartRecording
+        // M6-018: controls that require stable tracking are disabled
+        // semantically and accessibly while keeping their identifiers: the
+        // dimmed record/mark buttons expose a disabled hint to VoiceOver.
+        let canRecordStably = viewModel.canStartRecording && viewModel.requiresStableTrackingForCapture
+        recordButton.isEnabled = canRecordStably
         recordButton.alpha = recordButton.isEnabled ? 1 : 0.45
+        recordButton.accessibilityHint = viewModel.requiresStableTrackingForCapture ? nil : viewModel.localizedCopy(.generatorErrorTrackingLimited)
         recordButton.accessibilityLabel = viewModel.localizedCopy(.accessibilityRecord)
         recordButton.backgroundColor = recordButton.isEnabled ? SETPalette.setOrange.uiColor : SETPalette.surfaceSolid.uiColor
         recordButton.tintColor = recordButton.isEnabled ? SETPalette.ink.uiColor : SETPalette.warmWhite.uiColor

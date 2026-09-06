@@ -6976,6 +6976,86 @@
           }
         }
       }
+    },
+    "set.generator.error.tracking_motion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too much motion. Hold the device steady to keep tracking."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Слишком много движения. Держите устройство неподвижно, чтобы сохранить отслеживание."
+          }
+        }
+      }
+    },
+    "set.generator.error.tracking_features": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not enough visual detail. Point the camera at a textured surface."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недостаточно деталей. Направьте камеру на фактурную поверхность."
+          }
+        }
+      }
+    },
+    "set.generator.error.tracking_initializing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AR is initializing. Move the device slowly to map the space."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AR инициализируется. Медленно переместите устройство для построения карты."
+          }
+        }
+      }
+    },
+    "set.generator.error.tracking_relocalizing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relocalizing. Return to a previously mapped area."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторная локализация. Вернитесь в уже отмеченную область."
+          }
+        }
+      }
+    },
+    "set.generator.error.tracking_unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tracking is unavailable. Restart the AR session or move to better lighting."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание недоступно. Перезапустите AR-сессию или переместитесь в лучшее освещение."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -730,3 +730,6 @@
 
 ### 2026-09-06 (session) — M6-006 CLOSED
 - Surface search acceptance closed through a new `SurfaceTrackingPosture` owner in the VM: readiness-gated marking entry (localized guidance, not silent no-op), tracking-limitation propagation from the AR delegate with retry/reposition guidance, an 8 s bounded search window that renews instead of selecting fake surfaces, and three new EN+RU copy keys. New `SurfaceSearchPolicyTests` 3/3 on permitted iPhone 17e (`/private/tmp/m6-006-tests-r3.xcresult`). Physical surface detection remains M13. Tracker total: 148/424 completed, 276 remaining.
+
+### 2026-09-06 (session) — M6-018 CLOSED
+- Tracking quality closed through the posture owner: exhaustive `ARKitTrackingLimitation` with one guidance action per reason (5 new EN+RU copy keys), delegate mapping every ARCamera tracking state including @unknown fail-closed, and capture controls disabled semantically+accessibly while tracking is unstable. `SurfaceSearchPolicyTests` 4/4 on permitted iPhone 17e (`/private/tmp/m6-018-tests.xcresult`). Physical behavior remains M13. Tracker total: 149/424 completed, 275 remaining.

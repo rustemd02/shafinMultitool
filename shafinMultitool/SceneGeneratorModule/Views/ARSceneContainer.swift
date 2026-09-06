@@ -946,16 +946,27 @@ struct ARSceneContainer: UIViewRepresentable {
             // M6-006: any non-normal tracking posture propagates to the
             // workspace owner so the surface search stays honest. MainActor
             // hop keeps the VM write on its isolation.
-            let isLimited: Bool
-            switch trackingState {
-            case .normal:
-                isLimited = false
-            case .notAvailable, .limited:
-                isLimited = true
-            }
             let viewModel = viewModel
             Task { @MainActor in
-                viewModel.updateSurfaceTrackingPosture(isLimited: isLimited)
+                switch trackingState {
+                case .normal:
+                    viewModel.updateSurfaceTrackingPosture(isLimited: false)
+                case .notAvailable:
+                    viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .unavailable)
+                case .limited(let reason):
+                    switch reason {
+                    case .excessiveMotion:
+                        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .excessiveMotion)
+                    case .insufficientFeatures:
+                        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .insufficientFeatures)
+                    case .initializing:
+                        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .initializing)
+                    case .relocalizing:
+                        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .relocalizing)
+                    @unknown default:
+                        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .insufficientFeatures)
+                    }
+                }
             }
         }
 

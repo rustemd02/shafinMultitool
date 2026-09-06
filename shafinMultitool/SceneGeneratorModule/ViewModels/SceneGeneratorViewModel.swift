@@ -575,12 +575,44 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Режим разметки объектов
     @Published var isMarkingMode: Bool = false
 
-    /// M6-006: tracking posture for the surface search. `limited` publishes a
-    /// localized retry/reposition guidance and keeps the search honest: no
-    /// fake surface is ever selected while tracking is limited.
+    /// M6-006/M6-018: tracking posture for the surface search. `limited`
+    /// carries the bounded ARKit reason so guidance maps to one bounded
+    /// action; no fake surface is ever selected while tracking is limited.
+    /// `unavailable` means the camera stream cannot track at all.
     enum SurfaceTrackingPosture: Equatable {
         case normal
-        case limited
+        case limited(reason: ARKitTrackingLimitation)
+        case unavailable
+
+        var isStable: Bool {
+            if case .normal = self { return true }
+            return false
+        }
+    }
+
+    /// M6-018: bounded tracking-limitation reasons. Each maps to exactly one
+    /// guidance action; no per-frame code invents new reasons.
+    enum ARKitTrackingLimitation: String, Equatable, CaseIterable {
+        case excessiveMotion
+        case insufficientFeatures
+        case initializing
+        case relocalizing
+        case unavailable
+
+        var guidanceCopyKey: SETCopyKey {
+            switch self {
+            case .excessiveMotion:
+                return .generatorErrorTrackingMotion
+            case .insufficientFeatures:
+                return .generatorErrorTrackingFeatures
+            case .initializing:
+                return .generatorErrorTrackingInitializing
+            case .relocalizing:
+                return .generatorErrorTrackingRelocalizing
+            case .unavailable:
+                return .generatorErrorTrackingUnavailable
+            }
+        }
     }
 
     @Published private(set) var surfaceTrackingPosture: SurfaceTrackingPosture = .normal
@@ -1492,6 +1524,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     var canToggleMarkingMode: Bool {
         !isSceneMutationBlocked || isMarkingMode
+    }
+
+    /// M6-018: recording and marking require stable tracking. `refreshUI`
+    /// disables the controls semantically and accessibly (dimmed + VoiceOver
+    /// hint via the existing record button state); see
+    /// `LegacySceneGeneratorCameraShell.refreshUI`.
+    var requiresStableTrackingForCapture: Bool {
+        surfaceTrackingPosture.isStable
     }
 
     var canGenerateScene: Bool {
@@ -3021,19 +3061,34 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         refreshIdleStatusMessage()
     }
 
-    /// M6-006: called by the AR delegate on every tracking-state change.
-    /// A limitation keeps the posture honest; recovery clears guidance when
-    /// tracking returns to normal and a fresh search window begins.
-    func updateSurfaceTrackingPosture(isLimited: Bool) {
-        let posture: SurfaceTrackingPosture = isLimited ? .limited : .normal
+    /// M6-006/M6-018: called by the AR delegate on every tracking-state
+    /// change. A limitation maps to one bounded guidance action and keeps the
+    /// search honest; recovery clears guidance when tracking returns to
+    /// normal and a fresh search window begins.
+    func updateSurfaceTrackingPosture(isLimited: Bool,
+                                      reason: ARKitTrackingLimitation? = nil) {
+        let posture: SurfaceTrackingPosture
+        if !isLimited {
+            posture = .normal
+        } else if let reason {
+            posture = reason == .unavailable ? .unavailable : .limited(reason: reason)
+        } else {
+            posture = .limited(reason: .insufficientFeatures)
+        }
         guard posture != surfaceTrackingPosture else { return }
         surfaceTrackingPosture = posture
-        if isLimited {
-            statusMessage = localizedCopy(.generatorErrorTrackingLimited)
-            diagnosticsLog("[MARKER] tracking limited: retry/reposition guidance published")
-        } else if isMarkingMode {
-            surfaceSearchDeadline = Date().addingTimeInterval(Self.surfaceSearchWindowSeconds)
-            diagnosticsLog("[MARKER] tracking restored: search window renewed")
+        switch posture {
+        case .normal:
+            if isMarkingMode {
+                surfaceSearchDeadline = Date().addingTimeInterval(Self.surfaceSearchWindowSeconds)
+                diagnosticsLog("[MARKER] tracking restored: search window renewed")
+            }
+        case let .limited(reason):
+            statusMessage = localizedCopy(reason.guidanceCopyKey)
+            diagnosticsLog("[MARKER] tracking limited (\(reason.rawValue)): bounded guidance published")
+        case .unavailable:
+            statusMessage = localizedCopy(ARKitTrackingLimitation.unavailable.guidanceCopyKey)
+            diagnosticsLog("[MARKER] tracking unavailable: bounded guidance published")
         }
     }
     

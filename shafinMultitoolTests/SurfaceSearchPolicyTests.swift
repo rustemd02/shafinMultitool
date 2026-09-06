@@ -32,16 +32,40 @@ final class SurfaceSearchPolicyTests: XCTestCase {
         viewModel.toggleMarkingMode()
         XCTAssertTrue(viewModel.isMarkingMode)
 
-        viewModel.updateSurfaceTrackingPosture(isLimited: true)
-        XCTAssertEqual(viewModel.surfaceTrackingPosture, .limited)
-        XCTAssertEqual(viewModel.statusMessage, viewModel.localizedCopy(.generatorErrorTrackingLimited))
+        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .excessiveMotion)
+        XCTAssertEqual(viewModel.surfaceTrackingPosture, .limited(reason: .excessiveMotion))
+        XCTAssertEqual(viewModel.statusMessage, viewModel.localizedCopy(.generatorErrorTrackingMotion))
 
         // Duplicate limitation reports are idempotent.
-        viewModel.updateSurfaceTrackingPosture(isLimited: true)
-        XCTAssertEqual(viewModel.surfaceTrackingPosture, .limited)
+        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .excessiveMotion)
+        XCTAssertEqual(viewModel.surfaceTrackingPosture, .limited(reason: .excessiveMotion))
 
         viewModel.updateSurfaceTrackingPosture(isLimited: false)
         XCTAssertEqual(viewModel.surfaceTrackingPosture, .normal)
+    }
+
+    func testEveryTrackingReasonMapsToOneBoundedGuidanceAction() {
+        let viewModel = makeViewModel()
+        let expected: [(SceneGeneratorViewModel.ARKitTrackingLimitation, SETCopyKey)] = [
+            (.excessiveMotion, .generatorErrorTrackingMotion),
+            (.insufficientFeatures, .generatorErrorTrackingFeatures),
+            (.initializing, .generatorErrorTrackingInitializing),
+            (.relocalizing, .generatorErrorTrackingRelocalizing),
+            (.unavailable, .generatorErrorTrackingUnavailable),
+        ]
+        for (reason, key) in expected {
+            viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: reason)
+            if reason == .unavailable {
+                XCTAssertEqual(viewModel.surfaceTrackingPosture, .unavailable)
+            } else {
+                XCTAssertEqual(viewModel.surfaceTrackingPosture, .limited(reason: reason))
+            }
+            XCTAssertEqual(viewModel.statusMessage, viewModel.localizedCopy(key),
+                           "reason \(reason.rawValue) must map to exactly one guidance action")
+            XCTAssertFalse(viewModel.requiresStableTrackingForCapture)
+        }
+        viewModel.updateSurfaceTrackingPosture(isLimited: false)
+        XCTAssertTrue(viewModel.requiresStableTrackingForCapture)
     }
 
     func testExpiredSearchWindowSurfacesTimeoutGuidanceWithoutSelectingSurface() {
