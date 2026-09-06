@@ -909,3 +909,6 @@
 
 ### 2026-09-06 (session) — M11-010 CLOSED
 - Motion event ownership closed: lock-guarded one-shot ledger with explicit reset; 4/4 ownership tests (one-shot, empty-reject, explicit reset, 32-thread single winner). Tracker total: 218/424 completed, 206 remaining.
+
+### 2026-09-06 (session) — M11-011 CLOSED
+- Reduce Motion global verified: audit script over 16 withAnimation sites (all guarded or crossfade); essential state changes instant, no action waits on decorative timing. Tracker total: 219/424 completed, 205 remaining.
