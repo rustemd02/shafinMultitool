@@ -1139,6 +1139,40 @@ final class CameraManager: NSObject, @unchecked Sendable {
         return AVCaptureDevice.default(lens.deviceType, for: .video, position: .back)
     }
     
+    /// M9-005: torch truthfulness. Torch is available only when the active
+    /// video device reports `hasTorch`; the state resets to off on owner
+    /// release (stop/teardown/lens replacement detaches the device). Returns
+    /// the resulting torch state, or nil when unsupported.
+    @discardableResult
+    func setTorchActive(_ active: Bool) -> Bool? {
+        sessionQueue.sync { [weak self] in
+            guard let self,
+                  let device = self.currentInput?.device,
+                  device.hasTorch else {
+                return nil
+            }
+            do {
+                try device.lockForConfiguration()
+                defer { device.unlockForConfiguration() }
+                device.torchMode = active ? .on : .off
+                return device.isTorchActive
+            } catch {
+                return nil
+            }
+        }
+    }
+
+    /// M9-005: current torch truth for UI binding. Nil means unsupported.
+    var isTorchActive: Bool? {
+        sessionQueue.sync { [weak self] in
+            guard let device = self?.currentInput?.device,
+                  device.hasTorch else {
+                return nil
+            }
+            return device.isTorchActive
+        }
+    }
+
     func switchLens(to lens: CameraLens) {
         sessionQueue.async { [weak self] in
             guard let self else { return }

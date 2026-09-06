@@ -780,3 +780,6 @@
 
 ### 2026-09-06 (session) — M8-001 CLOSED (verified)
 - Storyboard contract audited against the canonical 96-state journey: all 13 verify dimensions map to typed states with owners/persistence/artifacts plus green behavior suites (table in evidence). Journey tests 6/6. Tracker total: 169/424 completed, 255 remaining.
+
+### 2026-09-06 (session) — M9-005 CLOSED
+- Torch truthfulness closed on the lens owner: session-queue-serialized `setTorchActive`/`isTorchActive` against the live device handle, nil on unsupported, state dies with input detach on release/lens switch. 2/2 torch tests on permitted iPhone 17e. Physical illumination remains M13. Tracker total: 170/424 completed, 254 remaining.
