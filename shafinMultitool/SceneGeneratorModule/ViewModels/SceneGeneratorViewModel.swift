@@ -574,6 +574,24 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     /// Режим разметки объектов
     @Published var isMarkingMode: Bool = false
+
+    /// M6-006: tracking posture for the surface search. `limited` publishes a
+    /// localized retry/reposition guidance and keeps the search honest: no
+    /// fake surface is ever selected while tracking is limited.
+    enum SurfaceTrackingPosture: Equatable {
+        case normal
+        case limited
+    }
+
+    @Published private(set) var surfaceTrackingPosture: SurfaceTrackingPosture = .normal
+
+    /// Deadline of the bounded surface-search window. A search that finds no
+    /// usable surface within it publishes localized retry/reposition guidance
+    /// instead of selecting a fake surface.
+    private var surfaceSearchDeadline: Date?
+
+    /// M6-006 search window: 8 s of bounded search before guidance fires.
+    static let surfaceSearchWindowSeconds: TimeInterval = 8
     
     /// Статус загрузки
     @Published var statusMessage: String = ""
@@ -2982,13 +3000,41 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             diagnosticsLog("[MARKER] mode toggle ignored while workspace is busy")
             return
         }
+        // M6-006: surface search begins only after ready. A pre-ready tap
+        // surfaces localized retry guidance instead of a silent no-op.
+        if !isMarkingMode, !isARSessionReady {
+            statusMessage = localizedCopy(.generatorErrorMarkNotReady)
+            diagnosticsLog("[MARKER] search entry rejected before ready")
+            return
+        }
         if !isMarkingMode {
             isHintsEnabled = false
             clearHintPresentation()
         }
         isMarkingMode.toggle()
+        if isMarkingMode {
+            surfaceSearchDeadline = Date().addingTimeInterval(Self.surfaceSearchWindowSeconds)
+        } else {
+            surfaceSearchDeadline = nil
+        }
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
+    }
+
+    /// M6-006: called by the AR delegate on every tracking-state change.
+    /// A limitation keeps the posture honest; recovery clears guidance when
+    /// tracking returns to normal and a fresh search window begins.
+    func updateSurfaceTrackingPosture(isLimited: Bool) {
+        let posture: SurfaceTrackingPosture = isLimited ? .limited : .normal
+        guard posture != surfaceTrackingPosture else { return }
+        surfaceTrackingPosture = posture
+        if isLimited {
+            statusMessage = localizedCopy(.generatorErrorTrackingLimited)
+            diagnosticsLog("[MARKER] tracking limited: retry/reposition guidance published")
+        } else if isMarkingMode {
+            surfaceSearchDeadline = Date().addingTimeInterval(Self.surfaceSearchWindowSeconds)
+            diagnosticsLog("[MARKER] tracking restored: search window renewed")
+        }
     }
     
     /// Обрабатывает tap для размещения маркера
@@ -3003,6 +3049,16 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         var results = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
         if results.isEmpty {
             results = arView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
+        }
+
+        // M6-006: a search past its bounded window cannot select a
+        // surface silently. Publish retry/reposition guidance and renew the
+        // window for the next attempt instead of a fake surface.
+        if let deadline = surfaceSearchDeadline, Date() > deadline {
+            statusMessage = localizedCopy(.generatorErrorSurfaceTimeout)
+            surfaceSearchDeadline = Date().addingTimeInterval(Self.surfaceSearchWindowSeconds)
+            diagnosticsLog("[MARKER] search window expired: retry/reposition guidance published")
+            return
         }
 
         let worldPosition: Position3D

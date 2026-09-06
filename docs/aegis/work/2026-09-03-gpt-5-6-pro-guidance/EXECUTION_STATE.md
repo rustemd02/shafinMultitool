@@ -727,3 +727,6 @@
 
 ### 2026-09-06 (session) — M5-022 CLOSED
 - Both generator-error defects closed. Unit: failure callback now drives the attached session so the M6-002 fence accepts it (test-only fix, production behavior already correct). UI: the band was already rendering the honest typed copy; the test pinned an obsolete raw string and now asserts `"AR world tracking is unavailable on this device. Use a device that supports AR world tracking."` in EN. Interim DEBUG markers removed (grep-verified); only `shafinMultitoolUITests/SETGeneratorProductionUITests.swift` changed. Verification: unit PASS + UI PASS on permitted iPhone 17e (`/private/tmp/m5-022-ui-r4.xcresult`). Tracker total: 147/424 completed, 277 remaining.
+
+### 2026-09-06 (session) — M6-006 CLOSED
+- Surface search acceptance closed through a new `SurfaceTrackingPosture` owner in the VM: readiness-gated marking entry (localized guidance, not silent no-op), tracking-limitation propagation from the AR delegate with retry/reposition guidance, an 8 s bounded search window that renews instead of selecting fake surfaces, and three new EN+RU copy keys. New `SurfaceSearchPolicyTests` 3/3 on permitted iPhone 17e (`/private/tmp/m6-006-tests-r3.xcresult`). Physical surface detection remains M13. Tracker total: 148/424 completed, 276 remaining.

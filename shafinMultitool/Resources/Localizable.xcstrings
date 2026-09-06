@@ -6928,6 +6928,54 @@
           }
         }
       }
+    },
+    "set.generator.error.mark_not_ready": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AR is not ready yet. Wait for the scene to stabilize, then try marking again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AR ещё не готов. Дождитесь стабилизации сцены и попробуйте отметить снова."
+          }
+        }
+      }
+    },
+    "set.generator.error.tracking_limited": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tracking is limited. Move the device slowly to re-establish tracking."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание ограничено. Медленно переместите устройство, чтобы восстановить отслеживание."
+          }
+        }
+      }
+    },
+    "set.generator.error.surface_timeout": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No usable surface found. Reposition the camera or try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подходящая поверхность не найдена. Измените положение камеры или попробуйте снова."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
