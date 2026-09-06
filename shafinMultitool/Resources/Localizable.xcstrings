@@ -4054,13 +4054,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "coarse"
+            "value": "coarse action"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "coarse"
+            "value": "грубое действие"
           }
         }
       }
@@ -4070,13 +4070,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "id"
+            "value": "ID"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "id"
+            "value": "ID"
           }
         }
       }
@@ -4102,13 +4102,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "overlay"
+            "value": "overlay hint"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "overlay"
+            "value": "подсказка оверлея"
           }
         }
       }

@@ -897,3 +897,6 @@
 
 ### 2026-09-06 (session) — M11-009 + M11-012 CLOSED
 - Motif budget pinned structurally (single accent, no rivals, no fullscreen film) and Reduce Transparency globalized through one adaptive scrim surface across six overlay structs. 26/26 overlay/readability tests. Tracker total: 213/424 completed, 211 remaining.
+
+### 2026-09-06 (session) — M11-004 + M11-005 CLOSED
+- Editorial closed both locales: 441-key audit, terminology consistent, no mixed-language errors; fixed 4 raw trace-metadata tokens into localized captions. 5/5 trace tests. Tracker total: 215/424 completed, 209 remaining.
