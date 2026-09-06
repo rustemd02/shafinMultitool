@@ -900,3 +900,6 @@
 
 ### 2026-09-06 (session) — M11-004 + M11-005 CLOSED
 - Editorial closed both locales: 441-key audit, terminology consistent, no mixed-language errors; fixed 4 raw trace-metadata tokens into localized captions. 5/5 trace tests. Tracker total: 215/424 completed, 209 remaining.
+
+### 2026-09-06 (session) — M11-006 CLOSED
+- Localization validation closed with a fail-closed checker (missing locale, placeholder mismatch, raw technical errors, control glyphs) — 441/441 keys pass. Tracker total: 216/424 completed, 208 remaining.
