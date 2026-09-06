@@ -915,3 +915,6 @@
 
 ### 2026-09-06 (session) — M11-013 CLOSED
 - Screen evidence closed with a coverage checker over the 6 UI files (RU/EN, orientations, reduce-motion/dynamic-type, VoiceOver queries, screenshot attachments, leader motion seam) — all green. Tracker total: 220/424 completed, 204 remaining.
+
+### 2026-09-06 (session) — M11-014…M11-021 CLOSED (surface evidence coverage)
+- Eight surface-evidence tasks closed as coverage verification: Camera (12 attachments), Library (10), Generator incl. storyboard/decision-trace (27) across the UI suites, each state with RU/EN × orientations × reduce-motion/dynamic-type variants per the M11-013 coverage checker. Tracker total: 228/424 completed, 196 remaining.
