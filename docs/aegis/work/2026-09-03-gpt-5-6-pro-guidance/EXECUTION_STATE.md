@@ -888,3 +888,6 @@
 
 ### 2026-09-06 (session) — M11-002 CLOSED
 - Screen inventory closed: 96 states generated from the frozen journey receipt with full columns. Tracker total: 209/424 completed, 215 remaining.
+
+### 2026-09-06 (session) — M11-003 CLOSED
+- Copy inventory closed: 441 keys with EN+RU values, 7 fixture-tagged keys confined to non-Release seams (checker `scripts/evidence/check_copy_inventory.py` green). Tracker total: 210/424 completed, 214 remaining.
