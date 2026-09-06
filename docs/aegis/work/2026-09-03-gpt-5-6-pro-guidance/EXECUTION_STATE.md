@@ -792,3 +792,6 @@
 
 ### 2026-09-06 (session) — M4-020 CLOSED
 - Neural explainability closed: fusion routes every head confidence through its calibration curve (abstain on out-of-domain/unavailable), decisions carry head + calibrated confidence + model version + ROI + linked action, text stays deterministic/localized. 19/19 fusion+calibrator tests on permitted iPhone 17e. Tracker total: 173/424 completed, 251 remaining.
+
+### 2026-09-06 (session) — M5-004 + M5-005 CLOSED (verified)
+- Library empty/loaded states verified: empty only on successful zero-load (never a failure mask, no fake content), rows carry UUID/name/date/preview/health with stable ordering. 26/26 model+UI tests on permitted iPhone 17e. Tracker total: 175/424 completed, 249 remaining.
