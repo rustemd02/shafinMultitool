@@ -843,3 +843,6 @@
 
 ### 2026-09-06 (session) — M10-003 + M10-021 CLOSED
 - Device family verified (universal binary, route-aware masks, shell delegation) and performance tiers locked with monotonic governor budgets across A12/compact-A15/M-series classes. 5/5 iPad tests. Tracker total: 193/424 completed, 231 remaining.
+
+### 2026-09-06 (session) — M10-004 CLOSED
+- Windowing policy locked: single scene (no multi-window API), resizable SwiftUI layouts, 320pt minimum enforced through fallback/preflight/readiness gates; dedicated expand-window string correctly omitted while fullscreen-only. Tracker total: 194/424 completed, 230 remaining.
