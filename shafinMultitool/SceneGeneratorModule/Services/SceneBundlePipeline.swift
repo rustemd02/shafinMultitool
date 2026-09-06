@@ -2865,109 +2865,11 @@ final class SceneBundlePipeline {
         stitchedStates.sort { $0.sceneIndex < $1.sceneIndex }
 
         var renderableSceneEntries = sceneEntries.filter { !$0.plan.beats.isEmpty || !$0.plan.objects.isEmpty }
-        if renderableSceneEntries.isEmpty,
-           let fallbackScene = sceneEntries.first(where: { !$0.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            let actorRef = fallbackScene.plan.actors.first?.ref ?? "first"
-            var fallbackPlan = fallbackScene.plan
-            if fallbackPlan.actors.isEmpty {
-                fallbackPlan.actors = [.init(ref: actorRef, type: .human)]
-            }
-            if fallbackPlan.beats.isEmpty {
-                let fallbackText = fallbackScene.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
-                let actionType: SceneAction.ActionType = fallbackText.contains("«")
-                    || fallbackText.contains("\"")
-                    || fallbackText.lowercased().contains("говор")
-                    ? .talk
-                    : .stand
-                let dialogue = actionType == .talk ? fallbackText : nil
-                fallbackPlan.beats = [
-                    .init(
-                        ref: "beat_fallback_1",
-                        phase: "fallback",
-                        actions: [
-                            .init(
-                                actorRef: actorRef,
-                                type: actionType,
-                                resultingPose: .standing,
-                                dialogue: dialogue,
-                                sourceText: fallbackText
-                            ),
-                        ],
-                        minDuration: 0.5
-                    ),
-                ]
-            }
-            let fallbackEntry = SceneBundlePlan.SceneEntry(
-                sceneID: fallbackScene.sceneID,
-                sceneIndex: fallbackScene.sceneIndex,
-                sourceText: fallbackScene.sourceText,
-                metadata: fallbackScene.metadata,
-                chunks: fallbackScene.chunks,
-                diagnostics: fallbackScene.diagnostics + ["v9.fallback_scene_materialized"],
-                plan: fallbackPlan
-            )
-            renderableSceneEntries = [fallbackEntry]
-        } else if renderableSceneEntries.isEmpty {
-            let fallbackText = workload.finalDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !fallbackText.isEmpty {
-                let lowercased = fallbackText.lowercased()
-                let actorCount = lowercased.contains("трет") ? 3 : ((lowercased.contains("перв") && lowercased.contains("втор")) || lowercased.contains("оба") ? 2 : 1)
-                let actorRefs = Array(["first", "second", "third"].prefix(actorCount))
-                let actors = actorRefs.map { ScenePlanIR.Actor(ref: $0, type: .human) }
-                let objects = markedObjects
-                    .filter { markerMentioned($0, in: lowercased) }
-                    .map { marker in
-                        ScenePlanIR.Object(
-                            ref: marker.canonicalMarkedObjectID,
-                            type: marker.type,
-                            relativePosition: .center,
-                            name: marker.name,
-                            markedObjectID: marker.canonicalMarkedObjectID
-                        )
-                    }
-                let fallbackPlan = ScenePlanIR(
-                    actors: actors,
-                    objects: objects,
-                    beats: [
-                        .init(
-                            ref: "beat_fallback_1",
-                            phase: "fallback",
-                            actions: [
-                                .init(
-                                    actorRef: actorRefs.first ?? "first",
-                                    type: .stand,
-                                    resultingPose: .standing,
-                                    sourceText: fallbackText
-                                ),
-                            ],
-                            minDuration: 0.5
-                        ),
-                    ],
-                    spatialRelations: [],
-                    referenceBindings: .init(
-                        actorBindings: Dictionary(uniqueKeysWithValues: actorRefs.enumerated().map { ($0.element, "actor_\($0.offset + 1)") }),
-                        markedObjectIDs: objects.compactMap(\.markedObjectID),
-                        aliasToObjectRef: MarkedObjectMatcher.uniqueAliasBindings(
-                            objects.compactMap { object in
-                                guard let name = object.name else { return nil }
-                                return (name, object.ref)
-                            }
-                        )
-                    )
-                )
-                renderableSceneEntries = [
-                    SceneBundlePlan.SceneEntry(
-                        sceneID: workload.finalSceneCandidates.first?.id ?? "scene_1",
-                        sceneIndex: workload.finalSceneCandidates.first?.sceneIndex ?? 0,
-                        sourceText: fallbackText,
-                        metadata: workload.finalSceneCandidates.first?.metadata ?? .empty,
-                        chunks: [],
-                        diagnostics: ["v9.fallback_scene_materialized", "v9.bundle_empty_scene_recovered"],
-                        plan: fallbackPlan
-                    ),
-                ]
-            }
-        }
+        // M5-024: no fallback invention. Entries with no extracted beats or
+        // objects are explicit empty results; the caller (clarification or
+        // failure surface) owns the decision, never a fabricated stand/talk
+        // beat on phantom actors. Both fallback branches ("recovered scene"
+        // and "recovered bundle") are removed.
         let activeRenderableIndex = 0
         let bundlePlan = SceneBundlePlan(
             bundleID: workload.bundleID,
@@ -3512,7 +3414,7 @@ final class SceneBundlePipeline {
         markedObjects: [MarkedObject],
         reasonCodes: inout [String]
     ) -> ScenePlanIR {
-        var enriched = ensureOrdinalActors(in: plan, sourceText: sourceText, anchors: anchors, chunkState: chunkState)
+        var enriched = ensureOrdinalActors(in: plan, sourceText: sourceText, anchors: anchors, chunkState: chunkState, requiredCount: 0)
         enriched = ensureMentionedMarkedObjects(
             in: enriched,
             sourceText: sourceText,
@@ -3551,8 +3453,11 @@ final class SceneBundlePipeline {
             )
             if !describedText.isEmpty {
                 let actorRef = inferUnsupportedActionActorRef(from: describedText, sourceText: sourceText, anchors: anchors.sourceBundle)
-                if !enriched.actors.contains(where: { $0.ref == actorRef }) {
-                    enriched.actors.append(.init(ref: actorRef, type: .human))
+                // M5-024: the described action is recorded only when its actor
+                // is a real extracted entity; a phantom actor is never minted.
+                guard enriched.actors.contains(where: { $0.ref == actorRef }) else {
+                    print("[PARSER_V9] described action skipped: no extracted actor for ref=\(actorRef)")
+                    return enriched
                 }
                 enriched.beats.append(
                     ScenePlanIR.Beat(
@@ -3582,14 +3487,23 @@ final class SceneBundlePipeline {
         in plan: ScenePlanIR,
         sourceText: String,
         anchors: SceneChunkAnchor,
-        chunkState: SceneChunkState?
+        chunkState: SceneChunkState?,
+        requiredCount explicitRequiredCount: Int? = nil
     ) -> ScenePlanIR {
         var enriched = plan
+        // M5-024: an explicit zero suppresses ordinal synthesis entirely —
+        // callers that cannot tolerate phantom actors pass 0 and keep only
+        // genuinely extracted entities.
         let lowercased = sourceText.lowercased()
         let speakerCount = Set(inlineSpeakerPairs(in: sourceText).map(\.speaker)).count
         let namedActors = orderedNamedActorMentions(from: anchors)
+        if let explicitRequiredCount {
+            guard explicitRequiredCount > 0 else { return enriched }
+        }
         let requiredCount: Int
-        if anchors.sourceBundle.actorCountHint >= 3 || lowercased.contains("трет") || namedActors.count >= 3 {
+        if let explicitRequiredCount {
+            requiredCount = explicitRequiredCount
+        } else if anchors.sourceBundle.actorCountHint >= 3 || lowercased.contains("трет") || namedActors.count >= 3 {
             requiredCount = 3
         } else if anchors.sourceBundle.actorCountHint >= 2
             || lowercased.contains("оба")

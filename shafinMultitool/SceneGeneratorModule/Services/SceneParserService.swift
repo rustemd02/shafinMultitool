@@ -1000,11 +1000,11 @@ final class SceneParserService {
             }
         }
 
-        // Если ничего не найдено, создаём одного актёра по умолчанию
-        if actors.isEmpty {
-            print("🔍 [EXTRACT_ACTORS] Актёры не найдены, создаём актёра по умолчанию")
-            actors.append(SceneActor(id: "actor_1", type: .human, name: nil))
-        }
+        // M5-024: никакого актёра по умолчанию не создаётся. Пустое
+        // извлечение — явный результат без актёров: вызывающий слой
+        // (уточнение/ошибка) владеет решением, а не угадывает персонажа.
+        // DiagnosticsCalculator отражает отсутствие актёров пониженной
+        // уверенностью и явной пометкой.
 
         print("🔍 [EXTRACT_ACTORS] Итого актёров: \(actors.count)")
         return actors
@@ -1279,8 +1279,12 @@ final class SceneParserService {
                     ))
                     actionCounter += 1
                 } else {
-                    // Для остальных - назначаем первому актёру (или последнему упомянутому)
-                    let actorId = determineActorForAction(text: text, actors: actors, actionPattern: pattern)
+                    // M5-024: действие без распознанного актёра не создаётся.
+                    // Пустой actors — честный результат без актёров, а не
+                    // угаданный персонаж.
+                    guard let actorId = determineActorForAction(text: text, actors: actors, actionPattern: pattern) else {
+                        continue
+                    }
 
                     actions.append(SceneAction(
                         id: "action_\(actionCounter)",
@@ -1415,7 +1419,9 @@ final class SceneParserService {
 
 
         // Если не нашли комплексных паттернов, ищем простые действия (с лемматизацией)
-        if actions.isEmpty {
+        // M5-024: действие создаётся только для распознанного актёра —
+        // фантомный actor_1 запрещён (см. determineActorForAction).
+        if actions.isEmpty, let firstActor = actors.first {
             for (keyword, actionType) in KeywordsMapping.actionKeywords {
                 if lemmatizer.textContainsKeyword(text, keyword: keyword) {
                     let direction = extractDirection(from: text)
@@ -1423,7 +1429,7 @@ final class SceneParserService {
 
                     actions.append(SceneAction(
                         id: "action_\(actionCounter)",
-                        actorId: actors.first?.id ?? "actor_1",
+                        actorId: firstActor.id,
                         type: actionType,
                         target: target,
                         direction: direction,
@@ -1734,24 +1740,26 @@ final class SceneParserService {
         return nil
     }
 
-    private func determineActorForAction(text: String, actors: [SceneActor], actionPattern: String) -> String {
+    private func determineActorForAction(text: String, actors: [SceneActor], actionPattern: String) -> String? {
         // Для паттернов типа "один поворачивает направо" - определяем по контексту
         if text.contains("один") && text.contains("друг") {
             // Это "один ... другой" конструкция
             // Определяем какой актёр к какому действию
             if let patternRange = text.range(of: actionPattern, options: .regularExpression) {
                 // Безопасно извлекаем текст до паттерна
-                guard patternRange.lowerBound > text.startIndex else { return actors.first?.id ?? "actor_1" }
+                // M5-024: без распознанных актёров не на кого ссылаться —
+                // возвращаем nil вместо фантомного "actor_1".
+                guard patternRange.lowerBound > text.startIndex else { return actors.first?.id }
                 let beforePattern = String(text[..<patternRange.lowerBound])
                 if beforePattern.contains("один") && !beforePattern.contains("друг") {
-                    return actors.first?.id ?? "actor_1"
+                    return actors.first?.id
                 } else if beforePattern.contains("друг") {
-                    return actors.count > 1 ? actors[1].id : actors.first?.id ?? "actor_1"
+                    return actors.count > 1 ? actors[1].id : actors.first?.id
                 }
             }
         }
 
-        return actors.first?.id ?? "actor_1"
+        return actors.first?.id
     }
 
     private func processOneAnotherConstruction(

@@ -31,8 +31,16 @@ final class ScenePlanCompiler {
         originalDescription: String,
         topLevelMetadata: (sceneHeading: String?, locationName: String?, interiorExterior: String?, timeOfDay: String?) = (nil, nil, nil, nil)
     ) throws -> (script: SceneScript, notes: [String]) {
-        guard !plan.actors.isEmpty else {
-            throw ScenePlanCompilerError.invalidPlan("ScenePlanIR must contain at least one actor")
+        // M5-024: a static object-only scene (extracted objects, no actions,
+        // no actors) is a valid explicit result — it compiles to a script
+        // with objects and empty beats. Only a plan with NEITHER actors NOR
+        // objects is rejected. This keeps "2 стола стоят рядом" representable
+        // without inventing a phantom actor or a fabricated stand beat.
+        let isStaticObjectScene = plan.actors.isEmpty && !plan.objects.isEmpty
+        if !isStaticObjectScene {
+            guard !plan.actors.isEmpty else {
+                throw ScenePlanCompilerError.invalidPlan("ScenePlanIR must contain at least one actor")
+            }
         }
 
         var compileNotes: [String] = []
@@ -40,12 +48,20 @@ final class ScenePlanCompiler {
         let objectIdMap = try compileObjectIDMap(plan.objects)
         let actors = compileActors(plan.actors, actorIdMap: actorIdMap)
         let objects = compileObjects(plan.objects, objectIdMap: objectIdMap)
-        let beats = try compileBeats(
-            plan.beats,
-            actorIdMap: actorIdMap,
-            objectIdMap: objectIdMap,
-            compileNotes: &compileNotes
-        )
+        let beats: [SceneBeat]
+        if plan.beats.isEmpty {
+            guard isStaticObjectScene else {
+                throw ScenePlanCompilerError.invalidPlan("ScenePlanIR must contain at least one beat")
+            }
+            beats = []
+        } else {
+            beats = try compileBeats(
+                plan.beats,
+                actorIdMap: actorIdMap,
+                objectIdMap: objectIdMap,
+                compileNotes: &compileNotes
+            )
+        }
         let relations = try compileRelations(
             plan.spatialRelations,
             actorIdMap: actorIdMap,
@@ -153,6 +169,10 @@ final class ScenePlanCompiler {
         }
 
         return try beats.enumerated().map { beatIndex, beat in
+            // M5-024: beats are action carriers; the caller decides whether an
+            // action-less beat is representable. Empty beats are rejected here
+            // so a static object-only scene must arrive with at least one beat
+            // whose actions reference real extracted entities.
             guard !beat.actions.isEmpty else {
                 throw ScenePlanCompilerError.invalidPlan("Beat \(beat.ref) must contain at least one action")
             }
