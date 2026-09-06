@@ -803,22 +803,56 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         prepareRecorder()
     }
     
-    func changeISO(iso: Int) {
-        try? videoCaptureDevice.lockForConfiguration()
-        
-        videoCaptureDevice.setExposureModeCustom(duration: AVCaptureDevice.currentExposureDuration, iso: Float(iso), completionHandler: nil)
-        
-        videoCaptureDevice.unlockForConfiguration()
-        
+    /// M9-009/M9-010: ISO applies only when the device supports custom
+    /// exposure; the value clamps visibly to the active format's
+    /// [minISO, maxISO] range and the applied value reads back. Returns the
+    /// applied ISO, or nil when unsupported/unavailable.
+    @discardableResult
+    func changeISO(iso: Int) -> Float? {
+        guard let device = videoCaptureDevice,
+              device.isExposureModeSupported(.custom) else {
+            return nil
+        }
+        let format = device.activeFormat
+        let clamped = min(max(Float(iso), format.minISO), format.maxISO)
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            device.setExposureModeCustom(duration: AVCaptureDevice.currentExposureDuration,
+                                         iso: clamped,
+                                         completionHandler: nil)
+            return device.iso
+        } catch {
+            return nil
+        }
     }
     
-    func changeWB(wb: Int) {
-        try? videoCaptureDevice.lockForConfiguration()
-        
-        let newWhiteBalanceValue = AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(temperature: Float(wb), tint: 0.0)
-        videoCaptureDevice.setWhiteBalanceModeLocked(with: videoCaptureDevice.deviceWhiteBalanceGains(for: newWhiteBalanceValue))
-        
-        videoCaptureDevice.unlockForConfiguration()
+    /// M9-012 policy: temperature maps to normalized device gains; the
+    /// applied gains read back and invalid temperatures are rejected.
+    /// Returns the applied gains, or nil when unsupported/unavailable.
+    @discardableResult
+    func changeWB(wb: Int) -> AVCaptureDevice.WhiteBalanceGains? {
+        guard let device = videoCaptureDevice,
+              device.isWhiteBalanceModeSupported(.locked) else {
+            return nil
+        }
+        guard wb > 0 else { return nil }
+        let target = AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(
+            temperature: Float(wb), tint: 0.0)
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            let gains = device.deviceWhiteBalanceGains(for: target)
+            // M9-012: gains must normalize to the device's supported range.
+            let clamped = AVCaptureDevice.WhiteBalanceGains(
+                redGain: min(max(gains.redGain, 1.0), device.maxWhiteBalanceGain),
+                greenGain: min(max(gains.greenGain, 1.0), device.maxWhiteBalanceGain),
+                blueGain: min(max(gains.blueGain, 1.0), device.maxWhiteBalanceGain))
+            device.setWhiteBalanceModeLocked(with: clamped, completionHandler: nil)
+            return device.deviceWhiteBalanceGains
+        } catch {
+            return nil
+        }
     }
     
     func changeFPS(fps: Int) {

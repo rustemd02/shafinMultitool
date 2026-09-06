@@ -401,13 +401,17 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     }
     
     func changeISO(iso: Int) {
-        cameraService.changeISO(iso: iso)
-        UserDefaults.standard.set(iso, forKey: "iso")
+        // M9-009/M9-010: persist only the applied (clamped, read-back)
+        // value; a rejected change never pollutes stored settings.
+        if let applied = cameraService.changeISO(iso: iso) {
+            UserDefaults.standard.set(Int(applied), forKey: "iso")
+        }
     }
-    
+
     func changeWB(wb: Int) {
-        cameraService.changeWB(wb: wb)
-        UserDefaults.standard.set(wb, forKey: "whiteBalance")
+        if cameraService.changeWB(wb: wb) != nil {
+            UserDefaults.standard.set(wb, forKey: "whiteBalance")
+        }
     }
     
     // MARK: - AR handling functions

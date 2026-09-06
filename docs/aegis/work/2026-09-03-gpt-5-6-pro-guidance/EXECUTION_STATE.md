@@ -855,3 +855,6 @@
 
 ### 2026-09-06 (session) — M9-008 CLOSED
 - Format/FPS closed with a device-derived support gate consulted before writer input creation. 3/3 format tests. Tracker total: 197/424 completed, 227 remaining.
+
+### 2026-09-06 (session) — M9-009 + M9-010 CLOSED
+- Exposure closed: device-derived ISO clamp with read-back, normalized WB gains with rejection, applied-only persistence; fixed two force-unwrap crash shapes. 3/3 exposure tests. Tracker total: 198/424 completed, 226 remaining.
