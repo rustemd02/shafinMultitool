@@ -864,3 +864,6 @@
 
 ### 2026-09-06 (session) — M10-008 + M10-009 CLOSED
 - Library iPad density (two-column regular contact sheet) and Generator iPad regular layout (editor + context column, shared state, keyboard-safe actions) closed with 3/3 input-sheet UI tests. Tracker total: 201/424 completed, 223 remaining.
+
+### 2026-09-06 (session) — M14-001 CLOSED (point-in-time)
+- Toolchain verified: Xcode 26.6 + iOS 26.5 SDK meet the submission requirement as of today; reverification at submission required by tracker. Tracker total: 202/424 completed, 222 remaining.
