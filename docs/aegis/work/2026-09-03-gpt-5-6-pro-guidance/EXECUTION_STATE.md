@@ -765,3 +765,6 @@
 
 ### 2026-09-06 (session) — M5-021 CLOSED (local half; backend half external)
 - Background recovery local half closed: teardown checkpoints request UUID+epoch + draft snapshot; foreground restores editable input with no auto-job (`GenerationBackgroundRecoveryTests` 1/1 on permitted iPhone 17e). Backend poll/resume inherits the M5-025 external block. Tracker total: 162/424 completed, 262 remaining.
+
+### 2026-09-06 (session) — M13-001 CLOSED
+- Test topology locked in `docs/implementation/device-tests/test-topology.md`: default production lane (workspace/scheme/simulator/single-batch/durable-xcresult contract), six explicit lanes with prerequisites (recording regression, device harness, replay export, release bundle/provenance gates, Python validators), and skip reporting via XCTSkip messages + xcresult summaries with the known-skip file list. Tracker total: 163/424 completed, 261 remaining.
