@@ -825,3 +825,6 @@
 
 ### 2026-09-06 (session) — M10-001 CLOSED
 - iPad contract locked and pinned against the built product plist (universal binary, 4 orientations, fullscreen-only, iPadOS 17.0). 4/4 contract tests. Tracker total: 186/424 completed, 238 remaining.
+
+### 2026-09-06 (session) — M10-002 CLOSED (verified)
+- Deployment target verified: all-target agreement via the M0-006 matrix, availability guards with fallback paths on every newer-API site, minimum with hardware implications in the iPad contract. Tracker total: 187/424 completed, 237 remaining.
