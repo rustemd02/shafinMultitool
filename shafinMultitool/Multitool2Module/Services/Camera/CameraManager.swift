@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import AVKit
 import Combine
 import CoreMotion
 import ImageIO
@@ -330,6 +331,14 @@ enum CameraManagerTestConfiguration {
 final class CameraManager: NSObject, @unchecked Sendable {
     private let session: AVCaptureSession
     private let videoOutput: AVCaptureVideoDataOutput
+    /// M9-013: optional audio tap for the truthful meter. Attached only when
+    /// microphone permission is granted; detached with the same lifecycle as
+    /// the video delegate so no stale audio state survives stop/release.
+    private let audioMeterOutput = AVCaptureAudioDataOutput()
+    private let audioMeterQueue = DispatchQueue(label: "CameraManager.AudioMeter")
+    private let audioMeterLock = NSLock()
+    private var storedAudioLevel: Float?
+    private var audioMeterAttached = false
     private let sessionQueue = DispatchQueue(label: "CameraManager.Session")
     private let videoOutputQueue = DispatchQueue(label: "CameraManager.VideoOutput")
     private let videoOutputQueueKey = DispatchSpecificKey<Void>()
@@ -1019,13 +1028,43 @@ final class CameraManager: NSObject, @unchecked Sendable {
             return false
         }
         videoOutput.setSampleBufferDelegate(self, queue: videoOutputQueue)
+        attachAudioMeterIfPermitted()
         setFrameDeliveryEnabled(true)
         return true
+    }
+
+    /// M9-013: attaches the audio tap only when the microphone is granted.
+    /// Called on the session queue alongside the video delegate attach, so
+    /// the meter lifecycle matches frame delivery exactly.
+    private func attachAudioMeterIfPermitted() {
+        guard AVAudioApplication.shared.recordPermission == .granted else {
+            detachAudioMeter()
+            return
+        }
+        guard !audioMeterAttached,
+              session.canAddOutput(audioMeterOutput) else {
+            return
+        }
+        session.addOutput(audioMeterOutput)
+        audioMeterOutput.setSampleBufferDelegate(self, queue: audioMeterQueue)
+        audioMeterAttached = true
+    }
+
+    private func detachAudioMeter() {
+        if audioMeterAttached {
+            audioMeterOutput.setSampleBufferDelegate(nil, queue: nil)
+            session.removeOutput(audioMeterOutput)
+            audioMeterAttached = false
+        }
+        audioMeterLock.lock()
+        storedAudioLevel = nil
+        audioMeterLock.unlock()
     }
 
     private func disableDeliveryAndDetachDelegate() {
         setFrameDeliveryEnabled(false)
         videoOutput.setSampleBufferDelegate(nil, queue: videoOutputQueue)
+        detachAudioMeter()
     }
 
     private func drainVideoOutputQueue() {
@@ -1162,6 +1201,15 @@ final class CameraManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// M9-013: current audio level (0...1 RMS) derived from actual audio
+    /// buffers. Nil means unavailable: no permission, no audio path, or the
+    /// capture owner is not running. No fixture animation exists in Release.
+    var audioLevel: Float? {
+        audioMeterLock.lock()
+        defer { audioMeterLock.unlock() }
+        return storedAudioLevel
+    }
+
     /// M9-005: current torch truth for UI binding. Nil means unsupported.
     var isTorchActive: Bool? {
         sessionQueue.sync { [weak self] in
@@ -1171,6 +1219,39 @@ final class CameraManager: NSObject, @unchecked Sendable {
             }
             return device.isTorchActive
         }
+    }
+
+    /// M9-013: RMS level from 16-bit PCM audio buffers, normalized to
+    /// 0...1. Non-PCM or unreadable buffers clear the level instead of
+    /// fabricating a value.
+    private func updateAudioLevel(from sampleBuffer: CMSampleBuffer) {
+        var level: Float?
+        defer {
+            audioMeterLock.lock()
+            storedAudioLevel = level
+            audioMeterLock.unlock()
+        }
+        guard CMSampleBufferDataIsReady(sampleBuffer),
+              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+            return
+        }
+        var length = 0
+        var dataPointer: UnsafeMutablePointer<CChar>?
+        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
+                                          totalLengthOut: &length, dataPointerOut: &dataPointer) == kCMBlockBufferNoErr,
+              length >= 2, let bytes = dataPointer else {
+            return
+        }
+        let sampleCount = length / MemoryLayout<Int16>.size
+        var sumSquares: Double = 0
+        bytes.withMemoryRebound(to: Int16.self, capacity: sampleCount) { samples in
+            for index in 0..<sampleCount {
+                let normalized = Double(samples[index]) / Double(Int16.max)
+                sumSquares += normalized * normalized
+            }
+        }
+        guard sampleCount > 0 else { return }
+        level = Float(min(1.0, sqrt(sumSquares / Double(sampleCount)) * 2.0))
     }
 
     func switchLens(to lens: CameraLens) {
@@ -1338,10 +1419,16 @@ final class CameraManager: NSObject, @unchecked Sendable {
     }
 }
 
-extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        // M9-013: audio buffers feed the truthful meter only; they never
+        // enter the video/analysis path.
+        if output === audioMeterOutput {
+            updateAudioLevel(from: sampleBuffer)
+            return
+        }
         let capturedAt = Date()
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)

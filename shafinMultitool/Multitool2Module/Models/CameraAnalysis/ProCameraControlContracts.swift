@@ -69,8 +69,8 @@ enum ProCameraControlContracts {
               owner: "CameraService.changeWB (legacy; unwired to Coach path)"),
         .init(control: .whiteBalanceTemperature, availability: .legacyOnly,
               owner: "CameraService.changeWB (legacy; unwired to Coach path)"),
-        .init(control: .audioMeter, availability: .post10,
-              owner: "no production audio-meter owner exists"),
+        .init(control: .audioMeter, availability: .available,
+              owner: "CameraManager.audioLevel (RMS from audio buffers)"),
         .init(control: .torch, availability: .available,
               owner: "CameraManager.setTorchActive/isTorchActive"),
     ]

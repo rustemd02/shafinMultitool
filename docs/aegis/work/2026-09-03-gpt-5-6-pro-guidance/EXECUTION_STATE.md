@@ -813,3 +813,6 @@
 
 ### 2026-09-06 (session) — M9-007 CLOSED (verified)
 - Capture configuration verified singular on the session queue with generation fencing; UI reads back from the device; failures surface typed. 2/2 capture tests. Tracker total: 182/424 completed, 242 remaining.
+
+### 2026-09-06 (session) — M9-013 CLOSED
+- Audio meter closed on the capture owner: permission-gated audio tap on the same session, RMS levels from real buffers, nil when unavailable, cleared on release; M9-006 contract updated. 2/2 meter tests. Physical mic remains M13. Tracker total: 183/424 completed, 241 remaining.
