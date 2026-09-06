@@ -762,3 +762,6 @@
 
 ### 2026-09-06 (session) — M9-002 + M9-003 CLOSED
 - Lens labels verified against discovery (empty-until-discovered options, honest physical fallback names, no synthetic magnification); switch continuity verified through the serialized transaction fence with preview/config/track/episode invalidation and explicit recording policy. 41/42 lens tests on permitted iPhone 17e; the one failure reproduces on the clean tree and is registered pre-existing. Tracker total: 161/424 completed, 263 remaining.
+
+### 2026-09-06 (session) — M5-021 CLOSED (local half; backend half external)
+- Background recovery local half closed: teardown checkpoints request UUID+epoch + draft snapshot; foreground restores editable input with no auto-job (`GenerationBackgroundRecoveryTests` 1/1 on permitted iPhone 17e). Backend poll/resume inherits the M5-025 external block. Tracker total: 162/424 completed, 262 remaining.
