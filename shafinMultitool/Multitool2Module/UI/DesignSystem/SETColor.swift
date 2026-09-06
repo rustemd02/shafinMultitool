@@ -104,6 +104,14 @@ extension ShapeStyle where Self == Color {
     static var setTextSecondary: Color { SETPalette.textSecondary.color }
     static var setTextTertiary: Color { SETPalette.textTertiary.color }
     static var setHUDScrim: Color { SETPalette.hudScrim.color }
+
+    /// M11-012: the single transparency-aware surface. Under Reduce
+    /// Transparency it resolves to the solid surface so text/controls stay
+    /// legible over noisy camera content; otherwise the scrim. Call sites
+    /// pass the environment value instead of branching locally.
+    static func setAdaptiveScrim(reduceTransparency: Bool) -> Color {
+        reduceTransparency ? Self.setSurfaceSolid : Self.setHUDScrim
+    }
     static var setHairline: Color { SETPalette.hairline.color }
 
 }

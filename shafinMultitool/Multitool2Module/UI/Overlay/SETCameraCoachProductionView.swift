@@ -460,6 +460,7 @@ private struct SETCameraCoachFixtureSurface: View {
 }
 
 private struct SETCameraTopChrome: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let isPaused: Bool
     let onDismiss: (() -> Void)?
     let onTogglePause: () -> Void
@@ -473,7 +474,7 @@ private struct SETCameraTopChrome: View {
                         .foregroundStyle(.setTextPrimary)
                         .frame(width: SETComponentMetric.minimumHitTarget,
                                height: SETComponentMetric.minimumHitTarget)
-                        .background(.setHUDScrim)
+                        .background(Color.setAdaptiveScrim(reduceTransparency: reduceTransparency))
                         .overlay { Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline) }
                 }
                 .accessibilityIdentifier("camera_coach_close")
@@ -488,7 +489,7 @@ private struct SETCameraTopChrome: View {
                     .foregroundStyle(.setTextPrimary)
                     .frame(width: SETComponentMetric.minimumHitTarget,
                            height: SETComponentMetric.minimumHitTarget)
-                    .background(.setHUDScrim)
+                    .background(Color.setAdaptiveScrim(reduceTransparency: reduceTransparency))
                     .overlay { Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline) }
             }
             .accessibilityIdentifier("camera_coach_pause")
@@ -1205,6 +1206,7 @@ private struct SETCameraFixtureLiveOverlay: View {
 }
 
 private struct SETCameraHUDHeader: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let tallyMode: SETTallyMode
     let dimmed: Bool
     let timecode: String
@@ -1232,7 +1234,7 @@ private struct SETCameraHUDHeader: View {
             }
             .padding(.horizontal, SETSpacing.x3)
             .frame(height: SETCameraCoachMetric.headerHeight)
-            .background(.setHUDScrim)
+            .background(Color.setAdaptiveScrim(reduceTransparency: reduceTransparency))
         }
         .fixedSize(horizontal: true, vertical: false)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1262,6 +1264,7 @@ private enum CameraLensStatusKind: Equatable {
 }
 
 private struct SETCameraLensStatus: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let status: CameraLensStatusKind
     let currentLens: CameraLens
     let requestedLens: CameraLens?
@@ -1303,7 +1306,7 @@ private struct SETCameraLensStatus: View {
             .frame(width: SETCameraCoachMetric.lensStatusWidth,
                    height: SETCameraCoachMetric.lensStatusHeight,
                    alignment: .leading)
-            .background(.setHUDScrim)
+            .background(Color.setAdaptiveScrim(reduceTransparency: reduceTransparency))
             .overlay(alignment: .leading) {
                 Rectangle()
                     .fill(status == .failed ? Color.setWarmWhite : Color.setOrange)
@@ -1476,6 +1479,7 @@ enum SETCameraCopy {
 }
 
 private struct SETCameraCommandBand: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let state: SETCameraPresentationState
     let actionKey: SETCopyKey
     let actionInstruction: String?
@@ -1530,7 +1534,7 @@ private struct SETCameraCommandBand: View {
         .padding(.horizontal, SETCameraCoachMetric.commandHorizontalInset)
         .padding(.vertical, SETCameraCoachMetric.commandVerticalInset)
         .frame(height: railHeight, alignment: .topLeading)
-        .background(.setHUDScrim)
+        .background(Color.setAdaptiveScrim(reduceTransparency: reduceTransparency))
         .overlay(alignment: .topLeading) {
             Rectangle()
                 .fill(state == .fallback ? Color.setWarmWhite : Color.setOrange)
@@ -1564,6 +1568,7 @@ private struct SETCameraCommandBand: View {
 }
 
 private struct SETCameraFixtureCommandBand: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let fixtureID: String
     let currentLens: CameraLens
     let semanticState: SETCameraFixtureSemanticState?
@@ -1605,7 +1610,7 @@ private struct SETCameraFixtureCommandBand: View {
         .padding(.horizontal, SETCameraCoachMetric.commandHorizontalInset)
         .padding(.vertical, SETCameraCoachMetric.commandVerticalInset)
         .frame(height: railHeight, alignment: .topLeading)
-        .background(.setHUDScrim)
+        .background(Color.setAdaptiveScrim(reduceTransparency: reduceTransparency))
         .overlay(alignment: .topLeading) {
             Rectangle()
                 .fill(semanticState == .fallback || semanticState == .abstain || analysisStatus == .failed ? Color.setWarmWhite : Color.setOrange)
@@ -1652,6 +1657,7 @@ private struct SETCameraFixtureCommandBand: View {
 }
 
 private struct SETCameraStatusOverlay: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let canvasSize: CGSize
     let title: SETCopyKey?
     let action: SETCopyKey?
@@ -1748,7 +1754,7 @@ private struct SETCameraStatusOverlay: View {
                 .padding(.horizontal, SETCameraCoachMetric.commandHorizontalInset)
                 .padding(.vertical, SETCameraCoachMetric.commandVerticalInset)
                 .frame(width: railWidth, height: railHeight, alignment: .topLeading)
-                .background(.setHUDScrim)
+                .background(Color.setAdaptiveScrim(reduceTransparency: reduceTransparency))
                 .overlay(alignment: .topLeading) {
                     Rectangle().fill(.setOrange).frame(width: SETStroke.standard)
                 }

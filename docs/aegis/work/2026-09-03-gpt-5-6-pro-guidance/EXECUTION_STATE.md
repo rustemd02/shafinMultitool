@@ -894,3 +894,6 @@
 
 ### 2026-09-06 (session) — M11-008 CLOSED
 - Iconography closed: 14 functional SF Symbols audited, decorative glyphs hidden, icon-only buttons labeled (added scene_cell_delete). Tracker total: 211/424 completed, 213 remaining.
+
+### 2026-09-06 (session) — M11-009 + M11-012 CLOSED
+- Motif budget pinned structurally (single accent, no rivals, no fullscreen film) and Reduce Transparency globalized through one adaptive scrim surface across six overlay structs. 26/26 overlay/readability tests. Tracker total: 213/424 completed, 211 remaining.
