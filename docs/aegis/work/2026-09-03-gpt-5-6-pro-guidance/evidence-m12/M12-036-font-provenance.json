@@ -1,0 +1,50 @@
+{
+ "manifest": "font-provenance-v1",
+ "fonts": [
+  {
+   "path": "shafinMultitool/Resources/Fonts/BebasNeue-Regular.ttf",
+   "sha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73",
+   "bytes": 61400,
+   "family": "Bebas Neue",
+   "license_basis": "OFL-1.1 (in-file name record)",
+   "consumer": "typography.wordmark",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Resources/Fonts/Caveat-Variable.ttf",
+   "sha256": "0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988",
+   "bytes": 403648,
+   "family": "Caveat",
+   "license_basis": "OFL-1.1 assumed from upstream family; in-file license record NOT found — source verification required before release",
+   "consumer": "typography.hand",
+   "decision": "keep-with-source-verification-required"
+  },
+  {
+   "path": "shafinMultitool/Resources/Fonts/JetBrainsMono-Variable.ttf",
+   "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+   "bytes": 187208,
+   "family": "JetBrains Mono",
+   "license_basis": "OFL-1.1 (in-file copyright record, JetBrains authors)",
+   "consumer": "typography.hudMono",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Resources/Fonts/Oswald-Variable.ttf",
+   "sha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
+   "bytes": 172088,
+   "family": "Oswald",
+   "license_basis": "OFL-1.1 (in-file copyright record, googlefonts/OswaldFont)",
+   "consumer": "typography.display",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Resources/Fonts/PTM55FT.ttf",
+   "sha256": "cbe732b3b8fd211fd986ebdfc9b870ddeca4faab0bb5425fc509b37f9b4ac804",
+   "bytes": 185912,
+   "family": "PT Mono (ParaType)",
+   "license_basis": "OFL-1.1 (in-file SIL OFL record, ParaType)",
+   "consumer": "typography.screenplay",
+   "decision": "keep"
+  }
+ ]
+}

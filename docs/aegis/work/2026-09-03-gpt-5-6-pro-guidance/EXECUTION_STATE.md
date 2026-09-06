@@ -747,3 +747,6 @@
 ### 2026-09-06 (session) — M0-005 + M0-007 CLOSED
 - M0-005: build topology was already captured in `evidence-m0/build-topology.json` (workspace/project/targets/configurations/schemes/Pods) and re-verified live via `xcodebuild -list` (targets shafinMultitool/shafinMultitoolTests/shafinMultitoolUITests, Debug+Release, scheme shafinMultitool, products `shafinMultitool.app` + `com.vigvamcev-media.shafinMultitool`).
 - M0-007: regenerated the bundle inventory as `evidence-m0/material-inventory-v2.jsonl` (1046 tracked material artifacts, each with path/size/sha256/configurations/targets/consumer/provisional disposition) with a fail-closed checker `scripts/evidence/check_material_inventory.py` — supersedes the 227-row path-only v1. Tracker total: 153/424 completed, 271 remaining.
+
+### 2026-09-06 (session) — M12-036, M12-037, M12-038 CLOSED
+- Bundled asset provenance closed: fonts (5 families with in-file license basis; Caveat honestly flagged for source verification, all consumed by typography roles — no replacement, no visual drift), AppIcon/branding (in-house authorship, keep), USDZ/media (unused Person/Circle assets excluded from release, design textures kept — behavior preserved). Manifests in `evidence-m12/`. Tracker total: 156/424 completed, 268 remaining.

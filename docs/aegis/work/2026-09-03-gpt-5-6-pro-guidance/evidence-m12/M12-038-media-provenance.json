@@ -1,0 +1,33 @@
+{
+ "manifest": "media-provenance-v1",
+ "assets": [
+  {
+   "path": "shafinMultitool/Resources/Person.usdz",
+   "sha256": "a4af24cd3b5dad3ff19d8bf64b4ae10a92618ff3bd6ce0e70a7a15bb36814010",
+   "bytes": 412930,
+   "consumer": "none-found",
+   "decision": "exclude-from-release-bundle"
+  },
+  {
+   "path": "shafinMultitool/Resources/Circle.usdz",
+   "sha256": "8099ec655334ebeb2a1bd078df6fbb725386cdd870d6c00cd56671f49ea8aa30",
+   "bytes": 60847,
+   "consumer": "none-found",
+   "decision": "exclude-from-release-bundle"
+  },
+  {
+   "path": "shafinMultitool/Resources/Textures/SETGrain.png",
+   "sha256": "b69b9315aeeb547776684e54b4fb1d8f6f01865751869239fc22dd023389d024",
+   "bytes": 87443,
+   "consumer": "design-system/overlay texture",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Resources/Circle.rcproject",
+   "sha256_dir": "6aee8e4989df93547f5388fb2daac5fe4576d7858492a175313e4b20a250de2a",
+   "bytes_dir": 615735,
+   "consumer": "none-found (no production Swift reference)",
+   "decision": "exclude-from-release-bundle"
+  }
+ ]
+}

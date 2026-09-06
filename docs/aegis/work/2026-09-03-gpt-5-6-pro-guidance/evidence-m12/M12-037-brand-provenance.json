@@ -1,0 +1,40 @@
+{
+ "manifest": "brand-provenance-v1",
+ "assets": [
+  {
+   "path": "shafinMultitool/Resources/Assets.xcassets/AppIcon.appiconset/лого-кругл.png",
+   "sha256": "640059d36001808139ba57d285b9d23ee445cbb8598a9a3dbcc96ef3c15c3984",
+   "bytes": 596865,
+   "author": "product-owner (in-house brand)",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json",
+   "sha256": "bebb731b4dcd466a46ea35d79d5b73e4b457e41141201b0b58ff34239e2c3137",
+   "bytes": 223,
+   "author": "product-owner (in-house brand)",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Multitool2Module/Assets.xcassets/AppIcon.appiconset/Contents.json",
+   "sha256": "040294b5970a6d1d5b5a811e22086092954f6a1f503b38d0fae128bb02b4356a",
+   "bytes": 1429,
+   "author": "product-owner (in-house brand)",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Resources/Assets.xcassets/logo_menu.imageset/logo_menu.png",
+   "sha256": "8f2350d110094ba3ecdf288df4652b8a902b6ac1e5f28d2bd7196bb0f3c94f9f",
+   "bytes": 23322,
+   "author": "product-owner (in-house brand)",
+   "decision": "keep"
+  },
+  {
+   "path": "shafinMultitool/Resources/Assets.xcassets/logo_menu.imageset/Contents.json",
+   "sha256": "292f0e24d717e9bb5b90492e049c423826ac06bf06f8cd14c835f24808cd41d5",
+   "bytes": 307,
+   "author": "product-owner (in-house brand)",
+   "decision": "keep"
+  }
+ ]
+}
