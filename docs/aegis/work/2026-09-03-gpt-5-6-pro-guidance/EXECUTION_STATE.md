@@ -846,3 +846,6 @@
 
 ### 2026-09-06 (session) — M10-004 CLOSED
 - Windowing policy locked: single scene (no multi-window API), resizable SwiftUI layouts, 320pt minimum enforced through fallback/preflight/readiness gates; dedicated expand-window string correctly omitted while fullscreen-only. Tracker total: 194/424 completed, 230 remaining.
+
+### 2026-09-06 (session) — M10-005 CLOSED
+- Safe-area geometry closed: container-driven layout verified, one `UIScreen.main` violation fixed to container width. Tracker total: 195/424 completed, 229 remaining.

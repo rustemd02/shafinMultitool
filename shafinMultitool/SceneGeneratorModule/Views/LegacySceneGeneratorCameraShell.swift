@@ -2637,7 +2637,9 @@ private struct ARLiveAnalysisStatusChip: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .frame(width: min(280, max(190, UIScreen.main.bounds.width * 0.34)), alignment: .leading)
+        // M10-005: the caller constrains width from the live container size
+        // (`liveHintPanel(size:)`); no UIScreen read may size production UI.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.setHUDScrim)
