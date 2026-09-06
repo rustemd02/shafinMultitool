@@ -783,3 +783,6 @@
 
 ### 2026-09-06 (session) — M9-005 CLOSED
 - Torch truthfulness closed on the lens owner: session-queue-serialized `setTorchActive`/`isTorchActive` against the live device handle, nil on unsupported, state dies with input detach on release/lens switch. 2/2 torch tests on permitted iPhone 17e. Physical illumination remains M13. Tracker total: 170/424 completed, 254 remaining.
+
+### 2026-09-06 (session) — M9-004 CLOSED (verified)
+- Lens UI verified: available-only options, selected/switching/failure states, 44pt targets, VoiceOver values — all through production owners and copy. UI test green on permitted iPhone 17e. Tracker total: 171/424 completed, 253 remaining.
