@@ -743,3 +743,7 @@
 
 ### 2026-09-06 (session) — M9-001 CLOSED
 - Lens contract verified: only `AVCaptureDevice.default`-discovered built-in back cameras are exposed (deduplicated, at most one telephoto), UI shows physical WIDE/ULTRA/TELE or truthful measured magnification — no synthetic 0.5×/1×/2× labels (grep-verified). 5/5 lens tests on permitted iPhone 17e. Hardware inventory itself remains device fact. Tracker total: 151/424 completed, 273 remaining.
+
+### 2026-09-06 (session) — M0-005 + M0-007 CLOSED
+- M0-005: build topology was already captured in `evidence-m0/build-topology.json` (workspace/project/targets/configurations/schemes/Pods) and re-verified live via `xcodebuild -list` (targets shafinMultitool/shafinMultitoolTests/shafinMultitoolUITests, Debug+Release, scheme shafinMultitool, products `shafinMultitool.app` + `com.vigvamcev-media.shafinMultitool`).
+- M0-007: regenerated the bundle inventory as `evidence-m0/material-inventory-v2.jsonl` (1046 tracked material artifacts, each with path/size/sha256/configurations/targets/consumer/provisional disposition) with a fail-closed checker `scripts/evidence/check_material_inventory.py` — supersedes the 227-row path-only v1. Tracker total: 153/424 completed, 271 remaining.
