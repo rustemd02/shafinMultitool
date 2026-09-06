@@ -774,3 +774,6 @@
 
 ### 2026-09-06 (session) — M5-030 CLOSED
 - Success integration closed: the atomic commit stamps `GenerationProvenance` (generator/model/schema triple) at all five plan construction sites with prior-provenance preservation; legacy plans decode nil via backward-compatible Codable. 2/2 provenance tests on permitted iPhone 17e. Tracker total: 165/424 completed, 259 remaining.
+
+### 2026-09-06 (session) — M5-007, M5-008, M5-009 CLOSED (verified)
+- Library mutations verified against the existing owner chain: creation (one project + select, invalid drafts rejected, no partial row on failure), duplicates (typed conflict flow with distinct IDs, deterministic ordering), rename (UUID-stable transactional rename with optimistic snapshot, duplicate typed without mutation, retry preserves draft). 41/41 on permitted iPhone 17e. Tracker total: 168/424 completed, 256 remaining.
