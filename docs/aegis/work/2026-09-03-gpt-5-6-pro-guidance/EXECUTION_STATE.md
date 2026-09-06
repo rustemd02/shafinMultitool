@@ -771,3 +771,6 @@
 
 ### 2026-09-06 (session) — M5-023 CLOSED
 - Retry/idempotency closed: transport retry N/A locally (no backend, no fake loop), clarification continuation keeps UUID+epoch (M5-017), edited resubmit issues a new epoch, duplicate submits coalesce into the single-flight task. New `GenerationRetryIdempotencyTests` 3/3 on permitted iPhone 17e. Tracker total: 164/424 completed, 260 remaining.
+
+### 2026-09-06 (session) — M5-030 CLOSED
+- Success integration closed: the atomic commit stamps `GenerationProvenance` (generator/model/schema triple) at all five plan construction sites with prior-provenance preservation; legacy plans decode nil via backward-compatible Codable. 2/2 provenance tests on permitted iPhone 17e. Tracker total: 165/424 completed, 259 remaining.

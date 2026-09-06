@@ -2657,10 +2657,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             availablePlanes: detectedPlanes,
             markedObjects: []
         )
-        let plannedWithBindingSources = applyBindingSources(
+        var plannedWithBindingSources = applyBindingSources(
             to: planned,
             bindingResult: resolvedObjectBindings
         )
+        // M5-030: the atomic commit stamps generator/model/schema provenance
+        // onto the plan; persistence and the success edge below observe it.
+        plannedWithBindingSources.provenance = .current
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         print("🔍 [VIEWMODEL] Результат планирования:")
@@ -4711,21 +4714,29 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             availablePlanes: detectedPlanes,
             markedObjects: []
         )
+        // M5-030: provenance survives the beat-edit path — a preserved
+        // plan keeps its stamped provenance, a fresh plan is stamped now.
         let plannedWithBindingSources: PlannedScene
         if let acceptedBindingResult {
-            plannedWithBindingSources = applyBindingSources(
+            var stamped = applyBindingSources(
                 to: planned,
                 bindingResult: acceptedBindingResult
             )
+            stamped.provenance = .current
+            plannedWithBindingSources = stamped
         } else if let existingPlannedScene {
             // Beat edits do not own object identity. Preserve the accepted
             // planned objects when the immutable request binding is absent.
-            plannedWithBindingSources = PlannedScene(
+            var preserved = PlannedScene(
                 placedActors: planned.placedActors,
                 placedObjects: existingPlannedScene.placedObjects
             )
+            preserved.provenance = existingPlannedScene.provenance ?? .current
+            plannedWithBindingSources = preserved
         } else {
-            plannedWithBindingSources = planned
+            var stamped = planned
+            stamped.provenance = .current
+            plannedWithBindingSources = stamped
         }
 
         // Validation and pure replanning complete before playback/model state
@@ -4860,10 +4871,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             pathBeatIDs: actor.pathBeatIDs
         )
 
-        let updatedScene = PlannedScene(
+        // M5-030: storyboard edits preserve the committed plan's provenance.
+        var updatedScene = PlannedScene(
             placedActors: actors,
             placedObjects: plannedScene.placedObjects
         )
+        updatedScene.provenance = plannedScene.provenance ?? .current
         self.plannedScene = updatedScene
         beatTimelineItems = buildBeatTimelineItems(for: updatedScene, script: parsedScript)
         refreshStoryboardBeatItems()
@@ -4924,10 +4937,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             pathBeatIDs: actor.pathBeatIDs
         )
 
-        let updatedScene = PlannedScene(
+        // M5-030: storyboard edits preserve the committed plan's provenance.
+        var updatedScene = PlannedScene(
             placedActors: actors,
             placedObjects: plannedScene.placedObjects
         )
+        updatedScene.provenance = plannedScene.provenance ?? .current
         self.plannedScene = updatedScene
         beatTimelineItems = buildBeatTimelineItems(for: updatedScene, script: parsedScript)
         refreshStoryboardBeatItems()
@@ -5582,10 +5597,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 placementSource: source
             )
         }
-        return PlannedScene(
+        // M5-030: marked-object merges preserve the committed provenance.
+        var merged = PlannedScene(
             placedActors: plannedScene.placedActors,
             placedObjects: placedObjects
         )
+        merged.provenance = plannedScene.provenance ?? .current
+        return merged
     }
     
     /// Устаревший метод - теперь addObjectsFromMarkedObjects выполняется внутри парсера

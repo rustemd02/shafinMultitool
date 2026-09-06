@@ -135,6 +135,8 @@ final class SpatialPlannerService {
 
         print("🔍 [PLANNER] === ПЛАНИРОВАНИЕ ЗАВЕРШЕНО ===")
 
+        // M5-030: the planner emits an unstamped plan; the atomic VM
+        // commit stamps provenance exactly once.
         return PlannedScene(
             placedActors: placedActors,
             placedObjects: placedObjects

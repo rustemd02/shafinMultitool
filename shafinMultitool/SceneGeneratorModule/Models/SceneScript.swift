@@ -566,10 +566,51 @@ struct PlaybackPathAnnotation: Codable, Equatable {
 }
 
 /// Результат планирования сцены - готовые координаты для размещения
-struct PlannedScene: Codable, Equatable {
+/// Provenance recorded atomically with every successful generation
+/// commit (M5-030): which generator, model contract, and annotation schema
+/// produced the plan. `nil` on legacy projects decoded before this field
+/// existed.
+struct GenerationProvenance: Codable, Equatable, Sendable {
+    let generatorVersion: String
+    let modelContractVersion: String
+    let schemaVersion: String
+
+    static let current = GenerationProvenance(
+        generatorVersion: "scene-generator-v1",
+        modelContractVersion: SETCompositionNetContract.contractVersion,
+        schemaVersion: "scene-annotation-v1"
+    )
+}
+
+struct PlannedScene: Equatable {
     let placedActors: [PlacedActor]
     let placedObjects: [PlacedObject]
-    
+    var provenance: GenerationProvenance?
+
+    enum CodingKeys: String, CodingKey {
+        case placedActors
+        case placedObjects
+        case provenance
+    }
+}
+
+extension PlannedScene: Codable {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        placedActors = try container.decode([PlacedActor].self, forKey: .placedActors)
+        placedObjects = try container.decode([PlacedObject].self, forKey: .placedObjects)
+        provenance = try container.decodeIfPresent(GenerationProvenance.self, forKey: .provenance)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(placedActors, forKey: .placedActors)
+        try container.encode(placedObjects, forKey: .placedObjects)
+        try container.encodeIfPresent(provenance, forKey: .provenance)
+    }
+}
+
+extension PlannedScene {
     struct PlacedActor: Identifiable, Codable, Equatable {
         let id: String
         let actorId: String
