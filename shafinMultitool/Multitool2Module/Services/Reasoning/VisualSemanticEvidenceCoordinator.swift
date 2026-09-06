@@ -22,8 +22,15 @@ enum VisualSemanticEvidenceProviderFactory {
         switch configured {
         case "mock":
             return MockVLMVisualEvidenceProvider()
+#if DEBUG
+        // M12-002: the remote VLM seam exists for explicit DEBUG-only
+        // evaluation. Release builds never construct a remote provider from
+        // environment: the backend boundary (backend-service-boundary-v1)
+        // requires a deployed service with App Attest before any remote
+        // capability may go live.
         case "remote":
             return RemoteVLMVisualEvidenceProvider.makeFromEnvironment()
+#endif
         default:
             return nil
         }
