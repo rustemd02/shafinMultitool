@@ -234,6 +234,32 @@ class CameraScreenInteractor {
         return nil
     }
     
+    /// M9-014: documented preference defaults. Zero means "never stored".
+    static let defaultCaptureWidth = 3840
+    static let defaultCaptureHeight = 2160
+    static let defaultCaptureFPS = 25
+    static let defaultWhiteBalance = 4000
+    static let defaultISO = 200
+
+    /// M9-014: pure restore policy — stored values apply only when supported;
+    /// anything else falls back explicitly. Testable without hardware.
+    static func restoredCaptureSettings(
+        storedWidth: Int,
+        storedHeight: Int,
+        storedFPS: Int,
+        isSupported: (Int, Int, Int) -> Bool
+    ) -> (width: Int, height: Int, fps: Int) {
+        var width = storedWidth == 0 ? defaultCaptureWidth : storedWidth
+        var height = storedHeight == 0 ? defaultCaptureHeight : storedHeight
+        var fps = storedFPS == 0 ? defaultCaptureFPS : storedFPS
+        if !isSupported(width, height, fps) {
+            width = defaultCaptureWidth
+            height = defaultCaptureHeight
+            fps = defaultCaptureFPS
+        }
+        return (width, height, fps)
+    }
+
     func setDefaultSettings() {
         let defaultWidth = 3840
         let defaultHeight = 2160
@@ -267,6 +293,17 @@ class CameraScreenInteractor {
         
         if fps == 0 {
             fps = defaultFps
+            UserDefaults.standard.set(fps, forKey: "framerate")
+        }
+        // M9-014: preferences restore only when supported. A stored
+        // resolution/FPS the current device cannot produce falls back
+        // explicitly to defaults instead of silently misconfiguring capture.
+        if !CameraService.isFormatSupported(width: width, height: height, fps: fps) {
+            width = defaultWidth
+            height = defaultHeight
+            fps = defaultFps
+            UserDefaults.standard.set(width, forKey: "resolutionWidth")
+            UserDefaults.standard.set(height, forKey: "resolutionHeight")
             UserDefaults.standard.set(fps, forKey: "framerate")
         }
         if wb == 0 {

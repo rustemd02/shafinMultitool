@@ -858,3 +858,6 @@
 
 ### 2026-09-06 (session) — M9-009 + M9-010 CLOSED
 - Exposure closed: device-derived ISO clamp with read-back, normalized WB gains with rejection, applied-only persistence; fixed two force-unwrap crash shapes. 3/3 exposure tests. Tracker total: 198/424 completed, 226 remaining.
+
+### 2026-09-06 (session) — M9-014 CLOSED
+- Control persistence closed: device-gated restore with explicit fallback, applied-only writes, no capture start from settings. 3/3 persistence tests. Tracker total: 199/424 completed, 225 remaining.
