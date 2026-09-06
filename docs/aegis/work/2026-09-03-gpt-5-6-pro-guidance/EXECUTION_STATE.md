@@ -891,3 +891,6 @@
 
 ### 2026-09-06 (session) — M11-003 CLOSED
 - Copy inventory closed: 441 keys with EN+RU values, 7 fixture-tagged keys confined to non-Release seams (checker `scripts/evidence/check_copy_inventory.py` green). Tracker total: 210/424 completed, 214 remaining.
+
+### 2026-09-06 (session) — M11-008 CLOSED
+- Iconography closed: 14 functional SF Symbols audited, decorative glyphs hidden, icon-only buttons labeled (added scene_cell_delete). Tracker total: 211/424 completed, 213 remaining.

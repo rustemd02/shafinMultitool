@@ -48,6 +48,10 @@ class SceneInfoCell: UICollectionViewCell {
         
         contentView.addSubview(deleteButton)
         deleteButton.setImage(UIImage(systemName: "trash.circle.fill"), for: .normal)
+        deleteButton.accessibilityLabel = "Delete scene"
+        deleteButton.accessibilityHint = "Deletes this scene"
+        deleteButton.accessibilityIdentifier = "scene_cell_delete"
+        deleteButton.isAccessibilityElement = true
         deleteButton.tintColor = .black
         deleteButton.contentVerticalAlignment = .fill
         deleteButton.contentHorizontalAlignment = .fill

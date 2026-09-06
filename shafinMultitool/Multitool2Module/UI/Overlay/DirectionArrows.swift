@@ -90,6 +90,7 @@ struct DirectionArrows: View {
         Image(systemName: "arrow.up.circle.fill")
             .font(.system(size: 48))
             .foregroundStyle(.white)
+            .accessibilityHidden(true)
             .background(Circle().fill(.black.opacity(0.55)))
     }
     
@@ -97,6 +98,7 @@ struct DirectionArrows: View {
         Image(systemName: clockwise ? "arrow.clockwise.circle.fill" : "arrow.counterclockwise.circle.fill")
             .font(.system(size: 48))
             .foregroundStyle(.white)
+            .accessibilityHidden(true)
             .background(Circle().fill(.black.opacity(0.55)))
     }
 }

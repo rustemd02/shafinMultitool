@@ -1551,12 +1551,14 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                     Image(systemName: "text.bubble.fill")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.setTextSecondary)
+                        .accessibilityHidden(true)
                 }
 
                 if activeItem.hasActionCaption {
                     Image(systemName: "sparkles")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.setTextSecondary)
+                        .accessibilityHidden(true)
                 }
             }
 
@@ -1628,6 +1630,7 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
         HStack(spacing: 8) {
             Image(systemName: "hand.tap.fill")
                 .foregroundColor(.setOrange)
+                .accessibilityHidden(true)
 
             Text(SETCopyKey.arMarkingHint.localizedTextKey)
                 .font(SETTypography.font(.hudMono, size: 14))
@@ -1889,12 +1892,14 @@ private struct StoryboardBeatChip: View {
                     Image(systemName: "text.bubble.fill")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(.setTextSecondary)
+                        .accessibilityHidden(true)
                 }
 
                 if item.hasActionCaption {
                     Image(systemName: "sparkles")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(.setTextSecondary)
+                        .accessibilityHidden(true)
                 }
             }
 
@@ -2053,6 +2058,7 @@ private struct StoryboardBeatEditorSheet: View {
                     } label: {
                         HStack(spacing: SETSpacing.x2) {
                             Image(systemName: "trash")
+                                .accessibilityHidden(true)
                             Text(SETCopyKey.libraryDelete.localizedTextKey).underline()
                         }
                     }
@@ -2325,6 +2331,7 @@ private struct StoryboardActionEditorRow: View {
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                         .font(.system(size: 13, weight: .semibold))
+                        .accessibilityHidden(true)
                         .frame(minWidth: SETComponentMetric.minimumHitTarget,
                                minHeight: SETComponentMetric.minimumHitTarget)
                 }
@@ -2576,6 +2583,7 @@ private struct ARLiveHintCompactChip: View {
                     Image(systemName: "chevron.down.circle.fill")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.setTextSecondary)
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, 8)
@@ -2620,6 +2628,7 @@ private struct ARLiveAnalysisStatusChip: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.setOrange)
                 .padding(.top, 2)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)

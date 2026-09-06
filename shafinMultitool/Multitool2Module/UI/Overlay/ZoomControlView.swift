@@ -130,6 +130,7 @@ struct ZoomControlView: View {
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.setTextSecondary)
+                    .accessibilityHidden(true)
                     .frame(minWidth: SETComponentMetric.minimumHitTarget,
                            minHeight: SETComponentMetric.minimumHitTarget)
             }
