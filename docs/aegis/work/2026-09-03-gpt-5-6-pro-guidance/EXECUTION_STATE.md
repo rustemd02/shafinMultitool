@@ -798,3 +798,6 @@
 
 ### 2026-09-06 (session) — M3-026 CLOSED
 - Annotation tooling closed: scaffold preserves all alternatives verbatim, model-identity gate on the gold primary, mandatory Draft 2020-12 validation offline. Self-test green (positive + 4 negatives). Tracker total: 176/424 completed, 248 remaining.
+
+### 2026-09-06 (session) — M5-006 + M5-010 CLOSED (verified)
+- Selected row and deletion verified: non-overlapping hit regions with deterministic VoiceOver order; named confirmation, no-op cancel, failure-keeps-scene with retry, reversible artifact staging on success. 19/19 unit + 7/7 UI on permitted iPhone 17e (separate batches). Tracker total: 178/424 completed, 246 remaining.
