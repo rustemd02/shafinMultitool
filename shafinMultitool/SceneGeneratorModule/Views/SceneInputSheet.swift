@@ -17,10 +17,20 @@ struct SceneInputSheet: View {
     @FocusState private var isTextFieldFocused: Bool
     @State private var clarificationText = ""
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     var body: some View {
         ZStack {
             Color.setInk.ignoresSafeArea()
-            portraitLayout
+            // M10-009: regular width uses the width effectively — editor
+            // plus context side by side; compact keeps the portrait stack.
+            // State (draft, clarification, focus) is shared, so resize
+            // preserves it by construction.
+            if horizontalSizeClass == .regular {
+                regularLayout
+            } else {
+                portraitLayout
+            }
         }
         .overlay(alignment: .topTrailing) {
             SETRegistrationMarks(corner: .topTrailing)
@@ -31,6 +41,31 @@ struct SceneInputSheet: View {
     }
 
     // MARK: - Layout
+
+    private var regularLayout: some View {
+        HStack(spacing: 0) {
+            portraitLayout
+                .frame(maxWidth: .infinity)
+            Rectangle()
+                .fill(Color.setHairline)
+                .frame(width: SETStroke.hairline)
+            ScrollView {
+                VStack(alignment: .leading, spacing: SETSpacing.x4) {
+                    if !viewModel.markedObjects.isEmpty { markedObjectsSection }
+                    if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
+                    Spacer(minLength: SETSpacing.x4)
+                }
+                .padding(SETSpacing.x4)
+            }
+            .frame(maxWidth: 320)
+        }
+        // The primary action stays in the editor column's safe-area inset
+        // (inherited from portraitLayout); the context column scrolls
+        // independently so neither keyboard covers primary actions.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: 0)
+        }
+    }
 
     private var portraitLayout: some View {
         VStack(spacing: 0) {

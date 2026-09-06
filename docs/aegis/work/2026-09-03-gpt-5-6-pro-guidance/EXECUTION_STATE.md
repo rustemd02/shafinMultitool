@@ -861,3 +861,6 @@
 
 ### 2026-09-06 (session) — M9-014 CLOSED
 - Control persistence closed: device-gated restore with explicit fallback, applied-only writes, no capture start from settings. 3/3 persistence tests. Tracker total: 199/424 completed, 225 remaining.
+
+### 2026-09-06 (session) — M10-008 + M10-009 CLOSED
+- Library iPad density (two-column regular contact sheet) and Generator iPad regular layout (editor + context column, shared state, keyboard-safe actions) closed with 3/3 input-sheet UI tests. Tracker total: 201/424 completed, 223 remaining.

@@ -1040,36 +1040,86 @@ private struct SETLibrarySceneList: View {
     @ObservedObject var model: SETLibraryModel
     let locale: Locale
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// M10-008: regular width uses a two-column contact sheet for density
+    /// without stretching phone rows; compact degrades intentionally to the
+    /// single column. Reading order stays row-major in both.
+    private var columnCount: Int {
+        horizontalSizeClass == .regular ? 2 : 1
+    }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                ForEach(Array(model.scenes.enumerated()), id: \.element.id) { index, scene in
-                    SETLibrarySceneRow(
-                        scene: scene,
-                        position: index + 1,
-                        isSelected: scene.id == model.selectedSceneID,
-                        locale: locale,
-                        onSelect: { model.select(scene.id) },
-                        onOpen: {
-                            model.select(scene.id)
-                            model.openSelectedScene()
-                        },
-                        onRename: {
-                            model.select(scene.id)
-                            model.beginRename(sceneID: scene.id)
-                        },
-                        onDelete: {
-                            model.select(scene.id)
-                            model.beginDelete(sceneID: scene.id)
-                        }
-                    )
-                }
+            if columnCount == 1 {
+                singleColumn
+            } else {
+                doubleColumn
+            }
+        }
+        .accessibilityIdentifier(SETLibraryAccessibilityID.list)
+    }
+
+    private var singleColumn: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(model.scenes.enumerated()), id: \.element.id) { index, scene in
+                SETLibrarySceneRow(
+                    scene: scene,
+                    position: index + 1,
+                    isSelected: scene.id == model.selectedSceneID,
+                    locale: locale,
+                    onSelect: { model.select(scene.id) },
+                    onOpen: {
+                        model.select(scene.id)
+                        model.openSelectedScene()
+                    },
+                    onRename: {
+                        model.select(scene.id)
+                        model.beginRename(sceneID: scene.id)
+                    },
+                    onDelete: {
+                        model.select(scene.id)
+                        model.beginDelete(sceneID: scene.id)
+                    }
+                )
             }
             .overlay {
                 Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
             }
         }
-        .accessibilityIdentifier(SETLibraryAccessibilityID.list)
+    }
+
+    private var doubleColumn: some View {
+        let rows = Array(model.scenes.enumerated())
+        return LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 0), GridItem(.flexible(), spacing: 0)],
+            spacing: 0
+        ) {
+            ForEach(rows, id: \.element.id) { index, scene in
+                SETLibrarySceneRow(
+                    scene: scene,
+                    position: index + 1,
+                    isSelected: scene.id == model.selectedSceneID,
+                    locale: locale,
+                    onSelect: { model.select(scene.id) },
+                    onOpen: {
+                        model.select(scene.id)
+                        model.openSelectedScene()
+                    },
+                    onRename: {
+                        model.select(scene.id)
+                        model.beginRename(sceneID: scene.id)
+                    },
+                    onDelete: {
+                        model.select(scene.id)
+                        model.beginDelete(sceneID: scene.id)
+                    }
+                )
+            }
+        }
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
     }
 }
 
