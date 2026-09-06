@@ -759,3 +759,6 @@
 
 ### 2026-09-06 (session) — M4-019 CLOSED
 - Neural-deterministic fusion verified: deterministic tie-breaking, material calibrated reorder without touching severity (new targeted test), downstream safety/planner/verifier gates evaluated after fusion and pinned green (40/40 across fusion/safety/planner/calibrator suites on permitted iPhone 17e). Tracker total: 159/424 completed, 265 remaining.
+
+### 2026-09-06 (session) — M9-002 + M9-003 CLOSED
+- Lens labels verified against discovery (empty-until-discovered options, honest physical fallback names, no synthetic magnification); switch continuity verified through the serialized transaction fence with preview/config/track/episode invalidation and explicit recording policy. 41/42 lens tests on permitted iPhone 17e; the one failure reproduces on the clean tree and is registered pre-existing. Tracker total: 161/424 completed, 263 remaining.
