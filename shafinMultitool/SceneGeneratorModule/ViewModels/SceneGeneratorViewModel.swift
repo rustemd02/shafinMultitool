@@ -6404,6 +6404,15 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func clearHintPresentation() {
+#if DEBUG
+        // The production-route Decision Trace fixture owns its deterministic
+        // presentation (same rationale as the pipeline-sink guards below):
+        // an AR interruption on a simulator without ARKit must not clear the
+        // fixture the UI test is inspecting.
+        if debugFixtureID == "sheet.decision-trace" {
+            return
+        }
+#endif
         clearHintPauseProjection()
         analysisPipeline.clearLivePresentationState()
         analysisPipeline.clearPausePresentationState()
@@ -6825,6 +6834,10 @@ extension SceneGeneratorViewModel {
         }
     }
 
+    func seedDebugDecisionTraceFixtureForTesting() {
+        seedDebugDecisionTraceFixture()
+    }
+
     private func seedDebugDecisionTraceFixture() {
         let issueID = "fixture_generator_issue_background"
         let issueRegion = NormalizedRect(x: 0.56, y: 0.20, width: 0.28, height: 0.48)
@@ -6851,6 +6864,19 @@ extension SceneGeneratorViewModel {
                 supportingText: support,
                 actionText: action,
                 fallbackUsed: false
+            ),
+            semanticActionType: .simplifyBackground,
+            linkedEvidence: CameraLinkedEvidenceProjection(
+                frameID: "generator_fixture_frame",
+                actionID: "generator_fixture_action_simplify",
+                actionType: .reduceBackgroundDistractions,
+                semanticActionType: .simplifyBackground,
+                issueID: issueID,
+                issueType: .backgroundCompetesWithSubject,
+                evidence: [EvidenceRef(source: .snapshot,
+                                       key: "background_hotspot_ratio",
+                                       value: "0.34",
+                                       confidence: 0.82)]
             )
         )
         coachingOverlayAnnotations = [

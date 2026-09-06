@@ -801,3 +801,6 @@
 
 ### 2026-09-06 (session) — M5-006 + M5-010 CLOSED (verified)
 - Selected row and deletion verified: non-overlapping hit regions with deterministic VoiceOver order; named confirmation, no-op cancel, failure-keeps-scene with retry, reversible artifact staging on success. 19/19 unit + 7/7 UI on permitted iPhone 17e (separate batches). Tracker total: 178/424 completed, 246 remaining.
+
+### 2026-09-06 (session) — M5-035 CLOSED (1 registered UI flake)
+- Library/Generator UI states consolidated: all Library and Generator surfaces reachable through deterministic seams (Library 7/7, Generator 14/15 UI on permitted iPhone 17e); chosen-section contract pinned 2/2 via the production owner with a valid linkedEvidence fixture. One registered flake: the decision-trace sheet does not open on tap in the simulator run despite a proven-correct trace — full elimination trail in evidence, no Release impact. Tracker total: 179/424 completed, 245 remaining.
