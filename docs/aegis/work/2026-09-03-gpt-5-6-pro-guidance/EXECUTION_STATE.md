@@ -804,3 +804,6 @@
 
 ### 2026-09-06 (session) — M5-035 CLOSED (1 registered UI flake)
 - Library/Generator UI states consolidated: all Library and Generator surfaces reachable through deterministic seams (Library 7/7, Generator 14/15 UI on permitted iPhone 17e); chosen-section contract pinned 2/2 via the production owner with a valid linkedEvidence fixture. One registered flake: the decision-trace sheet does not open on tap in the simulator run despite a proven-correct trace — full elimination trail in evidence, no Release impact. Tracker total: 179/424 completed, 245 remaining.
+
+### 2026-09-06 (session) — M0-006 CLOSED
+- Build settings matrix closed across app/unit/UI × Debug/Release with every mismatch explicit: unit-test target floor 17.2 vs app 17.0 fixed to 17.0 in the pbxproj; project-level 16.2 recorded as superseded dead default. Evidence: `evidence-m0/M0-006-build-settings-matrix.md`. Tracker total: 180/424 completed, 244 remaining.
