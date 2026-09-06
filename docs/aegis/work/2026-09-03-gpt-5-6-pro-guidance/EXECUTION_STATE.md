@@ -737,3 +737,9 @@
 ### 2026-09-06 (session) — M5-024 CLOSED
 - Closed silent semantic repair in the local parser through `32b8ad8`: no default actor on empty extraction, no phantom `actor_1` references in action assignment, both fallback-plan fabrications in `SceneBundlePipeline` removed, described actions bind only real entities, static object-only scenes compile honestly with empty beats, RU plural forms added. New `SceneParserBaselineTests` 8/8; parser lane 22/22 on permitted iPhone 17e. Affected lane 149/151 with one registered pre-existing store failure and one unrelated parser-independent save/load case under classification. Tracker total: 150/424 completed, 274 remaining.
 - Hygiene: ~360MB of untracked temp media removed from docs/motion/screenshots (old redesign motion, guidance visuals, UI-test screenshots); tracked evidence untouched.
+
+### 2026-09-06 (session) — EXTERNAL BLOCKERS: M5-025/M12-003 backend chain
+- The M5-029 → M6-007 → M6-008 → M6-016 → M6-020 chain is blocked upstream: M5-025 (production generation client: create/poll/clarify/cancel, App Attest auth, kill-switch) requires a live backend provider, and its sibling dep M12-003 (Scene API schema) is the same external surface. No local implementation can close either without inventing a fake provider, which the tracker forbids. M5-025 and M12-003 are recorded EXTERNAL-BLOCKED (backend provider + credentials); the downstream M5-026/M5-027/M5-028/M5-029/M6-007/M6-008/M6-016/M6-020 chain inherits the block. M6-020 stays open.
+
+### 2026-09-06 (session) — M9-001 CLOSED
+- Lens contract verified: only `AVCaptureDevice.default`-discovered built-in back cameras are exposed (deduplicated, at most one telephoto), UI shows physical WIDE/ULTRA/TELE or truthful measured magnification — no synthetic 0.5×/1×/2× labels (grep-verified). 5/5 lens tests on permitted iPhone 17e. Hardware inventory itself remains device fact. Tracker total: 151/424 completed, 273 remaining.
