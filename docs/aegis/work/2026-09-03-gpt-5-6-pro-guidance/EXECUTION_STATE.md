@@ -921,3 +921,6 @@
 
 ### 2026-09-06 (session) — M11-022 CLOSED
 - Screenshot orientation validator closed (`scripts/evidence/check_screenshot_matrix.py` green over 55 attachments): oriented + localized + deduplicated, interpolated names resolved at runtime, legacy CC-008 lane documented, 5 incompletely named attachments fixed. Tracker total: 229/424 completed, 195 remaining.
+
+### 2026-09-06 (session) — M11-023 CLOSED
+- Motion evidence closed: every production animation is ledger- or reduce-motion-gated (checker green over 27 UI files); one-shot transitions carry event IDs via the motion ledger; no animation evidence substitutes functional device evidence. Tracker total: 230/424 completed, 194 remaining.
