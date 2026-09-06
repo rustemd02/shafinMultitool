@@ -873,3 +873,6 @@
 
 ### 2026-09-06 (session) — M0-013 CLOSED
 - Secret/config audit closed: every input classified (public/local-dev/build/runtime/forbidden), no credential values in client or evidence. Tracker total: 204/424 completed, 220 remaining.
+
+### 2026-09-06 (session) — M0-012 CLOSED (verified)
+- Toolchain receipt reverified live on this host: Xcode 26.6, macOS 27.0, iPhoneOS26.5 SDK, Swift 5.0, Python 3.11.9, CocoaPods 1.16.2, git 2.50.1, sim runtime iOS 26.5 — matches `evidence-m0/toolchain-receipt.json`, missing tools: none. Tracker total: 205/424 completed, 219 remaining.
