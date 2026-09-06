@@ -398,14 +398,22 @@ final class SETGeneratorProductionUITests: XCTestCase {
 
         let band = app.descendants(matching: .any)["generator_error_band"]
         XCTAssertTrue(band.waitForExistence(timeout: 8), "EN AR failure must remain an honest production surface.")
+        // M5-022: the simulator AR failure publishes the typed localized
+        // world-tracking-unavailable recovery (M6-002/003 owner), not the raw
+        // ARSession error string. The band must show exactly that copy in the
+        // injected EN locale.
         let errorLabel = app.staticTexts.matching(
-            NSPredicate(format: "label == %@", "AR ERROR: Unsupported configuration.")
+            NSPredicate(format: "label == %@",
+                        "AR world tracking is unavailable on this device. Use a device that supports AR world tracking.")
         ).firstMatch
         XCTAssertTrue(
             errorLabel.waitForExistence(timeout: 2),
             "The production AR failure band must use the injected EN locale."
         )
-        XCTAssertEqual(errorLabel.label, "AR ERROR: Unsupported configuration.")
+        XCTAssertEqual(
+            errorLabel.label,
+            "AR world tracking is unavailable on this device. Use a device that supports AR world tracking."
+        )
         attachScreenshot(named: "generator-error-band-en-landscape")
 
         let close = errorCloseButton(expectedLabel: "CLOSE")
