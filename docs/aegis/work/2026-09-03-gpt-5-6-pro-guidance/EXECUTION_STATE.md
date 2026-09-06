@@ -753,3 +753,6 @@
 
 ### 2026-09-06 (session) — M11-001 CLOSED
 - Visual authority closed with a fail-closed audit script over the 26-file SET OS production surface (legacy/benchmark/debug excluded by authority): no blur/shadow/gradient/system-blue/generic-cards/fake-thumbnails, ink+warm-white+single setOrange present. Fixed two real violations — tally `repeatForever` → one-shot settle, arrow drop shadows → solid scrim disc. Overlay presentation 25/25. Tracker total: 157/424 completed, 267 remaining.
+
+### 2026-09-06 (session) — M4-021 CLOSED
+- Model version/rollback closed through `CameraModelRegistry`: pure activation gate (exactly one approved artifact with matching contract/calibration/receipts, otherwise unavailable/mismatch-disabled with honest state), approved artifact nil until M4-016 conversion lands, rollback recorded for app-update restore only. 6/6 registry tests on permitted iPhone 17e. Tracker total: 158/424 completed, 266 remaining.
