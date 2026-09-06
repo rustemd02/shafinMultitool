@@ -879,3 +879,6 @@
 
 ### 2026-09-06 (session) — M0-008 CLOSED (verified)
 - Route reachability verified: entry/build/owner/states/teardown/status for camera/scenes/history with 10 routing + 7 lifecycle tests. Tracker total: 206/424 completed, 218 remaining.
+
+### 2026-09-06 (session) — M0-009 CLOSED (verified)
+- Persistence inventory verified: schema/version/owner/location/backup/migration/deletion for all six record families. Tracker total: 207/424 completed, 217 remaining.
