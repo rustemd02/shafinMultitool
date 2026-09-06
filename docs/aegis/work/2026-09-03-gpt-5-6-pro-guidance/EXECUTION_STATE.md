@@ -807,3 +807,6 @@
 
 ### 2026-09-06 (session) — M0-006 CLOSED
 - Build settings matrix closed across app/unit/UI × Debug/Release with every mismatch explicit: unit-test target floor 17.2 vs app 17.0 fixed to 17.0 in the pbxproj; project-level 16.2 recorded as superseded dead default. Evidence: `evidence-m0/M0-006-build-settings-matrix.md`. Tracker total: 180/424 completed, 244 remaining.
+
+### 2026-09-06 (session) — M9-006 CLOSED
+- Pro Controls contract locked: 13 controls with honest tiers (available/legacyOnly/post10), real owners verified by grep, histogram/zebra/peaking excluded without cases. 4/4 contract tests. Tracker total: 181/424 completed, 243 remaining.
