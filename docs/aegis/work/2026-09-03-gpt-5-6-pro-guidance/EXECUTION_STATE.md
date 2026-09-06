@@ -831,3 +831,6 @@
 
 ### 2026-09-06 (session) — M12-021 CLOSED
 - Telemetry decision locked: nothing visual/audio leaves the device (only DEBUG-gated remote seam exists), diagnostics bounded/redacted/user-exported, future upload POST_1_0. Tracker total: 188/424 completed, 236 remaining.
+
+### 2026-09-06 (session) — M3-002 CLOSED (verified)
+- Camera data schema verified column-by-column against the versioned label schema plus green governance self-test. Tracker total: 189/424 completed, 235 remaining.
