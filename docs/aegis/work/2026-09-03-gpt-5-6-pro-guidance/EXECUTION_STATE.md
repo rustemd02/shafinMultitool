@@ -786,3 +786,6 @@
 
 ### 2026-09-06 (session) — M9-004 CLOSED (verified)
 - Lens UI verified: available-only options, selected/switching/failure states, 44pt targets, VoiceOver values — all through production owners and copy. UI test green on permitted iPhone 17e. Tracker total: 171/424 completed, 253 remaining.
+
+### 2026-09-06 (session) — M12-001 CLOSED
+- Backend decision locked in `docs/implementation/backend-decision-v1.md`: Live Camera LOCAL_ONLY, Generator BACKEND_REQUIRED with local structural fallback (remote seam defaults off, zero production implementations), Deep Review POST_1_0, model delivery LOCAL_ONLY bundled, telemetry OPTIONAL_REMOTE only under approved policy. Grep-verified no live remote paths. Tracker total: 172/424 completed, 252 remaining.
