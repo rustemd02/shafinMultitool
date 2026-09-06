@@ -1,0 +1,4 @@
+{
+ "input": "empty-candidates-input.json",
+ "expected_error_contains": "no candidates"
+}

@@ -1,0 +1,164 @@
+{
+ "schema_version": "scene-annotation-v1",
+ "annotation_id": "ann_scene_001",
+ "sample_id": "scene_sample_001",
+ "locale": "en",
+ "source_text": "INT. KITCHEN - NIGHT\nMARA approaches the marked table.\n",
+ "scene_boundaries": [
+  {
+   "id": "scene_1",
+   "start": 0,
+   "end": 55,
+   "heading": "INT. KITCHEN - NIGHT"
+  }
+ ],
+ "marked_objects": [
+  {
+   "id": "deadbeef",
+   "name": "table",
+   "aliases": [
+    "desk"
+   ]
+  }
+ ],
+ "candidates": [
+  {
+   "candidate_id": "candidate_human",
+   "kind": "human",
+   "scene_script": {
+    "actors": [
+     {
+      "id": "actor_1",
+      "type": "human",
+      "name": "MARA"
+     }
+    ],
+    "objects": [
+     {
+      "id": "object_marked_deadbeef",
+      "type": "table",
+      "name": "table",
+      "relativePosition": "center"
+     }
+    ],
+    "beats": [
+     {
+      "id": "beat_1",
+      "actions": [
+       {
+        "id": "action_1",
+        "actorId": "actor_1",
+        "type": "approach",
+        "target": "object_marked_deadbeef",
+        "resultingPose": "walking"
+       }
+      ]
+     }
+    ],
+    "spatialRelations": [],
+    "originalDescription": "MARA approaches the marked table."
+   },
+   "validation": {
+    "status": "valid",
+    "issues": []
+   }
+  },
+  {
+   "candidate_id": "candidate_model",
+   "kind": "model",
+   "scene_script": {
+    "actors": [
+     {
+      "id": "actor_1",
+      "type": "human",
+      "name": "MARA"
+     }
+    ],
+    "objects": [
+     {
+      "id": "object_marked_deadbeef",
+      "type": "table",
+      "name": "table",
+      "relativePosition": "center"
+     }
+    ],
+    "beats": [
+     {
+      "id": "beat_1",
+      "actions": [
+       {
+        "id": "action_1",
+        "actorId": "actor_1",
+        "type": "approach",
+        "target": "object_marked_deadbeef",
+        "resultingPose": "walking"
+       }
+      ]
+     }
+    ],
+    "spatialRelations": [],
+    "originalDescription": "MARA approaches the marked table."
+   },
+   "validation": {
+    "status": "valid",
+    "issues": []
+   }
+  }
+ ],
+ "acceptable_variants": [
+  {
+   "variant_id": "variant_canonical",
+   "scene_script": {
+    "actors": [
+     {
+      "id": "actor_1",
+      "type": "human",
+      "name": "MARA"
+     }
+    ],
+    "objects": [
+     {
+      "id": "object_marked_deadbeef",
+      "type": "table",
+      "name": "table",
+      "relativePosition": "center"
+     }
+    ],
+    "beats": [
+     {
+      "id": "beat_1",
+      "actions": [
+       {
+        "id": "action_1",
+        "actorId": "actor_1",
+        "type": "approach",
+        "target": "object_marked_deadbeef",
+        "resultingPose": "walking"
+       }
+      ]
+     }
+    ],
+    "spatialRelations": [],
+    "originalDescription": "MARA approaches the marked table."
+   },
+   "rationale": "Preserves the marked table binding and action order."
+  }
+ ],
+ "forbidden_hallucinations": [
+  {
+   "id": "forbidden_gun",
+   "kind": "object",
+   "ref": "object_999",
+   "source_text": "gun",
+   "reason": "No gun occurs in the source."
+  }
+ ],
+ "gold": {
+  "primary_candidate_id": "candidate_ghost",
+  "acceptable_variant_ids": [
+   "variant_canonical"
+  ]
+ },
+ "votes": [],
+ "review_history": []
+}

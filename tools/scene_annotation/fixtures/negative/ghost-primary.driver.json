@@ -1,0 +1,5 @@
+{
+ "input": "positive-annotation-input.json",
+ "gold": "ghost-primary-gold.json",
+ "expected_error_contains": "outside the preserved candidates"
+}

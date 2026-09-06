@@ -1,0 +1,5 @@
+{
+ "input": "model-identity-input.json",
+ "gold": "model-identity-gold.json",
+ "expected_error_contains": "exposes model identity"
+}

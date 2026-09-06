@@ -795,3 +795,6 @@
 
 ### 2026-09-06 (session) — M5-004 + M5-005 CLOSED (verified)
 - Library empty/loaded states verified: empty only on successful zero-load (never a failure mask, no fake content), rows carry UUID/name/date/preview/health with stable ordering. 26/26 model+UI tests on permitted iPhone 17e. Tracker total: 175/424 completed, 249 remaining.
+
+### 2026-09-06 (session) — M3-026 CLOSED
+- Annotation tooling closed: scaffold preserves all alternatives verbatim, model-identity gate on the gold primary, mandatory Draft 2020-12 validation offline. Self-test green (positive + 4 negatives). Tracker total: 176/424 completed, 248 remaining.

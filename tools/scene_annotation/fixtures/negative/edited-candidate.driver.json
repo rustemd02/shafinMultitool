@@ -1,0 +1,5 @@
+{
+ "input": "edited-candidate-input.json",
+ "gold": "edited-candidate-gold.json",
+ "expected_error_contains": "candidates changed"
+}
