@@ -327,6 +327,26 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         return (nil, nil, nil, nil)
     }
 
+    /// M9-008: supported capture formats derived from the physical
+    /// device, not from stored preferences. A format is supported when the
+    /// device exposes a format whose dimensions cover it and whose frame
+    /// rate ranges include the requested FPS.
+    static func isFormatSupported(width: Int, height: Int, fps: Int) -> Bool {
+        guard width > 0, height > 0, fps > 0,
+              let device = AVCaptureDevice.default(for: .video) else {
+            return false
+        }
+        return device.formats.contains { format in
+            let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            guard dimensions.width >= Int32(width), dimensions.height >= Int32(height) else {
+                return false
+            }
+            return format.videoSupportedFrameRateRanges.contains { range in
+                Double(fps) >= range.minFrameRate - 0.001 && Double(fps) <= range.maxFrameRate + 0.001
+            }
+        }
+    }
+
     @discardableResult
     func videoSettingsUpdate() -> Bool {
         guard let writer = assetWriter,
@@ -334,7 +354,13 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
               let resolution = settingsValues.resolution.first,
               resolution.width > 0,
               resolution.height > 0,
-              settingsValues.fps > 0 else { return false }
+              settingsValues.fps > 0,
+              // M9-008: unsupported/thermal-conflicting choices are rejected
+              // before any writer input is created; recorder dimensions/FPS
+              // then match the active device format by construction.
+              Self.isFormatSupported(width: resolution.width,
+                                     height: resolution.height,
+                                     fps: settingsValues.fps) else { return false }
 
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.hevc,
