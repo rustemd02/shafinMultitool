@@ -131,6 +131,66 @@ final class HybridFusionServiceTests: XCTestCase {
         XCTAssertEqual(output.critique.issues.dropFirst().map(\.id), ["iss_tied_b", "iss_tied_a"])
     }
 
+    /// M4-019: a calibrated neural component materially reorders the
+    /// accepted ranking (tied-b beats tied-a after fusion) while the major
+    /// issue stays first — fusion affects ranking, never severity order.
+    /// Forbidden gates/identity/motion/verifier constraints live downstream
+    /// in CameraAdviceSafetyGate + the planner + ActionVerifier and are
+    /// pinned by their own suites; fusion output never bypasses them because
+    /// the pipeline evaluates the gate after fusion (AnalysisPipeline:6556).
+    func testCalibratedNeuralReordersTiedRankingWithoutTouchingSeverity() {
+        let snapshot = makeSnapshot(mode: .pause, frameId: "fusion-material")
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: .pause)
+        let issues = [
+            makeIssue(id: "iss_major", type: .subjectTooCloseToEdge, severity: 0.82, confidence: 0.51, rationale: "Главный объект прижат к краю."),
+            makeIssue(id: "iss_tied_a", type: .subjectNotProminentEnough, severity: 0.63, confidence: 0.55, rationale: "Главный объект недостаточно выделен."),
+            makeIssue(id: "iss_tied_b", type: .backgroundCompetesWithSubject, severity: 0.63, confidence: 0.54, rationale: "Фон спорит с главным объектом.")
+        ]
+        let critique = CritiqueReport(
+            frameId: snapshot.frameId,
+            mode: .pause,
+            verdict: .needsFix,
+            verdictConfidence: 0.74,
+            strengths: [],
+            issues: issues,
+            summary: CritiqueSummary(
+                id: "summary_\(snapshot.frameId)_main",
+                shortVerdict: "Главный объект считывается с трудом.",
+                whyGood: nil,
+                whyProblematic: "Главный объект прижат к краю."
+            ),
+            traceRefs: ["trc_\(snapshot.frameId)_crit_summary_main"],
+            fallbackUsed: false
+        )
+
+        // Without neural evidence the input order is preserved exactly.
+        let plain = service.fuse(HybridFusionInput(
+            snapshot: snapshot, semantics: semantics, critique: critique,
+            neuralSnapshot: nil, neuralMetadata: nil
+        ))
+        XCTAssertEqual(plain.critique.issues.map(\.id), ["iss_major", "iss_tied_a", "iss_tied_b"])
+
+        // With calibrated neural evidence the tie reorders materially.
+        let neuralSnapshot = makeNeuralSnapshot(
+            frameId: snapshot.frameId,
+            mode: .pause,
+            scalarOverrides: [
+                .subjectProminence: (0.18, 0.92, .available),
+                .backgroundClutter: (0.86, 0.90, .available),
+                .faceSaliency: (0.61, 0.77, .available),
+                .balanceConfidence: (0.66, 0.70, .available),
+                .depthSeparation: (0.25, 0.68, .available)
+            ]
+        )
+        let fused = service.fuse(HybridFusionInput(
+            snapshot: snapshot, semantics: semantics, critique: critique,
+            neuralSnapshot: neuralSnapshot,
+            neuralMetadata: makeMetadata(frameId: snapshot.frameId, mode: .pause)
+        ))
+        XCTAssertEqual(fused.critique.issues.map(\.id), ["iss_major", "iss_tied_b", "iss_tied_a"],
+                      "calibrated neural evidence must materially reorder the tie")
+    }
+
     func testExactSeverityTieStaysDeterministicWhenFusionDoesNotApply() {
         let snapshot = makeSnapshot(mode: .pause, frameId: "fusion-no-effective-tie")
         let semantics = makeSemantics(frameId: snapshot.frameId, mode: .pause)

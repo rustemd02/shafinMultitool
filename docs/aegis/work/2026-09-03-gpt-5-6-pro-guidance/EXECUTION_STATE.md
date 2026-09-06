@@ -756,3 +756,6 @@
 
 ### 2026-09-06 (session) — M4-021 CLOSED
 - Model version/rollback closed through `CameraModelRegistry`: pure activation gate (exactly one approved artifact with matching contract/calibration/receipts, otherwise unavailable/mismatch-disabled with honest state), approved artifact nil until M4-016 conversion lands, rollback recorded for app-update restore only. 6/6 registry tests on permitted iPhone 17e. Tracker total: 158/424 completed, 266 remaining.
+
+### 2026-09-06 (session) — M4-019 CLOSED
+- Neural-deterministic fusion verified: deterministic tie-breaking, material calibrated reorder without touching severity (new targeted test), downstream safety/planner/verifier gates evaluated after fusion and pinned green (40/40 across fusion/safety/planner/calibrator suites on permitted iPhone 17e). Tracker total: 159/424 completed, 265 remaining.
