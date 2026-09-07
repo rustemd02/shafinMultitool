@@ -1,0 +1,57 @@
+{
+  "gate": "M6-GATE",
+  "scope": "source (physical AR qualification deferred to M13 per plan)",
+  "verdict": "PASS for source scope",
+  "date": "2026-09-07",
+  "dependencies": {
+    "M6-013": {
+      "status": "closed",
+      "evidence": "evidence-m6/M6-013-ar-recording-integration.md",
+      "note": "AR recording integration through the canonical recorder contract; 53/53 lane"
+    },
+    "M6-017": {
+      "status": "closed",
+      "evidence": "evidence-m6/M6-016-017-world-map-persistence.md",
+      "note": "world map save/restore persistence contract 4/4; hardware capture M13"
+    },
+    "M6-019": {
+      "status": "closed",
+      "evidence": "evidence-m6/M6-019-teardown.md",
+      "note": "awaitable teardown verified against 16 SceneWorkspaceTeardownTests"
+    },
+    "M6-020": {
+      "status": "closed",
+      "evidence": "evidence-m6/M6-020-test-seams.md",
+      "note": "session/capability/world-map/raycast seams complete; 5/5 fake-event + 6/6 regression"
+    },
+    "M6-021": {
+      "status": "closed",
+      "evidence": "docs/implementation/device-tests/ar-workspace-v1.md",
+      "note": "locked 12-step physical qualification script; execution M13"
+    }
+  },
+  "canonical_surface_audit": [
+    "one ARSession owner with generation-fenced callbacks (M6-002/003)",
+    "readiness requires real frame + planes (M6-005); surface search bounded (M6-006)",
+    "placement deterministic with stable identities; marking fail-closed (M6-007/008)",
+    "transform anchoring rides device displayTransform; no parallel projection math (M6-009)",
+    "hint pause lifecycle + journey contract ordering (M6-011)",
+    "playback single-owner with probe gate; interruption stops via generation fences (M6-012)",
+    "AR recording through the canonical controller (M6-013); interruption chain (M6-014)",
+    "background/foreground policy under the single background lease (M6-015)",
+    "tracking posture with typed reasons and capture gating (M6-018)"
+  ],
+  "open_items": [
+    {
+      "id": "M6-010",
+      "status": "OPEN (feature)",
+      "note": "live hints bound to planned action/entity IDs is an unimplemented feature; not a gate dependency (P1)"
+    },
+    {
+      "id": "M13",
+      "status": "EXTERNAL",
+      "note": "physical AR qualification executes ar-workspace-v1 on locked devices"
+    }
+  ],
+  "claim_boundary": "No world-tracking correctness or relocalization-quality claim is made until M13 executes the locked script."
+}
