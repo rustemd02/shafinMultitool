@@ -1,0 +1,17 @@
+{
+ "job_id": "job_demo001",
+ "request_id": "123e4567-e89b-42d3-a456-426614174000",
+ "schema_version_backend": "scene-api-v1",
+ "model_version": "scene-model-v1",
+ "prompt_version": "scene-prompt-v1",
+ "provider_name": "first-party-scene",
+ "provider_version": "2026-09-01",
+ "request_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+ "idempotency_key": "idem.demo.001",
+ "server_time": "2026-09-07T00:00:00Z",
+ "status": "cancelled",
+ "failure": {
+  "code": "cancelled",
+  "message": "Cancelled by client."
+ }
+}

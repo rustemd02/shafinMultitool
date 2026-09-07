@@ -924,3 +924,6 @@
 
 ### 2026-09-06 (session) — M11-023 CLOSED
 - Motion evidence closed: every production animation is ledger- or reduce-motion-gated (checker green over 27 UI files); one-shot transitions carry event IDs via the motion ledger; no animation evidence substitutes functional device evidence. Tracker total: 230/424 completed, 194 remaining.
+
+### 2026-09-07 (session) — M12-003 CLOSED
+- Scene API schema frozen: `backend/openapi-scene-v1.yaml` (create/poll/clarification-answer/cancel, App Attest Bearer, mandatory Idempotency-Key, version triple + request hash, 410 kill-switch, placeholder host) + `backend/schemas/scene-job-v1.schema.json` (Draft 2020-12 job envelope reusing frozen M3-023 contract defs, mutually exclusive terminal branches) + `validate_scene_job.py` (PASS: 6 positive + 5 negative fixtures) + `SceneGenerationAPIContracts.swift` (Swift mirror with fail-closed validation incl. kill-switch terminal rejection; no network/credentials/host). `SceneGenerationAPIContractsTests` 11/11 on permitted iPhone 17e (`/private/tmp/m12003-tests.xcresult`). No provider selected, no host live — unblocks M12-004…M12-009 and M5-025 without authorizing a fake backend. Tracker total: 231/424 completed, 193 remaining.

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/schemas/scene-job-v1.schema.json",
+  "title": "SET OS Scene Generation job envelope v1",
+  "description": "Transport envelope for the Scene Generation job API (M12-003). Version triple echoed on every status; terminal branches are mutually exclusive: complete carries scene-output-v1 complete result, awaiting_clarification carries one scene-clarification-v1 payload, failed/cancelled carry a typed failure.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id",
+    "request_id",
+    "status",
+    "schema_version_backend",
+    "model_version",
+    "prompt_version",
+    "provider_name",
+    "provider_version",
+    "request_hash",
+    "idempotency_key",
+    "server_time"
+  ],
+  "properties": {
+    "job_id": { "$ref": "scene-contract-v1.schema.json#/$defs/identifier" },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "awaiting_clarification", "complete", "failed", "cancelled"]
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "scene_script", "model_version", "prompt_version", "schema_version", "warnings"],
+      "properties": {
+        "status": { "const": "complete" },
+        "scene_script": { "$ref": "scene-contract-v1.schema.json#/$defs/scene_script" },
+        "model_version": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+        "prompt_version": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+        "schema_version": { "const": "scene-script-v1" },
+        "warnings": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" }
+        }
+      }
+    },
+    "clarification": { "$ref": "scene-contract-v1.schema.json#/$defs/scene_clarification_payload" },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": ["invalid_request", "provider_error", "timeout", "kill_switch", "cancelled", "internal"]
+        },
+        "message": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" }
+      }
+    },
+    "schema_version_backend": { "const": "scene-api-v1" },
+    "model_version": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+    "prompt_version": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+    "provider_name": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+    "provider_version": { "$ref": "scene-contract-v1.schema.json#/$defs/short_text" },
+    "request_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "server_time": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "complete" } } },
+      "then": { "required": ["result"], "not": { "anyOf": [{ "required": ["clarification"] }, { "required": ["failure"] }] } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "awaiting_clarification" } } },
+      "then": { "required": ["clarification"], "not": { "anyOf": [{ "required": ["result"] }, { "required": ["failure"] }] } }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["failed", "cancelled"] } } },
+      "then": { "required": ["failure"], "not": { "anyOf": [{ "required": ["result"] }, { "required": ["clarification"] }] } }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["pending", "running"] } } },
+      "then": { "not": { "anyOf": [{ "required": ["result"] }, { "required": ["clarification"] }, { "required": ["failure"] }] } }
+    }
+  ]
+}

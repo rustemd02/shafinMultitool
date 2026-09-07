@@ -1,0 +1,36 @@
+{
+ "job_id": "job_demo001",
+ "request_id": "123e4567-e89b-42d3-a456-426614174000",
+ "schema_version_backend": "scene-api-v1",
+ "model_version": "scene-model-v1",
+ "prompt_version": "scene-prompt-v1",
+ "provider_name": "first-party-scene",
+ "provider_version": "2026-09-01",
+ "request_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+ "idempotency_key": "idem.demo.001",
+ "server_time": "2026-09-07T00:00:00Z",
+ "status": "awaiting_clarification",
+ "clarification": {
+  "id": "123e4567-e89b-42d3-a456-426614174000:7:table:0",
+  "requestID": "aaaaaaaa-bbbb-4111-8111-aaaaaaaaaaaa",
+  "epoch": 3,
+  "prompt": "\u041a\u0430\u043a\u043e\u0439 \u0438\u043c\u0435\u043d\u043d\u043e \u0441\u0442\u043e\u043b \u0438\u043c\u0435\u0435\u0442\u0441\u044f \u0432 \u0432\u0438\u0434\u0443?",
+  "targetReference": "table",
+  "options": [
+   {
+    "id": "object_marked_deadbeef",
+    "label": "\u0441\u0442\u043e\u043b \u00b7 deadbeef"
+   },
+   {
+    "id": "object_detected_table_0.1000_0.2000_0.3000_0.4000_none_none_none",
+    "label": "\u0441\u0442\u043e\u043b \u00b7 detected"
+   }
+  ],
+  "allowsFreeText": true,
+  "maximumFreeTextCharacters": 160,
+  "observedDiagnostics": [
+   "same_type_marker_conflict"
+  ],
+  "attempt": 0
+ }
+}

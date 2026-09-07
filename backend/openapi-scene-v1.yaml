@@ -1,0 +1,391 @@
+openapi: 3.0.3
+info:
+  title: SET OS Scene Generation Service API
+  version: 1.0.0
+  description: |
+    Versioned Scene Generation job API (M12-003). One deployable Scene
+    service owns create/poll/clarification-answer/cancel for a single
+    selected provider path (M12-002). The app carries no provider
+    credentials; requests authenticate with an App Attest-backed
+    short-lived service token presented as a Bearer token (M12-005).
+    Structured success/failure payloads reuse the frozen M3-023 dataset
+    schemas (scene-input-v1 / scene-output-v1 / scene-clarification-v1);
+    this file freezes only the transport envelope: versions, request
+    hash, idempotency key, and server time.
+servers:
+  - url: https://scene-generation.set-os.local/v1
+    description: Placeholder host. No production host is selected; the
+      M5-025 client must not point at a real backend until the service
+      exists and this host is replaced by deployment config.
+security:
+  - ServiceToken: []
+paths:
+  /jobs:
+    post:
+      operationId: createJob
+      summary: Create a Scene generation job.
+      security:
+        - ServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+      responses:
+        '201':
+          description: Job created (or replayed for a repeated idempotency key).
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '410':
+          $ref: '#/components/responses/KillSwitch'
+  /jobs/{jobId}:
+    get:
+      operationId: pollJob
+      summary: Poll a job for completion, clarification, or failure.
+      security:
+        - ServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Current job state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/KillSwitch'
+    delete:
+      operationId: cancelJob
+      summary: Cancel a pending job. Cancellation is terminal and idempotent.
+      security:
+        - ServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Cancelled (or already terminal) job state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /jobs/{jobId}/clarification-answer:
+    post:
+      operationId: answerClarification
+      summary: Answer the single pending clarification of a job awaiting input.
+      security:
+        - ServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClarificationAnswer'
+      responses:
+        '200':
+          description: Answer accepted; job resumed.
+          headers:
+            Idempotency-Replayed:
+              $ref: '#/components/headers/IdempotencyReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No pending clarification, stale epoch, or unknown option.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '410':
+          $ref: '#/components/responses/KillSwitch'
+components:
+  securitySchemes:
+    ServiceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: SET-OS-service-token
+      description: App Attest-backed short-lived service token (M12-005).
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/JobId'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]{1,128}$'
+      description: Client-generated key; server replays the original
+        response for a repeated key instead of creating a second job.
+  headers:
+    IdempotencyReplayed:
+      schema:
+        type: boolean
+      description: True when the response replays an earlier request
+        with the same idempotency key.
+  schemas:
+    JobId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[a-z][a-z0-9_-]{0,127}$'
+    VersionText:
+      type: string
+      minLength: 1
+      maxLength: 128
+    RequestHash:
+      type: string
+      minLength: 64
+      maxLength: 64
+      pattern: '^[0-9a-f]{64}$'
+      description: Lowercase hex SHA-256 over the canonical input envelope.
+    ServerTime:
+      type: string
+      format: date-time
+    CreateJobRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - client_build
+        - schema_version
+        - locale
+        - script_text
+        - request_hash
+        - schema_version_backend
+        - model_version
+        - prompt_version
+        - provider_name
+        - provider_version
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        client_build:
+          $ref: '#/components/schemas/VersionText'
+        schema_version:
+          type: string
+          const: scene-script-v1
+        locale:
+          type: string
+          enum: [ru, en]
+        script_text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        marked_objects:
+          type: array
+          maxItems: 32
+          items:
+            type: object
+            additionalProperties: false
+            required: [canonical_id]
+            properties:
+              canonical_id:
+                type: string
+                minLength: 1
+                maxLength: 128
+        constraints:
+          type: object
+          additionalProperties: false
+          required: [maximum_scenes]
+          properties:
+            maximum_scenes:
+              type: integer
+              minimum: 1
+              maximum: 8
+        previous_job_id:
+          $ref: '#/components/schemas/JobId'
+        request_hash:
+          $ref: '#/components/schemas/RequestHash'
+        schema_version_backend:
+          type: string
+          const: scene-api-v1
+        model_version:
+          $ref: '#/components/schemas/VersionText'
+        prompt_version:
+          $ref: '#/components/schemas/VersionText'
+        provider_name:
+          $ref: '#/components/schemas/VersionText'
+        provider_version:
+          $ref: '#/components/schemas/VersionText'
+    JobStatusValue:
+      type: string
+      enum: [pending, running, awaiting_clarification, complete, failed, cancelled]
+    JobStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - request_id
+        - status
+        - schema_version_backend
+        - model_version
+        - prompt_version
+        - provider_name
+        - provider_version
+        - request_hash
+        - idempotency_key
+        - server_time
+      properties:
+        job_id:
+          $ref: '#/components/schemas/JobId'
+        request_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/JobStatusValue'
+        result:
+          description: |
+            Structured success payload. Present only when status is
+            complete; shape follows scene-output-v1 (status complete
+            branch: status/scene_script/model_version/prompt_version/
+            schema_version/warnings).
+          type: object
+        clarification:
+          description: |
+            Single pending clarification. Present only when status is
+            awaiting_clarification; shape follows scene-clarification-v1
+            ($defs/scene_clarification_payload).
+          type: object
+        failure:
+          $ref: '#/components/schemas/JobFailure'
+        schema_version_backend:
+          type: string
+          const: scene-api-v1
+        model_version:
+          $ref: '#/components/schemas/VersionText'
+        prompt_version:
+          $ref: '#/components/schemas/VersionText'
+        provider_name:
+          $ref: '#/components/schemas/VersionText'
+        provider_version:
+          $ref: '#/components/schemas/VersionText'
+        request_hash:
+          $ref: '#/components/schemas/RequestHash'
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+        server_time:
+          $ref: '#/components/schemas/ServerTime'
+    JobFailure:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [invalid_request, provider_error, timeout, kill_switch, cancelled, internal]
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+    ClarificationAnswer:
+      type: object
+      additionalProperties: false
+      required:
+        - clarification_id
+        - request_id
+        - epoch
+      properties:
+        clarification_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        request_id:
+          type: string
+          format: uuid
+        epoch:
+          type: integer
+          minimum: 0
+        selected_option_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        free_text:
+          type: string
+          minLength: 1
+          maxLength: 160
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+  responses:
+    InvalidRequest:
+      description: Schema/validation rejection.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Missing or invalid service token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Unknown job id.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    IdempotencyConflict:
+      description: Key already used for a different request hash.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    KillSwitch:
+      description: Server-driven kill-switch engaged (410).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
