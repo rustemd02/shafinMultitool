@@ -1000,3 +1000,6 @@ Session tally: 230 → 275 completed (45 tasks closed with code/evidence/verific
 
 ### 2026-09-07 (session) — M10-014 CLOSED (corrected from open)
 - Hardware keyboard commands closed: scoped shortcuts added to existing production buttons only — storyboard editor save (Cmd+Return, same in-flight guard), editor cancel (Esc/.cancelAction), tray toggle (Cmd+T, non-destructive navigation); all active only in their relevant presentation state (sheet/workspace), inherit localized labels (discoverability), no destructive action bound. UI regression testStoryboardFixtureRUResultTrayAndSelectionReflow 1/0 PASS on permitted iPhone 17e (`/private/tmp/m1014-tests.xcresult`). Tracker total: 276/424 completed, 148 remaining.
+
+### 2026-09-07 (session) — M10-011 CLOSED
+- Storyboard iPad regular width closed: `horizontalSizeClass`-driven tray auto-expand on regular width (appear + split-point resize), presentation-only — same VM state owners (selection/draft/tray state untouched), inspector/editor reuse the existing owners; compact behavior unchanged. UI regression 1/0 PASS on permitted iPhone 17e (`/private/tmp/m1011-tests.xcresult`). Physical iPad geometry remains M13. Tracker total: 277/424 completed, 147 remaining.

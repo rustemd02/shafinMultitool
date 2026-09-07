@@ -1183,6 +1183,7 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
     let dynamicTypeSize: DynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.setReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var decisionTrace: DecisionTracePresentation?
     @State private var isStoryboardTrayExpanded = false
     @State private var storyboardEditorDetent: PresentationDetent = .medium
@@ -1321,6 +1322,19 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                 isStoryboardTrayExpanded = true
             }
 #endif
+            // M10-011: iPad regular width opens the tray expanded so the
+            // tray/inspector use the available width — same VM state
+            // owner, presentation-only adaptation.
+            if horizontalSizeClass == .regular {
+                isStoryboardTrayExpanded = true
+            }
+        }
+        .onChange(of: horizontalSizeClass) { _, newSize in
+            // Resize across the split point adapts the tray without
+            // touching selection or draft state (owners unchanged).
+            if newSize == .regular {
+                isStoryboardTrayExpanded = true
+            }
         }
     }
 
