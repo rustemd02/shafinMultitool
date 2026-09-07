@@ -948,3 +948,6 @@
 
 ### 2026-09-07 (session) — M5-027 CLOSED
 - Semantic repair boundary closed: `SceneRepairBoundary` registry classifies all 66 production repair notes as syntax-safe (grep-audited 66/66, 0 missing/extra); forbidden set empty by construction with a typed home for future meaning-changing repairs routing to clarification. 4/4 boundary tests on permitted iPhone 17e (`/private/tmp/m5027-tests.xcresult`). Tracker total: 240/424 completed, 184 remaining.
+
+### 2026-09-07 (session) — M5-028 CLOSED
+- Chunking/stitching closed: full pipeline + checkpoint system audited as pre-existing contract-tested owners (no production change); added `SceneChunkContinuityTests` 7/7 on permitted iPhone 17e (`/private/tmp/m5028-tests.xcresult`) — cross-chunk entity identity, chronology, scene ordering, no-fabrication deferred-ref drop, diagnostics dedup, byte-exact checkpoint round-trip. Disk-pressure interlude: freed DeviceSupport caches; untracked `oem-secure-20260907` (4.4G) and Bonus_Exchange DerivedData left untouched (not ours); forbidden iPhone 17 Pro sim found booted (not by this session — reported, not touched). Tracker total: 241/424 completed, 183 remaining.
