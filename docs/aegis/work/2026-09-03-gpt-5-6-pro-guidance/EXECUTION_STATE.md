@@ -945,3 +945,6 @@
 
 ### 2026-09-07 (session) — M5-026 CLOSED
 - Response validation closed: `SceneResponseValidator` (typed referential/chronology/binding checks on the compiled script, repairs nothing) wired into both coordinator accept paths — invalid outputs fall back rule-based with `response_invalid:<issue>` reasons, never partially committed. 10/10 adversarial fixtures + 31/31 coordinator regression on permitted iPhone 17e. Full-pipeline 4 failures proven pre-existing via stash-baseline (demo V9 path + 2 registered heading cases); preservation stashes untouched. Tracker total: 239/424 completed, 185 remaining.
+
+### 2026-09-07 (session) — M5-027 CLOSED
+- Semantic repair boundary closed: `SceneRepairBoundary` registry classifies all 66 production repair notes as syntax-safe (grep-audited 66/66, 0 missing/extra); forbidden set empty by construction with a typed home for future meaning-changing repairs routing to clarification. 4/4 boundary tests on permitted iPhone 17e (`/private/tmp/m5027-tests.xcresult`). Tracker total: 240/424 completed, 184 remaining.
