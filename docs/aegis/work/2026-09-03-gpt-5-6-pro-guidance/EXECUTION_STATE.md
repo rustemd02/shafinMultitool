@@ -979,3 +979,7 @@
 
 ### 2026-09-07 (session) — M10-012 + M10-013 + M10-020 CLOSED; M10-014 OPEN (honest)
 - M10-012 (playback/recording iPad — container-driven controls, popover-anchored share, size-agnostic state gates), M10-013 (software keyboard — FocusState ownership + safeAreaInset primary action + interactive dismissal + draft-survival UI test), M10-020 (state restoration/resizing — M1-004/M5-021/M8-005/M10-004 owners with fenced no-second-owner proof) closed verify-and-close; evidence `evidence-m10/M10-012-013-020-ipad-chain.md`. M10-014 stays honestly OPEN: no hardware-keyboard command surface exists (fgrep-verified); it is an unimplemented feature, not claimed. Tracker total: 273/424 completed, 151 remaining.
+
+### 2026-09-07 (session) — M11-024 CLOSED (machine-assisted) + M12-024 CLOSED
+- M11-024 anti-vibe audit: all six fail-closed checkers re-run green on the locked tree (visual authority 26 files, copy 441, localization 441, reduce-motion 16 sites, screenshot matrix 55, material inventory 1046); banned-pattern sweep clean; the plan's HUMAN VISUAL sign-off recorded as the single external remaining component (`evidence-m11/M11-024-anti-vibe-audit.md`).
+- M12-024 runtime egress audit: zero production construction of SceneGenerationClient, zero configureRemoteOffload callers, DEBUG-only remote VLM, no entitlements file — no runtime egress in the 1.0 binary (`evidence-m12/M12-024-egress-audit.md`). Runtime proxy check remains M13. Tracker total: 275/424 completed, 149 remaining.
