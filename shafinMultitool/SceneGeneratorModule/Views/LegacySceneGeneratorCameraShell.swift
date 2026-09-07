@@ -1758,6 +1758,9 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
             .accessibilityLabel(Text(
                 (isStoryboardTrayExpanded ? SETCopyKey.storyboardTrayCollapse : SETCopyKey.storyboardTrayExpand).localizedTextKey
             ))
+            // M10-14: scoped hardware-keyboard tray toggle — non-destructive
+            // navigation, active only in the generator workspace.
+            .keyboardShortcut("t", modifiers: .command)
         }
         .animation(
             isMotionReduced
@@ -1969,6 +1972,9 @@ private struct StoryboardBeatEditorSheet: View {
                 .accessibilityLabel(SETCopyKey.libraryCancel.localizedTextKey)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("storyboard_editor_cancel")
+                // M10-14: scoped hardware-keyboard cancel — active only
+                // while the editor sheet is presented.
+                .keyboardShortcut(.cancelAction)
 
                 Text(SETCopyKey.storyboardEditorTitle.localizedTextKey)
                     .font(SETTypography.scaledFont(.display, size: SETTypographySize.title, relativeTo: .title2))
@@ -1995,6 +2001,10 @@ private struct StoryboardBeatEditorSheet: View {
                 .accessibilityIdentifier("storyboard_editor_save")
                 .disabled(isMutationInFlight)
                 .accessibilityRespondsToUserInteraction(!isMutationInFlight)
+                // M10-14: scoped hardware-keyboard save — non-destructive,
+                // active only while the editor sheet is presented, gated on
+                // the same in-flight guard as the button.
+                .keyboardShortcut(.return, modifiers: .command)
             }
             .padding(.horizontal, SETSpacing.x3)
             .frame(minHeight: SETComponentMetric.minimumHitTarget)

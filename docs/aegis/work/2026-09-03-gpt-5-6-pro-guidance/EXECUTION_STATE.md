@@ -997,3 +997,6 @@
 - **GATES** — M3/M4/M5/M9/M10/M11/M12/M13/M14/M15 stay open; M6-GATE and M8-GATE passed for source scope this session.
 
 Session tally: 230 → 275 completed (45 tasks closed with code/evidence/verification or honest verify-and-close: M12-003/004/007/008/009/023/024, M5-025/026/027/028/029, M7-026, M6-007/008/009/011/012/016/017/019/020/021 + M6-GATE, M8-002…020 + M8-GATE, M10-012/013/020, M11-024, M11-014…021 per-surface evidence). Every remaining task now has either an in-flight feature note or an explicit external blocker above. No push, no remote mutation; two preservation stashes untouched.
+
+### 2026-09-07 (session) — M10-014 CLOSED (corrected from open)
+- Hardware keyboard commands closed: scoped shortcuts added to existing production buttons only — storyboard editor save (Cmd+Return, same in-flight guard), editor cancel (Esc/.cancelAction), tray toggle (Cmd+T, non-destructive navigation); all active only in their relevant presentation state (sheet/workspace), inherit localized labels (discoverability), no destructive action bound. UI regression testStoryboardFixtureRUResultTrayAndSelectionReflow 1/0 PASS on permitted iPhone 17e (`/private/tmp/m1014-tests.xcresult`). Tracker total: 276/424 completed, 148 remaining.
