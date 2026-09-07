@@ -960,3 +960,6 @@
 
 ### 2026-09-07 (session) — M6-007 + M6-008 CLOSED (simulator contract half)
 - Placement/marking closed on existing owners (no production change): `ARPlacementMarkingContractTests` 6/6 on permitted iPhone 17e (`/private/tmp/m607-tests.xcresult`) — placement determinism, stable placed identities, marked-over-detected priority with real marker position, NaN-free transforms, canonical marker IDs, duplicate-alias fail-closed. Physical surface confirmation remains M13. Tracker total: 244/424 completed, 180 remaining.
+
+### 2026-09-07 (session) — M6-019 CLOSED (verify-and-close)
+- AR teardown closed on existing proof (no production change): SceneWorkspaceTeardownTests 16 tests cover every acceptance point — concurrent callers share one operation, owner order recording→playback→persist→release→detach with awaited finalization, world-map capture exactly-once inside the awaited teardown (timeout/cancellation/late-callback immunity), blocked results name the owner with retry semantics, route integration (background hook idempotence, awaited workspace, failure route retention, modal block). Physical timing remains M13. Tracker total: 245/424 completed, 179 remaining.
