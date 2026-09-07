@@ -140,6 +140,7 @@ private struct SETCameraCoachRuntimeSurface: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.locale) private var locale
     @StateObject private var previewTransformStore = CameraPreviewTransformStore()
+    @State private var isProControlsPresented = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -247,7 +248,53 @@ private struct SETCameraCoachRuntimeSurface: View {
                     onTogglePause: { viewModel.togglePause() }
                 )
 
+                // M9-016: discoverable Pro Controls toggle (top-trailing,
+                // 44pt target, localized, one layer over the same session).
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            isProControlsPresented.toggle()
+                        } label: {
+                            Text(SETCopyKey.proControlsToggle.localizedString(locale: locale))
+                                .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
+                                .foregroundStyle(.setTextPrimary)
+                                .padding(.horizontal, 12)
+                                .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                                       minHeight: SETComponentMetric.minimumHitTarget)
+                                .background(
+                                    RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                                        .fill(Color.setHUDScrim)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: SETRadius.control, style: .continuous)
+                                                .stroke(Color.setHairline, lineWidth: SETStroke.hairline)
+                                        )
+                                )
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("pro_controls_toggle")
+                    }
+                    Spacer()
+                }
+
                 SETAccessibilityIdentifierProbe(identifier: CameraOverlayAccessibilityID.surface)
+
+                // M9-016: the single Pro Controls layer inside the Coach
+                // screen — same session, same owners, no second screen.
+                if isProControlsPresented {
+                    ProControlsPanelView(
+                        rows: ProControlsPresentation.rows(
+                            torchActive: cameraManager.isTorchActive,
+                            meterLevel: cameraManager.audioLevel,
+                            formatText: nil
+                        ),
+                        locale: locale
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .padding(SETSpacing.x4)
+                    .onTapGesture { isProControlsPresented = false }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

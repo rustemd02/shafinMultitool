@@ -459,6 +459,27 @@ enum SETCopyKey: String, CaseIterable, Sendable {
     var localizedString: String {
         localizedString(locale: .current)
     }
+    // M9-016: Pro Controls presentation (contract-driven panel)
+    case proControlTierAvailable = "set.pro.tier.available"
+    case proControlTierLegacy = "set.pro.tier.legacy"
+    case proControlTierPost10 = "set.pro.tier.post10"
+    case proControlValueOn = "set.pro.value.on"
+    case proControlValueOff = "set.pro.value.off"
+    case proControlFormat = "set.pro.name.format"
+    case proControlExposureAuto = "set.pro.name.exposure_auto"
+    case proControlExposureEV = "set.pro.name.exposure_ev"
+    case proControlExposureManual = "set.pro.name.exposure_manual"
+    case proControlFocusAuto = "set.pro.name.focus_auto"
+    case proControlFocusTapLock = "set.pro.name.focus_tap_lock"
+    case proControlFocusManual = "set.pro.name.focus_manual"
+    case proControlWBAuto = "set.pro.name.wb_auto"
+    case proControlWBPreset = "set.pro.name.wb_preset"
+    case proControlWBLock = "set.pro.name.wb_lock"
+    case proControlWBTemperature = "set.pro.name.wb_temperature"
+    case proControlAudioMeter = "set.pro.name.audio_meter"
+    case proControlTorch = "set.pro.name.torch"
+    case proControlsTitle = "set.pro.title"
+    case proControlsToggle = "set.pro.toggle"
 }
 
 enum SETGalleryLocale: String, CaseIterable, Sendable {
