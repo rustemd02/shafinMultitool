@@ -1003,3 +1003,6 @@ Session tally: 230 → 275 completed (45 tasks closed with code/evidence/verific
 
 ### 2026-09-07 (session) — M10-011 CLOSED
 - Storyboard iPad regular width closed: `horizontalSizeClass`-driven tray auto-expand on regular width (appear + split-point resize), presentation-only — same VM state owners (selection/draft/tray state untouched), inspector/editor reuse the existing owners; compact behavior unchanged. UI regression 1/0 PASS on permitted iPhone 17e (`/private/tmp/m1011-tests.xcresult`). Physical iPad geometry remains M13. Tracker total: 277/424 completed, 147 remaining.
+
+### 2026-09-07 (session) — M10-010 CLOSED (verify-and-close)
+- AR iPad layouts closed: all workspace overlays container-driven (M10-005 geometry + M10-011 regular-width tray), windowing/orientation via M10-004/M10-001 contracts, no duplicate owners (zero production change), invalid-size pausing via M6-005/018 gates. iPad lanes 10/10 on permitted iPhone 17e (`/private/tmp/m1010-tests.xcresult`). Physical geometry M13. Tracker total: 278/424 completed, 146 remaining.
