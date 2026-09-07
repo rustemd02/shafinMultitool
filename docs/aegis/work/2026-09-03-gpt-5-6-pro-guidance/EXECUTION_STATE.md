@@ -954,3 +954,6 @@
 
 ### 2026-09-07 (session) — M5-029 CLOSED; M5-GATE assessment
 - Scene compilation closed: `ScenePlanCompilerContinuityTests` 5/5 on permitted iPhone 17e (`/private/tmp/m5029-tests.xcresult`) — multi-actor/object compile with all references resolved + M5-026-validator clean, typed missingActorRef/missingObjectRef failures naming the ghost ref, static object-only honesty, M5-025 bridge round-trip with zero semantic drift. No production change. M5 remaining: M5-031/032/033/034 all blocked on M3-034 (frozen human gold) + backend chain — M5-GATE stays open with those externals. Tracker total: 242/424 completed, 182 remaining.
+
+### 2026-09-07 (session) — M6-016 + M6-017 CLOSED (simulator half)
+- World map save/restore closed on the existing single-file atomic owner (no production change): `ARWorldMapPersistenceTests` 4/4 on permitted iPhone 17e (`/private/tmp/m616-tests.xcresult`) — versioned schema (schemaVersion=1, optional archivedWorldMap via encodeIfPresent), nil-map honesty, corrupt-archive fail-closed without crash, staleSnapshot rejection preserving the stored file. Real ARWorldMap capture/relocalization/fallback remains M13 (ARWorldMap not constructible without a live session). Tracker total: 243/424 completed, 181 remaining.
