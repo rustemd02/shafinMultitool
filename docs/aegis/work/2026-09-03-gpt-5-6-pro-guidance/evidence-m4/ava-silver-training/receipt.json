@@ -1,0 +1,46 @@
+{
+ "lane": "ava-silver-pretraining",
+ "dataset": "trojblue/AVA-aesthetics-10pct-min50-10bins (validation split)",
+ "policy": "M4-011 teacher/silver: real photos, human aesthetic scores as silver labels; NOT the CC human-gold taxonomy; no candidate selection claim",
+ "approved_human_data": false,
+ "data_location": "/private/tmp/ava_silver (outside Git; rights-uncleared)",
+ "candidate": "candidate_a_dual_branch (full-frame branch under load)",
+ "device": "cpu",
+ "images_used": 640,
+ "skipped_decode": 0,
+ "epochs": 3,
+ "batch_size": 16,
+ "baseline": {
+  "binary_accuracy_at_5_5": 0.425,
+  "mean_absolute_error": 0.06611549084385236
+ },
+ "final": {
+  "epoch": 3,
+  "train_loss": 1.386748483686736,
+  "binary_accuracy_at_5_5": 0.575,
+  "mean_absolute_error": 0.06527698064843813
+ },
+ "history": [
+  {
+   "epoch": 1,
+   "train_loss": 1.4023125099413323,
+   "binary_accuracy_at_5_5": 0.425,
+   "mean_absolute_error": 0.06681185389558474
+  },
+  {
+   "epoch": 2,
+   "train_loss": 1.3892164013602517,
+   "binary_accuracy_at_5_5": 0.575,
+   "mean_absolute_error": 0.06636761178572972
+  },
+  {
+   "epoch": 3,
+   "train_loss": 1.386748483686736,
+   "binary_accuracy_at_5_5": 0.575,
+   "mean_absolute_error": 0.06527698064843813
+  }
+ ],
+ "runtime_seconds": 549.9,
+ "torch_version": "2.10.0",
+ "disclaimer": "Silver pretraining validates the pixel pathway. Production candidate selection still requires the frozen M3 human-gold chain (M3-022) per plan."
+}

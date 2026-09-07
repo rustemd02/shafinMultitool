@@ -71,11 +71,15 @@ def build_sample(entry: dict, contract: scm.SETCompositionNetManifest) -> Synthe
     encoded = encode_image(entry["path"], contract)
     if encoded is None:
         return None
-    full, crop, mask = encoded
+    full, crop, _encoded_mask = encoded
     probability = max(0.0, min(1.0, (entry["mean_score"] - 1.0) / 9.0))
     scalar = torch.zeros(contract.scalar_feature_count, dtype=torch.float32)
     missing = torch.ones(contract.scalar_feature_count, dtype=torch.float32)
-    roi = torch.zeros(4, dtype=torch.float32)
+    # Center pseudo-ROI activates the ROI-conditioned pathway
+    # (_prepare_inputs zeroes the crop branch when no ROI is present).
+    roi = torch.tensor([0.20, 0.20, 0.60, 0.60], dtype=torch.float32)
+    mask = torch.zeros(1, 320, 320, dtype=torch.float32)
+    mask[:, 64:256, 64:256] = 1.0
     targets: dict[str, torch.Tensor] = {}
     label_masks: dict[str, torch.Tensor] = {}
     for name in contract.output_head_names:
@@ -92,6 +96,16 @@ def build_sample(entry: dict, contract: scm.SETCompositionNetManifest) -> Synthe
         else:
             targets[name] = torch.zeros(width, dtype=torch.float32)
             label_masks[name] = torch.zeros(width, dtype=torch.float32)
+    feature_names = contract.raw["inputs"]["scalar_features"]["ordered_names"]
+    area = float(roi[2]) * float(roi[3])
+    for name, value in {
+        "subject_bbox_x": 0.20, "subject_bbox_y": 0.20,
+        "subject_bbox_width": 0.60, "subject_bbox_height": 0.60,
+        "subject_area_ratio": area, "roi_present": 1.0,
+        "roi_area_ratio": area, "roi_mask_coverage": 1.0,
+    }.items():
+        scalar[feature_names.index(name)] = value
+        missing[feature_names.index(name)] = 0.0
     return SyntheticSample(
         f"ava-{entry['image_id']}",
         scm.SETCompositionNetInputs(full, crop, roi, mask, scalar, missing),
@@ -140,7 +154,7 @@ def evaluate(model, samples, indices, device) -> dict:
 
 def main() -> int:
     started = time.time()
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    device = sys.argv[4] if len(sys.argv) > 4 else ("mps" if torch.backends.mps.is_available() else "cpu")
     manifest = scm.SETCompositionNetManifest.load(
         REPO_ROOT / "ml/camera_coach/contracts/set_composition_net_v1.json"
     )
@@ -166,7 +180,7 @@ def main() -> int:
     loss_config = LossConfig.from_file(REPO_ROOT / "ml/camera_coach/configs/loss_weights.json")
     generator = torch.Generator(device="cpu")
     generator.manual_seed(SEED)
-    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=float(sys.argv[3]) if len(sys.argv) > 3 else 2e-3)
 
     baseline = evaluate(model, samples, eval_indices, device)
     print(f"baseline: {baseline}", flush=True)
