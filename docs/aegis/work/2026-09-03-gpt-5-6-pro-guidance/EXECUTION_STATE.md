@@ -936,3 +936,6 @@
 
 ### 2026-09-07 (session) — M12-023 CLOSED
 - Media sync disposition closed (POST_1_0): exhaustive static audit on the current store — zero CloudKit/iCloud API uses, zero iCloud entitlements (no .entitlements file exists), the only sync* symbols are in-memory A/V timebase reports, exactly one URLSession production use (RemoteVLM provider, #if DEBUG-gated per M12-002, unreachable in Release), Pending/Journal backup-exclusion + file protection are local attributes not sync routes. Only export paths are user-initiated local share + add-only Photos export. Runtime proxy verification belongs to M13. Tracker total: 236/424 completed, 188 remaining.
+
+### 2026-09-07 (session) — M7-026 CLOSED (verify-and-close)
+- Playback verify-and-close: audited the existing owner chain against the M7-026 acceptance — lease-gated AVPlayerViewController presentation with request-ID + window guards, AVURLAssetPlaybackProbe failing closed to the localized recorder band on missing/corrupt media, release on dismiss/share/teardown with lease release. No production change required. Re-verified narrow: AppleRecordingAdaptersTests 16/16 PASS on permitted iPhone 17e (`/private/tmp/m7026-tests.xcresult`). Pre-existing evidence `evidence-m7/M7-026-playback.md` stands. Physical upright playback remains M13. Tracker total: 237/424 completed, 187 remaining.
