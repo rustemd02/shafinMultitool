@@ -957,3 +957,6 @@
 
 ### 2026-09-07 (session) — M6-016 + M6-017 CLOSED (simulator half)
 - World map save/restore closed on the existing single-file atomic owner (no production change): `ARWorldMapPersistenceTests` 4/4 on permitted iPhone 17e (`/private/tmp/m616-tests.xcresult`) — versioned schema (schemaVersion=1, optional archivedWorldMap via encodeIfPresent), nil-map honesty, corrupt-archive fail-closed without crash, staleSnapshot rejection preserving the stored file. Real ARWorldMap capture/relocalization/fallback remains M13 (ARWorldMap not constructible without a live session). Tracker total: 243/424 completed, 181 remaining.
+
+### 2026-09-07 (session) — M6-007 + M6-008 CLOSED (simulator contract half)
+- Placement/marking closed on existing owners (no production change): `ARPlacementMarkingContractTests` 6/6 on permitted iPhone 17e (`/private/tmp/m607-tests.xcresult`) — placement determinism, stable placed identities, marked-over-detected priority with real marker position, NaN-free transforms, canonical marker IDs, duplicate-alias fail-closed. Physical surface confirmation remains M13. Tracker total: 244/424 completed, 180 remaining.
