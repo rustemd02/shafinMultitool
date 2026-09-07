@@ -1,0 +1,22 @@
+{
+  "gate": "M8-GATE",
+  "scope": "source (iPad size-class qualification is M10-011; physical geometry M13)",
+  "verdict": "PASS for source scope",
+  "date": "2026-09-07",
+  "dependencies": {
+    "M8-020": {
+      "status": "closed",
+      "evidence": "evidence-m8/M8-002-020-storyboard-chain.md",
+      "note": "consolidated storyboard lane 22/22 this session (16 storyboard + 6 journey)"
+    }
+  },
+  "audit": {
+    "M8-001": "contract closed earlier (journey receipt 6/6)",
+    "M8-002..M8-019": "acceptance mapped to owners/tests in the consolidated evidence; no fake thumbnail/result/trace; saved changes persist through the staleSnapshot guard; media links resolve only still-existing artifacts",
+    "real_data": "all storyboard states render from generated/edited scene data through production owners"
+  },
+  "open_items": [
+    { "id": "M10-011", "status": "NEXT", "note": "iPad size-class storyboard qualification after this gate" },
+    { "id": "M13", "status": "EXTERNAL", "note": "physical geometry/keyboard qualification" }
+  ]
+}
