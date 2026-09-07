@@ -963,3 +963,6 @@
 
 ### 2026-09-07 (session) — M6-019 CLOSED (verify-and-close)
 - AR teardown closed on existing proof (no production change): SceneWorkspaceTeardownTests 16 tests cover every acceptance point — concurrent callers share one operation, owner order recording→playback→persist→release→detach with awaited finalization, world-map capture exactly-once inside the awaited teardown (timeout/cancellation/late-callback immunity), blocked results name the owner with retry semantics, route integration (background hook idempotence, awaited workspace, failure route retention, modal block). Physical timing remains M13. Tracker total: 245/424 completed, 179 remaining.
+
+### 2026-09-07 (session) — M6-020 CLOSED
+- AR test seams closed: new `SceneSurfaceRaycasting` protocol + `ARViewSurfaceRaycaster` production adapter (one-to-one two-pass query wrap; RealityKit results projected into a test-constructible struct) wired into the VM tap/fallback paths with behavior-preserving legacy branch; session/capability/world-map seams already existed. `SceneSurfaceRaycastingSeamTests` 5/5 (hit/miss/gate-before-raycast/naming-transaction/cancel + blank-name rejection) + `ARSessionOwnershipTests` 6/6 regression on permitted iPhone 17e (`/private/tmp/m620-tests.xcresult`). Tracker total: 246/424 completed, 178 remaining.

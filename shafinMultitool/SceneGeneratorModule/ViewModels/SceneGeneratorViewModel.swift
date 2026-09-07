@@ -658,7 +658,20 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     // MARK: - AR Properties
     
     /// Ссылка на ARView (устанавливается из ARSceneContainer)
-    weak var arView: ARView?
+    weak var arView: ARView? {
+        didSet {
+            // M6-020: the surface raycast seam follows the real view by
+            // default; tests can inject a fake provider without an
+            // ARView at all.
+            if let arView, surfaceRaycaster == nil || surfaceRaycaster is ARViewSurfaceRaycaster {
+                surfaceRaycaster = ARViewSurfaceRaycaster(view: arView)
+            }
+        }
+    }
+
+    /// M6-020 surface raycast seam (production adapter wraps the ARView;
+    /// tests inject a fake provider).
+    var surfaceRaycaster: SceneSurfaceRaycasting?
 
     /// The view model only requests release; the coordinator remains the sole
     /// owner of ARSession delegate/run/pause mutations.
@@ -3103,15 +3116,23 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Обрабатывает tap для размещения маркера
     func handleTapForMarker(at screenPoint: CGPoint) {
         diagnosticsLog("[TOUCH_TRACE] marker tap received point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y)))), marking=\(isMarkingMode), hasARView=\(arView != nil)")
-        guard isMarkingMode, let arView = arView else {
-            diagnosticsLog("[MARKER] tap rejected before raycast: marking=\(isMarkingMode), hasARView=\(arView != nil)")
+        guard isMarkingMode, surfaceRaycaster != nil || arView != nil else {
+            diagnosticsLog("[MARKER] tap rejected before raycast: marking=\(isMarkingMode), hasARView=\(arView != nil), hasRaycaster=\(surfaceRaycaster != nil)")
             return
         }
 
         // Demo-fast path: raycast не требует удерживать depth CVPixelBuffer между AR-кадрами.
-        var results = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
-        if results.isEmpty {
-            results = arView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
+        // M6-020: the two-pass query rides the seamed provider (production
+        // adapter preserves the exact existing-plane → estimated-plane order).
+        var surfaceResults = surfaceRaycaster?.raycastSurfaces(from: screenPoint) ?? []
+        if surfaceResults.isEmpty, let liveView = arView {
+            // Legacy direct query keeps behavior identical when only the raw
+            // view exists (adapter not yet attached).
+            var rawResults = liveView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
+            if rawResults.isEmpty {
+                rawResults = liveView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
+            }
+            surfaceResults = rawResults.map { SceneSurfaceRaycastResult(worldTransform: $0.worldTransform) }
         }
 
         // M6-006: a search past its bounded window cannot select a
@@ -3125,9 +3146,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
 
         let worldPosition: Position3D
-        if let firstResult = results.first {
-            let transform = firstResult.worldTransform
-            let position = transform.columns.3
+        if let firstResult = surfaceResults.first {
+            let position = firstResult.position
             worldPosition = Position3D(x: position.x, y: position.y, z: position.z)
         } else if let fallbackPosition = fallbackSurfacePosition(from: screenPoint) {
             worldPosition = fallbackPosition
@@ -5171,13 +5191,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func fallbackSurfacePosition(from screenPoint: CGPoint, yOverride: Float? = nil) -> Position3D? {
-        guard let arView else { return nil }
+        guard surfaceRaycaster != nil || arView != nil else { return nil }
         let planeY = yOverride
             ?? detectedPlanes.filter { $0.alignment == .horizontal }.map(\.y).min()
             ?? currentCameraTransform.map { $0.columns.3.y - 1.25 }
             ?? 0
 
-        if let ray = arView.ray(through: screenPoint) {
+        if let ray = surfaceRaycaster?.ray(through: screenPoint)
+            ?? arView.flatMap({ ARViewSurfaceRaycaster(view: $0).ray(through: screenPoint) }) {
             let origin = ray.origin
             let direction = simd_normalize(ray.direction)
             if abs(direction.y) > 0.0001 {
