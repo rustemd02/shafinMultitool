@@ -983,3 +983,17 @@
 ### 2026-09-07 (session) — M11-024 CLOSED (machine-assisted) + M12-024 CLOSED
 - M11-024 anti-vibe audit: all six fail-closed checkers re-run green on the locked tree (visual authority 26 files, copy 441, localization 441, reduce-motion 16 sites, screenshot matrix 55, material inventory 1046); banned-pattern sweep clean; the plan's HUMAN VISUAL sign-off recorded as the single external remaining component (`evidence-m11/M11-024-anti-vibe-audit.md`).
 - M12-024 runtime egress audit: zero production construction of SceneGenerationClient, zero configureRemoteOffload callers, DEBUG-only remote VLM, no entitlements file — no runtime egress in the 1.0 binary (`evidence-m12/M12-024-egress-audit.md`). Runtime proxy check remains M13. Tracker total: 275/424 completed, 149 remaining.
+
+### 2026-09-07 (session) — FINAL FRONTIER: honest blockers for all 149 remaining
+
+- **HUMAN DATA (M3-006, M3-009…M3-022, M3-027…M3-034)** — rights-cleared corpora, two-annotator calibration (M3-005), independent adjudication; no agent may fabricate human gold.
+- **MODEL CHAIN (M4-010…M4-018, M4-022…M4-030)** — training/calibration/eval blocked on frozen M3 gold + GPU training; M4-016 conversion gates the M2-021 calibrated model.
+- **SCENE EVAL (M5-031…M5-034)** — locked evaluation/review/llama-removal blocked on M3-034 frozen gold and the deployed backend (M5-GATE stays open with these).
+- **OPEN FEATURES (M6-010 planned-action hint binding; M10-010/011 iPad AR/Storyboard adaptive layouts; M10-014 hardware keyboard commands; M9-016/017 Pro Controls presentation layer)** — real unimplemented features, honestly not claimed; M9-016 also inherits the M4-GATE model block (M9-015→016→017→018 chain blocked upstream).
+- **APPLE ACCOUNT (M12-005/006 App Attest auth+quota; M14-003…M14-017 signing/archive/upload/TestFlight)** — require Apple Developer account, certificates, ASC access.
+- **DEPLOYED BACKEND (M12-010…M12-020 provider/ops/deployment; M12-022…M12-032 backend privacy chain; M12-034…M12-042 provenance/notices/SBOM chain gated on model provenance M4-029; M12-GATE)** — no backend provider selected/deployed; app-side audit halves closed (M12-023/024).
+- **PHYSICAL QUALIFICATION (M13-002…M13-028, M13-GATE)** — locked scripts exist (recording-v1, ar-workspace-v1, test-topology, iPad/perf/lens docs); execution needs the physical device matrix (forbidden devices remain forbidden).
+- **OWNER/RELEASE (M15-001…M15-012)** — naming/marketing approval, two-person audit, go/no-go, ASC submission: owner authority.
+- **GATES** — M3/M4/M5/M9/M10/M11/M12/M13/M14/M15 stay open; M6-GATE and M8-GATE passed for source scope this session.
+
+Session tally: 230 → 275 completed (45 tasks closed with code/evidence/verification or honest verify-and-close: M12-003/004/007/008/009/023/024, M5-025/026/027/028/029, M7-026, M6-007/008/009/011/012/016/017/019/020/021 + M6-GATE, M8-002…020 + M8-GATE, M10-012/013/020, M11-024, M11-014…021 per-surface evidence). Every remaining task now has either an in-flight feature note or an explicit external blocker above. No push, no remote mutation; two preservation stashes untouched.
