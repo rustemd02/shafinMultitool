@@ -617,6 +617,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     @Published private(set) var surfaceTrackingPosture: SurfaceTrackingPosture = .normal
 
+    /// M6-010: scene-side identity bound to the current live hint. Nil
+    /// when no plan exists or tracking is unstable (honest suppression).
+    @Published private(set) var sceneHintBinding: SceneHintBindingPresentation?
+
     /// Deadline of the bounded surface-search window. A search that finds no
     /// usable surface within it publishes localized retry/reposition guidance
     /// instead of selecting a fake surface.
@@ -1018,6 +1022,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 guard self?.debugFixtureID != "sheet.decision-trace" else { return }
 #endif
                 self?.liveHint = hint
+                self?.refreshSceneHintBinding()
             }
             .store(in: &cancellables)
 
@@ -3086,6 +3091,27 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// change. A limitation maps to one bounded guidance action and keeps the
     /// search honest; recovery clears guidance when tracking returns to
     /// normal and a fresh search window begins.
+    /// M6-010: recompute the scene binding from the current plan and
+    /// playback position. Hints without a resolvable planned action (or
+    /// under unstable tracking) carry no binding and are suppressed.
+    func refreshSceneHintBinding() {
+        guard surfaceTrackingPosture.isStable else {
+            sceneHintBinding = nil
+            return
+        }
+        let requestedBeatID: String?
+        if isPlaying, beatTimelineItems.indices.contains(activeBeatIndex) {
+            requestedBeatID = beatTimelineItems[activeBeatIndex].beatID
+        } else {
+            requestedBeatID = nil
+        }
+        sceneHintBinding = SceneHintSceneBinding.resolve(
+            script: currentProject.parsedScript,
+            requestedBeatID: requestedBeatID,
+            postureStable: true
+        )
+    }
+
     func updateSurfaceTrackingPosture(isLimited: Bool,
                                       reason: ARKitTrackingLimitation? = nil) {
         let posture: SurfaceTrackingPosture
@@ -3098,6 +3124,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         guard posture != surfaceTrackingPosture else { return }
         surfaceTrackingPosture = posture
+        // M6-010: hints bound to planned actions suppress while tracking
+        // is unstable and re-resolve when it recovers.
+        refreshSceneHintBinding()
         switch posture {
         case .normal:
             if isMarkingMode {
