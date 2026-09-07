@@ -942,3 +942,6 @@
 
 ### 2026-09-07 (session) — M5-025 CLOSED
 - Production generation client closed: `SceneGenerationClient` implements the existing RemoteScenePlanProvider seam (create → bounded poll → structural ScenePlanIR bridge; clarification/failure keep the honest local result, never a fake plan) with injected token/host/transport, M12-003 validation on every status, M12-004 allowlist bodies, kill-switch abort. 8/8 URLProtocol contract tests on permitted iPhone 17e (`/private/tmp/m5025-tests.xcresult`). NOT wired into the live offload path (seam stays off per M12-001/M12-002): wiring needs a deployed service + App Attest (M12-005) + real host — all external. Tracker total: 238/424 completed, 186 remaining.
+
+### 2026-09-07 (session) — M5-026 CLOSED
+- Response validation closed: `SceneResponseValidator` (typed referential/chronology/binding checks on the compiled script, repairs nothing) wired into both coordinator accept paths — invalid outputs fall back rule-based with `response_invalid:<issue>` reasons, never partially committed. 10/10 adversarial fixtures + 31/31 coordinator regression on permitted iPhone 17e. Full-pipeline 4 failures proven pre-existing via stash-baseline (demo V9 path + 2 registered heading cases); preservation stashes untouched. Tracker total: 239/424 completed, 185 remaining.

@@ -306,6 +306,23 @@ final class SceneParseCoordinator {
                 let fallback = ruleBasedFallback()
                 return (fallback, trace)
             }
+            // M5-026: the compiled script is validated before it reaches
+            // project state. Invalid outputs fall back to the rule-based
+            // result with typed reasons — never silently repaired
+            // (M5-027 owns the repair boundary), never partially committed.
+            let responseIssues = SceneResponseValidator.validate(
+                script: compiledScript,
+                markedObjectIDs: Set(markedObjects.map(\.canonicalMarkedObjectID)),
+                mentionedMarkedObjects: Set(anchors.mentionedMarkedObjects)
+            )
+            guard responseIssues.isEmpty else {
+                var rejectedTrace = trace
+                rejectedTrace.route = .fallbackRuleOnly
+                for issue in responseIssues where !rejectedTrace.reasons.contains("response_invalid:\(issue.rawValue)") {
+                    rejectedTrace.reasons.append("response_invalid:\(issue.rawValue)")
+                }
+                return (augmentFallback(ruleBasedFallback(), with: rejectedTrace), rejectedTrace)
+            }
             let result = makeParsingResult(
                 script: compiledScript,
                 description: description,
@@ -369,6 +386,20 @@ final class SceneParseCoordinator {
         }
         if !remoteTrace.reasons.contains("remote_plan_used") {
             remoteTrace.reasons.append("remote_plan_used")
+        }
+        // M5-026: remote outputs pass the same validation gate before
+        // they reach project state.
+        let remoteIssues = SceneResponseValidator.validate(
+            script: remoteCompiled.script,
+            markedObjectIDs: Set(markedObjects.map(\.canonicalMarkedObjectID)),
+            mentionedMarkedObjects: Set(anchors.mentionedMarkedObjects)
+        )
+        guard remoteIssues.isEmpty else {
+            remoteTrace.route = .fallbackRuleOnly
+            for issue in remoteIssues where !remoteTrace.reasons.contains("response_invalid:\(issue.rawValue)") {
+                remoteTrace.reasons.append("response_invalid:\(issue.rawValue)")
+            }
+            return (augmentFallback(ruleBasedFallback(), with: remoteTrace), remoteTrace)
         }
         let result = makeParsingResult(
             script: remoteCompiled.script,
