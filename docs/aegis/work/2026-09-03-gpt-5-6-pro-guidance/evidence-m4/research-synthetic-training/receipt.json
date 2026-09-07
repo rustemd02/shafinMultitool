@@ -1,0 +1,112 @@
+{
+ "lane": "research-synthetic-rule",
+ "dataset_id": "camera_synthetic_rule_lane",
+ "generator": "rule_labelled_contract_tensors.v1",
+ "approved_human_data": false,
+ "rule": {
+  "center_x": [
+   0.3,
+   0.7
+  ],
+  "center_y": [
+   0.25,
+   0.75
+  ],
+  "area": [
+   0.05,
+   0.35
+  ]
+ },
+ "seed": 20260907,
+ "candidate": "candidate_b_roi_conditioned_ablation",
+ "train_samples": 640,
+ "eval_samples": 160,
+ "epochs": 12,
+ "batch_size": 32,
+ "baseline": {
+  "accuracy": 0.175,
+  "mean_absolute_error": 0.5135974511504173
+ },
+ "final": {
+  "accuracy": 0.825,
+  "mean_absolute_error": 0.17500000000127688
+ },
+ "history": [
+  {
+   "epoch": 1,
+   "train_loss": 0.8585413828492164,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.3669156929478049
+  },
+  {
+   "epoch": 2,
+   "train_loss": 0.2322770908474922,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.2106659621465951
+  },
+  {
+   "epoch": 3,
+   "train_loss": 0.041909146355465055,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.1812263654806884
+  },
+  {
+   "epoch": 4,
+   "train_loss": 0.01744855787837878,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17620535219539307
+  },
+  {
+   "epoch": 5,
+   "train_loss": 0.01977421592164319,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17532743361853137
+  },
+  {
+   "epoch": 6,
+   "train_loss": 0.03144692313508131,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17503920661407618
+  },
+  {
+   "epoch": 7,
+   "train_loss": 0.08413111609406769,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17500256588637697
+  },
+  {
+   "epoch": 8,
+   "train_loss": 0.07875589242903516,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.1750002756844391
+  },
+  {
+   "epoch": 9,
+   "train_loss": 0.0276332715380704,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17500001265918605
+  },
+  {
+   "epoch": 10,
+   "train_loss": 0.03326960180420428,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17500000123593576
+  },
+  {
+   "epoch": 11,
+   "train_loss": 0.025396037730388343,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17500000001814622
+  },
+  {
+   "epoch": 12,
+   "train_loss": 0.013137085545167793,
+   "accuracy": 0.825,
+   "mean_absolute_error": 0.17500000000127688
+  }
+ ],
+ "runtime_seconds": 644.5,
+ "torch_version": "2.10.0",
+ "disclaimer": "Rule-derived synthetic labels; validates the training environment end-to-end. NOT a production candidate; M4-012/014 remain gated on frozen human gold (M3-022).",
+ "receipt_sha256_input": "24d5c862e9cfaf526baec1f7b96a28e448a7b645a461ac9e8979d30a02b3d6e7"
+}
