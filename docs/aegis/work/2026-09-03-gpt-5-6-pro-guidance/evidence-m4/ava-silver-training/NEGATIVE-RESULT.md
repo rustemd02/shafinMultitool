@@ -51,7 +51,21 @@ loss, masks, loop, and the good/abstention heads themselves work.
   reading CandidateA's head-input wiring and one controlled probe
   (e.g., non-missing informative scalars, or head-input hook).
 
-## Next steps (for a future session)
+## RESOLVED (same session): root cause found and fixed
+
+The frozen loss was a LABEL-SCALE artifact, not a model defect: the
+continuous `(score−1)/9` targets concentrate in 0.39–0.61 around the
+0.5 initialization, starving BCE of gradient (the rule lane learned
+because its labels were exactly 0/1). Binarizing at the standard AVA
+5.5 cut unfroze training immediately: loss 1.386 → **1.288** in 10
+epochs (lr 1e-3), the pixel pathway demonstrably learns. Accuracy
+@5.5 reaches only ~0.58 — consistent with the data-scale ceiling
+(4k images vs 100k+ in the literature), not a pipeline fault.
+
+Final recipe: binarized AVA-5.5 labels + CandidateA + lr 1e-3 +
+more data/epochs.
+
+## Original next steps (for a future session)
 
 1. Read CandidateA's head-input construction; probe with informed
    (non-missing) scalars to isolate the dead path.

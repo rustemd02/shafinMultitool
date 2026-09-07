@@ -5,42 +5,84 @@
  "approved_human_data": false,
  "data_location": "/private/tmp/ava_silver (outside Git; rights-uncleared)",
  "candidate": "candidate_a_dual_branch (full-frame branch under load)",
- "device": "cpu",
- "images_used": 640,
+ "device": "mps",
+ "images_used": 4000,
  "skipped_decode": 0,
- "epochs": 3,
+ "epochs": 10,
  "batch_size": 16,
  "baseline": {
-  "binary_accuracy_at_5_5": 0.425,
-  "mean_absolute_error": 0.06611549084385236
+  "binary_accuracy_at_5_5": 0.41383812010443866,
+  "mean_absolute_error": 0.500273329470861
  },
  "final": {
-  "epoch": 3,
-  "train_loss": 1.386748483686736,
-  "binary_accuracy_at_5_5": 0.575,
-  "mean_absolute_error": 0.06527698064843813
+  "epoch": 10,
+  "train_loss": 1.2876534996361568,
+  "binary_accuracy_at_5_5": 0.5783289817232375,
+  "mean_absolute_error": 0.4768962460343894
  },
  "history": [
   {
    "epoch": 1,
-   "train_loss": 1.4023125099413323,
-   "binary_accuracy_at_5_5": 0.425,
-   "mean_absolute_error": 0.06681185389558474
+   "train_loss": 1.3858979276835626,
+   "binary_accuracy_at_5_5": 0.5861618798955613,
+   "mean_absolute_error": 0.4835296152232521
   },
   {
    "epoch": 2,
-   "train_loss": 1.3892164013602517,
-   "binary_accuracy_at_5_5": 0.575,
-   "mean_absolute_error": 0.06636761178572972
+   "train_loss": 1.3740320992587236,
+   "binary_accuracy_at_5_5": 0.5861618798955613,
+   "mean_absolute_error": 0.4877516781770218
   },
   {
    "epoch": 3,
-   "train_loss": 1.386748483686736,
-   "binary_accuracy_at_5_5": 0.575,
-   "mean_absolute_error": 0.06527698064843813
+   "train_loss": 1.3724251656696713,
+   "binary_accuracy_at_5_5": 0.5757180156657964,
+   "mean_absolute_error": 0.4846719863287151
+  },
+  {
+   "epoch": 4,
+   "train_loss": 1.3710328187848546,
+   "binary_accuracy_at_5_5": 0.5378590078328982,
+   "mean_absolute_error": 0.49697915377100205
+  },
+  {
+   "epoch": 5,
+   "train_loss": 1.3639361793771754,
+   "binary_accuracy_at_5_5": 0.5430809399477807,
+   "mean_absolute_error": 0.49096272881908765
+  },
+  {
+   "epoch": 6,
+   "train_loss": 1.3557383385785107,
+   "binary_accuracy_at_5_5": 0.6018276762402088,
+   "mean_absolute_error": 0.4629066476121778
+  },
+  {
+   "epoch": 7,
+   "train_loss": 1.3464047679760185,
+   "binary_accuracy_at_5_5": 0.47911227154047,
+   "mean_absolute_error": 0.5066437124816929
+  },
+  {
+   "epoch": 8,
+   "train_loss": 1.3377436522779793,
+   "binary_accuracy_at_5_5": 0.5456919060052219,
+   "mean_absolute_error": 0.48639826005806186
+  },
+  {
+   "epoch": 9,
+   "train_loss": 1.3258242580690995,
+   "binary_accuracy_at_5_5": 0.5169712793733682,
+   "mean_absolute_error": 0.4912910173518228
+  },
+  {
+   "epoch": 10,
+   "train_loss": 1.2876534996361568,
+   "binary_accuracy_at_5_5": 0.5783289817232375,
+   "mean_absolute_error": 0.4768962460343894
   }
  ],
- "runtime_seconds": 549.9,
+ "runtime_seconds": 520.2,
  "torch_version": "2.10.0",
  "disclaimer": "Silver pretraining validates the pixel pathway. Production candidate selection still requires the frozen M3 human-gold chain (M3-022) per plan."
 }

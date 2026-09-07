@@ -72,7 +72,9 @@ def build_sample(entry: dict, contract: scm.SETCompositionNetManifest) -> Synthe
     if encoded is None:
         return None
     full, crop, _encoded_mask = encoded
-    probability = max(0.0, min(1.0, (entry["mean_score"] - 1.0) / 9.0))
+    # Binarize at the standard AVA 5.5 cut: continuous (score-1)/9 labels
+    # concentrate in 0.39..0.61, starving BCE of gradient near p=0.5.
+    probability = 1.0 if float(entry["mean_score"]) >= 5.5 else 0.0
     scalar = torch.zeros(contract.scalar_feature_count, dtype=torch.float32)
     missing = torch.ones(contract.scalar_feature_count, dtype=torch.float32)
     # Center pseudo-ROI activates the ROI-conditioned pathway
