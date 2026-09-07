@@ -1405,10 +1405,21 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                         ARLiveHintCheckView()
                         Spacer()
                     } else {
-                        ARLiveHintCompactChip(
-                            liveHint: liveHint,
-                            onExplain: canShowDecisionTrace ? showDecisionTrace : nil
-                        )
+                        VStack(alignment: .leading, spacing: 4) {
+                            ARLiveHintCompactChip(
+                                liveHint: liveHint,
+                                onExplain: canShowDecisionTrace ? showDecisionTrace : nil
+                            )
+                            // M6-010: the planned-action binding rides the
+                            // hint surface — same entity IDs the planner
+                            // placed in AR, so text and scene cannot disagree.
+                            if let binding = viewModel.sceneHintBinding {
+                                Text("\(binding.actorName) → \(binding.actionID) · \(binding.beatID)\(binding.targetName.map { " → \($0)" } ?? "")")
+                                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
+                                    .foregroundStyle(.setTextSecondary)
+                                    .accessibilityIdentifier("hint_scene_binding")
+                            }
+                        }
                         .frame(maxWidth: min(size.width * 0.34, 300), alignment: .leading)
 
                         Spacer()

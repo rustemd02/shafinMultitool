@@ -670,6 +670,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             if let arView, surfaceRaycaster == nil || surfaceRaycaster is ARViewSurfaceRaycaster {
                 surfaceRaycaster = ARViewSurfaceRaycaster(view: arView)
             }
+            if arView == nil, surfaceRaycaster is ARViewSurfaceRaycaster {
+                surfaceRaycaster = nil
+            }
         }
     }
 
@@ -1008,6 +1011,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             .receive(on: DispatchQueue.main)
             .sink { [weak self] overlayState in
                 self?.coachingOverlayState = overlayState
+            }
+            .store(in: &cancellables)
+
+        $activeBeatIndex
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshSceneHintBinding()
             }
             .store(in: &cancellables)
 
@@ -3154,15 +3164,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // M6-020: the two-pass query rides the seamed provider (production
         // adapter preserves the exact existing-plane → estimated-plane order).
         var surfaceResults = surfaceRaycaster?.raycastSurfaces(from: screenPoint) ?? []
-        if surfaceResults.isEmpty, let liveView = arView {
-            // Legacy direct query keeps behavior identical when only the raw
-            // view exists (adapter not yet attached).
-            var rawResults = liveView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
-            if rawResults.isEmpty {
-                rawResults = liveView.raycast(from: screenPoint, allowing: .estimatedPlane, alignment: .any)
-            }
-            surfaceResults = rawResults.map { SceneSurfaceRaycastResult(worldTransform: $0.worldTransform) }
-        }
 
         // M6-006: a search past its bounded window cannot select a
         // surface silently. Publish retry/reposition guidance and renew the
@@ -4349,6 +4350,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     func refreshStoryboardBeatItems() {
+        refreshSceneHintBinding()
         storyboardBeatItems = buildStoryboardBeatPresentationItems(for: parsedScript)
         if let selectedStoryboardBeatID,
            storyboardBeatItems.contains(where: { $0.beatID == selectedStoryboardBeatID }) {

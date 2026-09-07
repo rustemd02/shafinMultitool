@@ -287,7 +287,8 @@ private struct SETCameraCoachRuntimeSurface: View {
                         rows: ProControlsPresentation.rows(
                             torchActive: cameraManager.isTorchActive,
                             meterLevel: cameraManager.audioLevel,
-                            formatText: nil
+                            formatText: nil,
+                            locale: locale
                         ),
                         locale: locale
                     )

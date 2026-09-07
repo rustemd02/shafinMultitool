@@ -120,31 +120,6 @@ final class SceneChunkContinuityTests: XCTestCase {
         XCTAssertEqual(finalized.beats.map(\.ref), ["beat_1", "beat_2"])
     }
 
-    func testSceneOrderSortedBySceneIndex() {
-        // Scene entries sort by sceneIndex regardless of processing order.
-        let later = SceneBundlePlan.SceneEntry(
-            sceneID: "scene_2",
-            sceneIndex: 2,
-            sourceText: "later",
-            metadata: .empty,
-            chunks: [],
-            diagnostics: [],
-            plan: ScenePlanIR(actors: [], objects: [], beats: [], spatialRelations: [], referenceBindings: .init())
-        )
-        let earlier = SceneBundlePlan.SceneEntry(
-            sceneID: "scene_1",
-            sceneIndex: 1,
-            sourceText: "earlier",
-            metadata: .empty,
-            chunks: [],
-            diagnostics: [],
-            plan: ScenePlanIR(actors: [], objects: [], beats: [], spatialRelations: [], referenceBindings: .init())
-        )
-        var entries = [later, earlier]
-        entries.sort { $0.sceneIndex < $1.sceneIndex }
-        XCTAssertEqual(entries.map(\.sceneID), ["scene_1", "scene_2"])
-    }
-
     func testFinalizeResolvesDeferredReferences() {
         let stitcher = SceneStitcher()
         var state = stitcher.apply(chunk: chunk(
@@ -167,12 +142,8 @@ final class SceneChunkContinuityTests: XCTestCase {
             sourceText: "Сцена продолжается."
         ), to: state)
         let finalized = stitcher.finalize(state: state)
-        // Unresolved actor ref drops the action (no fabricated actor);
-        // the empty beat disappears rather than shipping a fake row.
-        let knownRefs = Set(finalized.actors.map { $0.ref })
-        XCTAssertTrue(finalized.beats.isEmpty || finalized.beats.allSatisfy { beat in
-            beat.actions.allSatisfy { knownRefs.contains($0.actorRef) }
-        })
+        XCTAssertTrue(finalized.actors.isEmpty, "deferred actor must not materialize")
+        XCTAssertTrue(finalized.beats.isEmpty, "beat whose only action referenced an unresolved actor must drop")
     }
 
     func testContinuityDiagnosticsCarryChunkReasons() {

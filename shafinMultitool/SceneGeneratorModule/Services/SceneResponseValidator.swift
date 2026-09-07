@@ -23,7 +23,6 @@ enum SceneResponseIssue: String, Equatable, Sendable {
     case danglingHoldingReference
     case duplicateEntityID
     case unresolvedMarkedBinding
-    case invalidMarkedBinding
     case beatOrderViolation
 }
 
@@ -93,10 +92,6 @@ enum SceneResponseValidator: Sendable {
         for mentioned in mentionedMarkedObjects where !boundMarked.contains(mentioned) {
             add(.unresolvedMarkedBinding)
         }
-        if boundMarked.contains(where: { !$0.hasPrefix("object_marked_") }) {
-            add(.invalidMarkedBinding)
-        }
-
         var lastOrdinal: Int?
         for beat in script.beats {
             guard let ordinal = SceneResponseValidator.ordinal(of: beat.id) else { continue }

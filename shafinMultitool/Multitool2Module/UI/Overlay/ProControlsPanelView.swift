@@ -53,7 +53,7 @@ private struct ProControlRowView: View {
         .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(row.nameKey.localizedString(locale: locale))
-        .accessibilityValue(row.accessibilityValueText)
+        .accessibilityValue(row.accessibilityValueText(locale: locale))
         .accessibilityIdentifier("pro_control_\(row.id)")
     }
 
@@ -70,7 +70,7 @@ private struct ProControlRowView: View {
     }
 
     private var tierLabel: some View {
-        Text(ProControlsPresentation.tierText(row.availability))
+        Text(ProControlsPresentation.tierText(row.availability, locale: locale))
             .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
             .foregroundStyle(.setTextSecondary)
     }

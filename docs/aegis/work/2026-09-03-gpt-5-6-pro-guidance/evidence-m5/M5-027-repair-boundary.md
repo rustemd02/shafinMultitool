@@ -26,5 +26,8 @@ Status: CLOSED on the current store.
 ## Audit method
 
 Registry cross-checked against `grep -rho` production literals plus
-constant-carried v8 codes: 66/66 match, 0 missing, 0 extra. The
-in-test source scan fails on any future unregistered repair note.
+constant-carried v8 codes: at closure 66/66 matched (0 missing, 0
+extra); the registry has since grown to 68 entries in step with
+production additions, re-audited each time by
+`SceneRepairBoundaryTests.testRegistryCoversAllProductionNoteCodes`.
+The in-test source scan fails on any future unregistered repair note.

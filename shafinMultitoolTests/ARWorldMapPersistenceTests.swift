@@ -98,9 +98,12 @@ final class ARWorldMapPersistenceTests: XCTestCase {
         // crash the loader; the loader fails closed (nil overall or a
         // nil map after rejection).
         let loaded = dbService.loadUnifiedSceneProject(named: projectName)
-        if let loaded {
-            XCTAssertNil(loaded.1, "corrupt archive must not decode to a map")
+        if loaded == nil {
+            // Failing the whole load is an accepted fail-closed shape…
+            return
         }
+        // …and so is keeping the project while rejecting the map.
+        XCTAssertNil(loaded?.1, "corrupt archive must not decode to a map")
     }
 
     func testStaleOptimisticWriteIsRejectedAndKeepsStoredFile() throws {

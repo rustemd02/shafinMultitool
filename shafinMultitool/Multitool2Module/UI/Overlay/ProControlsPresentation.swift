@@ -21,26 +21,26 @@ struct ProControlRow: Equatable, Identifiable {
     let valueText: String?
     let owner: String
 
-    var accessibilityValueText: String {
+    func accessibilityValueText(locale: Locale) -> String {
         switch availability {
         case .available:
             return valueText ?? ""
         case .legacyOnly, .post10:
-            return SETCopyKey.proControlTierLegacy.localizedString(locale: .current)
+            return SETCopyKey.proControlTierLegacy.localizedString(locale: locale)
         }
     }
 }
 
 enum ProControlsPresentation {
     /// Localized tier caption per row.
-    static func tierText(_ availability: ProControlAvailability) -> String {
+    static func tierText(_ availability: ProControlAvailability, locale: Locale) -> String {
         switch availability {
         case .available:
-            return SETCopyKey.proControlTierAvailable.localizedString(locale: .current)
+            return SETCopyKey.proControlTierAvailable.localizedString(locale: locale)
         case .legacyOnly:
-            return SETCopyKey.proControlTierLegacy.localizedString(locale: .current)
+            return SETCopyKey.proControlTierLegacy.localizedString(locale: locale)
         case .post10:
-            return SETCopyKey.proControlTierPost10.localizedString(locale: .current)
+            return SETCopyKey.proControlTierPost10.localizedString(locale: locale)
         }
     }
 
@@ -49,7 +49,8 @@ enum ProControlsPresentation {
     static func rows(
         torchActive: Bool?,
         meterLevel: Float?,
-        formatText: String?
+        formatText: String?,
+        locale: Locale
     ) -> [ProControlRow] {
         ProCameraControlContracts.production.map { contract in
             let value: String?
@@ -57,8 +58,8 @@ enum ProControlsPresentation {
             case .torch:
                 value = contract.availability == .available
                     ? torchActive.map { $0
-                        ? SETCopyKey.proControlValueOn.localizedString(locale: .current)
-                        : SETCopyKey.proControlValueOff.localizedString(locale: .current) }
+                        ? SETCopyKey.proControlValueOn.localizedString(locale: locale)
+                        : SETCopyKey.proControlValueOff.localizedString(locale: locale) }
                     : nil
             case .audioMeter:
                 value = contract.availability == .available
