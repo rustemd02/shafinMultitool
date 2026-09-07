@@ -1009,3 +1009,6 @@ Session tally: 230 → 275 completed (45 tasks closed with code/evidence/verific
 
 ### 2026-09-07 (session) — M6-010 CLOSED
 - Planned-action hint binding implemented: `SceneHintSceneBinding.resolve` binds live hints to the real parsed-script action identity (beat/action/actor/target IDs resolved against the script rosters; dangling references suppress instead of fabricating; unknown requested beat suppresses as state mismatch) + `sceneHintBinding` published alongside the live hint, recomputed on hint publication and on tracking-posture change — hints suppress while tracking is unstable (M6-018 posture ownership reused). 7/7 binding tests on permitted iPhone 17e (`/private/tmp/m6010-tests.xcresult`). Physical anchor-quality behavior M13. Tracker total: 279/424 completed, 145 remaining.
+
+### 2026-09-07 (session) — M9-015 CLOSED (verify-and-close)
+- Coach compatibility closed on the invalidation chain: SubjectTrackInvalidationCause (lens/orientation/generation changes), freshness verdicts gating published evidence, safety-gate subject invalidation, M9-011/012 explicit user-intent routing. No production change; recalibration quality with the production model re-verifies at M4-GATE. Tracker total: 280/424 completed, 144 remaining.
